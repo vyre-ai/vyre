@@ -10,6 +10,7 @@ function door({ sessions = [], row = { kind: "app", removed: false } } = {}) {
   const seen = [];
   const registry = { call: async (tool, input, caller, meta) => {
     if (tool === "relay.device.info") return { data: row };
+    if (tool === "wink.device.record") return { data: { owner: "per_x" } };
     seen.push({ tool, input, caller, meta }); return { data: { ok: true } };
   } };
   const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };

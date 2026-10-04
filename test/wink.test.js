@@ -279,7 +279,7 @@ test("wink: a release drops the adopter's relay device and a refused adopt drops
   assert.deepEqual(rel.data, { released: true }, JSON.stringify(rel.error));
   await until(async () => !(await relayHas(w, app)));
   await until(async () => (await w.call("wink.access")).data.devices.every(d => d.id !== app));
-  assert.equal((await w.call("wink.access")).data.devices.filter(d => d.id === app).length, 0, "wink.access lists nothing for it");
+  assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.filter(d => d.id === app).length, 0, "wink.access lists nothing for it");
   // the relay is what authenticates a device's calls: with its row removed it is refused there (4401), never admitted as device:<id> again
   const row = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === app);
   assert.equal(row, undefined, "the relay no longer knows it");
@@ -770,7 +770,8 @@ test("paired session on the real kernel: pair, pick, start-paired, then memory.g
   const label = `device:${paired.device}`;
   const read = async via => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   const ok = await read({ person: { id: sessionId } });
@@ -813,7 +814,8 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   const sessionId = started.body.data.id, label = `device:${paired.device}`;
   const read = async (via = { person: { id: sessionId } }) => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   assert.ok(!(await read()).error, "the paired session reads memory with no prompt");
@@ -2048,4 +2050,118 @@ test("invitee channels: 40 strangers holding channels never take the slots the o
   const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
   await assert.rejects(() => peerSession(streamPipe(st), { first: 1 }).call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
   await until(async () => r.channel.closed === true, 4000);
+});
+
+/** After a refused pairing: the app\'s relay device goes (the drop follows the answer), and no device has a record of being the owner\'s. */
+const noOwnerDevices = async w => {
+  await until(async () => ((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []).filter(d => d.kind === "app" && !d.removed).length === 0 || null, 8000);
+  for (const d of (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices || []) assert.equal((await w.d.registry.call("wink.device.record", { id: d.id }, "module:presence")).data, null, "no owner device record");
+};
+
+// ---- first owner wins: a home whose kernel already has a claimed owner is not paired by a different identity ----
+test("a home that already has a claimed owner is not paired by a different identity: refused before the ask, nothing recorded, no session, the kernel owner unchanged", async t => {
+  const ident = await standinIdentity(t);
+  process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+  const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF; delete process.env.VYRE_TEST_PAIR_NO_PROOF;
+  const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (noProof !== undefined) process.env.VYRE_TEST_PAIR_NO_PROOF = noProof; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const w = await world(t, { kernel: true });
+  const claim = await w.d.registry.call("spaces.identity.create", { name: "srvowner", password: "four plain words here", deviceLabel: "server screen" }, "cli", PROOF);
+  assert.ok(!claim.error, JSON.stringify(claim.error));
+  const ownerAfterClaim = w.d.kernel.id.owner;
+  assert.notEqual(ownerAfterClaim, ident.id);
+  const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const ks = keystore(t);
+  const pairing = pairServer({ payload: code.qr, owner: { id: ident.id, name: "Carol", vyre: "alex" }, deviceKind: "phone", presenceKey, name: "Carol's iPhone", crypto: nodeCrypto(), keyStore: ks, pollMs: 100, signIdentity: ident.sign, onWords: () => {} });
+  await assert.rejects(() => pairing, e => e.code === "owned_by_other" && /already belongs to another/.test(e.message), "refused with its own words");
+  assert.equal(((await w.call("wink.server.pairing", {}, "cli", PROOF)).data || {}).asking || false, false, "the person at the server is never asked");
+  const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, false, "the pairing record names no owner");
+  assert.equal(w.d.kernel.id.owner, ownerAfterClaim, "the kernel owner is unchanged");
+  await noOwnerDevices(w);
+});
+
+test("a kernel that refuses the owner fails the pairing: the owner record is taken back, the device has no row and no session", async t => {
+  const ident = await standinIdentity(t);
+  process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+  const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF; delete process.env.VYRE_TEST_PAIR_NO_PROOF;
+  const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (noProof !== undefined) process.env.VYRE_TEST_PAIR_NO_PROOF = noProof; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const w = await world(t, { kernel: true });
+  // the kernel adopts another identity between the early check and the pick (a claim at the server's own screen while the pairing waits)
+  const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const ks = keystore(t);
+  let shown = "";
+  const pairing = pairServer({ payload: code.qr, owner: { id: ident.id, name: "Carol", vyre: "alex" }, deviceKind: "phone", presenceKey, name: "Carol's iPhone", crypto: nodeCrypto(), keyStore: ks, pollMs: 100, signIdentity: ident.sign, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
+  await until(async () => shown);
+  const claim = await w.d.registry.call("spaces.identity.create", { name: "srvowner", password: "four plain words here", deviceLabel: "server screen" }, "cli", PROOF);
+  assert.ok(!claim.error, JSON.stringify(claim.error));
+  const ownerAfterClaim = w.d.kernel.id.owner;
+  await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF);
+  await assert.rejects(() => pairing, e => e.code === "owned_by_other");
+  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false, "the owner record was taken back");
+  assert.equal(w.d.kernel.id.owner, ownerAfterClaim);
+  await noOwnerDevices(w);
+});
+
+test("a device is the owner's person only as the person its row names: a row naming another person, or nobody, gets no person facts", () => {
+  const k = { id: { owner: "per_" + "a".repeat(26), space: "spc_x" }, grants: { adopted: () => ({ from: "per_first", to: "per_" + "a".repeat(26) }) } };
+  const row = person => ({ kind: "app", removed: false, ...(person !== undefined ? { person } : {}) });
+  const facts = r => callerFacts("device:abcdefghijklmnop", { caller: "device:abcdefghijklmnop", peer: { kind: "device", stableId: "abcdefghijklmnop" } }, null, k, false, r);
+  assert.equal(facts(row(k.id.owner)).person, k.id.owner);
+  assert.equal(facts(row("per_" + "b".repeat(26))), null, "another person");
+  assert.equal(facts(row(null)), null, "nobody");
+  assert.equal(facts(row()), null, "a row with no person");
+});
+
+/** One more pairing of an already-paired fresh server from the same identity (a person's second device), the way pairFreshServer does the first. */
+async function pairSecondDevice(t, f, { kind = "computer", name = "Alex's Mac" } = {}) {
+  const made = (await f.w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ks = keystore(t);
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  let shown = "";
+  const pairing = pairServer({ payload: made.qr, owner: { id: f.ident.id, name: "Alex", vyre: "alex" }, signIdentity: f.ident.sign, deviceKind: kind, keyStorage: "software", name, crypto: nodeCrypto(), keyStore: ks, presenceKey, pollMs: 100, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  return { pairing, answer: async () => {
+    const q = await until(async () => { const x = (await f.w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
+    await until(async () => shown);
+    return (await f.w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data;
+  } };
+}
+
+test("the owner's second device (a computer after a phone) pairs: the same identity, its proof checked, the person at the server picks the words, and the owner does not change", async t => {
+  const f = await pairFreshServer(t);
+  const ownerBefore = f.w.d.kernel.id.owner;
+  assert.equal(ownerBefore, f.ident.id);
+  const s = await pairSecondDevice(t, f);
+  assert.equal((await s.answer()).yes, true);
+  const done = await s.pairing;
+  assert.equal(done.session, true, "the second device has its paired session");
+  assert.notEqual(done.device, f.done.device);
+  assert.equal(f.w.d.kernel.id.owner, ownerBefore, "the kernel owner is the same");
+  const rec = (await f.w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
+  assert.deepEqual([rec.kind, rec.owner], ["computer", f.ident.id]);
+  const st = (await f.w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, true);
+  // the first device is still the adopter: nothing it holds moved
+  assert.equal((await f.w.d.registry.call("wink.device.record", { id: f.done.device }, "module:presence")).data.owner, f.ident.id);
+});
+
+test("FO-1: adopt never changes the owner of an owned server: the adopter naming another identity, with presence, is refused owned_by_other and nothing moves", async t => {
+  const f = await pairFreshServer(t);
+  const other = { kind: "identity", id: "per_" + "z".repeat(26), name: "Mallory" };
+  const as = `device:${f.done.device}`;
+  const r = await f.w.d.registry.call("wink.server.adopt", { owner: other, identity: other.id }, as, { ...PROOF, peer: { kind: "device", stableId: f.done.device, node: f.done.device } });
+  assert.ok(r.error && r.error.code === "owned_by_other", JSON.stringify(r.error || r.data));
+  const st = (await f.w.call("wink.server.status", {}, "cli", PROOF)).data;
+  assert.equal(st.owned, true);
+  assert.equal(f.w.d.kernel.id.owner, f.ident.id, "the kernel owner is unchanged");
+  assert.equal((await f.w.d.registry.call("wink.server.owner", {}, "module:spaces")).data.identity, f.ident.id, "and so is the pairing record");
 });

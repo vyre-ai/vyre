@@ -359,7 +359,7 @@ test("the phone's chain: a device connection (relay device:<id>, a tailnet owner
   const k = d.kernel, owner = k.id.owner;
   const hops = f => { const c = f && k.chains.fromFacts(f); return c ? c.hops.map(h => [h.actor.kind, h.actor.id]) : null; };
   const dev = "abcdefghijklmnop";
-  const row = o => ({ kind: "app", removed: false, ...o });
+  const row = o => ({ kind: "app", removed: false, person: owner, ...o });
   assert.deepEqual(hops(callerFacts(`device:${dev}`, { caller: `device:${dev}` }, {}, k, false, row({}))), [["person", owner]], "a paired app device the home holds");
   // PH-1: no row, a removed one, a web browser (trusted or not), a setup page: no person facts, whatever the relay says
   const dpol = { caller: `device:${dev}` };
@@ -396,7 +396,7 @@ test("PH-1 end to end: the daemon's own relay row decides what a device is (rela
   const ids = { app: "aaaaaaaaaaaaaaaa", web: "bbbbbbbbbbbbbbbb", setup: "cccccccccccccccc", gone: "dddddddddddddddd" };
   ins.run(ids.app, "phone", "app", 0, null); ins.run(ids.web, "browser", "web", 1, null); ins.run(ids.setup, "setup page", "setup", 0, null); ins.run(ids.gone, "old", "app", 0, 5);
   const { callerFacts } = await import("../core/daemon/index.js");
-  const facts = async id => { const r = await d.registry.call("relay.device.info", { id }, "module:vyred"); return callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, r.data || null); };
+  const facts = async id => { const r = await d.registry.call("relay.device.info", { id }, "module:vyred"); return callerFacts(`device:${id}`, { caller: `device:${id}` }, {}, d.kernel, false, r.data ? { ...r.data, person: d.kernel.id.owner } : null); };
   assert.equal((await facts(ids.app)).kind, "device");
   for (const k of ["web", "setup", "gone"]) assert.equal(await facts(ids[k]), null, k);
   assert.equal(await facts("eeeeeeeeeeeeeeee"), null, "never paired");
