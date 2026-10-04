@@ -300,10 +300,12 @@ export async function selfTest(o) {
   const t0 = Date.now();
   // A throw here (a relative or missing program, a plan that cannot be made) is the AGENT's result, never an unhandled rejection that would end the daemon for every session: it is caught where
   // it happens and read below as "the agent does not start".
+  /** @type {any} */ let agentChild = null;
   const agentCheck = !o.agent?.command ? Promise.resolve(null) : (async () => {
     try {
+      if (!path.isAbsolute(o.agent.command)) return { code: -1, e2: "the agent's program is not an absolute path" };
       const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...(o.readOnly || []), path.dirname(o.agent.command)] });
-      const c = launch(a); let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
+      const c = launch(a); agentChild = c; let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
       c.on("error", e => { e2 += String(e && e.message); });
       const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); c.on("error", () => { clearTimeout(t); r(-1); }); });
       return { code, e2 };
@@ -314,6 +316,7 @@ export async function selfTest(o) {
   child.stdout.on("data", d => out += d); child.stderr.on("data", d => err += d);
   await new Promise(r => child.on("close", r));
   const agent = await agentCheck;
+  try { if (agentChild && agentChild.exitCode === null) agentChild.kill("SIGKILL"); } catch {}   // nothing of a failed check is left running
   const probeMs = Date.now() - t0;
   let res; try { res = JSON.parse(out.trim().split("\n").pop() || ""); } catch { return { ok: false, failures: ["the self-test did not run: " + err.trim().slice(0, 200)], results: null }; }
   if (hostTmpProbe) fs.rmSync(hostTmpProbe, { force: true });
