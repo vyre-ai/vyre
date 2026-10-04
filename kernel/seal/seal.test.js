@@ -541,7 +541,7 @@ test("software signer (ruling 4): a development-kind process takes a software ke
   assert.equal((await enrolDevice(s, alex)).attested, false, "a software key is not attested");
   const fields = { k: "v" };
   const r = await s.presenceProve({ chain: ch, op: "task.decide", fields, proof: alex.proof(ch, "task.decide", fields) });
-  assert.deepEqual(r, { ok: true, method: "software" });
+  assert.deepEqual(r, { ok: true, method: "software", strength: "software" });
   // a process started without it refuses the same key, and a key enrolled earlier stops proving
   const dir2 = tmp("soft2"), s2 = startSealer({ dir: dir2, timeoutMs: 8000, dev: true, unattested: true });
   t.after(async () => { await s2.close(); fsx.rmSync(dir2, { recursive: true, force: true }); });
