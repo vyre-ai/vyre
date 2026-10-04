@@ -120,7 +120,8 @@ test("lend is the one switch: it makes the kernel's compute offers (the space's 
   const lines = /** @type {string[]} */ ([]);
   const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  const standIn = { "x-vyre-presence": "stand-in", "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli", headers: standIn });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.slice(-6).join(" ; ").slice(0, 600)}`); return r.data; };
   const made = await ok("spaces.identity.create", { name: "alex" });
   const sp = await ok("spaces.create", { name: "lenddev", home: { kind: "this-computer", confirmed: true } });
