@@ -33,7 +33,8 @@ export function readReleaseList(root, releaseKey) {
   try {
     const d = JSON.parse(list.toString("utf8"));
     if (d.v !== 1 || !Number.isInteger(d.counter) || d.counter < 0 || !d.modules || typeof d.modules !== "object") return { ok: false, why: "modules.json is not a module list this kernel reads" };
-    for (const [n, m] of Object.entries(d.modules)) if (!m || typeof m.version !== "string" || !/^[0-9a-f]{64}$/.test(String(m.tree))) return { ok: false, why: `modules.json has a bad entry for ${n}` };
+    const goodEntry = (/** @type {any} */ m) => m && typeof m.version === "string" && /^[0-9a-f]{64}$/.test(String(m.tree));
+    for (const [n, m] of Object.entries(d.modules)) if (!goodEntry(m) || (m.also !== undefined && (!Array.isArray(m.also) || !m.also.every(goodEntry)))) return { ok: false, why: `modules.json has a bad entry for ${n}` };
     if (d.trees !== undefined && (!d.trees || typeof d.trees !== "object" || Object.entries(d.trees).some(([n, h]) => !["kernel", "lib"].includes(n) || !/^[0-9a-f]{64}$/.test(String(h))))) return { ok: false, why: "modules.json has a bad entry for its kernel and lib trees" };
     return { ok: true, counter: d.counter, modules: d.modules, ...(d.trees ? { trees: d.trees } : {}), raw: { list: list.toString("utf8"), sums: sums.toString("utf8"), sig: sig.toString("utf8") } };
   } catch { return { ok: false, why: "modules.json cannot be read" }; }
@@ -67,8 +68,11 @@ export function createListCheck(list, say = () => {}) {
     const name = String(m && m.name);
     const e = list.modules[name];
     if (!e) return no(name, "the release's signed list does not name it");
-    if (String(m.version) !== e.version) return no(name, `it is version ${m.version}, the signed list says ${e.version}`);
-    try { if (treeHash(dir) !== e.tree) return no(name, "it was changed after it was signed"); } catch { return no(name, "its folder holds something that is not a plain file"); }
+    // A name two of Vyre's own modules share on purpose for different machines (the box's chrome and the Mac's chrome) carries one entry per folder: `also`.
+    const entries = [e, ...(Array.isArray(e.also) ? e.also : [])].filter(x => String(m.version) === x.version);
+    if (!entries.length) return no(name, `it is version ${m.version}, the signed list says ${e.version}`);
+    let tree; try { tree = treeHash(dir); } catch { return no(name, "its folder holds something that is not a plain file"); }
+    if (!entries.some(x => x.tree === tree)) return no(name, "it was changed after it was signed");
     return true;
   };
 }
@@ -105,7 +109,7 @@ export function verifyTrees(root, list) {
  * @param {string} root the unpacked package root @param {{ counter: number, release: string }} o @returns {string} the JSON text
  */
 export function buildModuleList(root, o) {
-  /** @type {Record<string, { version: string, tree: string }>} */ const modules = {};
+  /** @type {Record<string, { version: string, tree: string, roles: string[], also: { version: string, tree: string }[] }>} */ const modules = {};
   for (const top of ["core", "local", "modules"]) {
     const base = path.join(root, top);
     if (!fs.existsSync(base)) continue;
@@ -113,11 +117,17 @@ export function buildModuleList(root, o) {
       const dir = path.join(base, d), mj = path.join(dir, "module.json");
       if (!fs.existsSync(mj)) continue;
       const m = JSON.parse(fs.readFileSync(mj, "utf8"));
-      if (modules[m.name]) throw new Error(`two modules are named ${m.name}`);
-      modules[m.name] = { version: String(m.version), tree: treeHash(dir) };
+      const entry = { version: String(m.version), tree: treeHash(dir) };
+      const roles = Array.isArray(m.roles) ? m.roles : ["box", "local"];
+      if (modules[m.name]) {
+        // Two modules with one name are allowed only for different machines (disjoint roles, like the box's chrome and the Mac's); anything else makes the list ambiguous about which folder a name means.
+        if (!roles.length || !modules[m.name].roles.length || roles.some((/** @type {string} */ r) => modules[m.name].roles.includes(r))) throw new Error(`two modules are named ${m.name} and their roles overlap`);
+        modules[m.name].also.push(entry); modules[m.name].roles.push(...roles);
+      } else modules[m.name] = { ...entry, roles: [...roles], also: [] };
     }
   }
   /** @type {Record<string, string>} */ const trees = {};
   for (const n of ["kernel", "lib"]) if (fs.existsSync(path.join(root, n))) trees[n] = treeHash(path.join(root, n));
-  return JSON.stringify({ v: 1, counter: o.counter, release: o.release, modules: Object.fromEntries(Object.entries(modules).sort()), ...(Object.keys(trees).length ? { trees } : {}) }, null, 1) + "\n";
+  const listed = Object.fromEntries(Object.entries(modules).sort().map(([n, m]) => [n, { version: m.version, tree: m.tree, ...(m.also.length ? { also: m.also } : {}) }]));
+  return JSON.stringify({ v: 1, counter: o.counter, release: o.release, modules: listed, ...(Object.keys(trees).length ? { trees } : {}) }, null, 1) + "\n";
 }

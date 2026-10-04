@@ -355,7 +355,8 @@ test("cancel and resume on a server home; a taken name fails plainly and resume 
   const c = await d.ok("spaces.cancel", { space: taken.space });
   assert.equal(c.cancelled, true);
   assert.ok(c.couldNot.some(x => x.what === "Vyre on your server"));
-  assert.equal((await d.ok("spaces.list")).find(x => x.id === taken.space).status, "cancelled");
+  assert.equal((await d.ok("spaces.list")).find(x => x.id === taken.space), undefined, "a cancelled space is not listed");
+  assert.equal((await d.ok("spaces.status", { space: taken.space })).status, "cancelled");
   // A finished space cannot be cancelled away.
   const fin = await a.d.ok("spaces.cancel", { space: a.space });
   assert.equal(fin.cancelled, false);
@@ -862,6 +863,10 @@ test("the transport's ports: a paired device is an entry, the entry port answers
   const ok = await d.ok("spaces.identity.sign", { message: Buffer.from("vyre-wink-peer-v2\nnonce\nnode\nbox\n" + alex.eid).toString("base64url") }, "module:wink");
   assert.equal(ok.eid, alex.eid);
   assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("anything else").toString("base64url") }, "module:wink")).error?.code, "forbidden");
+  // and Wink's proof of who is asking for a server installed with --pair-to (the box and the relay device), nothing else near it
+  const pairTo = await d.ok("spaces.identity.sign", { message: Buffer.from("vyre-wink-pair-to-v1\nBOX\ndev1").toString("base64url") }, "module:wink");
+  assert.equal(pairTo.eid, alex.eid);
+  assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("vyre-wink-pair-to-v2\nBOX\ndev1").toString("base64url") }, "module:wink")).error?.code, "forbidden");
 });
 
 
@@ -908,4 +913,47 @@ test("spaces.code.submit and spaces.invites.redeem take only the relay and the d
     const b = await d.call("spaces.invites.redeem", { token: "x.y", person: { id: "per_" + "a".repeat(26) }, proof: "z" }, caller);
     for (const r of [a, b]) assert.ok(["denied", "no_such_tool"].includes(r.error?.code), `${caller}: ${JSON.stringify(r.error)}`);
   }
+});
+
+test("a space is listed only once it has its home: a server step still waiting or failed leaves nothing in the list", async t => {
+  const w = world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const waiting = await d.ok("spaces.create", { name: "northwind", home: { kind: "server" } });
+  assert.equal(waiting.status, "waiting");
+  assert.deepEqual(await d.ok("spaces.list"), [], "waiting for the server's code: not a space yet");
+  assert.equal((await d.ok("spaces.status", { space: waiting.space })).status, "waiting", "its steps are still readable");
+  const here = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(here.status, "done");
+  assert.deepEqual((await d.ok("spaces.list")).map(x => x.name), ["harlow.vyre.run"]);
+  void w;
+});
+
+test("setup in progress: kept with the space, claimed by another device of the person, cleared when done, and never holds a secret", async t => {
+  const w = world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const made = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const space = made.space;
+  assert.equal((await d.ok("spaces.get", { space })).setup, null);
+  const phone = { kernelFacts: { kind: "device", device_key_id: "phone00000000001" } };
+  const laptop = { kernelFacts: { kind: "device", device_key_id: "laptop0000000001" } };
+  const saved = await d.ok("spaces.setup.save", { space, setup: { step: "look", name: "Harlow Legal", where: "server", address: "harlow.vyre.run", look: "slate", picks: { connectors: ["gmail", "bad id!"], kit: "estate", token: "SECRETVALUE" }, code: "123456" } }, "cli", phone);
+  assert.deepEqual([saved.setup.step, saved.setup.device.id, saved.setup.where, saved.setup.picks], ["look", "phone00000000001", "server", { connectors: ["gmail"], kit: "estate" }]);
+  assert.ok(!JSON.stringify(saved).includes("SECRETVALUE") && !JSON.stringify(saved).includes("123456"), "only the shape is kept");
+  assert.equal((await d.ok("spaces.get", { space })).setup.step, "look");
+  assert.equal((await d.ok("spaces.list"))[0].setup.device.id, "phone00000000001");
+  for (const bad of [{ step: "pairing" }, { step: "look", where: "moon" }, "look", [1]]) assert.equal((await d.call("spaces.setup.save", { space, setup: bad }, "cli", phone)).error?.code, "bad_input", JSON.stringify(bad));
+  // another device may not write over it; it must claim
+  assert.equal((await d.call("spaces.setup.save", { space, setup: { step: "members" } }, "cli", laptop)).error?.code, "setup_elsewhere");
+  const claimed = await d.ok("spaces.setup.claim", { space }, "cli", laptop);
+  assert.deepEqual([claimed.moved, claimed.setup.device.id, claimed.setup.step, claimed.setup.name], [true, "laptop0000000001", "look", "Harlow Legal"]);
+  assert.equal((await d.call("spaces.setup.save", { space, setup: { step: "members" } }, "cli", phone)).error?.code, "setup_elsewhere", "the old device sees it moved");
+  assert.equal((await d.ok("spaces.setup.save", { space, setup: { step: "members" } }, "cli", laptop)).setup.started, saved.setup.started);
+  assert.equal((await d.ok("spaces.setup.claim", { space }, "cli", laptop)).moved, false);
+  assert.equal((await d.call("spaces.setup.claim", { space: "nope" }, "cli", laptop)).error?.code, "not_found");
+  assert.equal((await d.ok("spaces.setup.save", { space, setup: null }, "cli", laptop)).setup, null);
+  assert.equal((await d.ok("spaces.get", { space })).setup, null);
+  assert.equal((await d.call("spaces.setup.claim", { space }, "cli", laptop)).error?.code, "no_setup");
+  void w;
 });

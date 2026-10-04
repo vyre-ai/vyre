@@ -6,6 +6,7 @@
 import { KernelError } from "./errors.js";
 import { segments } from "./urn.js";
 import { isSealedShape } from "../store/values.js";
+import { canonical, sha256 } from "./canonical.js";
 
 const TOKEN = /\{\{field:([^#}\s]+)#([A-Za-z0-9_-]{1,64})\}\}/g;
 const MAX_TOKENS = 50;
@@ -22,12 +23,14 @@ export function hasPlaceholder(v) {
 /**
  * @param {{ input: any, read: (urn: string) => Promise<any | null> }} o
  *   read: the record under the asker's own chain (null when they cannot read it or it does not exist)
- * @returns {Promise<{ input: any, resolved: { urn: string, field: string }[], slots: { record: string, field: string }[] }>}
+ * @returns {Promise<{ input: any, resolved: { urn: string, field: string }[], slots: { record: string, field: string }[], bound: string }>}
+ *   bound: a hash of the exact values this resolution put in (and which sealed fields it left as slots), for the approval to carry (RF-3): `checkBound` refuses a send whose record changed since
  */
 export async function resolveFields(o) {
   /** @type {Map<string, any>} */ const records = new Map();
   /** @type {{ urn: string, field: string }[]} */ const resolved = [];
   /** @type {{ record: string, field: string }[]} */ const slots = [];
+  /** @type {any[]} */ const seen = [];
   let tokens = 0, out = 0;
   const get = async (/** @type {string} */ urn) => {
     if (records.has(urn)) return records.get(urn);
@@ -46,11 +49,13 @@ export async function resolveFields(o) {
       if (!r || !r.data || !(field in r.data)) throw new KernelError("placeholder_unreadable", "a value this action names is not readable by the person it is for, so nothing was sent");
       const v = r.data[field];
       res += str.slice(last, /** @type {number} */ (m.index));
-      if (isSealedShape(v)) { slots.push({ record: urn, field }); res += tok; } else { res += typeof v === "string" ? v : JSON.stringify(v); resolved.push({ urn, field }); }
+      if (isSealedShape(v)) { slots.push({ record: urn, field }); seen.push([urn, field, "sealed", v.ref]); res += tok; } else { res += typeof v === "string" ? v : JSON.stringify(v); resolved.push({ urn, field }); seen.push([urn, field, "value", v]); }
       last = /** @type {number} */ (m.index) + tok.length;
       out += res.length;
       if (out > MAX_OUT) throw new KernelError("placeholder_unreadable", "that action is too large to resolve");
     }
+    // A `{{field:` that is not the strict token form is refused, not sent as literal text: a typo must not go out.
+    if (str.replace(TOKEN, "").includes("{{field:")) throw new KernelError("placeholder_unreadable", "a placeholder in this action is not written correctly, so nothing was sent");
     return res + str.slice(last);
   };
   const walk = async (/** @type {any} */ v) => {
@@ -60,5 +65,15 @@ export async function resolveFields(o) {
     return v;
   };
   const input = await walk(o.input);
-  return { input, resolved, slots };
+  return { input, resolved, slots, bound: sha256(canonical(seen)) };
+}
+
+/**
+ * RF-3: resolve again just before the send and compare with what the approver approved. A record changed between the approval and the send is refused (`changed_since_approval`),
+ * and the person is asked again. @param {{ input: any, read: (urn: string) => Promise<any | null>, bound: string }} o the input as the assistant wrote it (placeholders) and the hash the approval carried
+ */
+export async function checkBound(o) {
+  const r = await resolveFields({ input: o.input, read: o.read });
+  if (r.bound !== o.bound) throw new KernelError("changed_since_approval", "a record this action fills in changed after you approved it, so it was not sent; you will be asked again");
+  return r;
 }
