@@ -134,6 +134,7 @@ if (!URL_ || !KEY_FILE) {
   });
   test("live: attr_filter filters by the mirrored kernel attributes inside Twenty, in a list and a total", async () => {
     const store = await fresh();
+    store.mirrorReady.add("contact"); // fresh() destroyed every row and gives this store a new state folder: the type is empty, so every row from here is mirrored
     const mk = async (name, attrs) => { const id = crypto.randomUUID(); await store.create("contact", id, { name, status: "open" }); store.meta.set(`vyre://${store.space}/contact/${id}`, attrs); return id; };
     await mk("AF1", { project: "p1", owner: "per_x" }); await mk("AF2", { project: "p2" }); await mk("AF3", { project: "p1", owner: "per_y" }); await mk("AF4", {});
     const prefix = `vyre://${store.space}/contact/`;

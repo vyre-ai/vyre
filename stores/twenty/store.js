@@ -183,7 +183,7 @@ export class TwentyStore {
       await this.#t(() => this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field: { objectMetadataId: obj.id, type: "TEXT", name: col, label: `Vyre ${k}`, isNullable: true } } }));
       added = true;
     }
-    if (added && !this.mirrorReady.has(p.vyre)) {
+    if (!this.mirrorReady.has(p.vyre)) {
       const n = await this.#t(() => this.client.gql("graphql", `query Cnt_${p.plural} { ${p.plural}(first: 1) { totalCount } }`));
       if (Number(n[p.plural]?.totalCount ?? 1) === 0) this.#markMirrored(p.vyre);
     }
@@ -214,8 +214,9 @@ export class TwentyStore {
       if (!terms.length || terms.some(([k, v]) => !Object.hasOwn(ATTR_COLUMNS, k) || typeof v !== "string")) throw unsupported("an attribute this store does not mirror");
       return terms.length === 1 ? { field: `attr:${terms[0][0]}`, op: "eq", value: terms[0][1] } : { and: terms.map(([k, v]) => ({ field: `attr:${k}`, op: "eq", value: v })) };
     });
-    // an empty `any` wants no row
-    const attr = alts.length ? (alts.length === 1 ? alts[0] : { or: alts }) : { field: "id", op: "eq", value: "00000000-0000-0000-0000-000000000000" };
+    // an empty `any` wants no row: the caller answers with nothing, no request is made
+    if (!alts.length) return null;
+    const attr = alts.length === 1 ? alts[0] : { or: alts };
     const { attr_filter: _drop, ...rest } = spec;
     return { ...rest, filter: rest.filter ? { and: [rest.filter, attr] } : attr };
   }
@@ -335,6 +336,7 @@ export class TwentyStore {
   /** @param {string} type @param {any} spec */
   async query(type, spec) {
     spec = await this.#withAttrFilter(type, spec);
+    if (spec === null) return { rows: [] };
     const p = this.#plan(type);
     const limit = Math.min(Math.max(Number(spec.page?.limit) || 50, 1), MAX_PAGE);
     /** @type {any} */ let after;
@@ -426,7 +428,9 @@ export class TwentyStore {
 
   /** Groups and measures over the rows that match, computed by the kernel's own aggregate. @param {string} type @param {any} spec */
   async aggregate(type, spec) {
+    const asked = spec;
     spec = await this.#withAttrFilter(type, spec);
+    if (spec === null) { const { attr_filter: _a, ...plain } = asked; return createAggregator({ ...plain, filter: { field: "id", op: "in", value: [] } }).result(); }
     const p = this.#plan(type);
     for (const g of spec.group_by ?? []) { const f = p.byVyre.get(g); if (g !== "id" && !f) throw new StoreError("unknown_field", `${type} has no field ${g}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${g} is sealed`); }
     for (const m of spec.measures ?? []) { const f = m.field ? (p.byVyre.get(m.field) ?? p.byVyre.get(m.field.split(".")[0])) : null; if (m.field && !f) throw new StoreError("unknown_field", `${type} has no field ${m.field}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${m.field} is sealed`); }
