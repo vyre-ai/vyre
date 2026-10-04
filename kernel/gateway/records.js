@@ -74,6 +74,14 @@ export function createRecords(cfg) {
   // Kernel attributes as the gateway wrote them (owner, created_by, project, sensitivity), never the store's. A store that keeps them on disk (`store.meta`, the built-in
   // SQLite store) answers from there with a small LRU in front; any other store leaves them in memory as before.
   const kattrs = store.meta ? store.meta : new Map();
+  /** Types known to hold no privileged record (a row's sensitivity is set once, when it is created, so a type found clean stays clean until a privileged record is created in it). */
+  const noPrivileged = new Set();
+  const hasPrivileged = (/** @type {string} */ type) => {
+    if (noPrivileged.has(type)) return false;
+    const found = kattrs.anyWith ? kattrs.anyWith(urn(type, ""), "sensitivity", "privileged") : [...(/** @type {Map<string, any>} */ (kattrs)).entries()].some(([u, a]) => u.startsWith(urn(type, "")) && a && a.sensitivity === "privileged");
+    if (!found) noPrivileged.add(type);
+    return found;
+  };
   /** The latest version hash the gateway wrote, per record. On a durable log it is found by an indexed lookup of the record's last event (with a small LRU in front), so nothing here
    * grows with the number of records; on the reference log it is a Map filled as the log is read. */
   const index = (() => {
@@ -118,7 +126,16 @@ export function createRecords(cfg) {
 
   const { gate, allowed, check } = createGate({ authorizer, log, enforce: cfg.enforce });
   /** A read through query, aggregate or search is one act on the type: counted once against the type-level decision, never per row. */
-  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); };
+  /** A page is `{ limit: whole number from 1, cursor? }`; a limit above 500 is a page of 500. Anything else is a bad request, not a store error. @param {any} spec */
+  const checkPage = (spec) => {
+    const pg = spec && spec.page;
+    if (!pg || typeof pg !== "object" || !Number.isInteger(pg.limit) || pg.limit < 1) throw new KernelError("bad_input", "a page needs a limit of 1 or more, as a whole number");
+    if (pg.cursor !== undefined && typeof pg.cursor !== "string") throw new KernelError("bad_input", "a cursor is text");
+    if (pg.limit > 500) return { ...spec, page: { ...pg, limit: 500 } };
+    return spec;
+  };
+  const AGG_MAX_GROUPS = 10_000, AGG_MAX_PAGES = 40, AGG_MAX_MS = 8_000;
+  const countRead = async (/** @type {any} */ chain, /** @type {string} */ type) => { const d = await check(chain, "records.read", urn(type, "*"), { probe: true }); if (d && cfg.enforce) cfg.enforce(chain, d); return d; };
   const members = cfg.members;
   const idem = createIdem({ clock });
 
@@ -445,6 +462,7 @@ export function createRecords(cfg) {
     // The attributes ride in the create event (the chain covers it), so the log, not the disk, says what a record's owner, project and sensitivity are.
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
     const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
+    if (a.sensitivity === "privileged") noPrivileged.delete(type);
     kattrs.set(urn(type, id), attrs);
     return rec;
   }
@@ -458,9 +476,23 @@ export function createRecords(cfg) {
       await checkComputed(diff);
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
+      // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
+      let was = null;
+      try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
       let res;
       try { res = await store.define(diff); } catch (e) { throw mapError(e); }
-      if (res.applied) log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision });
+      if (res.applied) {
+        try { log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision }); }
+        catch (e) {
+          if (was) {
+            const had = new Map(was.map((/** @type {any} */ t) => [t.name, t]));
+            const names = new Set([...(diff.add_types || []), ...(diff.change_types || [])].map((/** @type {any} */ t) => t.name).concat(diff.remove_types || []));
+            const back = { add_types: [...names].filter(n => had.has(n)).map(n => had.get(n)), remove_types: [...names].filter(n => !had.has(n)) };
+            try { await store.define(back); } catch { /* the type stays defined; the caller is still told it failed */ }
+          }
+          throw e;
+        }
+      }
       return res;
     },
 
@@ -482,15 +514,16 @@ export function createRecords(cfg) {
     async query(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
+      spec = checkPage(spec);
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
-      await countRead(chain, type);
+      const readDec = await countRead(chain, type);
       let cursor = spec.page.cursor, out = [], next;
       /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
       for (let pages = 0; pages < 10; pages++) {
         let p;
-        try { p = await store.query(type, { ...spec, page: { limit: spec.page.limit, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
+        try { p = await store.query(type, { ...spec, build_index: Boolean(readDec), page: { limit: spec.page.limit, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const hiddenSet = await hiddenFields(chain, type);
         for (const r of p.rows) {
           if (r.type !== type) continue;
@@ -509,7 +542,7 @@ export function createRecords(cfg) {
       let more = false;
       for (let ahead = 0; next && !more && ahead < 10; ahead++) {
         let p;
-        try { p = await store.query(type, { ...spec, page: { limit: spec.page.limit, cursor: next } }); } catch (e) { throw mapError(e); }
+        try { p = await store.query(type, { ...spec, build_index: Boolean(readDec), page: { limit: spec.page.limit, cursor: next } }); } catch (e) { throw mapError(e); }
         for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
         if (!more) next = p.next_cursor;
       }
@@ -519,17 +552,31 @@ export function createRecords(cfg) {
     async aggregate(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
+      if (!spec || typeof spec !== "object" || !Array.isArray(spec.measures) || (spec.group_by !== undefined && !Array.isArray(spec.group_by))) throw new KernelError("bad_input", "an aggregate needs measures, and group_by as a list");
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
-      await countRead(chain, type);
-      // A store cannot hide rows from a total, so the gateway folds in only the rows it has itself allowed. It folds page by page and keeps
-      // a small state per group, never the rows, so there is no row cap: a total over a million rows costs time, not memory.
-      const agg = createAggregator(spec);
-      let cursor;
+      const typeDec = await countRead(chain, type);
+      // The store totals the rows itself (one GROUP BY) only when every row of the type gets this chain's answer: no room, grants that cover the whole type with no row predicate, no
+      // rule on reading, no privileged record in the type, and every field it groups or measures is one the chain may see. Anything else is totalled below, row by row.
+      if (typeDec && !vs && typeof store.aggregate === "function" && !hasPrivileged(type) && typeof authorizer.rowUniform === "function" && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+        const lim = await limitsOf(chain, type, typeDec);
+        const used = [...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)];
+        if (used.every((/** @type {string} */ k) => !lim.hidden.has(k) && (!lim.allow || lim.allow.has(k)))) {
+          try { return await store.aggregate(type, { ...spec, build_index: true }); } catch (e) { throw mapError(e); }
+        }
+      }
+      // A store cannot hide rows from a total, so the gateway aggregates only the rows it has itself allowed. Rows are cut to the fields the total uses and the loop yields at every row.
+      const need = new Set([...(spec.group_by || []), ...(spec.measures || []).map((/** @type {any} */ m) => m && m.field).filter(Boolean)]);
+      // Folded a row at a time: memory is the number of groups (capped), never the number of rows; the scan is capped at 40 pages (20,000 rows) and in time, and says so (`unsupported`) rather than totalling a part.
+      // The store already applied the filter; rows are cut to the fields the total uses, so the filter must not be applied again to the cut row.
+      const agg = createAggregator({ ...spec, filter: undefined }, { maxGroups: AGG_MAX_GROUPS });
+      const started = Date.now();
+      let cursor, pages = 0;
       for (;;) {
+        if (++pages > AGG_MAX_PAGES || Date.now() - started > AGG_MAX_MS) throw new KernelError("unsupported", "too many rows to total here for this access; narrow the filter");
         let p;
-        try { p = await store.query(type, { filter: spec.filter, page: { limit: 500, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
+        try { p = await store.query(type, { filter: spec.filter, build_index: Boolean(typeDec), page: { limit: 500, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const hiddenSet = await hiddenFields(chain, type);
         for (const r of p.rows) {
           if (r.type !== type) continue;
@@ -538,8 +585,8 @@ export function createRecords(cfg) {
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
           if (room === null) continue;
           const al = allowList(dec);
-          const cutRow = (/** @type {string} */ k) => !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)) && !(room && (room.hidden.has(k) || (room.allow && !room.allow.has(k)) || isSealedShape(r.data[k])));
-          agg.add(al || (hiddenSet && hiddenSet.size) || room ? { ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => cutRow(k))) } : r);
+          const cutRow = (/** @type {string} */ k) => need.has(k) && !(hiddenSet && hiddenSet.has(k)) && (!al || al.has(k)) && !(room && (room.hidden.has(k) || (room.allow && !room.allow.has(k)) || isSealedShape(r.data[k])));
+          try { agg.add({ ...r, data: Object.fromEntries(Object.entries(r.data).filter(([k]) => cutRow(k))) }); } catch (e) { if (e && e.code === "unsupported") throw new KernelError("unsupported", e.message); throw e; }
         }
         if (!p.next_cursor) return agg.result();
         cursor = p.next_cursor;
@@ -549,6 +596,7 @@ export function createRecords(cfg) {
     async search(chain, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       for (const t of spec.types || []) checkType(t);
+      spec = checkPage(spec);
       const vs = await viewersOf(chain);
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
