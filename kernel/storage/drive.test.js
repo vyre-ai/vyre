@@ -67,3 +67,12 @@ test("the index survives a restart, and backups keep the newest few and never th
   assert.equal((await drive.pruneBackups("harlow-home", 0)).removed, 1, "keep 0 still keeps the last one");
   const b = drive.ix.backups["harlow-home"][0], holders = pool.ix.chunks[pool.ix.manifests[b.id].chunks[0]].nodes; assert.ok(holders.some(n => n !== "home"), "a backup is off the home");
 });
+
+test("a version that cannot be recorded leaves nothing behind: no new version and no orphan object in the pool", async t => {
+  const { drive, pool } = world(t); await drive.put("a.txt", rand(1000));
+  const objects = () => Object.keys(pool.ix.manifests).length, before = objects(), realReclass = pool.reclass.bind(pool);
+  pool.reclass = async () => { throw new Error("the pool could not reclass"); };
+  await assert.rejects(drive.put("a.txt", rand(2000), { base: 1 }), /could not reclass/);
+  assert.deepEqual(drive.history("a.txt").map(v => v.ver), [1], "the refused version is not in the history"); assert.equal(objects(), before, "and its bytes were removed from the pool");
+  pool.reclass = realReclass; assert.equal((await drive.put("a.txt", rand(2000), { base: 1 })).version, 2, "the next write is version 2");
+});

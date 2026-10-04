@@ -22,7 +22,7 @@ export const SLEEP_GAP_MS = 90_000;
 /**
  * @param {{ vault: { lease(o: any): Promise<any>, renew(o: any): Promise<any> }, space: string, device: string,
  *   onLock?: (why: "expired"|"released"|"revoked"|"slept") => Promise<void>|void, onRevoke?: () => Promise<void>|void,
- *   now?: () => number, setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, retryMs?: number, onArm?: (expiresAt: number) => void, tickMs?: number, sleepGapMs?: number }} o
+ *   now?: () => number, setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout, retryMs?: number, mono?: () => number, onArm?: (expiresAt: number) => void, tickMs?: number, sleepGapMs?: number }} o
  */
 export function createLease(o) {
   const now = o.now || Date.now, set = o.setTimer || setTimeout, clear = o.clearTimer || clearTimeout;
@@ -31,6 +31,9 @@ export function createLease(o) {
   let id = "", expiresAt = 0, timer = null, expiry = null, state = "none", ttl = DEFAULT_TTL_MS;
   /** @type {any} */ let ticker = null; let lastTick = 0;
   const tickMs = o.tickMs ?? TICK_MS, gapMs = o.sleepGapMs ?? SLEEP_GAP_MS;
+  // Sleep is wall time moving while the monotonic clock does not. A runner that was merely blocked (a long disk call) moves both alike.
+  const mono = o.mono || (() => Number(process.hrtime.bigint() / 1000000n));
+  let lastMono = 0;
 
   const stopTimers = () => { if (timer) clear(timer); if (expiry) clear(expiry); if (ticker) clearInterval(ticker); timer = expiry = ticker = null; };
   const zero = () => { if (key) { key.fill(0); key = null; } };
@@ -49,7 +52,7 @@ export function createLease(o) {
     stopTimers();
     // Renew at half the lease, so a failed renewal has the other half to retry.
     timer = set(renew, Math.max(1, Math.floor(ttlMs / 2)));
-    lastTick = now();
+    lastTick = now(); lastMono = mono();
     try { o.onArm?.(expiresAt); } catch {}
     if (!ticker) { ticker = setInterval(() => { tick(); }, tickMs); ticker.unref?.(); }
     expiry = set(() => { end("expired"); }, ttlMs);
@@ -63,9 +66,9 @@ export function createLease(o) {
    */
   async function tick() {
     if (state !== "open") return;
-    const t = now();
-    const slept = lastTick && t - lastTick > gapMs;
-    lastTick = t;
+    const t = now(), m = mono();
+    const slept = lastTick && (t - lastTick) - (m - lastMono) > gapMs;
+    lastTick = t; lastMono = m;
     if (t >= expiresAt) return end("expired");
     if (slept) return end("slept");
   }

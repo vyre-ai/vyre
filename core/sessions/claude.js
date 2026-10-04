@@ -112,7 +112,7 @@ export function run(sdk, o) {
     stderr: (/** @type {string} */ c) => { err = (err + c).slice(-2000); },
     // Own the spawn: the pid is Vyre's to know, and a stop takes the whole tree.
     spawnClaudeCodeProcess: (/** @type {any} */ sp) => {
-      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn });
+      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, account: o.account, onSpawn: o.onSpawn, sandboxSpawn: /** @type {any} */ (o).sandboxSpawn });
       child = c;
       c.on("exit", (cd, s) => { code = cd; sig = s; died = true; done(); });
       c.on("error", e => { err = e.message; died = true; done(); });

@@ -75,21 +75,51 @@ const WORDS = {
   phoneIdentityOnly: () => "A phone is added to you, not to a space. It reaches every space you belong to by itself.",
   computerIdentityOnly: () => "A computer is added to you, not to a space. It reaches every space you belong to by itself.",
   notAdmin: (/** @type {any} */ v) => `You are not an admin of ${clean(v && v.space, "that space")}, so you cannot add a server there.`,
-  wrongCode: () => "That is not a Vyre code. Check it on the other screen and try again.",
-  notACode: () => "That is not a Vyre code. Scan the code on your computer's screen.",
+  wrongCode: () => "That is not a Vyre code. Scan the code on the server's screen, or paste the long code it printed.",
+  notACode: () => "That is not a Vyre code. Scan the code on the screen, or paste the long code it printed.",
+  typedCodeOff: () => "That way of pairing is switched off in this release. Scan the code on the screen, or paste the long code it shows.",
+  phoneAsk: (/** @type {any} */ v) => `Add ${clean(v && v.name, "this phone")} to your identity? Pick the three words the phone shows: ${choiceLine(v && v.choices)}`,
+  phoneConfirm: (/** @type {any} */ v) => `Check the computer: it should show the words ${clean(v && v.words, "")}. Add the phone there only if they match. Good for 5 minutes.`,
+  phoneRefused: () => "The phone was not added: it was turned down on the computer, or the pairing ended. Start again from Add a phone.",
+  phoneExpired: () => "Nobody said yes on the computer in time, so nothing was added. Start again from Add a phone.",
+  phoneWrongWords: () => "Those are not the words the phone shows, so nothing was added.",
+  phoneMismatch: () => "The words the computer shows are not the ones here. Do not say yes. Nothing was added; start again from Add a phone.",
+  phoneNotYours: () => "Only the phone that is asking can ask about its own pairing.",
   offline: () => "Wink could not reach the relay; try again in a minute. Nothing was lost.",
   relayOld: () => "The relay is out of date and refused this. It needs updating before pairing can work. Nothing was lost.",
   codeExpired: () => "That code ran out. Start again from the server.",
   alreadyPaired: (/** @type {any} */ v) => `${clean(v && v.name, "That server")} is already added. Run wink.remove for it first, then pair it again.`,
-  serverOwned: (/** @type {any} */ v) => `This server already belongs to ${clean(v && v.owner, "someone")}. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget.`,
+  serverOwned: (/** @type {any} */ v) => `This server already belongs to ${clean(v && v.owner, "someone")}. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget, or free it there with vyre wink reset --begin.`,
+  stillOwned: (/** @type {any} */ v) => { const who = clean(v && v.owner, ""); return `This server still belongs to ${who || "someone"}. Remove it from ${who || "that app"} first, or reset it on the server itself (run vyre wink reset --begin in a terminal there).`; },
+  releaseDenied: (/** @type {any} */ v) => `Only the app that owns this server can let it go, and this is not that app. It belongs to ${clean(v && v.owner, "someone")}. Remove it there, or reset it on the server itself (run vyre wink reset --begin in a terminal there).`,
+  resetOnServer: () => "A server is reset from the server itself, not from another device. Run vyre wink reset --begin in a terminal on the server.",
+  resetFingerprint: () => "That is not this server's fingerprint. Run vyre wink reset again and type the one it shows.",
+  resetNeedsYou: () => "Resetting a server needs you at the server: confirm it there, or on a server with no passkey run vyre wink reset.",
+  codeMatched: () => "The code matched. The app is finishing the pairing and will say whether it worked.",
+  relayNoCode: () => "The relay gave no code: it is out of reach or busy. Nothing was lost; try again in a minute.",
   adoptFailed: (/** @type {any} */ v) => `${clean(v && v.name, "The server")} paired, but it could not be told who owns it (${clean(v && v.why, "no answer")}). Run wink.remove for it, then pair it again.`,
   busy: () => "Too many tries just now. Wait a minute and try again.",
-  typeBack: () => "Type this code on the other device. Good for 5 minutes.",
-  typeHere: () => "Type the code the other device is showing. Good for 5 minutes.",
+  pairConfirm: (/** @type {any} */ v) => `Check the server: it should show the words ${clean(v && v.words, "")}. Say yes there only if they match. Good for 5 minutes.`,
+  pairAsk: (/** @type {any} */ v) => `Pair this server to ${clean(v && v.name, "someone")}? Pick the three words the app shows: ${choiceLine(v && v.choices)}`,
+  pairPick: () => "Say which three words the other screen shows: pick one of the three choices, or type all three words. A bare yes is not enough, because it would say yes to anyone.",
+  pairPickWrong: () => "Those are not the words the other screen shows, so nothing was paired.",
+  pairOnServer: () => "The pairing question is answered at the server itself, on its own screen or terminal, not from another device, an agent or a tool.",
+  pairNeedsProof: () => "This server was set up to pair to one identity, and this device did not prove it is that identity, so nothing was paired.",
+  pairCannotProve: () => "This server was set up to pair to one identity but cannot check who is asking yet, so nothing was paired. Pair it from the app and answer the question here instead.",
+  pairBusy: () => "Another device is already asking to pair this server. Wait for it to finish, or start again from the server.",
+  pairWrongIdentity: (/** @type {any} */ v) => `This server is waiting to pair to ${clean(v && v.name, "someone else")}, and this was not them, so nothing was paired.`,
+  pairRefused: () => "The person at the server said no, so nothing was paired.",
+  pairExpired: () => "Nobody said yes at the server in time, so nothing was paired. Start again from the server.",
+  ticketTaken: () => "That code was already used by another device, or it ran out, so nothing was paired. Make a new code on the server and scan it again. If you did not scan it first, someone else did: say no at the server.",
+  pairCancelled: () => "The pairing was cancelled, so nothing was paired.",
+  pairNeedsFresh: () => "This pairing did not carry its own fresh check, so nothing was paired. Update the app and scan the code again.",
+  pairMismatch: () => "The words the server shows are not the ones here. Do not say yes. Nothing was paired; start again from the server.",
   kindCannotOffer: (/** @type {any} */ v) => `${v && v.kind === "phone" ? "A phone" : v && v.kind === "storage" ? "A storage device" : `A ${clean(v && v.kind, "device")}`} cannot offer ${clean(v && v.offer, "that")}.`,
   onlyComputeToSpace: () => "Only a computer can lend its compute to a space.",
   notYourDevice: () => "That device is not yours.",
 };
+/** The choices a person picks from, numbered: "1) a b c  2) d e f  3) g h i". @param {any} list */
+const choiceLine = list => (Array.isArray(list) ? list : []).map((c, i) => `${i + 1}) ${clean(c, "")}`).join("   ");
 /** @param {keyof typeof WORDS} key @param {any} [vars] */
 export const words = (key, vars) => WORDS[key](vars);
 
@@ -117,10 +147,14 @@ export function removal(i) {
   }
 }
 
-/** The result lines after a removal. @param {{ what: string, name?: string, space?: string, member?: string }} i */
+/** The result lines after a removal. @param {{ what: string, name?: string, space?: string, member?: string, release?: string }} i */
 export function removed(i) {
   const name = clean(i.name, "this device");
   if (i.what === "member") return `${clean(i.member, "This person")} is no longer in ${clean(i.space, "your space")}.`;
   if (i.what === "leave") return `You left ${clean(i.space, "your space")}.`;
+  if (i.release === "released") return `Removed ${name}. It let go of its owner and can be added again.`;
+  if (i.release === "pending") return `Removed ${name}. It could not be reached, so it will be told to let go the next time it connects. To add it again at once, run vyre wink reset --begin in a terminal on the server.`;
+  if (i.release === "gaveup") return `Removed ${name}. The server never confirmed that it let go, so Vyre stopped asking after 30 days. To add it again, run vyre wink reset --begin in a terminal on the server.`;
+  if (i.release === "refused" || i.release === "unknown") return `Removed ${name}. It could not be told to let go. To add it again, run vyre wink reset --begin in a terminal on the server.`;
   return `Removed ${name}.`;
 }

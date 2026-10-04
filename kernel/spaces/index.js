@@ -18,7 +18,7 @@ const hostedHandle = (space, k) => Object.freeze({ space, hosted: true, gateway:
 
 /**
  * @param {{ root: string, personal: { space: string, kernel: any }, openDb: (file: string) => import("node:sqlite").DatabaseSync, boot?: (cfg: any) => any,
- *   sealer?: any, fileKey?: boolean, doorFor?: (space: string) => any, remote?: (space: string) => any, bootOptions?: Record<string, any>, clock?: () => number }} cfg
+ *   sealer?: any, fileKey?: boolean, doorFor?: (space: string) => any, storeFor?: (space: string, meta: any) => Promise<any> | any, stageFactory?: (space: string, kernel: any, meta: any) => Promise<any> | any, remote?: (space: string) => any, bootOptions?: Record<string, any>, clock?: () => number }} cfg
  *   `personal` is the home's own, already booted kernel (bootHomeKernel's), so the first Space is never booted twice. `sealer` is the home's sealing client: each Space gets
  *   it namespaced (K-3), and no key file is kept. Without it a Space is refused unless `fileKey` is true (development and tests: a 0600 key file per Space).
  */
@@ -42,8 +42,14 @@ export function createSpaceKernels(cfg) {
       if (key.length !== 32) throw new KernelError("unavailable", "that Space's kernel key is not 32 bytes: refusing to start it");
       custody = { key };
     } else throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer");
-    return tell(await boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, owner: meta.owner, owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
+    const store = cfg.storeFor ? await cfg.storeFor(id, meta) : undefined;
+    // Stages made of tasks for this Space (the daemon's stageFactory builds the module over this Space's own kernel): the gateway's two hooks are bound late, because the module needs the booted kernel.
+    /** @type {{ stages: any }} */ const late = { stages: null };
+    const hooks = cfg.stageFactory ? { onStageEnter: (/** @type {any} */ e) => (late.stages ? late.stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (late.stages ? late.stages.stageTasks(u, st) : []) } : {};
+    const booted = tell(await boot({ db: cfg.openDb(path.join(d, "kernel.db")), space: id, ...hooks, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));
+    if (cfg.stageFactory) late.stages = await cfg.stageFactory(id, booted, meta);
+    return booted;
   }
 
   const api = {
@@ -62,11 +68,15 @@ export function createSpaceKernels(cfg) {
       const id = `spc_${rand32(12)}`, d = ofDir(id);
       fs.mkdirSync(d, { recursive: true, mode: 0o700 });
       if (!cfg.sealer) { if (cfg.fileKey !== true) throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer"); fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 }); }
-      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
-      const k = await open(id);
+      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), ...(o.accept_builtin_store === true ? { accept_builtin_store: true } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
+      // a Space that cannot be opened (the box cannot run its store and the person has not agreed to the built-in one) is not left half made
+      let k;
+      try { k = await open(id); } catch (e) { fs.rmSync(d, { recursive: true, force: true }); throw e; }
       live.set(id, k);
       return hostedHandle(id, k);
     },
+    /** What a Space made here now would be stored in, and the confirmation to show BEFORE it is made (`confirm`: text and choices). Nothing is created. */
+    storePlan: () => (cfg.storeFor && /** @type {any} */ (cfg.storeFor).plan ? /** @type {any} */ (cfg.storeFor).plan() : Promise.resolve({ store: "sqlite", reasons: [] })),
     /** Open every Space this home hosts (at start); after this `for` answers without waiting. */
     async start() { for (const id of api.list()) await api.open(id); },
     /** Open one hosted Space, or null when this home does not host it. */
