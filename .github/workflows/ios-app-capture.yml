@@ -3,6 +3,11 @@
 # screen recording are the artifact. Manual: a macOS run costs ten times a Linux one. Nothing here touches signing or TestFlight.
 name: ios-app-capture
 on:
+  push:
+    branches: ["main", "work/ui"]
+    # On a team branch a push that touches this file is how it runs (a manual workflow is listed only from the default branch).
+    paths:
+      - ".github/workflows/ios-app-capture.yml"
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,7 +37,7 @@ jobs:
           [ -n "$x" ] && sudo xcode-select -s "$x"
           xcodebuild -version
       - run: npx expo prebuild -p ios --clean
-      - name: Build for the simulator (Release: the bundle is inside the app; no signing)
+      - name: "Build for the simulator, Release so the bundle is inside the app, no signing"
         run: |
           ws=$(ls -d ios/*.xcworkspace | head -1)
           scheme=$(basename "$ws" .xcworkspace)
@@ -55,6 +60,12 @@ jobs:
                       print(d["udid"]); sys.exit()
           ')
           xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          # openurl asks "Open in Vyre?" once per scheme: answer it in advance (the simulator's scheme approval list), then restart it.
+          xcrun simctl shutdown "$udid"
+          plist="$HOME/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist"
+          mkdir -p "$(dirname "$plist")"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.CoreSimulator.CoreSimulatorBridge-->vyre string sh.vyre.app' "$plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :com.apple.CoreSimulator.CoreSimulatorBridge-->vyre sh.vyre.app" "$plist"
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
           xcrun simctl install "$udid" "$app"
           xcrun simctl launch "$udid" sh.vyre.app || true
           sleep 20
@@ -63,6 +74,11 @@ jobs:
           shot record "vyre://u/record/01a05a43-fc00-4f98-ad05-d023d68e45fe" 10
           shot chat "vyre://chat-demo?at=4200&hold=1" 10
           shot now-again "vyre://u/now" 8
+          # The other theme: the app follows the system appearance.
+          xcrun simctl ui "$udid" appearance dark; sleep 3
+          shot now-dark "vyre://u/now" 8
+          shot chat-dark "vyre://chat-demo?at=4200&hold=1" 8
+          xcrun simctl ui "$udid" appearance light; sleep 3
           xcrun simctl io "$udid" recordVideo --codec h264 "$out/now.mov" & rec=$!
           sleep 8
           kill -INT "$rec"; wait "$rec" || true

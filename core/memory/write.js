@@ -11,7 +11,9 @@
 // link; the row is forgotten with its last link; nothing is deleted, so every forget can be undone.
 
 import crypto from "node:crypto";
+import { current as whoNow } from "./who.js";
 import { contentWords } from "./iq/retrieve.js";
+import { scrubbed } from "./sealed.js";
 
 /** The person's own room. */
 export const YOU = "you";
@@ -131,7 +133,7 @@ export function writeStore({ db, now = () => Date.now() }) {
           return { id: String(same.id), linked: true, fresh: true };
         }
         const id = `mw_${crypto.randomBytes(8).toString("hex")}`;
-        q.insert.run(id, w.kind, w.text, w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
+        q.insert.run(id, w.kind, scrubbed(w.text), w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
           w.from.thread ?? null, Number.isInteger(w.from.seq) ? w.from.seq : null, w.untrusted ? 1 : 0, t, t);
         q.addLink.run(id, w.project, t);
         return { id, linked: false, fresh: true };
@@ -236,7 +238,8 @@ export function relevantLines(store, text, scope, limit = 2) {
  */
 export function register(ctx, { store, reach, personWrites, ownSession, reader, projects, denied, plain }) {
   const bad = m => Object.assign(new Error(m), { code: "bad_input" });
-  const claims = c => /(?:^|[\s:])agent:/.test(String(c || ""));
+  /** An agent is calling: the kernel chain has an agent hop (a label naming one only when the kernel is off, SHIM(legacy labels)). */
+  const claims = c => { const w = whoNow(); return w ? w.agent !== null && !w.ownSession : /(?:^|[\s:])agent:/.test(String(c || "")); }; // the assistant is the person's own session in a kernel chain, so it writes as the session, not as a claimed agent
   /** The kind an agent is: the assistant, a teammate, or an agent. */
   const kindOf = async (name, r) => {
     if (r.assistant) return "assistant";
@@ -268,9 +271,11 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
       const shipped = meta.firstParty === true;
       return { kind: "module", name, r, you: false, limited: !shipped, forced: !shipped };
     }
+    // A Flow step or a module acting for the approver is neither the person nor an agent: its writes are limited and attributed to it (MA-6).
+    { const w = whoNow(); if (w && w.acting) return { kind: "module", name: w.acting.id, r: await reach(undefined, c), you: false, limited: true, forced: true }; }
     if (personWrites(c, meta)) return { kind: "person", name: "you", r: { all: true }, you: true, limited: false, forced: false };
     if (ownSession(c)) return { kind: "person", name: "session", r: { all: true }, you: true, limited: false, forced: false };
-    if (/^(?:tailnet:|device:)/.test(c)) throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });
+    if ((whoNow() ? Boolean(whoNow()?.device) : /^(?:tailnet:|device:)/.test(c))) throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });
     throw denied(`memory.write is not open to ${plain(c || "an unnamed caller", 60)}`);
   };
   /** Whether a project is within what r reaches. */
@@ -287,7 +292,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     return { r, slugs: r.all ? null : new Set(r.slugs || []), you: r.all ? person : Boolean(r.assistant) };
   };
   const tag = w => `${w.from_kind}:${w.from_name}`;
-  const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet"];
+  const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet", "device", "space", "agent"];
 
   const writeDef = {
     callers: WHO,

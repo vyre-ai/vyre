@@ -19,7 +19,7 @@ import { filter as seccompFilter } from "./seccomp.js";
 export const SHIM = path.join(path.dirname(fileURLToPath(import.meta.url)), "shim.js");
 
 /** The variables a sandboxed session may be given. Everything else is dropped (LD_PRELOAD, NODE_OPTIONS, tokens). */
-const ENV_KEYS = /^(PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|DISABLE_[A-Z0-9_]+|ANTHROPIC_[A-Z0-9_]+|OPENAI_[A-Z0-9_]+|HTTPS?_PROXY|NO_PROXY)$/;
+const ENV_KEYS = /^(DEVELOPER_DIR|PATH|LANG|LC_[A-Z]+|TERM|TZ|NO_COLOR|FORCE_COLOR|VYRE_[A-Z0-9_]+|CLAUDE_CODE_[A-Z0-9_]+|DISABLE_[A-Z0-9_]+|ANTHROPIC_[A-Z0-9_]+|OPENAI_[A-Z0-9_]+|HTTPS?_PROXY|NO_PROXY)$/;
 
 /** @param {Record<string, string|undefined>} env */
 export function cleanEnv(env = {}) {
@@ -66,6 +66,7 @@ const ancestors = p => { const out = []; for (let d = path.dirname(p); d !== p; 
  * @property {string} [space]  Windows: the space the container is named for
  * @property {string} [launcher]  Windows: path of vyre-sandbox.exe
  * @property {string} [home]  the person's home folder, for the bind check (default: this process's)
+ * @property {{ token: string }} [internet]  the Space allows the internet for this session: git, npm and pip reach it through the runner's proxy (HTTPS_PROXY), public addresses only
  * @property {string} [node]  the node binary the Linux shim runs under (default process.execPath)
  */
 
@@ -90,6 +91,10 @@ export function seatbeltProfile(o) {
     // The system programs and libraries a shell and node need. Never /Users, /Volumes or /private/var/folders.
     '(allow file-read* (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/System") (subpath "/Library/Frameworks") (subpath "/private/etc/ssl") (subpath "/private/var/db/timezone") (literal "/private/etc/passwd") (literal "/private/etc/hosts") (literal "/private/etc/resolv.conf"))',
     '(allow process-exec (subpath "/usr/bin") (subpath "/bin") (subpath "/usr/sbin") (subpath "/sbin"))',
+    // /usr/bin/git and the other developer tools are shims that read the selected toolchain and run it from the Command Line Tools or Xcode
+    // (without these, a clone fails with "xcode-select: error", measured on a hosted Mac). Read and run only; nothing is writable.
+    '(allow file-read* (subpath "/private/var/select") (literal "/private/var/db/xcode_select_link") (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
+    '(allow process-exec (subpath "/Library/Developer/CommandLineTools") (subpath "/Applications/Xcode.app/Contents/Developer"))',
     `(allow file-read* file-write* (subpath ${q(ws)}))`,
     `(allow process-exec (subpath ${q(ws)}))`,
     ...ro.map(d => `(allow file-read* (subpath ${q(d)}))\n(allow process-exec (subpath ${q(d)}))`),
@@ -107,12 +112,16 @@ function needTool(command, granted, system) {
 }
 
 /** @param {PlanOpts} o */
+/** macOS: point the developer-tool shims (git, make, clang) straight at the installed toolchain, so they skip the lookup that reads the person's preferences (slow when the home is denied, and a failure when it is unreadable). */
+const developerDir = () => ["/Library/Developer/CommandLineTools", "/Applications/Xcode.app/Contents/Developer"].find(d => fs.existsSync(d));
+
 function planDarwin(o) {
   const ws = real(o.workspace);
   const home = path.join(ws, "home");
   const tmp = path.join(ws, "tmp");
   const base = proxyUrl(o.proxy.port);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base) };
+  const dd = developerDir();
+  const env = { ...cleanEnv(o.env), ...(dd ? { DEVELOPER_DIR: dd } : {}), HOME: home, TMPDIR: tmp, PATH: "/usr/bin:/bin:" + [...(o.readOnly || [])].map(d => path.join(real(d), "bin")).join(":"), ...proxyEnv(base, o.internet) };
   return { argv: ["/usr/bin/sandbox-exec", "-p", seatbeltProfile(o), o.command, ...(o.args || [])], env, cwd: path.join(ws, "files"), cleanup() {}, profile: seatbeltProfile(o) };
 }
 
@@ -132,7 +141,7 @@ function planLinux(o) {
   needTool(o.command, ro, ["/usr"]);
   const home = "/work/home";
   const base = proxyUrl(inner);
-  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base) };
+  const env = { ...cleanEnv(o.env), HOME: home, TMPDIR: "/work/tmp", PATH: "/usr/local/bin:/usr/bin:/bin:" + ro.map(d => path.join(d, "bin")).join(":"), ...proxyEnv(base, o.internet) };
   const argv = [
     "bwrap", "--die-with-parent", "--new-session", "--unshare-all", "--clearenv",
     "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -165,7 +174,7 @@ export function launch(p, opts = {}) {
 
 const proxyUrl = port => `http://127.0.0.1:${port}`;
 /** The session talks to the provider and the space through the proxy; the key it is given is a worthless session token. */
-const proxyEnv = base => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space` });
+const proxyEnv = (base, internet) => ({ ANTHROPIC_BASE_URL: `${base}/provider`, VYRE_SPACE_URL: `${base}/space`, ...(internet ? { HTTPS_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, HTTP_PROXY: `http://vyre:${internet.token}@${base.replace(/^http:\/\//, "")}`, NO_PROXY: "" } : {}) });
 
 /**
  * @param {PlanOpts} o

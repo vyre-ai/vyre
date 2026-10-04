@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createLease } from "./lease.js";
-import { driverFor } from "./workspace.js";
+import { driverFor, SLOWER_LINE } from "./workspace.js";
 import { plan, launch, unavailable } from "./sandbox.js";
 import { ensureLauncher, prepare as prepareWin, cleanup as cleanupWin } from "./sandbox-win.js";
 import { createEgress } from "./egress.js";
@@ -42,12 +42,13 @@ const mergeLabels = (a, b) => ({ trust: weakest(a?.trust ?? "untrusted", b?.trus
  * @param {{ base: string, platform?: any, driver?: any }} o @returns {Promise<string[]>} the folders it closed
  */
 export async function reconcile(o) {
-  const platform = o.platform || process.platform, driver = o.driver || driverFor(platform);
+  const platform = o.platform || process.platform;
+  const drivers = o.driver ? [o.driver] : platform === "linux" ? [driverFor(platform, { prefer: "fscrypt" }), driverFor(platform, { prefer: "gocryptfs" })] : [driverFor(platform)];
   const root = path.join(o.base, "spaces"), closed = [];
   let ents = []; try { ents = fs.readdirSync(root); } catch {}
   for (const e of ents) {
     const dir = path.join(root, e);
-    if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} if (!driver.isMounted(dir)) closed.push(dir); }
+    for (const driver of drivers) if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} if (!driver.isMounted(dir)) closed.push(dir); }
   }
   return closed;
 }
@@ -63,7 +64,7 @@ export async function reconcile(o) {
 export function createRunner(o) {
   const platform = /** @type {"darwin"|"linux"|"win32"} */ (o.platform || process.platform);
   const dir = spaceDir(o.base, o.space);
-  const driver = o.driver || driverFor(platform);
+  const driver = o.driver || driverFor(platform, { base: o.base });
   const now = o.now || Date.now;
   const emit = e => { try { o.onEvent?.(e); } catch {} };
   /** @type {string|null} */ let mnt = null;
@@ -127,7 +128,7 @@ export function createRunner(o) {
   function startWatchdog() {
     if (o.watchdog === false || process.env.VYRE_NO_WATCHDOG) return;
     try {
-      const p = spawn(process.execPath, [WATCHDOG, platform, dir, String(process.pid), deadlineFile, gen], { detached: true, stdio: "ignore" });
+      const p = spawn(process.execPath, [WATCHDOG, platform, dir, String(process.pid), deadlineFile, gen, driver.name], { detached: true, stdio: "ignore" });
       p.unref();
     } catch (e) { emit({ type: "watchdog-failed", why: String(/** @type {any} */ (e).message) }); }
   }
@@ -158,7 +159,7 @@ export function createRunner(o) {
 
   /**
    * The spec comes from the kernel (the module takes it from the space's own definition of the session, never from the caller):
-   * @param {{ session: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any }} s
+   * @param {{ session: string, command: string, args?: string[], env?: Record<string,string>, routes: any[], readOnly?: string[], resume?: boolean, labels?: any, network?: "provider"|"internet" }} s
    */
   async function start(s) {
     const g = o.grants();
@@ -181,7 +182,8 @@ export function createRunner(o) {
     const reader = o.reader || sandboxReader({ platform, space: o.space, work, base: o.base });
     const sy = createSessionSync({ space: o.sync, session: s.session, work, state, reader, seal: o.sealState || (st => st), log: m => emit({ type: "sync", session: s.session, m }) });
     const token = crypto.randomBytes(24).toString("base64url");
-    const eg = createEgress({ routes, vault: o.vault, session: s.session, token, lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
+    const internet = s.network === "internet" ? { token } : undefined;   // the Space's choice: provider-and-space only (default), or the internet from this computer's connection
+    const eg = createEgress({ routes, vault: o.vault, session: s.session, token, internet: Boolean(internet), lease: () => lease.id, onEvent: e => emit({ type: "egress", session: s.session, ...e }) });
     const runDir = path.join(o.base, "run");
     fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
     const sock = platform === "linux" ? path.join(runDir, crypto.randomBytes(6).toString("hex") + ".sock") : undefined;
@@ -194,7 +196,7 @@ export function createRunner(o) {
       try { fs.writeFileSync(winPrepFile, JSON.stringify(winPrep), { mode: 0o600 }); } catch {}
       if (!prep.exempt) throw new Error("the Windows sandbox could not allow its loopback proxy: run the Vyre helper as administrator once");
     }
-    const p = plan({ platform, space: o.space, launcher, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,
+    const p = plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,
       proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
     const child = launch(p, { detached: true });
     const h = { session: s.session, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null };
@@ -210,16 +212,16 @@ export function createRunner(o) {
         h.queue = h.queue.then(async () => {
           await sy.line(line);
           if (!endsTurn(line)) return;
-          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file. Pausing the group as well
-          // just keeps the files steady for a consistent checkpoint.
-          group("SIGSTOP");
-          try {
+          // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file, and it reads only files whose size or
+          // modification time changed. The session is NOT paused: stopping it for the length of the read blocked every write (measured:
+          // seconds on a big workspace). A file written during the read is picked up by the next turn's checkpoint.
+          {
             const cur = o.labels ? mergeLabels(h.labels, o.labels(s.session)) : h.labels;
             h.labels = cur;
             const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
             const ok = await sy.checkpoint(st);
             emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
-          } finally { group("SIGCONT"); }
+          }
         }).catch(() => {});
       }
     });
@@ -276,7 +278,7 @@ export function createRunner(o) {
       await o.requestServer?.(session);
       emit({ type: "moved", session, to: "server" });
     },
-    status() { return { state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
+    status() { return { workspace: driver.name, ...(driver.name === "gocryptfs" ? { notice: SLOWER_LINE } : {}), state: lease.state, expiresAt: lease.expiresAt, open: !!mnt && driver.isMounted(dir), mounted: driver.isMounted(dir), sessions: [...live.keys()], dir }; },
     get lease() { return lease; },
     get dir() { return dir; },
     get mnt() { return mnt; },

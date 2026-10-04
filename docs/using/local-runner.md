@@ -46,6 +46,9 @@ a member copying data on purpose. A computer that was open at the moment of remo
 
 ## Linux note
 
+On Linux, Vyre encrypts the workspace with the kernel's own file encryption when the disk is ext4 (about as fast as a plain folder). Setup turns that on once with administrator rights (`tune2fs -O encrypt <device>`). On other disk formats it uses a slower method and says so.
+
+
 Ubuntu 24.04 blocks the user namespaces bubblewrap needs. Install a profile that allows `userns` for
 `/usr/bin/bwrap` (an AppArmor profile named bwrap-vyre), plus `bubblewrap`, `gocryptfs` and `fuse3`. Vyre shows the
 reason on the device page when one is missing.

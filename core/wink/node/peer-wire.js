@@ -233,53 +233,91 @@ export function peerSession(pipe, o = {}) {
   return session;
 }
 
-// ---- auth for a peer that arrived on a Wink node (5.1): the node key is bound, the device key is proven ----
+// ---- auth for a peer that arrived on a Wink node (5.1): the device key is proven, the node key is signed ----
+//
+// A device has ONE id everywhere: its entry id (eid) on the owner's identity list (kernel/identity/chain.js), and the key on that entry is the device key. The
+// peer proves it by an Ed25519 signature over the home's nonce, the node key the forwarder named, the home's id and the eid; the home reads the key from the
+// identity list at that moment (`entry(eid)`, no table of its own, no cache) and verifies. The signature covers the node key, so the node key binds to the eid
+// only through a proof made with the entry's key; a removed entry is on no list and fails the very next proof and the very next call.
 
-export const AUTH_TAG = "vyre-wink-peer-v1";
+export const AUTH_TAG = "vyre-wink-peer-v2";
 
-/**
- * The proof a device sends: an HMAC under the static DH of the device key and the home's key, over
- * the home's nonce, the node key the forwarder named and the home's id. The home computes the same
- * from its side; a peer that holds a node but not the device key cannot make it.
- * @param {Buffer} shared dh(device private, home public) @param {string} nonce @param {string} nodeKey @param {string} box
- */
-export function authProof(shared, nonce, nodeKey, box) {
-  return crypto.createHmac("sha256", crypto.createHash("sha256").update(AUTH_TAG).update(shared).digest())
-    .update(`${nonce}\n${nodeKey}\n${box}`).digest("base64url");
+/** The exact bytes the device signs. @param {string} nonce @param {string} nodeKey @param {string} box @param {string} eid */
+export function authMessage(nonce, nodeKey, box, eid) {
+  return Buffer.from(`${AUTH_TAG}\n${nonce}\n${nodeKey}\n${box}\n${eid}`, "utf8");
+}
+
+const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
+/** Verify an Ed25519 signature (base64url) with a raw 32-byte public key (base64url). @param {string} pub @param {Buffer} msg @param {string} sig */
+export function verifyDevice(pub, msg, sig) {
+  try {
+    const raw = Buffer.from(String(pub), "base64url"), s = Buffer.from(String(sig), "base64url");
+    if (raw.length !== 32 || s.length !== 64) return false;
+    return crypto.verify(null, msg, crypto.createPublicKey({ key: Buffer.concat([SPKI_ED25519, raw]), format: "der", type: "spki" }), s);
+  } catch { return false; }
 }
 
 /**
- * The home's side of a peer that came through the forwarder: send a challenge, wait for a proof,
- * check it, and only then serve calls. Resolves with a session; rejects (and destroys the pipe)
- * when the proof is wrong, late, or the device is unknown or not enrolled for this node.
+ * D-1 and D-1b (rulings, 4 Oct 2026): a storage device's session may call only the exact tools its bridge needs on the home, and never speaks for an identity. The names are a
+ * list, not the `wink.storage.*` namespace: remove, pick, pair, card, offers, status, discover and bridge.drive are a person's. Every chunk operation (read, write,
+ * delete, list, status and ping) is a frame inside `wink.storage.bridge`; `wink.storage.bridge.accept` is the hand-over of the bridge secret. The kind is read from the
+ * entry the port answers (`kind: "storage"`, or `deviceKind: "storage"` beside the chain's `kind: "device"`) on every call, so it cannot be changed from the session.
+ */
+export const STORAGE_DEVICE_TOOLS = Object.freeze(["wink.storage.bridge", "wink.storage.bridge.accept"]);
+/** @param {{ kind?: string, deviceKind?: string } | null | undefined} e @param {string} tool */
+export function toolAllowed(e, tool) {
+  if (!e) return false;
+  const storage = e.kind === "storage" || e.deviceKind === "storage";
+  return !storage || STORAGE_DEVICE_TOOLS.includes(String(tool));
+}
+/** An entry a peer may be: a device of the identity list, or a storage device (only the exact bridge tools are then allowed, toolAllowed). @param {{ kind?: string } | null | undefined} e */
+export const peerKindOk = e => Boolean(e) && (e?.kind === "device" || e?.kind === "storage");
+
+/**
+ * The identity list entry for a device id, read live from the chain of a person who is a member of this Space; null when no such entry is on any such list
+ * (removed, revoked, never added, or another owner's). The port reads current state on every call: this module adds no cache.
+ * @typedef {(eid: string) => Promise<{ eid: string, kind: string, pub: string, deviceKind?: string } | null | undefined> | { eid: string, kind: string, pub: string, deviceKind?: string } | null | undefined} EntryPort
+ */
+
+/**
+ * The home's side of a peer that came through the forwarder: send a challenge, wait for a proof, check it against the entry's key, and only then serve calls.
+ * `serve` runs as `device:<eid>`; before every call the entry is read again, so a device removed after admission is refused at once.
+ * Resolves with a session; rejects (and destroys the pipe) when the proof is wrong, late, or the entry is not on the list.
  * @param {Pipe} pipe
- * @param {{ id: { nodeKey: string }, box: string,
- *   shared: (deviceId: string, nodeKey: string) => Promise<Buffer | null> | Buffer | null,
- *   serve: (caller: string, tool: string, input: any) => Promise<any>, timeoutMs?: number }} o
+ * @param {{ id: { nodeKey: string }, box: string, entry: EntryPort,
+ *   serve: (caller: string, tool: string, input: any, proven?: { nodeKey: string }) => Promise<any>, timeoutMs?: number }} o
  */
 export function admitPeer(pipe, o) {
   return new Promise((resolve, reject) => {
     const nonce = crypto.randomBytes(16).toString("base64url");
     let settled = false;
     /** @type {any} */ let caller = null;
+    /** @type {string} */ let eid = "";
+    /** @type {string} */ let pubSeen = "";
     const fail = (/** @type {string} */ why) => { if (settled) return; settled = true; clearTimeout(timer); try { pipe.destroy(); } catch {} reject(err("denied", why)); };
     const timer = setTimeout(() => fail("no proof in time"), o.timeoutMs ?? 5000);
     const session = peerSession(pipe, {
       first: 2,
-      serve: (tool, input) => { if (!caller) throw err("denied", "not proven"); return o.serve(caller, tool, input); },
+      serve: async (tool, input) => {
+        if (!caller) throw err("denied", "not proven");
+        const e = await o.entry(eid);
+        if (!e || e.eid !== eid || !peerKindOk(e) || e.pub !== pubSeen) { session.close("device removed"); throw err("denied", "this device is no longer on the identity list"); }
+        if (!toolAllowed(e, tool)) throw err("denied", "a storage device may only call its bridge functions");
+        return o.serve(caller, tool, input, { nodeKey: o.id.nodeKey });
+      },
       onframe: f => {
-        if (f.type !== T.proof || settled) return false;
+        if (f.type !== T.proof || settled || eid) return false;
         (async () => {
           let j; try { j = JSON.parse(f.payload.toString("utf8")); } catch { return fail("bad proof"); }
-          if (!j || typeof j.device !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(j.device) || typeof j.proof !== "string") return fail("bad proof");
-          const shared = await o.shared(j.device, o.id.nodeKey);
-          if (!shared) return fail("unknown device");
-          const want = Buffer.from(authProof(shared, nonce, o.id.nodeKey, o.box));
-          const got = Buffer.from(j.proof);
-          if (want.length !== got.length || !crypto.timingSafeEqual(want, got)) return fail("proof does not match");
+          if (!j || typeof j.device !== "string" || !/^[a-z2-7]{1,64}$|^[A-Za-z0-9_-]{1,64}$/.test(j.device) || typeof j.proof !== "string") return fail("bad proof");
+          eid = j.device; // one proof per connection: a second proof frame is not an answer to anything
+          const e = await o.entry(eid);
+          if (!e || e.eid !== eid || !peerKindOk(e) || typeof e.pub !== "string") return fail("unknown device");
+          if (!verifyDevice(e.pub, authMessage(nonce, o.id.nodeKey, o.box, eid), j.proof)) return fail("proof does not match");
           if (settled) return;
           settled = true; clearTimeout(timer);
-          caller = `device:${j.device}`;
+          pubSeen = e.pub;
+          caller = `device:${eid}`;
           session.sendControl(T.ready, { caller });
           resolve({ session, caller });
         })().catch(() => fail("proof failed"));
@@ -292,11 +330,11 @@ export function admitPeer(pipe, o) {
 }
 
 /**
- * The peer's side of the same: wait for the challenge, answer it, wait for ready, and return the
- * session to call through.
+ * The peer's side of the same: wait for the challenge, sign it with the entry's key, wait for ready, and return the session to call through.
  * @param {Pipe} pipe
- * @param {{ device: string, nodeKey: string, shared: (box: string) => Promise<Buffer> | Buffer, timeoutMs?: number,
+ * @param {{ device: string, nodeKey: string, sign: (message: Buffer) => Promise<string> | string, timeoutMs?: number,
  *   serve?: (tool: string, input: any) => Promise<any> }} o
+ *   device: this machine's eid. sign: an Ed25519 signature (base64url) with the key on that entry.
  */
 export function joinPeer(pipe, o) {
   return new Promise((resolve, reject) => {
@@ -309,7 +347,7 @@ export function joinPeer(pipe, o) {
       onframe: f => {
         let j; try { j = JSON.parse(f.payload.toString("utf8")); } catch { fail("bad control frame"); return true; }
         if (f.type === T.challenge) {
-          Promise.resolve(o.shared(String(j.box))).then(shared => session.sendControl(T.proof, { device: o.device, proof: authProof(shared, String(j.nonce), o.nodeKey, String(j.box)) })).catch(() => fail("no device key"));
+          Promise.resolve(o.sign(authMessage(String(j.nonce), o.nodeKey, String(j.box), o.device))).then(sig => session.sendControl(T.proof, { device: o.device, proof: sig })).catch(() => fail("no device key"));
           return true;
         }
         if (f.type === T.ready) { if (settled) return true; settled = true; clearTimeout(timer); resolve(session); return true; }

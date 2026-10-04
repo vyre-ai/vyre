@@ -79,6 +79,9 @@ export async function checkOutput(task, evidence, facts) {
  */
 export function createTasks(cfg) {
   const clock = cfg.clock || Date.now;
+  /** A person id as the Space knows them now: the owner an adoption replaced is the identity that replaced them, so a task keyed by the old id is still its person's. */
+  const canon = (/** @type {string} */ id) => (typeof cfg.canonicalPerson === "function" ? cfg.canonicalPerson(id) : id);
+  const same = (/** @type {any} */ a, /** @type {any} */ b) => Boolean(a && b) && a.kind === b.kind && (a.kind === "person" ? canon(a.id) === canon(b.id) : a.id === b.id);
   const { gate } = createGate({ authorizer: cfg.authorizer, log: cfg.log, enforce: cfg.enforce });
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
@@ -88,7 +91,7 @@ export function createTasks(cfg) {
     if (!rule || !rule.approver) return true;
     const h = by && by.approver_chain && by.approver_chain.hops && by.approver_chain.hops.length === 1 ? by.approver_chain.hops[0].actor : null;
     if (!h || h.kind !== "person") return false;
-    if (rule.approver.person !== undefined) return h.id === rule.approver.person;
+    if (rule.approver.person !== undefined) return canon(h.id) === canon(rule.approver.person);
     return Boolean(cfg.members && typeof cfg.members.roleOf === "function" && cfg.members.roleOf(h) === rule.approver.role);
   };
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
@@ -100,8 +103,23 @@ export function createTasks(cfg) {
   /** @type {Map<string, number>} */ const coolDown = new Map();
 
   const get_ = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw new KernelError("not_found", "no such task"); return t; };
-  const put = (/** @type {any} */ t, /** @type {any} */ patch) => { const n = freeze({ ...t, ...patch, updated_at: clock() }); tasks.set(n.id, n); return n; };
+  // A task changes in memory and then its event is written; if the write fails the task goes back to what it was, so memory never shows a change the log does not hold (an approval
+  // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
+  /** @type {Map<string, any>} */ const pending = new Map();
+  const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); return next; };
+  const put = (/** @type {any} */ t, /** @type {any} */ patch) => stage(t.id, freeze({ ...t, ...patch, updated_at: clock() }));
+  const unstage = (/** @type {string} */ id) => {
+    const prev = pending.get(id); pending.delete(id);
+    if (prev === undefined) { tasks.delete(id); bodies.delete(id); proposals.delete(id); approvedBy.delete(id); } else tasks.set(id, prev);
+  };
   const outward = (/** @type {any} */ t) => t.output.kind === "sent";
+  /** The doer's answer for the output kinds a waiter reads back (a decision's yes or no and why, the values of a `fields` output, a note): plain data of at most 8 KB, frozen, kept on the task and carried on `task.completed` (sealed values stay references). Anything else keeps none. */
+  const answerOf = (/** @type {any} */ t, /** @type {any} */ evidence) => {
+    if (!["decision", "fields", "note"].includes(t.output.kind) || evidence === undefined || evidence === null) return undefined;
+    let text; try { text = JSON.stringify(evidence); } catch { return undefined; }
+    if (text === undefined || text.length > 8192) throw new KernelError("bad_input", "an answer is plain data of at most 8 KB");
+    return deepFreeze(JSON.parse(text));
+  };
   /** @param {any} ev */
   async function resolveFacts(ev) {
     const recipients = [];
@@ -131,8 +149,10 @@ export function createTasks(cfg) {
   const needsCheck = (/** @type {any} */ t) => Boolean(t.checker) || outward(t);
   const guardedSkip = (/** @type {any} */ t) => needsCheck(t) || Boolean(t.required);
   const guarded = guardedSkip;
-  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) =>
-    cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state } }, decision ? { decision } : {});
+  const appendOrUndo = (/** @type {string} */ id, /** @type {any} */ chain, /** @type {any} */ ev, /** @type {any} */ opt) => { try { const e = cfg.log.append(chain, ev, opt); pending.delete(id); return e; } catch (e) { unstage(id); throw e; } };
+  const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
+    try { const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
+  };
 
   /** The transition table is the one source: ask it which rule applies, and check the caller's role is the rule's. */
   function rule(/** @type {any} */ t, /** @type {string} */ to, /** @type {string} */ by) {
@@ -208,7 +228,7 @@ export function createTasks(cfg) {
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
         created_at: clock(), updated_at: clock(),
       });
-      tasks.set(id, t);
+      stage(id, t);
       note(chain, "task.created", t, { doer: `${doer.kind}:${doer.id}`, output: t.output.kind, checkers: persons.length });
       return t;
     },
@@ -216,6 +236,25 @@ export function createTasks(cfg) {
     async get(/** @type {any} */ chain, /** @type {string} */ id) {
       try { await gate(chain, "tasks.read", urnOf(cfg.space, id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       return tasks.get(id) || null;
+    },
+
+    /**
+     * The tasks this chain may read, filtered: by record, doer id, checker id (a named checker or one of the persons a role resolves to) and state. Each task goes through the same `tasks.read`
+     * gate `get` uses, so a task the chain may not read is absent, never marked. Oldest first.
+     * @param {any} chain @param {{ record?: string, doer?: string, checker?: string, state?: string[] }} [q]
+     */
+    async list(chain, q = {}) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const out = [];
+      for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+        if (q.record && t.record !== q.record) continue;
+        if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
+        if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
+        if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
+        try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
+        out.push(t);
+      }
+      return out;
     },
 
     async start(/** @type {any} */ chain, /** @type {string} */ id) {
@@ -238,8 +277,9 @@ export function createTasks(cfg) {
       const check = await checkOutput(t, evidence, cfg.facts || {});
       if (!check.ok) throw new KernelError("output_check_failed", check.why || "the output is not there yet");
       if (to === "done") {
-        const n = put(t, { state: "done" });
-        note(chain, "task.completed", n, { output: t.output.kind });
+        const answer = answerOf(t, evidence);
+        const n = put(t, { state: "done", ...(answer !== undefined ? { answer } : {}) });
+        note(chain, "task.completed", n, { output: t.output.kind, ...(answer !== undefined ? { answer } : {}) });
         promote(chain);
         return n;
       }
@@ -280,10 +320,10 @@ export function createTasks(cfg) {
       if (t.state !== "needs_check") throw new KernelError("bad_state", "there is nothing waiting for a check");
       if (deciding.has(id)) throw new KernelError("bad_state", "that task is being decided");
       rule(t, "ready", "doer");
-      bodies.delete(id);
       const { payload: _p, ...rest } = t;
-      tasks.set(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
+      stage(id, freeze({ ...rest, state: "ready", updated_at: clock() }));
       note(chain, "task.voided", tasks.get(id), { reason: String(reason || "").slice(0, 200) });
+      bodies.delete(id);
       return tasks.get(id);
     },
 
@@ -307,10 +347,10 @@ export function createTasks(cfg) {
       if (a.outcome === "rejected") {
         if (typeof a.reason !== "string" || !a.reason.trim()) throw new KernelError("bad_input", "a rejection needs a reason");
         rule(t, "ready", "checker");
-        bodies.delete(id);
         const { payload: _p, ...rest } = t;
-        tasks.set(id, freeze({ ...rest, state: "ready", outcome: "rejected", updated_at: clock() }));
+        stage(id, freeze({ ...rest, state: "ready", outcome: "rejected", updated_at: clock() }));
         note(chain, "task.rejected", tasks.get(id), { reason: a.reason.slice(0, 400) }, d.decision);
+        bodies.delete(id);
         return tasks.get(id);
       }
       if (a.outcome !== "approved") throw new KernelError("bad_input", "decide approves or rejects");
@@ -328,9 +368,10 @@ export function createTasks(cfg) {
       if (outward(t) && cfg.release) {
         try { await cfg.release(t, body, { person: person.id, key_id: p.key_id }); } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
       }
-      const n = put(t, { state: "done", outcome: "approved" });
+      const answer = !outward(t) && body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
+      const n = put(t, { state: "done", outcome: "approved", ...(answer !== undefined ? { answer } : {}) });
+      note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id, ...(n.answer !== undefined ? { answer: n.answer } : {}) }, d.decision);
       approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
-      note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id }, d.decision);
       const proposed = proposals.get(id);
       if (proposed) { const pt = tasks.get(proposed); if (pt && (pt.state === "ready" || pt.state === "stuck")) { rule(pt, "skipped", "proposal_for_person_with_presence"); note(chain, "task.skipped", put(pt, { state: "skipped" }), { by: "approved proposal" }); } }
       promote(chain);
@@ -363,7 +404,7 @@ export function createTasks(cfg) {
       rule(t, "stuck", "assistant_or_detection");
       const out = put(t, { state: "stuck", stuck: freeze({ reason: `${d.action} was refused ${n} times`, since: clock(),
         ...(cooling ? {} : { suggested_fix: freeze({ text: `Allow ${t.doer.id} to ${d.action} on ${d.resource}, or reassign.`, action: freeze({ kind: "grant_request", resource: d.resource, action_name: d.action }) }) }) }) });
-      cfg.log.append(cfg.chains.fromFacts({ kind: "module", module: "tasks", first_party: true }), { type: "task.stuck", sv: 1, subject: urnOf(cfg.space, id), data: { reason: out.stuck.reason, detected: true, state: "stuck" } });
+      appendOrUndo(id, cfg.chains.fromFacts({ kind: "module", module: "tasks", first_party: true }), { type: "task.stuck", sv: 1, subject: urnOf(cfg.space, id), data: { reason: out.stuck.reason, detected: true, state: "stuck" } });
       return out;
     },
 
@@ -396,7 +437,7 @@ export function createTasks(cfg) {
         doer = freeze({ ...o.reassign_to });
       }
       const { stuck: _s, ...rest } = t;
-      tasks.set(id, freeze({ ...rest, doer, state: "ready", updated_at: clock() }));
+      stage(id, freeze({ ...rest, doer, state: "ready", updated_at: clock() }));
       note(chain, "task.unblocked", tasks.get(id), { reassigned: Boolean(o.reassign_to) });
       return tasks.get(id);
     },
@@ -424,7 +465,7 @@ export function createTasks(cfg) {
         output: freeze({ kind: "decision" }), state: "needs_check", assigned_by: freeze({ ...chain.hops[0].actor }),
         payload: freeze({ payload_hash: sha256(canonical(body)), decision }), labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }), created_at: clock(), updated_at: clock(),
       });
-      tasks.set(pid, proposal); bodies.set(pid, body); proposals.set(pid, id);
+      stage(pid, proposal); bodies.set(pid, body); proposals.set(pid, id);
       note(chain, "task.created", proposal, { proposal_for: id });
       return { proposal };
     },

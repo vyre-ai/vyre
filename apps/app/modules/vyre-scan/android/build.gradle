@@ -1,0 +1,28 @@
+// Reading a QR code with the camera, on the phone: CameraX for the picture, ZXing (plain Java) for the
+// code. No ML Kit, no Google Play services: expo-camera's scanner needs both, so it is not linked on
+// Android (package.json, expo.autolinking.android.exclude).
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'sh.vyre'
+version = '0.0.1'
+
+android {
+  namespace "sh.vyre.scan"
+  defaultConfig {
+    versionCode 1
+    versionName "0.0.1"
+  }
+}
+
+dependencies {
+  def camerax = "1.4.2"
+  implementation "androidx.camera:camera-core:$camerax"
+  implementation "androidx.camera:camera-camera2:$camerax"
+  implementation "androidx.camera:camera-lifecycle:$camerax"
+  implementation "androidx.camera:camera-view:$camerax"
+  implementation "com.google.zxing:core:3.5.3"
+  implementation "androidx.core:core-ktx:1.15.0"
+}

@@ -12,7 +12,7 @@ export const LIMITS = { maxBytes: 100 * 1024 * 1024, maxFiles: 20000, maxTotal: 
 
 /**
  * @param {{ platform: "darwin"|"linux"|"win32", space: string, work: string, base: string, node?: string, home?: string, limits?: Partial<typeof LIMITS> }} o
- * @returns {(req: { roots: { dir: string, remote: string }[], have: Record<string, string>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>}
+ * @returns {(req: { roots: { dir: string, remote: string }[], have: Record<string, { hash: string, size: number, mtimeMs: number }>, maxBytes?: number }, onFile: (f: { rel: string, hash: string, size: number, len: number, mtimeMs: number, bytes: Buffer|null }) => Promise<void>) => Promise<{ truncated: boolean }>}
  */
 export function sandboxReader(o) {
   const node = o.node || process.execPath;
@@ -41,7 +41,7 @@ export function sandboxReader(o) {
         if (buf.length < nl + 1 + (h.send ? h.size : 0)) return;
         const bytes = h.send ? Buffer.from(buf.subarray(nl + 1, nl + 1 + h.size)) : null;
         buf = buf.subarray(nl + 1 + (h.send ? h.size : 0));
-        const f = { rel: h.rel, hash: h.hash, size: h.send ? h.size : 0, bytes };
+        const f = { rel: h.rel, hash: h.hash, size: h.send ? h.size : 0, len: h.len, mtimeMs: h.mtimeMs, deferred: Boolean(h.deferred), bytes };
         chain = chain.then(() => onFile(f));      // handled one at a time, as each is framed: nothing accumulates
         chain.catch(fail);
       }

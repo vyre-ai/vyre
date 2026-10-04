@@ -1,25 +1,30 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createFlows } from "./index.js";
-import { FakeKernel } from "./testing/fake-kernel.js";
+import { RealKernel } from "./testing/real-kernel.js";
+import { CORE_TYPES } from "../../records/core-types.js";
 import { catalog, onPayment, estateKit, SPACE } from "./testing/fixtures.js";
 import { ALEX } from "./testing/world.js";
 
-function build() {
+async function build() {
   const clock = { t: Date.UTC(2026, 9, 3, 12) };
-  const kernel = new FakeKernel({ now: () => clock.t });
+  const kernel = new RealKernel({ now: () => clock.t, actions: { "email.send": { risk: "outward.send" } } });
+  kernel.setRole("attorney", [ALEX]); kernel.addActor({ kind: "agent", id: "intake" }); kernel.addActor({ kind: "service", id: "flows" });
   const cat = catalog(); cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
   const define = kernel.records.define;
   kernel.records.define = async (c, diff) => { const r = await define(c, diff); for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) cat.types[t.name] = t; return r; };
-  const flows = createFlows({ kernel, chains: { forFlow: x => kernel.chainFor(x) }, catalog: () => cat, clock: () => clock.t, ports: { roles: () => [ALEX] }, installerRole: () => "admin" });
-  kernel.subs.add(e => { void flows.onEvent(e); });
-  const person = { space: SPACE, hops: [{ actor: ALEX, entered_by: "surface" }], labels: { trust: "member", red: "internal", source_spaces: [SPACE] }, built_at: clock.t };
-  const withAgent = { ...person, hops: [{ actor: ALEX }, { actor: { kind: "agent", id: "intake", space: SPACE } }] };
-  return { kernel, flows, person, withAgent, cat };
+  await kernel.records.define(kernel.sysChain(), { add_types: [...Object.values(cat.types), ...CORE_TYPES.filter(t => !cat.types[t.name])] });
+  const flows = createFlows({ kernel, chains: { forFlow: x => kernel.chainFor(x), forDoer: () => kernel.moduleChain({ module: "flows", approver: ALEX }) }, catalog: () => cat, clock: () => clock.t, ports: { roles: () => [ALEX] }, installerRole: () => "admin" });
+  kernel.onEvent(e => { void flows.onEvent(e); }, "flows");
+  // a person's own chain, and the same person with an assistant in it, both built by the kernel
+  const person = kernel.as(ALEX);
+  const withAgent = kernel.as({ kind: "agent", id: "intake", space: SPACE });
+  const settle = async () => { for (let i = 0; i < 3; i++) { await kernel.idle(); await flows.runner.drain(); } };
+  return { kernel, flows, person, withAgent, cat, settle };
 }
 
 test("service: define from text, read the card, approve as a person, and the Flow runs", async () => {
-  const { kernel, flows, person } = build();
+  const { kernel, flows, person, settle } = await build();
   const text = flows.text(onPayment());
   const d = await flows.tools["flows.define"](person, { text });
   assert.equal(d.ok, true, JSON.stringify(d.errors));
@@ -29,7 +34,7 @@ test("service: define from text, read the card, approve as a person, and the Flo
   assert.match(card.text, /defineFlow/);
   await flows.tools["flows.approve"](person, { id: d.id, version: d.version, hash: d.hash });
   kernel.inbound("payment.received", { amount: 1, client: "Svc" });
-  await new Promise(r => setImmediate(r)); await flows.runner.drain();
+  await settle();
   const runs = await flows.tools["flows.runs"](person, { id: d.id });
   assert.equal(runs.length, 1);
   const one = await flows.tools["flows.run"](person, { run: runs[0].id });
@@ -39,14 +44,14 @@ test("service: define from text, read the card, approve as a person, and the Flo
 });
 
 test("service: approving, pausing and installing are a person's own act: a chain with an agent in it is refused", async () => {
-  const { flows, person, withAgent } = build();
+  const { flows, person, withAgent } = await build();
   const d = await flows.tools["flows.define"](person, { flow: onPayment() });
   for (const [tool, input] of [["flows.approve", { id: d.id, version: d.version, hash: d.hash }], ["flows.pause", { id: d.id }], ["flows.resume", { id: d.id }], ["kits.propose", { kit: estateKit(1) }], ["kits.remove", { id: "x" }]])
     await assert.rejects(() => flows.tools[tool](withAgent, input), e => e.code === "chain_not_person", tool);
 });
 
 test("service: a text that is not valid is refused with a line, and nothing is stored", async () => {
-  const { flows, person } = build();
+  const { flows, person } = await build();
   const r = await flows.tools["flows.define"](person, { text: "import x from 'fs';\nexport default 1;" });
   assert.equal(r.ok, false);
   assert.match(r.errors[0].message, /only @vyre\/sdk may be imported/);
@@ -54,7 +59,7 @@ test("service: a text that is not valid is refused with a line, and nothing is s
 });
 
 test("service: a new version shows what changed in words, and a Kit goes through the same service", async () => {
-  const { kernel, flows, person } = build();
+  const { kernel, flows, person, settle } = await build();
   const d = await flows.tools["flows.define"](person, { flow: onPayment() });
   await flows.tools["flows.approve"](person, { id: d.id, version: d.version, hash: d.hash });
   const f2 = onPayment(); f2.steps[1].limit = 2;
@@ -64,12 +69,12 @@ test("service: a new version shows what changed in words, and a Kit goes through
   const p = await flows.tools["kits.propose"](person, { kit: estateKit(1) });
   assert.equal(p.ok, true);
   kernel.completeTask(p.task, { outcome: "approved" });
-  await new Promise(r => setImmediate(r)); await flows.runner.drain(); await new Promise(r => setImmediate(r));
+  await settle();
   assert.equal((await flows.tools["kits.list"](person, {}))[0].status, "installed");
 });
 
 test("service: simulation through the tool reports without writing", async () => {
-  const { kernel, flows, person } = build();
+  const { kernel, flows, person, settle } = await build();
   kernel.inbound("payment.received", { amount: 1, client: "A" });
   const r = await flows.tools["flows.simulate"](person, { flow: onPayment(), since: 0, until: Date.UTC(2027, 0, 1) });
   assert.equal(r.matched, 1);

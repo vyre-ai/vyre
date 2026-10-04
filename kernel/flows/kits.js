@@ -23,7 +23,9 @@ const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
  */
 
 export const KIT_TYPES = Object.freeze([
-  { name: "kit_install", label: "Installed Kit", fields: [
+  { name: "kit-proposal", label: "Kit waiting for a yes", fields: [
+    { name: "proposal_id", kind: "text", label: "Id" }, { name: "task", kind: "text", label: "Task" }, { name: "body", kind: "text", label: "Proposal" } ] },
+  { name: "kit-install", label: "Installed Kit", fields: [
     { name: "kit_id", kind: "text", label: "Kit" }, { name: "version", kind: "number", label: "Version" }, { name: "hash", kind: "text", label: "Hash" },
     { name: "status", kind: "text", label: "Status" }, { name: "by", kind: "text", label: "Installed by" }, { name: "at", kind: "number", label: "When" }, { name: "body", kind: "text", label: "What it added" } ] },
 ]);
@@ -92,7 +94,7 @@ export function installCard(kit, cat) {
   const merged = checked.cat;
   const flows = parts.filter(p => p.kind === "flow").map(p => {
     const c = compileFlow({ ...p.def, authorship: "kit" }, merged);
-    return { name: p.name, label: p.def.label || p.name, trigger: p.def.trigger.on, writes: c.effects.writes, outward: c.effects.outward, http: c.effects.http, code: c.effects.code, sealed_uses: c.effects.sealed_uses, asks: c.effects.asks, caps: c.caps, ok: c.ok };
+    return { name: p.name, label: p.def.label || p.name, trigger: p.def.trigger.on, writes: c.effects.writes, outward: c.effects.outward, services: c.effects.services, code: c.effects.code, sealed_uses: c.effects.sealed_uses, asks: c.effects.asks, caps: c.caps, ok: c.ok };
   });
   const types = parts.filter(p => p.kind === "type").map(p => ({
     name: p.name, label: p.def.label, fields: (p.def.fields || []).length, sealed: (p.def.fields || []).filter((/** @type {any} */ f) => f.kind === "sealed").map((/** @type {any} */ f) => f.name),
@@ -148,8 +150,9 @@ export function diffKits(oldKit, newKit, cat) {
       for (const c of nf.caps) if (!oldCaps.has(`${c.action} ${c.resource}`)) widenings.push({ part: label, what: `may now ${c.action} on ${c.resource}` });
       const oldOut = new Set((of ? of.effects.outward : []).map(o => o.action + (o.destination_constant ? "" : "*")));
       for (const o of nf.effects.outward) if (!oldOut.has(o.action + (o.destination_constant ? "" : "*"))) widenings.push({ part: label, what: `now ${o.action}${o.destination_constant ? "" : " to an address read from records"}` });
-      const oldHttp = new Set((of ? of.effects.http : []).map(h => h.url));
-      for (const h of nf.effects.http) if (!oldHttp.has(h.url)) widenings.push({ part: label, what: `now calls ${h.url}` });
+      const svcKey = (/** @type {any} */ h) => `${h.connector} ${h.method} ${h.path}`;
+      const oldSvc = new Set((of ? of.effects.services : []).map(svcKey));
+      for (const h of nf.effects.services) if (!oldSvc.has(svcKey(h))) widenings.push({ part: label, what: `now calls ${h.connector}: ${h.method} ${h.path}${h.outward ? " (held for a yes)" : ""}` });
       const oldCode = new Set((of ? of.effects.code : []).map(c => c.hash));
       for (const c of nf.effects.code) if (!oldCode.has(c.hash)) widenings.push({ part: label, what: `runs new code in the sandbox (${c.step})` });
       const oldSealed = new Set((of ? of.effects.sealed_uses : []).map(s => s.field));
@@ -201,6 +204,27 @@ export class MemoryKitStore {
   /** @param {string} task */ async proposalByTask(task) { return [...this.proposals.values()].map(p => structuredClone(p)).find(p => p.task === task) || null; }
 }
 
+/** The installed Kits and the proposals waiting for a yes, as records in the kernel: they survive a restart, with version history and the audit log. @implements the MemoryKitStore methods */
+export class RecordsKitStore {
+  /** @param {{ kernel: any, chain: any }} o */
+  constructor(o) { this.k = o.kernel; this.chain = o.chain; }
+  async define() { return this.k.records.define(this.chain, { add_types: KIT_TYPES }); }
+  /** @param {string} type @param {string} field @param {string} value */
+  async #one(type, field, value) { return (await this.k.records.query(this.chain, type, { filter: { field, op: "eq", value }, page: { limit: 1 } })).rows[0] || null; }
+  /** @param {string} id */ async get(id) { const r = await this.#one("kit-install", "kit_id", id); return r ? JSON.parse(r.data.body) : null; }
+  /** @param {any} row */ async put(row) {
+    const data = { kit_id: row.kit_id, version: row.version ?? 0, hash: row.hash || "", status: row.status || "", by: row.by ? `${row.by.kind}:${row.by.id}` : "", at: row.at || 0, body: JSON.stringify(row) };
+    const cur = await this.#one("kit-install", "kit_id", row.kit_id);
+    if (cur) await this.k.records.update(this.chain, "kit-install", cur.id, data, cur.version); else await this.k.records.create(this.chain, "kit-install", data);
+  }
+  /** @param {string} id */ async del(id) { const cur = await this.#one("kit-install", "kit_id", id); if (cur) await this.k.records.remove(this.chain, "kit-install", cur.id, cur.version); }
+  async list() { return (await this.k.records.query(this.chain, "kit-install", { page: { limit: 200 } })).rows.map((/** @type {any} */ r) => JSON.parse(r.data.body)); }
+  /** @param {any} p */ async putProposal(p) { await this.k.records.create(this.chain, "kit-proposal", { proposal_id: p.id, task: p.task || "", body: JSON.stringify(p) }); }
+  /** @param {string} id */ async getProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id); return r ? JSON.parse(r.data.body) : null; }
+  /** @param {string} id */ async delProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id); if (r) await this.k.records.remove(this.chain, "kit-proposal", r.id, r.version); }
+  /** @param {string} task */ async proposalByTask(task) { const r = await this.#one("kit-proposal", "task", task); return r ? JSON.parse(r.data.body) : null; }
+}
+
 /**
  * @typedef {{
  *   kernel: any, runner: any, store: any,
@@ -240,20 +264,32 @@ export class KitManager {
     }
     const diff = installed ? diffKits(installed.kit, kit, cat) : null;
     const id = newId("kp_");
+    // The install card is a task the Flows service asks and the approver CHECKS: their approve or reject (with presence) is the answer, as for any approval.
+    const doerChain = this.chains.forDoer ? this.chains.forDoer({ kit: kit.id, space: cat.space, approver }) : null;
     const task = await this.k.ask.request(this.#chain(cat, kit.id, approver), {
-      title: installed ? `Update ${kit.name} to version ${kit.version}?` : `Install ${kit.name}?`, doer: approver, output: { kind: "decision" }, source: "kit_install",
-      form: { kind: "kit_install", proposal: id, card, diff }, checker: undefined,
+      title: installed ? `Update ${kit.name} to version ${kit.version}?` : `Install ${kit.name}?`, output: { kind: "decision" }, source: "manual",
+      ...(doerChain ? { doer: { kind: "service", id: "flows", space: cat.space }, checker: approver } : { doer: approver }),
+      form: { kind: "kit_install", proposal: id, card, diff },
     }, { idem: `kit:${kit.id}:${kit.version}:${kitHash(kit)}` });
+    if (doerChain) for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: `${kit.name} version ${kit.version} is waiting for your yes` }]]) {
+      try { await (step === "start" ? this.k.ask.start(doerChain, task.id) : this.k.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
+    }
     await this.store.putProposal({ id, kit, hash: kitHash(kit), approver, task: task.id, at: this.now(), update: Boolean(installed) });
     return { ok: true, proposal: id, task: task.id, card, diff };
   }
 
   /** A task event from the kernel: if it is an approved Kit task, apply it. @param {any} env */
   async onEvent(env) {
-    if (!/^task\./.test(env.type) || !env.data || env.data.state !== "done") return null;
-    const p = await this.store.proposalByTask(env.data.task || env.data.id);
+    if (!/^task\./.test(env.type)) return null;
+    // The kernel's own task events carry only the subject: the task id is its last segment, and the outcome is read from the task, not from the event.
+    const id = (env.data && (env.data.task || env.data.id)) || (typeof env.subject === "string" && /\/task\/[^/]+$/.test(env.subject) ? env.subject.slice(env.subject.lastIndexOf("/") + 1) : null);
+    if (!id) return null;
+    const p = await this.store.proposalByTask(id);
     if (!p) return null;
-    if (env.data.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
+    const cat = this.catalogFn();
+    const row = await this.k.ask.get(this.#chain(cat, p.kit.id, p.approver), id);
+    if (!row || row.state !== "done") return null;
+    if (row.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
     return this.apply(p.id);
   }
 
@@ -285,7 +321,7 @@ export class KitManager {
       if (part.kind === "type" || part.kind === "seed") continue;
       if (part.kind === "template") {
         const existing = row.refs[key];
-        const data = { name: part.name, kind: part.def.kind, body: part.def.body, kit: kit.id, kit_version: kit.version, authorship: "kit" };
+        const data = { name: part.name, kind: part.def.kind, ...(part.def.subject ? { subject: part.def.subject } : {}), body: part.def.body, kit: kit.id };
         if (existing) { const cur = await this.k.records.get(chain, "template", existing); if (cur) await this.k.records.update(chain, "template", existing, data, cur.version); }
         else { const r = await this.k.records.create(chain, "template", data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
       } else if (part.kind === "flow") {
@@ -295,8 +331,9 @@ export class KitManager {
         // the person approved this Kit's content, and the card showed this Flow; that approval covers the version just stored
         await this.runner.approve(d.id, d.version, p.approver, d.hash);
       } else if (part.kind === "role" || part.kind === "view") {
-        const type = part.kind === "role" ? "def_role" : "def_view";
-        const data = { name: part.name, body: canonical(part.def), kit: kit.id, kit_version: kit.version };
+        const type = part.kind === "role" ? "def-role" : "def-view";
+        await this.#ensureDefType(chain, type);
+        const data = { name: part.name, body: canonical(part.def), kit: kit.id };
         const existing = row.refs[key];
         if (existing) { const cur = await this.k.records.get(chain, type, existing); if (cur) await this.k.records.update(chain, type, existing, data, cur.version); }
         else { const r = await this.k.records.create(chain, type, data, { idem: `kit:${kit.id}:${key}` }); row.refs[key] = r.id; }
@@ -317,12 +354,19 @@ export class KitManager {
     return { installed: kit.id, version: kit.version, flows: row.flows };
   }
 
+  /** The types a Kit's roles and views are stored as, made once when the first one is installed (the kernel's type names are lowercase with hyphens). @param {any} chain @param {string} type */
+  async #ensureDefType(chain, type) {
+    if (this.catalogFn().types[type]) return;
+    try { await this.k.records.define(chain, { add_types: [{ name: type, label: type === "def-role" ? "Role definition" : "View definition", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] }] }); }
+    catch (e) { if (!e || !["already_exists", "conflict", "bad_input"].includes(/** @type {any} */ (e).code)) throw e; }
+  }
+
   /** @param {any} chain @param {any} row @param {Part} part */
   async #drop(chain, row, part) {
     const key = `${part.kind}:${part.name}`;
     if (part.kind === "flow") { const id = row.flows[part.name]; if (id) { await this.runner.store.disable(id); this.runner.cache = null; delete row.flows[part.name]; } }
     else if (["template", "role", "view"].includes(part.kind)) {
-      const type = part.kind === "template" ? "template" : part.kind === "role" ? "def_role" : "def_view";
+      const type = part.kind === "template" ? "template" : part.kind === "role" ? "def-role" : "def-view";
       const ref = row.refs[key];
       if (ref) { const cur = await this.k.records.get(chain, type, ref); if (cur && !cur.deleted_at) await this.k.records.remove(chain, type, ref, cur.version); delete row.refs[key]; }
     } else if (part.kind === "teammate" && this.ports.teammates) await this.ports.teammates.remove(chain, part.name);
