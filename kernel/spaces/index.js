@@ -66,6 +66,8 @@ export function createSpaceKernels(cfg) {
   };
   /** What making a Space writes into its log; anything else is somebody's data. */
   const MADE_EVENTS = new Set(["member.set", "owner.changed", "grant.created", "actor.added", "types.defined", "kernel.modules-list", "kernel.modules-list-reset", "member.removed", "grant.revoked", "owner.adopted"]);
+  /** Tables that hold the log's own bookkeeping and the type definitions, not somebody's data; kernel_records, kernel_attrs, kernel_changes and any table not named here are content. */
+  const BOOKKEEPING_TABLES = new Set(["kernel_events", "kernel_cursors", "kernel_flags", "kernel_types"]);
   const FILES_OF_A_SPACE = new Set(["kernel.key", "space.json", "kernel.db", "kernel.db-wal", "kernel.db-shm", "kernel.db-journal"]);
   /** Throws not_allowed unless the Space's whole database and folder hold only what making the Space wrote. */
   function verifyEmpty(/** @type {any} */ db, /** @type {string} */ d, /** @type {string} */ id) {
@@ -84,7 +86,7 @@ export function createSpaceKernels(cfg) {
       }
       // every other table (records, tasks, rooms, drive...) must be empty; the log's own bookkeeping tables are not content
       for (const t of tables) {
-        if (t === "kernel_events" || t === "kernel_cursors" || t.startsWith("sqlite_")) continue;
+        if (BOOKKEEPING_TABLES.has(t) || t.startsWith("sqlite_")) continue;
         if (db.prepare(`SELECT 1 FROM ${JSON.stringify(t)} LIMIT 1`).get()) throw no();
       }
     } catch (e) { throw e instanceof KernelError ? e : no(); }
