@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, Text } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, Text , allowsMock} from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { SpaceBadge } from "../places/badge";
 import { inScope, useScope } from "../places/scope";
 import { useSites } from "./store";
 import type { Site } from "./data";
 import { liveOf, previewOf, publishNew, SOURCES, statusOf } from "./logic.js";
+import { RealSites } from "./RealSites";
 
 const HOW: { kind: keyof typeof SOURCES; title: string; body: string; name: string }[] = [
   { kind: "github", title: "From a GitHub repo", body: "Builds on every push to the branch you pick.", name: "Referral form" },
@@ -15,7 +16,7 @@ const HOW: { kind: keyof typeof SOURCES; title: string; body: string; name: stri
   { kind: "artifact", title: "From an assistant's artifact", body: "Packages what an assistant built in a chat.", name: "Fee calculator" },
 ];
 
-export default function SitesScreen() {
+function SampleSitesScreen() {
   const scope = useScope((s) => s.scope);
   const router = useRouter();
   const { sites, setSites } = useSites();
@@ -44,4 +45,9 @@ export default function SitesScreen() {
       </Sheet>
     </Frame>
   );
+}
+
+/** The sample site in a mock build; the box's own publishing everywhere else. */
+export default function SitesScreen() {
+  return allowsMock() ? <SampleSitesScreen /> : <RealSites />;
 }

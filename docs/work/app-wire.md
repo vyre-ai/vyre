@@ -15,7 +15,7 @@ Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with n
 | /u/vault | REAL except the Held fields tab | vault.list, uses, reveal (presence), revoke. Held fields (sealed record fields): no tool lists them; Share: grants are a module's act (vault.grant) |
 | /u/drive | REAL except upload, versions, shared links | files.drive.status, list, read. Upload, version history, links: no tool on the box (vault was asked) |
 | /u/calendar | REAL, not run on a real Event type | records.types, records.list over every dated type; waits on records for the Event type's fields |
-| /u/sites, sites/[id] (sites/) | SAMPLE | publish.list, status, create, preview, plan, approve (publish.decide for the person), publish, rollback, domain.add, domain.verify, secret.grant, retire |
+| /u/sites, sites/[id] (sites/) | WIRED (4 Oct), not yet seen on a box with Publish | publish.list, status, create, preview, plan, approve (publish.decide for the person), publish, rollback, domain.add, domain.verify, secret.grant, retire |
 | /u/settings (SettingsHome) | PARTLY | rows are fixed; the space name and device count read sample shell data (shell/data.ts loadShell) |
 | /u/appearance | SAMPLE (local state) | settings.get, settings.set, settings.snapshot (appearance.theme, appearance.scheme, appearance.tokens exist) |
 | /u/settings/account, ai, assistants, notifications, updates, seeing, privacy, about | REAL | see the Settings entries below |
@@ -45,6 +45,8 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Settings, Updates, Notifications, Assistants, AI accounts: screens/settings/{real-model,real-source,real,RealMore,agents-model,RealAgents}, real.test.js (13 of 13 in screens/settings on the test box, with the existing logic test). On the dev box via `vyre call`: update.status and update.check answered (0.2.2, no newer, canApply false, auto notify), push.settings answered the kinds and a write of lesson true then false round-tripped, push.devices [], agents.list [], providers.list answered Claude signed in plus four unconnected, spaces.identity.status answered. So Updates and Notifications are seen against the real tools; Assistants has no agent on the box and AI shows only providers.
 
 - Settings, Account, Seeing, Privacy, About: screens/settings/{account-model,RealAccount}.ts(x); real.test.js now 16 of 16 on the test box. Dev box via `vyre call`: spaces.identity.status (devbox.vyre.run) and entries (this device plus a recovery code) answered in the shape the screen reads; records.types answered (no sealed fields). I did NOT call spaces.identity.code.replace on the dev box, since that would replace its recovery code. Reveal-style presence on code.replace, entry.remove and rules.* is the box's call and the app's person session answers it, not yet seen.
+
+- Sites (4 Oct): screens/sites/{real-model,real-source,real,RealSites}, real.test.js 9 of 9 (with the old logic test) on the test box. Tools: publish.list, status, create, preview, plan via the held answer, approve, publish, rollback, decide (presence), retire, domain.add/verify/remove, secret.grant/revoke, vault.list for the secret picker. Dev box has no publish module (publish.list is not a tool there), so nothing real seen; waiting on windows for Publish on testbox2.
 
 ## Doing
 - All Settings pages that are mine are wired except where the box has no tool. Waiting on platform for rules.* tools.
