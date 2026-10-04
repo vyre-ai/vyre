@@ -82,6 +82,11 @@ export async function hasIdentity(): Promise<boolean> {
   return Boolean(await get(RECORD)) && Boolean(await get(SEED));
 }
 
+/** This phone once held a name: a claimed identity, or one it lost the key of. The shared store.ts has the same name, and the install flow's recovery asks for it. */
+export async function hadIdentity(): Promise<boolean> {
+  try { return Boolean(await get(RECORD)); } catch { return false; }
+}
+
 /** Forget everything of the identity: the seed, the record and the chain. A claim that did not go through, or signing out of this name on this phone. The recovery code, kept by the person, makes a new one. */
 export async function forgetIdentity(): Promise<void> {
   const n = Number(await get(OPS + "n")) || 0;

@@ -8,7 +8,7 @@ import { tokens } from "../theme/tokens";
 import { type } from "../theme/type";
 import { Avatar } from "./Avatar";
 import { BackButton } from "./BackButton";
-import { focusData } from "./Button";
+import { Button, focusData } from "./Button";
 
 /**
  * A page: the phone header and a body. Layout branches on width only, never the platform. A tab
@@ -52,12 +52,13 @@ function PlacesButton({ name, onPress }: { name: string; onPress: () => void }) 
   );
 }
 
-/** The quiet empty state: one line, the label colour. */
-export function Empty({ text }: { text: string }) {
+/** The quiet empty state: one plain line in the label colour and, where there is a next step, one action under it. */
+export function Empty({ text, action }: { text: string; action?: { label: string; onPress: () => void } }) {
   const { color } = useTheme();
   return (
     <View style={styles.empty}>
       <Text style={[type.read, { color: color.label }]}>{text}</Text>
+      {action ? <Button kind="primary" label={action.label} onPress={action.onPress} /> : null}
     </View>
   );
 }
@@ -75,5 +76,5 @@ const styles = StyleSheet.create({
   title: { flex: 1 },
   avatarHit: { width: tokens.control.touch, height: tokens.control.touch, alignItems: "flex-end", justifyContent: "center" },
   body: { flex: 1 },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.layout.gutterPhone },
+  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: tokens.space[4], padding: tokens.layout.gutterPhone },
 });

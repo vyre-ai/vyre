@@ -137,6 +137,7 @@ export default function Now() {
   const refused = useRefused();
   const now = useMinute();
   const open = useOpen();
+  const router = useRouter();
   useTabDrawn();
   const list = useMemo(() => visibleNeeds(items, hidden), [items, hidden]);
   const glass = useGlassCards().length > 0;
@@ -163,7 +164,7 @@ export default function Now() {
           </ScrollView>
         </ScrollSignal.Provider>
       ) : list.length === 0 ? (
-        <Empty text={from === "none" ? " " : "Nothing needs you"} />
+        <Empty text={from === "none" ? "Connecting to your server" : "Nothing needs you"} action={from === "none" ? undefined : { label: "Open Chats", onPress: () => router.push("/chats") }} />
       ) : (
         <List
           items={list}

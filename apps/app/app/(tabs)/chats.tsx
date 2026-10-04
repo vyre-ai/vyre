@@ -32,7 +32,7 @@ export default function Chats() {
   return (
     <Screen title="Chats">
       {threads.length === 0 ? (
-        <Empty text={from === "none" ? " " : "No chats yet"} />
+        <Empty text={from === "none" ? "Connecting to your server" : "No chats yet"} action={from === "none" ? undefined : { label: "Start with an agent", onPress: () => router.push("/agents") }} />
       ) : (
         <List
           items={threads}
