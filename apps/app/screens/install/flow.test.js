@@ -111,3 +111,14 @@ test("the identity refusals of a pairing say what happened and that nothing was 
   assert.equal(serverSay(new Error("this was not them")), SERVER_FAILED.notThem);
   assert.equal(serverSay(new Error("the directory is unreachable")), SERVER_FAILED.directory);
 });
+
+test("a pairing refusal is decided by its code, and a denied one shows the server's own words", async () => {
+  const { serverSay, SERVER_FAILED } = await import("./flow.js");
+  for (const [code, key] of [["bad_code", "badCode"], ["bad_owner", "badOwner"], ["taken", "used"], ["busy", "busy"], ["expired", "expired"], ["unreachable", "unreachable"], ["cancelled", "cancelled"], ["cannot_check", "cannotCheck"]]) {
+    assert.equal(serverSay(Object.assign(new Error("x"), { code })), SERVER_FAILED[key], code);
+  }
+  assert.equal(serverSay(Object.assign(new Error("The app did not prove which Vyre identity it is"), { code: "denied" })), "The app did not prove which Vyre identity it is");
+  assert.equal(serverSay(Object.assign(new Error(""), { code: "denied" })), SERVER_FAILED.denied);
+  // The words that come back through a screen (already mapped) are left alone.
+  for (const k of ["badCode", "badOwner", "busy", "cancelled", "denied", "cannotCheck", "noSession"]) assert.equal(serverSay(SERVER_FAILED[k]), SERVER_FAILED[k], k);
+});

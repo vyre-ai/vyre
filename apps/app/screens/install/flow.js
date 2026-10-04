@@ -123,6 +123,13 @@ export const SERVER_FAILED = {
   unchecked: "Vyre could not check who this is right now. Nothing was paired. Try again in a minute.",
   notThem: "That device is not the one you expected, so nothing was paired. If you did not start this, nobody was given access.",
   directory: "Vyre cannot reach the names directory right now, so it cannot check this device. Nothing was paired. Try again in a minute.",
+  badCode: "That is not a code this server gave. Run the install line on your server again and use the new code.",
+  badOwner: "This server belongs to another Vyre name, so it cannot be paired to you. Nothing was paired.",
+  busy: "The server is in the middle of another pairing. Wait a minute, then try again.",
+  cancelled: "The pairing was cancelled. Nothing was paired.",
+  denied: "The server refused this pairing. Nothing was paired.",
+  cannotCheck: "The server could not check which Vyre name this is right now. Nothing was paired. Try again in a moment.",
+  noSession: "Paired, but this phone has no sign-in with the server yet. Try again.",
   abandoned: "The last pairing was not finished, so nothing was paired. Scan or paste the server's code again.",
   /** The server's own terminal says this on its side when the pairing fails. */
   serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
@@ -130,6 +137,18 @@ export const SERVER_FAILED = {
 
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
+  // wink-2's codes (relay/client/serverpair.js) decide first; the box's words are the fallback for anything else. A denied pairing says why in the server's own message.
+  const c = String(e?.code ?? "");
+  const m0 = String(e?.message ?? "").trim();
+  if (c === "bad_code") return SERVER_FAILED.badCode;
+  if (c === "bad_owner") return SERVER_FAILED.badOwner;
+  if (c === "taken") return SERVER_FAILED.used;
+  if (c === "busy") return SERVER_FAILED.busy;
+  if (c === "denied") return m0 && /\s/.test(m0) ? m0 : SERVER_FAILED.denied;
+  if (c === "expired") return SERVER_FAILED.expired;
+  if (c === "unreachable") return SERVER_FAILED.unreachable;
+  if (c === "cancelled") return SERVER_FAILED.cancelled;
+  if (c === "cannot_check") return SERVER_FAILED.cannotCheck;
   const t = `${e?.code ?? ""} ${e?.message ?? e ?? ""}`.toLowerCase();
   if (/not them|not the same person|not who|identity.*(mismatch|differ)/.test(t)) return SERVER_FAILED.notThem;
   if (/directory/.test(t)) return SERVER_FAILED.directory;
