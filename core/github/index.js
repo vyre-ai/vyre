@@ -201,7 +201,7 @@ export default {
     ctx.tool("github.accounts", {
       description: "The GitHub accounts Vyre can use: name, login and avatar, never a token.",
       input: obj({}),
-      callers: PEOPLE,
+      callers: [...PEOPLE, "module"], // connectors lists them for its own hub (names and logins, never a token)
       run: async () => accounts.all().map(a => ({ name: a.name, login: a.login, avatar_url: a.avatar_url })),
     });
 
@@ -621,10 +621,6 @@ export default {
     }
     /** A model caller (an agent over MCP); the push's secret override needs the person's own words for it. */
     function isModelCaller(meta = {}) { return String(meta.caller || "").startsWith("mcp"); }
-    /** A model works on its own session's branch only: the session id is its own thread's id (group D audit HD-7), so it cannot push, undo or redo another session's work or interrupt that session. */
-    function ownSession(session, meta = {}) {
-      if (isModelCaller(meta) && String(meta.thread || "") !== String(session)) throw fail("a model may push, undo or redo only its own session's branch", "denied");
-    }
     const prErr = (e, target) => {
       if (e && e.code === "token_invalid") ctx.events.emit("github.token-invalid", { name: target.account });
       return e;

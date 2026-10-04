@@ -40,8 +40,8 @@ export function signer(person_id = "per_alex", key_id = "dk_" + crypto.randomByt
   return {
     key_id, enrolment: { person: person_id, key_id, signer: signerKind, spki: publicKey.export({ type: "spki", format: "der" }).toString("base64") },
     /** @param {any} ch @param {string} op @param {object} fields what the person is shown */
-    proof(ch, op, fields, { life = 60_000, issued = Date.now(), nonce = crypto.randomBytes(8).toString("base64url"), tamper = false } = {}) {
-      const p = { signer: signerKind, key_id, payload_hash: payloadHash(op, ch.space, fields), decision: op, chain_hash: chainCtx(ch).chain_hash, issued_at: issued, expires_at: issued + life, nonce };
+    proof(ch, op, fields, { life = 60_000, issued = Date.now(), nonce = crypto.randomBytes(8).toString("base64url"), tamper = false, extra = {} } = {}) {
+      const p = { ...extra, signer: signerKind, key_id, payload_hash: payloadHash(op, ch.space, fields), decision: op, chain_hash: chainCtx(ch).chain_hash, issued_at: issued, expires_at: issued + life, nonce };
       const sig = crypto.sign("sha256", proofBytes(p), { key: privateKey, dsaEncoding: "ieee-p1363" });
       if (tamper) sig[0] ^= 1;
       return { ...p, signature: sig.toString("base64url") };
