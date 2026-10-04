@@ -266,6 +266,7 @@ async function startLocked(opts, root, p, release) {
     };
     // What the runner module needs from this computer: the person it belongs to and this computer's device identity ({ deviceId, deviceKey }: the id the Offers name it by and its public key).
     // The identity comes from whoever owns it (`opts.deviceIdentity`: the Wink identity list's entry for this computer, tailnet and windows); until it is given the runner says it is not connected.
+    // A session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js), so the runner module can seal it and recover it.
     // OWN-SERVER SEAL (sessions): a session on this person's own server is sealed at every turn into the home's checkpoint store (core/daemon/ownserver-host.js); the runner module reads `ownServer` off this host.
     // Keep these lines (the import, ownServerHost and the getter) when merging the runner's { member, identity() } passthrough; test/ownserver-daemon.test.js fails if they go.
     const { createOwnServerHost } = await import("./ownserver-host.js");

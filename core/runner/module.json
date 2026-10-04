@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "description": "Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspace opened by a leased key, with credentials fetched at the moment of use and a checkpoint at every turn.",
   "roles": [
-    "local"
+    "local",
+    "box"
   ],
   "requires": [],
   "does": {
@@ -22,6 +23,11 @@
         "name": "runner.start", "effect": "write",
         "summary": "start a session here: the kernel supplies its program, routes and credentials (both grants needed)",
         "reach": "person"
+      },
+      {
+        "name": "runner.recover",
+        "summary": "put an own-server session back to its last sealed turn before it is resumed",
+        "reach": "modules"
       },
       {
         "name": "runner.stop", "effect": "write",
