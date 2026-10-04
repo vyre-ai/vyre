@@ -202,8 +202,8 @@ export default {
       },
     });
 
-    /** The strength a session records from the proof that opened it (what the server verified): a passkey with user verification is `passkey` (never `enclave`), Touch ID through the pinned Capsule is `enclave`, a device key is `software`. @param {string} method */
-    const openedBy = method => (method === "passkey" ? STRENGTHS[3] : method === "touchid" || method === "capsule" ? STRENGTHS[1] : STRENGTHS[0]);
+    /** The strength a session records from the proof that opened it (what the server verified): a passkey with user verification, Touch ID through the pinned Capsule: `real`; a device key: `software`. @param {string} method */
+    const openedBy = method => (method === "passkey" || method === "touchid" || method === "capsule" ? STRENGTHS[1] : STRENGTHS[0]);
     // ---- a card for the owner's phone (one permission rule, ruling c328cd1) ----------------------------------------------------------------------------------
     // A paired device is YOU: it does admin acts with no session and no prompt. A fresh yes from a real device key is asked at three moments only (pairing a new device, a vault secret, an outward send/post/pay).
     // A browser with no key it can sign with asks the owner's PHONE for that yes: `session-ask { moment, request }` makes one card, the phone answers `session-answer { id, yes, proof }` with its own signed yes over

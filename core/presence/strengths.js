@@ -1,12 +1,14 @@
 // @ts-check
-// The one vocabulary for the strength of a person session's key (ruling 194b33c, 6410c6a), so the presence column and every module that reads it cannot drift.
-//   software            a key held in a file or a browser store: a session and nothing that needs presence on a release server
-//   enclave             an app Secure Enclave or Android keystore key the server saw attested
-//   enclave, unattested the same kind of key whose attestation the server did not verify (a sideloaded iPhone, an Android phone): counts as hardware on release (6410c6a)
-//   passkey             a web passkey with user verification
-// What the server verified decides which one a row records (the opening proof's chain, the attestation, user verification), never what an app says about its own key storage.
-export const STRENGTHS = Object.freeze(["software", "enclave", "enclave, unattested", "passkey"]);
-/** The strengths that count as a person's gesture on a release server: every one but software. */
-export const NOT_SOFTWARE = Object.freeze(new Set(["enclave", "enclave, unattested", "passkey"]));
+// The one vocabulary for the strength of a person session's key (DESIGN-one-yes): two values.
+//   software  a key held in a file or a browser store: counts only where the build takes software keys (a development build)
+//   real      a key of a real device: the Secure Enclave, an Android keystore, a passkey with user verification, Touch ID through the pinned Capsule (attested or not: ruling 6410c6a)
+// What the server verified decides which one a row records, never what an app says about its own key storage. Rows written before the words were cut name `enclave`, `enclave, unattested` or `passkey`:
+// they read as real, so nothing already stored changes meaning.
+export const STRENGTHS = Object.freeze(["software", "real"]);
+const LEGACY_REAL = Object.freeze(["enclave", "enclave, unattested", "passkey"]);
+/** @param {unknown} s @returns {"software" | "real"} */
+export const normalizeStrength = s => (String(s) === "real" || LEGACY_REAL.includes(String(s)) ? "real" : "software");
+/** The strengths that count as a person's gesture on a release server: real (and the words older rows hold). */
+export const NOT_SOFTWARE = Object.freeze(new Set(["real", ...LEGACY_REAL]));
 /** @param {unknown} s @returns {boolean} */
 export const isNotSoftware = s => NOT_SOFTWARE.has(String(s));
