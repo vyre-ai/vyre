@@ -48,6 +48,8 @@ export const ALLOW = {
     why: "the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner): the confined spawner for a Vyre-started session" },
   "core/daemon -> core/switchboard": { files: ["core/switchboard/sessions.js"], next: "ctx.call",
     why: "the router resolves which Claude Code session a call comes from" },
+  "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js"], next: "lib",
+    why: "the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js): the peer wire's session framing is the one remote path" },
   "core/files -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "Mac to box file transfer over the tailnet transport" },
   "core/files -> core/names": { files: ["core/names/tailscale.js"], next: "lib",
