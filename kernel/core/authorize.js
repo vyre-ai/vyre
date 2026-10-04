@@ -393,6 +393,7 @@ export function createAuthorizer(cfg) {
         if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") return false;
+        let wholeCover = false;
         for (const g of await cfg.grants.forSubject(actor, h, { chain, action, resource: proto, probe: true })) {
           if (g.status !== "active" || g.space !== cfg.space) continue;
           const p = segments(g.resource.prefix);
@@ -401,7 +402,10 @@ export function createAuthorizer(cfg) {
           if (!reaches) continue;
           const whole = p.length <= 2 || p[2] === "*" && p.length === 3;
           if (!whole || (g.resource.where && g.resource.where.length) || g.parent) return false;
+          wholeCover = true;
         }
+        // Uniform means every hop has a grant that reaches the whole type. No grant at all is a refusal for every row, which a total must not be the first to find out: not uniform.
+        if (!wholeCover) return false;
       }
       return true;
     } catch { return false; }

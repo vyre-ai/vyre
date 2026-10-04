@@ -25,7 +25,11 @@ const MIGRATION = `
 const FTS = "CREATE VIRTUAL TABLE IF NOT EXISTS kernel_ftf USING fts5(doc, tokenize = 'trigram case_sensitive 1')";
 const HOT_ROWS = 5000;
 const HOT_ATTRS = 5000;
-const MAX_INDEXES = 24;
+const MAX_INDEXES = 48;
+// Index slots belong to a type: a type holds at most PER_TYPE of the indexes the store makes on demand (kidx_, kq_, kg_), the least recently used one is dropped for a new shape, and a type
+// builds at most BUILDS_PER_MIN of them a minute (a build scans the type, about 0.7 s at 500,000 records), so one caller cannot push another's hot shapes out or stall the process by
+// trying shapes. A shape that finds no slot runs unindexed, which is slower and still exact.
+const PER_TYPE = 8, BUILDS_PER_MIN = 6;
 const TYPE_NAME = /^[a-z][a-z0-9_]{0,63}$/;
 const FIELD = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const RESERVED = new Set(["id", "version", "type", "created_at", "updated_at"]);
@@ -63,6 +67,29 @@ export function createSqliteStore(cfg) {
   const parse = (/** @type {any} */ r) => ({ type: r.type, id: r.id, version: r.version, data: JSON.parse(r.data), created_at: r.created_at, updated_at: r.updated_at, ...(r.deleted_at !== null && r.deleted_at !== undefined ? { deleted_at: r.deleted_at } : {}) });
   let changeCount = /** @type {any} */ (db.prepare("SELECT COALESCE(MAX(seq), 0) AS n FROM kernel_changes").get()).n;
   const indexed = new Set(/** @type {any[]} */ (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND (name LIKE 'kidx_%' OR name LIKE 'kg_%' OR name LIKE 'kq_%')").all()).map(r => r.name));
+
+  /** @type {Map<string, number>} index name -> tick of last use */ const used = new Map();
+  /** @type {Map<string, number[]>} type -> times of recent builds */ const built = new Map();
+  let tick = 0;
+  /**
+   * Is this index there, making it if the type has a slot (evicting its least recently used) and the build budget allows, and only for a caller whose read of the type was allowed.
+   * @param {string} type @param {string} name @param {string} sql @param {boolean} [allowed]
+   */
+  const slot = (type, name, sql, allowed = true) => {
+    if (indexed.has(name)) { used.set(name, ++tick); return true; }
+    if (!allowed || !TYPE_NAME.test(type)) return false;
+    const now = Date.now(), recent = (built.get(type) || []).filter(t => now - t < 60_000);
+    if (recent.length >= BUILDS_PER_MIN) return false;
+    const mine = [...indexed].filter(n => n.startsWith(`kidx_${type}_`) || n.startsWith(`kq_${type}_`) || n.startsWith(`kg_${type}_`));
+    if (mine.length >= PER_TYPE || indexed.size >= MAX_INDEXES) {
+      const pool = mine.length >= PER_TYPE ? mine : [...indexed];
+      const victim = pool.sort((a, b) => (used.get(a) || 0) - (used.get(b) || 0))[0];
+      if (!victim) return false;
+      db.exec(`DROP INDEX IF EXISTS ${victim}`); indexed.delete(victim); used.delete(victim);
+    }
+    db.exec(sql); indexed.add(name); used.set(name, ++tick); recent.push(now); built.set(type, recent);
+    return true;
+  };
 
   /** @param {string} type @returns {import("./memory.js").Table} */
   /** @type {Map<string, any>[]} every type's hot rows, for `stats` */ const caches = [];
@@ -187,14 +214,7 @@ export function createSqliteStore(cfg) {
     /** The rows of a statement as they are read, one at a time (the hot copy where there is one): a scan holds one row, never the type. */
     const rows = function* (/** @type {Iterable<any>} */ list) { for (const r of list) yield cache.get(r.id) ?? parse(r); };
     /** Make an index on a field the first time an equality filter names it: a partial expression index, used by exactly this expression. */
-    const ensureIndex = (/** @type {string} */ field) => {
-      const name = `kidx_${type}_${field}`;
-      if (indexed.has(name)) return true;
-      if (indexed.size >= MAX_INDEXES || !TYPE_NAME.test(type)) return false;
-      db.exec(`CREATE INDEX IF NOT EXISTS ${name} ON kernel_records (json_extract(data, '$.${field}')) WHERE type = '${type}'`);
-      indexed.add(name);
-      return true;
-    };
+    const ensureIndex = (/** @type {string} */ field, /** @type {boolean} */ allowed = true) => slot(type, `kidx_${type}_${field}`, `CREATE INDEX IF NOT EXISTS kidx_${type}_${field} ON kernel_records (json_extract(data, '$.${field}')) WHERE type = '${type}'`, allowed);
     return {
       get(id) { const c = cache.get(id); if (c) return keep(id, c); const r = getRow.get(type, id); return r ? keep(id, parse(r)) : undefined; },
       has(id) { return cache.has(id) || Boolean(hasRow.get(type, id)); },
@@ -210,7 +230,7 @@ export function createSqliteStore(cfg) {
         if (!plan) { counts.fell++; return null; }
         if ("error" in plan) return plan;
         counts.pushed++;
-        if (plan.index && !indexed.has(plan.index.name) && indexed.size < MAX_INDEXES) { db.exec(plan.index.sql); indexed.add(plan.index.name); }
+        if (plan.index) slot(type, plan.index.name, plan.index.sql, spec.build_index !== false);
         const got = /** @type {any[]} */ (db.prepare(plan.sql).all(...plan.args));
         const mine = got.slice(0, plan.limit).map(r => cache.get(r.id) ?? parse(r));
         return { rows: mine, ...(got.length > plan.limit && mine.length ? { next_cursor: encodeCursor(mine[mine.length - 1], spec.sort) } : {}) };
@@ -220,7 +240,7 @@ export function createSqliteStore(cfg) {
         const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
         if (!plan) { counts.fell++; return null; }
         counts.pushed++; counts.agg++;
-        if (plan.index && !indexed.has(plan.index.name) && indexed.size < MAX_INDEXES) { db.exec(plan.index.sql); indexed.add(plan.index.name); }
+        if (plan.index) slot(type, plan.index.name, plan.index.sql, spec.build_index !== false);
         // Without table statistics SQLite prefers the primary key to the covering index; the index was made for exactly this grouping, so it is named.
         const sql = plan.index && indexed.has(plan.index.name) ? plan.sql.replace("FROM kernel_records WHERE", `FROM kernel_records INDEXED BY ${plan.index.name} WHERE`) : plan.sql;
         const got = /** @type {any[]} */ (db.prepare(sql).all(...plan.args));
@@ -230,7 +250,7 @@ export function createSqliteStore(cfg) {
         })).sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1));
       },
       candidates(spec) {
-        const eq = equalities(spec && spec.filter).filter(([f]) => ensureIndex(f));
+        const eq = equalities(spec && spec.filter).filter(([f]) => ensureIndex(f, spec.build_index !== false));
         if (!eq.length || !TYPE_NAME.test(type)) return this.values();
         const where = eq.map(([f]) => `json_extract(data, '$.${f}') = ?`).join(" AND ");
         return rows(db.prepare(`SELECT * FROM kernel_records WHERE type = '${type}' AND ${where}`).iterate(...eq.map(([, v]) => v)));
