@@ -10,7 +10,11 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Drive: RealDrive.tsx, source.ts, real-model.ts, real.ts, test real.test.js (8 of 8 in screens/drive on the test box). Against a real files module (a scratch vyred of the dev checkout on the dev machine, with a folder as files.roots and files.drive.shares, since the dev box has no /work and no folder; removed after): files.drive.status, list (root and a subfolder) and read answered in exactly the shapes the screen reads, a text file decoded to its words by the app's own decoder, and a ".." path refused as bad_input. Then on chat's dev box itself (share "docs", 4 Oct, after chat added the folder): files.drive.list at the root gave 3 entries (Harlow intake and Northwind as folders, README.txt 29 B text), the subfolder listed checklist.txt, files.drive.read returned its 77 bytes as text/plain (done), and a ".." path was refused. Earlier, not on chat's dev box itself: its share "projects" points at /work, which does not exist there (not_available).
 - Calendar (4 Oct, lead's new job): screens/calendar/ (logic.js, CalendarScreen.tsx, logic.test.js 7 of 7 on the test box), route app/u/calendar.tsx. A space view in day, week and month over every type's date fields plus Event, from the Store (records.list per type). Not yet run on the dev box (records tools not on its checkout).
 
+- Settings (4 Oct): subscreens today: Home (SettingsHome), Account and recovery (AccountScreen), Appearance (AppearanceScreen, native-core), Notifications and Updates and About (MoreScreens), AI accounts (AiScreen), What my assistants can see and Privacy and sealing (PrivacyScreens), Assistants (AssistantsScreen), Devices (chat), Customize (native-core), and new Rules. Mine to wire: all but Devices, Customize and Appearance. Tools on the dev box for them: Account spaces.identity.*; AI providers.list and agents.usage; Assistants agents.list; Notifications push.settings and push.devices; Updates update.status, check, apply; Seeing and Privacy: still to find. Order: Rules, Updates, Notifications, Assistants, AI, Account, Seeing and Privacy, About.
+- Rules: screens/rules/ (model.ts, source.ts, real.ts, RulesScreen.tsx, model.test.js 4 of 4 on the test box), route app/u/settings/rules.tsx, a Rules row in settingsGroups. Tool names are the kernel's rule actions; platform has not registered them as tools (nothing under core/ calls grants.rules), so nothing real was seen. Asked platform and kernel-2 in CHAT.md.
+
 ## Doing
+- Settings pages after Rules (Updates next).
 - Calendar: waiting on records for the Event type's exact fields, and on the dev box being updated to work/kernel to run it.
 
 ## Next
@@ -23,3 +27,4 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 
 - records: exact Event fields, and whether Event is in every new space.
 - native-core: a nav entry to /u/calendar, "today" on Now from `today()` in screens/calendar/logic.js, adapter TOOLS renamed to platform's records.* names.
+- platform and kernel-2: register rules.list/set/propose/accept/dismiss/remove as gateway tools (and say where a refusal carries decision.rule), or tell me the real names.

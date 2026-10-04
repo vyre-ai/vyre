@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, settings, 4 Oct): Rules at /u/settings/rules (app-wire). The space's standing rules grouped as Never, Drafts only and Always ask, each shown as the kernel's own plain-words view; proposals waiting for an owner with Accept and Turn down; an owner adds or removes a rule (presence), anyone else proposes one. A draft is checked (action names, who it binds, who approves) before the owner's proof is asked. `refusedBy` names the rule that refused, held or drafted an act. Built on the kernel's rule actions (rules.list, set, propose, accept, dismiss, remove); the box has no such tools registered yet, so it shows "Rules did not answer" there.
+
 - feat(0.3, calendar, 4 Oct): the space calendar at /u/calendar (app-wire). Every record with a date on it, by day, week or month: an Event (read by its fields, start and end), and any other type once for each date or datetime field (a matter's closing date, a task's due date). A tap opens the record; a multi-day or past-midnight event shows on each day it covers. Reads the Store, so it runs on records.list on a real vyred; `today(items, now)` in screens/calendar/logic.js is what Now can show. Not yet: sync with an outside calendar and creating an Event here.
 
 - feat(0.3, real Vyre, 4 Oct): Drive reads the real vyred (app-wire). The box's offered folders (files.drive.status), browsed by path a page at a time (files.drive.list), and a text file opened from its first chunk (files.drive.read); a refused folder reads as "not available", sharing to a computer says why it is off. There is no upload or version history here: the box has no tool for either yet. The sample files stay behind a mock build.
