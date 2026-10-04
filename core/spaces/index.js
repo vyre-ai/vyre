@@ -403,6 +403,9 @@ export default {
     tool("spaces.identity.status", "This device's Vyre identity: its name, its permanent id and its place on the list. No key is ever shown.", obj(),
       async () => publicIdentity(identity.status()));
 
+    tool("spaces.identity.id", "This device's permanent identity id, or null when none is claimed yet. The one place the id is kept is this module; pairing and install read it here, never keep their own. For modules.", obj(),
+      async () => { const st = identity.status(); return { id: st.exists && !st.pending ? st.id : null }; }, { internal: true });
+
     tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
       obj({ name: str, password: str, deviceLabel: str }, ["name"]), async i => {
         const st = identity.status();

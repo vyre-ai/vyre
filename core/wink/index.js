@@ -243,8 +243,15 @@ export function createWink(inject = {}) {
 
     // ---- pairing: devices belong to the identity (pairing.js) ----
     const ownerMeta = () => { try { const r = /** @type {any} */ (db.prepare("SELECT v FROM wink_meta WHERE k = 'owner'").get()); return r ? JSON.parse(r.v) : null; } catch { return null; } };
-    // The identity this box answers for: the one that adopted it (wink.server.adopt), else the one derived from its own route.
-    const owner1 = async () => { const m = ownerMeta(); return m && m.identity ? String(m.identity) : (await owner0()).id; };
+    // The identity this box answers for: the one that adopted it (wink.server.adopt), else the person's identity this device holds (the spaces module keeps the one identity id: ONE identity
+    // per person, never a second one here), else, before any is claimed, the one derived from its own route.
+    const owner1 = async () => {
+      const m = ownerMeta();
+      if (m && m.identity) return String(m.identity);
+      const r = /** @type {any} */ (typeof ctx.call === "function" ? await ctx.call("spaces.identity.id", {}).catch(() => null) : null);
+      if (r && r.data && typeof r.data.id === "string" && r.data.id) return r.data.id;
+      return (await owner0()).id;
+    };
     /** What this box calls its own space: its name, else the name the app gave the space that adopted it, never "this space". */
     const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
     const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
