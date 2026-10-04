@@ -1,3 +1,4 @@
+import { ApprovalSheet } from "./ApprovalSheet";
 import { useEffect } from "react";
 import { Platform } from "react-native";
 import { usePathname, useRouter } from "expo-router";
@@ -43,6 +44,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   return (
     <Shell {...nav} current={path} onNavigate={(href) => router.push(href as never)} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
       {children}
+      <ApprovalSheet />
     </Shell>
   );
 }

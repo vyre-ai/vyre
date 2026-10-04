@@ -2,18 +2,95 @@
   "name": "appearance",
   "version": "0.3.0",
   "description": "The theme preset, the scheme and the design tokens as hub settings (ADR 0035), checked before they are saved and resolved per device for every surface.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "reads": ["appearance.check", "appearance.resolve"], "tools": ["appearance.check", "appearance.presets", { "name": "appearance.resolve", "projectArg": "project" }] },
-  "watches": { "emits": ["appearance.changed"] },
-  "shows": { "cli": [] },
+  "does": {
+    "reads": [
+      "appearance.check",
+      "appearance.resolve"
+    ],
+    "tools": [
+      "appearance.check",
+      "appearance.presets",
+      {
+        "name": "appearance.resolve",
+        "projectArg": "project"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "appearance.changed"
+    ]
+  },
+  "shows": {
+    "cli": []
+  },
   "needs": {},
   "teaches": {},
   "settings": [
-    {"key": "appearance.theme", "group": "appearance", "label": "Theme", "help": "The preset: Vyre's own, or one a module installs. Each has a dark and a paper scheme.", "type": "string", "default": "vyre", "levels": ["account", "device"], "apply": "live",
-      "choicesFrom": {"tool": "appearance.presets", "read": "presets"}, "check": {"tool": "appearance.check"}},
-    {"key": "appearance.scheme", "group": "appearance", "label": "Scheme", "help": "Follow the device, or always dark or paper.", "type": "enum", "enum": ["system", "dark", "paper"], "labels": {"system": "Follow the device", "dark": "Dark", "paper": "Paper"}, "default": "system", "levels": ["account", "device"], "apply": "live"},
-    {"key": "appearance.tokens", "group": "appearance", "label": "Design tokens", "help": "A partial tokens file merged over the preset. Checked before it is saved; the whole change is refused, naming the failing pair.", "type": "object", "default": {}, "levels": ["account", "device"], "apply": "live", "advanced": true,
-      "check": {"tool": "appearance.check"}}
+    {
+      "key": "appearance.theme",
+      "group": "appearance",
+      "label": "Theme",
+      "help": "The preset: Vyre's own, or one a module installs. Each has a dark and a paper scheme.",
+      "type": "string",
+      "default": "vyre",
+      "levels": [
+        "account",
+        "device"
+      ],
+      "apply": "live",
+      "choicesFrom": {
+        "tool": "appearance.presets",
+        "read": "presets"
+      },
+      "check": {
+        "tool": "appearance.check"
+      }
+    },
+    {
+      "key": "appearance.scheme",
+      "group": "appearance",
+      "label": "Scheme",
+      "help": "Follow the device, or always dark or paper.",
+      "type": "enum",
+      "enum": [
+        "system",
+        "dark",
+        "paper"
+      ],
+      "labels": {
+        "system": "Follow the device",
+        "dark": "Dark",
+        "paper": "Paper"
+      },
+      "default": "system",
+      "levels": [
+        "account",
+        "device"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "appearance.tokens",
+      "group": "appearance",
+      "label": "Design tokens",
+      "help": "A partial tokens file merged over the preset. Checked before it is saved; the whole change is refused, naming the failing pair.",
+      "type": "object",
+      "default": {},
+      "levels": [
+        "account",
+        "device"
+      ],
+      "apply": "live",
+      "advanced": true,
+      "check": {
+        "tool": "appearance.check"
+      }
+    }
   ]
 }

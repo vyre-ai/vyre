@@ -7,7 +7,7 @@
 
 export const CSP = [
   "default-src 'none'", "script-src 'self'", "style-src 'self'", "img-src 'self' data: blob:", "font-src 'self'",
-  "connect-src 'self' https://relay.vyre.run wss://relay.vyre.run https://*.ts.net wss://*.ts.net", "manifest-src 'self'", "worker-src 'self'",
+  "connect-src 'self' https://relay.vyre.run wss://relay.vyre.run https://*.ts.net wss://*.ts.net https://names.vyre.run", "manifest-src 'self'", "worker-src 'self'",
   "frame-ancestors 'none'", "base-uri 'none'", "form-action 'none'",
 ].join("; ");
 

@@ -407,17 +407,27 @@ export function createRecords(cfg) {
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
     const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, redact, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain), ...(attrs ? { attrs } : {}) };
     intents.set(intent.id, intent);
+    // One database transaction for the record and its event (built-in store only): they commit together, one fsync, or not at all. It spans only steps that wait on the microtask queue.
+    const tx = cfg.unit && typeof store.undo === "function" ? await cfg.unit.begin() : null;
+    /** Commit the unit; a commit that fails takes the record back out of memory and says so. */
+    const finishTx = async () => {
+      if (!tx) return;
+      try { tx.commit(); } catch (e) { try { await store.undo(type, id, before); } catch { /* the store is reloaded from disk at the next start */ } throw new KernelError("unavailable", "the record and its event could not be committed", String(e && /** @type {any} */ (e).message)); }
+    };
     let rec;
+    try {
     try { rec = await run(); }
     catch (e) {
       const err = mapError(e);
       // A definite refusal means nothing happened. A lost answer (unavailable) may mean it did: the intent stays open for recovery.
       if (REFUSED.has(err.code)) { intent.state = "compensated"; retire(intent); }
+      await finishTx();
       throw err;
     }
     if (rec.id !== id || rec.type !== type) {
       intent.state = "compensated"; retire(intent);
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
+      await finishTx();
       throw new KernelError("id_mismatch", "the store did not keep the id it was given");
     }
     // The store is not trusted to say what it wrote: compare what it returned with what this call asked for (K2-5).
@@ -427,11 +437,20 @@ export function createRecords(cfg) {
       intent.state = "unresolved";
       try { if (op === "create") await store.remove(type, id, rec.version); } catch { /* best effort */ }
       try { log.append(chain, { type: "store.disagreed", sv: 1, subject: u, data: { operation: op, expected: expect, got, version: rec.version } }, { decision: d.decision }); } catch { /* the refusal stands */ }
+      await finishTx();
       throw new KernelError("store_disagreed", "the store's answer does not match what was asked, so nothing was recorded as done");
     }
-    emit(chain, intent, rec, before, d.decision, false);
+    try { emit(chain, intent, rec, before, d.decision, false); }
+    catch (e) {
+      // The event was refused: with a unit, the record goes with it (disk rolled back, memory taken back); without one the intent stays open for recovery as before.
+      if (tx) { tx.rollback(); try { await store.undo(type, id, before); } catch { /* reloaded from disk at the next start */ } intent.state = "compensated"; retire(intent); }
+      throw e;
+    }
+    if (attrs) kattrs.set(u, attrs);
     // The stage was entered: one event says so (Flow triggers `enters-stage` read it), then the tasks side is told (below).
     if (/** @type {any} */ (stage).entered) { try { log.append(chain, { type: "record.stage-entered", sv: 1, subject: u, data: { type, id, stage: /** @type {any} */ (stage).entered.stage }, vis: "subject", red: "internal" }, { decision: d.decision }); } catch { /* the write stands; the entry is also reported to onStageEnter */ } }
+    await finishTx();
+    } finally { if (tx) tx.abandon(); }
     // The stage was entered: tell the tasks side to create the stage's task templates for this record (best effort; the write stands).
     if (/** @type {any} */ (stage).entered && cfg.onStageEnter) { try { await cfg.onStageEnter({ record: u, ...(/** @type {any} */ (stage).entered), chain }); } catch { /* the stage rule retries on the next move */ } }
     return shape(chain, rec, lim);
@@ -463,7 +482,6 @@ export function createRecords(cfg) {
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
     const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
-    kattrs.set(urn(type, id), attrs);
     return rec;
   }
 
@@ -519,6 +537,14 @@ export function createRecords(cfg) {
       await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
       const readDec = await countRead(chain, type);
+      // When every row of the type gets this chain's answer (rowUniform: the grants cover the whole type, no rule or room or privileged record can tell two rows apart) every row the store
+      // returns is allowed, so the store's own page and cursor are the answer: no row is asked about, and no second page is read to look ahead.
+      if (readDec && !vs && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+        let p;
+        try { p = await store.query(type, { ...spec, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { throw mapError(e); }
+        const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
+        return { rows: await withComputed(chain, type, p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => ({ rec: shape(chain, r, lim), lim }))), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+      }
       let cursor = spec.page.cursor, out = [], next;
       /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
       for (let pages = 0; pages < 10; pages++) {
@@ -598,6 +624,28 @@ export function createRecords(cfg) {
       for (const t of spec.types || []) checkType(t);
       spec = checkPage(spec);
       const vs = await viewersOf(chain);
+      // Row-uniform on every type searched (see query): the store's page and cursor are the answer, no row is asked about and no page is read ahead.
+      if (!vs && Array.isArray(spec.types) && spec.types.length && spec.types.length <= 8 && typeof authorizer.rowUniform === "function") {
+        /** @type {Map<string, any>} */ const decs = new Map();
+        for (const t of spec.types) {
+          const d = await countRead(chain, t);
+          if (!d || hasPrivileged(t) || !(await authorizer.rowUniform({ chain, action: "records.read", type: t }))) { decs.clear(); break; }
+          decs.set(t, d);
+        }
+        if (decs.size === spec.types.length) {
+          let u;
+          try { u = await store.search(spec); } catch (e) { throw mapError(e); }
+          const out = [];
+          for (const h of u.rows) {
+            const d = decs.get(h.type);
+            if (!d) continue;
+            const limited = allowList(d) !== null || ((await hiddenFields(chain, h.type)) || new Set([1])).size > 0;
+            const { snippet: _s, ...bare } = h;
+            out.push(limited ? bare : h);
+          }
+          return { rows: out, ...(u.next_cursor ? { next_cursor: u.next_cursor } : {}) };
+        }
+      }
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
       const words = String(spec.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
