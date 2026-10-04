@@ -238,6 +238,7 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
   const names = replies.get(2).result.tools.map(x => x.name);
   for (const n of ["planner_add", "planner_list", "planner_agenda"]) assert.ok(names.includes(n), n);
   assert.equal(replies.get(1).result.instructions.includes("planner_add"), true, "Claude is told to make a promised reminder real");
+  assert.equal(replies.get(1).result.instructions.includes("only this session's project"), true, "Claude says plainly that it is not granted yet");
   const out = id => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
   const rem = out(3);
   assert.equal(rem.kind, "reminder");

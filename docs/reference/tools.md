@@ -289,7 +289,7 @@ Do one thing in an app that sends, posts or pays as the person. Every call needs
   - `action` string, required: One of the app's actions, as apps.list and errors name them.
   - `app` string, required: App name or bundle id: Clock, Notes, Reminders, Weather.
   - `args` object: The action's arguments.
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 - Needs a person present.
 
 ### `apps.setup`
