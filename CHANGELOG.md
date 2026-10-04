@@ -2,6 +2,10 @@
 
 Newest first. Every change to code lands here in the same commit. A new dependency says why.
 
+## Device-first pairing leaves the device usable (wink-2)
+
+The pick of the three words at a fresh server now records the pairing device as its owner's (phone, computer or web, with its key and where the key lives), enrols its key, makes its paired-session grant and enrols it in the home space. The device can then sign in (start-paired) and call the server's tools and kernel over a Wink peer session (`wink.sessionFor`, `wink.remoteKernel`). The daemon now composes the relay's peer door (core/daemon/peer-door.js).
+
 ## Unreleased
 
 - fix(hands): the click guard matches the whole name and vetoes grant, accept, send and leave words anywhere in it (HD-6b); a page's own role no longer makes a control observable, and a native submit or a consent, checkout or deletion link is consequential. presence.enroll and agents.rollover list `module` so the relay's pairing-time enrol and the assistant's daily roll reach them with no person as original caller.
