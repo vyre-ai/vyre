@@ -1,5 +1,34 @@
 # app-wire
 
+## INVENTORY: what is real and what is still sample (4 Oct, from the code at work/app-wire d5965808d; "seen" means a call was run on the dev box, not that the screen was walked)
+Legend: REAL = reads the box through `call`/`send` (or the Store adapter) with no sample data outside a mock build. PARTLY = real in part, the rest named. SAMPLE = still sample data.
+
+| Route (screens) | Status | Tools it calls, or would call |
+|---|---|---|
+| /u/now, now/doing, now/needs, task/[id] (now/) | REAL (native-core), unwalked by me | tasks.list, tasks.get, tasks.request, tasks.decide (presence), tasks.move, tasks.submit, records.me; Now's calendar from records.list |
+| /u/records/[type], record/[id] (records/, ui/views) | REAL (native-core) | records.types, list, get, create, update, define, sees-as, seal-put, reveal (presence), events |
+| /u/projects, project/[id] (projects/) | PARTLY | Store: records of the types the view defs mark as holding work (matter, project, trip by NAME in deck/ui/view-defs.js); a space with other type names shows none. Next: projects.list (box projects: folders, threads) is a different thing and is not shown |
+| /u/flows, flows/[id] | REAL | flows.list, graph, get, card, approve (presence), runs, run, start, retry, pause, resume |
+| /u/kits, kits/[id], kit update (flows/KitsScreen, KitUpdateScreen) | SAMPLE | flows.kit.list, flows.kit.card, flows.kit.propose, flows.kit.remove |
+| /u/engineer (flows/EngineerScreen) | SAMPLE | agents.ask to the Engineer, flows.compile-text, flows.define, flows.card |
+| /u/memory | REAL | memory.facts, correct, uncorrect, ask, graph, pin, mute, corrections |
+| /u/vault | REAL except the Held fields tab | vault.list, uses, reveal (presence), revoke. Held fields (sealed record fields): no tool lists them; Share: grants are a module's act (vault.grant) |
+| /u/drive | REAL except upload, versions, shared links | files.drive.status, list, read. Upload, version history, links: no tool on the box (vault was asked) |
+| /u/calendar | REAL, not run on a real Event type | records.types, records.list over every dated type; waits on records for the Event type's fields |
+| /u/sites, sites/[id] (sites/) | SAMPLE | publish.list, status, create, preview, plan, approve (publish.decide for the person), publish, rollback, domain.add, domain.verify, secret.grant, retire |
+| /u/settings (SettingsHome) | PARTLY | rows are fixed; the space name and device count read sample shell data (shell/data.ts loadShell) |
+| /u/appearance | SAMPLE (local state) | settings.get, settings.set, settings.snapshot (appearance.theme, appearance.scheme, appearance.tokens exist) |
+| /u/settings/account, ai, assistants, notifications, updates, seeing, privacy, about | REAL | see the Settings entries below |
+| /u/settings/rules | WIRED, no tools on the box | rules.list, set, propose, accept, dismiss, remove (kernel has them, no gateway tools yet) |
+| /u/settings/customize, customize/[type] | SAMPLE, native-core is on it | records.types, records.define |
+| /u/settings/devices, device/[id], /u/access, /u/wink/* (devices/) | PARTLY (chat) | relay.devices.list, spaces.list, wink.pair.targets, wink.phone.pairing, wink.* ; Spaces, lend and some device rows are MOCK-only |
+| /u/spaces, /u/install/* (spaces/, install/) | PARTLY (chat) | spaces.list, create, status, resume, setup.save, setup.claim, identity.*, invites.*; teammates and setup-elsewhere read sample data only in a mock build |
+| Shell: space switcher, nav, me (shell/UiShell, shell/data.ts) | SAMPLE | spaces.list, records.me, spaces.identity.status |
+
+Sheets and dialogs: Vault Reveal (REAL: the box asks for presence, the person session answers), Face ID sheets on Drive links and Memory-adjacent sample pages (SAMPLE, in the mock Drive and Vault only), Rules add (WIRED), Account new code (REAL, shown once), Calendar none, Flow approve (REAL, presence), Record seal and Add a field sheets (REAL via records.seal-put and records.define), Pairing and install sheets (chat's).
+Known gaps with no tool behind them: Vault Held fields and Share; Drive upload, versions and shared links; assistant autonomy and per-provider budgets; privacy defaults and retention; PIN on the recovery code.
+
+
 ## Scope
 Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a run's record) and Drive screens to a real vyred through the app's box connection (src/api/box call/send, POST /v1/tools/<name>). No new transport. The sample world stays behind EXPO_PUBLIC_VYRE_MOCK=1. Branch work/app-wire off work/ui 5832dde23; native-core merges it.
 
