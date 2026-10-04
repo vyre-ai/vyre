@@ -56,7 +56,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
-| [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 6 | 3 | cli |
+| [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 20 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
@@ -544,8 +544,8 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/pluginagent`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `agents`
-- Tools: [6](tools.md#pluginagent), 1 of them only for other modules
-- Emits: [3 events](events.md#pluginagent)
+- Tools: [9](tools.md#pluginagent), 2 of them only for other modules
+- Emits: [4 events](events.md#pluginagent)
 - Shows on: cli
 - Needs kernel: `{"actions":[]}`
 
