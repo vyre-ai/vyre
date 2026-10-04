@@ -788,14 +788,14 @@ export function createPairing(o) {
       const pr = input && input.proof && typeof input.proof === "object" ? input.proof : null;
       // a server installed with no pair-to is not waiting for anyone: its refusals say what was missing, not whom it waits for
       const shownName = String((input && input.owner && input.owner.name) || to).slice(0, 48);
-      if (!pr || typeof pr.eid !== "string" || typeof pr.sig !== "string" || pr.eid.length > 64 || pr.sig.length > 200) throw fail("denied", words(open ? "pairNeedsIdentity" : "pairNeedsProof"));
+      if (!pr || typeof pr.eid !== "string" || typeof pr.sig !== "string" || pr.eid.length > 64 || pr.sig.length > 200) throw fail(open ? "denied_no_proof" : "denied", words(open ? "pairNeedsIdentity" : "pairNeedsProof"));
       if (typeof o.identityEntry !== "function") throw fail("denied", words("pairCannotProve"));
       // A fresh server has never seen this identity's chain: the app says the Vyre name it claims (`owner.vyre`) and the port reads that name's chain from the names directory, pinned and verified, and
       // keeps it only if the chain is the claimed id's. The directory out of reach is its own answer, never a "not them", and nothing is paired on a proof that could not be checked.
       const claimed = input.owner && typeof input.owner.vyre === "string" ? input.owner.vyre : undefined;
       const e = await Promise.resolve(o.identityEntry(to, pr.eid, claimed)).catch((/** @type {any} */ err) => (err && err.code === "unreachable" ? { unreachable: true } : null));
       if (e && e.unreachable) throw fail("unavailable", words("pairCannotCheckNow"));
-      const notThem = () => fail("denied", words(open ? "pairNotProven" : "pairWrongIdentity", open ? { name: shownName } : { name: to }));
+      const notThem = () => fail(open ? "denied_wrong_proof" : "denied", words(open ? "pairNotProven" : "pairWrongIdentity", open ? { name: shownName } : { name: to }));
       if (!e || e.eid !== pr.eid || typeof e.pub !== "string") { ctx.log(`wink: the identity proof named an entry that ${to} does not have${claimed ? " in the directory" : ""}`); throw notThem(); }
       if (!verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig)) { ctx.log("wink: the identity proof's signature did not match this pairing"); throw notThem(); }
       return String(e.identity || to);
@@ -870,7 +870,7 @@ export function createPairing(o) {
           // identity's, and a names directory out of reach each refuse in their own words, and nothing is owned. (`requireProof: false` is a unit-test seam.)
           else if (needProof || input.proof) {
             const claimed = input.owner && input.owner.kind === "identity" ? String(input.owner.id) : String(input.identity || "");
-            if (!claimed) { dropLater(caller); throw fail("denied", words("pairNeedsIdentity")); }
+            if (!claimed) { dropLater(caller); throw fail("denied_no_proof", words("pairNeedsIdentity")); }
             if (typeof o.identityEntry !== "function") { dropLater(caller); throw fail("denied", words("pairCannotProve")); }
             try { proven = await proveIdentity(claimed, input, caller, true); } catch (e) { dropLater(caller); throw e; }
           }

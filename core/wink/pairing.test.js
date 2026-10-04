@@ -1433,8 +1433,8 @@ test("owner needs a verified proof: none, another identity's, and an unreachable
   const base = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME };
   const box = "Qm94S2V5";
   const asked = async (input, caller = "device:app1") => w.tools.get("wink.server.adopt").run(input, { caller });
-  await assert.rejects(() => asked(base), e => e.code === "denied" && /did not prove which Vyre identity/.test(e.message) && !/waiting to pair/.test(e.message));
-  await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: crypto.sign(null, pairToMessage(box, "other"), kp.privateKey).toString("base64url") } }), e => e.code === "denied" && /did not prove it/.test(e.message) && !/waiting to pair/.test(e.message));
+  await assert.rejects(() => asked(base), e => e.code === "denied_no_proof" && /did not prove which Vyre identity/.test(e.message) && !/waiting to pair/.test(e.message));
+  await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: crypto.sign(null, pairToMessage(box, "other"), kp.privateKey).toString("base64url") } }), e => e.code === "denied_wrong_proof" && /did not prove it/.test(e.message) && !/waiting to pair/.test(e.message));
   down = true;
   await assert.rejects(() => asked({ ...base, proof: { eid: "e1", sig: sign(box, "app1") } }), e => /cannot check who is asking right now/.test(e.message));
   down = false;

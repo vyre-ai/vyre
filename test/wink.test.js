@@ -1374,12 +1374,14 @@ test("owning a server needs the identity proof checked against the directory: th
   assert.equal(ok.w.d.kernel.id.owner, ident.id, "the proven identity is the home's owner");
   // no proof at all: refused, and a server installed with no pair-to is not waiting for anyone
   const none = await attemptPairing(t, ident, { sign: null });
+  assert.equal(none.result.err && none.result.err.code, "denied_no_proof");
   assert.match(String(none.result.err && none.result.err.message), /did not prove which Vyre identity/);
   assert.doesNotMatch(String(none.result.err && none.result.err.message), /waiting to pair/);
   assert.equal((await none.w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false);
   // another identity's key on the claimed identity's name: not them
   const rogue = crypto.generateKeyPairSync("ed25519");
   const bad = await attemptPairing(t, ident, { sign: async m => ({ eid: "e".repeat(26), sig: crypto.sign(null, Buffer.from(m), rogue.privateKey).toString("base64url") }) });
+  assert.equal(bad.result.err && bad.result.err.code, "denied_wrong_proof");
   assert.match(String(bad.result.err && bad.result.err.message), /did not prove it/);
   assert.equal((await bad.w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false);
   // the directory out of reach: said plainly, nothing paired
@@ -1403,12 +1405,12 @@ test("an owned server: a second device with no owner presence is granted nothing
   assert.equal((await f.w.d.registry.call("wink.device.record", { id: "zzzzzzzzzzzzzzzz" }, "module:presence")).data, null);
 });
 
-test("sessionFor signs the device in by itself when a call needs the person: no manual start-paired, and a lapsed session is made again", async t => {
+test("sessionFor signs the device in by itself when a call needs the person (no manual start-paired); a session the server ended is refused with the server's own reason", async t => {
   const f = await pairFreshServer(t);
   const links = linksFor(t, f);
   const session = links.sessionFor("srv");
   assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id), "the first call needed the person: the device signed in and the call went through");
-  // the server ends the device's session (sign out everywhere): the next call signs in again
-  assert.ok((await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink")).data.ended >= 0);
-  assert.ok(JSON.stringify(await session.call("records.me", {})).includes(f.owner.id));
+  // the grant is one use: a device whose session the server ended (sign out everywhere) is refused with the server's own reason, never a bare person_session_required
+  assert.ok((await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink")).data.ended >= 1);
+  await assert.rejects(() => session.call("records.me", {}), e => /could not sign in to the server/.test(e.message));
 });
