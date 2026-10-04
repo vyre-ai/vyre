@@ -50,7 +50,6 @@ Listens for: `floor.wrote`, `thread.deleted`
 | Event | Fields |
 | --- | --- |
 | `assistant.briefed` | `day`, `text` |
-| `assistant.glanced` | `day` |
 | `assistant.rolled` | `day`, `seeded`, `thread` |
 | `push.proactive` | built in a variable before the emit; see the source |
 
@@ -451,6 +450,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `pairing-window.closed` | `reason`, `window` |
 | `pairing-window.opened` | `window` |
 | `pairing-window.renewed` | `window` |
+| `pairing.abandoned` | `device` |
 | `pairing.pending` | `device`, `fingerprint`, `gate`, `name`, `via` |
 | `pairing.rejected` | `device`, `window` |
 | `pairing.requested` | `device`, `fingerprint`, `name`, `window` |

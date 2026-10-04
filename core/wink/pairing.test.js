@@ -1375,9 +1375,12 @@ test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with n
   await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id: "NOT-A-PERSON-ID; rm -rf", name: "Alex" }, identity: "x" }), e => e.code === "bad_input");
   await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "per_aaaa", name: "Alex" } }), e => e.code === "bad_input", "a space owner needs a space id");
   assert.equal(w.p.meta.get("owner"), null, "nothing stored for a malformed id");
-  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to
+  // a proof by a key that is not on that identity's list is refused at once, with no --pair-to (the entry is known, the signature is not its)
   const w2 = world({ confirm: true, identityEntry: r.identityEntry });
   await assert.rejects(() => adoptAs(w2, "device:app1", { ...ASKED, proof: r.proof("app1", r.other.privateKey) }), e => e.code === "denied");
+  // an identity the directory does not know (an entry it cannot find) is left to the three words alone, not refused
+  const w2b = world({ confirm: true, identityEntry: async () => null });
+  assert.equal((await adoptAs(w2b, "device:app1", { ...ASKED, proof: { eid: "eid-unknown", sig: "x".repeat(86) } })).pending, true);
   assert.equal(w2.p.meta.get("owner"), null);
   // the right proof: the question is still asked (the person's yes stays the check), then the name is stored clean
   const w3 = world({ confirm: true, identityEntry: r.identityEntry });

@@ -785,6 +785,14 @@ export function createPairing(o) {
       if (!verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig)) throw fail("denied", words("pairWrongIdentity", { name: to }));
       return String(e.identity || to);
     };
+    /** A proof offered with no --pair-to: checked when the directory knows the identity's entry (a bad signature is refused), and left to the three words alone when it does not (the directory could not be read). */
+    const proveIdentityIfKnown = async (/** @type {string} */ id, /** @type {any} */ input, /** @type {string} */ caller) => {
+      const pr = input && input.proof && typeof input.proof === "object" ? input.proof : null;
+      if (!pr || typeof pr.eid !== "string" || typeof o.identityEntry !== "function") return "";
+      const e = await Promise.resolve(o.identityEntry(id, pr.eid)).catch(() => null);
+      if (!e) return "";
+      return proveIdentity(id, input, caller);
+    };
     const boxKey = async () => {
       const r = /** @type {any} */ (await ctx.call("relay.route.id", {}));
       const box = r && r.data && r.data.box;
@@ -844,7 +852,7 @@ export function createPairing(o) {
           let proven = "";
           if (to) { try { proven = await proveIdentity(to, input, caller); } catch (e) { dropLater(caller); throw e; } }
           // A proof offered on a server with no --pair-to is checked too (SP-1): the claimed identity must be the one the key speaks for. No proof is the words check alone.
-          else if (input.proof && input.owner && input.owner.kind === "identity" && typeof o.identityEntry === "function") { try { proven = await proveIdentity(String(input.owner.id), input, caller); } catch (e) { dropLater(caller); throw e; } }
+          else if (input.proof && input.owner && input.owner.kind === "identity" && typeof o.identityEntry === "function") { try { proven = await proveIdentityIfKnown(String(input.owner.id), input, caller); } catch (e) { dropLater(caller); throw e; } }
           const fresh = !to && !o.pairWordsFor;
           // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
           const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
