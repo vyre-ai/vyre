@@ -1478,7 +1478,7 @@ export default {
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { entries: [] };
       let r;
       try { r = await dir.resolve(label); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
-      if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) return { entries: [] };
+      if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
       return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });

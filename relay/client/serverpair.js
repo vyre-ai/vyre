@@ -73,7 +73,7 @@ export async function pairServer(o) {
     const first = await adopt({ ...base, pairing: { commit, tag } });
     if (first.status !== 200 || !first.body || !first.body.data) return refuse(first);
     // a proven (--pair-to) server answers the owner at once; a first adoption answers pending with the server's nonce
-    if (first.body.data.owner) { stop(); return { paired: true, relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name, owner: first.body.data.owner }; }
+    if (first.body.data.owner) { stop(); return { paired: true, relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name, owner: first.body.data.owner, session: first.body.data.session !== false }; }
     const nb = String(first.body.data.nb || "");
     if (!nb) throw fail("unreachable", "The server did not start the pairing.");
     const words = await pairWords(String(paired.box), String(paired.device), { ticket, nonceA: na, nonceB: nb });
@@ -84,7 +84,7 @@ export async function pairServer(o) {
       if (o.signal && o.signal.aborted) { await adopt({ ...base, pairing: { commit, tag, cancel: true } }).catch(() => null); throw fail("cancelled", "Pairing was cancelled."); }
       if (Date.now() > deadline) throw fail("expired", "Nobody answered at the server in time.");
       const r = await adopt({ ...base, pairing: { commit, tag, reveal: na } });
-      if (r.status === 200 && r.body && r.body.data && r.body.data.owner) { stop(); return { paired: true, relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name, owner: r.body.data.owner }; }
+      if (r.status === 200 && r.body && r.body.data && r.body.data.owner) { stop(); return { paired: true, relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name, owner: r.body.data.owner, session: r.body.data.session !== false }; }
       if (!(r.status === 200 && r.body && r.body.data && r.body.data.pending)) return refuse(r);
       await new Promise(res => setTimeout(res, pollMs));
     }
