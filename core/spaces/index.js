@@ -1069,8 +1069,11 @@ export default {
       return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
     }, { internal: true });
 
-    tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. The kernel reads this on every invite card.", obj({ space: str }, ["space"]), async i => {
-      const row = spaceOf(i.space);
+    tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. With no space it answers for this home's own Space once it holds the root key. The kernel reads this on every invite card.", obj({ space: str }), async i => {
+      // The daemon asks with no space for this home's own Space: the one the kernel keeps here, once this module holds its root key (until then the card shows none).
+      const home = i.space ? null : spaces.all().find(r => K && r.id === K.space && r.status === "done");
+      if (!i.space && !home) throw refuse("This home's space has no root key here yet.", "not_found");
+      const row = home || spaceOf(i.space);
       const c = await chainOf(row.id);
       const k = files.keys.load(row.id);
       return { name: row.name, words: c && c.pin && k ? fingerprintWords(spaceFingerprint(c.pin.id, k.publicKey)) : null };

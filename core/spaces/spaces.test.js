@@ -877,7 +877,7 @@ test("space creation asks the kernel which store it would use: a server too smal
   const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
   const hosts = [];
   let small = true;
-  const kernel = { for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
+  const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
       storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
       host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
@@ -898,6 +898,10 @@ test("space creation asks the kernel which store it would use: a server too smal
   const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
   assert.equal(made.status, "done", JSON.stringify(made));
   assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
+  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
+  const label = await d.ok("spaces.label", {}, "module:vyred");
+  assert.equal(label.name, "harlow.vyre.run");
+  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
   // a server with room for the larger store: no question, no flag
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
