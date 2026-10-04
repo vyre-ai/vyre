@@ -116,6 +116,20 @@ if (CODE_CMD && ANSWER_CMD) {
     if (/could not|cannot reach|did not|failed|do not match/i.test(t)) throw new Error("the page reports a failure: " + t.slice(0, 200).replace(/\n/g, " | "));
   });
 }
+// After the pairing, walk the screens over the peer wire (the page is paired; there is no box at its origin): each screen once, on a fresh load, reporting what it shows and any refusal in the server's words.
+const SCREENS = flag("--screens", "");
+if (CODE_CMD && ANSWER_CMD && SCREENS) {
+  for (const route of SCREENS.split(",")) {
+    await check(`screen ${route}`, async () => {
+      await page.goto(`${BASE}/app/${route}`, { waitUntil: "networkidle" }).catch(() => {});
+      await page.waitForTimeout(6000);
+      const t = (await body()).replace(/\n+/g, " | ").slice(0, 260);
+      console.log(`  ${route}: ${t}`);
+      if (/could not|cannot reach|did not answer|not available|denied|person_session_required|no_identity|Choose your Vyre name/i.test(t)) throw new Error("refused or empty: " + t.slice(0, 160));
+      return t.slice(0, 80);
+    });
+  }
+}
 if (args.includes("--debug")) console.log("PK:", await page.evaluate(() => [sessionStorage.getItem("__PK"), sessionStorage.getItem("__PKERR")]).catch(() => "?"));
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), name: NAME, results }, null, 2));
 await browser.close(); server.close();

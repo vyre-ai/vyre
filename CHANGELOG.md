@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, app, peer, 4 Oct): every app call and write of a device paired to its server over the relay goes over the peer wire (src/api/wire.ts takes a PeerRoute, box.web.ts passes it), not only the screens that use real/box tool(); Now, Projects, Flows, Settings, Drive, Memory, Vault and Calendar load from a fresh server over the peer wire in the claim walk (--screens). Events and streams are not routed yet.
 - fix(0.3, app, web, 4 Oct): the device key was never offered at pairing on the web: relay.web.ts imported b64url from "../auth/person", which Metro resolves to person.web.ts on the web (no such export), so presenceKey() threw and returned undefined and every pairing hello carried no key; it imports person.ts explicitly now. With it a fresh server grants the browser its paired session (device presence:true) and the app's first peer call reaches the server.
 - feat(0.3, app, pairing, 4 Oct): pairServer's session:false (paired, no session) becomes the code no_session (ui-ux words it); serverpair.js from work/wink-session 2b79650f9; ui-ux's serverSay edits in PairParts.tsx and RealAdd.tsx merged.
 - feat(0.3, app, pairing, 4 Oct): the box-less pairing sends the claimed Vyre name as owner.vyre (the server reads that name's chain from the names directory and checks the identity proof; the directory has no lookup by id), serverpair.js from work/wink-session efccc3e33.
