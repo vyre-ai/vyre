@@ -22,17 +22,17 @@ const WAITING = `export default { async start(ctx) {
 } };`;
 
 const MEMORY = `export default { async start(ctx) {
-  ctx.tool("memory.facts", { run: async () => ({ facts: globalThis.__facts || [] }) });
+  ctx.tool("memory.facts", { effect: "read", run: async () => ({ facts: globalThis.__facts || [] }) });
   return {};
 } };`;
 
 const SETTINGS = `export default { async start(ctx) {
-  ctx.tool("settings.get", { run: async ({ key }) => ({ value: globalThis.__settings ? globalThis.__settings[key] : undefined }) });
+  ctx.tool("settings.get", { effect: "read", run: async ({ key }) => ({ value: globalThis.__settings ? globalThis.__settings[key] : undefined }) });
   return {};
 } };`;
 
 const CONTEXT = `export default { async start(ctx) {
-  ctx.tool("context.now", { run: async () => globalThis.__now || { day: null, tz: null, localTime: null } });
+  ctx.tool("context.now", { effect: "read", run: async () => globalThis.__now || { day: null, tz: null, localTime: null } });
   return {};
 } };`;
 

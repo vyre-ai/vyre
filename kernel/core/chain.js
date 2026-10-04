@@ -88,7 +88,7 @@ export function createChainBuilder(cfg) {
         if (PERSON_SURFACES.has(f.surface)) {
           if (f.uid !== cfg.owner_uid) return refuse(`uid ${f.uid} is not the owner`);
           if (f.surface === "capsule" && !f.capsule_verified) return refuse("capsule not verified");
-          return make([hop("person", cfg.owner, "surface", { surface: f.surface, ...(typeof f.session === "string" && f.session ? { session: f.session } : {}) })], base());
+          return make([hop("person", cfg.owner, "surface", { surface: f.surface })], base());
         }
         return refuse(`surface ${f.surface} is not a socket surface`);
       }

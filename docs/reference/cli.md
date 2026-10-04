@@ -78,6 +78,8 @@ In the order `vyre help` lists them.
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
 | [`vyre backup`](#vyre-backup) | seal your data, project files and session transcripts into one passphrase-locked file (an unfinished one resumes) |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
+| [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
+| [`vyre signout`](#vyre-signout) | sign this terminal out |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -764,6 +766,24 @@ The keys that prove you are here, and a code to enroll a passkey.
 
 ```
 vyre presence [keys|code|remove <id>] [--json]
+```
+
+### vyre signin
+
+Sign in this terminal (approve on your phone).
+
+```
+vyre signin [--json]
+```
+
+Asks your phone to approve. On a yes this terminal acts as you until `vyre signout`, or 30 days without use. Run it in a terminal you are logged in on.
+
+### vyre signout
+
+Sign this terminal out.
+
+```
+vyre signout [--json]
 ```
 
 ### vyre tips

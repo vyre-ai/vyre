@@ -621,6 +621,10 @@ export default {
     }
     /** A model caller (an agent over MCP); the push's secret override needs the person's own words for it. */
     function isModelCaller(meta = {}) { return String(meta.caller || "").startsWith("mcp"); }
+    /** A model works on its own session's branch only: the session id is its own thread's id (group D audit HD-7), so it cannot push, undo or redo another session's work or interrupt that session. */
+    function ownSession(session, meta = {}) {
+      if (isModelCaller(meta) && String(meta.thread || "") !== String(session)) throw fail("a model may push, undo or redo only its own session's branch", "denied");
+    }
     const prErr = (e, target) => {
       if (e && e.code === "token_invalid") ctx.events.emit("github.token-invalid", { name: target.account });
       return e;

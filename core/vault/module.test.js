@@ -155,7 +155,8 @@ test("vault: Claude is never the channel for a value, and cannot give access on 
   assert.equal((await mcp("vault.approve", { id: g.id })).error.code, "denied");
   assert.equal((await cli("vault.approve", { id: g.id })).data.approved.status, "active");
   assert.ok((await cli("probe.use", { name: "api-token" })).data.sha);
-  assert.equal((await mcp("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 1, "taking access away needs no one");
+  assert.equal((await mcp("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 0, "a bare model session cannot withdraw a module's grant (group D LOW)");
+  assert.equal((await cli("vault.revoke", { name: "api-token", module: "probe" })).data.revoked, 1, "taking access away needs no one but the person");
 
   // Nothing on the socket can pose as a module to reach vault.release.
   await cli("vault.grant", { name: "api-token", module: "probe" });

@@ -452,7 +452,7 @@ export function insideClaude(pid, { threads = [], look = processTable(), exe = e
     // a uid other than 0 is not offered: a model's.
     if (trustedLeader(p)) return { inside: false };
     const at = p ? started(top.pid) : (uid(top.pid) === 0 ? started(top.pid) : null);
-    if (at) return { inside: false, unknown: true, server: { exe: p || "uid0", pid: top.pid, started: at } };
+    if (at) return { inside: false, unknown: true, server: { exe: p || "uid0", pid: top.pid, started: at, uid: uid(top.pid) } };
     return bad;
   }
   return bad;

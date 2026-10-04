@@ -14,6 +14,8 @@ import { Refused } from "./safety.js";
 /** Bounds for a name search: how deep, how many entries read, how many folders returned. */
 export const LIMITS = { depth: 4, entries: 2000, results: 200, list: 1000 };
 
+/** files.recent lists the folders other sessions worked in, so a model is not among its callers. */
+const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 
@@ -146,6 +148,7 @@ export function dirs(ctx, { g, target, forward }) {
   });
 
   ctx.tool("files.recent", {
+    callers: PERSON_AND_MODULE,
     description: "The folders sessions worked in lately, newest first, with how many sessions ran in each. Only folders inside the roots the user chose.",
     input: { type: "object", properties: { limit: { type: "integer" }, source: { type: "string", enum: ["mac", "box"] } } },
     run: async ({ limit, source }) => {

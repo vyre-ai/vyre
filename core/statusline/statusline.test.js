@@ -44,12 +44,12 @@ async function world(t, fakes = [], role = "local") {
 
 // A fake whose answers the test can change: globalThis.fake is shared with the module it loads.
 const FAKES = [
-  ["gate", ["gate.held"], `export default { async start(ctx) { ctx.tool("gate.held", { run: async () => globalThis.fake.held }); return {}; } };`],
-  ["threads", ["threads.asks"], `export default { async start(ctx) { ctx.tool("threads.asks", { run: async () => globalThis.fake.asks }); return {}; } };`],
-  ["link", ["link.status"], `export default { async start(ctx) { ctx.tool("link.status", { run: async () => globalThis.fake.link }); return {}; } };`],
+  ["gate", ["gate.held"], `export default { async start(ctx) { ctx.tool("gate.held", { effect: "read", run: async () => globalThis.fake.held }); return {}; } };`],
+  ["threads", ["threads.asks"], `export default { async start(ctx) { ctx.tool("threads.asks", { effect: "read", run: async () => globalThis.fake.asks }); return {}; } };`],
+  ["link", ["link.status"], `export default { async start(ctx) { ctx.tool("link.status", { effect: "read", run: async () => globalThis.fake.link }); return {}; } };`],
   ["agents", ["agents.list"], `export default { async start(ctx) {
-    ctx.tool("agents.list", { run: async () => globalThis.fake.agents });
-    ctx.tool("agents.poke", { run: async () => { ctx.events.emit("agents.changed", {}); return true; } });
+    ctx.tool("agents.list", { effect: "read", run: async () => globalThis.fake.agents });
+    ctx.tool("agents.poke", { effect: "read", run: async () => { ctx.events.emit("agents.changed", {}); return true; } });
     return {}; } };`],
 ];
 FAKES[3][1].push("agents.poke");
@@ -88,15 +88,15 @@ test("statusline: reads every part, follows events after a debounce, writes only
 test("statusline: the need count is waiting.count's, the same one push and the Capsule show", async t => {
   /** @type {any} */ (globalThis).fake = { held: [{ id: "g1" }], asks: [], link: null, agents: [] };
   t.after(() => { delete /** @type {any} */ (globalThis).fake; });
-  const waiting = ["waiting", ["waiting.count"], `export default { async start(ctx) { ctx.tool("waiting.count", { run: async () => ({ count: 4, by_kind: { ask: 1, draft: 1, reminder: 1, pairing: 1 } }) }); return {}; } };`];
+  const waiting = ["waiting", ["waiting.count"], `export default { async start(ctx) { ctx.tool("waiting.count", { effect: "read", run: async () => ({ count: 4, by_kind: { ask: 1, draft: 1, reminder: 1, pairing: 1 } }) }); return {}; } };`];
   const { reg } = await world(t, [...FAKES, waiting], "box");
   assert.equal((await reg.call("statusline.line", {}, "cli")).data.line, "vyre · 4 need you", "a reminder and a pairing request count too");
 });
 
 test("statusline: a failing tool drops only its own part", async t => {
   const broken = [
-    ["gate", ["gate.held"], `export default { async start(ctx) { ctx.tool("gate.held", { run: async () => { throw new Error("gate broke"); } }); return {}; } };`],
-    ["agents", ["agents.list"], `export default { async start(ctx) { ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "assistant", doing: "working" }] }); return {}; } };`],
+    ["gate", ["gate.held"], `export default { async start(ctx) { ctx.tool("gate.held", { effect: "read", run: async () => { throw new Error("gate broke"); } }); return {}; } };`],
+    ["agents", ["agents.list"], `export default { async start(ctx) { ctx.tool("agents.list", { effect: "read", run: async () => [{ name: "juno", kind: "assistant", doing: "working" }] }); return {}; } };`],
   ];
   const { reg } = await world(t, broken, "box");
   assert.equal((await reg.call("statusline.line", {}, "cli")).data.line, "vyre · juno working");

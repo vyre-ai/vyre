@@ -61,8 +61,8 @@ test("import.start: consent through core/sync, then the plan's sessions in batch
   const up = await settle(call, r.data.run);
   assert.deepEqual([up.done, up.total, up.failed, up.quarantined, up.state], [30, 30, 0, 3, "done"]);
   const consent = calls.find(c => c.tool === "sync.consent");
-  assert.deepEqual([consent.input.machine, consent.input.on, consent.input.mode], ["alex-macbook", true, "once"]);
-  assert.match(consent.input.plan, /^[0-9a-f]{64}$/, "the consent carries the plan's hash");
+  assert.deepEqual([consent.input.machine, consent.input.on], ["alex-macbook", true]);
+  assert.match(consent.input.planHash, /^[0-9a-f]{64}$/, "the consent carries the plan's hash under the key sync.consent reads (planHash)");
   const sends = calls.filter(c => c.tool === "sync.send");
   assert.deepEqual(sends.map(s => s.input.files.length), [25, 5], "a batch at a time");
   const f = sends[0].input.files[0];

@@ -86,6 +86,8 @@ export function askedOnly(meta, what, { assistant = false } = {}) {
  */
 export const testBase = u => { try { const x = new URL(String(u)); return x.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(x.hostname); } catch { return false; } };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** The three account tools the verified assistant may START for the person (askedOnly, the lead's 1 Oct ruling): a pending account scoped to the asking session's project, which the person finishes on their own device. */
+const ASSISTANT = [...PEOPLE, "module", "mcp"];
 const str = { type: "string" };
 const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
@@ -391,7 +393,7 @@ export default {
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
         if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i);
-      });
+      }, ASSISTANT);
 
     // ---- signing in (each provider's own login, run as the account; Vyre never sees the token)
     const signins = new Signins({ spawn: (bin, args, { account }) => {
@@ -469,7 +471,7 @@ export default {
         const account = row;
         try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
         catch (e) { if (created) accounts.remove(account.id); throw e; }
-      });
+      }, ASSISTANT);
 
     tool("sessions.accounts.remove", "Remove an account. Threads already resumed on it keep running; the next resume on that thread asks for another (a removed account is never a silent fallback).",
       { type: "object", required: ["id"], properties: { id: str } },
@@ -491,7 +493,7 @@ export default {
         const project = await requestProject(meta);
         if (!project || i.project !== project || i.agent || i.is_default) throw Object.assign(new Error("outside a person's surface an account is bound only to the project the request came from; a wider scope is set from the person's own surface"), { code: "denied" });
         return accounts.bind({ id: i.id, project });
-      });
+      }, ASSISTANT);
 
     // A file a provider left in an account's own folder (Grok Build's generated images are 0600 there), read as that account and returned as base64, for
     // the Switchboard to hand to artifacts. Internal: only Vyre's modules call it. The read runs as the account's uid on a box.
