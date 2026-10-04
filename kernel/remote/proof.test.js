@@ -36,12 +36,15 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
   const o = { side: "space_allows", member: BOB };
   const off = await g.offers.offer(owner, o, proofFrom(signed("offer", o)));
   await g.offers.unoffer(owner, off.id, proofFrom(signed("unoffer", off.id)));
+  const l = { member: OWNER, device: "dev_x", device_key: "KEY_X" }, u = { member: OWNER, device: "dev_x" };
+  await g.offers.lend(owner, l, proofFrom(signed("lend", l)));
+  await g.offers.unlend(owner, u, proofFrom(signed("unlend", u)));
   await g.removeMember(owner, { person: BOB }, proofFrom(signed("removeMember", { person: BOB })));
   const rr = { kind: "never", binds: ["assistants"], covers: { actions: ["records.remove"] }, label: "No deletes" };
   const rule = await g.rules.set(owner, rr, proofFrom(signed("ruleSet", rr)));
   assert.equal((await g.rules.disable(owner, rule.id, proofFrom(signed("ruleDisable", rule.id)))).status, "disabled");
   assert.equal((await g.rules.enable(owner, rule.id, proofFrom(signed("ruleEnable", rule.id)))).status, "active");
-  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unoffer"]);
+  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "lend", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer"]);
 });
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {
