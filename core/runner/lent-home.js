@@ -66,12 +66,16 @@ export function createLentHome(o) {
       const w = who(chain);
       if (!i || !SESSION.test(String(i.session))) throw err("bad_input", "name the session");
       if (!stands(w, i.device_key)) throw err("not_allowed", "this computer is not allowed to run this Space's work");
+      { const had0 = lent.get(String(i.session)); if (had0 && had0.person !== w.person) throw err("not_found", "not found"); }
       const spec = await o.specFor({ space: o.space, session: i.session, person: w.person, device: w.device });
       if (!spec || typeof spec.command !== "string" || !Array.isArray(spec.routes)) throw err("not_found", "the Space has no definition for that session");
       const cap = o.lenderCap ? o.lenderCap(w) : undefined;
       // The Space's choice, limited by what this lender accepted: the Space can never hand a session more than the lender allowed (the runner applies the same rule again on the lender).
       const network = effectiveNetwork(spec.network, cap);
       if (o.leases && i.lease) { await o.leases.renew(chain, { id: String(i.lease) }); o.leases.bind(String(i.session), String(i.lease), { routes: spec.credentialRoutes || [] }); }
+      // A session lent to someone else's computer is never taken: only the same person may continue it from another of their computers (the resume path).
+      const had = lent.get(String(i.session));
+      if (had && had.person !== w.person) throw err("not_found", "not found");
       lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key });
       const { credentialRoutes, ...visible } = spec;
       return { ...visible, network, lenderCap: cap || null };
