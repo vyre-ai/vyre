@@ -25,6 +25,13 @@ import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
+import workerDir, * as WD from "../names/worker/index.js";
+import { createRuntime } from "../relay/worker/fake-cf.js";
+import { fakeDns } from "../names/worker/fake-dns.js";
+import { memorySeen, idDirectory } from "../lib/identity/directory.js";
+import { fileIdentityStore } from "../core/spaces/identity.js";
+import { createIdentityOps } from "../core/spaces/identity-ops.js";
+import { hooks as spacesHooks } from "../core/spaces/index.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
 process.env.VYRE_WINK_TYPED_CODE = "1";
@@ -1292,4 +1299,53 @@ test("a pairing whose app closed before the yes does not leave the server busy: 
   await w.call("wink.server.pair.answer", { yes: false }, "cli", PROOF);
   await pairing.catch(() => null);
   void done;
+});
+
+// ---- the identity proof in the FIRST adopt call, checked against the names directory (lead ruling, 4 Oct) ----
+
+test("a proof in the first adopt call is checked against the claimed name's chain in the directory: a right proof pairs, a wrong key is not them, an unreachable directory pairs nothing", async t => {
+  // the stand-in directory (the real Worker on the fake runtime) and a device that really claimed `alex`
+  const dns = fakeDns();
+  const clock = { t: Date.UTC(2026, 9, 4, 12, 0, 0) };
+  const rt = createRuntime({ worker: workerDir, Class: WD.Directory, classes: { DIRECTORY: WD.Directory },
+    env: { CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, NOW: () => clock.t, ZONE: "vyre.run", RESOLVE_TXT: async () => [] } });
+  let n = 0, down = false;
+  const fetchDir = async (url, init) => { if (down) throw new Error("unreachable"); return workerDir.fetch(new Request(url, { ...init, headers: { ...(init.headers || {}), "cf-connecting-ip": `198.51.${(n >> 8) & 255}.${n++ & 255}` } }), rt.env); };
+  const seen = memorySeen();
+  const idStore = fileIdentityStore(path.join(tempHome(t), "spaces"));
+  const own = createIdentityOps({ store: idStore, dir: idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen }), seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
+  const made = await own.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
+  const made_id = idStore.status().id;
+  // the server's names directory is the stand-in
+  spacesHooks.fetch = /** @type {any} */ (fetchDir);
+  t.after(async () => { spacesHooks.fetch = null; await rt.settle(); });
+  const attempt = async (sign, owner = { id: made_id, name: "Alex", vyre: "alex" }) => {
+    process.env.VYRE_SEAL_DEV = "1";
+    const saved = process.env.VYRE_WINK_TYPED_CODE;
+    delete process.env.VYRE_WINK_TYPED_CODE;
+    t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+    const w = await world(t, { kernel: true });
+    const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+    let shown = "";
+    const pairing = pairServer({ payload: code.qr, owner, deviceKind: "phone", name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, signIdentity: sign, onWords: x => { shown = x; } });
+    pairing.catch(() => {});
+    const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 4000).catch(() => null);
+    if (q) { await until(async () => shown); await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF); }
+    return { w, result: await pairing.then(r => ({ ok: r }), e => ({ err: e })) };
+  };
+  // right proof, right chain: this device's own key on the list signs the pairing's message
+  const sign = async m => ({ eid: idStore.status().eid, sig: Buffer.from(await idStore.sign(Buffer.from(m))).toString("base64url") });
+  const ok = await attempt(sign);
+  assert.equal(ok.result.ok && ok.result.ok.paired, true, JSON.stringify(ok.result.err && ok.result.err.message));
+  assert.equal(ok.w.d.kernel.id.owner, made_id);
+  // a key that is not on that identity's list is not them
+  const rogue = crypto.generateKeyPairSync("ed25519");
+  const bad = await attempt(async m => ({ eid: "e".repeat(26), sig: crypto.sign(null, Buffer.from(m), rogue.privateKey).toString("base64url") }));
+  assert.equal(bad.result.err && bad.result.err.code, "denied");
+  assert.match(String(bad.result.err && bad.result.err.message), /was not them/);
+  // the directory out of reach: said plainly, nothing paired
+  down = true;
+  const away = await attempt(sign);
+  assert.match(String(away.result.err && away.result.err.message), /cannot check who is asking right now/);
+  assert.equal((await away.w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false);
 });

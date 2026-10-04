@@ -30,7 +30,7 @@ export function parseServerPayload(s) {
 }
 
 /**
- * @param {{ payload: string, owner: { id: string, name?: string, kind?: "identity" | "space" }, name?: string, proof?: { eid: string, sig: string },
+ * @param {{ payload: string, owner: { id: string, name?: string, vyre?: string, kind?: "identity" | "space" }, name?: string, proof?: { eid: string, sig: string },
  *   deviceKind?: "phone" | "computer" | "web", keyStorage?: "hardware" | "software", signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string }> | { eid: string, sig: string }, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: { kind?: "app" | "web", release?: string, manifest?: string }, presenceKey?: any, passkey?: any,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
@@ -57,7 +57,7 @@ export async function pairServer(o) {
     const body = /** @type {any} */ (await /** @type {any} */ (r).json().catch(() => null));
     return { status: /** @type {any} */ (r).status, body };
   };
-  const owner = { kind: o.owner.kind || "identity", id: o.owner.id, ...(o.owner.name ? { name: String(o.owner.name).slice(0, 64) } : {}) };
+  const owner = { kind: o.owner.kind || "identity", id: o.owner.id, ...(o.owner.name ? { name: String(o.owner.name).slice(0, 64) } : {}), ...(/** @type {any} */ (o.owner).vyre ? { vyre: String(/** @type {any} */ (o.owner).vyre).slice(0, 253) } : {}) };
   // The proof that the identity's own key stands behind this pairing: its signature over this pairing's box and relay device (the same message a --pair-to server checks). Given ready-made
   // (`proof`) or made here from the device's identity key (`signIdentity`); a device with neither is checked by the three words alone.
   /** @type {{ eid: string, sig: string } | undefined} */ let proof = o.proof;
