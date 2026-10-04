@@ -451,7 +451,7 @@ export function createPairing(o) {
     const r = await callRelease(chan);
     // the probe forgets a server the person removed: it answers `removed`, not whatever the old route still says
     if (r !== "unknown") { meta.set(`removed:${sid}`, now()); meta.del(`probe:${sid}`); }
-    if (r === "released") { meta.del(`channel:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
+    if (r === "released") { if (links) links.forget(sid); meta.del(`channel:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
     meta.del(`channel:${sid}`);
     if (r === "refused") { meta.del(`release:${sid}`); return "refused"; }
     meta.set(`release:${sid}`, { ...chan, since: now() });
@@ -542,7 +542,7 @@ export function createPairing(o) {
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
-          if (p.adopted) { const ch = channelOf(pd); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); } }
+          if (p.adopted) { const ch = channelOf(pd); if (links) links.forget(sid); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); } }
           if (!p.adopted) {
             // the server was not told: nothing is half-added, and the person is told what to do
             if (fresh) { devices.remove(fresh); p.device = null; }
