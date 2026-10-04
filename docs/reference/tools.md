@@ -5021,7 +5021,7 @@ Store Claude Code's sign-in in the Vault: a subscription setup token or an API k
   - `code` string
   - `key` string
   - `kind` "subscription" or "api-key"
-  - `mode` one of "detect", "setup-token", "api-key"
+  - `mode` one of "detect", "setup-token", "api-key", "disconnect"
   - `token` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `onboard`, `tailnet`
 - Needs a person present.
