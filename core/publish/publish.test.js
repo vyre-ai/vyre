@@ -365,7 +365,7 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 
   const e = await b.ok("publish.edge", {});
   assert.equal(e.dir, b.publishRoot);
-  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], ["caddy.Dockerfile", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
+  assert.deepEqual(e.files.map((/** @type {any} */ f) => [f.path, f.mode]), [["compose.yaml", "0644"], ["Caddyfile", "0644"], ["caddy.Dockerfile", "0644"], ["join.html", "0644"], [`secrets/${id}/STRIPE_KEY`, "0600"]]);
   const mode = (/** @type {string} */ rel) => (fs.statSync(path.join(b.publishRoot, rel)).mode & 0o777).toString(8);
   assert.equal(mode("compose.yaml"), "644");
   assert.equal(mode("Caddyfile"), "644");

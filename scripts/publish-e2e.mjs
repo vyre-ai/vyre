@@ -8,6 +8,7 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
+import { joinPageHtml } from "../lib/publish/join.js";
 import { edgeCompose, composeText, caddyfile, caddyDockerfile, IMAGES, serviceName, projectName } from "../lib/publish/edge.js";
 
 const arg = (/** @type {string} */ n, /** @type {string} */ d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
@@ -26,6 +27,7 @@ const cf = caddyfile([], work, { spaceName: SPACE.name }).replace("admin off", "
 assert.ok(cf.includes("local_certs"), "the Caddyfile has a global block to put the test CA in");
 fs.writeFileSync(path.join(dir, "Caddyfile"), cf);
 fs.writeFileSync(path.join(dir, "caddy.Dockerfile"), caddyDockerfile());
+fs.writeFileSync(path.join(dir, "join.html"), joinPageHtml());
 const project = projectName(SPACE.id), svc = serviceName(DEP);
 const vol = `${project}_site-${DEP.replace(/^dep_/, "")}`;
 log(`project ${project} in ${dir}`);
@@ -60,6 +62,16 @@ try {
   const dotCode = run("curl", ["-sk", "-o", "/dev/null", "-w", "%{http_code}", "--resolve", "northwind.harlow.vyre.run:443:127.0.0.1", "https://northwind.harlow.vyre.run/.hidden"]);
   assert.equal(dotCode.out, "404");
   log("dotfiles answer 404");
+  // the join page on the space's own name
+  const J = "harlow.vyre.run", tok = "eyJhIjoxfQ.c2lnbmF0dXJl";
+  const join = run("curl", ["-sk", "-D", "-", "--resolve", `${J}:443:127.0.0.1`, `https://${J}/join/${tok}`]);
+  assert.ok(/^HTTP\/\S+ 200/m.test(join.out) && join.out.includes("Open in Vyre") && /content-type: text\/html/i.test(join.out), join.out.slice(0, 400));
+  assert.ok(/referrer-policy: no-referrer/i.test(join.out) && /content-security-policy: default-src 'none'/i.test(join.out) && /cache-control: no-store/i.test(join.out), "join page headers");
+  assert.ok(!join.out.includes(tok), "the page never carries the token");
+  const notJoin = run("curl", ["-sk", "-o", "/dev/null", "-w", "%{http_code}", "--resolve", `${J}:443:127.0.0.1`, `https://${J}/other`]);
+  const badTok = run("curl", ["-sk", "-o", "/dev/null", "-w", "%{http_code}", "--resolve", `${J}:443:127.0.0.1`, `https://${J}/join/nodot`]);
+  assert.deepEqual([notJoin.out, badTok.out], ["404", "404"]);
+  log("join page served on the space's name, other paths 404");
   // a new version replaces the old: what rollback does is put the previous bytes back
   assert.equal(put("<h1>Northwind v2</h1>").code, 0);
   const v2 = run("curl", ["-sk", "--resolve", "northwind.harlow.vyre.run:443:127.0.0.1", "https://northwind.harlow.vyre.run/"]);

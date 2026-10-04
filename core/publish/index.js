@@ -14,6 +14,7 @@ import path from "node:path";
 import dns from "node:dns/promises";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
+import { joinPageHtml } from "../../lib/publish/join.js";
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
 import { createRoleAuthorize } from "../../lib/spaces/authz.js";
 import { NO_BUILDER } from "./builder-plan.js";
@@ -445,6 +446,7 @@ export default {
         await put("compose.yaml", composeText(compose), 0o644);
         await put("Caddyfile", caddyfile, 0o644);
         await put("caddy.Dockerfile", caddyDockerfile(), 0o644);
+        await put("join.html", joinPageHtml(), 0o644);
         // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
         for (const d of await storeFor(b.space.id).list("deployments")) {
           if (!compose.services["w-" + d.id.replace(/^dep_/, "")]) continue;
