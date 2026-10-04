@@ -186,7 +186,14 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name") {
+  if (step === "name" && Platform.OS === "web" && !MOCK) {
+    // RC1: a name is not claimed from a browser (the user's ruling, 4 Oct); the phone or Mac app does it, and a browser signs in to a name that exists.
+    body = (
+      <Page title="Claim your Vyre name on the phone or Mac app" sub="Open Vyre on your phone or Mac to choose the name. Then come back here and pair this browser with it.">
+        <Button kind="primary" label="I already have a name, pair this browser" onPress={() => setStep("scan")} />
+      </Page>
+    );
+  } else if (step === "name") {
     body = (
       <Page title="Choose your Vyre name" sub="It is how people find you. You can add your own domain later.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}

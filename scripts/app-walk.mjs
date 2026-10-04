@@ -97,12 +97,20 @@ const has = (k) => !world[k].error;
 const spaceNames = has("spaces") && Array.isArray(world.spaces.data) ? world.spaces.data.map((s) => s.displayName || s.label || s.name) : [];
 
 // ---- the walk ----
-const browser = await chromium.launch();
-const ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark" });
-const page = await ctx.newPage();
+let browser = await chromium.launch();
+let ctx = null;
+let page = null;
 let consoleErrors = [];
-page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e}`));
-page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+/** A fresh page for every step (and a fresh browser when the last one is gone), so one step's timeout or crash cannot fail the steps after it. */
+async function fresh() {
+  if (page) await page.close().catch(() => {});
+  if (!browser.isConnected()) browser = await chromium.launch();
+  if (!ctx || browser.contexts().indexOf(ctx) < 0) ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark" });
+  try { page = await ctx.newPage(); } catch { ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark" }); page = await ctx.newPage(); }
+  page.on("pageerror", (e) => consoleErrors.push(`pageerror: ${e}`));
+  page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+}
+await fresh();
 
 /** @type {{ name: string, status: "PASS" | "HONEST" | "SKIP" | "FAIL", note: string, shot?: string }[]} */
 const report = [];
@@ -121,7 +129,7 @@ async function step(name, o, run) {
   if (ONLY.length && !ONLY.some((x) => name.includes(x))) return;
   if (o.needs === "presence" && !PRESENCE) { report.push({ name, status: "SKIP", note: "needs presence (the stand-in is not in yet)" }); console.log(`SKIP   ${name}: needs presence`); return; }
   if (o.skip) { report.push({ name, status: "SKIP", note: o.skip }); console.log(`SKIP   ${name}: ${o.skip}`); return; }
-  answers.length = 0; consoleErrors = [];
+  await fresh(); answers.length = 0; consoleErrors = [];
   let status = "PASS", note = "";
   try {
     await run();
