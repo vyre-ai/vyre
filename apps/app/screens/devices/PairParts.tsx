@@ -6,6 +6,7 @@ import { ScanCamera, canScanLive, requestCamera, scanProps, type ScannedCode, ty
 import { parseWinkCode, type WinkCode } from "../../src/api/wink-code";
 import { openPairing, wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { COPY } from "./wink.js";
+import { serverSay } from "../install/flow.js";
 
 /** A scanned code as the text the parser reads. */
 const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.ticket}&r=${encodeURIComponent(c.relay)}${c.for === "phone" ? "&k=phone" : ""}` : c.kind === "pair" ? c.offer : c.text);
@@ -95,7 +96,7 @@ export { openPairing };
 export function PairWatch({ session, who, onConfirmed, onRejected }: { session: PairingSession; who: string; onConfirmed: () => void; onRejected: (say: string) => void }) {
   useEffect(() => {
     let live = true;
-    session.confirm().then(() => { if (live) onConfirmed(); }).catch((e: Error) => { if (live) onRejected(e.message === "rejected" ? COPY.rejected : e.message || COPY.ended); });
+    session.confirm().then(() => { if (live) onConfirmed(); }).catch((e: Error) => { if (live) onRejected(e.message === "rejected" ? COPY.rejected : (e as { code?: string }).code ? serverSay(e) : e.message || COPY.ended); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -118,7 +119,7 @@ export function PairServer({ session, who, onConfirmed, onRejected }: { session:
   useEffect(() => {
     if (ready) return;
     let live = true;
-    session.ready!().then(() => { if (live) setReady(true); }).catch((e: Error) => { if (live) onRejected(e.message || COPY.ended); });
+    session.ready!().then(() => { if (live) setReady(true); }).catch((e: Error) => { if (live) onRejected(serverSay(e)); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);

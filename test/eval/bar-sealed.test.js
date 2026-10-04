@@ -4,6 +4,7 @@
 // bar is run over it in-process. This test never prints a question or an answer; run it in a temp
 // HOME (H=$(mktemp -d); HOME=$H node --test test/eval/bar-sealed.test.js).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

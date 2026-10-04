@@ -1,6 +1,7 @@
 // @ts-check
 // page.*: snapshot, act with holds, fill in one evaluate, eval redaction, wait, screenshot.
 // The fake page (test-support/fake-chrome.js) answers the in-page scripts from a plain model.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";

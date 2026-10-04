@@ -1,6 +1,7 @@
 // @ts-check
 // Path failover (ADR 0029, R5) with fake timers: a fake direct box (a fetch function) in front of
 // the relay path (the real client over the in-memory relay from testing.js).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createPaths } from "./paths.js";

@@ -2,6 +2,7 @@
 // blocks(): the rich read of one session the Deck's Chat renders. A realistic transcript in the
 // sample world (fixtures/rich.jsonl), plus generated ones for paging, live files and big files.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

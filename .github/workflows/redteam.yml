@@ -24,4 +24,4 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - name: The red-team refusals
-        run: node --test --test-force-exit --test-reporter=spec "test/redteam/*.test.js"
+        run: node --test --test-reporter=spec "test/redteam/*.test.js"

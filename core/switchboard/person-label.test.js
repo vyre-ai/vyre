@@ -1,6 +1,7 @@
 // @ts-check
 // The Switchboard takes "the person's own surface" from the call's kernel chain, never from the caller label: on a real kernel-on daemon a web, setup, unknown
 // `device:` and `tailnet:` label gets only its own label as the keyboard holder, and the owner's verified session is the owner's own surface.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

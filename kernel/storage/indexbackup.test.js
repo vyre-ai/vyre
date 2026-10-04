@@ -1,5 +1,6 @@
 // @ts-check
 // The index backup: written off the home, encrypted, versioned; a new home rebuilds from the pool alone, refuses a rollback, and the nodes see nothing readable.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

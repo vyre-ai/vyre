@@ -4,6 +4,7 @@
 // and the transport's auth headers and base path (docs/adr/0029-resilience.md, R1, R2, R3, R5).
 // The same transport against vyred and the fault proxies is in chaos.test.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

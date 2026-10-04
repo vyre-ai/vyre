@@ -1,5 +1,6 @@
 // @ts-check
 // The vendored noble bundle must be exactly the one the pins file names (a changed byte fails here).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

@@ -1,6 +1,7 @@
 // @ts-check
 // deck/js/build-check.js: a page older than its box updates itself, invisibly; a dev world never loops.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildIdOf, stale, checkBuild } from "./build-check.js";

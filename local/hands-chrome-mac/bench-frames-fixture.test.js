@@ -2,6 +2,7 @@
 // a shell on one site embeds the Workflows app on another, which nests a third; the app draws nothing until the shell posts
 // it {type:"auth", token}. Nothing here launches Chrome: it fetches each route with the Host header a browser would send,
 // and checks that every identifier and label the frames suite and the ghl.js flows look for is really in what is served.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

@@ -1,4 +1,5 @@
 // The pure half of the field renderers: formatting, emptiness, filter and sort for every kind, the sealed phrases, the stage menu.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";

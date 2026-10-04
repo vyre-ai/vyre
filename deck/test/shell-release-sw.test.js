@@ -4,6 +4,7 @@
 // against a REAL release made by scripts/sign-manifest.mjs and scripts/shell-hashes.mjs, signed with
 // a throwaway key that the sandbox passes in as RELEASE_KEY.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

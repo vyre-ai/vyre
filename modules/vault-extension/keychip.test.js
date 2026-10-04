@@ -6,6 +6,7 @@
 // raised on, that Undo works for its own save only, and that registration follows pairing and the
 // person's choice. No browser runs; every key is a fake built at run time.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

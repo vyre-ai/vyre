@@ -3,6 +3,7 @@
 // over fetch, so the first connection starts at the newest event and every reconnect resumes from
 // the cursor, and listeners get the same event objects as before.
 
+import "../../scripts/mac-test-guard.mjs";
 import test, { after } from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../test/fake-dom.js";

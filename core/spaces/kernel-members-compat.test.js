@@ -1,5 +1,6 @@
 // @ts-check
 // spaces: the createMembers-shaped face of the kernel, against a real kernel. Legacy codes, the one-proof ownership transfer that is safe to kill half way, and no stored copy.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "../../kernel/index.js";

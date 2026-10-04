@@ -4,6 +4,7 @@
 // hashes, so no test writes the real clipboard or types into an app. The canary may come back
 // from vault.reveal and reach a helper's stdin, and nowhere else.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

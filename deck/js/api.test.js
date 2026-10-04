@@ -3,6 +3,7 @@
 // the next calls send it instead of asking again, a refusal forgets it and asks for the passkey,
 // and a relaunched app finds it in localStorage until it expires. Also the app badge (needs.js).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../test/fake-dom.js";

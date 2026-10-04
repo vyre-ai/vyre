@@ -2,6 +2,7 @@
 // ssh setup: the lines a person is shown, the allowed-signers line added once, and which files in
 // a folder are private keys. The key text here is a made-up sample.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

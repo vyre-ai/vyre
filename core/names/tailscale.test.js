@@ -2,6 +2,7 @@
 // Tailnet Lock, read-only: parseLock on JSON shaped like `tailscale lock status --json`, and
 // lockStatus against a fake binary that logs every argument list, so a test proves the one lock
 // command Vyre runs is `lock status --json`. Nothing here reaches the real Tailscale.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

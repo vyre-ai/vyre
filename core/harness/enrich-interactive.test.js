@@ -3,6 +3,7 @@
 // says they typed exactly this prompt. With the kernel on the person is the call's chain, never a label; with it off (SHIM(legacy labels)) it is the hook's own label.
 // The attacks: a session plants a lesson then calls enrich with `interactive: true, prompt: "yes"`, from a thread, as an agent that sends the `harness` label, or as a model in a person's
 // terminal that cannot make Claude Code write the line.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import harness from "./index.js";

@@ -4,6 +4,7 @@
 // process, against a vyred in this process in a temp home, with `present` as its verifier so
 // accepting and relaxing need no dialog. The human output is covered in test/cli.test.js.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

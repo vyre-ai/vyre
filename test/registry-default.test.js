@@ -2,6 +2,7 @@
 // The once-only registry defaults (reviewer-2's group D audit, the lead's ruling 4 Oct): (1) a state-changing tool with no `callers` list is the person's surfaces and modules only, (2) a module hop
 // carries the original caller class, (3) undeclared input keys are refused. Plus two FROZEN counts that can only go down: the tools that declare no `effect` and the tools whose input schema lists no
 // properties. A test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tempHome, writeModule } from "./helpers.js";

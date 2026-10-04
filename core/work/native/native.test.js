@@ -1,6 +1,7 @@
 // @ts-check
 // The native assistant's first half: the situation and the playbooks, on the REAL kernel (test/kernel-rig.js). The tool surface has its own tests on the real gateway
 // (kernel/tools/surface.test.js). Only the model provider is a stand-in.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";

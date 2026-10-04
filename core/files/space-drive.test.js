@@ -1,6 +1,7 @@
 // @ts-check
 // The Space's Drive tools for the app (core/files/space-drive.js): upload, versions, restore, each under the caller's own chain; a call with no person is refused; paths and sizes are checked at
 // the entry; a Space with no Drive says so. The Drive is the kernel's real VyreDrive over a directory pool; the door is a minimal stand-in for ctx.kernel.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

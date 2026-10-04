@@ -3,6 +3,7 @@
 // keep their state in a file beside the "socket" and write down every argv they were given. No
 // network, no real Tailscale.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

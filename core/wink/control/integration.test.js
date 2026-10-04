@@ -5,6 +5,7 @@
 // a person's machine:
 //   VYRE_WINK_REAL=1 VYRE_HEADSCALE_BIN=... VYRE_TAILSCALED_BIN=... VYRE_TAILSCALE_BIN=... node --test core/wink/control/integration.test.js
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

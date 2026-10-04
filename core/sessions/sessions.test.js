@@ -11,6 +11,7 @@
 // of ~80 real subprocess-spawning tests sat right at the edge of the full suite's 90s file
 // timeout under concurrency-4 contention; two files parallelize instead of raising the ceiling.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

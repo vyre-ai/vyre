@@ -3,6 +3,7 @@
 // gold is checked against the world, and a smoke run asks a few questions of every class. The
 // full run, and whether memory passes the bar, is `npm run eval:bar` (and its --gate in CI).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

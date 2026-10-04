@@ -1,6 +1,7 @@
 // @ts-check
 // The session's MCP server reads JSON-RPC lines a model shapes. Whatever arrives, it stays up and
 // still answers the next valid request.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

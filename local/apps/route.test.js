@@ -4,6 +4,7 @@
 // and kind and the planner's parser reads the time, as apps.route does (index.js parsed()): here
 // the real parser is called in-process, where the tool reaches it through planner.parse.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { route, askFor, fromPlanner } from "./route.js";

@@ -1,6 +1,7 @@
 // @ts-check
 // Find's command grammar, which the Mac Lumen and the native apps share.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseCommand, rankSessions, plan } from "./commands.js";
