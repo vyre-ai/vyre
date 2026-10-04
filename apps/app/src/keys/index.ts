@@ -13,6 +13,7 @@ export async function signIdentityOp(message: Uint8Array): Promise<Uint8Array> {
   if (!k) throw Object.assign(new Error("no identity key on this device"), { code: "ERR_NO_KEY" });
   return k.sign(message);
 }
+export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean }> => ({});
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> { return { identity: await hasIdentity(), presence: false }; }
 export async function wipeKeys(): Promise<void> { await forgetIdentity(); }
 export async function keyStorage(): Promise<KeyStorage> {
@@ -25,4 +26,5 @@ export const presenceKey = async (): Promise<Awaited<ReturnType<typeof import(".
 export const enclavePublic = async (): Promise<string> => notOnWeb();
 export const enrolAttestation = async (_token: string): Promise<null> => null;
 export const setPersonProvider = (_f: () => Promise<string | null>): void => {};
-export const signListChange = async (_m: Uint8Array, _prompt: string): Promise<{ sig: Uint8Array; esig: string }> => notOnWeb();
+export const signListChange = async (_m: Uint8Array, _prompt: string): Promise<{ sig: Uint8Array; esig: Uint8Array }> => notOnWeb();
+export const listChangeSigners = (_prompt: string): { sign: (m: Uint8Array) => Promise<Uint8Array>; esign: (m: Uint8Array) => Promise<Uint8Array> } => notOnWeb();

@@ -115,3 +115,12 @@ test("PW-1: a packaged (release-kind) registry takes no stand-in, and the termin
   const ok = /** @type {any} */ (await p.verify({ tool: "gate.approve", input, caller: "cli", proof: { method: "tty", id: c.challenge, code } }));
   assert.equal(ok.ok, true);
 });
+
+test("PW-1 release: Touch ID proves vault.reveal, wink.server.release, an invite and spaces.host-here (the Mac Capsule's own presence is not a software key)", async t => {
+  const { p, seen } = setup(t);
+  for (const [tool, input] of ACTS) {
+    const r = /** @type {any} */ (await p.verify({ tool: String(tool), input, caller: "capsule", proof: { method: "touchid" } }));
+    assert.equal(r.ok, true, `${tool}: ${r.message || ""}`); assert.equal(r.method, "touchid");
+  }
+  assert.ok(seen.filter(a => a[1] === "presence.proved").every(a => a[2].strength === undefined), "a gesture method is never marked software");
+});

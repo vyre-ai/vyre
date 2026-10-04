@@ -64,13 +64,16 @@ function diff(base) {
   return 0;
 }
 
+const BOOT_FIRST = ["test/daemon-smoke.test.js", "kernel/boot.test.js"];
 const [cmd, ...rest] = process.argv.slice(2);
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "run") {
     const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
     const full = rest.length === 0 && !shard;
-    const files = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter((f, i, a) => a.indexOf(f) === i).sort()
-      .filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1);
+    const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter((f, i, a) => a.indexOf(f) === i).sort();
+    // The boot tests run first, and always in shard 1, so a broken boot fails in minutes; the other files are sharded as before.
+    const boot = BOOT_FIRST.filter(f => all.includes(f)), others = all.filter(f => !boot.includes(f));
+    const files = [...(!shard || Number(shard[1]) === 1 ? boot : []), ...others.filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1)];
     const limit = Number(process.env.VYRE_TEST_FILE_LIMIT_MS || 300000), width = Number(process.env.VYRE_TEST_CONCURRENCY || Math.max(2, os.availableParallelism() - 1));
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-counts-"));
     /** @type {Record<string, number>} */ const ran = {};

@@ -23,6 +23,7 @@ import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
 import { isPerson } from "../../lib/caller.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
@@ -76,6 +77,8 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
   stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
+  // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
+  pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
   term: (/** @type {string} */ as) => isPerson(as) };
 /**
@@ -415,13 +418,16 @@ const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>}
   try { return await callStore.run(box, f); } finally { box.live = false; }
 };
 
-export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
+/** The person's own surfaces: the one list (lib/person-surfaces.js). A label here still has to be measured (core/daemon asTaken); it is never a person by name. */
+export const SURFACE_LABELS = PERSON_SURFACES;
+/** The old phone label. NOT a surface and never a person: the phone arrives as its paired device. It stays a known label that may reach the tools whose callers lists still name it (test/one-person-surfaces.json), so nothing changes for them; each owner drops it from their list. */
+const LEGACY_PHONE = "mobile";
 
 /** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
-export const KNOWN_LABELS = new Set([...SURFACE_LABELS, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
+export const KNOWN_LABELS = new Set([...SURFACE_LABELS, LEGACY_PHONE, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "invitee", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
-const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
+const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, LEGACY_PHONE, "tailnet", "device", "space", "agent"]);
 /** The caller classes that stand for the person on a module hop: their own surfaces and devices, and nothing else: no pre-owner exception (a server with no owner takes only pairing). */
 const ORIGIN_PERSON = Object.freeze([...PERSON_CALLERS]);
 
@@ -497,6 +503,8 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
 export const classReach = (caller, tool, setupExtra) => {
   const c = String(caller);
   if (!KNOWN_LABELS.has(c.split(/[\s:]/)[0])) return false;
+  // an invitee's channel (core/relay) reaches no tool at all: its one door is the invitee peer stream
+  if (c.split(/[\s:]/)[0] === "invitee") return false;
   const k = callerKind(c);
   if (k === "web") return tool !== undefined && WEB_REACH.has(tool);
   if (k === "setup") return tool !== undefined && (SETUP_REACH.has(tool) || (setupExtra !== undefined && setupExtra().includes(tool)));
@@ -989,6 +997,7 @@ export class Registry {
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
         if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
         if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);
@@ -1078,7 +1087,7 @@ export class Registry {
         sessionForReady: () => typeof (/** @type {any} */ (this.deps)).winkSessionFor === "function",
         sessionFor: (/** @type {string} */ id) => { const f = (/** @type {any} */ (this.deps)).winkSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id); },
         // an invitee's session to the home a space's directory record names (the spaces module only; the hello is signed by the invitee's identity)
-        ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello); } } : {}),
+        ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
       ...(m.name === "relay" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
@@ -1286,7 +1295,7 @@ export class Registry {
       const refuse = { error: { code: "not_found", message: "no such project" } };
       const named = fields(def.projectArg).flatMap(valuesOf);
       const folders = fields(def.cwdArg).flatMap(valuesOf);
-      const r = await within(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
+      const r = await within(this.call("projects.reach", { caller: String(caller), kind: "content", ...(meta && (meta.thread || meta.agent) ? { thread: meta.thread || "", claim: meta.agent || null } : {}) }, "module:vyred", { door: true }), TARGET_MS);
       const reach = r && r.data && typeof r.data === "object" ? r.data : null;
       if (!reach) {
         if (named.length || folders.length) return refuse;

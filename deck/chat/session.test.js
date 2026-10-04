@@ -982,7 +982,7 @@ test("@role: an existing teammate's own turn, never this session's; an unknown r
   ta.value = "@design make the intake form calmer";
   key("Enter");
   await wait();
-  assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "design", text: "make the intake form calmer", surface: "deck" });
+  assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "design", text: "make the intake form calmer" });
   assert.equal(calls.filter(c => c.tool === "threads.send").length, sendsBefore, "never this session's turn");
   assert.equal(ta.value, "", "cleared on a plain success");
 
@@ -994,7 +994,7 @@ test("@role: an existing teammate's own turn, never this session's; an unknown r
   assert.equal($$(box12, ".composer-note button").filter(b => /Create and send|Don't create/.test(text(b))).length, 0, "no confirm card");
   assert.deepEqual(calls.filter(c => c.tool === "team.add").at(-1).input,
     { project: "harlow-legal", role: "research", brief: "Ask me about anything; I'll figure out the role from what you send me.", isolation: "folder", tools: ["files", "web"], model: "sonnet" });
-  assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "research", text: "find comparable filing fees", surface: "deck" });
+  assert.deepEqual(calls.filter(c => c.tool === "team.ask").at(-1).input, { to: "research", text: "find comparable filing fees" });
   assert.equal(ta.value, "", "sent");
 
   // A near miss of a role this project has: one chip while typing, Tab takes it, and sending as typed still creates the new role.

@@ -4,7 +4,8 @@ import { Platform } from "react-native";
 
 export const RC = {
   sites: false,
-  browserClaim: false,
+  // A build made with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 may claim and recover a name in a browser (a walk of the recovery screens needs it). Read as process.env.NAME exactly: Expo inlines only that form.
+  browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM === "1",
 };
 
 /** True when this build is a browser and may not claim a name. */

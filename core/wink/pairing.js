@@ -437,6 +437,8 @@ export function createPairing(o) {
     const chan = meta.get(`channel:${sid}`);
     if (!chan) return "unknown";
     const r = await callRelease(chan);
+    // the probe forgets a server the person removed: it answers `removed`, not whatever the old route still says
+    if (r !== "unknown") { meta.set(`removed:${sid}`, now()); meta.del(`probe:${sid}`); }
     if (r === "released") { meta.del(`channel:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
     meta.del(`channel:${sid}`);
     if (r === "refused") { meta.del(`release:${sid}`); return "refused"; }
@@ -528,7 +530,7 @@ export function createPairing(o) {
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
-          if (p.adopted) { const ch = channelOf(pd); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); } }
+          if (p.adopted) { const ch = channelOf(pd); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); } }
           if (!p.adopted) {
             // the server was not told: nothing is half-added, and the person is told what to do
             if (fresh) { devices.remove(fresh); p.device = null; }
@@ -1101,6 +1103,7 @@ export function createPairing(o) {
       run: async (input, meta0 = {}) => {
         owner(meta0, "probing a server");
         const chan = meta.get(`probe:${String(input.device)}`);
+        if (!chan && meta.get(`removed:${String(input.device)}`)) return { reachable: false, code: "removed", message: "this server was removed from this device" };
         if (!chan || !chan.route) return { reachable: false, code: "unknown", message: "this device never paired a server by that id" };
         try {
           const r = await Promise.race([callServer({ relay: String(chan.relay || ""), route: String(chan.route), box: String(chan.box || "") }, "system.info", {}), new Promise((_, rej) => { const h = setTimeout(() => rej(Object.assign(new Error("no answer in 8 seconds"), { remote: "timeout" })), 8000); if (h.unref) h.unref(); })]);
@@ -1302,23 +1305,33 @@ export function createPairing(o) {
         /** @type {any} */ let confirmed = null;
         try { confirmed = await confirmPending(a.device, true); }
         catch (e) { devices.remove(a.device); a.state = "no"; dropLater(`device:${a.device}`); throw e; }
+        // the identity's own list takes the device's identity key, signed by THIS device's entry (the new entry is a newcomer for 24 hours); a refusal leaves the pairing made and says so
+        if (a.entry) {
+          try {
+            const r = /** @type {any} */ (await ctx.call("spaces.identity.enrol", { publicKey: a.entry.publicKey, label: a.entry.label }));
+            a.enrolled = Boolean(r && !r.error && r.data);
+            if (!a.enrolled) a.enrolReason = String((r && r.error && r.error.message) || "the identity list did not take this device").slice(0, 200);
+          } catch (e) { a.enrolled = false; a.enrolReason = String(/** @type {Error} */ (e).message || "the identity list did not take this device").slice(0, 200); }
+        }
         a.state = "yes";
         await openPairedSession(a.device, identity, meta.presence, confirmed);
         ctx.events.emit("wink.pair-answered", { yes: true, kind: "phone" });
         ctx.events.emit("wink.joined", { device: dev.id, flow: "W1", kind: "phone" });
-        return { answered: true, yes: true, name: a.name, device: dev.id };
+        return { answered: true, yes: true, name: a.name, device: dev.id, ...(a.entry ? { enrolled: a.enrolled === true } : {}) };
       },
     });
     ctx.tool("wink.phone.wait", {
       callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
-      input: obj({ commit: str, reveal: str, tag: str, name: str }),
+      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str }) }),
       run: async (input, meta = {}) => {
         owner(meta, "the phone's wait");
         const a = phoneLive();
         if (!a || canonDevice(String((meta && meta.caller) || "")) !== `device:${a.device}`) throw fail("denied", words("phoneNotYours"));
         const i = input || {};
         if (!a.named && i.name) { const n = cleanPhoneName(i.name); if (n) a.name = n; a.named = true; }
+        // A box-less device joining the person's identity (relay/client/phonepair.js) says which identity key it holds, once: the yes at the three words covers it, because it came over this device's own channel
+        if (!a.entry && i.entry && typeof i.entry === "object" && typeof i.entry.publicKey === "string" && Buffer.from(i.entry.publicKey, "base64url").length === 32) a.entry = { publicKey: i.entry.publicKey, label: cleanPhoneName(i.entry.label) || a.name };
         if (a.state === "waiting" && !a.words) {
           if (!a.commit && /^[0-9a-f]{64}$/.test(String(i.commit || ""))) a.commit = String(i.commit);
           if (a.commit && typeof i.reveal === "string" && i.reveal) {
@@ -1327,7 +1340,7 @@ export function createPairing(o) {
             ctx.events.emit("wink.pair-asked", { device: a.device, name: a.name, choices: a.choices, until: a.until, kind: "phone" });
           }
         }
-        return { state: a.state, nb: a.nb, ...(a.words ? { words: a.words } : {}), until: a.until };
+        return { state: a.state, nb: a.nb, ...(a.words ? { words: a.words } : {}), ...(a.state === "yes" && a.entry ? { enrolled: a.enrolled === true, ...(a.enrolled === true ? {} : { reason: a.enrolReason || "the identity list did not take this device" }) } : {}), until: a.until };
       },
     });
 

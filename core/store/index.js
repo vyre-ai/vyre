@@ -33,6 +33,13 @@ export function open(file) {
   return db;
 }
 
+/** Every module's migration list as the last `migrate` saw it: the append-only hygiene test (test/migrations-append-only.test.js) reads it. */
+export const MIGRATION_LISTS = new Map();
+/** Called when a "duplicate column name" step was treated as applied (a repair for a box that ran a mis-ordered list). Replaceable so the daemon can log it and a test can count it. @type {(line: string) => void} */
+export let onRepair = line => { try { process.stderr.write(line + "\n"); } catch { /* nothing to log to */ } };
+/** @param {(line: string) => void} fn */
+export const setRepairLog = fn => { onRepair = fn; };
+
 /**
  * Apply a module's migrations in order, each exactly once, each in a transaction.
  * @param {DatabaseSync} db
@@ -40,6 +47,7 @@ export function open(file) {
  * @param {string[]} steps SQL, one string per version, never edited once released
  */
 export function migrate(db, module, steps) {
+  MIGRATION_LISTS.set(module, steps);
   const done = new Set(db.prepare("SELECT version FROM _migrations WHERE module = ?").all(module).map(r => Number(r.version)));
   steps.forEach((sql, i) => {
     const v = i + 1;
@@ -56,6 +64,8 @@ export function migrate(db, module, steps) {
         // An upgraded box can already hold what a step adds (a column put there by an earlier build whose list was numbered differently): that part of the step is done. Retry
         // statement by statement and skip only "duplicate column name" refusals, so a real error still fails the module.
         if (!/duplicate column name/i.test(String(/** @type {Error} */ (e).message))) throw e;
+        // One plain line each time: this should only ever fire on a dev box that ran a mis-ordered list, never on a box upgraded from a RELEASED version (launch's update proof fails on it).
+        onRepair(`migration ${module} v${v}: column already present, treated as applied`);
         for (const part of sql.split(";")) {
           if (!part.trim()) continue;
           try { db.exec(part); } catch (e2) { if (!/duplicate column name/i.test(String(/** @type {Error} */ (e2).message))) throw e2; }

@@ -190,3 +190,53 @@ test("sqlite store counts (CT-1): a first count built inside a transaction that 
   assert.deepEqual(await s.aggregate("matter", spec), await scan(), "and after a later write");
   db.close();
 });
+
+test("sqlite store forget: a live record leaves its kept stage counts, its attribute row and its cache entry, and nothing of it is left in the file or the log; a rolled-back forget changes nothing", async () => {
+  const f = file();
+  const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }] };
+  let db = new DatabaseSync(f);
+  db.exec("PRAGMA journal_mode = WAL");
+  let s = createSqliteStore({ db });
+  await s.define({ add_types: [MATTER] });
+  const id = i => `0190c3f2-1111-4abc-8def-${String(i + 1).padStart(12, "0")}`;
+  const urn = i => `vyre://spc_aaaaaaaaaaaa/matter/${id(i)}`;
+  const spec = { group_by: ["stage"], measures: [{ fn: "count" }] };
+  const kept = st => st.aggregate("matter", spec);
+  const scan = st => st.aggregate("matter", { ...spec, filter: { and: [] } });
+  const same = async (st, what) => assert.deepEqual(await kept(st), await scan(st), what);
+  const MARK = "Zebulon-Quartz-Unique-Marker";
+  for (let i = 0; i < 12; i++) { await s.create("matter", id(i), { title: i === 3 ? `${MARK} contract` : `M${i}`, stage: ["intake", "open", "closed"][i % 3] }); s.meta.set(urn(i), { project: i === 3 ? `proj-${MARK}` : "p", owner: "per_x" }); }
+  await same(s, "counts built");
+  // a rolled-back forget (inside a caller's transaction that fails) changes nothing
+  db.exec("BEGIN");
+  await s.destroy("matter", id(3));
+  db.exec("ROLLBACK");
+  await same(s, "rolled back: counts equal a scan");
+  assert.equal((await s.get("matter", id(3))).data.stage, "intake");
+  assert.ok(db.prepare("SELECT 1 FROM kernel_attrs WHERE urn = ?").get(urn(3)), "the attribute row is back");
+  // the real forget
+  const total = async st => (await st.aggregate("matter", spec)).reduce((n, g) => n + g.values.count, 0);
+  assert.equal(await total(s), 12);
+  s.meta.get(urn(3));
+  await s.destroy("matter", id(3));
+  assert.equal(await total(s), 11, "the kept counts lost the record");
+  await same(s, "forgotten: counts equal a scan");
+  assert.equal(await s.get("matter", id(3), { include_deleted: true }), null);
+  assert.equal(db.prepare("SELECT count(*) AS n FROM kernel_attrs WHERE urn LIKE ?").get(`%${id(3)}`).n, 0, "no attribute row");
+  assert.equal(s.meta.get(urn(3)), undefined, "no cache entry");
+  assert.equal(s.stats().hot_attrs, 11);
+  // a removed record forgotten does not take a count it no longer held
+  await s.remove("matter", id(4), 1);
+  await same(s, "after remove");
+  await s.destroy("matter", id(4));
+  await same(s, "a removed record forgotten");
+  // restart
+  db.close();
+  db = new DatabaseSync(f);
+  s = createSqliteStore({ db });
+  await same(s, "after a restart");
+  assert.equal(await total(s), 10);
+  db.close();
+  const bytes = fs.readFileSync(f, "latin1") + (fs.existsSync(f + "-wal") ? fs.readFileSync(f + "-wal", "latin1") : "");
+  assert.equal(bytes.split(MARK).length - 1, 0, "no byte of the forgotten record's text or attribute remains in the file or the write-ahead log");
+});

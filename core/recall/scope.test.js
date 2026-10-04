@@ -50,8 +50,9 @@ async function world(t, extra = []) {
 
 test("recall.search: a named agent reads only its granted project, never the whole corpus", async t => {
   const { d } = await world(t);
-  // Bare "mcp" (a model's own session, not a named agent) is unchanged: still unrestricted.
-  assert.ok((await d.registry.call("recall.search", { q: "intake form" }, "mcp")).data.length > 0);
+  // Bare "mcp" (every model's shell, no name, no thread of its own) is NOT the person: it has no project, so it reads nothing (MS-1, reviewer-2's recall verdict).
+  const bare = await d.registry.call("recall.search", { q: "intake form" }, "mcp");
+  assert.equal(bare.error && bare.error.code, "denied", JSON.stringify(bare));
   // kit is granted only northwind: a Harlow-only term finds nothing, silently (not an error —
   // the same as any other search with no matches).
   assert.equal((await d.registry.call("recall.search", { q: "intake form" }, "mcp:agent:kit")).data.length, 0);
@@ -159,4 +160,16 @@ test("recall.thread: a prefix that matches sessions inside and outside the grant
   // ungranted session shares the prefix.
   const forKit = await d.registry.call("recall.thread", { session: prefix }, "mcp:agent:kit");
   assert.equal(forKit.data?.turns?.[0]?.text, "A colliding-prefix session, in scope.");
+});
+
+test("an unnamed model session cannot list or read another project's session; the person's surface can", async t => {
+  const { d, opts } = await world(t);
+  for (const [tool, input] of [["recall.sessions", {}], ["recall.sessions", { cwd: "/anywhere" }], ["recall.thread", { session: NORTHWIND_SESSION }], ["recall.thread", { session: HARLOW_SESSION }], ["recall.search", { q: "bakery" }]]) {
+    for (const caller of ["mcp", "mcp:thread:t-none"]) {
+      const r = await d.registry.call(tool, input, caller);
+      assert.ok(r.error || (Array.isArray(r.data) && r.data.length === 0), `${caller} ${tool} must be refused or empty: ${JSON.stringify(r).slice(0, 160)}`);
+    }
+  }
+  assert.ok((await call("recall.sessions", {}, opts)).data.length > 0, "the person's surface lists every session");
+  assert.ok((await call("recall.thread", { session: NORTHWIND_SESSION }, opts)).data.turns.length > 0);
 });

@@ -67,13 +67,13 @@ Vyre reads these when they are set. None is needed for normal use.
 
 | Variable | What it does | Read in |
 | --- | --- | --- |
-| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
+| `VYRE_ACCOUNTS_HOME` | Not described yet. | `core/config/index.js`, `core/daemon/index.js`, `core/recall/indexer.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_ACCOUNT_UID_MAX` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACCOUNT_UID_MIN` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
 | `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
-| `VYRE_AGENT_HOME` | Not described yet. | `core/sessions/spawn.js`, `core/spawner/main.js` |
+| `VYRE_AGENT_HOME` | Not described yet. | `core/daemon/index.js`, `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_AGENT_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
@@ -123,7 +123,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
 | `VYRE_HEADSCALE_BIN` | The `headscale` binary a space's network control plane runs. Under node --test there is none unless `VYRE_WINK_REAL=1`. | `core/wink/control/headscale.js` |
-| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
+| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/pluginagent/index.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js`, `local/hands-chrome-mac/standalone/runtime.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_KERNEL` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
@@ -174,7 +174,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_UPDATE_QUIET` | Not described yet. | `core/update/index.js` |
 | `VYRE_UPDATE_STATE` | Not described yet. | `core/update/index.js` |
 | `VYRE_UP_WAIT_MS` | Not described yet. | `core/cli/daemonctl.js` |
-| `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_USER_HOME` | Not described yet. | `core/daemon/index.js`, `core/spawner/main.js` |
 | `VYRE_WALL_STATUS` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_HOME` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WATCH_NODE` | Not described yet. | `core/spawner/main.js` |
@@ -212,7 +212,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_SESSIONS_SPAWNER` | Not described yet. | `core/sessions/config.js`, `core/sessions/spawn.js` |
 | `VYRE_SITE_TEST_CLOCK` | Not described yet. | `local/hands-chrome-mac/extension/shared/sk/site-knowledge.js` |
 | `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `core/cli/daemonctl.js`, `core/daemon/client.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `harness/mcp/server.js` |
-| `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/spawner/client.js`, `core/spawner/main.js` |
+| `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/daemon/index.js`, `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `core/cli/daemonctl.js`, `harness/hooks/hook.js` |
 
 ### For tests and development
@@ -224,4 +224,5 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_PAIR_NO_PROOF` | Not described yet. | `core/wink/pairing.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js`, `core/relay/tailnet.js` |
+| `VYRE_TEST_START_PAUSE_MS` | Not described yet. | `core/switchboard/index.js` |
 | `VYRE_TEST_UNGATED_RING` | Not described yet. | `core/relay/index.js` |

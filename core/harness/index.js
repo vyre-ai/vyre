@@ -10,6 +10,7 @@
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
+import { agentName, modelKey } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 
 const MIGRATIONS = [
@@ -195,12 +196,12 @@ export default {
         // behind it, which is all a 0.2 daemon knows. (2) is what a model sharing a person's terminal cannot forge. Otherwise the answer needs learn.accept (the person's own).
         let terminal = false;
         if (interactive === true && !agent && session && !(typeof meta.thread === "string" && meta.thread)) {
-          let person = false;
+          let typedBy = false;
           if (ctx.kernel && typeof ctx.kernel.chain === "function") {
             const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
-            person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
-          } else person = String(caller || "") === "harness"; // SHIM(legacy labels): the kernel-off build
-          if (person) {
+            typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
+          } else typedBy = !agentName(caller) && modelKey(caller) === "caller:harness"; // SHIM(legacy labels): the kernel-off build
+          if (typedBy) {
             const claimed = await ask("threads.claimed", { session: String(session) });
             if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), prompt);
           }

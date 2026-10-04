@@ -46,7 +46,7 @@ async function boot(t, { kernel = null } = {}) {
 const YES = { graph: "yes", corrections: "yes", me: "yes", correct: "yes", pin: "yes", write: "yes", site: "yes" };
 // RULING 6 Oct (second deliberate change): an owner device reads as the owner only when signed in, over Wink or the relay alike. Unsigned: nothing personal, and no correct or write.
 const NO_READS = { graph: "person_session_required", corrections: "person_session_required", me: "person_session_required" }; // the plain sign-in hint, only for the owner's own unsigned device
-const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required" };
+const UNSIGNED = { ...YES, ...NO_READS, correct: "person_session_required", write: "person_session_required", pin: "denied" }; // MS-1: an unsigned device may not steer the whole graph either
 
 test("each caller class does exactly what its label did: the table's rows, by the chain and by the label", async t => {
   const rig = await createRig({ agents: ["kit", "assistant"] });
@@ -71,7 +71,8 @@ test("each caller class does exactly what its label did: the table's rows, by th
     ["the person's own Claude (assistant token) against the assistant label", await on.can("mcp:agent:assistant", { token: assistant, agent: "assistant", granted: "*" }, bind(assistant)), await off.can("mcp:agent:assistant", { agent: "assistant", granted: "*" }), null],
   ];
   for (const [name, after, before, expected] of rows) {
-    if (before) assert.deepEqual(after, before, `${name}: the chain and the label disagree`);
+    // (pin steers the whole graph (MS-1): the label side cannot tell a signed-in device from a bare one, the chain can, so it is compared by the table below, not by the label)
+    if (before) { const { pin: _a, ...a } = after, { pin: _b, ...b } = before; assert.deepEqual(a, b, `${name}: the chain and the label disagree`); }
     if (expected) assert.deepEqual(after, expected, name);
   }
   // spot-check the rows with no declared expectation: an own session may not steer the main graph, read corrections, correct or use the site store
