@@ -325,7 +325,7 @@ export class TwentyStore {
   async aggregate(type, spec) {
     const p = this.#plan(type);
     for (const g of spec.group_by ?? []) { const f = p.byVyre.get(g); if (g !== "id" && !f) throw new StoreError("unknown_field", `${type} has no field ${g}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${g} is sealed`); }
-    for (const m of spec.measures ?? []) { const f = m.field ? p.byVyre.get(m.field) : null; if (m.field && !f) throw new StoreError("unknown_field", `${type} has no field ${m.field}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${m.field} is sealed`); }
+    for (const m of spec.measures ?? []) { const f = m.field ? (p.byVyre.get(m.field) ?? p.byVyre.get(m.field.split(".")[0])) : null; if (m.field && !f) throw new StoreError("unknown_field", `${type} has no field ${m.field}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${m.field} is sealed`); }
     const native = await this.#nativeAggregate(p, type, spec);
     if (native) return native;
     // Folded page by page: no row cap, and the rows are never all in memory.
