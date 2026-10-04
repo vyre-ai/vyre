@@ -773,9 +773,9 @@ Listens for: `link.unpaired`
 | `wink.pair-answered` | `yes`; sometimes `kind` |
 | `wink.pair-asked` | `choices`, `device`, `name`, `until`; sometimes `kind` |
 | `wink.pair-confirm` | `pairing`, `words` |
-| `wink.pair-done` | `kind`, `pairing`, `target`; sometimes `device` |
+| `wink.pair-done` | `kind`, `pairing`; sometimes `device`, `target` |
 | `wink.pair-failed` | `pairing`, `reason` |
-| `wink.pair-waiting` | `kind`, `pairing`, `target` |
+| `wink.pair-waiting` | `kind`, `pairing`; sometimes `target` |
 | `wink.relay-applied` | `device`; sometimes `url` |
 | `wink.removed` | none; sometimes `device`, `grant` |
 | `wink.server-adopted` | `owner` |
