@@ -16,6 +16,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { createCheckpointStore } from "./checkpoint-store.js";
 import { effectiveNetwork } from "./runner.js";
+import { deviceIdOf } from "../../lib/caller.js";
 import { KernelError } from "../../kernel/core/errors.js";
 const err = (code, message) => new KernelError(code, message);
 export const CHUNK_BYTES = 96 * 1024;
@@ -36,7 +37,8 @@ export function createLentHome(o) {
   const who = chain => {
     const h = chain && Array.isArray(chain.hops) ? chain.hops : [];
     if (chain?.space !== o.space || h.length !== 1 || !h[0].actor || h[0].actor.kind !== "person") throw err("not_found", "not found");
-    const device = String(h[0].via?.device || "").replace(/^device:/, "");
+    const via = String(h[0].via?.device || "");
+    const device = deviceIdOf(via) ?? via; // the kernel says which device (bookkeeping); the person is the chain's one person hop above
     if (!device) throw err("not_found", "not found");
     return { person: String(h[0].actor.id), device };
   };
