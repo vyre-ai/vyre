@@ -49,3 +49,13 @@ test("a phone sends esig beside sig, both over paired-start", async () => {
   assert.equal(sent[1].esig, Buffer.from(sig).toString("base64url"));
   assert.equal(sent[1].sig, sent[1].esig);
 });
+
+test("the phone keeps the paired token where the native box client reads it (vyre.person.token.<route>)", async () => {
+  const fs = await import("node:fs");
+  const person = fs.readFileSync(new URL("./person.native.ts", import.meta.url), "utf8");
+  const box = fs.readFileSync(new URL("../api/box.native.ts", import.meta.url), "utf8");
+  assert.match(person, /keepPairedToken\(route: string, token: string\)[\s\S]{0,120}slotName\("token", route\)/);
+  assert.match(person, /stores: \{ token: secureSlot\(slotName\("token", name\)\) \}/);
+  assert.match(box, /name: boxName\(\)/);
+  assert.match(box, /paired \? paired\.route : ""/);
+});
