@@ -1,4 +1,5 @@
 // reviewer-2 repro HD-6c against work/kernel-declare bca589989 (drop into modules/hands-chrome/): the passive role still decides alone for a name that is not on the allow-list.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { of } from "./consequence.js";
