@@ -195,7 +195,7 @@ test("offers: the compute pair needs both sides, only for that member's own comp
   assert.deepEqual(g.offers.active({ member: BOB, device: "dev_other" }), { spaceAllows: true, memberAccepts: false }, "acceptance is per computer");
   assert.deepEqual(g.offers.active({ member: ALICE, device: "dev_laptop", device_key: "KEY_LAPTOP" }), { spaceAllows: false, memberAccepts: false }, "another member's computer is not covered");
   // the member withdraws: told at once; an admin cannot withdraw the member's acceptance
-  const un = id => ({ presence: proof("grants.offer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
+  const un = id => ({ presence: proof("grants.unoffer", { revoke: id }, `vyre://${SPACE}/offer/${id}`) });
   await assert.rejects(() => g.offers.unoffer(personChain(ALICE), accept.id, un(accept.id)), { code: "not_allowed" });
   await g.offers.unoffer(personChain(BOB), accept.id, un(accept.id));
   assert.deepEqual(events.map(e => [e.side, e.reason]), [["member_accepts", "withdrawn"]]);
@@ -488,7 +488,7 @@ test("R4: every state-changing call that fails while writing its sealed event le
   assert.deepEqual(g.offers.active(q), { spaceAllows: false, memberAccepts: false }, "offer: nothing offered");
   const off = await g.offers.offer(owner(), o1, { presence: proof("grants.offer", o1, `vyre://${SPACE}/offer/new`) });
   assert.equal(g.offers.active(q).spaceAllows, true);
-  await down(() => g.offers.unoffer(owner(), off.id, { presence: proof("grants.offer", { revoke: off.id }, `vyre://${SPACE}/offer/${off.id}`) }));
+  await down(() => g.offers.unoffer(owner(), off.id, { presence: proof("grants.unoffer", { revoke: off.id }, `vyre://${SPACE}/offer/${off.id}`) }));
   assert.equal(g.offers.active(q).spaceAllows, true, "unoffer: the offer is still active");
   // invites: create, confirm, accept
   const ip = (action, inp, res) => ({ presence: proof(action, inp, res) });
