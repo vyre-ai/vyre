@@ -9,11 +9,13 @@ import { offerFrom } from "./pairing.ts";
 export type WinkCode =
   | { ok: true; kind: "ticket"; ticket: string; relay: string; for: "server" | "phone" }
   | { ok: true; kind: "offer"; offer: string }
+  /** The short typed code, WINK-NNPP-PPPP: the other device types it instead of scanning or pasting the long link (relay/client/code.js). */
+  | { ok: true; kind: "typed"; code: string }
   | { ok: false; reason: "empty" | "typed" | "not_a_code"; say: string };
 
 export const SAY = {
   empty: "Paste the long code the screen shows, or scan its QR.",
-  typed: "That way of pairing is switched off in this release. Scan the code on the screen, or paste the long code it shows.",
+  typed: "That is an old kind of code that no longer works. Scan the code on the screen, type its new short code, or paste the long code it shows.",
   not_a_code: "That is not a Vyre code. Scan the code on the screen, or paste the long code it printed.",
 } as const;
 
@@ -36,7 +38,9 @@ export function parseWinkCode(text: string | null | undefined): WinkCode {
   }
   const offer = offerFrom(raw);
   if (offer) return { ok: true, kind: "offer", offer };
-  if (TYPED.test(raw) || /^vyre:\/\/wink\/1\?/.test(raw)) return refuse("typed");
+  const t = TYPED.exec(raw.replace(/\s+/g, ""));
+  if (t) { const b = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(4); return { ok: true, kind: "typed", code: `WINK-${b.slice(0, 4)}-${b.slice(4)}` }; }
+  if (/^vyre:\/\/wink\/1\?/.test(raw)) return refuse("typed");
   return refuse("not_a_code");
 }
 

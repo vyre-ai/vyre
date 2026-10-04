@@ -17,6 +17,9 @@ import readline from "node:readline";
 import { CLASSES, hintOf, redact } from "./classes.js";
 import { compact, ledgerEntries } from "./normalise.js";
 import { Presence } from "./proof.js";
+import { isUnattestedEnclave } from "./strength.js";
+/** How an enrolled key is marked: hardware only when attested; unattested for a phone's secure-chip key the server could not attest (UY-2); else software. */
+const markOf = (/** @type {boolean} */ attested, /** @type {string} */ signer) => (attested ? "hardware" : isUnattestedEnclave({ attested: false, signer }) ? "unattested" : "software");
 import { appAttestVerifier, devSwitch } from "./appattest.js";
 export { devSwitch };
 import { SealStore } from "./store.js";
@@ -219,7 +222,7 @@ export class Sealer {
         const ctx = this.ctxOf(req.ctx);
         // A pinned person's enrolment first takes the current chain (V-1): a device removed since the last sync is gone, with its keys, before its bind is looked at.
         if (this.presence.pins.has(req.person)) { need(Array.isArray(req.ops), "needs_chain"); const s = await this.presence.sync({ person: req.person, ops: req.ops, ctx }); if (s.refused) throw err(s.refused); }
-        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, strength: r.attested ? "hardware" : "software", event: { type: "presence.enrolled", strength: r.attested ? "hardware" : "software", method: r.attested ? "attested" : "software", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
+        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, strength: markOf(r.attested, req.signer), event: { type: "presence.enrolled", strength: markOf(r.attested, req.signer), method: r.attested ? "attested" : markOf(false, req.signer) === "unattested" ? "unattested" : "software", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
       // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
       // and the proof is used up. The kernel supplies who is in the chain; only task and grant ops are accepted, so this is not a path to a seal op.
@@ -237,10 +240,10 @@ export class Sealer {
       }
       case "presence.sync": { const r = await this.presence.sync({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { ...r, events: r.pruned.map(key_id => ({ type: "presence.revoked", key_id, why: "device_removed" })) }; }
       // An invitee's first key on a server that has never met them: the identity chain (`ops`) is verified here, and a listed, not-young device's signature over this invite, this Space and this key is what vouches for it.
-      case "presence.join": { const r = await this.presence.join({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { joined: true, attested: r.attested, strength: r.attested ? "hardware" : "software", event: { type: "presence.joined", strength: r.attested ? "hardware" : "software", person: req.person, key_id: req.key_id, device: r.device, invite: req.invite, newcomer_for_ms: 24 * 3_600_000 } }; }
+      case "presence.join": { const r = await this.presence.join({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { joined: true, attested: r.attested, strength: markOf(r.attested, req.signer), event: { type: "presence.joined", strength: markOf(r.attested, req.signer), person: req.person, key_id: req.key_id, device: r.device, invite: req.invite, newcomer_for_ms: 24 * 3_600_000 } }; }
       // The accept that carried a join's key did not finish: take the key back (all or nothing).
       case "presence.unjoin": { const r = this.presence.unjoin({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { undone: true, event: { type: "presence.revoked", key_id: req.key_id, why: "join_undone" } }; }
-      case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, strength: r.attested ? "hardware" : "software", event: { type: "presence.recovered", strength: r.attested ? "hardware" : "software", person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
+      case "presence.recover": { const r = await this.presence.recover({ ...req, ctx: this.ctxOf(req.ctx) }); if (r.refused) throw err(r.refused); return { recovered: true, attested: r.attested, strength: markOf(r.attested, req.signer), event: { type: "presence.recovered", strength: markOf(r.attested, req.signer), person: req.person, key_id: req.key_id, device: r.device, newcomer_for_ms: 24 * 3_600_000 } }; }
       case "lease.issue": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); need(c.person, "bad_input"); return this.leases.issue({ space: c.space, member: c.person, device: req.device, allowed: req.allowed }); }
       case "lease.renew": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.renew({ id: req.lease, member: c.person, allowed: req.allowed }); }
       case "lease.revoke": { const c = this.ctxOf(req.ctx); need(c.one_person && !c.model_originated, "human_only"); return this.leases.revoke({ space: c.space, member: req.member, device: req.device }); }

@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { Stack, useRouter, type Href } from "expo-router";
 import { useTrust } from "../src/state/devices";
+import { useGap } from "../src/state/setup-gap";
 import { ListRow } from "../src/ui/Row";
 import { Screen } from "../src/ui/Screen";
 
@@ -17,10 +18,13 @@ const PLACES: { title: string; detail: string; href: Href; testID: string }[] = 
 export default function Places() {
   const router = useRouter();
   const trust = useTrust();
+  // What is missing on this device comes first, with the one action that fixes it.
+  const gap = useGap();
   return (
     <Screen title="Places" back>
       <Stack.Screen options={{ presentation: "modal" }} />
       <View>
+        {gap ? <ListRow testID="place-gap" title={gap.title} meta={`${gap.line} ${gap.action}.`} push onPress={() => router.push(gap.route as never)} /> : null}
         {PLACES.map((p) => (
           <ListRow
             key={p.testID}

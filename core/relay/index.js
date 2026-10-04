@@ -124,6 +124,8 @@ export const seams = new Map();
 export default {
   async start(ctx, seam0 = {}) {
     const seam = { ...seam0, ...(seams.get(ctx.paths.root) || {}) };
+    /** A seam read when it is used, so a test can change it after the relay started (the invitee channel lifetimes). @param {string} k */
+    const liveSeam = k => (/** @type {any} */ (seams.get(ctx.paths.root)) || {})[k] ?? /** @type {any} */ (seam)[k];
     /** @type {Set<any>} the invitee channels open now (IV-5) */ const inviteePool = new Set();
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
@@ -314,7 +316,8 @@ export default {
     const refusals = new Map();
     function refusedLog(/** @type {string} */ why) {
       const t = now(), r = refusals.get(why);
-      if (r && t - r.at < 60_000) { r.n++; return; }
+      // a repeat inside the minute still says its reason, for the first few (a person retrying a pairing must see why each try was refused); past that it is only counted, so an outsider cannot flood the log
+      if (r && t - r.at < 60_000) { r.n++; if (r.n <= 5) ctx.log(`relay: refused again (${why}); ${r.n} more like it this minute`); return; }
       ctx.log(`relay: refused a hello (${why})${r && r.n ? `; ${r.n} more like it in the last minute` : ""}`);
       refusals.set(why, { at: t, n: 0 });
       if (refusals.size > 50) refusals.delete(refusals.keys().next().value);
@@ -495,7 +498,7 @@ export default {
       // The device's own request-signing key, as it offered it in its hello (a public key, SPKI base64url, P-256 alg -7), so the pairing can bind its paired session to it.
       const pk = p.hello && p.hello.presenceKey;
       // `storage` is the app's own report of where it made the key (the platform's key API); it is for display only and no security decision reads it.
-      return pk && typeof pk.public_key === "string" ? { key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" } : {};
+      return pk && typeof pk.public_key === "string" ? { key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown", ...(typeof pk.signer === "string" ? { signer: pk.signer.slice(0, 40) } : {}) } : {};
     };
 
     // ---- the setup session (tailnet plan 3.5, 3.6, 3.6b) ----
@@ -605,8 +608,8 @@ export default {
         const timers = /** @type {any[]} */ ([]);
         const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; inviteePool.delete(channel); };
         const end = (/** @type {string} */ why) => { stop(); try { channel.close(1000, why); } catch { /* closed */ } };
-        const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, seam.inviteeIdleMs ?? 30_000);
-        const total = setTimeout(() => end("invite channel time is up"), seam.inviteeTotalMs ?? 5 * 60_000);
+        const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, liveSeam("inviteeIdleMs") ?? 30_000);
+        const total = setTimeout(() => end("invite channel time is up"), liveSeam("inviteeTotalMs") ?? 5 * 60_000);
         for (const t of [idle, total]) { if (t.unref) t.unref(); timers.push(t); }
         const prevClose = channel.onclose;
         channel.onclose = (/** @type {any[]} */ ...a) => { stop(); return typeof prevClose === "function" ? prevClose.apply(channel, a) : undefined; };

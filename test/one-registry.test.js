@@ -50,11 +50,10 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   assert.equal((await ok("records.list", { space, type: "contact" })).rows.length, 1);
   assert.deepEqual(rec.acted_in, { id: space, label: "estatedev" }, "records.create names the space it acted in");
   assert.deepEqual((await ok("records.list", { space, type: "contact" })).acted_in, { id: space, label: "estatedev" });
-  // with no `space` a call acts in the home's own space and says so; a made-up id is refused, not answered empty
+  // with no `space` a call acts in the space the person made (the home's own space stays internal) and says so; a made-up id is refused, not answered empty
   const homeMe = await ok("records.me");
-  assert.equal(homeMe.acted_in.label, "home", "no space given: the home's own space, named");
-  assert.match(homeMe.acted_in.id, /^spc_[a-z2-7]{12}$/);
-  assert.notEqual(homeMe.acted_in.id, space);
+  assert.equal(homeMe.acted_in.label, "estatedev", "no space given: the only space the person made");
+  assert.equal(homeMe.acted_in.id, space);
   assert.equal((await ok("records.me", { space })).acted_in.id, space, "records.me with the created id acts in it");
   const bogus = await deck("records.types", { space: "spc_aaaaaaaaaaaa" });
   assert.equal(bogus.error && bogus.error.code, "not_found", JSON.stringify(bogus).slice(0, 200));
@@ -85,7 +84,7 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   assert.equal(JSON.parse(overridden.stdout).acted_in.id, space);
   assert.equal(JSON.parse(/** @type {any} */ ((await cli(["space", "--json"]))).stdout).space, space);
   assert.equal((await cli(["space", "use", "--clear"])).code, 0);
-  assert.equal(JSON.parse((/** @type {any} */ (await cli(["call", "records.me"]))).stdout).acted_in.label, "home", "cleared: the home's own space again");
+  assert.equal(JSON.parse((/** @type {any} */ (await cli(["call", "records.me"]))).stdout).acted_in.id, space, "cleared: the only space the person made again (not the home's own)");
   // one id for the space everywhere
   const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
   const row = (Array.isArray(listed) ? listed : listed.spaces).find(x => x.name === "estatedev.vyre.run");
@@ -98,6 +97,13 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   assert.equal(d.kernel.id.owner, status.id, "the kernel's owner is the identity");
   const tg = await deck("wink.pair.targets");
   if (!tg.error) assert.ok(tg.data.targets.some(x => x.kind === "identity" && x.id === status.id), `the pairing's identity target is the claimed identity: ${JSON.stringify(tg.data.targets)}`);
+  // two spaces made and none named: a question for the app, never a guess
+  const second = await ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  assert.equal(second.status, "done", JSON.stringify(second));
+  const ask = await deck("records.me");
+  assert.equal(ask.error && ask.error.code, "needs_space", JSON.stringify(ask).slice(0, 300));
+  assert.match(ask.error.message, /estatedev.*northwind|northwind.*estatedev/);
+  assert.equal((await ok("records.me", { space })).acted_in.id, space, "naming one still works");
   void ownerChain;
 });
 
@@ -208,25 +214,12 @@ test("PA-1: creating a space is all or nothing in the kernel's registry too: a r
     assert.ok(r.error || (r.data && r.data.status !== "done"), `try ${i}: ${JSON.stringify(r)}`);
     assert.deepEqual([hostedCount(), folders()], base, `try ${i} left a hosted Space behind: ${JSON.stringify(r).slice(0, 200)}`);
   }
-  // a creation that is waiting (this computer not yet confirmed) holds one Space; cancel gives it back
+  // a creation that has not been confirmed (this computer must stay on) asks first and makes nothing: no hosted Space, no folder, no row, and nothing to cancel
   const w = await deck("spaces.create", { name: "northwind", home: { kind: "this-computer" } });
   assert.ok(!w.error, JSON.stringify(w.error));
-  const wid = w.data.space;
-  const cancelled = await deck("spaces.cancel", { space: wid });
-  assert.ok(!cancelled.error, JSON.stringify(cancelled.error));
-  assert.deepEqual([hostedCount(), folders()], base, "cancel took the kernel's Space back");
-  assert.ok(!(await deck("spaces.list")).data.some((/** @type {any} */ x) => x.id === wid), "and it is not listed");
-  // a creation whose kernel Space was taken back (a failed step retires it) is hosted again under the SAME id when the person resumes it, and finishes
-  const w2 = await deck("spaces.create", { name: "juno", home: { kind: "this-computer" } });
-  assert.ok(!w2.error, JSON.stringify(w2.error));
-  const jid = w2.data.space;
-  assert.deepEqual(await d.kernel.spaces.retire(jid), { retired: true });
-  assert.ok(!d.kernel.spaces.hosts(jid), "taken back");
-  const back = await deck("spaces.resume", { space: jid, confirmThisComputer: true });
-  assert.ok(!back.error, JSON.stringify(back.error));
-  assert.equal(back.data.status, "done", JSON.stringify(back.data));
-  assert.ok(d.kernel.spaces.hosts(jid), "hosted again under the same id");
-  assert.equal(back.data.space, jid);
+  assert.equal(w.data.status, "needs_confirmation");
+  assert.equal(w.data.space, undefined);
+  assert.deepEqual([hostedCount(), folders()], base, "asking left nothing behind");
   // the finished space still works
   assert.ok(!(await deck("spaces.get", { space: first.data.space })).error);
 });

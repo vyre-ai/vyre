@@ -21,7 +21,9 @@ import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } f
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, deviceIdOf } from "../../lib/caller.js";
+import { createHash } from "node:crypto";
+import { yes, momentOf, plainFieldsOf } from "../../lib/one-yes.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
 import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
@@ -101,10 +103,28 @@ export function roleBuckets(role, platform = process.platform) {
   if (config.isDevice(role) || (role === "server" && platform === "darwin")) out.push("local");
   return out;
 }
+/** @param {any} v @returns {any} */
+const canonOf = v => (Array.isArray(v) ? v.map(canonOf) : v && typeof v === "object" ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canonOf(v[k])])) : v);
+/**
+ * What a held outward call's card is bound to: its plain short fields (so the phone can show them) and a digest of the whole input (so the yes covers exactly this call, whatever is long or nested in it).
+ * @param {any} input @returns {Record<string, string | number | boolean>}
+ */
+export function holdFields(input) {
+  /** @type {Record<string, string | number | boolean>} */ const f = {};
+  if (input && typeof input === "object" && !Array.isArray(input)) {
+    for (const k of Object.keys(input)) {
+      const v = input[k];
+      if (Object.keys(f).length < 10 && /^[a-z][a-z0-9_]{0,31}$/.test(k) && k !== "input_sha256" && (typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) f[k] = v;
+    }
+  }
+  f.input_sha256 = createHash("sha256").update(JSON.stringify(canonOf(input === undefined ? null : input))).digest("hex").slice(0, 32);
+  return f;
+}
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 /** Who may call a tool (ADR 0047), and what an outward tool does as the person. */
 const REACHES = ["anyone", "asked", "person", "modules", "hook"];
-const OUTWARD = ["send", "post", "pay", "delete"];
+const OUTWARD = ["send", "post", "pay", "delete"]; // `outward: true` is the plain mark (one yes): leaves Vyre and reaches someone outside your spaces and devices; a word names the Gate kind
+
 
 /**
  * The SDK's added-module check, as a load reads it: the graces applied first, so only the 1.0
@@ -213,7 +233,7 @@ export function validate(m, { firstParty = false } = {}) {
     if (!TOOL.test(t)) out.push(`tool "${t}" must look like module.verb`);
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
-    if (typeof e === "object" && e.outward !== undefined && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")}`);
+    if (typeof e === "object" && e.outward !== undefined && e.outward !== true && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")} (or true)`);
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -293,7 +313,7 @@ function checkCredentials(list) {
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!((name === "credentialsPort" && module === "vault") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -1027,6 +1047,8 @@ export class Registry {
         // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+        // Is this tool marked `outward` in its module.json? The one place the outward moment is decided (internal tools included).
+        isOutward: name => Boolean((this.tools.get(String(name)) || {}).outward),
       },
       // The box's keys held by vyre-core (lib/vyre-core-keys.js), for the relay module alone: its dh
       // and signature would let any module that held them speak as the box. Null where core has none.
@@ -1074,6 +1096,8 @@ export class Registry {
         // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+        // Is this tool marked `outward` in its module.json? The one place the outward moment is decided (internal tools included).
+        isOutward: name => Boolean((this.tools.get(String(name)) || {}).outward),
       },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
@@ -1126,7 +1150,7 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
+          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
     };
   }
@@ -1196,6 +1220,14 @@ export class Registry {
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
     if (terminal && (typeof terminal === "string" || typeof terminal === "object")) meta.terminal = terminal;
+    // An approval id (a card the owner's phone answered, core/approvals) rides beside the call, never in its input: it is taken out here so no tool sees it, and only a device caller's is read.
+    let approval = typeof meta.approval === "string" && /^ap_[A-Za-z0-9_-]{6,40}$/.test(meta.approval) ? meta.approval : null;
+    delete meta.approval;
+    // the retry of a held act carries `approval: <id>` as an input field too (the shape the apps build to): taken out here unless the tool declares a property of that name
+    if (!approval && input && typeof input === "object" && !Array.isArray(input) && typeof input.approval === "string" && !(def.input && def.input.properties && Object.hasOwn(def.input.properties, "approval"))) {
+      if (/^ap_[A-Za-z0-9_-]{6,40}$/.test(input.approval)) approval = input.approval;
+      const { approval: _drop, ...rest } = input; input = rest;
+    }
     // `standalone` says the caller is the standalone Chrome runtime's own MCP session (local/hands-chrome-mac/standalone/runtime.js hands it to a tool directly, never through here): nothing that comes
     // through the registry, from a client or a module, may claim it.
     delete meta.standalone;
@@ -1224,7 +1256,9 @@ export class Registry {
       // (reviews/platform.md CR-H1): an outward tool runs only from the person's own surface or
       // device, and an asked tool never runs for a model, the harness or a module, since nothing
       // here can yet tell that the person's own words asked for it.
-      if ((def.outward || agentAskFirst(tool, caller)) && !isPerson(caller)) {
+      // The plain mark `outward: true` is what the one-yes moment reads (isOutward); a tool so marked keeps its own held flow for an agent (publish's requests, github's asked, apps.send's proof,
+      // vault's Gate sender), which this fail-closed stand-in would pre-empt. Only the older kind words (send, post, pay, delete) are held here.
+      if (((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, caller)) && !isPerson(caller)) {
         // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
         // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
         /** @type {any} */ let held = {};
@@ -1360,10 +1394,38 @@ export class Registry {
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
     } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+      // One yes: a floor-bearing tool that is one of the three moments (vault, pairing a device, an outward send) also takes the owner's approval of exactly this call: a card the phone answered, bound to the
+      // asking device taken from the verified caller (never from input), spent once. Everything else, and everything that is not an approved card, goes on to the old proof check below.
+      /** @type {{ method: string, keyId: null } | null} */ let approved = null;
+      if (approval && !String(caller).startsWith("module:")) {
+        const mo = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward)), dev = deviceIdOf(String(caller)), plain = plainFieldsOf(input);
+        if (mo && dev && plain) { const r = await yes(mo, { op: tool, fields: plain, device: dev }, { card: approval }); if (r.ok) approved = { method: "approval", keyId: null }; }
+      }
+      if (approved) meta = { ...meta, presence: approved };
+      else {
       const v = await presence.verify({ tool, input, caller, proof, def, meta, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
+      }
+    }
+    // One yes: any other caller of a tool marked `outward: true` (an agent, a model, the harness, a module acting for one, a guest) is HELD as a card in the one approvals queue and the tool runs only when
+    // that caller retries with the card the person's phone answered (bound to this exact call by a digest of its input). A tool that already holds non-person callers through its own ask flow says
+    // `asks: true` in its module.json and keeps that flow for RC1; no outward tool runs for a non-person without one of the two.
+    if (def.outward === true && !def.asks && !door && !isPerson(String(caller).startsWith("module:") ? String(meta.origin || "") : caller)) {
+      const asker = `${caller}${meta.origin ? `>${meta.origin}` : ""}`;
+      const fields = holdFields(input);
+      if (approval) {
+        const r = await yes("outward", { op: tool, fields, device: asker }, { card: approval });
+        if (!r.ok) return { error: { code: "approval_refused", message: `that approval does not cover this call (${r.reason}); ask again` } };
+      } else {
+        const hold = this.tools.get("approvals.hold");
+        if (!hold) return { error: { code: "held_unavailable", message: `${tool} acts as you outside, and this server has no approvals queue to hold it in` } };
+        let card;
+        try { card = await hold.run({ tool, fields, from: asker }, { caller: "module:registry" }); }
+        catch (e) { return { error: { code: "held_unavailable", message: `${tool} could not be held for your yes: ${String((e && /** @type {any} */ (e).message) || e).slice(0, 160)}` } }; }
+        return { error: { code: "held_for_approval", approval: card.id, line: card.line, message: `${tool} acts as you outside, so it waits for your yes on your phone (approval ${card.id}). Nothing ran. After you approve, call it again with the same input and approval: ${card.id}` } };
+      }
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses

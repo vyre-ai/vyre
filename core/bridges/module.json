@@ -17,7 +17,7 @@
       { "name": "bridges.resolve", "effect": "read", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Look up the name behind a reference to another Space." },
       { "name": "bridges.copy", "effect": "write", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Copy a record into another Space you belong to." },
       { "name": "bridges.project", "reach": "modules", "summary": "Deliver one event through a projection." },
-      { "name": "bridges.kit.export", "effect": "read", "reach": "person", "summary": "Package definitions as a Kit." },
+      { "name": "bridges.kit.export", "outward": true, "effect": "read", "reach": "person", "summary": "Package definitions as a Kit." },
       { "name": "bridges.kit.plan", "effect": "read", "reach": "person", "summary": "List everything a Kit would add to a Space." },
       { "name": "bridges.kit.install", "effect": "write", "reach": "person", "summary": "Install a Kit after its plan was approved." },
       { "name": "bridges.continue", "effect": "write", "reach": "anyone", "callers": ["cli", "local", "deck", "capsule", "mobile", "device", "module"], "summary": "Hand work to another Space as a task that points back." },

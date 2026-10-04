@@ -15,11 +15,19 @@
 import * as C from "../../../../kernel/identity/chain.js";
 import { codeKey, codeLooksRight, codeSigner, newCode, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
-import { forgetIdentity, hadIdentity, loadIdentity, saveIdentity } from "./store.ts";
+import * as webStore from "./store.ts";
 import type { PairingSession } from "../api/pairing-session";
 import type { WinkCode } from "../api/wink-code";
 
-export { hadIdentity };
+// Which store holds the identity. Node tests and the web take the web store (the explicit file: Node cannot resolve "./store" to a platform file); on the phone Metro resolves "./store" to
+// store.native.ts, and restore-wire.ts hands that one over at start, so a recovery on a phone reads and writes the Keychain, not IndexedDB.
+type IdentityStore = Pick<typeof webStore, "forgetIdentity" | "hadIdentity" | "loadIdentity" | "saveIdentity">;
+let store: IdentityStore = webStore;
+export function useIdentityStore(s: IdentityStore): void { store = s; }
+const forgetIdentity: IdentityStore["forgetIdentity"] = () => store.forgetIdentity();
+const loadIdentity: IdentityStore["loadIdentity"] = () => store.loadIdentity();
+const saveIdentity: IdentityStore["saveIdentity"] = (i) => store.saveIdentity(i);
+export const hadIdentity: IdentityStore["hadIdentity"] = () => store.hadIdentity();
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
 const fail = (code: string, message: string) => Object.assign(new Error(message), { code });

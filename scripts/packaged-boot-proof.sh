@@ -6,6 +6,8 @@
 # installer writes it and NO development variable, then checks (1) every module of the signed list runs and none failed, and (2) one tampered module file is refused, with the
 # kernel's plain line, and nothing else fails. It caught two bugs no unit test could: packed folders missing from package.json "files", and two modules with one name.
 # --drop FOLDER removes a folder from the copy before the build (for a known, open problem only; say which in the job).
+# DEV_KIND=1: the candidate is built development-kind and the terminal is the owner (dev-presence-stand-in in the home, as the walks use); only that run does the session blocks (own-server sealing, kill and resume).
+# The release run asserts the release-kind rules (DP-1) instead.
 set -eu
 # Checks that do not stop the run: each failure is said where it happens and collected, so one broken check never hides the ones after it; the run fails at the end if any did.
 FAILS=""
@@ -38,7 +40,7 @@ for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-m
 grep -q "$NEW" "$SRC/lib/release-sig.js" "$SRC/box/vyre"
 
 ( cd "$SRC" && npm ci --no-audit --no-fund >/dev/null && (cd apps/app && npm ci --no-audit --no-fund >/dev/null) \
-  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta sh scripts/build-site.sh >"$WORK/build.log" 2>&1 ) || { tail -30 "$WORK/build.log"; exit 1; }
+  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta VYRE_TEST_DEV_KIND="${DEV_KIND:-0}" sh scripts/build-site.sh >"$WORK/build.log" 2>&1 ) || { tail -30 "$WORK/build.log"; exit 1; }
 [ -s "$SRC/site/box/modules.json" ] || { echo "packaged-boot-proof: the build made no modules.json" >&2; exit 1; }
 listed=$(node -p 'Object.keys(require(process.argv[1]).modules).length' "$SRC/site/box/modules.json")
 echo "the signed list names $listed modules"
@@ -46,9 +48,11 @@ echo "the signed list names $listed modules"
 unpacked="$WORK/tgz-root"; mkdir -p "$unpacked"; tar -xzf "$SRC/site/box/vyre.tgz" -C "$unpacked" --strip-components=1
 node "$SRC/scripts/verify-list-trees.mjs" "$unpacked" "$SRC/site/box/modules.json"
 
+if [ "${DEV_KIND:-0}" != 1 ]; then # (a dev-kind run is the owned box for the session blocks: it is not a release build)
 # DP-1: the packed tree says release, and its own isPackaged() agrees; the development stand-in file is refused there.
 grep -qx 'export const BUILD_KIND = "release";' "$unpacked/lib/build-kind.js" || { echo "the packed lib/build-kind.js does not say release"; exit 1; }
 node --input-type=module -e 'const { isPackaged } = await import(process.argv[1] + "/kernel/devbuild.js"); if (isPackaged(process.argv[1]) !== true) { console.error("the packed tree is not a packaged build"); process.exit(1); }' "$unpacked" || exit 1
+fi
 
 ( cd "$SRC/site/box" && python3 -m http.server 18090 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! >"$WORK/http.pid" )
 trap 'kill "$(cat "$WORK/http.pid" 2>/dev/null)" 2>/dev/null || true; vyre uninstall --delete-data --yes >/dev/null 2>&1 || true' EXIT
@@ -116,9 +120,15 @@ for port in 7300 7301; do
   docker exec -u 1000 vyre-vyre-1 node -e 'const s=require("net").connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>{console.log("LISTENING");process.exit(0)});s.on("error",()=>process.exit(1))' 127.0.0.1 "$port" | grep -q LISTENING && { echo "something listens on port $port inside the box: a server has no setup page"; soft; }
 done
 docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { echo "the box publishes the onboarding port on the host"; soft; }
+if [ "${DEV_KIND:-0}" != 1 ]; then
 # DP-1 on the running image: the container's build is a release build, and a dev-presence-stand-in file in its home does not make it a development one.
 docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; soft; }
 docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; soft; }
+fi
+
+# The host's `vyre call` is answered as a plain terminal caller (the wrapper execs as the vyre user, with a terminal when there is one): never caller_unknown. Personal memory then says "no kernel chain" (only a person reads it: a signed-in terminal or a device; a CI server has no owner to sign in).
+hc=$(vyre call memory.me '{}' 2>&1 || true)
+printf '%s' "$hc" | grep -Eq 'caller_unknown|could not tell who is calling' && { echo "host vyre call is not read as the person at the terminal: $hc"; soft; }
 
 # The admin steps refuse for the RIGHT reason on the packaged image (not "no such step" or "no Vyre home"): a wrong typed word, and a bad proof for the anchor reset (the daemon is stopped for it
 # and started again either way). VYRE_ADMIN_NO_TTY stands in for the terminal the real command needs.
@@ -132,6 +142,7 @@ printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_pr
 printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; soft; }
 ready || { docker logs vyre-vyre-1 2>&1 | tail -20; echo "vyred did not come back after the anchor-reset refusal"; exit 1; }
 sleep 5
+if [ "${DEV_KIND:-0}" != 1 ]; then
 # DP-1 and the software signer: a REAL sealing process from a release-kind tree refuses a software presence key even with the variable and the dev flag set. The probe runs on a COPY of the
 # image's tree (kernel/seal/testing.js and test/scratch.mjs are not shipped and are added to the copy only), so the signed tree under test is not touched.
 docker exec -u 1000 vyre-vyre-1 sh -c 'rm -rf /tmp/probe && mkdir /tmp/probe && cp -a /opt/vyre/lib /opt/vyre/kernel /opt/vyre/package.json /tmp/probe/ && mkdir /tmp/probe/test'
@@ -139,7 +150,10 @@ docker cp "$HERE/kernel/seal/testing.js" vyre-vyre-1:/tmp/probe/kernel/seal/test
 docker cp "$HERE/test/scratch.mjs" vyre-vyre-1:/tmp/probe/test/scratch.mjs
 docker cp "$HERE/scripts/packaged-probes/software-release.mjs" vyre-vyre-1:/tmp/software-release.mjs
 docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; soft; }
-docker exec -u 1000 vyre-vyre-1 rm -rf /tmp/probe /tmp/software-release.mjs
+# The copy keeps the image's read-only folders (the owner makes them writable first; root here has no DAC_OVERRIDE), and the probe script docker cp left in sticky /tmp is root's own to remove.
+docker exec -u 1000 vyre-vyre-1 sh -c 'chmod -R u+w /tmp/probe 2>/dev/null; rm -rf /tmp/probe'
+docker exec -u 0 vyre-vyre-1 rm -f /tmp/software-release.mjs || true
+fi
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')
@@ -153,16 +167,25 @@ docker exec -u 0 vyre-vyre-1 sh -c 'echo "<!-- tampered -->" >> /opt/vyre/apps/a
 [ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; soft; }
 docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.html'
 
+if [ "${DEV_KIND:-0}" = 1 ]; then # an owned box: the session blocks need the person at the terminal (a release box in CI has no owner)
+docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in
 # The runner on a server (own-server sealing): the module runs on the box, says what the box does, and a session on the server is SEALED AT EVERY TURN into the home's checkpoint store
 # (core/runner/ownserver.js, the daemon's core/daemon/ownserver-host.js). A stand-in `claude` (the repo's fake, copied in like the probes above) writes the transcript the way Claude Code does.
 rs=$(vyre call runner.status 2>&1) || { echo "$rs"; echo "runner.status did not answer on the box"; exit 1; }
 printf '%s\n' "$rs" | grep -Eq '"?ownServer"?[: ]+true' || { echo "$rs"; echo "the runner on a box does not say it seals its own sessions"; exit 1; }
-docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/home/vyre/fake-claude.mjs
-docker exec -u 0 vyre-vyre-1 sh -c 'printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=/home/vyre/.claude/projects\nexec node /home/vyre/fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects /tmp/sealwork && chown -R 1000 /home/vyre/.claude /tmp/sealwork'
-tid=$(vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
-[ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; vyre call threads.start '{"cwd":"/tmp/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; exit 1; }
+# The box's root has no capability to read or change files in uid 1000's home (cap_drop ALL): stage through /tmp, finish as uid 1000, and only /usr/local/bin as root.
+# The session runs as the ACCOUNT's uid (2000 and up), which cannot enter uid 1000's home: the stand-in lives under /usr/local/lib (root-owned) and writes its transcripts in the account's own HOME.
+docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/tmp/fake-claude-src.mjs
+docker exec -u 0 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /usr/local/lib/vyre-fake-claude.mjs && chmod 755 /usr/local/lib/vyre-fake-claude.mjs && printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=\"\$HOME/.claude/projects\"\nexec node /usr/local/lib/vyre-fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
+docker exec -u 1000 vyre-vyre-1 sh -c '(umask 002; mkdir -p /work/sealwork) && chmod g+rwx /work/sealwork'
+# The fake claude is the account's provider: a login account, no credential of anyone's in CI. A box session needs an account (no account is refused at once, no_account).
+acct=$(vyre call sessions.accounts.add '{"provider":"claude","label":"proof","kind":"login","is_default":true}' 2>&1) || { echo "$acct"; echo "an account could not be added to the box"; exit 1; }
+AU=$(printf '%s' "$acct" | sed -n 's/.*"uid": *\([0-9][0-9]*\).*/\1/p' | head -n 1); [ -n "$AU" ] || { echo "$acct"; echo "the account has no uid"; exit 1; }
+AH=/home/acct/$AU
+tid=$(vyre call threads.start '{"cwd":"/work/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
+[ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; echo "--- who answers on each listening port:"; docker exec -u 1000 vyre-vyre-1 sh -c 'for f in /proc/net/tcp /proc/net/tcp6; do while read -r _ l _ st _; do [ "$st" = 0A ] || continue; pt=$((0x${l##*:})); echo "port $pt:"; curl -s -m 3 -i "http://127.0.0.1:$pt/" 2>&1 | head -c 300; echo; grep -hE "$pt" /home/vyre/.vyre/logs/*.log 2>/dev/null | head -3 | cut -c1-240; done < $f; done' 2>&1 | head -40; echo "--- listening rows (local address, uid, inode):"; docker exec -u 1000 vyre-vyre-1 sh -c 'for f in tcp tcp6 udp udp6; do echo "[$f]"; awk "NR>1 && (\$4==\"0A\" || \$4==\"07\"){print \$2, \"uid=\"\$8, \"inode=\"\$10}" /proc/net/$f; done; echo "[vyred pid/uid]"; ps -eo pid,uid,args 2>/dev/null | head -20 | cut -c1-120'; echo "--- listeners:"; for u in 1000 0; do docker exec -u $u vyre-vyre-1 sh -c 'for f in /proc/net/tcp /proc/net/tcp6; do while read -r _ l _ st _ _ _ _ _ ino _; do [ "$st" = 0A ] || continue; port=$((0x${l##*:})); who=""; for p in /proc/[0-9]*; do for fd in $p/fd/*; do [ "$(readlink $fd 2>/dev/null)" = "socket:[$ino]" ] && who="$p $(tr "\0" " " < $p/cmdline 2>/dev/null | cut -c1-120)"; done; done; echo "uid '$u' sees: port $port inode $ino owner: ${who:-unknown}"; done < $f; done' 2>&1 | head -12; done; vyre call threads.start '{"cwd":"/work/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; exit 1; }
 sealed() { docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/checkpoints/*/CURRENT 2>/dev/null' | grep -o '"turn":[0-9]*' | grep -o '[0-9]*' | sort -n | tail -n 1; }
-i=0; until [ "$(sealed)" = 1 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 1 was not sealed (sealed: $(sealed))"; docker exec -u 1000 vyre-vyre-1 sh -c 'tail -5 /home/vyre/.vyre/logs/*.log'; exit 1; }; sleep 1; done
+i=0; until [ "$(sealed)" = 1 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 1 was not sealed (sealed: $(sealed))"; echo "--- thread:"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | grep -E '"(status|canonical_status|stopped_reason|turns|confined_by|account)"' ; echo "--- log:"; docker exec -u 1000 vyre-vyre-1 sh -c 'grep -hE "threads|runner|spawn|sandbox|seal|ownserver" /home/vyre/.vyre/logs/*.log | tail -25' | cut -c1-300; echo "--- what vyred (uid 1000) sees of the account's transcripts:"; docker exec -u 1000 vyre-vyre-1 sh -c "ls -laR $AH/.claude/projects 2>&1 | head -12; id"; echo "--- last log lines:"; docker exec -u 1000 vyre-vyre-1 sh -c 'tail -25 /home/vyre/.vyre/logs/*.log' | cut -c1-260; echo "--- account home:"; docker exec -u 0 vyre-vyre-1 ls -la /home/acct 2>&1 | head -5; docker exec -u $AU vyre-vyre-1 sh -c "ls -laR $AH/.claude 2>&1 | head -20; HOME=$AH /usr/local/bin/claude --version 2>&1 | head -3"; exit 1; }; sleep 1; done
 sleep 3
 vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"second\",\"surface\":\"deck\"}" >/dev/null 2>&1
 i=0; until [ "$(sealed)" = 2 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 2 was not sealed (sealed: $(sealed))"; exit 1; }; sleep 1; done
@@ -171,21 +194,43 @@ echo "ok: a session on the server is sealed at every turn (turn 1 and turn 2 are
 # A session on the server SURVIVES A CRASH (sessions): kill the whole container with SIGKILL after turn 2 is sealed, leave a torn line and an unfinished turn in the transcript (what a kill leaves),
 # start it again: the thread is stopped for the restart, the next message puts the transcript back to exactly the last sealed turn (runner.recover, called by the Switchboard before it resumes) and the
 # session answers, and the third turn is sealed after it.
-tfile=$(docker exec -u 1000 vyre-vyre-1 sh -c "ls /home/vyre/.claude/projects/*/$tid.jsonl" 2>/dev/null | head -n 1)
+tfile=$(docker exec -u $AU vyre-vyre-1 sh -c "ls $AH/.claude/projects/*/$tid.jsonl" 2>/dev/null | head -n 1)
 [ -n "$tfile" ] || { echo "the session's transcript was not found on the box"; exit 1; }
-docker exec -u 1000 vyre-vyre-1 sh -c "cp $tfile /tmp/sealed-copy.jsonl"
+docker exec -u $AU vyre-vyre-1 sh -c "cp $tfile /tmp/sealed-copy.jsonl"
+# The transcript is group-readable for vyred only: another account's uid, and the box agent, cannot read it.
+for other in 2001 1001; do docker exec -u $other vyre-vyre-1 cat "$tfile" >/dev/null 2>&1 && { echo "uid $other can read another account's transcript"; exit 1; }; done
+echo "ok: the account's transcript is readable by vyred's group only (uid 2001 and the box agent are refused)"
 docker kill vyre-vyre-1 >/dev/null
 docker exec -u 0 vyre-vyre-1 true 2>/dev/null && { echo "the container is still running after docker kill"; exit 1; }
 docker start vyre-vyre-1 >/dev/null
 ready || { echo "vyred did not come back after the kill"; exit 1; }
-docker exec -u 1000 vyre-vyre-1 sh -c "printf '%s\n%s' '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"UNFINISHED\"}}' '{\"type\":\"assistant\",\"mess' >> $tfile"
-docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" || { echo "could not leave the kill's leftovers in the transcript"; exit 1; }
+docker exec -u $AU vyre-vyre-1 sh -c "printf '%s\n%s' '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"UNFINISHED\"}}' '{\"type\":\"assistant\",\"mess' >> $tfile"
+docker exec -u $AU vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" || { echo "could not leave the kill's leftovers in the transcript"; exit 1; }
 vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"back after the crash\",\"surface\":\"deck\"}" >/dev/null 2>&1
 i=0; until [ "$(sealed)" = 3 ]; do i=$((i + 1)); [ $i -lt 60 ] || { echo "the resumed turn was not sealed (sealed: $(sealed)); status:"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -5; exit 1; }; sleep 1; done
-docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
-docker exec -u 1000 vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
+docker exec -u $AU vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
+docker exec -u $AU vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
 echo "ok: a session on the server survives a crash (killed, restarted, put back to its last sealed turn, resumed, and the next turn sealed)"
-docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude /home/vyre/fake-claude.mjs
+# Confinement in the box (ruling b): the session ran as its own uid, and the box says so on its record. The self-test itself, run as that uid through the real spawner: it passes for the protected
+# set the daemon uses, and it FAILS (naming the check) when told a folder the agent can reach is protected (the shared /work group folder), so a hole cannot pass.
+cb=$(vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | sed -n 's/.*"confined_by": *"\([^"]*\)".*/\1/p' | head -n 1)
+[ "$cb" = uid ] || { echo "the session's record does not say confined_by uid (it says: ${cb:-nothing})"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -8; exit 1; }
+docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/logs/*.log >/dev/null && grep -h "start step sandbox self-test" /home/vyre/.vyre/logs/*.log | tail -1' >/dev/null || true
+cat > "$WORK/confine-proof.mjs" <<'EOF'
+import { confineSelfTest } from "/opt/vyre/core/spawner/confine.js";
+import fs from "node:fs";
+const base = { cwd: "/work", vyreUid: process.getuid(), account: null, shared: true, timeoutMs: 20000 };
+const good = await confineSelfTest({ ...base, out: [{ name: "Vyre's own home", path: "/home/vyre" }, { name: "the vault and keys", path: "/home/vyre/.vyre/kernel" }] });
+if (!good.ok) { console.log("GOOD-FAILED " + JSON.stringify(good)); process.exit(1); }
+const hole = await confineSelfTest({ ...base, out: [{ name: "the shared work folder", path: "/work" }] });
+if (hole.ok || !hole.failures.some(f => /can reach the shared work folder/.test(f))) { console.log("HOLE-PASSED " + JSON.stringify(hole)); process.exit(1); }
+console.log("CONFINED uid=" + good.results.uid + " hole refused: " + hole.failures[0]);
+EOF
+docker cp "$WORK/confine-proof.mjs" vyre-vyre-1:/tmp/confine-proof.mjs
+cp_out=$(docker exec -u 1000 vyre-vyre-1 node /tmp/confine-proof.mjs 2>&1) || { echo "$cp_out"; echo "the box's confinement self-test did not hold"; exit 1; }
+echo "ok: $cp_out"
+docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude /usr/local/lib/vyre-fake-claude.mjs
+fi
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "// tampered" >> /opt/vyre/core/work/index.js'

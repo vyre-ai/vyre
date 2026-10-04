@@ -318,16 +318,16 @@ async function startLocked(opts, root, p, release) {
     // id is the spaces module's row (server-hosted/<id>); the open peer session comes from the Wink module (`wink.sessionFor`), or a test's `opts.sessionFor`. No row or no session function: not a remote space.
     const remoteFor = (/** @type {string} */ id) => {
       const sf = opts.sessionFor || /** @type {any} */ (registry.deps).winkSessionFor;
-      if (typeof sf !== "function") return null;
       let device = null;
-      try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ }
-      if (typeof device !== "string" || !device) return null;
+      if (typeof sf === "function") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ } }
+      // A space this person JOINED on someone else's server (an invite accepted here): the spaces module reaches it with a member stream to the home its record names (the module hands the remote up as `memberRemote`)
+      if (typeof device !== "string" || !device) { const mr = /** @type {any} */ (registry.deps).memberRemote; if (typeof mr === "function") { try { return mr(id) || null; } catch { return null; } } return null; }
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -350,6 +350,15 @@ async function startLocked(opts, root, p, release) {
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
     stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
+    // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
+    // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
+    if (kernel.presence && typeof kernel.presence.check === "function") {
+      const { configureYes, signOf } = await import("../../lib/one-yes.js");
+      configureYes({
+        verify: async (/** @type {any} */ i) => { const sg = signOf(i.moment, { op: i.request ? i.request.op : i.op, fields: i.request ? i.request.fields : i.fields }); return kernel.presence.check({ ...(i.chain ? { chain: i.chain } : {}), op: sg.op, fields: sg.fields, proof: i.proof }); },
+        softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot),
+      });
+    }
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
@@ -456,7 +465,11 @@ async function startLocked(opts, root, p, release) {
         let entries = st && Array.isArray(st.entries) ? st.entries : [];
         if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
         const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-        return e && typeof e.pub === "string" ? { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}) } : null;
+        if (!e || typeof e.pub !== "string") return null;
+        // the signed time the entry was added and whether it founded the list, from the verified chain (the door applies the 24-hour newcomer rule with the sealing process's own clock); unknown stays unknown
+        let age = e;
+        if (typeof e.since !== "number" || typeof e.founder !== "boolean") { const ev = await ask("spaces.identity.evidence", { person: identity, ...(name ? { name } : {}) }); const f = ev && Array.isArray(ev.entries) ? ev.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null; if (f) age = f; }
+        return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
@@ -1279,7 +1292,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined; // not `ancestry`: that is the imported function used earlier in this handler
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     let result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
-      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
+      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.

@@ -204,12 +204,13 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const assess = await d.ok("spaces.assess-computer", { device: { name: "alex's laptop", alwaysOn: false } });
   assert.match(assess.warning, /unreachable while/);
 
-  // Not confirmed: it waits and says why.
+  // Not confirmed: it asks, says why, and makes nothing.
   const first = await d.ok("spaces.create", { name: "Harlow", displayName: "Harlow Legal", home: { kind: "this-computer" } });
-  assert.equal(first.status, "waiting");
-  assert.equal(first.waiting.for, "confirm");
-  assert.equal(first.steps.find(s => s.step === "validate").state, "waiting");
-  const done = await d.ok("spaces.resume", { space: first.space, confirmThisComputer: true });
+  assert.equal(first.status, "needs_confirmation");
+  assert.match(first.confirm.text, /unreachable while/);
+  assert.equal(first.space, undefined, "nothing was made");
+  const done = await d.ok("spaces.create", { name: "Harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  first.space = done.space;
   assert.equal(done.status, "done", JSON.stringify(done));
   assert.deepEqual(done.steps.map(s => s.state), Array(7).fill("done"));
   assert.equal(done.workspaceId, null);
@@ -513,6 +514,7 @@ test("invites: each role, a stranger sees only the card, the join is signed by t
   for (const [role, extra] of [["admin", {}], ["manager", {}], ["member", { scope }], ["temp", { scope, expires: w.clock.t + 2 * DAY }]]) {
     const r = await d.ok("spaces.invites.create", { space, role, ...extra });
     assert.match(r.link, /^https:\/\/harlow\.vyre\.run\/join\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    assert.equal(r.code, null, "with no Wink module here the invite is the link alone (a typed code is best effort)");
     made[role] = r;
   }
   assert.equal((await d.call("spaces.invites.create", { space, role: "temp" })).error?.code, "bad_scope");

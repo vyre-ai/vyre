@@ -70,6 +70,11 @@ export function createRemoteKernel(cfg) {
 
   /** A caller that already holds a proof passes it as the trailing options `{ presence, challenge }`: moved out of the args to travel beside them (the home puts it back for the kernel). */
   function invokeWith(/** @type {string} */ call, /** @type {any[]} */ args) {
+    // A grants call whose proof options came empty (no proof yet) is the same call as one with none: the home binds its challenge to the exact arguments, so the first ask and the answer must agree.
+    if (call.startsWith("grants.") && args.length) {
+      const l = args[args.length - 1];
+      if (l === undefined || l === null || (typeof l === "object" && !Array.isArray(l) && Object.keys(l).length === 0)) args = args.slice(0, -1);
+    }
     const last = args[args.length - 1];
     if (last && typeof last === "object" && !Array.isArray(last) && Object.hasOwn(last, "presence") && typeof last.challenge === "string") {
       // PW-4: only the proof and its challenge travel in the options object; any other option cannot cross, so a proof can never be aimed at a data argument
@@ -89,6 +94,8 @@ export function createRemoteKernel(cfg) {
       for (const p of parts.slice(0, -1)) node = node[p] ||= {};
       node[parts[parts.length - 1]] = (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith(`${group}.${name}`, args);
     }
+    // a reveal's proof is made for the home's challenge and travels as the trailing option, never inside the request (PW-4)
+    if (group === "seal") root.reveal = (/** @type {any} */ _chain, /** @type {any} */ i, /** @type {any} */ ...rest) => { const { proof: _p, ...bare } = i && typeof i === "object" ? i : /** @type {any} */ ({}); return invokeWith("seal.reveal", [bare, ...rest]); };
     const freeze = (/** @type {any} */ o) => { for (const v of Object.values(o)) if (typeof v === "object") freeze(v); return Object.freeze(o); };
     return freeze(root);
   };
@@ -96,7 +103,7 @@ export function createRemoteKernel(cfg) {
   return Object.freeze({
     space: cfg.space,
     hosted: false,
-    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), leases: build("leases") }),
+    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), seal: build("seal"), leases: build("leases") }),
     lent: build("lent"),
     /** One wire call by its path (`lent.start`, `leases.issue`): the lent computer's runner client (core/runner/lent-client.js) speaks in these. The home still allows only what CALLS lists. */
     call: (/** @type {string} */ name, /** @type {any[]} */ args) => invokeWith(String(name), Array.isArray(args) ? args : []),

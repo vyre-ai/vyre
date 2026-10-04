@@ -11,6 +11,7 @@ import { peerSession, streamPipe, T } from "../wink/node/peer-wire.js";
 import { createRemoteServer } from "../../kernel/remote/server.js";
 import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
 import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
+import { youngAt } from "../../kernel/identity/chain.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
 
@@ -23,7 +24,7 @@ const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -34,7 +35,7 @@ export function createPeerDoor(o) {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k, log, identityEvidence: async (/** @type {{ person: string, name?: string }} */ w) => { try { const r = await o.registry.call("spaces.identity.evidence", w, "module:vyred", { door: true }); return r && !r.error && r.data && Array.isArray(r.data.ops) ? r.data : null; } catch { return null; } }, attest: async nonce => { const r = await o.registry.call("spaces.attest", { space, nonce }, "module:vyred"); return r && r.data && !r.error ? r.data : null; } }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
@@ -59,13 +60,16 @@ export function createPeerDoor(o) {
     const facts = await factsOf(id, person);
     if (!facts) throw err("denied", "this device is not paired here any more");
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
+    // an approval id (a card the owner's phone answered) rides beside the call, never into the tool's input
+    const approval = typeof body.approval === "string" ? body.approval : undefined;
+    if (!(tool && o.registry.tools && o.registry.tools.get(tool) && o.registry.tools.get(tool).input && o.registry.tools.get(tool).input.properties && Object.hasOwn(o.registry.tools.get(tool).input.properties, "approval"))) delete body.approval;
     /** @type {any} */ let proof;
     // PD-1: a tool that takes `proof` as a parameter of its own (a pairing's identity proof) keeps it in its input and gets nothing in meta; for any other tool `proof` is the owner's presence proof
     const declared = (() => { try { const t = o.registry.tools && o.registry.tools.get(tool); return Boolean(t && t.input && t.input.properties && Object.hasOwn(t.input.properties, "proof")); } catch { return false; } })();
     if (!declared && body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
     // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
-    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}) });
-    if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));
+    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), ...(peerStream ? { peerStream } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}), ...(approval ? { approval } : {}) });
+    if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
     return r ? r.data : null;
   };
 
@@ -104,7 +108,7 @@ export function createPeerDoor(o) {
     const now = (o.now || Date.now)();
     if (!h || typeof h !== "object" || Array.isArray(h)) return { why: "bad_input" };
     const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
-    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^inv_[0-9a-f]{32}$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
+    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^(inv_[0-9a-f]{32}|member)$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
     if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
     if (h.channel !== inviteeId) return { why: "wrong_channel" };
     if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
@@ -125,11 +129,13 @@ export function createPeerDoor(o) {
     try { entry = await o.identityEntry(h.identity, h.entry, h.name); } catch { return { why: "cannot_check" }; }
     if (!entry || typeof entry.pub !== "string" || entry.alg === "webauthn-es256" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
     if (!verifyDevice(entry.pub, helloMessage(box, h), h.sig)) return { why: "bad_proof" };
-    if (over(`i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now)) return { why: "rate_limited" };
+    // a member's device is held to the same newcomer rule as everywhere else: under 24 hours on the identity's list it reaches nothing, unless it founded the list (an entry whose age is unknown is young)
+    if (h.invite === "member" && (typeof entry.founder !== "boolean" || !Number.isFinite(entry.since) || youngAt({ founder: entry.founder, since: /** @type {number} */ (entry.since) }, now))) return { why: "young_device" };
+    if (over(h.invite === "member" ? `m:${h.space}:${h.identity}` : `i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now)) return { why: "rate_limited" };
     if (nonces.has(h.nonce)) return { why: "replayed" };
     nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
     trim(nonces, lim.nonceMax);
-    return { identity: h.identity };
+    return { identity: h.identity, pub: entry.pub };
   };
   /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */
   const inviteeRequest = (space, call, args, now) => ({ v: WIRE_VERSION, space, id: `inv-${crypto.randomBytes(8).toString("hex")}`, ts: now, call, args });
@@ -150,28 +156,63 @@ export function createPeerDoor(o) {
       const inviteeId = String(who.inviteeId);
       /** @type {any} */ let session = null;
       /** @type {any} */ let idleTimer = null;
-      const end = (/** @type {string} */ why) => { if (idleTimer) clearTimeout(idleTimer); const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
+      const end = (/** @type {string} */ why) => { if (idleTimer) clearTimeout(idleTimer); if (watcher) clearInterval(watcher); const t = setTimeout(() => { try { session && session.close(why); } catch { /* closed */ } }, 50); if (t.unref) t.unref(); };
       /** @type {Promise<{ ok: true, identity: string, space: string, invite: string } | { ok: false, why: string }> | null} */ let admitted = null;
       const admit = () => admitted || (admitted = (async () => {
         const c = await checkHello(head, inviteeId);
         if (!c.identity) { log(`peer door: invitee ${inviteeId} refused (${String(c.why)})`); return { ok: false, why: String(c.why) }; }
         const server = serverFor(head.space);
         if (!server) { log(`peer door: invitee ${inviteeId} refused (not_found)`); return { ok: false, why: "not_found" }; }
+        // A MEMBER's stream (the hello names `member` where an invitee's names its invite): the person joined this space before and reaches it from a device on their own identity list. The space's own kernel decides whether they
+        // are a member (its member read answers only for one); from then on the stream carries kernel calls under the member's own chain, which the home builds from this channel's proved facts like any member device's.
+        if (head.invite === "member") {
+          const m = await server.serve(inviteeRequest(head.space, "grants.members.get", [c.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
+          if (!m || m.ok !== true || !m.result) { log(`peer door: member ${inviteeId} refused (not_a_member${m && m.error ? `: ${String(m.error.code)}` : ""})`); return { ok: false, why: "not_a_member" }; }
+          return { ok: true, member: true, pub: c.pub, identity: c.identity, space: head.space, invite: "member", entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
+        }
         // the space's own kernel decides whether this invite is live, unused and meant for this person: a preview is the proof (it is all the invitee may read before it accepts)
         const r = await server.serve(inviteeRequest(head.space, "grants.invites.get", [head.invite], (o.now || Date.now)()), { device_key_id: inviteeId, person: c.identity, path: "relay" });
         if (!r || r.ok !== true || !r.result || r.result.status !== "pending") { log(`peer door: invitee ${inviteeId} refused (bad_invite${r && r.error ? `: ${String(r.error.code)}` : ""})`); return { ok: false, why: "bad_invite" }; }
         return { ok: true, identity: c.identity, space: head.space, invite: head.invite, entry: head.entry, ...(typeof head.name === "string" && head.name ? { name: head.name } : {}) };
       })());
+      /** Is a member's stream still entitled: the device's entry is on its identity's list now (read live, same key as admitted) and the space's kernel still shows the person as a member. @param {any} a */
+      const memberStillOk = async a => {
+        try {
+          const e = typeof o.identityEntry === "function" ? await o.identityEntry(a.identity, a.entry, a.name) : null;
+          if (!e || typeof e.pub !== "string" || e.pub !== a.pub || e.alg === "webauthn-es256" || e.held === "web") return false;
+          const sv = serverFor(a.space);
+          if (!sv) return false;
+          const m = await sv.serve(inviteeRequest(a.space, "grants.members.get", [a.identity], (o.now || Date.now)()), { device_key_id: inviteeId, person: a.identity, path: "relay" });
+          return Boolean(m && m.ok === true && m.result);
+        } catch { return false; }
+      };
       // accepting (or a refusal of the invite itself) finishes the stream at once: no call after it is served, even inside the moment the close takes
       let finished = false;
       // a stream with no call either way for 30 s is closed (IV-5: silent streams must not hold the invitee pool); while the home waits for the invitee's presence answer it may be silent for 2 minutes
       const arm = (/** @type {number} */ ms) => { if (idleTimer) clearTimeout(idleTimer); idleTimer = setTimeout(() => { finished = true; end("idle"); }, ms); if (idleTimer.unref) idleTimer.unref(); };
       arm(lim.idleMs);
       let wait = lim.idleMs;
+      // an open member stream is re-checked on its own too (a removal is not waited for until the next call): the device or the membership gone ends it
+      const watchMs = o.memberWatchMs ?? 10_000;
+      /** @type {any} */ let watcher = null;
+      if (head && head.invite === "member") admit().then(a => {
+        if (!a.ok || a.member !== true || finished) return;
+        watcher = setInterval(async () => { if (finished) { clearInterval(watcher); return; } if (!(await memberStillOk(a))) { finished = true; clearInterval(watcher); end("not a member any more"); } }, watchMs);
+        if (watcher.unref) watcher.unref();
+      }, () => {});
       const handle = async (/** @type {string} */ tool, /** @type {any} */ input) => {
         const a = await admit();
         if (!a.ok) { finished = true; end("not admitted"); throw err("denied", "that invite cannot be used from here"); }
         if (tool !== KERNEL_CALL_TOOL || !input || typeof input !== "object") throw err("denied", "an invite opens two calls and nothing else");
+        if (a.member === true) {
+          // a member's stream: the space's kernel calls and nothing else (no registry tool, no other space); the invite calls are not a member's
+          if (input.space !== a.space || INVITEE_CALLS.has(String(input.call))) throw err("denied", "a member stream opens this space's kernel calls and nothing else");
+          // every call: the device must still be on the identity's signed list (the same key it was admitted with) and the person must still be a member; otherwise the stream ends now
+          if (!(await memberStillOk(a))) { finished = true; end("not a member any more"); throw err("denied", "this device or this membership is gone"); }
+          const sv = serverFor(a.space);
+          if (!sv) { end("gone"); throw err("not_found", "no such space here"); }
+          return sv.serve(input, { device_key_id: inviteeId, person: a.identity, path: "relay", entry: a.entry });
+        }
         const args = Array.isArray(input.args) ? input.args : [];
         if (input.space !== a.space || !INVITEE_CALLS.has(String(input.call)) || args[0] !== a.invite) throw err("denied", "an invite opens two calls and nothing else");
         const server = serverFor(a.space);

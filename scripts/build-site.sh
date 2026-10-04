@@ -129,7 +129,8 @@ fi
 # The web app at /app/ (apps/app/dist), which vyre.tgz ships; nothing when --src has no apps/app.
 sh "$here/scripts/build-app.sh" --src "$src"
 # The build kind is part of what is signed: the package says "release", so its daemon ignores the developer switches (kernel/devbuild.js). The checkout keeps "development".
-if [ -f "$src/lib/build-kind.js" ]; then
+# VYRE_TEST_DEV_KIND=1 (CI proofs only, scripts/release.sh never passes it) leaves the checkout's development kind in the package, so a proof can run an owned box with the software signer.
+if [ -f "$src/lib/build-kind.js" ] && [ "${VYRE_TEST_DEV_KIND:-}" != 1 ]; then
   kind_keep=$(mktemp)
   cp "$src/lib/build-kind.js" "$kind_keep"
   trap 'cp -f "$kind_keep" "$src/lib/build-kind.js" 2>/dev/null; rm -f "$kind_keep"' EXIT
@@ -139,6 +140,8 @@ fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"
+# Developer scripts that start a daemon with a presence double (scripts/boot-check.mjs, scripts/proof-box.mjs) must never ride in a release: a shell user on the server could run them.
+if tar -tzf "$out/vyre.tgz" | grep -Eq '^package/scripts/(boot-check|proof-box)\.mjs$'; then echo "build-site: the package carries a developer script that starts a daemon with a presence double (scripts/boot-check.mjs or scripts/proof-box.mjs); it must not ship" >&2; exit 1; fi
 
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"

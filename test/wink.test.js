@@ -463,7 +463,7 @@ test("peerDoor: allow answers from the wink module's registry and accept is the 
 test("Q-1 and typed code OFF, real daemon: the box makes a QR and a long code with no typed code; a scan only pairs the device, the server asks, and its three words equal what the scanning side derives from its own keys", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   // the typed paths are refused with a plain reason
   assert.equal((await w.call("wink.code.open", { flow: "W2" })).error?.code, "typed_code_off");
@@ -550,7 +550,7 @@ test("composeWinkHome: sets ctx.peerDoor, builds the serve wrapper with the host
 test("Add a phone, real daemon, typed code OFF: the QR is scanned, both sides derive the same three words, nothing is added until yes, a second scanner is refused", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   assert.equal((await w.call("wink.phone.open", { typed: true })).error?.code, "typed_code_off");
   assert.equal((await w.call("wink.code.ack", { offer: "wo_x", typed: "WINK-0000-0000" })).error?.code, "typed_code_off");
@@ -584,7 +584,7 @@ test("Add a phone, real daemon, typed code OFF: the QR is scanned, both sides de
 test("Add a phone, real daemon, typed code OFF: a no, or wrong words, adds nothing and the phone is let go", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   for (const answer of [{ yes: false }, { yes: true, words: "wrong wrong wrong" }]) {
     const open = (await w.call("wink.phone.open", {})).data;
@@ -973,7 +973,7 @@ test("X-1, real daemon and relay: the yes makes the device (row, presence key, b
 test("X-1, real daemon and relay: a server's QR redeemer reaches only wink.server.adopt; the pick at the server console decides; no or a timeout leaves nothing and spends the ticket", async t => {
   const w = await world(t, { pendingMs: 2500 });
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const scan = parseServerQr(made.qr);
@@ -1013,7 +1013,7 @@ test("X-1, real daemon and relay: a server's QR redeemer reaches only wink.serve
 test("X-1, real daemon and relay: a server's scanner nobody answers leaves nothing behind when the time runs out, and the ticket is spent", async t => {
   const w = await world(t, { pendingMs: 1500 });
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const scan = parseServerQr(made.qr);
@@ -1110,7 +1110,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -1153,7 +1153,7 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const w = await world(t, { kernel: true });
   const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
@@ -1237,4 +1237,95 @@ test("relay.devices.clear-leftover refuses for itself when the server is owned, 
   }
   const lines = f.w.logs.filter(l => /relay: refused a hello \(this pairing code has expired/.test(l));
   assert.equal(lines.length, 1, `one log line for twelve identical refusals (${lines.length})`);
+});
+
+// ---- RC1: the typed code on a release build (user ruling 5 Oct 2026) ----
+/** Turns the typed code to its release default (on; the development flag unset) for one test. @param {any} t */
+const releaseTyped = t => { const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; }); };
+
+test("typed code, release: wink.phone.open gives the QR and a typed code on the same window; the code lasts 10 minutes, is single use, and ends the QR too", async t => {
+  releaseTyped(t);
+  const w = await world(t);
+  const open = await w.call("wink.phone.open", {});
+  assert.ok(open.data?.qr && open.data?.art, JSON.stringify(open.error));
+  assert.match(open.data.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, "the typed code beside the QR");
+  assert.ok(open.data.code_offer);
+  const life = open.data.code_expires - Date.now();
+  assert.ok(life > 9 * 60_000 && life <= 10 * 60_000 + 2000, `10 minutes, not ${life} ms`);
+  // asking again while it shows is the same code, not a churn of new ones
+  assert.equal((await w.call("wink.phone.open", {})).data.code, open.data.code);
+  const { states, done } = typeCode(t, w, open.data.code);
+  const ack = await until(() => states.find(s => s.state === "ack"));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.data.code_offer, typed: ack.code })).data.ok, true);
+  assert.equal((await done).ok, true);
+  assert.equal((await w.call("wink.access")).data.devices[0].kind, "phone");
+  // used: the code does not work again, and the QR is spent with it
+  const again = await joinWithCode({ relay: w.status.url, input: open.data.code, name: "Second phone", pollMs: 100, waitMs: 1500, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } });
+  assert.equal(again.ok, false, "single use");
+  assert.equal(await w.call("wink.phone.open", {}).then(r => r.data.code === open.data.code), false, "a fresh window, not the used code");
+});
+
+test("typed code, release: three wrong tries close the code and a fresh one replaces it", async t => {
+  releaseTyped(t);
+  const w = await world(t);
+  const open = await w.call("wink.phone.open", {});
+  const good = open.data.code;
+  const rv = good.replace(/-/g, "").slice(4, 6);
+  const wrong = i => `WINK-${rv}${"0123"[i]}-${"ABCDEF"[i]}${"GHJKMN"[i]}${"PQRSTV"[i]}${"WXYZ01"[i]}`.replace(/(WINK-..)(.)-(....)/, (m, a, b, c) => `${a}${b}-${c}`);
+  for (let i = 0; i < 3; i++) {
+    const r = await joinWithCode({ relay: w.status.url, input: `WINK-${rv}${"23"[i % 2]}${"456"[i]}-${"789"[i]}ABC`, name: "Guesser", pollMs: 100, waitMs: 800, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } });
+    assert.equal(r.ok, false, `wrong try ${i + 1} fails`);
+  }
+  // the third wrong try closed it: even the right code is refused now
+  const late = await joinWithCode({ relay: w.status.url, input: good, name: "Late", pollMs: 100, waitMs: 800, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } });
+  assert.equal(late.ok, false, "the closed code answers nothing");
+  const fresh = await until(async () => { const s = await w.call("wink.code.status", {}); return s.data && s.data.code && s.data.code !== good ? s.data.code : null; }, 4000);
+  assert.match(fresh, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+});
+
+test("typed code, release: wink.code.carry is the spaces module's alone, and an invitation's link rides the typed code to wink.code.redeem and out of wink.pair.status", async t => {
+  releaseTyped(t);
+  const w = await world(t);
+  const link = "https://northwind.vyre.run/join/inv_abc.eyJwaW4iOiJ4In0";
+  assert.equal((await w.call("wink.code.carry", { link }, "cli")).error?.code, "no_such_tool", "internal: no surface reaches it");
+  assert.equal((await w.call("wink.code.carry", { link }, "module:wink")).error?.code, "denied", "only the spaces module");
+  assert.equal((await w.call("wink.code.carry", { link: "http://x" }, "module:spaces")).error?.code, "bad_input", "an https link only");
+  const c = await w.call("wink.code.carry", { link, space: "northwind.vyre.run" }, "module:spaces");
+  assert.match(c.data?.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, JSON.stringify(c.error));
+  for (const [type, payload] of w.events) assert.ok(!JSON.stringify(payload ?? {}).includes(c.data.code) && !JSON.stringify(payload ?? {}).includes("inv_abc"), `${type} never carries the code or the link`);
+  // the invitee's side: type the code, show the ack
+  assert.equal((await w.call("wink.code.redeem", { code: "no way!" })).error?.code, "bad_input");
+  const r = await w.call("wink.code.redeem", { code: c.data.code, for: "invite" });
+  assert.match(r.data?.ack, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, JSON.stringify(r.error));
+  assert.equal((await w.call("wink.pair.status", { pairing: r.data.pairing })).data.state, "waiting");
+  // nothing is delivered until the inviter types the ack back; a wrong ack delivers nothing and closes the code
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  const typed = await w.call("wink.code.ack", { offer: c.data.offer, typed: r.data.ack });
+  assert.equal(typed.data?.ok, true, JSON.stringify(typed.error));
+  const done = await until(async () => { const s = (await w.call("wink.pair.status", { pairing: r.data.pairing })).data; return s.state === "done" ? s : null; }, 12_000);
+  assert.deepEqual(done.invite, { link, space: "northwind.vyre.run" }, "the same link the long form is");
+  assert.equal(done.ack, undefined);
+});
+
+test("typed code, release: a wrong ack for an invitation's code delivers nothing", async t => {
+  releaseTyped(t);
+  const w = await world(t);
+  const c = await w.call("wink.code.carry", { link: "https://northwind.vyre.run/join/inv_abc.x" }, "module:spaces");
+  const r = await w.call("wink.code.redeem", { code: c.data.code });
+  assert.ok(r.data?.ack, JSON.stringify(r.error));
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: c.data.offer, typed: "WINK-0000-0000" })).data.ok, false);
+  await new Promise(res => setTimeout(res, 2500));
+  const s = (await w.call("wink.pair.status", { pairing: r.data.pairing })).data;
+  assert.notEqual(s.state, "done");
+  assert.equal(s.invite, undefined);
+});
+
+test("typed code, release: the kill switch (wink.typedCode false) refuses every typed path", async t => {
+  const saved = process.env.VYRE_WINK_TYPED_CODE; process.env.VYRE_WINK_TYPED_CODE = "0"; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const w = await world(t);
+  assert.equal((await w.call("wink.code.redeem", { code: "WINK-K7QM-4P2X" })).error?.code, "typed_code_off");
+  assert.equal((await w.call("wink.code.carry", { link: "https://a.b/c" }, "module:spaces")).data.code, null);
+  assert.equal((await w.call("wink.phone.open", {})).data.code, undefined, "the QR alone");
 });

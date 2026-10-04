@@ -12,6 +12,7 @@ import { winkTransport } from "../../kernel/remote/wink.js";
 import { memoryKeyStore, webCrypto } from "../../relay/client/webcrypto.js";
 import { base32 } from "../../relay/client/bytes.js";
 import crypto from "node:crypto";
+import { withinOrThrow } from "../../lib/within.js";
 
 export const PEER_HOME = "home";
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -53,7 +54,7 @@ export function createServerLinks(o) {
     l.opening = (async () => {
       // The relay client opens the channel only to the box key named by the route (the Noise handshake pins it). A box with another key never opens, so no stream head, and so no hello, is ever sent to it.
       let chan;
-      try { chan = await Promise.race([l.conn.ready(), new Promise((_, rej) => { const t = setTimeout(() => rej(err("unreachable", "no answer")), o.openMs ?? 10_000); if (t.unref) t.unref(); })]); }
+      try { chan = await withinOrThrow(l.conn.ready(), o.openMs ?? 10_000, () => err("unreachable", "no answer")); }
       catch { throw err("unreachable", l.invitee ? "that server is not the one this space names, or it cannot be reached" : "the server could not be reached"); }
       let hello = null;
       if (l.invitee) {
@@ -128,10 +129,10 @@ export function createServerLinks(o) {
     if (r.status >= 300 || !j || j.error) throw err(String((j && j.error && j.error.code) || "denied"), String((j && j.error && j.error.message) || `the server answered ${r.status}`));
     return j.data;
   };
-  /** Ask the server's owner's PHONE for the yes one of the three moments needs, for a device that cannot sign it itself (a browser): `{ moment: "pair" | "vault" | "outward", request: { op, fields }, label? }` -> { id, expires_in_s }. Poll `signInStatus`; on `approved` it carries the phone's signed yes (once). @param {string} sid @param {{ moment: string, request?: any, label?: string }} card */
-  const askSignIn = async (sid, card) => postOn(linkOf(sid))("presence.person.session-ask", { moment: String(card && card.moment), ...(card && card.request ? { request: card.request } : {}), ...(card && card.label ? { label: card.label } : {}) });
-  /** @param {string} sid @param {string} id @returns {Promise<{ state: "waiting" | "approved" | "refused" | "none" | "timeout", proof?: any }>} */
-  const signInStatus = async (sid, id) => postOn(linkOf(sid))("presence.person.session-status", { id });
+  /** Ask the owner's PHONE for the yes one of the three moments needs, for a device that cannot sign it itself (a browser): the card goes into the approvals queue (core/approvals): `{ moment: "pair" | "vault" | "outward", request: { op, fields } }` -> { id, expires_in_s, line }. Poll `approvalStatus`; when `approved` the act spends the approval once. @param {string} sid @param {{ moment: string, request: any }} card */
+  const askApproval = async (sid, card) => sessionFor(sid).call("approvals.ask", { moment: String(card && card.moment), request: card && card.request });
+  /** @param {string} sid @param {string} id @returns {Promise<{ state: "waiting" | "approved" | "refused" | "none", approval?: string }>} */
+  const approvalStatus = async (sid, id) => sessionFor(sid).call("approvals.status", { id });
 
   /** This device's sign-in to the server: pair-challenge, then start-paired with the key the server's owner confirmed. Holds the token. @param {string} sid */
   const startPaired = async sid => {
@@ -167,11 +168,13 @@ export function createServerLinks(o) {
     sessionFor,
     inviteeSessionFor,
     startPaired,
-    askSignIn,
-    signInStatus,
+    askApproval,
+    approvalStatus,
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
     remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),
     token: (/** @type {string} */ sid) => (links.get(sid) ? links.get(sid)?.token : null),
+    /** Let go of the link to a server (its peer session and relay connection): the next call connects again from where pairing now says the server is. A removed and re-paired server is a new channel, never the old one. @param {string} sid */
+    forget(sid) { const l = links.get(sid); if (!l) return; try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } links.delete(sid); },
     close() { for (const l of links.values()) { try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } } links.clear(); },
   };
 }

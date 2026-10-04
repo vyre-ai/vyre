@@ -127,7 +127,22 @@ export function createTurnSeal(o) {
         if (n !== cp.seq) throw err("incomplete", "the stored transcript does not reach its checkpoint");
         fsx.fsyncSync(fd); fsx.closeSync(fd); fd = -1;
         sameDir(pinned.dir);                                            // checked again just before the rename: a swapped folder is never written into
-        fsx.renameSync(tmp, o.file);
+        // A transcript that belongs to another uid (the packaged box: the account's own file, made group-writable for vyred by the spawner) is rewritten IN PLACE, not replaced: a renamed file would be
+        // vyred's own, and the session's uid could neither read nor append to it. A crash in the middle just runs recover again (the checkpoint is the truth); the common case keeps the atomic rename.
+        let foreign = false; try { foreign = typeof process.getuid === "function" && fsx.lstatSync(o.file).uid !== process.getuid(); } catch { /* no file yet */ }
+        if (foreign) {
+          // The folders above the file belong to the session's uid, so a link could be swapped in after the earlier checks: right before the write the folder is the pinned one, the file's real path is its
+          // own, and its owner is the owner of its folder (the account's uid), or nothing is written.
+          sameDir(pinned.dir);
+          if (fsx.realpathSync(o.file) !== o.file || fsx.lstatSync(o.file).uid !== fsx.lstatSync(dir).uid) throw err("refused", "the transcript is not the account's own file in its own folder");
+          const src = fsx.openSync(tmp, "r"), dst = fsx.openSync(o.file, fs.constants.O_WRONLY | fs.constants.O_NOFOLLOW);
+          try {
+            const size = fsx.fstatSync(src).size, buf = Buffer.alloc(1 << 16); let off = 0;
+            while (off < size) { const r = fsx.readSync(src, buf, 0, Math.min(buf.length, size - off), off); if (r <= 0) break; let w = 0; while (w < r) w += fsx.writeSync(dst, buf, w, r - w, off + w); off += r; }
+            fsx.ftruncateSync(dst, size); fsx.fsyncSync(dst);
+          } finally { fsx.closeSync(src); fsx.closeSync(dst); }
+          fsx.unlinkSync(tmp);
+        } else fsx.renameSync(tmp, o.file);
       } catch (e) { if (fd >= 0) try { fsx.closeSync(fd); } catch {} try { fsx.unlinkSync(tmp); } catch {} throw e; }
       try { const d = fsx.openSync(dir, "r"); try { fsx.fsyncSync(d); } finally { fsx.closeSync(d); } } catch {}
       cur = { offset: bytes, seq: cp.seq, turn: cp.turn };

@@ -66,6 +66,8 @@
     "NOTICE",
     "README.md",
     "!**/*.test.js",
+    "!scripts/boot-check.mjs",
+    "!scripts/proof-box.mjs",
     "!**/fixtures/**",
     "!kernel/**/e2e/**",
     "!core/stream/e2e-*",

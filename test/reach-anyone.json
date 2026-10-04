@@ -989,14 +989,6 @@
    "module": "presence",
    "reason": "callers are the relay, tailnet and device labels; the new secret is signed by the paired device's key and the old one stops working"
   },
-  "presence.person.session-ask": {
-   "module": "presence",
-   "reason": "callers is the relay device labels only and the call needs a paired device peer (meta.peer.kind device) whose wink record the owner confirmed; one open card per device, a refused device is held 10 minutes, and the card is built from a validated request for one of three moments"
-  },
-  "presence.person.session-status": {
-   "module": "presence",
-   "reason": "read-only: callers is the relay device labels only and it answers only for the asking device's own card (its id), never another device's"
-  },
   "presence.person.sessions": {
    "module": "presence",
    "reason": "callers limited in code to capsule, cli, deck, local"
