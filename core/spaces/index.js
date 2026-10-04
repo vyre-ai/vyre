@@ -172,8 +172,8 @@ export default {
     // ---- the Space's own kernel decides roles and memberships when it hosts or can reach one (ctx.kernel.for(space)): nothing here is then an authority ----
     const K = ctx.kernel && typeof ctx.kernel.for === "function" ? ctx.kernel : null;
     const kernelHandle = (/** @type {string} */ id) => { if (!K) return null; try { return K.for(id) || null; } catch { return null; } };
-    /** The calling person's chain IN a Space (its own key: a Space is a member of nothing else), with their proof. Without a Space, the home's own. */
-    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ spaceId) => ({ chain: spaceId && typeof K.chainIn === "function" ? await K.chainIn(spaceId, meta) : await K.chain(meta), proof: K.proofFrom(meta) });
+    /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
+    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => ({ chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) });
     /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
     const members = async (id, meta) => {
       const h = kernelHandle(id);
@@ -182,10 +182,7 @@ export default {
       return createKernelMembers({ space: id, handle: h, now, displayNames: rnames.load(id), reader: () => k });
     };
     /** A person's role in a space from the place that decides it. @param {string} id @param {string} person @param {any} [meta] */
-    // STOPGAP until the home kernel's owner IS the claimed identity id (platform: adoptOwner): the kernel knows its person as K.owner, so this device's identity id is asked about under that id. Once they
-    // are the same this maps nothing.
-    const kperson = (/** @type {string} */ person) => { const st = identity.status(); return K && typeof K.owner === "string" && st.exists && st.id === person ? K.owner : person; };
-    const membershipOf = async (id, person, meta) => (kernelHandle(id) ? (await (await members(id, meta)).get(kperson(person))) : mstore.get(id, person)) || null;
+    const membershipOf = async (id, person, meta) => (kernelHandle(id) ? (await (await members(id, meta)).get(person)) : mstore.get(id, person)) || null;
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
     /** @type {Map<string, any>} */ const memberSvc = new Map();
@@ -406,7 +403,15 @@ export default {
 
     // ---- tools ----
     /** Errors a person can read: ours and the libraries' carry a short lowercase code; anything else is logged and made plain. */
+    /** The claimed identity IS the kernel's owner (one person, ruled 4 Oct): the first call after the claim (or after a start that finds one) hands the kernel the identity's id, once. */
+    const adoptOwner = async () => {
+      if (!K || typeof K.adoptOwner !== "function") return;
+      let s; try { s = identity.status(); } catch { return; }
+      if (!s || !s.exists || !s.id || s.id === K.owner) return;
+      try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+    };
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await adoptOwner();
       try { return await fn(i || {}, meta || {}); } catch (e) {
         const err = /** @type {any} */ (e);
         if (err && typeof err.code === "string" && /^[a-z][a-z0-9_.-]{1,40}$/.test(err.code) && typeof err.message === "string") throw err;
@@ -886,7 +891,7 @@ export default {
     /** One person's membership in one space: the kernel's answer (member or not, and the role) when it hosts or reaches that space, else the local table's. @param {string} space @param {string} person */
     const membershipRow = async (space, person) => {
       if (K && typeof K.membership === "function" && kernelHandle(space)) {
-        let r; try { r = await K.membership(kperson(person), space); } catch { return null; }
+        let r; try { r = await K.membership(person, space); } catch { return null; }
         return r && r.member ? { space, person, role: r.role, scope: null, expires: null } : null;
       }
       const m = mstore.get(space, person);
@@ -1076,7 +1081,7 @@ export default {
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
-      if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(kperson(person), space)).member === true; } catch { return false; } }
+      if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
       return Boolean(mstore.get(space, person));
     };
     /** The people this device knows an identity name for (it has resolved them), the candidates for a proven device. */
