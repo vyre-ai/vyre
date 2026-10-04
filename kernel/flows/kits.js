@@ -342,7 +342,11 @@ export class KitManager {
     /** @type {any} */ let waiver;
     if (this.k.kits && p.task) {
       if (!resuming) waiver = await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) });
-      else if (missing.length && this.k.kits.resume) waiver = await this.k.kits.resume({ chain, task: p.task, kit: waiverKit(kit) });
+      else if (missing.length && this.k.kits.resume) {
+        // resume is repeatable for one approval (within a day, same hash): it covers only the types still missing, and answers { already_installed: true } (not a waiver) when nothing is.
+        const r = await this.k.kits.resume({ chain, task: p.task, kit: waiverKit(kit) });
+        waiver = r && r.already_installed ? undefined : r;
+      }
     }
     const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
     const toDefine = resuming ? missing : types;

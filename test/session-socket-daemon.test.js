@@ -15,7 +15,7 @@ process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 delete process.env.VYRE_SESSION_SANDBOX_OFF;
 
-test("with the sandbox on and thread_socket auto, a person's session and an assistant's both start", { timeout: 120_000, todo: "past the socket refusal this test home hits the next one: the session temp folder (<home>/run/session-tmp) is refused as inside the Vyre home (runner HS-2); asked of runner" }, async t => {
+test("with the sandbox on and thread_socket auto, a person's session and an assistant's both start", { timeout: 120_000, todo: "past the socket and temp-folder refusals the sandbox fails to start the fake agent from this checkout (its path is under a hidden /home); the packaged-boot proof runs the same with the fake copied into the image" }, async t => {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
   const transcripts = path.join(root, "transcripts");
