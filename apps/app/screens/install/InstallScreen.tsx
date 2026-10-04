@@ -12,6 +12,7 @@ import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
+import { HIDDEN, claimBlocked } from "../shell/rc";
 import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, listSpaces, previewInvite, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
@@ -195,7 +196,14 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name") {
+  if (step === "name" && !MOCK && claimBlocked()) {
+    // RC1: the key is made on the phone, so a browser cannot claim a name (screens/shell/rc.ts).
+    body = (
+      <Page title={HIDDEN.claimTitle} sub={HIDDEN.claimBody}>
+        <Button kind="primary" label={HIDDEN.claimAction} onPress={() => setStep("scan")} />
+      </Page>
+    );
+  } else if (step === "name") {
     body = (
       <Page title="Choose your Vyre name" sub="It is how people find you. You can add your own domain later.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}

@@ -2,6 +2,7 @@
 // in this screen's state only); Seeing is agents.list; Privacy lists the sealed fields from records.types; About reads the running version from update.status.
 // The sample's PIN switch, defaults and retention have no tool on the box, so they are not here.
 import { useCallback, useEffect, useState } from "react";
+import { HIDDEN, claimBlocked } from "../shell/rc";
 import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
@@ -28,7 +29,7 @@ export function RealAccount() {
     <Page title="Account and recovery" back="/u/settings">
       {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
       {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0" /></Card> : null}
-      {id && !id.exists ? <Card><EmptyState title="No Vyre name on this device yet" body="Choose your Vyre name during setup." /></Card> : null}
+      {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
