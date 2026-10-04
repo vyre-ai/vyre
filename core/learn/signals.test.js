@@ -77,8 +77,8 @@ async function learning(t, { projects = false, switchboard = false, memory = fal
   const of = type => events.since(0, { limit: 5000 }).filter(e => e.type === type);
   const lessons = async () => (await reg.call("learn.lessons", { status: "all" }, "cli")).data;
   const signals = kind => db.prepare("SELECT * FROM learn_signals WHERE kind = ? ORDER BY id").all(kind);
-  const say = (prompt, session, prompt_id, cwd = where ? where.harlow : "/w/harlow-site") => reg.call("harness.enrich", { prompt, cwd, session, prompt_id, interactive: true }, "cli");
-  const stop = (session, prompt_id, extra = {}) => reg.call("harness.stop", { session, prompt_id, stop_hook_active: false, ...extra }, "cli");
+  const say = (prompt, session, prompt_id, cwd = where ? where.harlow : "/w/harlow-site") => reg.call("harness.enrich", { prompt, cwd, session, prompt_id, interactive: true }, "harness");
+  const stop = (session, prompt_id, extra = {}) => reg.call("harness.stop", { session, prompt_id, stop_hook_active: false, ...extra }, "harness");
   return { home, db, events, reg, of, lessons, signals, say, stop, where };
 }
 const tick = () => new Promise(r => setTimeout(r, 5));
@@ -131,9 +131,9 @@ test("reverted: a file the user put back in two sessions proposes a path check a
   const file = path.join(where.harlow, "src", "intake.js");
   const write = async (session, content) => {
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Write", tool_input: { file_path: "src/intake.js", content }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id }, "cli");
+    await reg.call("harness.rules", { tool_name: "Write", tool_input: { file_path: "src/intake.js", content }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id }, "harness");
     fs.writeFileSync(file, content);
-    await reg.call("harness.learn", { tool_name: "Write", tool_input: { file_path: "src/intake.js" }, cwd: where.harlow, session, tool_use_id: id }, "cli");
+    await reg.call("harness.learn", { tool_name: "Write", tool_input: { file_path: "src/intake.js" }, cwd: where.harlow, session, tool_use_id: id }, "harness");
   };
   for (const [i, session] of ["s1", "s2"].entries()) {
     fs.writeFileSync(file, "export const form = 1;\n");
@@ -162,9 +162,9 @@ test("rewritten, and Claude's own git checkout is not the user reverting", async
   const cycle = async (session, after) => {
     await say("change a", session, "p1");
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: file, new_string: "b" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id }, "cli");
+    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: file, new_string: "b" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: id }, "harness");
     fs.writeFileSync(file, "b\n");
-    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: file }, cwd: where.harlow, session, tool_use_id: id }, "cli");
+    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: file }, cwd: where.harlow, session, tool_use_id: id }, "harness");
     await after(session);
     await stop(session, "p1");
     await say("next", session, "p2");
@@ -173,7 +173,7 @@ test("rewritten, and Claude's own git checkout is not the user reverting", async
   assert.equal(signals("rewritten").length, 1);
   fs.writeFileSync(file, "a\n");
   await cycle("s2", async session => {
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git checkout src/a.js" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: uid() }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git checkout src/a.js" }, cwd: where.harlow, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
     fs.writeFileSync(file, "a\n");
     fs.utimesSync(file, new Date(2026, 0, 3), new Date(2026, 0, 3));
   });
@@ -185,14 +185,14 @@ test("test-fix: a failing test, an edit and a pass is a run; an edit with no tes
   const cwd = "/w/harlow-site";
   const bash = async (session, command, ok) => {
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: id }, "cli");
-    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command }, cwd, session, tool_use_id: id, ok }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: id }, "harness");
+    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command }, cwd, session, tool_use_id: id, ok }, "harness");
   };
   const edit = async session => {
     const id = uid();
-    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: "src/x.js", new_string: "y" }, cwd, session, prompt_id: "p1", tool_use_id: id }, "cli");
+    await reg.call("harness.rules", { tool_name: "Edit", tool_input: { file_path: "src/x.js", new_string: "y" }, cwd, session, prompt_id: "p1", tool_use_id: id }, "harness");
     await tick();
-    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "src/x.js" }, cwd, session, tool_use_id: id }, "cli");
+    await reg.call("harness.learn", { tool_name: "Edit", tool_input: { file_path: "src/x.js" }, cwd, session, tool_use_id: id }, "harness");
     await tick();
   };
   await say("fix the tests", "s1", "p1");
@@ -221,10 +221,10 @@ test("declined: a command the user said no to 3 times in 14 days, never yes, pro
   for (const session of ["s1", "s2", "s3"]) {
     await say("clean up", session, "p1");
     // PreToolUse saw it; Vyre did not hold it; neither Post nor PostFailure came: the user said no.
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
     const ok = uid();
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, prompt_id: "p1", tool_use_id: ok }, "cli");
-    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, tool_use_id: ok }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, prompt_id: "p1", tool_use_id: ok }, "harness");
+    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "ls" }, cwd, session, tool_use_id: ok }, "harness");
     await stop(session, "p1");
   }
   assert.equal(signals("declined").length, 3, "the ls that ran is not declined");
@@ -234,7 +234,7 @@ test("declined: a command the user said no to 3 times in 14 days, never yes, pro
   assert.deepEqual([l.level, l.status], ["ask", "proposed"]);
   const r = await reg.call("learn.accept", { id: l.id }, "cli");
   assert.equal(r.data.status, "active");
-  const held = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf build" }, cwd, session: "s4", tool_use_id: uid() }, "cli");
+  const held = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf build" }, cwd, session: "s4", tool_use_id: uid() }, "harness");
   assert.equal(held.data.decision, "ask");
 });
 
@@ -244,14 +244,14 @@ test("declined: three nos in one session propose nothing; a headless thread decl
   // One session: a settings rule refusing the call looks the same as the user's no.
   for (const p of ["p1", "p2", "p3"]) {
     await say("clean up", "s1", p);
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "s1", prompt_id: p, tool_use_id: uid() }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "s1", prompt_id: p, tool_use_id: uid() }, "harness");
     await stop("s1", p);
   }
   assert.equal(signals("declined").length, 3);
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 0, "one session is not enough");
   // Our own headless child: no one was there to say no.
   await say("clean up", "h1", "p1");
-  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "h1", prompt_id: "p1", tool_use_id: uid() }, "cli");
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "rm -rf dist" }, cwd, session: "h1", prompt_id: "p1", tool_use_id: uid() }, "harness");
   await stop("h1", "p1", { headless: true });
   assert.equal(signals("declined").length, 3, "nothing inferred headless");
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 0);
@@ -273,7 +273,7 @@ test("PreToolUse asks the Harness for one row, and writes are found by path thro
   const call = reg.call.bind(reg);
   reg.call = async (tool, input, ...rest) => { if (tool === "harness.touched") seen.push(input.limit); return call(tool, input, ...rest); };
   await say("fix it", "s1", "p1");
-  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd: "/w/harlow-site", session: "s1", prompt_id: "p1", tool_use_id: uid() }, "cli");
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "ls" }, cwd: "/w/harlow-site", session: "s1", prompt_id: "p1", tool_use_id: uid() }, "harness");
   assert.deepEqual(seen.slice(-1), [1]);
   const plan = db.prepare("EXPLAIN QUERY PLAN SELECT * FROM learn_writes WHERE path = ? AND done = 0 AND h1 IS NOT NULL").all("/x").map(r => String(r.detail)).join(" ");
   assert.match(plan, /USING INDEX learn_writes_path/);
@@ -284,7 +284,7 @@ test("declined: an allowed run of the same shape means no proposal", async t => 
   const cwd = "/w/harlow-site";
   for (const session of ["s1", "s2", "s3"]) {
     await say("ship it", session, "p1");
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
     await stop(session, "p1");
   }
   // One allow, answered on a Switchboard thread, and the rule is not proposed a fourth time.
@@ -292,7 +292,7 @@ test("declined: an allowed run of the same shape means no proposal", async t => 
   await tick();
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 1, "three nos proposed it once");
   await say("ship it", "s5", "p1");
-  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session: "s5", prompt_id: "p1", tool_use_id: uid() }, "cli");
+  await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "git push" }, cwd, session: "s5", prompt_id: "p1", tool_use_id: uid() }, "harness");
   await stop("s5", "p1");
   assert.equal((await lessons()).filter(l => l.check && l.check.kind === "tool").length, 1, "no second proposal");
 });
@@ -304,11 +304,11 @@ test("denied and allowed: ask.answered counts per shape; an ask lesson allowed 5
   for (let i = 0; i < 5; i++) {
     await say("edit config", "s1", `p${i}`);
     const id = uid();
-    const r = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", prompt_id: `p${i}`, tool_use_id: id }, "cli");
+    const r = await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", prompt_id: `p${i}`, tool_use_id: id }, "harness");
     assert.equal(r.data.decision, "ask");
     events.emit("threads", "ask.answered", { ask: `a${i}`, decision: "allow", by: "deck", tool: "Bash", summary: "sed -i s/a/b/ x.conf" }, { thread: "s1" });
     await tick();
-    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", tool_use_id: id }, "cli");
+    await reg.call("harness.learn", { tool_name: "Bash", tool_input: { command: "sed -i s/a/b/ x.conf" }, cwd, session: "s1", tool_use_id: id }, "harness");
     await stop("s1", `p${i}`);
   }
   assert.equal(signals("allowed").filter(s => s.lesson === l.id).length, 5, "counted once each, when the call ran");
@@ -383,7 +383,7 @@ test("preference: an accepted 'use pnpm not npm' teaches Memory the user prefers
 test("jobs: without the Switchboard they wait, capped at 200", async t => {
   const { reg, db } = await learning(t);
   for (let i = 0; i < 205; i++) db.prepare("INSERT INTO learn_jobs (at, kind, key, input, status) VALUES (?,?,?,?, 'queued')").run(i, "distill", `k${i}`, JSON.stringify({ text: `rule ${i}` }));
-  await reg.call("harness.enrich", { prompt: "from now on sign emails as Harlow Legal", session: "s1", prompt_id: "p1" }, "cli");
+  await reg.call("harness.enrich", { prompt: "from now on sign emails as Harlow Legal", session: "s1", prompt_id: "p1" }, "harness");
   const q = db.prepare("SELECT COUNT(*) AS n FROM learn_jobs WHERE status = 'queued'").get().n;
   assert.equal(q, 200);
   assert.equal(db.prepare("SELECT MIN(at) AS at FROM learn_jobs WHERE status = 'queued'").get().at, 6, "the oldest made room");
@@ -545,7 +545,7 @@ test("skills: steps recorded at Stop, marked clean at the next prompt, proposed 
   for (const session of ["s1", "s2", "s3"]) {
     await say("ship the fix", session, "p1");
     for (const command of ["npm test", "git add -A", "git commit -m wip", "git push"]) {
-      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "cli");
+      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
       await tick();
     }
     await stop(session, "p1");
@@ -565,7 +565,7 @@ test("skills: steps recorded at Stop, marked clean at the next prompt, proposed 
   for (const session of ["s4", "s5", "s6"]) {
     await say("ship the fix", session, "p1");
     for (const command of ["npm test", "git add -A", "git commit -m wip", "git push"]) {
-      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "cli");
+      await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd, session, prompt_id: "p1", tool_use_id: uid() }, "harness");
       await tick();
     }
     await stop(session, "p1");
@@ -579,7 +579,7 @@ test("skills: a turn corrected at the next prompt is not clean", async t => {
   const { reg, say, stop, db } = await learning(t);
   await say("ship the fix", "s1", "p1");
   for (const command of ["npm test", "git add -A", "git push"]) {
-    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd: "/w", session: "s1", prompt_id: "p1", tool_use_id: uid() }, "cli");
+    await reg.call("harness.rules", { tool_name: "Bash", tool_input: { command }, cwd: "/w", session: "s1", prompt_id: "p1", tool_use_id: uid() }, "harness");
     await tick();
   }
   await stop("s1", "p1");
