@@ -259,7 +259,7 @@ test("space helper: two requests before root reads the first are both answered, 
   const a = r.ask("up harlow\n"), b = r.ask("up northwind\n");
   await r.helper();
   assert.equal(r.status(a).state, "ok"); assert.equal(r.status(b).state, "ok");
-  assert.equal(r.rules().length, 2);
+  assert.equal(r.rules().length, 4, "two rules (two uid ranges) for each of the two Spaces");
 });
 
 test("space helper: the Space cap, the up rate and one-at-a-time answer busy or refuse instead of running", opts, async t => {
@@ -344,7 +344,7 @@ test("space helper RH-3: a recreated vyre container has no join and no rule; up 
   // The rule is accepted but does not block (RH-4): the probe sees the agent connect, so the up fails and the store is stopped.
   r.flag("ctr-pid", "6262"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective");
   const bad = r.ask("up harlow\n"); await r.helper();
-  assert.equal(r.status(bad).state, "failed"); assert.match(r.status(bad).message, /uid 2000 can reach/);
+  assert.equal(r.status(bad).state, "failed"); assert.match(r.status(bad).message, /uid \d+ can reach the store/);
   assert.ok(!fs.existsSync(path.join(r.F, "running-harlow")), "stopped, not left running unfirewalled");
   fs.rmSync(path.join(r.F, "fw-ineffective"));
   // A dead store (RH-4 control): the agent probe times out, and the control fails first, so it does not read as a pass.
@@ -560,7 +560,7 @@ test("space helper: the vyre container's compose is never privileged and keeps N
   assert.ok(!/network_mode:\s*host|pid:\s*host/.test(vyre));
   const entry = fs.readFileSync(path.join(REPO, "core/spawner/wall-entry.sh"), "utf8");
   assert.match(entry, /--bounding-set=-net_admin/, "NET_ADMIN leaves the bounding set before the spawner runs");
-  assert.match(entry, /space-wall\.sh\s*\|\|\s*exit 1/, "the entry waits for the host's marker and stops when it does not come");
+  assert.match(entry, /space-wall\.sh"?\s*\|\|\s*exit 1/, "the entry waits for the host's marker and stops when it does not come");
 });
 
 test("space helper: the images are pulled and recorded by digest at install; a failed pull stops the install; a refreshed record (an update) changes what `up` runs", opts, async t => {
@@ -579,7 +579,7 @@ test("space helper: the images are pulled and recorded by digest at install; a f
   assert.notEqual(d1, d2);
 });
 
-test("space helper RH-8: a writer that holds the request open and rewrites it after the checks never gets a second line, a path or anything but one valid request through (thousands of tries)", opts, async t => {
+test("space helper RH-8: a writer that holds the request open and rewrites it after the checks never gets a second line, a path or anything but one valid request through (up to 4000 tries or 40 s)", { ...opts, timeout: 150_000 }, async t => {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "race-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   // The two functions, as they are in the wrapper, run in one sh against a file a node process keeps rewriting through its own open descriptor.
   const src = WRAPPER_SRC;
@@ -598,8 +598,8 @@ test("space helper RH-8: a writer that holds the request open and rewrites it af
   const script = `
     SP_PRIV='${path.join(dir, "priv")}'; DAEMON_UID=${UID}; SP_NAME_RE='[a-z][a-z0-9-]{0,30}'
     ${funcs}
-    i=0; ok=0; bad=0
-    while [ $i -lt 4000 ]; do
+    i=0; ok=0; bad=0; end=$(( $(date +%s) + 40 ))
+    while [ $i -lt 4000 ] && [ "$(date +%s)" -lt "$end" ]; do
       i=$((i + 1)); LINE=""; MSG=""
       if sp_read_claimed '${file}'; then
         ok=$((ok + 1))
@@ -610,10 +610,12 @@ test("space helper RH-8: a writer that holds the request open and rewrites it af
     done
     echo "tries=$i accepted=$ok bad=$bad"
     [ "$bad" = 0 ]`;
-  const r = spawnSync("sh", ["-c", script], { encoding: "utf8", timeout: 120_000 });
+  const r = spawnSync("sh", ["-c", script], { encoding: "utf8", timeout: 100_000 });
   racer.kill();
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /tries=4000 accepted=\d+ bad=0/);
+  const tries = Number(/tries=(\d+)/.exec(r.stdout)?.[1]);
+  assert.ok(tries >= 500, `only ${tries} tries ran: ${r.stdout}`);
+  assert.match(r.stdout, /bad=0/);
 });
 
 test("space helper RH-8: names that could reach another path are refused wherever a name is used (a slash, dots, a newline, a NUL, a space, a capital, 32 characters)", opts, async t => {

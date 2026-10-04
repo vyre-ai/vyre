@@ -9,6 +9,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { swWithBuild } from "./build.js";
+import { appGate } from "../../lib/app-build.js";
+import { isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
@@ -16,6 +18,8 @@ export const APP_DIST = path.join(REPO, "apps", "app", "dist");
 const DECK_MANIFEST = path.join(REPO, "deck", "manifest.webmanifest");
 const WORKER = path.join(HERE, "app-sw.js");
 const PRECACHE_MAX = 2000;
+// The signed list of the build's files (lib/app-build.js): a packaged daemon serves a file of /app/ only when it is on the release's signed list and its bytes match (MW-5).
+const GATE = appGate({ root: PKG_ROOT, packaged: isPackaged() });
 
 export const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".map": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".ttf": "font/ttf", ".woff2": "font/woff2",
@@ -70,9 +74,9 @@ export function appManifest({ dir = APP_DIST, deckManifest = DECK_MANIFEST } = {
  * 404 no_app. Nothing outside dist is ever served, whatever the path says.
  * @param {import("node:http").ServerResponse} res
  * @param {string} pathname
- * @param {{ dir?: string, deckManifest?: string, build?: import("./build.js").Build }} [opts]
+ * @param {{ dir?: string, deckManifest?: string, build?: import("./build.js").Build, gate?: { check(rel: string, bytes: Buffer): null | { code: string, message: string } } }} [opts]
  */
-export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, build } = {}) {
+export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, build, gate = GATE } = {}) {
   const dir = path.resolve(d);
   if (pathname === "/app") { res.writeHead(301, { location: "/app/", "cache-control": "no-cache" }); return res.end(); }
   if (!isDir(dir)) return send(res, 404, { error: { code: "no_app", message: "the app is not built on this machine" } });
@@ -98,6 +102,8 @@ export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, build
   }
   let buf;
   try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "no_app", message: "the app is not built on this machine" } }); }
+  const refused = gate.check(path.relative(dir, file), buf);
+  if (refused) return send(res, 503, { error: refused });
   const hashed = pathname.startsWith("/app/_expo/static/") && file !== path.join(dir, "index.html");
   res.writeHead(200, head(TYPES[path.extname(file)] || "application/octet-stream", hashed ? IMMUTABLE : "no-cache"));
   res.end(buf);

@@ -58,6 +58,9 @@ services:
       # The kernel's sealing process (kernel/seal) runs the server profile on a box: vyred is uid 1000, outside the agents' range
       # (2000 to 2063), and its sealing folder is 0700 under that uid, so no agent session can read it.
       - VYRE_SEAL_PROFILE=server
+      # 0.3: the kernel is on, whatever a user's vyre.env says or a root-run update passes on (a packaged box must not depend on a user file; platform's MA-5 refuses a packaged
+      # daemon with the kernel off). VYRE_STORE (the Space store) is the installer's choice and the root run passes it on from vyre.env.
+      - VYRE_KERNEL=1
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env

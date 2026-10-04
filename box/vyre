@@ -486,12 +486,12 @@ prepare_run() {
       sed -n 's/^DOCKER_GID=\([0-9][0-9]*\)$/DOCKER_GID=\1/p; s/^VYRE_DRIVE_ACCESS=ro$/VYRE_DRIVE_ACCESS=ro/p; s/^VYRE_DRIVE_ACCESS=rw$/VYRE_DRIVE_ACCESS=rw/p; s/^VYRE_TS_HOSTNAME=\([A-Za-z0-9-]\{1,63\}\)$/VYRE_TS_HOSTNAME=\1/p; s/^TS_AUTHKEY=\([A-Za-z0-9_-]\{1,200\}\)$/TS_AUTHKEY=\1/p' "$DIR/.env"
     fi; } >"$ce"
   chmod 600 "$ce"; rename_over "$ce" "$RUN/compose.env"
-  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
+  if [ -f "$DIR/vyre.env" ] && [ ! -L "$DIR/vyre.env" ]; then grep -E '^(CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE)=[^$`]*$' "$DIR/vyre.env" >"$RUN/vyre.env.new" || true
   else : >"$RUN/vyre.env.new"; fi
   chmod 600 "$RUN/vyre.env.new"; rename_over "$RUN/vyre.env.new" "$RUN/vyre.env"
   # Nothing is dropped silently: the names (never the values) of what a root run did not pass on.
   skipped=$( { sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/.env" 2>/dev/null | grep -Evx 'DOCKER_GID|TS_AUTHKEY|VYRE_DRIVE_ACCESS|VYRE_TS_HOSTNAME|COMPOSE_PROJECT_NAME|COMPOSE_FILE|VYRE_SOURCE|VYRE_CHANNEL|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT' || true
-    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+' || true; } | sort -u | head -n 12 | tr '\n' ' ')
+    sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' "$DIR/vyre.env" 2>/dev/null | grep -Evx 'CLOUDFLARE_[A-Z0-9_]+|VYRE_SETUP_CODE|VYRE_SETUP_CODE_AT|VYRE_EGRESS_[A-Z0-9_]+|VYRE_KERNEL|VYRE_STORE' || true; } | sort -u | head -n 12 | tr '\n' ' ')
   [ -z "$skipped" ] || echo "vyre: an update run by root ignores these settings from $DIR/.env and vyre.env (root passes on only the few it checks; start the stack yourself with them set, or see vyre.env.example): $skipped" >&2
 }
 
@@ -535,7 +535,7 @@ publish_release() {
   # only root can use, and everything after this looks only at the copies. Nothing is published unless SHA256SUMS.sig verifies
   # over the copied SHA256SUMS (so an unsigned release publishes nothing), and shell.json is the file that SHA256SUMS lists.
   rt=$(mktemp -d) || return "$FATAL"
-  for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
+  for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json appbuild.json; do cp -P "$src/$f" "$rt/$f" 2>/dev/null || true; done
   if [ -f "$rt/SHA256SUMS" ] && [ ! -L "$rt/SHA256SUMS" ] && [ -f "$rt/SHA256SUMS.sig" ] && [ ! -L "$rt/SHA256SUMS.sig" ] && sig_ok "$rt/SHA256SUMS" "$rt/SHA256SUMS.sig"; then
     if [ -f "$rt/shell.json" ] && [ ! -L "$rt/shell.json" ]; then
       want=$(awk '$2 == "shell.json" || $2 == "*shell.json" { print $1; exit }' "$rt/SHA256SUMS")
@@ -547,6 +547,13 @@ publish_release() {
       if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/modules.json")" ]; then echo "vyre: modules.json is not the file the signed SHA256SUMS lists; nothing was published" >&2; rm -rf "$rt"; return 1; fi
     elif [ "$FATAL" = 1 ]; then echo "vyre: this release's modules.json is not a plain file; nothing was published" >&2; rm -rf "$rt"; return 1
     fi
+    # The web app's signed file list (lib/app-build.js), when the release has one: it must be the file the signed SHA256SUMS lists, or nothing is published. A release that drops it
+    # over a box that already has one is refused, like a dropped module list (the daemon would serve a build no list covers).
+    if [ -f "$rt/appbuild.json" ] && [ ! -L "$rt/appbuild.json" ]; then
+      want=$(awk '$2 == "appbuild.json" || $2 == "*appbuild.json" { print $1; exit }' "$rt/SHA256SUMS")
+      if [ -z "$want" ] || [ "$want" != "$(sha256 "$rt/appbuild.json")" ]; then echo "vyre: appbuild.json is not the file the signed SHA256SUMS lists; nothing was published" >&2; rm -rf "$rt"; return 1; fi
+    elif [ -f "$UPD_STATE/release/appbuild.json" ]; then echo "vyre: this release has no signed list of the app's files, and this box has one; nothing was published" >&2; rm -rf "$rt"; return 1
+    fi
     # The counter only goes up (a signed older release must not roll the module list back). The list is written by scripts/modules-manifest.mjs with one space of
     # indent, so the top-level counter is the one line `^ "counter": N,$`, and exactly one such line must be there (a module entry cannot spoof it: those sit deeper).
     newc=$(counter_of "$rt/modules.json")
@@ -557,7 +564,7 @@ publish_release() {
       rm -rf "$rt"; return 1
     fi
     if mkdir -p "$UPD_STATE" && new=$(mktemp -d "$UPD_STATE/release.new.XXXXXX") && chmod 755 "$new"; then
-      for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json; do
+      for f in SHA256SUMS SHA256SUMS.sig shell.json modules.json appbuild.json; do
         if [ -f "$rt/$f" ] && [ ! -L "$rt/$f" ]; then put_file "$rt/$f" "$new/$f" 0644 || { echo "vyre: could not publish $f" >&2; rm -rf "$new" "$rt"; return "$FATAL"; }; fi
       done
       # The whole folder by rename: the old one is set aside and the new one takes its name, so no reader sees half of each release.
@@ -1467,6 +1474,7 @@ STAT
 "*) MSG="not exactly one line"; return 1 ;; esac
   v_=${LINE%% *}; n_=${LINE#* }
   case "$v_" in up|stop|down|firewall-add|firewall-del) ;; *) MSG="not a request the helper knows"; return 1 ;; esac
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
   [ "$LINE" = "$v_ $n_" ] && sp_name_ok "$n_" || { MSG="not a request the helper knows"; return 1; }
 }
 # sp_do ID VERB NAME: one request, with its status before and after, one Space at a time, and the up lane rate limited.
@@ -1518,7 +1526,7 @@ space_helper_run() {
     if [ "$n" -gt "$SPACES_SPOOL_CAP" ]; then rm -f -- "$f" 2>/dev/null || true; sp_log "dropped: spool over its cap"; continue; fi
     # Claimed by rename (which never follows a link at the last name) into a folder only root can use, then looked at there.
     # RH-9: only a plain file is claimed (a directory or a link named like a request is removed, never moved), the claim name is cleared first, and mv -T never moves into a directory.
-    if [ ! -f "$f" ] || [ -L "$f" ]; then rm -rf -- "$f" 2>/dev/null || true; sp_log "dropped an entry that is not a plain file"; continue; fi
+    if [ ! -f "$f" ] || [ -L "$f" ]; then rm -rf -- "$f" 2>/dev/null || true; sp_status "$h" failed "refused: not a plain file"; sp_log "dropped an entry that is not a plain file"; continue; fi
     rm -rf -- "${SP_PRIV:?}/claim/$b" 2>/dev/null || true
     mv -T -- "$f" "$SP_PRIV/claim/$b" 2>/dev/null || continue
     if sp_read_claimed "$SP_PRIV/claim/$b"; then

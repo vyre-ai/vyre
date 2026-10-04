@@ -167,6 +167,8 @@ jobs:
           [ "$(cat dist/VERSION)" = "${{ steps.v.outputs.version }}" ]
           # the signed list of first-party modules (scripts/modules-manifest.mjs, by build-site.sh): one more file in the list SHA256SUMS covers
           [ -f site/box/modules.json ] && cp site/box/modules.json dist/ || { echo "build-site made no modules.json"; exit 1; }
+          # the signed list of the web app's files (scripts/appbuild-manifest.mjs, lib/app-build.js): the daemon serves /app/ only from files on it
+          [ -f site/box/appbuild.json ] && cp site/box/appbuild.json dist/ || { echo "build-site made no appbuild.json"; exit 1; }
           # what vyre.run serves for the setup page and the install line, hashed into the signed release (check-served.mjs reads it)
           node scripts/setup-hashes.mjs dist
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

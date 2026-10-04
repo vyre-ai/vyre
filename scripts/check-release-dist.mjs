@@ -52,6 +52,23 @@ export function check(dir, { pulled = false, pubkey = "", installer = false, mac
     for (const f of ["Vyre-Lumen-aarch64.dmg", "Vyre-Lumen-x86_64.dmg"]) if (!listed.has(f)) problems.push(`the Mac app ${f} is not in the release`);
   }
 
+  // appbuild.json: the signed list of the web app's files (lib/app-build.js), listed in SHA256SUMS, naming this version, every hash a sha256 and index.html on it.
+  if (modules) {
+    const raw = read("appbuild.json");
+    if (raw === null || !listed.has("appbuild.json")) problems.push("appbuild.json is not in the release");
+    else {
+      try {
+        const j = JSON.parse(raw.toString("utf8"));
+        const v = read("VERSION").toString("utf8").trim();
+        if (!j || j.v !== 1 || !j.files || typeof j.files !== "object" || !j.files["index.html"]) problems.push("appbuild.json is not { v: 1, release, files: {...} } with index.html");
+        else {
+          if (j.release !== v) problems.push(`appbuild.json says release ${j.release}, VERSION says ${v}`);
+          for (const [f, h] of Object.entries(j.files)) if (!/^[0-9a-f]{64}$/.test(String(h)) || f.startsWith("/") || f.split("/").includes("..")) problems.push(`appbuild.json has a bad entry for ${f}`);
+        }
+      } catch (e) { problems.push(`appbuild.json cannot be read: ${/** @type {Error} */ (e).message}`); }
+    }
+  }
+
   // modules.json: the signed list of first-party modules, listed in SHA256SUMS (so the release key signs it), at the counter this version makes.
   if (modules) {
     const raw = read("modules.json");
