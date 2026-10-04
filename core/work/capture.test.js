@@ -16,7 +16,7 @@ async function boot(t) {
   t.after(() => db.close());
   const tools = {};
   await mod.start({ tool: (n, d) => { tools[n] = d; }, store: { db }, kernel: { ...rig.kernel, chainFor: () => rig.ownerChain, serviceChain: () => mem.serviceChain(), chainForPerson: () => rig.withService(rig.ownerChain, "memory"), audienceFor: async () => ({ group: false }) } });
-  return { rig, db, tools, call: (n, i) => tools[n].run(i, { caller: "module:sessions" }) };
+  return { rig, db, tools, call: (n, i) => tools[n].run(i, { caller: "module:sessions", firstParty: true }) };
 }
 const LINES = [{ seq: 1, role: "user", text: "the court portal password changed on Tuesday", at: 1 }, { seq: 2, role: "assistant", text: "noted: portal password changed", at: 2 }, { seq: 3, role: "user", text: "client ssn is 123-45-6789", at: 3 }];
 

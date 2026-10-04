@@ -170,8 +170,10 @@ export default {
     ctx.tool("work.know.capture", {
       description: "Keep a session's lines so the Space's memory can answer from what was said. Called by the session capture, once per indexed batch: { session, lines: [{ seq, role, text, at }] }. Lines are scrubbed on the way in and readable only by a chain that may read the session. Returns how many were kept and indexed.",
       input: obj({ session: { type: "string", maxLength: 128 }, lines: { type: "array", items: { type: "object" } }, record: { type: "string" }, project: { type: "string", maxLength: 80 } }, ["session", "lines"]),
-      run: async input => {
+      run: async (input, extra) => {
+        // KW-4: only first-party code writes lines under a session's address (the registry's flag, never the input's).
         const e = engineOf();
+        if (!extra || extra.firstParty !== true) throw fail("denied", "only first-party modules hand over a session's lines");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(String(input.session))) throw fail("bad_input", "a session id is letters, digits and . _ : -");
         const lines = (Array.isArray(input.lines) ? input.lines : []).slice(0, 2000).filter((/** @type {any} */ l) => l && Number.isInteger(l.seq) && typeof l.text === "string" && ["user", "assistant", "tool"].includes(String(l.role))).map((/** @type {any} */ l) => ({ seq: l.seq, role: String(l.role), text: l.text.slice(0, 20_000), at: Number(l.at) || 0 }));
         // The record a reader must be allowed to read: the one named, else the project's own record when the caller names a project (a project-wide teammate grant then covers its sessions),
@@ -186,7 +188,11 @@ export default {
     ctx.tool("work.know.forget", {
       description: "Erase a session's lines and every index row made from them (the session was deleted or the person asked). Called by the session capture.",
       input: obj({ session: { type: "string", maxLength: 128 } }, ["session"]),
-      run: async input => ({ erased: engineOf().forgetSession(String(input.session)) }),
+      run: async (input, extra) => {
+        const e = engineOf();
+        if (!extra || extra.firstParty !== true) throw fail("denied", "only first-party modules erase a session's lines");
+        return { erased: e.forgetSession(String(input.session)) };
+      },
     });
 
     ctx.tool("work.engineer.talk", {
