@@ -971,3 +971,22 @@ test("a pairing refused twice in a minute says its reason both times in the serv
   }
   await until(async () => f.w.logs.filter(l => /relay: refused (a hello|again) \(this pairing code has expired/.test(l)).length >= 2);
 });
+
+test("pair, release, then pair a browser as ANOTHER identity: refused with the server's own words and a log line saying why", async t => {
+  const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software" });
+  const w = f.w, dev = f.done.device;
+  const rel = await w.d.registry.call("wink.server.release", {}, `device:${dev}`, { peer: { kind: "device", stableId: dev, node: dev } });
+  assert.deepEqual(rel.data, { released: true }, JSON.stringify(rel.error));
+  await until(async () => !(await relayHas(w, dev)));
+  const other = await standinIdentity(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  let shown = "";
+  const pairing = pairServer({ payload: made.qr, owner: { id: other.id, name: "Bea", vyre: "alex" }, signIdentity: other.sign, deviceKind: "web", keyStorage: "software", about: { kind: "web" }, name: "Bea's browser", crypto: nodeCrypto(), keyStore: keystore(t), presenceKey: { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" }, pollMs: 100, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 6000).catch(() => null);
+  if (q) { await until(async () => shown); await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF); }
+  const r = await pairing.then(() => "paired", e => `${e.code}: ${e.message}`);
+  assert.match(r, /^owned_by_other: This server already belongs to another Vyre identity/);
+  await until(async () => w.logs.some(l => /a pairing from web:\S+ did not finish \(owned_by_other\)/.test(l)));
+});

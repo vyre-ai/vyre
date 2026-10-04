@@ -1052,13 +1052,8 @@ export function createPairing(o) {
       return { owner: t };
     };
     const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str, pin: obj({ id: str, seq: { type: "integer" }, head: str }) }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str, esig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
-    ctx.tool("wink.server.adopt", {
-      callers: ["web"],
-      description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
-      input: adoptInput,
-      // No presence gate in front: the platform would turn a stranger away before this ran, and its relay device row would stay on the box.
-      // The same rule is kept here: once there is an owner, a change needs the owner's fresh presence (meta0.presence) from the one that adopted it.
-      run: async (input, meta0 = {}) => {
+    /** The adoption itself (wink.server.adopt's body). @param {any} input @param {any} meta0 */
+    const adoptBody = async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");
         // An owner is a person identity or a space, by its id's own shape; anything else is refused before it is asked about, stored or shown (reviewer-3 SP-1)
         if (!((o.looseOwnerIds === true ? (input.owner.kind === "identity" ? /^per_[a-z2-7]{1,26}$/ : /^spc_[a-z2-7]{1,26}$/) : (input.owner.kind === "identity" ? /^per_[a-z2-7]{26}$/ : /^spc_[a-z2-7]{12}([a-z2-7]{14})?$/))).test(String(input.owner.id))) throw fail("bad_input", "That is not an identity or space id. Pair again from the Vyre app.");
@@ -1085,6 +1080,21 @@ export function createPairing(o) {
         }
         else if (confirmAdopt && (deviceIdOf(caller) !== null)) return firstAdopt(input, caller);
         return applyAdopt(input, caller);
+    };
+    ctx.tool("wink.server.adopt", {
+      callers: ["web"],
+      description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
+      input: adoptInput,
+      // No presence gate in front: the platform would turn a stranger away before this ran, and its relay device row would stay on the box.
+      // The same rule is kept here: once there is an owner, a change needs the owner's fresh presence (meta0.presence) from the one that adopted it.
+      run: async (input, meta0 = {}) => {
+        try { return await adoptBody(input, meta0); }
+        catch (e) {
+          // every pairing that does not finish says why in this server's log (the app only says "the pairing did not finish"); a question still waiting for the person's answer is not a refusal
+          const c = /** @type {any} */ (e);
+          if (c && !c.keepAsk && c.code !== "pending") ctx.log(`wink: a pairing from ${String((meta0 && meta0.caller) || "a device").slice(0, 40)} did not finish (${String(c.code || "failed").slice(0, 40)}): ${String(c.message || e).slice(0, 160)}`);
+          throw e;
+        }
       },
     });
     /** Takes a paired app's relay device off this box, so it no longer reaches it as an owner device. Waits a moment so the answer to the call that asked still travels. @param {any} caller */
