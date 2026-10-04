@@ -338,7 +338,7 @@ export default {
     const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); };
+    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); }; // SHIM(legacy labels): the label side runs only with the kernel off
     /**
      * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
@@ -553,7 +553,7 @@ export default {
      * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
      */
     /** Whether the caller is an agent: the kernel chain has an agent hop (a label naming one, `agent:<name>`, only when the kernel is off). */
-    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); };
+    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); }; // SHIM(legacy labels): the label side runs only with the kernel off
     const ownerOnly = run => async (input, extra = {}) => {
       if (namesAgent(extra.caller)) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);

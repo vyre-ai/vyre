@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["recall.search", "recall.related", "recall.thread", "recall.transcript", "recall.watch", "recall.unwatch", { "name": "recall.sessions", "cwdArg": "cwd" }, "recall.index", "recall.forget", "recall.status", "recall.setup", "recall.eval"] },
-  "watches": { "emits": ["session.indexed", "session.turn", "session.state", "recall.embedded"] },
+  "does": { "tools": ["recall.search", "recall.related", "recall.thread", "recall.transcript", "recall.watch", "recall.unwatch", { "name": "recall.sessions", "cwdArg": "cwd" }, "recall.index", "recall.forget", "recall.status", "recall.sealscan", "recall.sealscrub", "recall.setup", "recall.eval"] },
+  "watches": { "emits": ["session.indexed", "session.turn", "session.state", "recall.embedded", "recall.scrubbed"] },
   "shows": { "cli": ["recall", "index"] },
   "needs": {},
   "teaches": {

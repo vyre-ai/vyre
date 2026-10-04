@@ -275,7 +275,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     { const w = whoNow(); if (w && w.acting) return { kind: "module", name: w.acting.id, r: await reach(undefined, c), you: false, limited: true, forced: true }; }
     if (personWrites(c, meta)) return { kind: "person", name: "you", r: { all: true }, you: true, limited: false, forced: false };
     if (ownSession(c)) return { kind: "person", name: "session", r: { all: true }, you: true, limited: false, forced: false };
-    if ((whoNow() ? Boolean(whoNow()?.device) : /^(?:tailnet:|device:)/.test(c))) throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });
+    if ((whoNow() ? Boolean(whoNow()?.device) : /^(?:tailnet:|device:)/.test(c))) /* SHIM(legacy labels): the label side runs only with the kernel off */ throw Object.assign(new Error("memory is written from this device once you sign in with your passkey"), { code: "person_session_required" });
     throw denied(`memory.write is not open to ${plain(c || "an unnamed caller", 60)}`);
   };
   /** Whether a project is within what r reaches. */
