@@ -50,7 +50,10 @@ export function createRemoteKernel(cfg) {
   return Object.freeze({
     space: cfg.space,
     hosted: false,
-    gateway: Object.freeze({ grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events") }),
+    gateway: Object.freeze({ grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), leases: build("leases") }),
+    lent: build("lent"),
+    /** One wire call by its path (`lent.start`, `leases.issue`): the lent computer's runner client (core/runner/lent-client.js) speaks in these. The home still allows only what CALLS lists. */
+    call: (/** @type {string} */ name, /** @type {any[]} */ args) => invoke(String(name), Array.isArray(args) ? args : []),
     surfaces: build("surfaces"),
     /**
      * The last copy this device fetched of a read, for the screen to show while the home is away: `{ untrusted: true, source: "remote", at, value }`, or null. It is never
