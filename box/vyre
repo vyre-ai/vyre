@@ -1090,6 +1090,7 @@ vol_says() {
     *vyre-work) echo "your projects and files (/work)" ;;
     *vyre-agent-home) echo "your agents' own sign-in state and transcripts" ;;
     *vyre-accounts) echo "each AI account's sign-in" ;;
+    *vyre-sessions) echo "the temp folders of running sessions" ;;
     *docker-api-bearer) echo "internal, nothing of yours" ;;
     *) echo "Vyre data" ;;
   esac
