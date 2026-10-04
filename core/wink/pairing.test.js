@@ -1485,6 +1485,8 @@ test("PI-1: on a release build the owner's proof must come from a phone's hardwa
   assert.equal((await attempt(true, proof("e_phone"))).err.code, "denied_wrong_proof", "an enclave entry's proof without its Face ID signature");
   assert.equal((await attempt(true, proof("e_phone", "A".repeat(86)))).err.code, "denied_wrong_proof", "a wrong esig");
   assert.equal((await attempt(true, proof("e_phone", esigOf()))).ok.pending, true, "with its Face ID signature it is asked");
+  // finished: the server owns, and says the enclave key is unattested (never "hardware" without a verified attestation)
+  { const r = await attempt(true, proof("e_phone", esigOf())); await atServer(r.w, "wink.server.pair.answer", await rightYes(r.w)); await r.w.tools.get("wink.server.adopt").run({ ...base, proof: proof("e_phone", esigOf()) }, { caller: "device:app1" }); assert.equal(r.w.p.meta.get("owner_proof"), "enclave, unattested"); }
   // PI-2: a release build refuses a pairing with no pin; a development build takes it and says so
   const nopin = { ...base, owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" } };
   const wNo = world({ confirm: true, requireProof: true, releaseProof: true, identityEntry });
