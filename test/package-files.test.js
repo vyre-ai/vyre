@@ -43,3 +43,13 @@ test("package files: every relative import of the packed daemon code lands on a 
   }
   assert.deepEqual([...problems].sort(), [], "add the folder to package.json files (or stop importing it from packed code)");
 });
+
+test("package files: every admin step the box wrapper runs from the image is packed (vyre admin wipe, anchor-reset, ...)", () => {
+  const wrapper = fs.readFileSync(path.join(ROOT, "box/vyre"), "utf8");
+  const scripts = [...new Set([...wrapper.matchAll(/\/opt\/vyre\/(scripts\/[A-Za-z0-9._-]+\.m?js)/g)].map(m => m[1]))];
+  assert.ok(scripts.length >= 1, "the wrapper names at least one script in the image");
+  for (const s of scripts) {
+    assert.ok(fs.existsSync(path.join(ROOT, s)), `${s} is named by box/vyre but is not in the tree`);
+    assert.ok(packed(s), `${s} is run by box/vyre from the image but package.json "files" does not ship it`);
+  }
+});

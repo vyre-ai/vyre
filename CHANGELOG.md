@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(0.3, package): scripts/admin-wipe.mjs and scripts/admin-anchor-reset.mjs are in package.json "files", so `vyre admin wipe` and `anchor-reset` have their script in every packaged image; test/package-files.test.js derives the list from the scripts box/vyre runs in the image.
 - feat(0.3, box): a server has no first-run page. onboard.link refuses (`not_available`, pair from your app), the kept link is not reopened at start, the compose no longer publishes the onboarding port nor sets VYRE_ONBOARD_HOST, and packaged-boot checks nothing listens on 7300 or 7301 inside the box and nothing is published on the host.
 - feat(flows, kits): a Kit installs on a real kernel after the owner's approval. kits.propose writes `form.kit_hash` (hash of the Kit id, version, content hash and its type definitions); kits.apply takes the kernel's approved-Kit waiver (`gateway.kits.begin`, kernel/tasks/kit-apply.js) for the Kit's types only, once, and ends it. The Flows host defines the record types a Kit's templates, roles and views are stored in (template, def-role, def-view) with its own, and `#ensureDefType` awaited the async catalog (it read `types` of a promise). Real-daemon test: the Engineer proposes a library Kit, the owner's signed approval installs it (test/engineer-daemon.test.js "RC1 walk").
 - feat(sessions): own-server sessions are sealed per turn (core/daemon/ownserver-host.js, threads.own-transcript), with a daemon-level recover test.

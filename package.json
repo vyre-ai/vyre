@@ -49,6 +49,8 @@
     "box",
     "apps/app/dist",
     "scripts/install-box.sh",
+    "scripts/admin-wipe.mjs",
+    "scripts/admin-anchor-reset.mjs",
     "scripts/postinstall.mjs",
     "docs",
     "!docs/work",
