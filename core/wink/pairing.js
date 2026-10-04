@@ -98,6 +98,7 @@ export const POLL_MS = 1500;
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
  *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number, releaseMaxMs?: number,
+ *   vyreName?: (identity: string) => Promise<string | null> | string | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
  *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
@@ -735,7 +736,8 @@ export function createPairing(o) {
         try { const m = (await directory.memberships(cur.identity)).find(x => x.space === cur.id); if (m && m.name) return m.name; } catch { /* the directory may not know it */ }
         return "another space";
       }
-      return "Personal";
+      // an identity's own name, as the app sent it when it paired this server (never "You" or an id)
+      return cur.name ? String(cur.name) : "Personal";
     };
     // ---- Q-1 (ruling, 4 Oct 2026): the first adoption of an unowned server by a paired device is CONFIRMED at the server ----
     // A scan or a paste only gets a device paired to this box (the ticket is single use). Becoming its owner is a second step: the device calls wink.server.adopt, the server
@@ -748,13 +750,21 @@ export function createPairing(o) {
     let ask = null;
     const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase();
     /** The name the person sees for who is asking: the target's own name from the app, else the identity's id. @param {any} input */
-    // The name is the asker's own claim, and a look-alike letter (a Cyrillic "a" in "alex") reads the same, so what the person at the server sees always carries the first characters of the
-    // identity id, which a claim cannot fake (reviewer-3 PA-2). The three words stay the real proof.
-    const askName = (input) => {
-      const claimed = String((input.owner && input.owner.name) || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 48);
+    // What the person at the server reads for who is asking (lead ruling, 4 Oct): the display name the app sent, then the claimed Vyre name, the one thing a stranger cannot fake (the directory
+    // answers it for the identity id: `o.vyreName`): `Alex (alex.vyre.run)`. No Vyre name known: the display name with the short id, `Alex (id aaaaaa)`. A look-alike display name (letters of
+    // more than one script) is dropped: the Vyre name alone, or the short id alone. Never a raw `per_` id. The three words stay the real proof.
+    const SCRIPTS = [/\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u, /\p{Script=Arabic}/u, /\p{Script=Hebrew}/u, /\p{Script=Han}/u, /\p{Script=Hangul}/u, /\p{Script=Devanagari}/u, /\p{Script=Armenian}/u, /\p{Script=Georgian}/u];
+    const mixedScript = (/** @type {string} */ t) => SCRIPTS.filter(r => r.test(t)).length > 1;
+    const askNameOf = async (/** @type {any} */ input) => {
+      const display = String((input.owner && input.owner.name) || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").trim().slice(0, 48);
       const id = String(input.identity || (input.owner && input.owner.id) || "");
       const tag = id.replace(/^[a-z]+_/, "").replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
-      return claimed ? (tag ? `${claimed} (id ${tag})` : claimed) : (id.replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone");
+      /** @type {string | null} */ let vyre = null;
+      if (typeof o.vyreName === "function" && id) { try { const v = await o.vyreName(id); if (typeof v === "string" && /^[a-z0-9.-]{3,253}$/.test(v)) vyre = v; } catch { vyre = null; } }
+      const ok = display && !mixedScript(display);
+      if (vyre) return ok ? `${display} (${vyre})` : vyre;
+      const short = tag ? `id ${tag}` : "";
+      return ok ? (short ? `${display} (${short})` : display) : (short || "someone");
     };
     /**
      * Q-3: an unattended install named one identity (`pairTo`), and completing the pairing needs PROOF that the one asking is that identity, never a claim. Everything the caller
@@ -821,7 +831,7 @@ export function createPairing(o) {
           const nb = newNonce();
           const w = fresh || to ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
           const until = now() + ASK_MS;
-          const mine = ask = a = { caller, input, name: askName(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
+          const mine = ask = a = { caller, input, name: await askNameOf(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
           if (w) setWords(mine, w);
           // no answer, no yes: the ask ends by itself and lets the app's relay device go, even when the app never calls again
           const timer = setTimeout(() => { if (ask === mine) askLive(); }, ASK_MS + 5);
@@ -941,6 +951,16 @@ export function createPairing(o) {
       run: async (input, meta0 = {}) => {
         if (String((meta0 && meta0.caller) || "") !== "module:presence") throw fail("denied", "the device record is for the presence module");
         return devices.record(String(input.id));
+      },
+    });
+    ctx.tool("wink.server.paired", {
+      internal: true,
+      description: "For the spaces module: is this device a server paired to this identity, and still paired? Answers { paired, name? }. Modules only, read only; it names no one else's devices.",
+      input: obj({ device: str, identity: str }, ["device", "identity"]),
+      run: async (input, meta0 = {}) => {
+        if (!String((meta0 && meta0.caller) || "").startsWith("module:")) throw fail("denied", "this is for modules");
+        const d = devices.list(String(input.identity)).find((/** @type {any} */ x) => x.id === String(input.device) && x.kind === "server");
+        return d ? { paired: true, name: d.name } : { paired: false };
       },
     });
     ctx.tool("wink.server.handover", {
