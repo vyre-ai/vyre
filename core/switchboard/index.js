@@ -706,13 +706,38 @@ export class Switchboard {
    * @param {{ chips?: { kind: string, id: string }[], pasted?: string[] }|null} [person] set only by threads.start for a person's own
    *   turn (never read from `o`): the first prompt is then heard as any person's turn is (said row, # tags).
    */
+  /**
+   * Start or resume a thread. Bounded: a start that has not got the agent running within `startTimeoutMs` FAILS the thread, naming the step it was on (the last "threads: <id> start step" line in
+   * the log says the same), stops what it began and answers the caller; it never leaves a thread in "starting" silently.
+   */
   async launch(o, person = null) {
+    const box = { id: /** @type {string | null} */ (null), step: "begin", cancelled: false };
+    const limit = Number(this.deps.startTimeoutMs) || 90_000;
+    /** @type {NodeJS.Timeout | undefined} */ let timer;
+    const stuck = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(`the session did not start within ${Math.round(limit / 1000)} s: it was stuck at "${box.step}"`), { code: "start_timeout" })), limit); timer.unref?.(); });
+    try { return await Promise.race([this.launchInner(o, person, box), stuck]); }
+    catch (e) {
+      box.cancelled = true; // the steps still running stop at their next step instead of spawning an agent for a thread that has already failed
+      if (e && /** @type {any} */ (e).code === "start_timeout" && box.id) {
+        const id = box.id;
+        this.deps.log(`threads: ${id.slice(0, 8)} start failed at step "${box.step}" after ${Math.round(limit / 1000)} s`);
+        try { const st = this.live.get(id); if (st) { st.haltReason = `exited without starting: stuck at "${box.step}"`; st.stopping = true; await st.proc.stop().catch(() => {}); } } catch { /* nothing live */ }
+        this.closeSocket(id);
+        if (!this.live.has(id)) { this.set(id, { status: "stopped", pid: null, stopped_reason: `exited without starting: stuck at "${box.step}"` }); this.states.set(id, "stopped"); this.emit("thread.stopped", { code: null, reason: `exited without starting: stuck at "${box.step}"` }, id, null); }
+      }
+      throw e;
+    } finally { clearTimeout(timer); }
+  }
+
+  /** @param {any} o @param {any} person @param {{ id: string | null, step: string, cancelled: boolean }} box */
+  async launchInner(o, person, box) {
     let id, rec;
+    const at = (/** @type {string} */ step) => { if (box.cancelled) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); box.step = step; if (box.id) this.deps.log(`threads: ${box.id.slice(0, 8)} start step ${step}`); };
     if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
-      id = rec.id;
+      id = rec.id; box.id = id;
       if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
       // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
@@ -731,7 +756,8 @@ export class Switchboard {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
       }
-      id = crypto.randomUUID();
+      id = crypto.randomUUID(); box.id = id;
+      at("where (the project's folder)");
       const w = await this.where(o, id);
       const now = Date.now();
       const provider = String(o.provider || "claude");
@@ -748,6 +774,7 @@ export class Switchboard {
       // Which of the person's accounts on this provider (an explicit one, the teammate's, the
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
+      at("account");
       const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
       o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
@@ -810,16 +837,21 @@ export class Switchboard {
         throw Object.assign(new Error("Connect an AI account to start a session."), { code: "no_account" });
       }
     }
+    at("system prompt");
     o = { ...o, system: await this.systemPrompt(rec, o) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
+    at("session socket and kernel session");
     await this.openSocket(id, rec, o.kernelTurn || null);
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
     // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
     // under the same thread: there is nothing of its own to resume.
+    at("git identity");
     o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
+    at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o) };
+    at("spawn");
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
