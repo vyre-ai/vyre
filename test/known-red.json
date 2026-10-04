@@ -32,9 +32,6 @@
  "core/relay/setup.test.js": {
   "owner": "tailnet"
  },
- "core/runner/runner.test.js": {
-  "owner": "runner"
- },
  "core/sessions/api-key.test.js": {
   "owner": "sessions"
  },
