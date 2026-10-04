@@ -125,7 +125,7 @@ docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import
 # (the real command needs a terminal: the checks give it one with script(1); the test override for "no terminal" is refused in a root run, as it should be)
 out=$(printf 'not-the-word\n' | timeout 120 script -qec "sudo -n vyre admin wipe" /dev/null 2>&1 || true)
 printf '%s' "$out" | grep -q "that was not the word; nothing was done" || { echo "admin wipe with a wrong word did not refuse plainly: $out"; soft; }
-out=$(printf 'anchor-reset\n{}\n' | timeout 300 script -qec "sudo -n vyre admin anchor-reset" /dev/null 2>&1 || true)
+out=$( { printf 'anchor-reset\n'; sleep 30; printf '{}\n'; sleep 10; } | timeout 300 script -qec "sudo -n vyre admin anchor-reset" /dev/null 2>&1 || true)
 printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_presence)' || { echo "admin anchor-reset with a bad proof did not refuse for the right reason: $out"; soft; }
 printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; soft; }
 ready || { docker logs vyre-vyre-1 2>&1 | tail -20; echo "vyred did not come back after the anchor-reset refusal"; exit 1; }
