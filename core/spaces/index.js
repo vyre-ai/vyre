@@ -404,15 +404,18 @@ export default {
     // ---- tools ----
     /** Errors a person can read: ours and the libraries' carry a short lowercase code; anything else is logged and made plain. */
     /** The claimed identity IS the kernel's owner (one person, ruled 4 Oct): the first call after the claim (or after a start that finds one) hands the kernel the identity's id, once. */
-    const adoptOwner = async () => {
-      if (!K || typeof K.adoptOwner !== "function") return;
-      let s; try { s = identity.status(); } catch { return; }
-      if (!s || !s.exists || !s.id || s.id === K.owner) return;
-      try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
-    };
+    /** @type {Promise<void> | null} */ let adopting = null;
+    const adoptOwner = () => adopting || (adopting = (async () => {
+      try {
+        if (!K || typeof K.adoptOwner !== "function") return;
+        let s; try { s = identity.status(); } catch { return; }
+        if (!s || !s.exists || !s.id || s.id === K.owner) return;
+        try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+      } finally { adopting = null; }
+    })());
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await adoptOwner();
-      try { return await fn(i || {}, meta || {}); } catch (e) {
+      try { const out = await fn(i || {}, meta || {}); await adoptOwner(); return out; } catch (e) { // after too: a call that claims or recovers the identity makes it the kernel's owner at once, not at the next call
         const err = /** @type {any} */ (e);
         if (err && typeof err.code === "string" && /^[a-z][a-z0-9_.-]{1,40}$/.test(err.code) && typeof err.message === "string") throw err;
         ctx.log.error(`a spaces tool failed: ${err && err.name}: ${String(err && err.message).slice(0, 200)}`);
@@ -1191,6 +1194,8 @@ export default {
     const syncTimer = setInterval(() => { const s = identity.status(); if (s.exists && s.name) idops.sync().catch(e => ctx.log.warn(`the identity check failed: ${/** @type {Error} */ (e).message}`)); }, syncEvery);
     if (typeof syncTimer.unref === "function") syncTimer.unref();
 
+    // At start: an identity claimed before this start, on a home whose kernel still has its first-start owner, is adopted now, not at the first spaces call.
+    adoptOwner().catch(() => {});
     return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
   },
 };

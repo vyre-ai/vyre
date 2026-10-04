@@ -61,3 +61,41 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   if (!tg.error) assert.ok(tg.data.targets.some(x => x.kind === "identity" && x.id === status.id), `the pairing's identity target is the claimed identity: ${JSON.stringify(tg.data.targets)}`);
   void ownerChain;
 });
+
+test("the claimed identity is the home kernel's owner at once (no spaces call after the claim), on a fresh home, and on an existing home that claimed before the kernel ran", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const cfg = (/** @type {string} */ root, /** @type {string} */ name) => fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name, transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const agree = async (/** @type {string} */ root, /** @type {any} */ d, /** @type {string} */ label) => {
+    const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+    const st = await deck("spaces.identity.status");
+    assert.ok(!st.error, label + JSON.stringify(st.error));
+    // records.me is the kernel's own tool: it must already name the identity, with no spaces call in between
+    let me = await deck("records.me");
+    for (let i = 0; i < 20 && !me.error && me.data.person !== st.data.id; i++) { await new Promise(r => setTimeout(r, 100)); me = await deck("records.me"); }
+    assert.ok(!me.error, label + JSON.stringify(me.error));
+    assert.equal(me.data.person, st.data.id, `${label}: records.me is the identity`);
+    assert.equal(d.kernel.id.owner, st.data.id, `${label}: the kernel's owner is the identity`);
+    const tg = await deck("wink.pair.targets");
+    if (!tg.error) assert.ok(tg.data.targets.some((/** @type {any} */ x) => x.kind === "identity" && x.id === st.data.id), `${label}: pair targets name the identity`);
+  };
+  // fresh home: claim, then read at once
+  const a = tempHome(t); cfg(a, "fresh-box");
+  const da = await start({ root: a, kernel: true, log: () => {} });
+  t.after(() => da.stop());
+  assert.ok(!(await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "deck" })).error);
+  await agree(a, da, "fresh home");
+  // existing home: claimed with the kernel off, then started with it on
+  const b = tempHome(t); cfg(b, "existing-box");
+  const off = await start({ root: b, kernel: false, log: () => {} });
+  const made = await call("spaces.identity.create", { name: "drew" }, { root: b, caller: "deck" });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  await off.stop();
+  const on = await start({ root: b, kernel: true, log: () => {} });
+  t.after(() => on.stop());
+  await agree(b, on, "existing home");
+  assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "deck" })).data.id, made.data.id, "the id did not change");
+});
