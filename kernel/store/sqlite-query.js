@@ -110,6 +110,27 @@ function filterSql(f, def, ascii, args, pos = false) {
   }
 }
 
+const ATTR_NAME = /^(owner|project|sensitivity|created_by)$/;
+/**
+ * A row's kernel attributes live in `kernel_attrs` by urn. `attr_filter` ({ urn_prefix, any: [ { attr: value, ... }, ... ] }) keeps the rows whose attributes equal ALL the terms of ANY one
+ * alternative; a missing attribute matches nothing. An invalid filter throws, so a malformed one can never widen what a caller sees. @param {any} af @param {any[]} args
+ */
+function attrSql(af, args) {
+  if (!af || typeof af !== "object" || typeof af.urn_prefix !== "string" || !/^vyre:\/\/[^/]+\/[a-z][a-z0-9_]*\/$/.test(af.urn_prefix) || !Array.isArray(af.any)) no();
+  if (!af.any.length) return "0";
+  const lo = af.urn_prefix, hi = af.urn_prefix.slice(0, -1) + "0";   // every urn under the prefix: "/" is followed by "0" in the byte order
+  const cut = af.urn_prefix.length + 1;                                // the record id is what follows the prefix
+  /** @type {any[]} */ const sargs = [];
+  const parts = af.any.map((/** @type {any} */ alt) => {
+    const keys = alt && typeof alt === "object" ? Object.keys(alt) : [];
+    if (!keys.length || keys.some(k => !ATTR_NAME.test(k) || typeof alt[k] !== "string")) no();
+    sargs.push(lo, hi, ...keys.map(k => alt[k]));
+    return `SELECT substr(a.urn, ${cut}) FROM kernel_attrs a WHERE a.urn >= ? AND a.urn < ? AND ${keys.map(k => `json_extract(a.attrs, '$.${k}') = ?`).join(" AND ")}`;
+  });
+  args.push(...sargs);
+  return `kernel_records.id IN (${parts.join(" UNION ")})`;
+}
+
 /**
  * Plan one page of a query. Returns { sql, args, limit, index } or null when it cannot be pushed down exactly.
  * @param {{ type: string, def: any, spec: any, ascii: (field: string) => boolean }} q
@@ -124,6 +145,7 @@ export function planPage(q) {
     const where = [`type = '${type}'`];
     if (!spec.include_deleted) where.push("deleted_at IS NULL");
     where.push(filterSql(spec.filter, def, q.ascii, args, true));
+    if (spec.attr_filter !== undefined) where.push(attrSql(spec.attr_filter, args));
     // order: per key, how SQL reads it
     const order = keys.map((/** @type {any} */ k) => {
       const info = typeof k.field === "string" ? fieldInfo(def, k.field) : null;
@@ -189,6 +211,7 @@ export function planAggregate(q) {
   try {
     /** @type {any[]} */ const args = [];
     const where = [`type = '${type}'`, "deleted_at IS NULL", filterSql(spec.filter, def, q.ascii, args, true)];
+    if (spec.attr_filter !== undefined) where.push(attrSql(spec.attr_filter, args));
     const gInfo = (spec.group_by || []).map((/** @type {any} */ f) => { const i = typeof f === "string" ? fieldInfo(def, f) : null; if (!i || i.cls === "object" || i.cls === "array") no(); return i; });
     const select = [], measures = [];
     gInfo.forEach((/** @type {any} */ i, /** @type {number} */ k) => select.push(`${i.expr} AS g${k}`));

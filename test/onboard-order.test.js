@@ -75,3 +75,18 @@ test("with an owner, a model, another module, an agent and a second person's lab
   const items = (await d.registry.call("vault.list", {}, "cli")).data.items;
   assert.ok(!items.some((/** @type {any} */ i) => i.name === "anthropic-api-key"), "nothing was stored");
 });
+
+test("there is no first-passkey path: onboard.passkey refuses with the pairing message, and no status or link answer carries a passkey link", { timeout: 60_000 }, async t => {
+  for (const network of [{}, { ownerSeen: true }]) {
+    const d = await box(t, network);
+    for (const caller of ["deck", "cli", "local", "onboard", "mcp"]) {
+      const r = await d.registry.call("onboard.passkey", {}, caller);
+      assert.ok(r.error, `${caller} must be refused`);
+      assert.ok(/Pair this server to your Vyre app first|denied|no_such_tool/.test(String(r.error.message) + String(r.error.code)), `${caller}: ${JSON.stringify(r.error)}`);
+    }
+    const st = await d.registry.call("onboard.status", {}, "deck");
+    assert.ok(!JSON.stringify(st.data).includes("passkeyUrl"), "the status offers no passkey link");
+    const link = await d.registry.call("onboard.link", { mint: false }, "cli");
+    assert.ok(!JSON.stringify(link).includes("passkeyUrl"), "the link answer offers none either");
+  }
+});

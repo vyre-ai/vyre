@@ -1,0 +1,41 @@
+// Sealing a field late must leave no copy of the old values anywhere the kernel keeps free text or history: the change log, the event log, and the task texts (a form or a title that quoted a value).
+// Raw bytes of the database file and its write-ahead log are searched afterwards, as in the scrub test in sqlite.test.js.
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { bootKernel } from "../boot.js";
+
+const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
+const PLAIN = ["123-45-6789", "987-65-4321"];
+
+test("late sealing clears the task texts that quote the old values, and no copy is left in the file", async t => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-lateseal-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, "kernel.db");
+  const db = new DatabaseSync(file);
+  db.exec("PRAGMA journal_mode = WAL");
+  let refs = 0;
+  const sealer = { api: { put: async i => ({ ref: { sealed: i.class, ref: `sv_${++refs}`, present: true, valid_format: true, set_at: 1 } }) } };
+  const k = await bootKernel({ db, space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const R = k.gateway.records;
+  await R.define(owner, { add_types: [{ name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "ssn", kind: "text", label: "SSN", required: true }] }] });
+  const a = await R.create(owner, "person", { name: "Jane", ssn: PLAIN[0] });
+  const b = await R.create(owner, "person", { name: "Bob", ssn: PLAIN[1] });
+  // tasks whose free text quotes a value (a title, a form), and one that does not
+  const quoting = await k.gateway.ask.request(owner, { title: `Call Jane about ${PLAIN[0]}`, output: { kind: "note" }, source: "manual", doer: { kind: "person", id: OWNER, space: SPACE }, form: { note: `her number is ${PLAIN[1]} ok` } });
+  const plainTask = await k.gateway.ask.request(owner, { title: "Water the plants", output: { kind: "note" }, source: "manual", doer: { kind: "person", id: OWNER, space: SPACE } });
+  const rows = () => db.prepare("SELECT task, text FROM kernel_task_texts").all();
+  assert.ok(rows().some(r => r.text.includes(PLAIN[0])), "the text is stored before the seal");
+  const out = await k.gateway.migrate.sealField(owner, { type: "person", field: "ssn", class: "us-ssn" });
+  assert.equal(out.moved, 2);
+  assert.equal(rows().some(r => PLAIN.some(p => r.text.includes(p))), false, "no task text quotes a value any more");
+  assert.ok(rows().some(r => r.task === plainTask.id), "a task that quoted nothing keeps its text");
+  db.close();
+  const bytes = fs.readFileSync(file, "latin1") + (fs.existsSync(file + "-wal") ? fs.readFileSync(file + "-wal", "latin1") : "");
+  for (const p of PLAIN) assert.equal(bytes.includes(p), false, `${p} is not anywhere in the file or its log`);
+  void a; void b; void quoting;
+});
