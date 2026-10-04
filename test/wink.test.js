@@ -1538,9 +1538,10 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
 });
 
 test("the invitee door, real daemon and relay: a stranger's channel with the invitee hello makes no device and has one door; everything else is refused, and a bad hello gets a stream that refuses every call", async t => {
+  const sealWas = process.env.VYRE_SEAL_DEV;
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
-  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (sealWas === undefined) delete process.env.VYRE_SEAL_DEV; else process.env.VYRE_SEAL_DEV = sealWas; });
   const w = await world(t, { kernel: true });
   const crypt = nodeCrypto();
   const ks = keystore(t);
