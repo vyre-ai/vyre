@@ -9,7 +9,7 @@ import net from "node:net";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { tempHome, present } from "./helpers.js";
+import { tempHome } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { call } from "../core/daemon/client.js";
 import { CONTACT } from "../kernel/conformance/suite.js";
@@ -116,8 +116,9 @@ test("lend is the one switch: it makes the kernel's compute offers (the space's 
   await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "lend-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), ""); // the development stand-in for Face ID (a development build only; every use is logged as a stand-in)
   const lines = /** @type {string[]} */ ([]);
-  const d = await start({ root, kernel: true, presence: present, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
   const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.slice(-6).join(" ; ").slice(0, 600)}`); return r.data; };
