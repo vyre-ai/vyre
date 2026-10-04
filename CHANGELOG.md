@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(one-yes): an `outward: true` tool on reach hook or modules is held for a hook caller, a module with no person behind it and a module acting for an agent, and never runs; a module acting for you runs it (reviewer-3 OW-5).
+
 - feat(one-yes): a non-person call to a tool marked `outward: true` is held as a card in the approvals queue (`approvals.hold`, registry only) and runs only when it is retried with the card the person's phone answered, bound to the asker and a digest of the exact input. A tool that already holds agents through its own ask flow says `asks: true` and test/outward-flags.test.js names the test that proves it; for RC1 these keep their flow: publish approve, publish, rollback and secret grant, github PR open, merge and review, google send and calendar writes, apps.send, the vault forward and send tools. More tools marked outward: artifacts.public.set, files.drive.url and offer, files.deliver, bridges.kit.export, hooks.open, github.session.pr, vault.pass.create, spaces.invites.create, spaces.members.add. The module SDK reads `asks`.
 
 - refactor(one-yes): lib/one-yes.js has no verb pattern for the outward moment: momentOf and opFitsMoment take the registry's `isOutward` (the module.json flag), so the card queue, the registry floor and the moment code share one source.
