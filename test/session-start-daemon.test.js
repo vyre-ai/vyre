@@ -9,19 +9,21 @@ import path from "node:path";
 import { start } from "../core/daemon/index.js";
 import { tempHome, present } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
+import { sessionsRoot } from "../lib/session-temp.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 30_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
-async function rig(/** @type {any} */ t, /** @type {{ bin?: string, sandboxOff: boolean }} */ o) {
+async function rig(/** @type {any} */ t, /** @type {{ bin?: string, sandboxOff: boolean, sessions?: any }} */ o) {
   const root = tempHome(t);
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSION_SANDBOX_OFF: process.env.VYRE_SESSION_SANDBOX_OFF };
   if (o.bin) process.env.VYRE_CLAUDE_BIN = o.bin; else delete process.env.VYRE_CLAUDE_BIN;
   process.env.VYRE_SESSIONS_DRIVER = "cli";
   if (o.sandboxOff) process.env.VYRE_SESSION_SANDBOX_OFF = "1"; else delete process.env.VYRE_SESSION_SANDBOX_OFF;
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], sessions: { install: false, thread_socket: "on", start_timeout_s: 2 } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], sessions: { install: false, thread_socket: "on", start_timeout_s: 2, ...(o.sessions || {}) } }));
+  if (o.pre) o.pre(root);
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
@@ -106,3 +108,30 @@ for (const surface of ["deck", undefined]) {
     assert.ok(!(await d.registry.call("system.echo", { text: "x" }, "cli")).error, "the daemon still answers");
   });
 }
+
+test("a start that throws after its thread exists (any step, not only the limit) ends the thread stopped with the reason, and the caller gets the error", { timeout: 60_000 }, async t => {
+  // max_live 1 with one session running and not idle: the second start is refused by room() AFTER its row was inserted
+  const bin = script(t, "exec sleep 300");
+  const { d, work } = await rig(t, { bin, sandboxOff: true, sessions: { max_live: 1, start_timeout_s: 30 } });
+  const first = await d.registry.call("threads.start", { cwd: work, prompt: "one", surface: "deck" }, "cli");
+  assert.ok(first.data && first.data.id, JSON.stringify(first));
+  const second = await d.registry.call("threads.start", { cwd: work, prompt: "two", surface: "deck" }, "cli");
+  assert.equal(second.error && second.error.code, "busy", JSON.stringify(second));
+  const rows = (await d.registry.call("threads.list", {}, "cli")).data;
+  const other = rows.filter((/** @type {any} */ r) => r.id !== first.data.id);
+  assert.equal(other.length, 1, "the refused start left its thread row");
+  const th = await status(d, other[0].id);
+  assert.equal(th.status, "stopped", "never left in starting");
+  assert.match(String(th.stopped_reason || ""), /exited without starting: .*sessions are already running/);
+  assert.ok(!(await d.registry.call("system.echo", { text: "x" }, "cli")).error, "the daemon still answers");
+});
+
+test("the daemon's start empties the session temp folders a killed daemon left behind, and keeps the folder itself", { timeout: 60_000 }, async t => {
+  const left = /** @type {string[]} */ ([]);
+  const { root } = await rig(t, { sandboxOff: true, pre: r => {
+    const tmp = path.join(sessionsRoot(r), "tmp");
+    for (const n of ["dead1", "dead2"]) { fs.mkdirSync(path.join(tmp, n), { recursive: true }); fs.writeFileSync(path.join(tmp, n, "x"), "x"); left.push(path.join(tmp, n)); }
+  } });
+  for (const p of left) assert.ok(!fs.existsSync(p), `${p} is gone`);
+  assert.ok(fs.existsSync(path.join(sessionsRoot(root), "tmp")), "the folder itself stays");
+});
