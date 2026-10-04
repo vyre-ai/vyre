@@ -172,7 +172,7 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}) });
   await spaces.start();
   return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }
