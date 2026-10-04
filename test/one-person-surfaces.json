@@ -14,6 +14,7 @@
   "core/network/tailscale.js": 1,
   "core/network/wink.js": 1,
   "core/onboard/index.js": 2,
+  "core/presence/module.js": 1,
   "core/publish/index.js": 1,
   "core/records-tools/index.js": 1,
   "core/relay/index.js": 2,
