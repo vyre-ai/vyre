@@ -42,7 +42,12 @@ export default {
       const k = kernelOf();
       const unknown = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable" });
       if (typeof k.audienceFor !== "function") throw unknown("the room this runs in is not known, so nothing is built for it");
-      const room = await k.audienceFor(extra || {});
+      // The kernel says `no_audience` for a call with no session of its own (the person at a surface, a session opened with no chat). That is one to one only when the call's own chain names no
+      // chat either; a chain that names a chat and has no audience stays refused.
+      const room = await k.audienceFor(extra || {}).catch(async (/** @type {any} */ e) => {
+        if (e && e.code === "no_audience") { const own = await chainOf(extra).catch(() => null); if (own && !own.room) return { group: false }; }
+        throw e;
+      });
       if (!room || typeof room.group !== "boolean") throw unknown("the room this runs in is not known, so nothing is built for it");
       if (!room.group) return null;
       if (typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");

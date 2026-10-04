@@ -10,6 +10,7 @@
 name: app
 on:
   push:
+    branches: ["main", "work/v0.3", "work/ui*", "work/app*", "work/chat*"]
     paths: ["apps/app/**", "core/resilience/**", ".github/workflows/app.yml"]
   pull_request:
     paths: ["apps/app/**", "core/resilience/**", ".github/workflows/app.yml"]

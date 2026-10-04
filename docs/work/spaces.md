@@ -32,6 +32,13 @@ The kernel is not implemented yet (platform builds it on work/kernel), so everyt
   - Bridges: reviewed against contract section 10, nothing assumed per-space device enrolment; person ids are now identity ids.
 - Tests on testbox: names/worker, core/names, core/spaces, lib/spaces all green except see Doing.
 
+## Round 5 (4 Oct, windows, resume)
+- Names directory CORS built and pushed (489ea442f); stand-in takes `--app-origins`. Live deploy needs the lead's go (CHAT).
+- Merged work/kernel; `kperson` deleted (adoptOwner landed). One-registry test is platform's version.
+- Setup resume tools were already built (`spaces.setup.save` / `spaces.setup.claim`, `setup` on `spaces.get` and `spaces.list`; a space not yet `done` is not listed); shapes are in CHAT.
+- Roles: FOUND a real gap, manager held `records.define`; fixed in kernel/grants/roles.js with test/roles-enforced.test.js (kernel-owned file, smallest change, listed under Changed contracts).
+- Publish tunnel, our half: lib/publish/tunnel.js and the `tunnel` option of edgeCompose/caddyfile. Waits on tailnet for the relay stream transport (no reply yet; my proposal stands in CHAT).
+
 ## Doing
 - Nothing in flight. Publish (core/publish, lib/publish) is built from an earlier session but not touched in this round; the lead said publish comes later.
 
@@ -49,6 +56,8 @@ The kernel is not implemented yet (platform builds it on work/kernel), so everyt
 - platform: kernel `authorize`, grants and events when they exist.
 
 ## Changed contracts
+- kernel/grants/roles.js: `records.define` moved from MANAGER to ADMIN (a manager changes no types).
+- edgeCompose and caddyfile take `tunnel: true` (loopback-only Caddy port 18443).
 - names directory `/v1/ids/*`: claim takes `{name, ops, sealed, rec}`, resolve returns `{name, kind, id, ops, sealed, rec, aliases}`; `rotate`, `recover`, `recover/cancel` and `mine` are gone (recovery is a chain op). Alias TXT is `vyre-id=2;name;id;by;via;sig`.
 - spaces tools: `spaces.identity.create` takes an optional `pin` and returns `recoveryCode` once; `spaces.identity.resolve` returns `id` (the permanent identity id) and, for a space, `spaceId`; `spaces.invites.redeem` person is `{id, name, ops, by}`.
 - invites payload: optional `to` (a person id).

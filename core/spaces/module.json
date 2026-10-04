@@ -106,6 +106,18 @@
     "reach": "person"
    },
    {
+    "name": "spaces.devices.list",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.lend",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.devices.lend.status",
+    "reach": "person"
+   },
+   {
     "name": "spaces.devices.remove",
     "reach": "person"
    },
@@ -298,6 +310,7 @@
    "space.warning",
    "space.setup-moved",
    "space.device-removed",
+   "space.device-lent",
    "space.device-restored",
    "space.device-enrolment-set",
    "member.added",

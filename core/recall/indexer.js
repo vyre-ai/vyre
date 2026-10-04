@@ -52,6 +52,7 @@ export class Indexer {
    * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void,
    *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void,
    *           origin?: (session: string) => Promise<{ known?: boolean, human?: boolean } | null | undefined>,
+   *           capture?: (c: { session: string, rewritten: boolean, lines: { seq: number, role: string, text: string, at: number | null }[] }) => Promise<void>,
    *           accountsHome?: string | null }} [hooks]
    *   origin: the Switchboard's own record of a session (threads.origin). For a transcript under an
    *   account folder, whether it is a person's comes only from this, never from the transcript: no
@@ -63,6 +64,10 @@ export class Indexer {
     this.log = hooks.log || (() => {});
     this.onVector = hooks.onVector || (() => {});
     this.origin = hooks.origin || null;
+    /** The capture port: the same scrubbed turns this pass just kept are handed on once, for the Space's memory (work.know.capture). It never fails an index pass. */
+    this.capture = hooks.capture || null;
+    /** @type {Promise<void> | null} the capture calls so far, chained: a test awaits it */
+    this.captured = null;
     this.accountsHome = hooks.accountsHome === undefined ? defaultAccountsHome() : hooks.accountsHome;
     /** @type {Map<string, { at: number, human: boolean }>} */
     this.origins = new Map();
@@ -253,6 +258,12 @@ export class Indexer {
     // whatever pointed at the old turns has to let go of them.
     if (wrote > 0 || rewritten) {
       this.emit("session.indexed", { session: entry.id, from, to: t.turns.length - 1, rewritten }, { thread: entry.id });
+      if (this.capture) {
+        const lines = t.turns.slice(from).map(turn => ({ seq: turn.seq, role: turn.role, text: String(turn.text || "").slice(0, 20_000), at: turn.ts || null }));
+        // One at a time, in the order the batches were indexed, and never holding up the pass (this method is synchronous).
+        const cap = this.capture;
+        this.captured = (this.captured || Promise.resolve()).then(() => cap({ session: entry.id, rewritten, lines })).catch(e => this.log(`capture of ${entry.id.slice(0, 8)} failed: ${/** @type {Error} */ (e).message}`));
+      }
     }
   }
 
