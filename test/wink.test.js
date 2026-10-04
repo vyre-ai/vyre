@@ -592,10 +592,10 @@ async function over(c, tool, input = {}) {
   } catch (e) { return { status: 0, body: null, error: String(/** @type {any} */ (e).message) }; }
 }
 /** A redeemer: it redeems a ticket from its own key file, offering a presence key, and can open its own channel to the box afterwards. */
-async function redeem(t, w, seed, name = "Redeemer") {
+async function redeem(t, w, seed, name = "Redeemer", extra = {}) {
   const ks = keystore(t);
   const presenceKey = { public_key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 };
-  const paired = await pairTicket(seed, { relay: w.status.url, name, crypto: nodeCrypto(), keyStore: ks, presenceKey });
+  const paired = await pairTicket(seed, { relay: w.status.url, name, crypto: nodeCrypto(), keyStore: ks, presenceKey, ...extra });
   const open = () => { const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name, crypto: nodeCrypto(), keyStore: ks }); t.after(() => c.close()); return c; };
   return { paired, ks, open };
 }
@@ -891,6 +891,32 @@ test("a browser's passkey is enrolled only after the three words, bound to its d
   assert.deepEqual([bound.device, bound.origin], [paired.device, "https://app.vyre.run"], "bound to this device and the app's origin");
   await w.call("wink.remove", { device: paired.device });
   await until(async () => (await keys()).length === 0);
+});
+
+test("a passkey a browser offers that the box cannot bind is refused, and the device is still paired without it; a phone's offered passkey is never enrolled", async t => {
+  const w = await world(t);
+  const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const spki = kp.publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const keys = async () => ((await w.d.registry.call("presence.keys", {}, "cli", PROOF)).data || []).filter(k => k.kind === "passkey");
+  // a browser whose passkey has no rp_id: nothing to bind it to the app's origin
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's browser", crypto: nodeCrypto(), keyStore: keystore(t), about: { kind: "web", release: "0.3.0" }, passkey: { credential_id: crypto.randomBytes(24).toString("base64url"), public_key: spki, alg: -7, rp_id: "" } });
+  const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's browser");
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  await until(async () => relayHas(w, paired.device));
+  assert.equal((await keys()).length, 0, "an unbound passkey is not enrolled");
+  assert.ok(await deviceRow(w, paired.device), "the browser is still a paired device");
+  assert.equal(w.d.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
+  // a phone (not a browser) that offers one anyway gets nothing enrolled from it
+  const open = (await w.call("wink.phone.open", {})).data;
+  const scan = parsePhoneQr(open.qr);
+  const r = await redeem(t, w, scan.seed, "Alex's iPhone", { passkey: { credential_id: crypto.randomBytes(24).toString("base64url"), public_key: spki, alg: -7, rp_id: "app.vyre.run" } });
+  const mine2 = await askPhone(w, r.paired.device, scan.seed, "Alex's iPhone");
+  const q2 = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q2.choices.indexOf(mine2.words) + 1 })).data.yes, true);
+  await until(async () => relayHas(w, r.paired.device));
+  assert.equal((await keys()).length, 0, "a phone keeps its device key; an offered passkey is not enrolled");
 });
 
 test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {

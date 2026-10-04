@@ -627,6 +627,36 @@ test("presence: a passkey a relayed browser enrolled proves only for that device
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
 });
 
+test("presence: a passkey with no device binding proves for no relayed device, and a bound one stops proving once it is removed", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const p = new Presence({ db, platform: "linux", touchid: null, who: async () => [],
+    webauthn: { verifyAssertion: async () => ({ ok: true, signCount: 0 }) } });
+  const spki = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spki(), alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: "boxcredential1" });
+  // the same rp as a browser's, but enrolled with no device: nothing ties it to a relayed device
+  p.enroll({ kind: "passkey", name: "loose", public_key: spki(), alg: -7, rp_id: "app.vyre.run", credential_id: "loosecredential1" });
+  p.enroll({ kind: "passkey", name: "alex-phone web", public_key: spki(), alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1", device: "abcdefghijklmnop", origin: "https://app.vyre.run" });
+  const PHONE = { kind: "device", stableId: "abcdefghijklmnop" };
+  const tool = "vault.reveal", input = { name: "northwind-mail" };
+  const proveWith = async (peer, cred) => {
+    const c = await p.challenge({ tool, input, method: "passkey", peer });
+    if (c.error) return c;
+    const v = await p.verify({ tool, input, caller: "deck", peer, proof: { method: "passkey", id: c.challenge, cred, ad: "x", cd: "x", sig: "x" }, def: {} });
+    return { offered: c.webauthn.allowCredentials.map(x => x.id), ok: v.ok };
+  };
+  const loose = await proveWith(PHONE, "loosecredential1");
+  assert.deepEqual(loose.offered, ["webcredential1"], "the unbound passkey is not even offered to the device");
+  assert.equal(loose.ok, false, "the unbound passkey does not prove from the device");
+  assert.equal((await proveWith(null, "loosecredential1")).ok, false, "nor from the box's own screen, whose rp is another");
+  assert.equal((await proveWith(PHONE, "webcredential1")).ok, true);
+  assert.equal(p.remove("webcredential1"), true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0, "its binding goes with it");
+  assert.match((await proveWith(PHONE, "webcredential1")).error.message, /no passkey is enrolled for this device/);
+  assert.ok(!(await proveWith(PHONE, "loosecredential1")).ok, "still nothing for the device");
+});
+
 test("presence: a grant enrolls the first passkey and nothing else, once, for five minutes, from the node it was made for", async t => {
   const { p, tick } = setup(t);
   p.role = "box";
