@@ -33,7 +33,7 @@ const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
 
 test("upload, versions and restore run under the caller's own chain and answer plain shapes", async () => {
   const r = rig();
-  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.upload", "files.drive.versions"]);
+  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.upload", "files.drive.versions"]);
   for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"]);
   const up = await r.run("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("hello") });
   assert.deepEqual(up, { path: "Clients/A/retainer.txt", version: 1, conflict: false, size: 5 });
@@ -87,6 +87,10 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   const v = await ok("files.drive.versions", { path: "Clients/A/retainer.txt" });
   assert.deepEqual(v.versions.map((/** @type {any} */ x) => x.ver), [1, 2, 3]);
   assert.ok(v.versions.every((/** @type {any} */ x) => typeof x.by === "string" && x.by.startsWith("person:")), "the actor is the chain's, not a name the caller supplied");
+  const listed = await ok("files.drive.space.list", { prefix: "Clients/A" });
+  assert.deepEqual(listed.entries.map((/** @type {any} */ e) => e.path), ["Clients/A/retainer.txt"]);
+  assert.equal(Buffer.from((await ok("files.drive.space.read", { path: "Clients/A/retainer.txt", version: 1 })).base64, "base64").toString(), "version one");
+  assert.equal(Buffer.from((await ok("files.drive.space.read", { path: "Clients/A/retainer.txt" })).base64, "base64").toString(), "from an old copy", "the head is the latest write; the conflict flag marks it");
   const nothing = await call("files.drive.versions", { path: "Clients/A/never.txt" }, { root, caller: "cli" });
   assert.equal(nothing.error && nothing.error.code, "not_found");
   const restored = await call("files.drive.restore", { path: "Clients/A/retainer.txt", version: 1 }, { root, caller: "cli" });

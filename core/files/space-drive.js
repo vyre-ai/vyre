@@ -50,4 +50,19 @@ export function registerSpaceDrive(ctx) {
       const r = await drive.restore(d.chain, p, i.version, d.proof ? { presence: d.proof } : {});
       return { path: p, from: i.version, version: r.version };
     });
+
+  tool("files.drive.space.list", "The files in the Space's Drive under a folder, under the caller's own grants: { space?, prefix? }. Answers { prefix, entries: [...] } with only what the caller may read.",
+    obj({ space: str, prefix: str }), async (i, d, drive) => {
+      const raw = String(i.prefix ?? ""), prefix = raw === "" ? "" : pathOf(raw.replace(/\/+$/, "")) + "/";
+      return { prefix, entries: await drive.list(d.chain, prefix) };
+    });
+
+  tool("files.drive.space.read", `Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path, version, size, base64 } for a file of at most ${MAX_UPLOAD / 1048576} MB (\`too_large\` beyond).`,
+    obj({ space: str, path: str, version: { type: "integer" } }, ["path"]), async (i, d, drive) => {
+      const p = pathOf(i.path);
+      if (i.version !== undefined && (!Number.isInteger(i.version) || i.version < 1)) throw refuse("name a version number", "bad_input");
+      const bytes = await drive.get(d.chain, p, { version: i.version ?? null });
+      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB to download in one call`, "too_large");
+      return { path: p, version: i.version ?? null, size: bytes.length, base64: Buffer.from(bytes).toString("base64") };
+    });
 }
