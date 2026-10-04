@@ -332,7 +332,7 @@ test("person: a device its owner paired opens its person session at pairing with
   const web = await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink");
   assert.equal(web.data && web.data.granted, true, "a confirmed browser gets its session");
   assert.equal(web.data && web.data.software, true, "and it is a software session, never believed to be in hardware");
-  rec = { ...rec, kind: "phone" };
+  rec = { ...rec, kind: "phone", hardware: true };
   assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:relay")).error, "not wink");
   assert.equal((await relayed(ID, "POST", "/v1/tools/presence.person.pair-challenge", {})).data.challenge.length, 32, "a device with no grant gets a challenge of the same shape");
   assert.ok((await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, "x") })).error, "no grant, no session");
