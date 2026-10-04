@@ -4,6 +4,7 @@ import { router, usePathname } from "expo-router";
 import { boxOrigin } from "../api/box";
 import { loadPairing } from "../api/relay";
 import { useTheme } from "../theme/theme";
+import { readSkipped } from "../state/setup-progress";
 import { gateTarget } from "./setup-gate.js";
 
 /**
@@ -17,9 +18,9 @@ export function SetupGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (Platform.OS === "web") return;
     let live = true;
-    void loadPairing().then((p) => {
+    void Promise.all([loadPairing(), readSkipped()]).then(([p, skipped]) => {
       if (!live) return;
-      const to = gateTarget({ path, paired: !!p, direct: !!boxOrigin() });
+      const to = gateTarget({ path, paired: !!p, direct: !!boxOrigin(), skipped });
       setChecked(true);
       if (to) router.replace(to as never);
     });

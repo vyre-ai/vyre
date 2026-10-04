@@ -13,3 +13,11 @@ test("a paired phone, or a direct address, is never gated", () => {
   assert.equal(gateTarget({ path: "/", paired: true, direct: false }), null);
   assert.equal(gateTarget({ path: "/", paired: false, direct: true }), null);
 });
+
+test("after Not now an unpaired phone keeps only the /u landing, and setup stays open", () => {
+  assert.equal(gateTarget({ path: "/u/now", paired: false, direct: false, skipped: true }), null);
+  assert.equal(gateTarget({ path: "/u/spaces", paired: false, direct: false, skipped: true }), null);
+  assert.equal(gateTarget({ path: "/", paired: false, direct: false, skipped: true }), "/u/now");
+  assert.equal(gateTarget({ path: "/chats", paired: false, direct: false, skipped: true }), "/u/now");
+  assert.equal(gateTarget({ path: "/u/install", paired: false, direct: false, skipped: true }), null);
+});
