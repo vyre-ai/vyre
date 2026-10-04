@@ -64,3 +64,17 @@ test("the Engineer: built in, listed, kept, held to its tools; its drafts and pr
   // a call with no person behind it proposes nothing
   assert.ok((await d.registry.call("flows.propose", { what: "flow", id: def.id, version: def.version }, "mcp")).error);
 });
+
+test("ENG-2: a user agent already named engineer becomes the built-in at start: held to the list, no projects, no computer", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  let d = await start({ root, log: () => {}, kernel: true });
+  d.registry.deps.db.prepare("UPDATE agents_agents SET builtin = 0, projects = ?, computer = 1, auth = ? WHERE name = 'engineer'").run(JSON.stringify(["somewhere"]), JSON.stringify({ vault: "x" }));
+  await d.stop();
+  d = await start({ root, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const scope = (await d.registry.call("agents.scope", { name: "engineer" }, "module:vyred")).data;
+  assert.ok(Array.isArray(scope.only) && scope.only.includes("flows.propose"), JSON.stringify(scope));
+  assert.deepEqual(scope.projects, []);
+  const eng = (await d.registry.call("agents.list", {}, "cli")).data.find((/** @type {any} */ a) => a.name === "engineer");
+  assert.equal(eng.builtin, true); assert.equal(eng.computer, false);
+});

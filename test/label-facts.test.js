@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
-import { start, callerFacts, surfaceAncestry } from "../core/daemon/index.js";
+import { start, callerFacts } from "../core/daemon/index.js";
 import { setPeerHosting } from "../core/daemon/peer.js";
 
 process.env.VYRE_SEAL_DEV = "1";

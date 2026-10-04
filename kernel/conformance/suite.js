@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 4;
+export const SUITE_REVISION = 5;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -258,6 +258,44 @@ export function conformance(make, { test, assert }, label = "store") {
     await assert.rejects(() => s.define({ change_types: [ACCOUNT] }), code("unique_violation"));
     await acct(s, { name: "C", handle: "dup" });
     assert.equal((await s.query("account", { page: { limit: 10 } })).rows.length, 3, "the type is unchanged, so duplicates are still allowed");
+  });
+
+  // ---- revision 5: totals have no row cap ----
+  T("aggregate: a total is exact over more rows than one page, with no ceiling, and never counts a removed record", async s => {
+    const n = 650, gone = [];
+    for (let i = 0; i < n; i++) { const r = await add(s, { name: `n${i}`, age: i, status: i % 3 === 0 ? "closed" : "open" }); if (i % 50 === 7) gone.push(r); }
+    for (const r of gone) await s.remove("contact", r.id, 1);
+    const live = Array.from({ length: n }, (_, i) => i).filter(i => i % 50 !== 7);
+    const all = await s.aggregate("contact", { measures: [{ fn: "count" }, { fn: "sum", field: "age" }, { fn: "min", field: "age" }, { fn: "max", field: "age" }] });
+    assert.deepEqual(all, [{ group: {}, values: { count: live.length, "sum:age": live.reduce((a, b) => a + b, 0), "min:age": 0, "max:age": n - 1 } }]);
+    const by = await s.aggregate("contact", { group_by: ["status"], measures: [{ fn: "count" }] });
+    assert.deepEqual(by.map((/** @type {any} */ r) => [r.group.status, r.values.count]).sort(), [["closed", live.filter(i => i % 3 === 0).length], ["open", live.filter(i => i % 3 !== 0).length]]);
+  });
+
+  T("types keeps the whole definition: a hidden field, a role mark, and the data of a hidden field is still stored", async s => {
+    const t = { name: "client", label: "Client", role: { link: "who", ended: ["Gone"] }, fields: [
+      { name: "who", kind: "link", label: "Who", to: "contact", required: true },
+      { name: "stage", kind: "stage", label: "Stage", options: ["On", "Gone"] },
+      { name: "old", kind: "text", label: "Old", hidden: true },
+    ], stages: [{ name: "On" }, { name: "Gone" }] };
+    await s.define({ add_types: [t] });
+    assert.deepEqual((await s.types()).find((/** @type {any} */ x) => x.name === "client"), t);
+    const r = await s.create("client", mintUuid(), { who: { urn: "vyre://spc_aaaaaaaaaaaa/contact/0190c3f2-1111-4abc-8def-000000000000" }, stage: "On", old: "kept" });
+    assert.equal((await s.get("client", r.id)).data.old, "kept");
+  });
+
+  T("search: a record holding every word ranks above one holding some", async s => {
+    await add(s, { name: "Harlow Legal" });
+    const both = await add(s, { name: "Jane Harlow" });
+    await add(s, { name: "Jane Doe" });
+    await add(s, { name: "Northwind" });
+    const hits = await s.search({ text: "jane harlow", page: { limit: 10 } });
+    assert.equal(hits.rows[0].id, both.id, "the record with both words is first");
+    assert.equal(hits.rows.length, 3, "records with one of the words follow");
+    const p1 = await s.search({ text: "jane harlow", page: { limit: 2 } });
+    assert.equal(p1.rows.length, 2); assert.ok(p1.next_cursor);
+    const p2 = await s.search({ text: "jane harlow", page: { limit: 2, cursor: p1.next_cursor } });
+    assert.deepEqual([...p1.rows, ...p2.rows].map((/** @type {any} */ h) => h.id), hits.rows.map((/** @type {any} */ h) => h.id), "pages walk the same order");
   });
 
   T("health, version and features are honest", async s => {

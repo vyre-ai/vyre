@@ -54,7 +54,8 @@ export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own
     </View>
   );
   // Plain style objects, not classes: a className on an animated ScrollView does not reach its content container.
-  const wideOn = !!wide && !phone;
+  // Every page on a wide screen shares one column and one gutter, so the title and the content start at the same place on Now, Projects and Records (wide only names the two-column page).
+  const wideOn = !phone;
   const content: ViewStyle = wideOn
     ? { width: "100%", maxWidth: px("--wide-max") + 2 * px("--s-8"), alignSelf: "center", gap: px("--s-4"), paddingHorizontal: px("--s-8"), paddingTop: px("--s-6"), paddingBottom: px("--s-12") }
     : { width: "100%", maxWidth: px("--page-max") || undefined, alignSelf: "center", gap: px("--s-4"), padding: px("--s-4"), paddingBottom: px("--s-12") };

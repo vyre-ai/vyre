@@ -49,7 +49,7 @@ export class FakeTwenty {
     if (!op.startsWith("Boot_") && !op.startsWith("Rot_") && ++this.served > this.limit) { this.served = 0; return send(429, { errors: [{ message: "Too many requests" }] }); }
     this.requests.push({ op, variables });
     try {
-      const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables) : (() => { throw new GqlError("not found"); })();
+      const data = req.url === "/metadata" ? this.#metadata(op, variables, query) : req.url === "/graphql" ? await this.#core(op, variables, query) : (() => { throw new GqlError("not found"); })();
       send(200, { data });
     } catch (e) {
       if (e instanceof GqlError) return send(200, { errors: [{ message: e.message, extensions: { code: e.code, ...(e.subCode ? { subCode: e.subCode } : {}) } }], data: null });
@@ -60,12 +60,13 @@ export class FakeTwenty {
   #metadata(op, v, query = "") {
     if (op.startsWith("Boot_") || op.startsWith("Rot_")) return this.#boot(op, query);
     switch (op) {
+      case "AuditProbe": return { __type: { inputFields: [{ name: "nameSingular" }, { name: "isAuditLogged" }] } };
       case "Health": return { objects: { totalCount: this.objects.size } };
-      case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
+      case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, isAuditLogged: o.isAuditLogged, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
       case "CreateObj": {
         const o = v.i.object;
         if (this.objects.has(o.nameSingular)) throw new GqlError("An object with that name already exists");
-        const obj = { id: crypto.randomUUID(), nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: new Map([["name", { id: crypto.randomUUID(), name: "name", type: "TEXT", options: null, isActive: true }]]) };
+        const obj = { id: crypto.randomUUID(), nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, isAuditLogged: o.isAuditLogged !== false, fields: new Map([["name", { id: crypto.randomUUID(), name: "name", type: "TEXT", options: null, isActive: true }]]) };
         this.objects.set(o.nameSingular, obj); this.rows.set(o.nameSingular, new Map());
         return { createOneObject: { id: obj.id, nameSingular: obj.nameSingular } };
       }
@@ -81,7 +82,7 @@ export class FakeTwenty {
         for (const o of this.objects.values()) for (const f of o.fields.values()) if (f.id === v.i.id) {
           if (v.i.update.options !== undefined) f.options = v.i.update.options;
           if (v.i.update.isUnique !== undefined) {
-            if (v.i.update.isUnique) { const seen = new Set(); for (const r of this.rows.get(o.nameSingular).values()) { if (r.deletedAt || r[f.name] == null) continue; const k = JSON.stringify(r[f.name]); if (seen.has(k)) throw new GqlError(`could not create unique index "IDX_UNIQUE_${f.name}": duplicate key value violates unique constraint`); seen.add(k); } }
+            if (v.i.update.isUnique) { const seen = new Set(); for (const r of this.rows.get(o.nameSingular).values()) { if (r[f.name] == null) continue; const k = JSON.stringify(r[f.name]); if (seen.has(k)) throw new GqlError(`could not create unique index "IDX_UNIQUE_${f.name}": duplicate key value violates unique constraint`); seen.add(k); } }
             f.isUnique = v.i.update.isUnique;
           }
           return { updateOneField: { id: f.id } };
@@ -140,7 +141,8 @@ export class FakeTwenty {
     }
   }
 
-  async #core(op, v) {
+  async #core(op, v, query = "") {
+    if (op === "PurgeTimeline") { this.timelinePurges = (this.timelinePurges ?? 0) + 1; return { destroyTimelineActivities: [] }; }
     const [kind, ...rest] = op.split("_"); const name = rest.join("_");
     if (kind === "Get") { const { rows } = this.#objBySingular(name); const rowsList = [...rows.values()].filter((r) => this.#match(r, v.f)); this.#visible(v.f, rowsList); return { [name]: rowsList.filter((r) => this.#vis(v.f, r))[0] ?? null }; }
     if (kind === "Q") {
@@ -158,8 +160,12 @@ export class FakeTwenty {
       const { rows } = this.#objByPlural(name);
       const dims = v.g.map((x) => Object.keys(x)[0]);
       const list = [...rows.values()].filter((r) => this.#vis(v.f, r) && this.#match(r, v.f));
-      const b = new Map(); for (const r of list) { const k = JSON.stringify(dims.map((d) => r[d] ?? null)); const e = b.get(k) ?? { groupByDimensionValues: dims.map((d) => r[d] ?? null), totalCount: 0 }; e.totalCount++; b.set(k, e); }
-      return { [`${name}GroupBy`]: [...b.values()] };
+      // the aggregate fields the query asks for: sumX, avgX, minX, maxX, countNotEmptyX (a money field's are sumXAmountMicros ...)
+      const asked = [...new Set([...query.matchAll(/\b(sum|avg|min|max|countNotEmpty)([A-Z]\w*?)(AmountMicros)?\b/g)].map((m) => m[0]))].map((tok) => { const m = /^(sum|avg|min|max|countNotEmpty)([A-Z]\w*?)(AmountMicros)?$/.exec(tok); return { tok, fn: m[1], col: m[2][0].toLowerCase() + m[2].slice(1), micros: Boolean(m[3]) }; });
+      const val = (r, a) => { const x = r[a.col]; return a.micros ? (x == null ? null : x.amountMicros) : x; };
+      const b = new Map();
+      for (const r of list) { const k = JSON.stringify(dims.map((d) => r[d] ?? null)); const e = b.get(k) ?? { groupByDimensionValues: dims.map((d) => r[d] ?? null), totalCount: 0, rows: [] }; e.totalCount++; e.rows.push(r); b.set(k, e); }
+      return { [`${name}GroupBy`]: [...b.values()].map(({ rows: rs, ...e }) => { const out = { ...e }; for (const a of asked) { const xs = rs.map((r) => val(r, a)).filter((x) => x !== null && x !== undefined && x !== ""); out[a.tok] = a.fn === "countNotEmpty" ? xs.length : !xs.length ? null : a.fn === "sum" ? xs.reduce((p, c) => p + Number(c), 0) : a.fn === "avg" ? xs.reduce((p, c) => p + Number(c), 0) / xs.length : a.fn === "min" ? Math.min(...xs.map(Number)) : Math.max(...xs.map(Number)); } return out; }) };
     }
     if (kind === "Create") {
       const { obj, rows } = this.#objBySingular(name); const d = v.d;
@@ -189,11 +195,11 @@ export class FakeTwenty {
     }
     throw new GqlError(`Unknown operation ${op}`);
   }
-  /** the unique fields of an object, enforced among live rows like a partial unique index @param {any} obj @param {Map<string, any>} rows @param {any} cand @param {string | null} selfId */
+  /** the unique fields of an object, enforced among ALL rows, soft-deleted ones included, as the real unique index is (the store moves a removed record's values out: HELD_FIELD) @param {any} obj @param {Map<string, any>} rows @param {any} cand @param {string | null} selfId */
   #unique(obj, rows, cand, selfId) {
     for (const f of obj.fields.values()) {
       if (!f.isUnique || cand[f.name] == null) continue;
-      for (const r of rows.values()) if (r.id !== selfId && !r.deletedAt && JSON.stringify(r[f.name]) === JSON.stringify(cand[f.name])) throw new GqlError(`duplicate key value violates unique constraint "IDX_UNIQUE_${obj.nameSingular}_${f.name}"`, "INTERNAL_SERVER_ERROR");
+      for (const r of rows.values()) if (r.id !== selfId && JSON.stringify(r[f.name]) === JSON.stringify(cand[f.name])) throw new GqlError(`duplicate key value violates unique constraint "IDX_UNIQUE_${obj.nameSingular}_${f.name}"`, "INTERNAL_SERVER_ERROR");
     }
   }
   #vis(filter, row) { return JSON.stringify(filter ?? {}).includes("deletedAt") ? true : !row.deletedAt; }

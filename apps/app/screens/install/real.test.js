@@ -86,3 +86,16 @@ test("the directory's answer: a chain is taken, not_found is free, a limit or ga
   assert.equal(nameAnswer(directoryAnswer(200, null)), "unknown");
   assert.equal(nameAnswer(directoryAnswer(500, undefined)), "unknown");
 });
+
+test("the done page says what is still pending: a Kit waiting in Now, a Kit not asked for, connectors never connected", async () => {
+  const { pendingLines } = await import("./real.js");
+  const kit = { id: "estate-planning", label: "Estate planning" };
+  assert.deepEqual(pendingLines({ kit, kitResult: { ok: true, text: "waiting" }, connectors: ["Gmail", "Stripe"] }), ["Estate planning is waiting for your yes in Now. Nothing is installed until you approve it.", "Not connected yet: Gmail, Stripe. Each one asks for its own sign-in when you set it up."]);
+  assert.match(pendingLines({ kit, kitResult: { ok: false, text: "no_such_tool" }, connectors: [] })[0], /was not asked for: no_such_tool. Install it later from Kits./);
+  assert.deepEqual(pendingLines({ kit: null, kitResult: null, connectors: [] }), []);
+});
+
+test("a failed space says the box's own reason, from failed.reason", () => {
+  assert.deepEqual(createdFrom({ spaceId: "spc_1", status: "failed", failed: { step: "claim", reason: "too many names claimed from this address today" } }), { state: "failed", id: "spc_1", address: "", say: "too many names claimed from this address today" });
+  assert.equal(createdFrom({ status: "failed" }).say, "Setting up the space did not finish.");
+});

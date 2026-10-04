@@ -19,7 +19,7 @@ export function checkedLine(at: number | null, now: number): string {
 /** How the person updates here: a button when the box takes the request, otherwise the one command to run. */
 export function howLine(s: UpdateStatus): string {
   if (s.canApply) return "";
-  return s.command ? `To update, run ${s.command} on the box.` : "Update from the app that installed Vyre.";
+  return s.command ? `To update, run ${s.command} on your home.` : "Update from the app that installed Vyre.";
 }
 export const autoLine = (auto: string): string => (auto === "notify" ? "Vyre tells you when an update is out. It never installs one by itself." : auto === "off" ? "Update checks are off." : auto === "install" ? "Vyre installs signed updates by itself." : `Update mode: ${auto}.`);
 

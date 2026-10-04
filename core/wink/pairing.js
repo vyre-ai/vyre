@@ -98,6 +98,7 @@ export const POLL_MS = 1500;
  *   openCode: (flow: "W1" | "W2" | "W3") => Promise<{ offer: string, code: string, expires: number }>,
  *   ack: (offer: string, typed: string) => Promise<{ ok: boolean }>, owner: (meta: any, what: string) => void, relayUrl: () => Promise<string>, keyFile?: string, spaceNow?: () => string,
  *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number, releaseMaxMs?: number,
+ *   vyreName?: (identity: string, claimed?: string) => Promise<string | null> | string | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
  *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
@@ -730,7 +731,8 @@ export function createPairing(o) {
         try { const m = (await directory.memberships(cur.identity)).find(x => x.space === cur.id); if (m && m.name) return m.name; } catch { /* the directory may not know it */ }
         return "another space";
       }
-      return "Personal";
+      // an identity's own name, as the app sent it when it paired this server (never "You" or an id)
+      return cur.name ? String(cur.name) : "Personal";
     };
     // ---- Q-1 (ruling, 4 Oct 2026): the first adoption of an unowned server by a paired device is CONFIRMED at the server ----
     // A scan or a paste only gets a device paired to this box (the ticket is single use). Becoming its owner is a second step: the device calls wink.server.adopt, the server
@@ -743,7 +745,22 @@ export function createPairing(o) {
     let ask = null;
     const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase();
     /** The name the person sees for who is asking: the target's own name from the app, else the identity's id. @param {any} input */
-    const askName = (input) => String((input.owner && input.owner.name) || input.identity || (input.owner && input.owner.id) || "someone").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+    // What the person at the server reads for who is asking (lead ruling, 4 Oct): the display name the app sent, then the claimed Vyre name, the one thing a stranger cannot fake (the directory
+    // answers it for the identity id: `o.vyreName`): `Alex (alex.vyre.run)`. No Vyre name known: the display name with the short id, `Alex (id aaaaaa)`. A look-alike display name (letters of
+    // more than one script) is dropped: the Vyre name alone, or the short id alone. Never a raw `per_` id. The three words stay the real proof.
+    const SCRIPTS = [/\p{Script=Latin}/u, /\p{Script=Cyrillic}/u, /\p{Script=Greek}/u, /\p{Script=Arabic}/u, /\p{Script=Hebrew}/u, /\p{Script=Han}/u, /\p{Script=Hangul}/u, /\p{Script=Devanagari}/u, /\p{Script=Armenian}/u, /\p{Script=Georgian}/u];
+    const mixedScript = (/** @type {string} */ t) => SCRIPTS.filter(r => r.test(t)).length > 1;
+    const askNameOf = async (/** @type {any} */ input) => {
+      const display = String((input.owner && input.owner.name) || "").replace(/[^\p{L}\p{N} ._@:-]/gu, "").trim().slice(0, 48);
+      const id = String(input.identity || (input.owner && input.owner.id) || "");
+      const tag = id.replace(/^[a-z]+_/, "").replace(/[^A-Za-z0-9]/g, "").slice(0, 6);
+      /** @type {string | null} */ let vyre = null;
+      if (typeof o.vyreName === "function" && id) { try { const v = await o.vyreName(id, String((input.owner && input.owner.vyre) || "") || undefined); if (typeof v === "string" && /^[a-z0-9.-]{3,253}$/.test(v)) vyre = v; } catch { vyre = null; } }
+      const ok = display && !mixedScript(display);
+      if (vyre) return ok ? `${display} (${vyre})` : vyre;
+      const short = tag ? `id ${tag}` : "";
+      return ok ? (short ? `${display} (${short})` : display) : (short || "someone");
+    };
     /**
      * Q-3: an unattended install named one identity (`pairTo`), and completing the pairing needs PROOF that the one asking is that identity, never a claim. Everything the caller
      * supplies about itself (identity, owner.id, owner.name) is a claim and is ignored here. The proof is a signature by a key on that identity's list over this pairing's box and
@@ -809,7 +826,7 @@ export function createPairing(o) {
           const nb = newNonce();
           const w = fresh || to ? "" : await wordsFor(caller.slice(7), { ticket, na: "", nb });
           const until = now() + ASK_MS;
-          const mine = ask = a = { caller, input, name: askName(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
+          const mine = ask = a = { caller, input, name: await askNameOf(input), words: "", choices: [], until, state: to ? "yes" : "waiting", wake: [], nb, commit: String(pr.commit || ""), ticket, ...(proven ? { proven } : {}) };
           if (w) setWords(mine, w);
           // no answer, no yes: the ask ends by itself and lets the app's relay device go, even when the app never calls again
           const timer = setTimeout(() => { if (ask === mine) askLive(); }, ASK_MS + 5);
@@ -860,7 +877,7 @@ export function createPairing(o) {
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
+    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str }), handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
     ctx.tool("wink.server.adopt", {
       callers: ["web"],
       description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
@@ -924,6 +941,16 @@ export function createPairing(o) {
       run: async (input, meta0 = {}) => {
         if (String((meta0 && meta0.caller) || "") !== "module:presence") throw fail("denied", "the device record is for the presence module");
         return devices.record(String(input.id));
+      },
+    });
+    ctx.tool("wink.server.paired", {
+      internal: true,
+      description: "For the spaces module: is this device a server paired to this identity, and still paired? Answers { paired, name? }. Modules only, read only; it names no one else's devices.",
+      input: obj({ device: str, identity: str }, ["device", "identity"]),
+      run: async (input, meta0 = {}) => {
+        if (!String((meta0 && meta0.caller) || "").startsWith("module:")) throw fail("denied", "this is for modules");
+        const d = devices.list(String(input.identity)).find((/** @type {any} */ x) => x.id === String(input.device) && x.kind === "server");
+        return d ? { paired: true, name: d.name } : { paired: false };
       },
     });
     ctx.tool("wink.server.handover", {

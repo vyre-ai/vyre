@@ -136,6 +136,8 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
  * `hook` or a guest kind — those already keep a model, an agent or another box's peer out on
  * their own, so a tool naming one of them is not "person-only" by its callers alone.
  */
+/** The only tools a development build's stand-in satisfies without the caller offering it. */
+const STAND_IN_AUTO = new Set(["vault.put", "vault.reveal"]);
 export const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 
 /**
@@ -777,6 +779,12 @@ export class Presence {
       }
       this.emit("presence.proved", { tool, method: "stand-in", caller });
       return { ok: /** @type {true} */ (true), method: "stand-in", keyId: null };
+    }
+    // DEVELOPMENT ONLY (lead's ruling, 5 Oct): on a development build whose owner made the hand-made stand-in file, a vault save or a reveal that offers no proof at all counts as the stand-in, so the app walk can run
+    // them. Method "stand-in" is in the event and every audit row after it, a packaged build never takes it, and nothing else (a recovery code replace included) is in this list.
+    if (!method && STAND_IN_AUTO.has(tool)) {
+      let on = false; try { on = this.standIn() === true; } catch { on = false; }
+      if (on) { this.emit("presence.proved", { tool, method: "stand-in", caller }); return { ok: /** @type {true} */ (true), method: "stand-in", keyId: null }; }
     }
     if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);

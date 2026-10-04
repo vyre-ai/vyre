@@ -425,9 +425,16 @@ test("github.session.push: validates before ever touching git - no primary repo,
   assert.equal(deniedModule.error.code, "denied");
 
   const viaAgent = await w.as("mcp:agent:kit", { granted: "*", thread: "s1" })("github.session.push", { project: "harlow", session: "s1" });
-  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity");
-  const otherSession = await w.as("mcp:agent:kit", { granted: "*", thread: "s9" })("github.session.push", { project: "harlow", session: "s1" });
-  assert.equal(otherSession.error.code, "denied", "a model pushes only its own session's branch (group D HD-7)");
+  assert.notEqual(viaAgent.error && viaAgent.error.code, "denied", "an agent (mcp caller) may call this tool at all - agent parity, for its own session");
+
+  // HD-7: another session's branch is not its to push, undo or redo
+  for (const caller of ["mcp:agent:kit", "mcp"]) for (const tool of ["github.session.push", "github.session.undo", "github.session.redo"]) {
+    const r = await w.as(caller, { granted: "*", thread: "s2" })(tool, { project: "harlow", session: "s1" });
+    assert.equal(r.error && r.error.code, "denied", `${caller} ${tool} on another session: ${JSON.stringify(r)}`);
+    assert.match(String(r.error.message), /its own branch only/);
+  }
+  const noThread = await w.as("mcp")("github.session.undo", { project: "harlow", session: "s1" });
+  assert.equal(noThread.error && noThread.error.code, "denied", "a model call with no verified session undoes nothing");
 });
 
 test("github.session.push: refuses a secret in the outgoing commits before ever attempting the network push, names the file and line", async t => {

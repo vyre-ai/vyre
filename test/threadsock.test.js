@@ -440,4 +440,10 @@ test("the presence stand-in: a development daemon takes it only while the owner'
   const d2 = await start({ root: root2, log: () => {}, packageRoot: pkg });
   t.after(() => d2.stop());
   assert.equal((await d2.registry.deps.presence.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } })).ok, false, "a packaged daemon ignores the file");
+  // A walk that offers no proof: a development daemon with the file counts vault.put and vault.reveal as the stand-in (and says so), nothing else; a packaged one takes none.
+  const bare = (/** @type {any} */ dd, /** @type {string} */ tool) => dd.registry.deps.presence.verify({ tool, input: { name: "x" }, caller: "cli", proof: null });
+  for (const tool of ["vault.put", "vault.reveal"]) { const b = await bare(d, tool); assert.deepEqual([b.ok, b.method], [true, "stand-in"], tool); assert.equal((await bare(d2, tool)).ok, false, `${tool}: a packaged daemon takes no stand-in`); }
+  for (const tool of ["spaces.identity.code.replace", "vault.backup", "vault.delete", "grants.create"]) assert.equal((await bare(d, tool)).ok, false, `${tool} stays real presence`);
+  fs2.rmSync(path.join(root, "dev-presence-stand-in"));
+  assert.equal((await bare(d, "vault.put")).ok, false, "no file: no stand-in");
 });

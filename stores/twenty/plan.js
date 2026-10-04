@@ -23,10 +23,14 @@ export const TWENTY_RESERVED = new Set(["approvedAccessDomain", "approvedAccessD
 const safe = (/** @type {string} */ n) => (TWENTY_RESERVED.has(n) ? n + "Custom" : n);
 /** Standard Twenty objects and the system columns on every object: a Vyre type or field may not take them. */
 const STANDARD_OBJECTS = new Set(["person", "people", "company", "companies", "opportunity", "opportunities", "task", "tasks", "note", "notes", "attachment", "attachments", "workspaceMember", "workspaceMembers", "dashboard", "dashboards", "workflow", "workflows", "workflowRun", "workflowRuns", "workflowVersion", "favorite", "favorites", "message", "messages", "calendarEvent", "calendarEvents", "timelineActivity", "blocklist", "connectedAccount"]);
-const SYSTEM_FIELDS = new Set(["id", "name", "createdAt", "updatedAt", "deletedAt", "createdBy", "updatedBy", "position", "searchVector", "timelineActivities", "attachments", "favorites", "noteTargets", "taskTargets", "vyreVersion"]);
+const SYSTEM_FIELDS = new Set(["id", "name", "createdAt", "updatedAt", "deletedAt", "createdBy", "updatedBy", "position", "searchVector", "timelineActivities", "attachments", "favorites", "noteTargets", "taskTargets", "vyreVersion", "vyreHeld"]);
 
 const COLORS = ["blue", "turquoise", "purple", "orange", "green", "gray", "red", "pink", "yellow", "sky"];
 export const VERSION_FIELD = "vyreVersion";
+/** Twenty keeps a soft-deleted row in its unique index, but a removed record must free its value. A type with unique fields has this hidden JSON column: on remove the values move into it (and the unique columns go null), on restore they move back. */
+export const HELD_FIELD = "vyreHeld";
+/** @param {TypePlan} p */
+export const uniqueFields = (p) => p.fields.filter((f) => f.def.unique === true);
 
 /**
  * @typedef {{ vyre: string, kind: string, twenty: string, type: string, def: any, options?: { value: string, label: string, position: number, color: string }[],
@@ -64,7 +68,8 @@ export function planType(def, hint = {}) {
   // A Vyre type may share a name with a standard Twenty object (task, note, person): it is stored under a vyre prefix and mapped back by `planBySingular`
   if (STANDARD_OBJECTS.has(singular) || STANDARD_OBJECTS.has(pl)) { const up = (/** @type {string} */ n) => "vyre" + n[0].toUpperCase() + n.slice(1); if (!hint.plural) { singular = up(singular); pl = up(pl); } else singular = up(singular); }
   if (singular === pl) throw new PlanError("invalid", `Type "${def.name}" needs a plural that differs from its name`);
-  const title = def.fields.find((/** @type {any} */ f) => f.kind === "text")?.name ?? null;
+  // the title is the first text field that is not unique: Twenty's own `name` column cannot carry a unique index through our define
+  const title = def.fields.find((/** @type {any} */ f) => f.kind === "text" && f.unique !== true)?.name ?? null;
   /** @type {FieldPlan[]} */ const fields = [];
   for (const f of def.fields) {
     const isTitle = f.name === title;
@@ -81,7 +86,7 @@ export function planType(def, hint = {}) {
 
 /** The selection set. @param {TypePlan} p */
 export function selection(p) {
-  return ["id", "createdAt", "updatedAt", "deletedAt", VERSION_FIELD, ...p.fields.map((f) => (f.type === "CURRENCY" ? `${f.twenty} { amountMicros currencyCode }` : f.twenty))].join(" ");
+  return ["id", "createdAt", "updatedAt", "deletedAt", VERSION_FIELD, ...(uniqueFields(p).length ? [HELD_FIELD] : []), ...p.fields.map((f) => (f.type === "CURRENCY" ? `${f.twenty} { amountMicros currencyCode }` : f.twenty))].join(" ");
 }
 
 /**
@@ -117,7 +122,7 @@ function toTwenty(f, v) {
   }
 }
 /** Twenty value -> kernel value, or undefined when absent. @param {FieldPlan} f @param {any} v */
-function fromTwenty(f, v) {
+export function fromTwenty(f, v) {
   if (v === null || v === undefined || v === "") return undefined;
   switch (f.kind) {
     case "money": return v.amountMicros == null ? undefined : { amount: Number(v.amountMicros) / 1_000_000, currency: v.currencyCode };
@@ -142,6 +147,8 @@ export function toInput(p, patch) {
 
 /** A Twenty row -> the kernel's StoredRecord. @param {TypePlan} p @param {any} row */
 export function fromRow(p, row) {
+  // a removed record shows the unique values it held
+  if (row.deletedAt && row[HELD_FIELD] && typeof row[HELD_FIELD] === "object") row = { ...row, ...row[HELD_FIELD] };
   /** @type {Record<string, any>} */ const data = {};
   for (const f of p.fields) { const v = fromTwenty(f, row[f.twenty]); if (v !== undefined) data[f.vyre] = v; }
   const rec = { type: p.vyre, id: row.id, version: row[VERSION_FIELD] == null ? 1 : Number(row[VERSION_FIELD]), data, created_at: Date.parse(row.createdAt), updated_at: Date.parse(row.updatedAt), ...(row.deletedAt ? { deleted_at: Date.parse(row.deletedAt) } : {}) };

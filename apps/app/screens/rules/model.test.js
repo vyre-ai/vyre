@@ -14,7 +14,7 @@ function box(o = {}) {
   const call = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => {
     seen.push({ tool, input });
     if (o[tool]) return o[tool];
-    if (tool === "rules.list") return { data: { rules: [RULE("r3", "always_ask", { at: 3, approver: { role: "owner" } }), RULE("r1", "never", { at: 1 }), RULE("r2", "never", { at: 2 }), RULE("rx", "never", { status: "removed" })], proposals: [RULE("prop_1", "draft_only", { by: { kind: "agent", id: "kit" } }), RULE("prop_2", "never", { by: { kind: "person", id: "per_a" } })] } };
+    if (tool === "rules.list") return { data: { rules: [RULE("r3", "always_ask", { at: 3, approver: { role: "owner" } }), RULE("r1", "never", { at: 1 }), RULE("r2", "never", { at: 2 }), RULE("rx", "never", { status: "disabled", at: 9 })], proposals: [RULE("prop_1", "draft_only", { by: { kind: "agent", id: "kit" } }), RULE("prop_2", "never", { by: { kind: "person", id: "per_a" } })] } };
     return { data: { id: "rule_new" } };
   };
   return { call, seen };
@@ -22,23 +22,24 @@ function box(o = {}) {
 
 test("the list groups active rules by kind in a fixed order, and the sentence is the kernel's view", { skip: !strip }, async () => {
   const { rulesSource } = await import("./source.ts");
-  const { groups, proposer } = await import("./model.ts");
+  const { groups, proposer, disabled } = await import("./model.ts");
   const b = box();
   const l = await rulesSource(b.call).listReal("spc_1");
   assert.deepEqual(b.seen, [{ tool: "rules.list", input: { space: "spc_1" } }]);
   assert.deepEqual(groups(l.rules).map((g) => [g.title, g.rules.map((r) => r.id)]), [["Never", ["r1", "r2"]], ["Always ask", ["r3"]]]);
   assert.equal(groups(l.rules)[0].rules[0].view, "V r1");
+  assert.deepEqual(disabled(l.rules).map((r) => r.id), ["rx"]);
   assert.deepEqual(l.proposals.map(proposer), ["the assistant kit", "a member"]);
 });
 
-test("set, propose, accept, dismiss and remove are one call each; accept and remove carry only the id", { skip: !strip }, async () => {
+test("define, propose, enable, disable, accept, dismiss and remove are one call each; the id-only calls carry only the id", { skip: !strip }, async () => {
   const { rulesSource } = await import("./source.ts");
   const b = box({ "rules.dismiss": { data: { dismissed: "prop_1" } }, "rules.remove": { data: { removed: "r1" } } });
   const s = rulesSource(b.call);
   const rule = { kind: "never", binds: ["assistants"], covers: { actions: ["mail.send"] }, label: "No mail" };
-  await s.setReal(rule, "spc_1"); await s.proposeReal(rule); await s.acceptReal("prop_9"); await s.dismissReal("prop_1"); await s.removeReal("r1");
+  await s.setReal(rule, "spc_1"); await s.proposeReal(rule); await s.enableReal("r2"); await s.disableReal("r2"); await s.acceptReal("prop_9"); await s.dismissReal("prop_1"); await s.removeReal("r1");
   assert.deepEqual(b.seen, [
-    { tool: "rules.set", input: { space: "spc_1", rule } }, { tool: "rules.propose", input: { rule } }, { tool: "rules.accept", input: { id: "prop_9" } },
+    { tool: "rules.define", input: { space: "spc_1", rule } }, { tool: "rules.propose", input: { rule } }, { tool: "rules.enable", input: { id: "r2" } }, { tool: "rules.disable", input: { id: "r2" } }, { tool: "rules.accept", input: { id: "prop_9" } },
     { tool: "rules.dismiss", input: { id: "prop_1" } }, { tool: "rules.remove", input: { id: "r1" } },
   ]);
 });

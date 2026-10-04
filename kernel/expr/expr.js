@@ -6,12 +6,13 @@
 //   len(client.name) > 0 and fee >= 0
 //
 // Values: strings, numbers, true, false, null. Names are dot paths into the record. Operators:
-// or, and, not, ==, !=, <, <=, >, >=, in, +, -, *, /, parentheses. Functions: len, lower, upper, empty.
+// or, and, not, ==, !=, <, <=, >, >=, in, +, -, *, /, parentheses. Functions: len, lower, upper, empty, round,
+// days_since (whole days from a date or datetime to now, null when there is none; computed fields only: `ctx.now` is the caller's clock).
 
 import { LanguageError } from "./errors.js";
 
 const LIMITS = { maxLength: 2000, maxDepth: 24, maxNodes: 400 };
-const FUNCS = new Set(["len", "lower", "upper", "empty"]);
+const FUNCS = new Set(["len", "lower", "upper", "empty", "days_since", "round"]);
 
 /** @typedef {{ t: string, v?: any, i: number }} Tok */
 /** @typedef {{ n: "lit", v: any } | { n: "path", p: string[] } | { n: "un", op: string, a: Node } | { n: "bin", op: string, a: Node, b: Node } | { n: "call", f: string, a: Node[] } | { n: "list", v: Node[] }} Node */
@@ -109,7 +110,7 @@ export function exprNames(n, acc = new Set()) {
  * Evaluate. `ctx.values` is the record's fields; `ctx.stageOrder` maps a stage field name to its
  * ordered stage names so that stage < "Drafting" compares by position.
  * @param {Node} n
- * @param {{ values: Record<string, any>, stageOrder?: Record<string, string[]> }} ctx
+ * @param {{ values: Record<string, any>, stageOrder?: Record<string, string[]>, now?: number }} ctx
  * @returns {any}
  */
 export function evalExpr(n, ctx) {
@@ -123,6 +124,8 @@ export function evalExpr(n, ctx) {
       if (n.f === "len") return a[0] == null ? 0 : (typeof a[0] === "string" || Array.isArray(a[0]) ? a[0].length : 0);
       if (n.f === "lower") return String(a[0] ?? "").toLowerCase();
       if (n.f === "upper") return String(a[0] ?? "").toUpperCase();
+      if (n.f === "round") return a[0] == null || Number.isNaN(Number(a[0])) ? null : Math.round(Number(a[0]) * 10 ** Number(a[1] ?? 0)) / 10 ** Number(a[1] ?? 0);
+      if (n.f === "days_since") { const t = typeof a[0] === "number" ? a[0] : Date.parse(String(a[0] ?? "")); return !Number.isFinite(t) || ctx.now === undefined ? null : Math.floor((ctx.now - t) / 86_400_000); }
       return a[0] == null || a[0] === "" || (Array.isArray(a[0]) && a[0].length === 0);
     }
     case "bin": {

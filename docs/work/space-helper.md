@@ -61,6 +61,8 @@ runner's kernel-native fscrypt for a lent workspace needs one root step on ext4:
 
 The spool grammar is exactly: `^(up|stop|down|firewall-add|firewall-del) <name>$`. Five verbs. `purge` and `fscrypt-enable` are not in it and the helper never reads them from a spool.
 
+A sixth verb, `publish-fill <space id> <site folder> <deployment>`, has its own anchored pattern `^publish-fill spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}$` and takes no Space name: it copies a published static site's files into the site's volume (see the CHANGELOG). The volume name `vyre-publish-<space id>_site-<deployment>` and the folder under the daemon's home are rebuilt by the helper, which claims the folder by rename, checks it as root, copies it in a throwaway container with no network, checks the volume and puts the folder back.
+
 ### RH-1 Who makes each secret, where it lives, who can read it
 
 | Secret | Made by | When | Lives | Readable by |

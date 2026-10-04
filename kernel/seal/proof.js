@@ -7,6 +7,8 @@ import { proofBytes, payloadHash, sha256b64, bindBytes } from "./wire.js";
 import { verifyChain, checkAnswer, pinOf, verifyWith } from "../identity/chain.js";
 
 export const SIGNERS = new Set(["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"]);
+/** A software key, for the automated walk on a development-kind build only (ruling 4, 5 Oct): the process takes it only when started with `allowSoftware`, which main sets only for a development build, and every use is named method "software". */
+export const SOFTWARE = "software";
 export const MAX_PROOF_LIFE_MS = 120_000;
 const SPKI_ED25519 = Buffer.from("302a300506032b6570032100", "hex");
 export const UNBOUND_GRACE_MS = 24 * 3_600_000;
@@ -14,8 +16,8 @@ export const NEWCOMER_MS = 24 * 3_600_000;
 
 export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
-  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, file = null, custody = null } = {}) {
-    this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested;
+  constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, file = null, custody = null } = {}) {
+    this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware;
     this.file = file; this.pins = new Map(); this.barred = new Set(); this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
     // Enrolled keys, and the persons who ever enrolled one, live in the sealing folder (public keys only), MACed under a key derived from the master and
     // anchored by a sealed marker (a version counter and the persons) in the encrypted store. A file that is missing while the anchor exists, fails its
@@ -62,7 +64,8 @@ export class Presence {
    * @returns {{ attested: boolean } | { refused: string }}
    */
   enrol({ person, key_id, spki, signer, token, attestation, proof, bind, ctx }) {
-    if (!SIGNERS.has(signer)) return { refused: "bad_signer" };
+    if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
+    if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };
@@ -81,7 +84,7 @@ export class Presence {
     if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
-    } else if (!this.allowUnattested) return { refused: "unattested" };
+    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
     this.keys.set(key_id, { person, signer, attested, spki, device: pin ? bind.eid : undefined, since: this.now(), founder: !this.have(person), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
     this.ever.add(person); this.save();
     return { attested };
@@ -143,7 +146,8 @@ export class Presence {
    * chain key vouches for this presence key. The new key is a newcomer for 24 hours. Whoever holds the code (and PIN) can do this: the design's stated limit.
    */
   async recover({ person, ops, bind, key_id, spki, signer, token, attestation, ctx }) {
-    if (!SIGNERS.has(signer)) return { refused: "bad_signer" };
+    if (!SIGNERS.has(signer) && signer !== SOFTWARE) return { refused: "bad_signer" };
+    if (signer === SOFTWARE && !this.allowSoftware) return { refused: "software_refused" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };
@@ -156,7 +160,7 @@ export class Presence {
     if (attestation && this.verifiers[attestation.format]) {
       if (this.verifiers[attestation.format](attestation, Buffer.from(spki, "base64")) !== signer) return { refused: "bad_attestation" };
       attested = true;
-    } else if (!this.allowUnattested) return { refused: "unattested" };
+    } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
     const { st, pin } = await this.evidence(person, ops);
     if (!await this.bindOk(st, person, bind, key_id, spki)) return { refused: "bad_bind" };
     this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
@@ -169,7 +173,7 @@ export class Presence {
     if (!ctx.one_person || !ctx.person) return "chain_not_person";
     const k = this.keys.get(proof.key_id);
     if (!k || k.person !== ctx.person || k.signer !== proof.signer) return "unknown_key";
-    if (!k.attested && !this.allowUnattested) return "unattested";
+    if (k.signer === SOFTWARE) { if (!this.allowSoftware) return "software_refused"; } else if (!k.attested && !this.allowUnattested) return "unattested";
     // V-3: a key from before the chain was pinned and never bound has a day after the first pin to be bound by a sync; after that it proves nothing.
     const pin = this.pins.get(ctx.person);
     if (!k.device && pin?.first !== undefined && this.now() - pin.first > UNBOUND_GRACE_MS) return "needs_bind";
@@ -187,6 +191,7 @@ export class Presence {
     for (const [n, e] of this.used) if (e < t) this.used.delete(n);
     if (this.used.has(proof.nonce)) return "replayed";
     this.used.set(proof.nonce, proof.expires_at);
+    this.lastMethod = k.signer === SOFTWARE ? "software" : k.attested ? "attested" : "unattested";
     return null;
   }
 }

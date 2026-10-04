@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, showToast } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, Switch, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { usePhone } from "../places/Page";
 import { listReal, setPausedReal, type RealFlow } from "./real";
@@ -19,8 +19,8 @@ export function RealFlows() {
   return (
     <Frame title="Flows" sub="What happens on its own when something changes, and who is asked.">
       <Card flush>
-        {err ? <EmptyState title="Flows did not answer" body={err} action={{ label: "Try again", onPress: load }} /> : null}
-        {!err && flows === null ? <EmptyState title="Loading" body="Asking your Vyre." /> : null}
+        {err ? <ErrorState title="Flows did not load" reason={err} retry={load} /> : null}
+        {!err && flows === null ? <LoadingState rows={3} /> : null}
         {!err && flows && !flows.length ? <EmptyState title="No Flows yet" body="Flows live in a space. Ask @Engineer to write one, or install a Kit." /> : null}
         {(flows ?? []).map((f, i) => {
           const waiting = f.status !== "approved";

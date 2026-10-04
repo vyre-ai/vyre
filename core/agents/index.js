@@ -59,10 +59,6 @@ export const ENGINEER = Object.freeze({
 /** The agent's thinking effort, as sessions.effort names it. */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
-/** The person's own surfaces (cli, local, deck, capsule; deck admits the owner's tailnet and paired devices) and modules. A model reaches only what a tool lists beside them. */
-const PEOPLE = ["cli", "local", "deck", "capsule"];
-const MODEL = ["mcp", "harness"];
-
 const NAME = /^[a-z][a-z0-9-]{1,30}$/;
 /** How long agents.ask waits for a reply before handing back what it has. */
 const ASK_WAIT_MS = 590_000;
@@ -106,6 +102,10 @@ export default {
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
       model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
+    // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
+    if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
+      db.prepare("UPDATE agents_agents SET builtin = 1, kind = 'agent', projects = '[]', auth = '{}', skills = '[]', computer = 0, updated_at = ? WHERE name = ?").run(Date.now(), ENGINEER.name);
+    }
     if (!db.prepare("SELECT 1 FROM agents_agents WHERE name = ?").get(ENGINEER.name)) {
       const now = Date.now();
       db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, builtin, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`)
@@ -387,8 +387,6 @@ export default {
     });
 
     ctx.tool("agents.ask", {
-      // The assistant (verified) and a project session reach it; the body refuses an agent wider than that session's own project (HD-9).
-      callers: [...PEOPLE, "module", ...MODEL],
       description: "Talk to an agent: the text goes to its current thread (started if needed) and the reply comes back when the turn ends. If the thread stops on a permission question, returns with the question instead; the user answers it with threads.answer.",
       input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
@@ -397,13 +395,12 @@ export default {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
         if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
-        // A project session (a model with a thread and no verified agent) may talk only to an agent whose grant is no wider than that session's own project:
-        // never the assistant, which sees every project, and never an agent with another project. The person's own words, and the verified assistant, are not held to it.
-        if (!isPerson(caller) && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(meta0.caller || ""))) {
-          const target = must(i.agent);
-          const t = typeof meta0.thread === "string" && meta0.thread ? (await ctx.call("threads.get", { thread: meta0.thread, limit: 1 })).data?.thread : null;
-          const proj = t && t.project ? String(t.project) : null;
-          if (target.kind === "assistant" || target.projects === "*" || target.projects.some(p => p !== proj)) throw Object.assign(new Error(`${target.name} sees more than this session's project; ask the person to talk to it`), { code: "denied" });
+        // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
+        // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
+        if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {
+          const target = get(String(i.agent));
+          const within = target && Array.isArray(target.projects) && (!Array.isArray(meta0.granted) || target.projects.every(p => meta0.granted.includes(p)));
+          if (target && !within) throw Object.assign(new Error(`${target.name} sees more than this session does: ask the person, who can ask it directly`), { code: "denied" });
         }
         // A person's own tags ride with the words, as that person (threads.send hears their turn); from any other caller they are dropped.
         const tagged = isPerson(caller) && ((Array.isArray(i.mentions) && i.mentions.length) || (Array.isArray(i.pasted) && i.pasted.length));
@@ -497,14 +494,12 @@ export default {
     });
 
     ctx.tool("agents.threads", {
-      callers: [...PEOPLE, "module", ...MODEL],
       description: "An agent's threads, newest first.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
       run: async ({ agent }, meta) => { const { caller } = meta; guard(caller, "read other agents"); if (!modelMay(meta)) throw Object.assign(new Error("only the assistant or the person reads another agent's threads"), { code: "denied" }); must(agent); return use("threads.list", { agent }); },
     });
 
     ctx.tool("agents.usage", {
-      callers: [...PEOPLE, "module", ...MODEL],
       description: "What each agent has used: turns, threads, time, tokens and cost (all of it, and on the API key), its budget and what is left, and the last rate-limit report. since: ms since epoch. With no agent, every agent, and agent null for threads no agent ran.",
       input: { type: "object", properties: { agent: { type: "string" }, since: { type: "integer" } } },
       run: async ({ agent, since }, meta) => {
@@ -529,7 +524,6 @@ export default {
     });
 
     ctx.tool("agents.history", {
-      callers: [...PEOPLE, "module", ...MODEL],
       description: "Past conversations with an agent (or every agent): what was asked, the answer, when, and the thread, newest last. before: an exchange id, for the page before it.",
       input: { type: "object", properties: { agent: { type: "string" }, limit: { type: "integer" }, before: { type: "integer" } } },
       run: async ({ agent, limit, before }, meta) => {

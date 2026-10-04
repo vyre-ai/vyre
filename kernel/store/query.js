@@ -114,6 +114,21 @@ export function createAggregator(spec, o = {}) {
         if (typeof v === "number") { a.n++; a.sum += v; if (v < a.min) a.min = v; if (v > a.max) a.max = v; }
       });
     },
+    /** Fold in a group a store already totalled: its group values, its row count and, per measure that names a field, `{ nonnull, nums, sum, min, max }`. Groups with the same values join. */
+    addGroup(/** @type {any} */ group, /** @type {number} */ n, /** @type {any[]} */ m) {
+      const k = canonical(group);
+      let grp = groups.get(k);
+      if (!grp) {
+        if (o.maxGroups && groups.size >= o.maxGroups) throw Object.assign(new Error(`more than ${o.maxGroups} groups; group by something coarser`), { code: "unsupported" });
+        grp = { group, n: 0, acc: fresh() }; groups.set(k, grp);
+      }
+      grp.n += n;
+      measures.forEach((/** @type {any} */ x, /** @type {number} */ i) => {
+        if (!x.field || !m[i]) return;
+        const a = grp.acc[i], b = m[i];
+        a.nonnull += b.nonnull; a.n += b.nums; a.sum += b.sum; if (b.nums && b.min < a.min) a.min = b.min; if (b.nums && b.max > a.max) a.max = b.max;
+      });
+    },
     result() {
       if (!groups.size && !(spec.group_by || []).length) groups.set("{}", { group: {}, n: 0, acc: fresh() });
       return [...groups.values()].sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1)).map(({ group, n, acc }) => ({

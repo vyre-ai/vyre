@@ -14,9 +14,13 @@ import { tokens } from "../theme/tokens";
 import { type } from "../theme/type";
 import type { SwipeRowProps } from "./SwipeRow";
 import { ACTION_W, release } from "./swipe.js";
+import { useReducedMotion } from "../../ui/motion/useReducedMotion";
 
 export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel, testID }: SwipeRowProps) {
   const { color } = useTheme();
+  const reduced = useReducedMotion();
+  // Reduced motion (motion.md section 2): no springs, a 160 ms timed move instead.
+  const settleTo = (to: number) => (reduced ? withTiming(to, { duration: 160 }) : withSpring(to));
   const [width, setWidth] = useState(0);
   const x = useSharedValue(0);
   const start = useSharedValue(0);
@@ -26,7 +30,7 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel,
 
   const rest = (to: number) => {
     setOpen(to > 0 ? 1 : to < 0 ? -1 : 0);
-    x.value = withSpring(to);
+    x.value = settleTo(to);
   };
 
   const settle = (d: Decision) => {
@@ -36,7 +40,7 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel,
     if (onSwipe(d)) {
       h.value = withTiming(0, { duration: tokens.motion.tap });
       afterPaint((t) => perf.measure("approve.collapse", "approve.commit", t));
-    } else x.value = withSpring(0);
+    } else x.value = settleTo(0);
   };
 
   // Gesture Handler's velocity is px/s; release() takes px/ms.

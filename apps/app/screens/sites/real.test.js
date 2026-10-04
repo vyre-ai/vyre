@@ -79,5 +79,5 @@ test("domains and secrets are one call each; a refusal gets plain words and keep
   assert.deepEqual(b.seen.slice(1).map((x) => x.tool), ["publish.domain.verify", "publish.secret.grant", "publish.secret.revoke", "publish.domain.remove"]);
   assert.deepEqual(b.seen[2].input, { deployment: "dep_2", ref: "vault://stripe/key", name: "STRIPE_KEY", use: ["runtime"] });
   await assert.rejects(s.preview("dep_4"), (/** @type {any} */ e) => e.code === "sealed_in_build" && /sealed value appears/.test(m.publishRefusal(e.code, e.message)));
-  assert.match(m.publishRefusal("presence_required", ""), /Face ID/);
+  assert.match(m.publishRefusal("presence_required", ""), /Approve on this device/);
 });

@@ -236,14 +236,14 @@ test("daemon: on the socket, x-vyre-caller is a label and cannot claim another i
   // Modules' own calls (Memory's curator, on its timer) go through the rules too; only the socket's count here.
   const d = await start({ root, log: () => {}, rules: async c => { if (!String(c.caller).startsWith("module:")) seen.push(c.caller); return { allow: true }; } });
   t.after(() => d.stop());
-  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "cli", "capsule"]) {
+  for (const forged of ["module:vault", "tailnet:alex@example.com", "onboard", "hook", "setup:aaaaaaaaaaaaaaaa", "web:aaaaaaaaaaaaaaaa", "space:alex@harlow", "link:x", "setup", "web", "device", "cli", "capsule"]) {
     await call("system.echo", { text: "x" }, { root, caller: forged });
   }
-  assert.deepEqual(seen, ["anonymous", "anonymous", "anonymous", "anonymous", "cli", "capsule"]);
+  assert.deepEqual(seen, ["anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "anonymous", "cli", "capsule"]);
   // Naming an agent without that agent's thread key is refused outright, before any rule runs.
   const agent = await call("system.echo", { text: "x" }, { root, caller: "mcp:agent:kit" });
   assert.equal(agent.error && agent.error.code, "denied");
-  assert.equal(seen.length, 6);
+  assert.equal(seen.length, 13);
 });
 
 test("daemon: a socket request with no caller label is anonymous, not a person", async t => {

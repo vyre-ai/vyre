@@ -2,6 +2,12 @@
 
 Branch: work/launch-onboard-fix · Worktree: ../vyre-launch · Plan: team/0.2/plans/launch.md
 
+## 0.3 resume (launch, 4 Oct 2026, work/launch-03)
+
+Done and pushed (sha d72038399 or earlier): env fix (VYRE_KERNEL and VYRE_STORE kept across a root-run update, compose kernel "1", packaged-boot update step, green on b9594691); appbuild.json now fetched by the installer and updater (was a 503 on /app/); SH-4 and SH-5; system.build and the counter and tree in appbuild.json (MW-5 daemon half; sw.js and the manifest are not signed, said in CHAT); path-triggered Mac and phone workflows (2295cc79a); installer closing line names the space (wink.server.pairing `paired` and `owner`); publish-fill verb with four tests; update-refusals candidate version fixed.
+Real-box run on testbox4 DONE and reported in CHAT (4 Oct 01:55 UTC): RH-3, RH-7, SH-4 pass on a real packaged install with a real Twenty store; the box is free. It found that `vyre uninstall` left the helper units (fixed, test). CI: packaged-boot and box-image green on d72038399; update-refusals J2b failed on the install (`vyre up` raced the module start, fixed in 2a46c3660, waiting for its run); node on 2a46c3660 pending.
+Open: the L-2 (c) reading is unclear (kernel/modules/rollback-presence.test.js covers no proof, other counter, other act, tampered, non-owner key, stranger, replay; it lacks a malformed or oversized proof header, which is the daemon header path); the onboard label item (core/onboard/index.js line 282 derives `mode` from a label, platform-2 FROZEN count 1, display only); node and docs reds on the branch are docs/work/chat.md rendering (chat's file, not mine); a "failed step leaves no space" is the device side (setup page), the server side creates nothing.
+
 ## Scope
 
 Install, onboarding, updates, uninstall, export, import from other agents (team/0.2/CHARTER.md's
