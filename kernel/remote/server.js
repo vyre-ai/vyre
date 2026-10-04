@@ -208,6 +208,8 @@ export function createRemoteServer(cfg) {
             // Only the code and the message cross; a reason the kernel kept hidden stays in the home's log.
             const err = /** @type {any} */ (e);
             const code = err && typeof err.code === "string" ? err.code : "unavailable";
+            // a refused presence proof says why in the home's own log (unknown_key, wrong_decision, software_refused ...), never to the caller
+            if (PRESENCE_CODES.has(code) && typeof cfg.log === "function") { try { cfg.log(`kernel remote: ${request.call} on ${cfg.space} refused as ${code} (${String((err.detail && err.detail.reason) || err.hidden_reason || "no proof or no reason given").slice(0, 80)}) for ${peer && peer.person}`); } catch { /* a log never fails a call */ } }
             return fail(id, code, err && err instanceof KernelError ? err.message : "the home could not do that", PRESENCE_CODES.has(code) && who.member ? challengeFor(peer.device_key_id, request.call, request.args, clock()) : undefined);
           }
         })();
