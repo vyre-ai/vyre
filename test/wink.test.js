@@ -1559,9 +1559,29 @@ test("an invitee's session opens the stream with the signed hello in its head an
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
   assert.deepEqual(heads[0], { route: "rt-harlow", invitee: true, head: { peer: "wink", space: "home", invitee: hello } }, "the channel hello says invitee (the relay client sends { v: 1, invitee: true })");
   // a second hello for the same invite closes the first link and opens a new one with the new hello
+
+  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  // a second hello for the same invite is the one the next stream opens with
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");
-  assert.deepEqual(closed, ["rt-harlow"]);
+  assert.deepEqual(closed, []);
+  // IV-4: the channel is a throwaway key of its own, said to be an invitee's, and a hello made by a function is asked for with that key's id and made again for every stream
+  const keys = [], opts = [];
+  const connect2 = o => { opts.push(o); return { ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close() {}, reply: {} }; };
+  const links2 = createServerLinks({ connect: connect2, options: { keyStore: { get: async () => { throw new Error("the device's own key is never used for an invitee"); } } }, name: "Kit's phone", channelOf: () => null });
+  t.after(() => links2.close());
+  let asked = 0;
+  const helloFor = id => { keys.push(id); return { ...hello, channel: id, nonce: `m${++asked}` }; };
+  const n0 = heads.length;
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  await assert.rejects(() => links2.inviteeSessionFor(ch, helloFor, { invite: hello.invite }).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.equal(opts[0].invitee, true, "the channel says in its hello that it is an invitee's");
+  const pub = (await opts[0].keyStore.get()).publicKey;
+  const { createHash } = await import("node:crypto");
+  const { base32 } = await import("../relay/client/bytes.js");
+  assert.equal(keys[0], base32(createHash("sha256").update(Buffer.from(pub)).digest()).slice(0, 16), "the hello is asked for with the id the box will see for the channel");
+  assert.equal(opts.length, 1, "one channel for the invite");
+  assert.deepEqual(heads.slice(n0).map(h => h.head.invitee.nonce), ["m1", "m2"], "each stream is opened with a hello made at that moment");
   // no route, or no signed hello: nothing is opened
   assert.throws(() => links.inviteeSessionFor(null, hello), e => e.code === "bad_input");
   assert.throws(() => links.inviteeSessionFor(ch, {}), e => e.code === "bad_input");
@@ -1811,4 +1831,72 @@ test("join end to end: a second identity's device previews and accepts an invite
   const preview = await k.call("spaces.invites.preview", { link: mine.link });
   assert.ok(!preview.error, JSON.stringify(preview.error));
   assert.deepEqual([preview.data.role, preview.data.status], ["member", "pending"]);
+});
+
+// ---- Add this device from another device: the joining side (relay/client/phonepair.js), a box-less device with its own identity key ----
+test("add this device from another device, real daemon: a box-less device redeems the code, the words match, the person says yes, and the identity's list takes the device's key", async t => {
+  const { addThisDevice, parsePhonePayload } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t); // the shared fake names directory (the module's fetch)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  const me = (await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(me && me.id), /^per_/);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.ok(parsePhonePayload(open.qr), "the code reads as a device-adding code");
+  assert.equal(parsePhonePayload(open.qr.replace("&k=phone", "")), null, "and a server's code does not");
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const before = (await w.call("spaces.identity.entries")).data;
+  /** @type {string} */ let shown = "";
+  const joining = addThisDevice({ payload: open.qr, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onWords: x => { shown = x; } });
+  joining.catch(() => {});
+  const asked = await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking ? q : null; });
+  await until(async () => shown);
+  assert.equal(asked.name, "Kit's phone");
+  assert.ok(asked.choices.includes(shown), "the computer's choices hold the words this device shows");
+  assert.equal((await w.call("spaces.identity.entries")).data.length ?? (await w.call("spaces.identity.entries")).data.entries?.length, before.length ?? before.entries?.length, "nothing is on the list before the yes");
+  const yes = (await w.call("wink.phone.pair.answer", { yes: true, pick: asked.choices.indexOf(shown) + 1 })).data;
+  assert.equal(yes.yes, true, JSON.stringify(yes));
+  assert.equal(yes.enrolled, true);
+  const done = await joining;
+  assert.equal(done.paired, true);
+  assert.equal(done.enrolled, true);
+  const after = (await w.call("spaces.identity.entries")).data;
+  const list = after.entries || after;
+  assert.ok(list.some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(list));
+});
+
+test("add this device from another device: a no, a wrong pick, a used code and a server's code each add nothing", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t);
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" });
+  const publicKey = () => crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const count = async () => { const d = (await w.call("spaces.identity.entries")).data; return (d.entries || d).length; };
+  const n0 = await count();
+  for (const answer of [{ yes: false }, { yes: true, words: "wrong wrong wrong" }]) {
+    const open = (await w.call("wink.phone.open", {})).data;
+    const p = addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50 });
+    p.catch(() => {});
+    await until(async () => { const q = (await w.call("wink.phone.pairing")).data; return q && q.asking; });
+    assert.equal((await w.call("wink.phone.pair.answer", answer)).data.yes, false);
+    await assert.rejects(() => p, e => e.code === "denied");
+    assert.equal(await count(), n0, "nothing was added");
+  }
+  const open = (await w.call("wink.phone.open", {})).data;
+  const used = await pairTicket(parsePhoneQr(open.qr).seed, { relay: w.status.url, name: "first", crypto: nodeCrypto(), keyStore: keystore(t) });
+  assert.ok(used.pending);
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: publicKey() }, name: "second", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken");
+  await assert.rejects(() => addThisDevice({ payload: "vyre://wink/2?t=AAAAAAAAAAAAAAAAAAAAAA&r=ws%3A%2F%2Fx", key: { publicKey: publicKey() } }), e => e.code === "bad_code");
+  await assert.rejects(() => addThisDevice({ payload: open.qr, key: { publicKey: "short" } }), e => e.code === "bad_code");
+  assert.equal(await count(), n0);
 });
