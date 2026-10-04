@@ -343,9 +343,9 @@ async function startLocked(opts, root, p, release) {
     stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
-    // (signOf in core/presence/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
+    // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
     if (kernel.presence && typeof kernel.presence.check === "function") {
-      const { configureYes, signOf } = await import("../presence/one-yes.js");
+      const { configureYes, signOf } = await import("../../lib/one-yes.js");
       configureYes({
         verify: async (/** @type {any} */ i) => { const sg = signOf(i.moment, { op: i.request ? i.request.op : i.op, fields: i.request ? i.request.fields : i.fields }); return kernel.presence.check({ ...(i.chain ? { chain: i.chain } : {}), op: sg.op, fields: sg.fields, proof: i.proof }); },
         softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE, opts.packageRoot),

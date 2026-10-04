@@ -1031,74 +1031,167 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
     await linksWith(signWith(enc)).startPaired("srv");
     assert.deepEqual(await strengthsOf(f), ["software"], "an enclave key that no directory entry holds is software (the live positive case is in core/wink/pairing.test.js and core/presence/presence.test.js)"); }
-  // a browser asks the owner's phone for a yes: only for the three moments, one card, the phone's signed yes comes back once, and the browser's session is not upgraded
+  // a browser asks the owner's phone for a yes through the approvals queue: only for the three moments, one card, the phone's signed yes is verified and spent when it answers, and the browser's session is not upgraded
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
-    await assert.rejects(() => links.askSignIn("srv", { moment: "admin" }), e => /bad_input|moment|enum/i.test(`${e.code} ${e.message}`), "a card is for one of the three moments");
+    const { payloadHash } = await import("../kernel/seal/wire.js");
+    const asOwner = (tool, input, proof) => f.w.d.registry.call(tool, input, "cli", { person: { id: "ps1" }, ...(proof ? { kernel_proof: proof } : {}) });
+    await assert.rejects(() => links.askApproval("srv", { moment: "admin", request: { op: "x.y", fields: {} } }), e => /bad_input|moment|enum/i.test(`${e.code} ${e.message}`) || assert.fail(`unexpected refusal: ${e.code} ${e.message}`), "a card is for one of the three moments");
     const request = { op: "vault.reveal", fields: { name: "northwind-mail" } };
-    // OY-1: the asker's own words are not the card: its label is dropped, the phone shows the server's name for the device and a line the server writes
-    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request, label: "Alex's iPhone (the owner's own phone)" }), e => /bad_input|not take|unknown|label/i.test(`${e.code} ${e.message}`), "the asker has no say in what the card says");
-    // OY-2: the request must fit the moment
-    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
-    await assert.rejects(() => links.askSignIn("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
-    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: { nested: true } } } }), e => /bad_input/.test(String(e.code)), "plain field values only");
-    const ask = await links.askSignIn("srv", { moment: "vault", request });
-    assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting");
-    // OY-3: the same card again is the same card; a different one while it waits is refused naming the open one
-    assert.equal((await links.askSignIn("srv", { moment: "vault", request })).id, ask.id);
-    await assert.rejects(() => links.askSignIn("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: "another-secret" } } }), e => /conflict/.test(String(e.code)), "a second, different card does not get the first one's id");
-    // CD-1: a paired device is you, so any paired session lists the cards (the card always reaches the phone); the safety is in the answer
-    assert.deepEqual((await links.sessionFor("srv").call("presence.person.session-pending", {})).asks.map(a => a.id), [ask.id], "a software browser lists the card");
-    const pending = (await f.w.d.registry.call("presence.person.session-pending", {}, "cli", PROOF)).data.asks;
+    // the request must fit the moment and be plain data
+    await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
+    await assert.rejects(() => links.askApproval("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
+    await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: { nested: true } } } }), e => /bad_input/.test(String(e.code)), "plain field values only");
+    const ask = await links.askApproval("srv", { moment: "vault", request });
+    assert.equal(ask.line, "Alexs iPhone wants to reveal or use \"northwind-mail\" in your vault", "a line the server wrote, with its own name for the device");
+    assert.equal((await links.approvalStatus("srv", ask.id)).state, "waiting");
+    // the same card again is the same card; a different one while it waits is refused naming the open one
+    assert.equal((await links.askApproval("srv", { moment: "vault", request })).id, ask.id);
+    await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: "another-secret" } } }), e => /conflict/.test(String(e.code)), "a second, different card does not get the first one's id");
+    // the phone lists the card with exactly what its key signs
+    const pending = (await asOwner("approvals.pending", {})).data.approvals;
     assert.deepEqual(pending.map(a => [a.id, a.moment, a.request.op]), [[ask.id, "vault", "vault.reveal"]], "the owner's phone lists the card");
-    assert.equal(pending[0].line, "Alexs iPhone wants to reveal or use \"northwind-mail\" in your vault", "a line the server wrote, with its own name for the device");
-    assert.equal(pending[0].label, undefined, "the asker's words are not on the card");
-    // the answer counts only when it carries a yes signed by a real key over the exact request on the card (yes(): here a stand-in verifier that knows the two kinds of key)
+    assert.deepEqual(pending[0].sign.op, "task.vault_use");
+    assert.equal(pending[0].sign.space, f.w.d.kernel.id.space, "the home's space");
+    assert.deepEqual(pending[0].sign.fields, { what: "vault.reveal", name: "northwind-mail" });
+    const card = pending[0], hash = payloadHash(card.sign.op, card.sign.space, card.sign.fields);
+    assert.equal(card.payload_hash, hash);
+    // the answer counts only when it carries a yes signed by a real key over the card (yes(): here a stand-in verifier that knows the two kinds of key); it is checked and spent when given
     const { configureYes } = await import("../core/presence/index.js");
-    configureYes({ verify: async ({ op, proof }) => (proof && proof.op === op && proof.signer === "secure_enclave" ? { ok: true, strength: "real" } : proof && proof.signer === "software" ? { ok: true, strength: "software" } : "unknown_key"), softwareOk: () => false });
+    configureYes({ verify: async ({ proof }) => (proof && proof.signer === "secure_enclave" ? { ok: true, strength: "real" } : proof && proof.signer === "software" ? { ok: true, strength: "software" } : "unknown_key"), softwareOk: () => false });
     t.after(() => configureYes({ verify: null }));
-    const yes = { op: "vault.reveal", signer: "secure_enclave", sig: "signed-by-the-phone" };
-    const softwareYes = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { op: "vault.reveal", signer: "software", sig: "x" } }, "cli");
-    assert.equal(softwareYes.error && softwareYes.error.code, "software_key", "a software key's answer is refused on a release build");
-    const softwareDevice = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: false }, "device:zzzzzzzzzzzzzzzz", { peer: { kind: "device", stableId: "zzzzzzzzzzzzzzzz", node: "zzzzzzzzzzzzzzzz" } });
-    assert.ok(softwareDevice.error, "a device with no real-key session cannot answer, not even no");
-    assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting", "and the card is untouched");
-    const junk = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { junk: 1 } }, "cli");
+    const soft = await asOwner("approvals.answer", { id: ask.id, approve: true }, { signer: "software", payload_hash: hash });
+    assert.equal(soft.error && soft.error.code, "software_key", "a software key's answer is refused on a release build");
+    const junk = await asOwner("approvals.answer", { id: ask.id, approve: true }, { junk: 1, payload_hash: hash });
     assert.equal(junk.error && junk.error.code, "unknown_key", "any object is not a yes: refused with the yes() reason");
-    const wrongRequest = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: { op: "vault.copy", signer: "secure_enclave", sig: "x" } }, "cli");
-    assert.ok(wrongRequest.error, "a yes over another request does not stand");
-    assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting", "no refused answer approved the card");
-    // the phone's signed yes on the card is the one prompt: the answer call needs no second presence floor, and the device that asked cannot answer its own card
-    const noProofAnswer = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true }, "cli");
-    assert.equal(noProofAnswer.error && noProofAnswer.error.code, "bad_input", "a yes carries the signed proof");
-    const selfAnswer = await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: yes }, `device:${f.done.device}`, { peer: { kind: "device", stableId: f.done.device, node: f.done.device } });
+    const wrongHash = await asOwner("approvals.answer", { id: ask.id, approve: true }, { signer: "secure_enclave", payload_hash: "x".repeat(43) });
+    assert.ok(wrongHash.error, "a yes over another request does not stand");
+    assert.equal((await links.approvalStatus("srv", ask.id)).state, "waiting", "no refused answer approved the card");
+    const selfAnswer = await f.w.d.registry.call("approvals.answer", { id: ask.id, approve: true }, `device:${f.done.device}`, { peer: { kind: "device", stableId: f.done.device, node: f.done.device }, kernel_proof: { signer: "secure_enclave", payload_hash: hash } });
     assert.ok(selfAnswer.error, "a device cannot answer its own card");
-    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true, proof: yes }, "cli")).data.state, "approved");
-    const first = await links.signInStatus("srv", ask.id);
-    assert.deepEqual([first.state, first.card, first.proof], ["approved", ask.id, undefined], "the browser gets the card, never the phone's proof");
-    // the card is spent ONCE by the asking device's act (the phone's proof was spent when it answered, so it is never replayed at the moment)
+    assert.equal((await asOwner("approvals.answer", { id: ask.id, approve: true }, { signer: "secure_enclave", payload_hash: hash })).data.answered, "approved");
+    const first = await links.approvalStatus("srv", ask.id);
+    assert.deepEqual([first.state, first.approval, first.proof], ["approved", ask.id, undefined], "the browser learns it is approved and gets the approval's id, never the phone's proof");
+    // the approval is spent ONCE by the asking device's act (the phone's proof was spent when it answered, so it is never replayed at the moment)
     const { yes: yesAt } = await import("../core/presence/index.js");
     const act = { op: "vault.reveal", fields: { name: "northwind-mail" }, device: f.done.device };
-    assert.deepEqual(await yesAt("vault", { op: "vault.reveal", fields: { name: "another-secret" }, device: f.done.device }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "a card is for exactly the request on it");
+    assert.deepEqual(await yesAt("vault", { op: "vault.reveal", fields: { name: "another-secret" }, device: f.done.device }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "an approval is for exactly the request on it");
     assert.deepEqual(await yesAt("vault", { ...act, device: "someotherdevice" }, { card: ask.id }), { ok: false, reason: "wrong_request" }, "and for the device that asked");
     assert.deepEqual(await yesAt("outward", act, { card: ask.id }), { ok: false, reason: "wrong_request" }, "and for its moment");
     assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: true, strength: "real" }, "the asking device's act spends it");
     assert.deepEqual(await yesAt("vault", act, { card: ask.id }), { ok: false, reason: "replayed" }, "once");
-    assert.deepEqual(await yesAt("vault", act, { card: "ask_unknown" }), { ok: false, reason: "no_proof" });
+    assert.deepEqual(await yesAt("vault", act, { card: "ap_unknown" }), { ok: false, reason: "no_proof" });
     assert.deepEqual(await strengthsOf(f), ["software"], "nothing about the browser's own session changed"); }
-  // CD-1: the owner's own phone (the app registered hardware key storage) can list the cards, though its own session is software in this harness
-  { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f); await links.startPaired("srv");
-    const cards = await links.sessionFor("srv").call("presence.person.session-pending", {});
-    assert.deepEqual(cards.asks, [], "the phone can read the list (empty here)"); }
-  // a refused card holds the device for 10 minutes; ending a device's sessions clears its cards
+  // a refused card holds the device for 10 minutes
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     const outward = { moment: "outward", request: { op: "email.send", fields: { to: "jane@example.com" } } };
-    const ask = await links.askSignIn("srv", outward);
-    assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: false }, "cli")).data.state, "refused");
-    assert.equal((await links.signInStatus("srv", ask.id)).state, "refused");
-    await assert.rejects(() => links.askSignIn("srv", outward), e => /rate_limited/.test(String(e.code)), "no new card right after a no");
-    await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
-    await links.startPaired("srv");
-    assert.equal((await links.signInStatus("srv", ask.id)).state, "none", "the card went with the device's sessions"); }
+    const ask = await links.askApproval("srv", outward);
+    assert.equal((await f.w.d.registry.call("approvals.answer", { id: ask.id, approve: false }, "cli", { person: { id: "ps1" } })).data.answered, "refused");
+    assert.equal((await links.approvalStatus("srv", ask.id)).state, "refused");
+    await assert.rejects(() => links.askApproval("srv", outward), e => /rate_limited/.test(String(e.code)), "no new card right after a no"); }
+});
+
+// ---- the join, end to end (tailnet, 4 Oct; the invitee's first key from the accept itself, vault): two real daemons, a space hosted on the server, an invite, a second person's device that is not a member ----
+test("join end to end: a second identity's device previews and accepts an invite through the invitee door of a real server, on the real kernel; each refusal is the kernel's or the door's", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const { proofRequest } = await import("../kernel/remote/proof.js");
+  const ident = await standinIdentity(t);
+  // the names directory and the module's clock run on real time here: the door checks a hello's time against the daemon's own clock
+  Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
+  // the server's kernel runs on a sealing process that takes one unattested software key (the owner's presence key for this test, enrolled the way the kernel suite does it)
+  const sealDir = tmp("join-e2e-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ownerSigner = sealSigner(ident.id);
+  await enrolDevice(sealer, ownerSigner);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space));
+  // kit: a second real daemon with its own identity, in the same names directory (the module's fetch is the shared fake)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const k = await world(t, { kernel: true });
+  const kit = (await k.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(kit && kit.id), /^per_/);
+  // alex's side: the invite is the hosted kernel's, made as the owner (the owner's own device and presence are the walk's step; the door is what is under test here)
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
+  const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
+  const linkFor = async (to, extra = {}) => {
+    const inv = await (async () => { const body = { role: "member", invitee: to, ...extra }; const req = proofRequest(made.space, "inviteCreate", body); return hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) }); })();
+    return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
+  };
+  const mine = await linkFor(kit.id);
+  const preview = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(!preview.error, JSON.stringify(preview.error));
+  assert.deepEqual([preview.data.role, preview.data.status], ["member", "pending"]);
+  // accept: the first call says what to sign; kit's own presence key (enrolled in the server's sealing process) signs it
+  const kitSigner = sealSigner(kit.id);
+  const first = await k.call("spaces.invites.accept", { link: mine.link });
+  assert.equal(first.data && first.data.needs_proof, true, JSON.stringify(first.error || first.data));
+  const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
+  // a presence key the server's sealing process has never enrolled for this person proves nothing: the invitee's first proof to a server it never touched has no path yet (reported to windows and vault)
+  const unenrolled = await k.call("spaces.invites.accept", { link: mine.link }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });
+  if (process.env.WLOG) console.error("DBG unenrolled", JSON.stringify(unenrolled).slice(0, 400));
+  assert.ok(unenrolled.error, "a key the server was never told of proves nothing");
+  assert.equal(await sealer.health().then(h => h.needs_recovery.includes(kit.id)), false);
+  // all or nothing: an accept that does not finish (a damaged presence proof) leaves no key behind, so the sealing process still knows nothing of kit
+  const damaged = await k.call("spaces.invites.accept", { link: mine.link, presence_key: kitSigner.enrolment }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields, { tamper: true }) });
+  assert.ok(damaged.error, "a damaged proof does not join");
+  assert.equal(await sealer.presenceCheck({ chain: inviteeChain, op: first.data.request.op, fields: first.data.request.fields, proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) }), "unknown_key", "the key the failed accept enrolled was taken back");
+  // the invitee's first key on this server comes from the accept itself (RC1): the app names the presence key, kit's identity device signs over this invite, Space and key, the server reads kit's list from the
+  // directory, and its sealing process enrols the key inside the same accept. No fixture enrols anything.
+  const joined = await k.call("spaces.invites.accept", { link: mine.link, presence_key: kitSigner.enrolment }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });
+  assert.ok(!joined.error, JSON.stringify(joined.error));
+  assert.equal(joined.data.joined, true);
+  // the server's kernel now has kit as a member, with the role the card showed
+  const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
+  assert.deepEqual([member.person, member.role], [kit.id, "member"]);
+  // ... and the invite is spent: the same link opens nothing, and the home's kernel says so (the door closes the stream; the card cannot be read)
+  const again = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(again.error, `a spent invite shows no card: ${JSON.stringify(again.data)}`);
+  // refusals with the kernel's own answers: an invite meant for someone else, and one that ran out
+  const other = await linkFor("per_" + "x".repeat(26));
+  assert.ok((await k.call("spaces.invites.preview", { link: other.link })).error, "an invite addressed to another person shows kit nothing");
+  const brief = await linkFor(kit.id, { valid_ms: 40 });
+  await new Promise(r => setTimeout(r, 120));
+  assert.ok((await k.call("spaces.invites.preview", { link: brief.link })).error, "an expired invite shows nothing");
+  // refusals at the door, from a raw invitee channel with a hello that is not kit's: nothing reaches the kernel but the preview of an invite the door never admits
+  const fresh = await linkFor(kit.id);
+  const crypt = nodeCrypto();
+  const open = async hello => {
+    const ks = keystore(t);
+    const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+    const r = await openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+    t.after(() => r.channel.close(1000, "done"));
+    const head = await new Promise(res => { const st = r.channel.open({ peer: "wink", space: "home", invitee: { channel: r.reply.invitee, ...hello(r.reply.invitee) } }); st.onhead = x => res({ status: x && x.status, st }); st.onreset = () => res({ status: 0, st }); });
+    const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+    const sess = peerSession(streamPipe(head.st), { first: 1 });
+    const call = () => sess.call("kernel.call", { v: 1, space: made.space, id: "x", ts: Date.now(), call: "grants.invites.get", args: [fresh.id] }, { timeoutMs: 4000 });
+    return { status: head.status, call };
+  };
+  const base = { space: made.space, invite: fresh.id, identity: kit.id, entry: "a".repeat(26), ts: Date.now(), nonce: crypto.randomBytes(12).toString("base64url"), sig: "A".repeat(86) };
+  for (const [why, hello] of Object.entries({
+    "a signature that is not the identity's": () => base,
+    "an identity the directory has never heard of": () => ({ ...base, identity: "per_" + "z".repeat(26) }),
+    "a stale hello": () => ({ ...base, ts: Date.now() - 10 * 60_000 }),
+    "an entry that is not on the identity's list": () => ({ ...base, entry: "b".repeat(26) }),
+  })) {
+    const r = await open(id => ({ ...hello(), channel: id }));
+    assert.equal(r.status, 200, `${why}: the door opens the stream and refuses every call`);
+    await assert.rejects(() => r.call(), e => e.code === "denied", why);
+  }
+  const hosted2 = f.w.d.kernel.spaces.hosted(made.space);
+  assert.equal((await hosted2.gateway.grants.invites.get(ownerChain, fresh.id)).status, "pending", "no refusal touched the invite");
+  assert.ok(f.w.logs.filter(l => /invitee .* refused \((bad_proof|unknown_identity|stale)\)/.test(l)).length >= 3, "the server logged why each hello was refused");
 });
 
 // ---- the join, end to end (tailnet, 4 Oct; the invitee's first key from the accept itself, vault): two real daemons, a space hosted on the server, an invite, a second person's device that is not a member ----

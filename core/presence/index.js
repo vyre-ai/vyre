@@ -241,7 +241,7 @@ const TERMINAL_WINDOW = 30 * 60_000;
  */
 export const TERMINAL_WINDOWED = new Set(["vault.approve", "vault.grant"]);
 
-export { isYou, yes, configureYes, yesReason, signOf, MOMENTS, YES_REASONS } from "./one-yes.js";
+export { isYou, yes, configureYes, yesReason, signOf, MOMENTS, YES_REASONS } from "../../lib/one-yes.js";
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
     id TEXT PRIMARY KEY,
