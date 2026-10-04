@@ -82,3 +82,9 @@ test("an error answer becomes a StoreError code the screens know", () => {
   assert.equal(storeError({ code: "version_conflict", message: "Someone changed it." }).code, "version_conflict");
   assert.equal(storeError({ code: "weird", message: "x" }).code, "invalid");
 });
+
+test("spaces are named by spaces.list, with the home's own space added when it is missing", async () => {
+  const f = fake({ [TOOLS.me]: { person: "per_x", space: "spc_home" }, [TOOLS.spaceList]: [{ id: "spc_a", displayName: "Harlow Legal", status: "done", role: "owner" }, { id: "spc_b", label: "x", status: "creating" }] });
+  const s = createGatewayStore({ rpc: f.rpc });
+  assert.deepEqual((await s.spaces()).map((x) => [x.id, x.name]), [["spc_home", "Home"], ["spc_a", "Harlow Legal"]]);
+});
