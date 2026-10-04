@@ -63,6 +63,7 @@ const body = () => page.locator("body").innerText();
 
 let alive = await check("install: the name step is open (the web claim flag is on)", async () => {
   await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
+  await page.getByText("Choose your Vyre name").first().waitFor({ timeout: 25000 }).catch(() => {}); // the app retries the missing box for a few seconds before it draws
   if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built from a tree whose rc.ts says browserClaim: false, or from a cached bundle)");
 });
 alive = alive && await check(`a free name is offered: ${NAME}`, async () => { await page.locator("input").first().fill(NAME); await page.getByText(/is yours to take/).waitFor({ timeout: 10000 }); });
@@ -115,6 +116,40 @@ if (CODE_CMD && ANSWER_CMD) {
     if (/could not|cannot reach|did not|failed|do not match/i.test(t)) throw new Error("the page reports a failure: " + t.slice(0, 200).replace(/\n/g, " | "));
   });
 }
+// After the pairing, walk the screens over the peer wire (the page is paired; there is no box at its origin): each screen once, on a fresh load, reporting what it shows and any refusal in the server's words.
+const SCREENS = flag("--screens", "");
+// --after-cmd runs once after the pairing and before the screens (a seed through the owner on the test server; a stand-in for the owner's session)
+const AFTER_CMD = flag("--after-cmd", "");
+if (CODE_CMD && ANSWER_CMD && SCREENS) {
+  let afterOut = "";
+  if (AFTER_CMD) { try { afterOut = execSync(AFTER_CMD, { encoding: "utf8" }); console.log("  after-cmd: " + afterOut.replace(/\s+/g, " ").slice(0, 300)); } catch (e) { console.log("  after-cmd FAILED: " + String(e.stdout || e.message).slice(0, 300)); } }
+  const thread = /"id":\s*"([^"]+)"/.exec(afterOut)?.[1] ?? "";
+  for (const route0 of SCREENS.split(",")) {
+    const route = route0.replace("{thread}", thread);
+    await check(`screen ${route}`, async () => {
+      await page.goto(`${BASE}/app/${route}`, { waitUntil: "networkidle" }).catch(() => {});
+      await page.waitForTimeout(6000);
+      const t = (await body()).replace(/\n+/g, " | ").slice(0, Number(flag("--body-chars", "260")));
+      console.log(`  ${route}: ${t}`);
+      if (/could not|cannot reach|did not answer|not available|denied|person_session_required|no_identity|Choose your Vyre name/i.test(t)) throw new Error("refused or empty: " + t.slice(0, 160));
+      return t.slice(0, 80);
+    });
+  }
+}
+// --steps "Label|Label|...": click each text in turn (from the last screen) and report what the page shows, so a record, a task and the chat can be opened by their names
+const STEPS = flag("--steps", "");
+if (CODE_CMD && ANSWER_CMD && STEPS) {
+  for (const label of STEPS.split("|")) {
+    await check(`open "${label}"`, async () => {
+      await page.getByText(label, { exact: false }).first().click({ timeout: 10000 });
+      await page.waitForTimeout(5000);
+      const t = (await body()).replace(/\n+/g, " | ").slice(0, 420);
+      console.log(`  after "${label}": ${t}`);
+      if (/could not|cannot reach|did not answer|not available|denied|person_session_required|no_identity|did not load/i.test(t)) throw new Error("refused: " + t.slice(0, 200));
+    });
+  }
+}
+if (args.includes("--debug")) console.log("PK:", await page.evaluate(() => [sessionStorage.getItem("__PK"), sessionStorage.getItem("__PKERR")]).catch(() => "?"));
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), name: NAME, results }, null, 2));
 await browser.close(); server.close();
 process.exit(results.every((x) => x.ok) ? 0 : 1);

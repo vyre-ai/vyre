@@ -12,6 +12,8 @@
 //   6 challenge  JSON {nonce, box}         the home to a peer that arrived on a Wink node (auth.js)
 //   7 proof      JSON {device, proof}      the peer's answer
 //   8 ready      JSON {caller}             the home accepts the proof
+//   9 stream     JSON {id, seq, data}      one frame of a stream the home opened for this device (a call opens it; frames then travel here, at most 16 KB each)
+//  10 streamEnd  JSON {id, why}            a stream ends: from the home (done, session_ended, slow, too_large) or from the device (it closes its own stream)
 // flags bit 0: more slices follow for this message.
 //
 // Fair queueing (SPIKE-wink.md, relay: a ping waited 390 ms behind one bulk stream): messages up to
@@ -23,7 +25,7 @@
 
 import crypto from "node:crypto";
 
-export const T = Object.freeze({ call: 1, result: 2, more: 3, ping: 4, pong: 5, challenge: 6, proof: 7, ready: 8 });
+export const T = Object.freeze({ call: 1, result: 2, more: 3, ping: 4, pong: 5, challenge: 6, proof: 7, ready: 8, stream: 9, streamEnd: 10 });
 export const SLICE = 16 * 1024;
 export const MAX_FRAME = 64 * 1024;
 export const MAX_MESSAGE = 32 * 1024 * 1024;

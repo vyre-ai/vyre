@@ -48,7 +48,44 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   const rec = await ok("records.create", { space, type: "contact", data: { name: "Jane", age: 40 } });
   assert.ok(rec.record.urn.startsWith(`vyre://${space}/`));
   assert.equal((await ok("records.list", { space, type: "contact" })).rows.length, 1);
+  assert.deepEqual(rec.acted_in, { id: space, label: "estatedev" }, "records.create names the space it acted in");
+  assert.deepEqual((await ok("records.list", { space, type: "contact" })).acted_in, { id: space, label: "estatedev" });
+  // with no `space` a call acts in the home's own space and says so; a made-up id is refused, not answered empty
+  const homeMe = await ok("records.me");
+  assert.equal(homeMe.acted_in.label, "home", "no space given: the home's own space, named");
+  assert.match(homeMe.acted_in.id, /^spc_[a-z2-7]{12}$/);
+  assert.notEqual(homeMe.acted_in.id, space);
+  assert.equal((await ok("records.me", { space })).acted_in.id, space, "records.me with the created id acts in it");
+  const bogus = await deck("records.types", { space: "spc_aaaaaaaaaaaa" });
+  assert.equal(bogus.error && bogus.error.code, "not_found", JSON.stringify(bogus).slice(0, 200));
   assert.deepEqual((await ok("tasks.list", { space })).tasks, []);
+  // `vyre space add-agent`: the kernel's actor membership; without the person's proof it is refused plainly and nothing is added
+  const addAgent = await deck("spaces.members.add-agent", { space, agent: "kit" });
+  assert.equal(addAgent.error && addAgent.error.code, "presence_required", JSON.stringify(addAgent).slice(0, 200));
+  assert.equal(await d.kernel.spaces.hosted(space).gateway.grants.members.list(d.kernel.spaces.hosted(space).kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: made.id, path: "direct", session: "s" })).then(l => l.length), 1, "nothing was added");
+  // with the development stand-in (a hand-made file in a development build) the person's proof is satisfied and the agent joins as an actor, and again is no error
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
+  d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone");
+  const SI = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: made.id, path: "relay", session: "ps_1" } };
+  const added = await d.registry.call("spaces.members.add-agent", { space, agent: "kit" }, "cli", SI);
+  assert.ok(!added.error, JSON.stringify(added).slice(0, 300));
+  assert.deepEqual(added.data.agent, { kind: "agent", id: "kit" });
+  assert.equal((await d.registry.call("spaces.members.add-agent", { space, agent: "Bad Name!" }, "cli", SI)).error.code, "bad_input");
+  // the CLI against this live daemon: `vyre space use <name>` remembers the space, `vyre call` passes it to a tool that takes one, `vyre status` shows it, and --space overrides it
+  const { execFile } = await import("node:child_process");
+  const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
+  const cli = (/** @type {string[]} */ args) => new Promise(resolve => execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 }, (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, stdout, stderr })));
+  const used = /** @type {any} */ (await cli(["space", "use", "estatedev"]));
+  console.log("CLI space use:", used.code, JSON.stringify(used.stdout.trim()), used.stderr.trim());
+  assert.equal(used.code, 0, used.stdout + used.stderr);
+  const viaCli = /** @type {any} */ (await cli(["call", "records.me"]));
+  console.log("CLI call records.me:", viaCli.code, viaCli.stdout.replace(/\s+/g, " ").slice(0, 300));
+  assert.equal(JSON.parse(viaCli.stdout).acted_in.id, space, "the remembered space was passed to records.me");
+  const overridden = /** @type {any} */ (await cli(["call", "--space", space, "records.me"]));
+  assert.equal(JSON.parse(overridden.stdout).acted_in.id, space);
+  assert.equal(JSON.parse(/** @type {any} */ ((await cli(["space", "--json"]))).stdout).space, space);
+  assert.equal((await cli(["space", "use", "--clear"])).code, 0);
+  assert.equal(JSON.parse((/** @type {any} */ (await cli(["call", "records.me"]))).stdout).acted_in.label, "home", "cleared: the home's own space again");
   // one id for the space everywhere
   const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
   const row = (Array.isArray(listed) ? listed : listed.spaces).find(x => x.name === "estatedev.vyre.run");
