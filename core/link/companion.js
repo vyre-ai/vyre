@@ -110,6 +110,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   }
 
   ctx.tool("link.companion.pair", {
+    effect: "write",
     callers: ["deck", "tailnet", "device", "space", "agent"],
     description: "A paired desktop app asks the box to accept its local core as a companion: { core (its P-256 public key, base64url), name, nonce, ts }. Called over the app's own relay channel with a presence proof from the app device's key, which is the countersign. Answers { id, approved: window } inside 15 minutes of the app's pairing with no companion yet, else { pending, approved: false } for the person's one tap.",
     input: { type: "object", properties: { core: { type: "string" }, name: { type: "string" }, nonce: { type: "string" }, ts: { type: "number" } }, required: ["core", "nonce", "ts"] },
@@ -140,6 +141,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   });
 
   ctx.tool("link.companion.approve", {
+    effect: "write",
     description: "The person approves the waiting companion request with one tap on its card (the app device's name and the core's fingerprint), no Touch ID. Answers { id }.",
     input: { type: "object", properties: { request: { type: "string" } }, required: ["request"] },
     run: async ({ request }) => {
@@ -154,6 +156,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   });
 
   ctx.tool("link.companion.remove", {
+    effect: "write",
     description: "Revoke a companion by id. The app device it belongs to stays.",
     input: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     run: async ({ id }) => {
@@ -166,6 +169,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   });
 
   ctx.tool("link.companion.list", {
+    effect: "read",
     description: "The companions and the waiting request: id, name, the app device it belongs to, whether it is valid now (its parent device is live), and its core's fingerprint.",
     input: { type: "object", properties: {} },
     run: async () => {
@@ -216,6 +220,7 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
   }
 
   ctx.tool("link.companion.hello", {
+    effect: "write",
     callers: ["tailnet", "device", "space", "agent"],
     description: "A paired companion core checks in, proving its own key: { token } signed for this tool with an empty input. Answers { paired: true, companion, device, box: { name, pub, id } }, or refuses. The box answers nothing the core could not already pin at pairing.",
     input: { type: "object", properties: { token: { type: "string" } }, required: ["token"] },

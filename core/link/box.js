@@ -61,6 +61,8 @@ export const showCode = c => `${c.slice(0, 3)}-${c.slice(3)}`;
 
 /** Callers of the box's own socket: its terminal. Claude's processes are here too, which is why the code matters. */
 const SOCKET = new Set(["cli", "local"]);
+/** Who may read the box's pairing lists and approve there: its terminal, the Deck and Capsule, and the owner's own devices. A model session is not one. */
+const BOX_PEOPLE = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
 // Only the owner's devices: "tailnet:<login>". A guest ("tailnet-guest:<login>") never matches, and
 // an agent's own node ("tailnet:agent:<name>") is not a person's device, so it is refused too.
 const tailnetLogin = caller => {
@@ -102,6 +104,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const peerOf = meta => (meta && meta.peer) || null;
 
   ctx.tool("link.pair.request", {
+    effect: "write", callers: ["tailnet"],
     description: "Start pairing a device with this box. Called by the device's vyred over the tailnet; the code it returns is shown on the device only. kind: \"mac\" (the default, the full link feature set) or \"device\" (a peer paired only to import its own sessions).",
     input: { type: "object", properties: { name: { type: "string" }, kind: { type: "string", enum: ["mac", "device"] } }, required: ["name"] },
     run: async ({ name, kind }, meta) => {
@@ -120,6 +123,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.pending", {
+    effect: "read", callers: BOX_PEOPLE,
     description: "Pairing requests waiting for approval on this box. The codes are never listed: they are on the Mac's screen.",
     input: { type: "object", properties: {} },
     run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, kind: p.kind || "mac", created: p.created, expires: p.expires })); },
@@ -144,6 +148,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   };
 
   ctx.tool("link.pair.approve", {
+    effect: "write", callers: BOX_PEOPLE,
     description: "Approve a Mac's pairing with the code shown on the Mac, e.g. `vyre link approve 123-456` on the box.",
     input: { type: "object", properties: { code: { type: "string" } }, required: ["code"] },
     // Approving is on the floor's presence list: the owner proves they are there (a passkey from
@@ -176,6 +181,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.pair.deny", {
+    effect: "write",
     description: "Refuse a pairing request.",
     input: { type: "object", properties: { id: { type: "string" } }, required: ["id"] },
     run: async ({ id }, meta) => {
@@ -188,6 +194,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.pair.poll", {
+    effect: "write", callers: ["tailnet"],
     description: "The Mac asks whether its pairing was approved; the link key is handed over once.",
     input: { type: "object", properties: { id: { type: "string" }, secret: { type: "string" } }, required: ["id", "secret"] },
     run: async ({ id, secret }, meta) => {
@@ -216,6 +223,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   };
 
   ctx.tool("link.hello", {
+    effect: "write", callers: ["tailnet"],
     description: "A paired Mac checks in. Answers who this box is, or unpaired when the key is not known here.",
     input: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
     run: async ({ key }, meta) => {
@@ -229,6 +237,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.peers", {
+    effect: "read", callers: [...BOX_PEOPLE, "module"],
     description: "Every device paired with this box, Macs and import-only devices alike, with its kind.",
     input: { type: "object", properties: {} },
     run: async () => db.prepare("SELECT id, name, login, node, stable_id, paired_at, last_seen, kind FROM link_peers ORDER BY paired_at").all(),
@@ -246,6 +255,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const reachSince = sinceTracker(now);
 
   ctx.tool("link.health", {
+    effect: "read",
     description: "How this box reaches the device that asks, in one shape: reach (direct over the tailnet, or relay), why, fix, since and the tailnet path and latency; the older path, latencyMs and lastHandshake stay. A device over the relay is \"relay\"; only the browser knows \"none\". By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
     input: { type: "object", properties: { node: { type: "string" } } },
     run: async ({ node }, meta) => {
@@ -282,6 +292,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.rename", {
+    effect: "write",
     description: "Rename a paired Mac or device: the person's own label, kept on the box and shown wherever the device appears (the Deck, session rows, Drive, Now). A new name replaces what the device called itself.",
     input: { type: "object", properties: { id: { type: "string" }, name: { type: "string" } }, required: ["id", "name"] },
     run: async ({ id, name }) => {
@@ -295,6 +306,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.unpair", {
+    effect: "write",
     description: "Forget a paired Mac or device. On the box, by id; from the device, with its own key. If it ever synced sessions, core/sync deletes everything it sent when it hears link.unpaired.",
     input: { type: "object", properties: { id: { type: "string" }, key: { type: "string" } } },
     run: async ({ id, key }, meta) => {
@@ -310,6 +322,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.status", {
+    effect: "read",
     description: "This box's side of the link: its paired Macs and waiting requests.",
     input: { type: "object", properties: {} },
     run: async () => { sweep(); return { role: "box", peers: db.prepare("SELECT COUNT(*) AS n FROM link_peers").get().n, pending: [...pending.values()].filter(p => !p.key && !p.denied).length }; },
@@ -368,6 +381,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     || [...asks.values()].some(a => a.mac === macId && a.sent);
 
   ctx.tool("link.serve", {
+    effect: "write", callers: ["tailnet"],
     description: "A paired Mac waits here for the box's next question. Answers { id, tool, input }, or null when there was none for a while.",
     input: { type: "object", properties: { key: { type: "string" } }, required: ["key"] },
     run: async ({ key }, meta) => {
@@ -387,6 +401,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.reply", {
+    effect: "write", callers: ["tailnet"],
     description: "A paired Mac answers one of the box's questions: result is { data } or { error }.",
     input: { type: "object", properties: { key: { type: "string" }, id: { type: "string" }, result: { type: "object" } }, required: ["key", "id", "result"] },
     run: async ({ key, id, result }, meta) => {
@@ -479,6 +494,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   };
 
   ctx.tool("link.events", {
+    effect: "write", callers: ["tailnet"],
     description: "A paired Mac sends the events of a thread the box sent to, and of every ask it raises: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.",
     input: { type: "object", properties: { key: { type: "string" }, events: { type: "array", items: { type: "object" } } }, required: ["key", "events"] },
     run: async ({ key, events }, meta) => {
@@ -504,6 +520,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.macs", {
+    effect: "read", callers: [...BOX_PEOPLE, "module"],
     description: "The paired Macs and whether each is online for the box to read now.",
     input: { type: "object", properties: {} },
     // stableId: the Mac's tailnet peer id (Tailscale status Peer.ID), for a module that needs to
