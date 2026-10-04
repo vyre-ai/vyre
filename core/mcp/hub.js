@@ -407,8 +407,8 @@ export function whoFrom(caller, meta = {}) {
   // Excluded explicitly (reviewer's HOLD on f2df7888, lead's ruling 2026-09-28) to keep today's
   // behaviour exactly; admitting an owner device with a real passkey-backed person session is a
   // separate design for later, not 0.1.1.
-  const person = (isPerson(c) && !isOwnerDevice(c)) || (c.startsWith("module:") && !MODULE_CLAIM.test(c));
-  return { person, agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
+  const unscoped = (isPerson(c) && !isOwnerDevice(c)) || (c.startsWith("module:") && !MODULE_CLAIM.test(c));
+  return { person: unscoped, agent: meta.agent || (named ? named[1] : null), thread: meta.thread || null };
 }
 
 export class Hub {
