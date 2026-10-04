@@ -184,7 +184,7 @@
   "seen": "hosted run 37176623881"
  },
  "core/waiting/waiting.test.js": {
-  "owner": "app-wire",
+  "owner": "platform-3",
   "seen": "hosted run 37176623881"
  },
  "core/watchers/reach.test.js": {
@@ -224,7 +224,7 @@
   "owner": "platform"
  },
  "local/apps/module.test.js": {
-  "owner": "app-wire",
+  "owner": "platform-3",
   "seen": "hosted run 37176623881"
  },
  "local/capsule/views.test.js": {
