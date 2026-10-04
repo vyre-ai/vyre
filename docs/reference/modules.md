@@ -77,6 +77,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 3 | 2 | cli |
+| [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 56 | 36 | cli |
@@ -765,6 +766,18 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 - Tools: [3](tools.md#system)
 - Emits: [2 events](events.md#system)
 - Shows on: cli
+
+## tasks
+
+The app's way into a Space's tasks: one tool per Store call over the kernel's task store, each under the caller's own chain in the Space it names. Nothing here decides; the kernel does.
+
+- Folder: `core/tasks-tools`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [6](tools.md#tasks)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## team
 

@@ -105,6 +105,15 @@ export const describe = d => ({
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
+    /**
+     * Is this call the person's own? Decided by the kernel's chain for the call (`ctx.kernel.chain(meta)`: exactly one person hop, no agent), never by the caller's label. Only a build with no kernel
+     * (development) falls back to the label rule; a packaged daemon always has the kernel.
+     * @param {any} meta @returns {Promise<boolean>}
+     */
+    const personCall = async meta => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return isPerson(meta && meta.caller, meta);
+      try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+    };
     ctx.store.migrate(MIGRATIONS);
     const conf = () => (ctx.config && ctx.config.settings) || {};
     /** @returns {any[]} */
@@ -304,12 +313,12 @@ export default {
      * owner's tailnet node or a relay-paired device), and its session.
      * @param {any} i @param {any} meta @returns {At & { ownDevice: boolean }}
      */
-    const atOf = (i, meta) => {
+    const atOf = async (i, meta) => {
       const project = slugOf(i.project);
       let device = i.device == null || i.device === "" ? null : String(i.device);
       if (device && !DEVICE.test(device)) throw Object.assign(new Error("device is a device's id"), { code: "bad_input" });
       const caller = String((meta && meta.caller) || "");
-      const own = !device && /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(caller);
+      const own = !device && /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(caller) && (await personCall(meta));
       if (own) device = caller;
       const session = i.session == null || i.session === "" ? null : String(i.session);
       if (session && !THREAD.test(session)) throw Object.assign(new Error("session is a thread's id"), { code: "bad_input" });
@@ -406,8 +415,8 @@ export default {
       description: "Settings with the value in effect and where it comes from (session, device, project, account, default). Give key for one, group for a group, nothing for all; project, device and session to see that view (device defaults to the caller's own). A secret setting's values are masked for anyone but the person.",
       input: { type: "object", properties: { key: str, group: str, ...where } },
       run: async (i, meta) => {
-        const at = atOf(i, meta);
-        const clear = isPerson(meta && meta.caller, meta);
+        const at = await atOf(i, meta);
+        const clear = await personCall(meta);
         await fresh();
         if (i.key) return effective(declOf(i.key), at, clear);
         const list = decls().filter(d => !i.group || (d.group || d.module) === i.group);
@@ -419,8 +428,8 @@ export default {
       description: "Every setting's value in effect for one surface, in one read: {rev, device, values: {key: value}, sources: {key: level}, levels: {key: {account?, project?, device?, session?}}}. device defaults to the caller's own and is echoed. Compare rev after a reconnect; follow settings.changed after that. A secret setting's values are masked for anyone but the person.",
       input: { type: "object", properties: where },
       run: async (i, meta) => {
-        const at = atOf(i, meta);
-        const clear = isPerson(meta && meta.caller, meta);
+        const at = await atOf(i, meta);
+        const clear = await personCall(meta);
         await fresh();
         const rows = await Promise.all(decls().map(d => effective(d, at, clear)));
         /** @type {Record<string, any>} */ const values = {}, sources = {}, levels = {};
@@ -447,7 +456,7 @@ export default {
       // whatever surface kind it rides on. It changes a setting only through settings.request.
       if (!asked && /(?:^|[\s:])agent:/.test(caller)) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
       const d = declOf(i.key);
-      const at = atOf(i, meta);
+      const at = await atOf(i, meta);
       // A level said, or the narrowest one this call names: a session, a device named outright
       // (never the caller's own by default), a project, else the account.
       const lv = /** @type {Lv} */ (i.level || (at.session && d.levels.includes("session") ? "session"
@@ -472,7 +481,7 @@ export default {
       await checked(d, value, lv, target);
       // A change the person asked an agent for is still the person's: stores that call a module's
       // setter call it as vyred acting for them ("local"), and the log names the agent.
-      await write(env, d, lv, target, value, asked ? "local" : asPerson(caller), caller);
+      await write(env, d, lv, target, value, asked ? "local" : ((await personCall(meta)) ? asPerson(caller) : (() => { throw Object.assign(new Error(`${caller} is not a person's surface`), { code: "denied" }); })()), caller);
       const r = mirror(d, lv, target, value);
       const id = logChange(d, lv, target, before.value, value, caller, asked ? intent : null);
       ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, change: id, by: asked ? caller : "person", ...said(d, value) });

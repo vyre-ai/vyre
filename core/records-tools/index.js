@@ -21,7 +21,7 @@ export function parseUrn(urn) {
 export default {
   async start(ctx) {
     const door = createDoor(ctx);
-    /** @typedef {{ space: string, gateway: any, chain: any, proof: any }} Opened */
+    /** @typedef {{ space: string, gateway: any, surfaces: any, chain: any, proof: any }} Opened */
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: Opened) => Promise<any>} fn @param {(i: any) => any} [where] the Space a call acts in: the `space` it names, or the one its record reference names */
     const tool = (name, description, input, fn, where = i => i) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => fn(i || {}, await door.open(where(i || {}), meta)) });
     const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
@@ -61,6 +61,47 @@ export default {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
     }, byUrn);
+
+    // ---- sealed values and the event feed ----
+    tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      if (!d.gateway.seal) throw refuse("this Space has no sealing process", "unavailable");
+      let cls = i.class ? String(i.class) : "";
+      if (!cls) {
+        const def = ((await d.gateway.definitions(d.chain)) || []).find((/** @type {any} */ t) => t.name === u.type);
+        const f = def && (def.fields || []).find((/** @type {any} */ x) => x.name === i.field);
+        cls = f && f.seal && f.seal.class ? String(f.seal.class) : "";
+      }
+      if (!cls) throw refuse("that field is not a sealed field", "bad_input");
+      const put = await d.gateway.seal.put(d.chain, { record: i.urn, field: String(i.field), class: cls, value: String(i.value) });
+      const ref = put && put.ref && typeof put.ref === "object" ? put.ref : put;
+      const cur = await d.gateway.records.get(d.chain, u.type, u.id);
+      if (!cur) throw refuse("no such record", "not_found");
+      return { record: await d.gateway.records.update(d.chain, u.type, u.id, { [String(i.field)]: ref }, cur.version) };
+    }, byUrn);
+    tool("records.reveal", "Show a sealed value to the person on their own screen, once. Human-only: the person's presence proof rides beside the request and the chain must be exactly one person.", obj({ urn: str, field: str, purpose: str }, ["urn", "field", "purpose"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      if (!d.gateway.seal) throw refuse("this Space has no sealing process", "unavailable");
+      const rec = await d.gateway.records.get(d.chain, u.type, u.id);
+      const v = rec && rec.data ? rec.data[String(i.field)] : undefined;
+      if (!v || typeof v !== "object" || typeof v.ref !== "string") throw refuse("there is nothing sealed there to show", "not_found");
+      return d.gateway.seal.reveal(d.chain, { record: i.urn, ref: v.ref, purpose: String(i.purpose), proof: d.proof });
+    }, byUrn);
+    tool("records.sees-as", "The record as the person sees it, or as their assistant would (sealed fields only as placeholders, and only the fields its grants allow).", obj({ urn: str, who: { type: "string", enum: ["person", "assistant"] } }, ["urn", "who"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      if (i.who !== "assistant") { const r = await d.gateway.records.get(d.chain, u.type, u.id); return { data: r ? r.data : null }; }
+      // The assistant's own chain for this person, made by the kernel's Surfaces door for this one look and ended straight after.
+      const s = await d.surfaces.open(d.chain, { agent: "assistant", ttl_ms: 30_000 });
+      try {
+        const r = await d.gateway.records.get(await d.surfaces.chainFor(s.token), u.type, u.id);
+        return { data: r ? r.data : null };
+      } finally { d.surfaces.revoke(s.session); }
+    }, byUrn);
+    tool("records.events", "The Space's event log as the caller may read it: for a record, for a task, or all; newest last.", obj({ space: str, record: str, task: str, since: { type: "integer" }, limit: { type: "integer" } }), async (i, d) => {
+      const prefix = i.record ? String(i.record) : i.task ? `vyre://${d.space}/task/${String(i.task)}` : null;
+      const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 500) : 100;
+      return { events: await d.gateway.events.read(d.chain, { ...(prefix ? { subject_prefix: prefix } : {}), ...(Number.isInteger(i.since) ? { since: i.since } : {}), limit }) };
+    });
     return { async stop() {} };
   },
 };

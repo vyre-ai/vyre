@@ -225,6 +225,25 @@ export function createTasks(cfg) {
       return tasks.get(id) || null;
     },
 
+    /**
+     * The tasks this chain may read, filtered: by record, doer id, checker id (a named checker or one of the persons a role resolves to) and state. Each task goes through the same `tasks.read`
+     * gate `get` uses, so a task the chain may not read is absent, never marked. Oldest first.
+     * @param {any} chain @param {{ record?: string, doer?: string, checker?: string, state?: string[] }} [q]
+     */
+    async list(chain, q = {}) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const out = [];
+      for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
+        if (q.record && t.record !== q.record) continue;
+        if (q.doer && t.doer.id !== q.doer) continue;
+        if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => c.id === q.checker)) continue;
+        if (Array.isArray(q.state) && q.state.length && !q.state.includes(t.state)) continue;
+        try { await gate(chain, "tasks.read", urnOf(cfg.space, t.id)); } catch (e) { if (e instanceof KernelError && e.code === "not_found") continue; throw e; }
+        out.push(t);
+      }
+      return out;
+    },
+
     async start(/** @type {any} */ chain, /** @type {string} */ id) {
       await gate(chain, "tasks.work", urnOf(cfg.space, id));
       const t = get_(id);
