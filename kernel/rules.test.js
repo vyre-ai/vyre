@@ -33,7 +33,6 @@ const NEVER_REMOVE = { kind: "never", binds: ["assistants"], covers: { actions: 
 test("a rule belongs to the Space: an owner sets it with presence, it is an event, it survives a rebuild, and only an owner (never an admin) sets or removes it", async () => {
   const { k, owner, g, dev, setRule } = await rig();
   await assert.rejects(() => g.rules.set(owner, NEVER_REMOVE), { code: "needs_presence" });
-  await assert.rejects(() => setRule(NEVER_REMOVE, dev(ALICE, "d-a")), { code: "not_allowed" }, "an admin is not an owner");
   await assert.rejects(() => setRule(NEVER_REMOVE, dev(BOB, "d-b")), e => ["not_found", "not_allowed"].includes(e.code));
   const rule = await setRule(NEVER_REMOVE);
   assert.match(rule.id, /^rule_/);
@@ -43,7 +42,7 @@ test("a rule belongs to the Space: an owner sets it with presence, it is an even
   await assert.rejects(() => g.rules.list(dev(BOB, "d-b")), e => ["not_found", "not_allowed"].includes(e.code));
   await g.rebuild();
   assert.equal((await g.rules.list(owner)).rules.length, 1, "kept across a rebuild from the log");
-  await assert.rejects(() => g.rules.remove(dev(ALICE, "d-a"), rule.id, { presence: proof("rules.remove", { id: rule.id }, `vyre://${SPACE}/rule/${rule.id}`) }), { code: "not_allowed" });
+  await assert.rejects(() => g.rules.remove(dev(BOB, "d-b"), rule.id, { presence: proof("rules.remove", { id: rule.id }, `vyre://${SPACE}/rule/${rule.id}`) }), e => ["not_found", "not_allowed"].includes(e.code), "a member cannot remove");
   await g.rules.remove(owner, rule.id, { presence: proof("rules.remove", { id: rule.id }, `vyre://${SPACE}/rule/${rule.id}`) });
   assert.equal((await g.rules.list(owner)).rules.length, 0);
   // the shape is closed: three kinds, named actions, no free text that drives anything, no rule over the rules calls
@@ -159,7 +158,7 @@ test("a Kit may propose a rule: it does nothing until an owner accepts it with p
   const view = await g.rules.list(owner);
   assert.equal(view.rules.length, 0, "a proposal is not a rule");
   assert.equal(view.proposals.length, 1);
-  await assert.rejects(() => g.rules.accept(dev(ALICE, "d-a"), proposal.id, { presence: proof("rules.accept", { id: proposal.id }, `vyre://${SPACE}/rule/${proposal.id}`) }), { code: "not_allowed" }, "an admin cannot accept");
+  await assert.rejects(() => g.rules.accept(dev(BOB, "d-b"), proposal.id, { presence: proof("rules.accept", { id: proposal.id }, `vyre://${SPACE}/rule/${proposal.id}`) }), e => ["not_found", "not_allowed"].includes(e.code), "a member cannot accept");
   await assert.rejects(() => g.rules.accept(owner, proposal.id), { code: "needs_presence" });
   const rule = await g.rules.accept(owner, proposal.id, { presence: proof("rules.accept", { id: proposal.id }, `vyre://${SPACE}/rule/${proposal.id}`) });
   assert.deepEqual(rule.covers, { actions: ["records.remove"] });
@@ -279,9 +278,9 @@ test("rules.get, rules.test, rules.disable and rules.enable: a rule can be read,
   await assert.rejects(() => g.rules.test(alice, { ...act, id: rule.id, rule: ask }), { code: "bad_input" });
   assert.equal(k.log.read({}).length, before, "a test writes nothing");
 
-  // disable: owner only, with presence; the rule stays and binds nothing
+  // disable: owner or admin, with presence; the rule stays and binds nothing
   await assert.rejects(() => g.rules.disable(owner, rule.id), { code: "needs_presence" });
-  await assert.rejects(() => g.rules.disable(alice, rule.id, switchProof("rules.disable", rule.id)), { code: "not_allowed" });
+  await assert.rejects(() => g.rules.disable(dev(BOB, "d-b"), rule.id, switchProof("rules.disable", rule.id)), e => ["not_found", "not_allowed"].includes(e.code));
   const off = await g.rules.disable(owner, rule.id, switchProof("rules.disable", rule.id));
   assert.equal(off.status, "disabled");
   assert.ok(k.log.read({}).some(e => e.type === "rule.disabled" && e.data.id === rule.id));
@@ -293,7 +292,7 @@ test("rules.get, rules.test, rules.disable and rules.enable: a rule can be read,
   assert.equal((await g.rules.list(owner)).rules[0].status, "disabled", "off survives a rebuild from the log");
 
   // enable
-  await assert.rejects(() => g.rules.enable(alice, rule.id, switchProof("rules.enable", rule.id)), { code: "not_allowed" });
+  await assert.rejects(() => g.rules.enable(dev(BOB, "d-b"), rule.id, switchProof("rules.enable", rule.id)), e => ["not_found", "not_allowed"].includes(e.code));
   const on = await g.rules.enable(owner, rule.id, switchProof("rules.enable", rule.id));
   assert.equal(on.status, "active");
   assert.equal((await g.rules.test(alice, act)).outcome, "never");
@@ -323,28 +322,54 @@ test("R4 on rules.enable and rules.disable: a switch whose event cannot be writt
   assert.equal((await g.rules.list(owner)).rules[0].status, "disabled", "still off");
 });
 
-test("RT-2: an admin is refused every rule change at the gate, before a presence proof is spent; only the owner changes rules", async () => {
+test("RT-2: an admin sets, switches, removes and accepts rules with presence (policies short of ownership), but not a rule that could lock an owner out; a manager and a member are refused at the gate before a proof is spent", async () => {
   let checks = 0;
   const counting = { check: async (i) => { checks++; return presence.check(i); } };
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence: counting });
   const g = k.gateway.grants;
   const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
-  const r = { person: ALICE, role: "admin" };
-  await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${ALICE}`) });
-  const rule = await g.rules.set(owner, NEVER_REMOVE, { presence: proof("rules.set", normal(NEVER_REMOVE), `vyre://${SPACE}/rule/new`) });
+  const MANAGER = "per_manager";
+  for (const [person, role] of [[ALICE, "admin"], [BOB, "member"], [MANAGER, "manager"]]) { const r = { person, role }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${person}`) }); }
   const alice = k.chains.fromFacts({ kind: "device", device_key_id: "d-a", person: ALICE, path: "direct" });
+  const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
+  const man = k.chains.fromFacts({ kind: "device", device_key_id: "d-m", person: MANAGER, path: "direct" });
   const p = (action, input, id) => ({ presence: proof(action, input, `vyre://${SPACE}/rule/${id}`) });
+  // an admin defines a rule and it holds
+  const rule = await g.rules.set(alice, NEVER_REMOVE, p("rules.set", normal(NEVER_REMOVE), "new"));
+  assert.equal(rule.by, ALICE);
+  const kitChain = k.chains.fromFacts({ kind: "agent_session", vouched: true, person: OWNER, agent: "assistant", session: "s1" });
+  assert.equal((await k.gateway.authorize({ chain: kitChain, action: "records.remove", resource: `vyre://${SPACE}/contact/c1` })).reason !== undefined, true);
+  assert.equal((await g.rules.test(alice, { action: "records.remove", resource: `vyre://${SPACE}/contact/c1` })).outcome, "never", "it holds");
+  // the admin turns it off and on with presence
+  assert.equal((await g.rules.disable(alice, rule.id, p("rules.disable", { id: rule.id }, rule.id))).status, "disabled");
+  assert.equal((await g.rules.test(alice, { action: "records.remove", resource: `vyre://${SPACE}/contact/c1` })).outcome, "none");
+  assert.equal((await g.rules.enable(alice, rule.id, p("rules.enable", { id: rule.id }, rule.id))).status, "active");
+  // a rule that binds members over who has access could lock an owner out: only an owner passes it, and the admin is refused BEFORE a proof is spent
+  const lock = { kind: "never", binds: ["members"], covers: { actions: ["grants.role"] }, label: "Nobody changes roles" };
   const before = checks;
-  for (const [what, f] of [
-    ["set", () => g.rules.set(alice, NEVER_REMOVE, p("rules.set", normal(NEVER_REMOVE), "new"))],
-    ["disable", () => g.rules.disable(alice, rule.id, p("rules.disable", { id: rule.id }, rule.id))],
-    ["enable", () => g.rules.enable(alice, rule.id, p("rules.enable", { id: rule.id }, rule.id))],
-    ["remove", () => g.rules.remove(alice, rule.id, p("rules.remove", { id: rule.id }, rule.id))],
-    ["accept", () => g.rules.accept(alice, "prop_x", p("rules.accept", { id: "prop_x" }, "prop_x"))],
-    ["dismiss", () => g.rules.dismiss(alice, "prop_x", p("rules.dismiss", { id: "prop_x" }, "prop_x"))],
-  ]) await assert.rejects(f, e => ["not_allowed", "not_found"].includes(e.code), `admin ${what}`);
-  assert.equal(checks, before, "no presence proof was checked, so none was spent");
-  assert.equal((await g.rules.list(owner)).rules[0].status, "active");
+  await assert.rejects(() => g.rules.set(alice, lock, p("rules.set", normal(lock), "new")), { code: "not_allowed" });
+  const prop = await g.rules.propose(man, lock);
+  await assert.rejects(() => g.rules.accept(alice, prop.id, p("rules.accept", { id: prop.id }, prop.id)), { code: "not_allowed" });
+  assert.equal(checks, before, "the admin's proofs were not spent on the refused lock-out");
+  const passed = await g.rules.accept(owner, prop.id, p("rules.accept", { id: prop.id }, prop.id));
+  assert.equal(passed.covers.actions[0], "grants.role", "an owner may pass it");
+  // an admin may accept a harmless proposal and remove a rule
+  const soft = await g.rules.propose(man, { kind: "never", binds: ["assistants"], covers: { actions: ["records.update"] }, label: "Assistants never edit" });
+  const accepted = await g.rules.accept(alice, soft.id, p("rules.accept", { id: soft.id }, soft.id));
+  assert.equal((await g.rules.remove(alice, accepted.id, p("rules.remove", { id: accepted.id }, accepted.id))).removed, accepted.id);
+  // a manager proposes only; a member and a manager are refused every change at the gate, no proof spent
+  const mark = checks;
+  for (const [who, name] of [[man, "manager"], [bob, "member"]]) {
+    for (const [what, f] of [
+      ["set", () => g.rules.set(who, NEVER_REMOVE, p("rules.set", normal(NEVER_REMOVE), "new"))],
+      ["disable", () => g.rules.disable(who, rule.id, p("rules.disable", { id: rule.id }, rule.id))],
+      ["enable", () => g.rules.enable(who, rule.id, p("rules.enable", { id: rule.id }, rule.id))],
+      ["remove", () => g.rules.remove(who, rule.id, p("rules.remove", { id: rule.id }, rule.id))],
+      ["accept", () => g.rules.accept(who, prop.id, p("rules.accept", { id: prop.id }, prop.id))],
+      ["dismiss", () => g.rules.dismiss(who, prop.id, p("rules.dismiss", { id: prop.id }, prop.id))],
+    ]) await assert.rejects(f, e => ["not_allowed", "not_found"].includes(e.code), `${name} ${what}`);
+  }
+  assert.equal(checks, mark, "no presence proof was checked for a role that cannot");
 });
 
 test("RT-1: every write on the rule store (set, remove, propose, accept, dismiss, enable, disable) leaves the live store and a rebuild from the log in agreement when its event cannot be written", async () => {
