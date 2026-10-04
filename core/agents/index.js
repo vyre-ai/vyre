@@ -397,6 +397,8 @@ export default {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
         if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
+        // An unnamed model session (mcp or harness, no agent behind it) is no one's agent and asks nobody: it has no grants of its own to ask under.
+        if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under"), { code: "denied" });
         // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
         // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
         if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {

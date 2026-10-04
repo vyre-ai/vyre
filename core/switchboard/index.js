@@ -3309,7 +3309,7 @@ export default {
       : run;
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
-    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
+    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
     const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
@@ -3339,6 +3339,9 @@ export default {
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
+        // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
+        // (meta.agent, from the daemon's own record of the session), and a first-party module acts for its own purpose.
+        if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
