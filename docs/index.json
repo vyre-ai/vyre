@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":340,"tool":1093,"event":445,"config":254,"env":224,"screen":20,"concept":43},
+  "counts": {"command":340,"tool":1093,"event":445,"config":254,"env":225,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2209,6 +2209,7 @@
     {"kind":"env","name":"VYRE_PROJECTS","definedIn":"core/switchboard/index.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"build/mcp-hub.md","line":40,"anchor":"inside-an-agents-thread"}]},
     {"kind":"env","name":"VYRE_PROJECTS_MOVE","definedIn":"core/projects/index.js","page":"reference/config.md#environment-variables","mentions":[{"page":"using/projects-and-threads.md","line":50,"anchor":"where-a-project-lives"}]},
     {"kind":"env","name":"VYRE_PROXY_PAC","definedIn":"core/computers/image/computerd/index.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"adr/0014-tailnet.md","line":166,"anchor":"5-an-exit-node-for-glass-per-site"}]},
+    {"kind":"env","name":"VYRE_PUBLISH_MAX_KB","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_REDUCED_MOTION","definedIn":"core/cli/delight.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_RELAY","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_RELEASE_KEY","definedIn":"box/vyre","page":null,"mentions":[]},
