@@ -128,6 +128,8 @@ export const SERVER_FAILED = {
   busy: "The server is in the middle of another pairing. Wait a minute, then try again.",
   cancelled: "The pairing was cancelled. Nothing was paired.",
   denied: "The server refused this pairing. Nothing was paired.",
+  noProof: "This phone did not prove which Vyre name it is, so the server refused. Nothing was paired. Try again.",
+  wrongProof: "The server could not match this phone's key to your Vyre name, so it refused. Nothing was paired.",
   cannotCheck: "The server could not check which Vyre name this is right now. Nothing was paired. Try again in a moment.",
   noSession: "Paired, but this phone has no sign-in with the server yet. Try again.",
   abandoned: "The last pairing was not finished, so nothing was paired. Scan or paste the server's code again.",
@@ -135,20 +137,28 @@ export const SERVER_FAILED = {
   serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
 };
 
+const KNOWN = new Set(Object.values(SERVER_FAILED));
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
-  // wink-2's codes (relay/client/serverpair.js) decide first; the box's words are the fallback for anything else. A denied pairing says why in the server's own message.
+  // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.
   const c = String(e?.code ?? "");
   const m0 = String(e?.message ?? "").trim();
   if (c === "bad_code") return SERVER_FAILED.badCode;
   if (c === "bad_owner") return SERVER_FAILED.badOwner;
   if (c === "taken") return SERVER_FAILED.used;
   if (c === "busy") return SERVER_FAILED.busy;
-  if (c === "denied") return m0 && /\s/.test(m0) ? m0 : SERVER_FAILED.denied;
+  if (c === "denied_no_proof") return SERVER_FAILED.noProof;
+  if (c === "denied_wrong_proof") return SERVER_FAILED.wrongProof;
+  if (c === "denied") return SERVER_FAILED.denied;
   if (c === "expired") return SERVER_FAILED.expired;
   if (c === "unreachable") return SERVER_FAILED.unreachable;
   if (c === "cancelled") return SERVER_FAILED.cancelled;
   if (c === "cannot_check") return SERVER_FAILED.cannotCheck;
+  // A server the person does not own yet is untrusted: its words are never shown. A code this app does not know is a refusal, in our own sentence.
+  if (c) return SERVER_FAILED.denied;
+  if (KNOWN.has(m0)) return m0;
+  // No code: only a short reason from the person's own box is matched, and only to our sentences; a long text from anywhere else is not read at all.
+  if (m0.length > 80) return SERVER_FAILED.ended;
   const t = `${e?.code ?? ""} ${e?.message ?? e ?? ""}`.toLowerCase();
   if (/not them|not the same person|not who|identity.*(mismatch|differ)/.test(t)) return SERVER_FAILED.notThem;
   if (/directory/.test(t)) return SERVER_FAILED.directory;
@@ -157,6 +167,5 @@ export function serverSay(e) {
   if (/expired|ran out|timeout|timed out/.test(t)) return SERVER_FAILED.expired;
   if (/offline|unreach|network|econn|no path|failed to fetch/.test(t)) return SERVER_FAILED.unreachable;
   if (/rejected/.test(t)) return SERVER_FAILED.rejected;
-  const m = String(e?.message ?? e ?? "").trim();
-  return m && /\s/.test(m) && m.length > 12 ? m : SERVER_FAILED.ended;
+  return SERVER_FAILED.ended;
 }
