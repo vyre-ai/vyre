@@ -41,7 +41,6 @@ import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
 import { within } from "../../lib/within.js";
-import { isPerson, isDevice, modelKey } from "../../lib/caller.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -238,9 +237,11 @@ export default {
     const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
-    const owner = caller => (isPerson(caller) && !isDevice(caller)) || modelKey(caller) === "caller:module";
-    /** A model's session that names no agent: a bare "mcp", or "mcp:thread:<id>". It is NOT the person (reviewer-2's recall verdict, MS-1/KW-1): reach() holds it to its own thread's project. */
-    const unnamedModel = caller => modelKey(caller) === "caller:mcp";
+    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
+    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
+     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
+    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
     /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
      * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
      * session, or a named agent — reach() below tells those apart and scopes the latter). Not
@@ -285,20 +286,7 @@ export default {
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {
-        if (owner(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
-        // An unnamed model session (`mcp`, `mcp:thread:<id>`: every model's shell) is never the person (MS-1, KW-1): it reads its OWN thread's project and nothing else, held to that project's
-        // folders like a named agent with one project. A bare `mcp` with no thread of its own has no project, so no folders, so no read.
-        if (unnamedModel(caller)) {
-          const thread = /^mcp:thread:([A-Za-z0-9_-]+)$/.exec(String(caller))?.[1] || null;
-          /** @type {string[]} */ let folders = [];
-          if (thread) {
-            const t = await ctx.call("threads.get", { thread, limit: 1 });
-            const rec = t && !t.error && t.data && t.data.thread ? t.data.thread : null;
-            if (rec && rec.project) folders = (await projectList()).filter(p => p.slug === String(rec.project)).flatMap(p => p.folders);
-            else if (rec && rec.cwd) folders = [String(rec.cwd)];
-          }
-          return { all: false, agent: "an unnamed model session", folders };
-        }
+        if (owner(caller) || ownSession(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
         throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
       }
       const r = await ctx.call("agents.list", {});

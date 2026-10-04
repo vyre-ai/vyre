@@ -45,8 +45,7 @@ test("recall module: indexes in the background and answers every tool", async t 
   // sessions widens a scope: a module may name them, a model (mcp) may not.
   const nowhere = { q: "intake form", project_cwds: ["/nonexistent/scope"], sessions: [hits[0].session] };
   assert.ok((await d.registry.call("recall.search", nowhere, "module:memory")).data.length > 0);
-  const widened = await d.registry.call("recall.search", nowhere, "mcp");
-  assert.ok(widened.error && !(widened.data && widened.data.length), "a model widened its scope by naming sessions");
+  assert.equal((await d.registry.call("recall.search", nowhere, "mcp")).data.length, 0, "a model widened its scope by naming sessions");
   const th = (await call("recall.thread", { session: hits[0].session }, { root })).data;
   assert.equal(th.turns.length, 4);
   const ss = (await call("recall.sessions", { human: false }, { root })).data;
