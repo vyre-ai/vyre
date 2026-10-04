@@ -54,45 +54,46 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
 | [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
 | [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
-| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 2 | none |
+| [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 18 | 6 | capsule, cli, deck |
+| [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 25 | 8 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 18 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 20 | 0 | cli |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 8 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 78 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 84 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
-| [`stream`](#stream) | `core/stream` | `box`, `local` | 6 | 0 | none |
+| [`stream`](#stream) | `core/stream` | `box`, `local` | 7 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 4 | 2 | cli |
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
-| [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
+| [`team`](#team) | `core/team` | `box`, `local` | 32 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 36 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 37 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 132 | 44 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 133 | 44 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 53 | 33 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box` | 57 | 34 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 15 | 0 | cli |
 
 ## about
@@ -521,7 +522,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [14](tools.md#onboard)
-- Emits: [2 events](events.md#onboard)
+- Emits: [3 events](events.md#onboard)
 - Shows on: no surface
 
 ## planner
@@ -536,13 +537,25 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## pluginagent
+
+Claude Code on this computer, as a named agent the person grants once: the plugin asks, the person approves with presence, vyred registers the agent and a key only this OS user can read, and every later plugin session on this computer carries that agent's kernel token. Never the person.
+
+- Folder: `core/pluginagent`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: `agents`
+- Tools: [9](tools.md#pluginagent), 2 of them only for other modules
+- Emits: [4 events](events.md#pluginagent)
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
+
 ## presence
 
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#presence), 4 of them only for other modules
-- Emits: [6 events](events.md#presence)
+- Tools: [25](tools.md#presence), 5 of them only for other modules
+- Emits: [8 events](events.md#presence)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -606,7 +619,7 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#records)
+- Tools: [20](tools.md#records)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `devStandIn`
@@ -620,7 +633,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [41](tools.md#relay), 14 of them only for other modules
-- Emits: [22 events](events.md#relay)
+- Emits: [23 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs daemon: `tunnelEnd`
 - Needs vault: `tailscale-mint-oauth`
@@ -681,7 +694,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [38](tools.md#sessions), 10 of them only for other modules
-- Emits: [8 events](events.md#sessions)
+- Emits: [9 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -740,7 +753,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [78](tools.md#spaces), 20 of them only for other modules
+- Tools: [84](tools.md#spaces), 25 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true}`
@@ -773,7 +786,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [6](tools.md#stream)
+- Tools: [7](tools.md#stream)
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
@@ -831,7 +844,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/team`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`, `projects`, `sessions`
-- Tools: [31](tools.md#team), 2 of them only for other modules
+- Tools: [32](tools.md#team), 2 of them only for other modules
 - Emits: [10 events](events.md#team)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -853,7 +866,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [57](tools.md#threads), 20 of them only for other modules
-- Emits: [36 events](events.md#threads)
+- Emits: [37 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
@@ -898,7 +911,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [132](tools.md#vault), 15 of them only for other modules
+- Tools: [133](tools.md#vault), 15 of them only for other modules
 - Emits: [44 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -960,8 +973,8 @@ Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes)
 - Folder: `core/wink`, version 0.1.0
 - Runs on: `box`
 - Requires: `relay`
-- Tools: [53](tools.md#wink), 5 of them only for other modules
-- Emits: [33 events](events.md#wink)
+- Tools: [57](tools.md#wink), 8 of them only for other modules
+- Emits: [34 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck
 - Needs daemon: `dataStores`

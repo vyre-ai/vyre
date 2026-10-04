@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -751,4 +752,17 @@ test("learn: the snapshot carries each project lesson's slug and folders", async
   const s = JSON.parse(fs.readFileSync(path.join(home, "lessons.json"), "utf8"));
   assert.equal(s.version, 2);
   assert.deepEqual([s.lessons[0].project, s.lessons[0].folders], ["harlow-site", ["/w/harlow-site"]]);
+});
+
+test("learn.add: a model's call (a session's /vyre lesson) is a PROPOSED lesson, never an active one; the person's own surface makes it active", async t => {
+  const { reg } = await learning(t);
+  const model = await reg.call("learn.add", { text: "never use em dashes in anything you write" }, "mcp");
+  assert.ok(!model.error, JSON.stringify(model.error));
+  assert.equal(model.data.status, "proposed", "a session cannot make a lesson that steers every later session");
+  assert.equal(model.data.source.proposedBy, "session");
+  const mine = await reg.call("learn.add", { text: "never use emoji in commit messages" }, "cli");
+  assert.equal(mine.data.status, "active");
+  // It is accepted only by the person (learn.accept is theirs), never by the model that proposed it.
+  const tried = await reg.call("learn.accept", { id: model.data.id }, "mcp");
+  assert.ok(tried.error, "a model cannot accept its own proposal");
 });

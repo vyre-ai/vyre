@@ -10,6 +10,7 @@
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
+import { agentName, modelKey } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
 
 const MIGRATIONS = [
@@ -109,7 +110,6 @@ export default {
     };
 
     ctx.tool("harness.brief", {
-      callers: HOOK_CALLERS,
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
       callers: HOOK_CALLERS,
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
@@ -180,7 +180,6 @@ export default {
     };
 
     ctx.tool("harness.enrich", {
-      callers: HOOK_CALLERS,
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
       callers: HOOK_CALLERS,
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
@@ -197,12 +196,12 @@ export default {
         // behind it, which is all a 0.2 daemon knows. (2) is what a model sharing a person's terminal cannot forge. Otherwise the answer needs learn.accept (the person's own).
         let terminal = false;
         if (interactive === true && !agent && session && !(typeof meta.thread === "string" && meta.thread)) {
-          let person = false;
+          let typedBy = false;
           if (ctx.kernel && typeof ctx.kernel.chain === "function") {
             const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
-            person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
-          } else person = String(caller || "") === "harness"; // SHIM(legacy labels): the kernel-off build
-          if (person) {
+            typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
+          } else typedBy = !agentName(caller) && modelKey(caller) === "caller:harness"; // SHIM(legacy labels): the kernel-off build
+          if (typedBy) {
             const claimed = await ask("threads.claimed", { session: String(session) });
             if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), prompt);
           }
@@ -248,7 +247,6 @@ export default {
       key ? { action: "release", owner: `session:${session}`, key: String(key) } : { action: "release-owner", owner: `session:${session}`, kind: "subagent" }).catch(() => null);
 
     ctx.tool("harness.rules", {
-      callers: HOOK_CALLERS,
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
       callers: HOOK_CALLERS,
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
@@ -288,11 +286,10 @@ export default {
 
     const touch = db.prepare("INSERT INTO harness_files (session, path, tool, at) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET at = excluded.at");
     ctx.tool("harness.learn", {
-      callers: HOOK_CALLERS,
       description: "PostToolUse and PostToolUseFailure: record which files a tool changed, so every change is visible (security floor rule 5), and tell Learning what became of the call (ok false: it failed).",
       callers: HOOK_CALLERS,
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
-        tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
+        tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" }, prompt_id: { type: "string" }, agent: { type: "string" } } },
       run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }, meta) => {
         await own(meta, session);
         if (SUBAGENT.test(String(tool_name)) && session && tool_use_id) await releaseSlots(session, tool_use_id);
@@ -316,7 +313,6 @@ export default {
     });
 
     ctx.tool("harness.touched", {
-      callers: HOOK_CALLERS,
       description: "Files changed in a thread, newest first.",
       callers: HOOK_CALLERS,
       input: { type: "object", required: ["session"], properties: { session: { type: "string" }, limit: { type: "integer" } } },
@@ -324,7 +320,6 @@ export default {
     });
 
     ctx.tool("harness.stop", {
-      callers: HOOK_CALLERS,
       description: "Stop: the lessons' output checks, then words queued for this session from another surface, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
       callers: HOOK_CALLERS,
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },

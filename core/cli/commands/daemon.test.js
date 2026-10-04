@@ -1,6 +1,7 @@
 // @ts-check
 // The memory line of `vyre status`: what memory knows about the user and how much of today's plan share reading used.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
@@ -37,7 +38,7 @@ test("vyre down, status, modules, tools and call: no sub-verbs, so vyre commands
   const of = n => d.commands.find(c => c.name === n);
   for (const n of ["down", "status", "modules", "tools", "call"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
   assert.deepEqual(of("call").args, [{ name: "tool", required: true }, { name: "json", required: false }]);
-  assert.deepEqual(of("call").flags, [{ name: "tty" }]);
+  assert.deepEqual(of("call").flags, [{ name: "tty" }, { name: "space", value: "name" }]);
   assert.deepEqual(of("down").flags, [{ name: "json" }]);
 });
 
@@ -53,4 +54,16 @@ test("vyre down and status --view: a card when nothing runs, an error frame with
   const s = frames(st.stdout);
   assert.deepEqual([s[0].view.kind, s[0].view.code], ["error", "unreachable"]);
   assert.deepEqual(s.at(-1), { v: 1, done: true, exit: 5 });
+});
+
+test("vyre space: a remembered space is read back, shown by bare `vyre space`, and cleared", async t => {
+  const root = tempHome(t);
+  const { readSpace, writeSpace } = await import("../space-pref.js");
+  assert.equal(readSpace(root), null);
+  writeSpace("harlow", root);
+  assert.equal(readSpace(root), "harlow");
+  assert.equal(JSON.parse((await run(root, ["space", "--json"])).stdout).space, "harlow");
+  assert.equal((await run(root, ["space", "use", "--clear"])).code, 0);
+  assert.equal(readSpace(root), null);
+  assert.equal(JSON.parse((await run(root, ["space", "--json"])).stdout).space, null);
 });

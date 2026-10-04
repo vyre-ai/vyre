@@ -28,6 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
+import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -436,6 +437,8 @@ export class Switchboard {
     this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
+    /** how each live session is confined (`uid`, `bwrap`, `seatbelt`), shown on its record @type {Map<string, string>} */
+    this.confinedBy = new Map();
     /** @type {Map<string, () => Promise<void>>} the session's egress proxy stopper, run when its socket closes */
     this.releases = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
@@ -471,6 +474,9 @@ export class Switchboard {
 
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
+    // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
+    // (it may be a mounted volume).
+    try { const tmp = path.join(sessionsRoot(String(this.deps.root || "")), "tmp"); for (const n of fs.readdirSync(tmp)) fs.rmSync(path.join(tmp, n), { recursive: true, force: true }); } catch { /* none yet */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
       // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
@@ -544,7 +550,7 @@ export class Switchboard {
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
-      holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
+      holder: holder ? holder.surface : null, asks: this.asks.open(id).length, confined_by: this.confinedBy.get(id) || null, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
 
   /** A thread's ancestors, nearest first, up to the thread nobody started it from (the person's own). @param {string} id */
@@ -705,15 +711,50 @@ export class Switchboard {
    * @param {{ chips?: { kind: string, id: string }[], pasted?: string[] }|null} [person] set only by threads.start for a person's own
    *   turn (never read from `o`): the first prompt is then heard as any person's turn is (said row, # tags).
    */
+  /**
+   * Start or resume a thread. Bounded: a start that has not got the agent running within `startTimeoutMs` FAILS the thread, naming the step it was on (the last "threads: <id> start step" line in
+   * the log says the same), stops what it began and answers the caller; it never leaves a thread in "starting" silently.
+   */
   async launch(o, person = null) {
+    const box = { id: /** @type {string | null} */ (null), step: "begin", cancelled: false };
+    const limit = Number(this.deps.startTimeoutMs) || 90_000;
+    /** @type {NodeJS.Timeout | undefined} */ let timer;
+    const stuck = new Promise((_, reject) => { timer = setTimeout(() => reject(Object.assign(new Error(`the session did not start within ${Math.round(limit / 1000)} s: it was stuck at "${box.step}"`), { code: "start_timeout" })), limit); timer.unref?.(); });
+    try { return await Promise.race([this.launchInner(o, person, box), stuck]); }
+    catch (e) {
+      box.cancelled = true; // the steps still running stop at their next step instead of spawning an agent for a thread that has already failed
+      // Any throw after the thread's row exists ends it, not only the start limit: a thread never stays "starting" for a start that has already answered its caller with an error. A row the start
+      // itself removed (no_account) or a thread that was already stopped (a refused resume) is left as it is.
+      if (box.id && this.record(box.id) && (this.live.has(box.id) || /** @type {any} */ (this.record(box.id)).status === "starting")) {
+        const id = box.id, timedOut = Boolean(e && /** @type {any} */ (e).code === "start_timeout");
+        const why = timedOut ? `stuck at "${box.step}"` : `${cut(String(e && /** @type {any} */ (e).message || e), 200)} (at "${box.step}")`;
+        this.deps.log(timedOut ? `threads: ${id.slice(0, 8)} start failed at step "${box.step}" after ${Math.round(limit / 1000)} s` : `threads: ${id.slice(0, 8)} start failed at step "${box.step}": ${cut(String(e && /** @type {any} */ (e).message || e), 300)}`);
+        try { const st = this.live.get(id); if (st) { st.haltReason = `exited without starting: ${why}`; st.stopping = true; await st.proc.stop().catch(() => {}); } } catch { /* nothing live */ }
+        this.closeSocket(id);
+        if (!this.live.has(id)) { this.set(id, { status: "stopped", pid: null, stopped_reason: `exited without starting: ${why}` }); this.states.set(id, "stopped"); this.emit("thread.stopped", { code: null, reason: `exited without starting: ${why}` }, id, null); }
+      }
+      throw e;
+    } finally { clearTimeout(timer); }
+  }
+
+  /** @param {any} o @param {any} person @param {{ id: string | null, step: string, cancelled: boolean }} box */
+  async launchInner(o, person, box) {
     let id, rec;
+    const at = (/** @type {string} */ step) => { if (box.cancelled) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); box.step = step; if (box.id) this.deps.log(`threads: ${box.id.slice(0, 8)} start step ${step}`); };
     if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
-      id = rec.id;
+      id = rec.id; box.id = id;
       if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
+      // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
+      // exactly the last sealed turn before `claude --resume` reads it. Only a crashed thread, and only while no process of it runs (checked above); no runner, an unsealed session or any refusal changes nothing.
+      const stopReason = /** @type {any} */ (this.db.prepare("SELECT stopped_reason FROM threads_runs WHERE id = ?").get(id))?.stopped_reason;
+      // Unclean ends: the process was killed (failed), or the daemon itself died under it (recover() at the next start marks such a thread stopped with reason "restart").
+      if ((rec.canonical_status === "failed" || rec.status === "failed" || this.states.get(id) === "failed" || stopReason === "restart") && (rec.provider || "claude") === "claude") {
+        try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: id })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
+      }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
@@ -723,7 +764,8 @@ export class Switchboard {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
       }
-      id = crypto.randomUUID();
+      id = crypto.randomUUID(); box.id = id;
+      at("where (the project's folder)");
       const w = await this.where(o, id);
       const now = Date.now();
       const provider = String(o.provider || "claude");
@@ -740,6 +782,7 @@ export class Switchboard {
       // Which of the person's accounts on this provider (an explicit one, the teammate's, the
       // project's, the provider's default), scope-checked however it was chosen. Null: this
       // machine's own single login, as before accounts existed.
+      at("account");
       const acct = await this.accountFor({ provider, account: o.account, project: w.project, agent: o.agent });
       o = { ...o, provider, purpose, account: acct ? acct.id : undefined };
       this.db.prepare(`INSERT INTO threads_runs (id, name, cwd, project, agent, agent_kind, status, model, auth, started_at, last_at)
@@ -795,17 +838,28 @@ export class Switchboard {
     if (!o.agent && !acct && (rec.provider || o.provider || "claude") === "claude" && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
       const a = await this.deps.auth({ agent: null }).catch(e => { this.deps.log(`threads: ${e.message}; using this machine's own Claude login`); return null; });
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
+      // On a server whose sessions run in the sandbox, `ambient` (this machine's own Claude login) is no login at all: the sandbox gives the session a clean HOME and only the provider on the network, so
+      // with no connected AI account the session could never speak and would sit in "starting". Refuse at once with a plain reason the app can show (the AI accounts card says the same).
+      else if (this.deps.requireAccount) {
+        if (!o.resume) this.db.prepare("DELETE FROM threads_runs WHERE id = ?").run(id);
+        throw Object.assign(new Error("Connect an AI account to start a session."), { code: "no_account" });
+      }
     }
+    at("system prompt");
     o = { ...o, system: await this.systemPrompt(rec, o) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
+    at("session socket and kernel session");
     await this.openSocket(id, rec, o.kernelTurn || null);
     this.db.prepare("INSERT OR IGNORE INTO threads_providers (thread, provider, at) VALUES (?,?,?)").run(id, rec.provider || o.provider || "claude", Date.now());
     // A rebind (switchProvider) gives a provider that never ran this thread a fresh native session
     // under the same thread: there is nothing of its own to resume.
+    at("git identity");
     o = { ...o, gitEnv: await this.gitEnv(rec.project, id) };
     // The runner's home sandbox (lib/agent-sandbox.js): the self-test runs before EACH session, and a failure means the session does not start, with one plain reason.
+    at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o) };
+    at("spawn");
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
@@ -818,11 +872,19 @@ export class Switchboard {
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume && !this.restoreSteers(id)) this.resumeQueued(id);
     if (o.prompt) {
+      // The agent is running; the steps below can still be abandoned by the start limit (a slow memory or tag lookup), and an abandoned start must send nothing: its thread was stopped, and a send would resume it.
+      // VYRE_TEST_START_PAUSE_MS (tests only) slows each of these steps so a probe can make the limit fire inside them.
+      const pause = Number(process.env.VYRE_TEST_START_PAUSE_MS) || 0;
+      const slow = pause ? () => new Promise(r => setTimeout(r, pause)) : async () => {};
+      at("first prompt");
       // A person's own first words are heard like any turn of theirs: before any provider sees them.
       const said = crypto.randomUUID();
+      await slow();
       const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
       const note = heard.length ? tagNote(heard) : "";
-      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) });
+      await slow();
+      at("first prompt send");
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), cancelled: () => box.cancelled });
       else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
@@ -971,8 +1033,11 @@ export class Switchboard {
     if (!sock) throw Object.assign(new Error("Vyre did not start this session because it has no socket of its own to reach Vyre through."), { code: "sandbox_failed" });
     const provider = rec.provider || o.provider || "claude";
     const pickEnv = (/** @type {string[]} */ names) => Object.fromEntries(names.filter(n => o.env && o.env[n]).map(n => [n, o.env[n]]));
-    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: cfg.binFor ? cfg.binFor(provider) : this.bin, sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
+    const r = await prepareSandbox({ ...cfg, temp: this.sessionTemp(id), credentials: cfg.credentials ? async (/** @type {string} */ p) => { const v = await cfg.credentials(p); return typeof v === "string" ? v : v || pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"]); } : (() => pickEnv(["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"])) }, { provider, command: absoluteBin(cfg.binFor ? cfg.binFor(provider) : this.bin), sessionSocket: sock.path, workdirs: [rec.cwd], ...(o.accountRun && o.accountRun.uid != null ? { account: { uid: o.accountRun.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } } : {}), ...(o.gitEnv ? { trustedEnv: o.gitEnv } : {}) });
     if (r.sandboxed) {
+      // How this session is confined, said on its record and its log: `uid` in the packaged box (its own uid, the container and the wall, proved before the start), `bwrap` or the seatbelt elsewhere.
+      this.confinedBy.set(id, r.confinedBy || (process.platform === "darwin" ? "seatbelt" : "bwrap"));
+      this.emit("thread.sandbox", { sandboxed: true, confined_by: this.confinedBy.get(id) }, id, rec.project);
       if (r.release) { const old = this.releases.get(id); this.releases.set(id, r.release); if (old) old().catch(() => {}); }
       // Partly sandboxed (a provider that cannot move its settings folder keeps its own): said on this session's log, and once per machine and provider in words.
       if (r.partial) {
@@ -1004,8 +1069,26 @@ export class Switchboard {
    * nothing another will load and another user cannot pre-create it. A leftover or a link at the path is removed first. Removed when the session's socket closes.
    * @param {string} id
    */
+  /**
+   * Whether a model agent's session may start where it asks: the folder (or the named project's home) must resolve, through symlinks and `..`, inside a mapped project's home or workspace folder.
+   * @param {unknown} project @param {unknown} cwd @param {unknown} [granted] the agent's stored grant: "*" or a list of project slugs @returns {Promise<{ ok: boolean, why: string }>}
+   */
+  async projectFolders(project, cwd, granted) {
+    const r = /** @type {any} */ (await this.deps.call("projects.list", {}).catch(() => null));
+    const all = r && r.data && Array.isArray(r.data.projects) ? r.data.projects : (r && Array.isArray(r.data) ? r.data : []);
+    // only the projects THIS agent is granted ("*" is every mapped project; no grant is none)
+    const rows = granted === "*" ? all : Array.isArray(granted) ? all.filter((/** @type {any} */ p) => granted.includes(p.slug)) : [];
+    const roots = [];
+    for (const p of rows) for (const f of [p.home, ...(Array.isArray(p.workspaces) ? p.workspaces.map((/** @type {any} */ w) => (w && w.path) || w) : [])]) { try { if (typeof f === "string" && f) roots.push(fs.realpathSync(f)); } catch { /* gone */ } }
+    const want = typeof cwd === "string" && cwd ? cwd : (() => { const p = rows.find((/** @type {any} */ x) => x.slug === project || x.name === project); return p ? p.home : ""; })();
+    if (!want) return { ok: false, why: "name a project or a folder inside one: an agent's session does not start anywhere else" };
+    let real; try { real = fs.realpathSync(String(want)); } catch { return { ok: false, why: "that folder does not exist" }; }
+    const inside = roots.some(root => real === root || real.startsWith(root.endsWith(path.sep) ? root : root + path.sep));
+    return inside ? { ok: true, why: "" } : { ok: false, why: "an agent's session starts only inside a project folder it can see" };
+  }
+
   sessionTemp(id) {
-    const dir = path.join(String(this.deps.root || ""), "run", "session-tmp", String(id).replace(/[^\w-]/g, ""));
+    const dir = sessionTempDir(String(this.deps.root || ""), id);
     try { const st = fs.lstatSync(dir); if (st.isSymbolicLink() || !st.isDirectory()) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* not there */ }
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     fs.chmodSync(dir, 0o700);
@@ -1017,7 +1100,7 @@ export class Switchboard {
     const sock = this.socks.get(id);
     if (!sock) { void this.endKernelSession(id); return; }
     this.socks.delete(id);
-    const dir = path.join(String(this.deps.root || ""), "run", "session-tmp", String(id).replace(/[^\w-]/g, ""));
+    const dir = sessionTempDir(String(this.deps.root || ""), id);
     sock.close().catch(() => {}).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* already gone */ } });
   }
 
@@ -1126,6 +1209,9 @@ export class Switchboard {
     // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
     const sock = this.socks.get(id);
     if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
+    // With its own socket the session reaches vyred ONLY through it: a session that inherited the daemon's VYRE_HOME (an unsandboxed development run) would find vyred's main socket from it and call as
+    // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
+    if (sock) delete env.VYRE_HOME;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
@@ -1174,7 +1260,7 @@ export class Switchboard {
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
     const how = { ...foreignOpts, ...(o.sandboxSpawn ? { sandboxSpawn: o.sandboxSpawn } : {}), subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}), ...(account ? { account } : {}),
       onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
-    const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
+    const on = { ...how, onMessage: m => { state.heard = true; if (state.startWatch) { clearTimeout(state.startWatch); state.startWatch = null; } this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const other = o.provider && o.provider !== "claude" && this.deps.providers ? this.deps.providers.get(o.provider) : null;
@@ -1183,6 +1269,15 @@ export class Switchboard {
     state.proc = provider.run({ ...lo, cwd: rec.cwd, env, ...on });
     this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null, driver });
     this.touch(id, state);
+    // A session never sits in "starting" for ever: if the agent says nothing within the limit (not signed in, not installed, no route to its provider) the thread FAILS with what was seen, its processes
+    // are stopped, and a surface that waited on it is told.
+    const limit = Number(this.deps.startTimeoutMs) || 90_000;
+    state.startWatch = setTimeout(() => {
+      state.startWatch = null;
+      if (this.live.get(id) !== state || state.heard) return;
+      void this.close(id, state, `exited without starting: the agent said nothing in ${Math.round(limit / 1000)} s (not signed in, not installed, or no route to its provider)`).catch(() => {});
+    }, limit);
+    state.startWatch.unref?.();
   }
 
   onMessage(id, st, m) {
@@ -1534,6 +1629,7 @@ export class Switchboard {
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
     this.closeSocket(id);
+    if (st.startWatch) { clearTimeout(st.startWatch); st.startWatch = null; }
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
@@ -1790,7 +1886,10 @@ export class Switchboard {
     return run;
   }
 
-  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
+  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
+    // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
+    const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); };
+    given();
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -1825,6 +1924,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
+    given();
     if (!this.live.has(id)) {
       // An agent's thread comes back with the agent's own credentials and scope, which only the
       // agents module can give it; any other thread resumes as it was.
@@ -1833,6 +1933,7 @@ export class Switchboard {
         if (r.error) return { sent: false, note: `could not resume ${rec.agent}'s thread: ${r.error.message}` };
       } else await this.launch({ resume: id, ...(kernelTurn ? { kernelTurn } : {}) }); // a dormant thread comes back with THIS turn's chat and asker, never the thread's default session
     }
+    given();
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
@@ -3069,6 +3170,14 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
 }
 
+/** The sandbox runs an absolute program path: a bare `claude` is looked up on PATH the way a shell would, and left as it is when it is not found (the check then says so). @param {string} cmd */
+function absoluteBin(cmd) {
+  const c = String(cmd || "");
+  if (!c || path.isAbsolute(c) || c.includes("/")) return c;
+  for (const dir of String(process.env.PATH || "").split(path.delimiter)) { if (!dir) continue; const f = path.join(dir, c); try { fs.accessSync(f, fs.constants.X_OK); return f; } catch { /* not here */ } }
+  return c;
+}
+
 export const fromLink = caller => /^link:/.test(String(caller || ""));
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -3172,6 +3281,8 @@ export default {
       transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
+      startTimeoutMs: cfg.start_timeout_s ? cfg.start_timeout_s * 1000 : undefined,
+      requireAccount: Boolean(ctx.config && ctx.config.role === "box" && ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable && !process.env.VYRE_CLAUDE_BIN),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers, accountEnv, accountHome,
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
@@ -3180,7 +3291,9 @@ export default {
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       threadSocket: cfg.thread_socket === "off" ? null
-        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
+        // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
+        // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".
+        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner() || Boolean(ctx.kernelSession) || Boolean(ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable)
           ? openThreadSocket({ handler: ctx.handler, log: ctx.log, ...o,
             dir: usesSpawner() ? THREAD_SOCKETS : path.join(privateSocketDir(), `t-${crypto.createHash("sha256").update(String(root)).digest("hex").slice(0, 12)}`) })
           : null,
@@ -3239,9 +3352,10 @@ export default {
     const calls = new AsyncLocalStorage();
     const guard = (caller, what) => {
       if (fromLink(caller)) return;
-      const agent = agentOf(caller);
-      if (!agent) return;
+      // Decided on what vyred verified (meta.agent, meta.agentKind), never on the label: on an agent's own thread socket the label is the client's to choose.
       const v = /** @type {any} */ (calls.getStore());
+      const agent = (v && v.agent) || agentOf(caller);
+      if (!agent) return;
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
@@ -3261,8 +3375,11 @@ export default {
     const sessionMay = async (meta, target, mutating, tool = "") => {
       const m = meta || {};
       const caller = String(m.caller || "");
-      if (!/^(?:mcp|harness)(?::|$)/.test(caller) || fromLink(caller)) return true;
-      if (m.agent) return true; // an agent: guard() and mayReach decide; the assistant passes through its verified meta.agent
+      // A model call is known by what vyred verified (an agent, a thread), or by the label of a plain session; a label alone is only a claim, so it never LOWERS the checks below.
+      const modelish = Boolean(m.agent) || (typeof m.thread === "string" && m.thread !== "") || /^(?:mcp|harness)(?::|$)/.test(caller);
+      if (!modelish || fromLink(caller)) return true;
+      if (m.agent && m.agentKind === "assistant") return true; // the assistant, from its verified meta.agent: guard() and mayReach decide
+      // any other named agent is held like a session: its own thread and the threads it started (below)
       if (typeof m.thread !== "string" || !m.thread) {
         // The person's own Claude Code through Vyre's MCP, no verified thread: like a session, and known by the kernel (meta.peerSession is the claude
         // process and its start time, meta.peerCwd its folder, both read by vyred from the socket peer). It starts threads and stops, archives or
@@ -3297,7 +3414,10 @@ export default {
         return run(i, meta, ...rest);
       }
       : run;
-    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
+    // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
+    // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
+    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
+    const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
@@ -3308,13 +3428,16 @@ export default {
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
+        agent: { type: "string", description: "A person's own surface only: start the session as this agent (its credentials and project grants). A model's call naming one is bad_input." },
+        agent_kind: { type: "string", description: "A person's own surface only: the kind of the agent named in `agent`. A model's call naming one is bad_input." },
+        account: { type: "string", description: "A person's own surface only: the AI account the session runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
         chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent, peerSession }) => {
+      async (i, { caller, thread, firstParty, agent, peerSession, granted }) => {
         guard(caller, "start sessions");
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -3326,6 +3449,19 @@ export default {
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
+        // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
+        // (the agent the daemon bound, from its own record of the session), and a first-party module acts for its own purpose.
+        if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
+        // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
+        // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.
+        // A model does not pick a session's PURPOSE beyond the ordinary three: capsule, job, teammate, memory, planner, learn and helper pick other models, plugins and permission profiles.
+        if (modelCall && !firstParty && i.purpose !== undefined && !["chat", "agent", "project"].includes(String(i.purpose))) throw Object.assign(new Error("a model session starts a chat, agent or project session only"), { code: "denied" });
+        if (modelCall && !firstParty && agent) {
+          const folders = await sb.projectFolders(i.project, i.cwd, granted);
+          if (!folders.ok) throw Object.assign(new Error(folders.why), { code: "denied" });
+        }
+        // The person (and a first-party module) may name an agent and an account; a model may not, whatever it says: bad_input, never quietly dropped.
+        if (modelCall && !firstParty) { const named = ["agent", "agent_kind", "account"].filter(k => restAll[k] !== undefined); if (named.length) throw Object.assign(new Error(`threads.start does not take ${named.join(", ")} from a model session`), { code: "bad_input" }); }
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
@@ -3456,7 +3592,7 @@ export default {
         model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
         effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller, idempotencyKey, firstParty, peer }) => {
+      async (i, meta = {}) => { const { caller, idempotencyKey, firstParty, peer } = meta;
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
@@ -3533,11 +3669,12 @@ export default {
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
+      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); },
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
-      async (i, { caller, peer }) => {
+      async (i, meta = {}) => { const { caller, peer } = meta;
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
         const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
@@ -3901,7 +4038,14 @@ export default {
       run: async i => {
         const rec = sb.record(String(i.session));
         if (!rec || (rec.provider || "claude") !== "claude") return null;
-        const t = findSession(sb.deps.transcripts || [], String(i.session));
+        let t = findSession(sb.deps.transcripts || [], String(i.session));
+        // In the packaged box a session runs as an account's own uid and writes its transcript in THAT account's HOME (<accounts home>/<uid>/.claude/projects): vyred reads it through the
+        // account's group. The accounts folder is entered, never listed, so each uid in the account range is looked at by name.
+        if (!t && process.env.VYRE_SUPERVISOR === "docker") {
+          const base = process.env.VYRE_ACCOUNTS_HOME || "/home/acct", lo = Number(process.env.VYRE_ACCOUNT_UID_MIN) || 2000, hi = Number(process.env.VYRE_ACCOUNT_UID_MAX) || 2063;
+          const folders = []; for (let u = lo; u <= hi; u++) { const f = path.join(base, String(u), ".claude", "projects"); try { if (fs.statSync(f).isDirectory()) folders.push(f); } catch { /* none for this uid */ } }
+          t = findSession(folders, String(i.session));
+        }
         if (!t) return null;
         return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },

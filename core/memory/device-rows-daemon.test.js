@@ -2,6 +2,7 @@
 // owner device signed in reads personal memory; an unsigned one gets the sign-in hint; a web device, a setup device, a removed device and an id never paired get the plain refusal with
 // no hint. The person session id is a stand-in (SHIM(person session): vault's pairing-opened session is on work/paired-session); the chain only needs the daemon to carry it as a fact.
 // Run it on a test box, never on a person's Mac.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";
@@ -21,7 +22,7 @@ test("device rows on a real daemon: callerFacts from the home's relay row decide
   const read = async (id, signedIn, tool = "memory.graph") => {
     const label = `device:${id}`, via = signedIn ? { person: { id: "ps1" } } : {};
     const info = await d.registry.call("relay.device.info", { id }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data || null);
+    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data ? { ...info.data, person: d.kernel.id.owner } : null);
     return d.registry.call(tool, {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   const ok = r => !r.error;

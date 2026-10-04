@@ -2,6 +2,7 @@
 // The module through the real Registry, over fakes: the manifest, the four tools, apps.list's
 // tiers, the targets cache, the act/send split, and apps.send's presence and its preview.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

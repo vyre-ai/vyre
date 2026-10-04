@@ -17,6 +17,8 @@
 // CDP endpoint's helper token or a page's full text: `summary` is a short, human sentence.
 
 import { agentClaim } from "../../core/modules/index.js";
+import { isPerson } from "../../lib/caller.js";
+import { requirePublicUrl } from "./nav.js";
 import { CdpPool } from "./cdp.js";
 import { EXPRESSION, toSnapshot } from "./snapshot.js";
 import * as act from "./act.js";
@@ -165,6 +167,9 @@ export default {
         await mayAct(agent, "chrome.open");
         const url = String(i.url);
         if (!/^https?:\/\//.test(url)) throw new Error(`"${url}" is not an http(s) URL`);
+        // A model's Chrome reaches the public web only (lib/netguard.js, the runner egress rule); the person's own call is not held to it.
+        const guarded = !isPerson(meta.caller);
+        if (guarded) await requirePublicUrl(url);
         const { cdp, sessionId } = await session(agent);
         try {
           const loaded = cdp.waitFor(m => m.method === "Page.loadEventFired" && m.sessionId === sessionId);
@@ -175,6 +180,8 @@ export default {
           throw e;
         }
         const snap = await perceive(cdp, sessionId);
+        // A redirect or a script may have taken the page somewhere inside: check where it landed, and leave it on a blank page.
+        if (guarded && /^https?:/.test(String(snap.url || ""))) { try { await requirePublicUrl(String(snap.url)); } catch (e) { await cdp.send("Page.navigate", { url: "about:blank" }, sessionId).catch(() => null); act_(meta, agent, "open", false, "landed on a non-public address", { summary: bareUrl(url) }); throw e; } }
         act_(meta, agent, "open", true, undefined, { summary: bareUrl(url) });
         return { ok: true, title: snap.title, url: snap.url };
       });

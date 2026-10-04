@@ -3,6 +3,7 @@
 // log, with a hand-driven timer, so every ring is checked at the exact instant it is due. Callers
 // are checked as the registry does (callerAllowed) and then inside each tool.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -515,6 +516,18 @@ test("planner: a Vyre-owned session's thread is the assistant, whichever thread 
   await assert.rejects(run("planner.update", { item: a.id, title: "x" }, "mcp:agent:kit"), /only the items it added/);
 });
 
+test("planner: the vouched meta names the session and the agent, not the label's text (RC-1)", async t => {
+  const w = await world(t);
+  const run = (name, input, meta) => w.tools.get(name).run(input, meta);
+  const a = await run("planner.add", { kind: "reminder", title: "Call kit", at: T0 + HOUR }, { caller: "mcp", thread: "t_one" });
+  assert.equal(a.source, "mcp", "a vouched thread on a bare mcp label is a session");
+  const b = await run("planner.update", { item: a.id, title: "Call kit back" }, { caller: "mcp:thread:fake", thread: "t_two" });
+  assert.equal(b.title, "Call kit back", "any vouched session of the person's own may change it");
+  const c = await run("planner.add", { kind: "reminder", title: "Kit's own", at: T0 + HOUR }, { caller: "mcp", agent: "kit" });
+  assert.equal(c.source, "agent:kit", "the vouched agent names itself");
+  await assert.rejects(run("planner.update", { item: a.id, title: "x" }, { caller: "mcp", agent: "kit" }), /only the items it added/);
+});
+
 test("planner: a task fires by posting into its own thread, or launching a fresh one under its creator's own agent", async t => {
   const w = await world(t);
   // A task's firing rings and escalates exactly like an alarm's (nothing here acks it) - not this
@@ -526,7 +539,7 @@ test("planner: a task fires by posting into its own thread, or launching a fresh
   // With a thread: an existing conversation gets a turn, never a new one. kit is calling FROM s1
   // itself (meta.thread) - taskScope requires a task's own thread match the creator's own calling
   // thread, so this is kit's own scope, not a confused deputy posting into someone else's.
-  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit, { thread: "s1" });
+  const withThread = await w.ok("planner.add", { kind: "task", title: "Chase the Northwind invoice", thread: "s1", at: T0 + HOUR }, kit, { thread: "s1", agent: "kit" });
   w.advanceTo(T0 + HOUR);
   await new Promise(r => setImmediate(r)); // runTask() is async; the scheduler fires it, does not await it
   assert.equal(w.taskRuns.length, 1);
@@ -581,13 +594,13 @@ test("planner: reviewer HIGH 2 - a task may only target the creator's OWN callin
   const kit = "mcp:agent:kit";
   // kit is calling from s1, but names s2 (someone else's thread, or one it has no business in):
   // the confused-deputy escape - module:planner would have posted there as itself, unquestioned.
-  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s2" }, kit, { thread: "s1" })).error.code, "denied");
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x", thread: "s2" }, kit, { thread: "s1", agent: "kit" })).error.code, "denied");
   // Its own calling thread is fine.
-  const ok = await w.ok("planner.add", { kind: "task", title: "x", thread: "s1" }, kit, { thread: "s1" });
+  const ok = await w.ok("planner.add", { kind: "task", title: "x", thread: "s1" }, kit, { thread: "s1", agent: "kit" });
   assert.equal(ok.thread, "s1");
   // Neither a thread nor a project at all: no scope to check against, refused rather than
   // defaulting to an ambient launch.
-  assert.equal((await w.call("planner.add", { kind: "task", title: "x" }, kit, { thread: "s1" })).error.code, "denied");
+  assert.equal((await w.call("planner.add", { kind: "task", title: "x" }, kit, { thread: "s1", agent: "kit" })).error.code, "denied");
 });
 
 test("planner: reviewer MEDIUM - a task's project must be inside the creator agent's own projects.access, at add, at edit and again at fire", async t => {
@@ -601,7 +614,7 @@ test("planner: reviewer MEDIUM - a task's project must be inside the creator age
   // Reviewer HIGH 2's update-time twin: kit cannot redirect its own task to a project outside its
   // scope after the fact either (planner.update takes the same path as planner.add).
   assert.equal((await w.call("planner.update", { item: t1.id, project: "northwind" }, kit)).error.code, "denied");
-  await w.ok("planner.update", { item: t1.id, priority: 2 }, kit, { thread: "s1" }); // unrelated field: untouched, no scope check at all
+  await w.ok("planner.update", { item: t1.id, priority: 2 }, kit, { thread: "s1", agent: "kit" }); // unrelated field: untouched, no scope check at all
 
   // MEDIUM: kit's access to harlow-legal is revoked after scheduling, before it ever fires -
   // caught again at runTask, not just at add/edit time.

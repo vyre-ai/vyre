@@ -4,6 +4,7 @@
 // forwards to core, refuses plain values outside the Capsule, and answers core_owned for every
 // slice that hasn't moved. Its old store is never opened.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -28,6 +29,7 @@ async function world(t) {
   const socket = path.join(dir, "c.sock");
   const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, testKdf: TEST_KDF, peerCred: async () => ({ pid: process.pid, uid }) });
   t.after(() => c.close());
+  c.presence.softwareOk = () => true; // these tests prove with a device key: a development-kind core takes it, a release-kind one never does (PW-1, 1ad4691e6; the release rule is in test/presence-strength.test.js)
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const keyId = c.presence.enroll({ kind: "device", name: "alex-phone", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }).id;
   const proof = (tool, input) => {

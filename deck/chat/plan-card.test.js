@@ -3,6 +3,7 @@
 // vyred behind fetch and a fake passkey: what each shows, the keys, and exactly what
 // threads.answer is called with. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -88,7 +89,7 @@ test("plan card: Start building allows, then sets the chosen mode; it reads Buil
   assert.equal($(c, "[data-act=keep]").disabled, true);
   await settle(); await settle();
   assert.deepEqual(f.of("threads.answer").map(x => x.input), [{ ask: "ask-plan-1", decision: "allow", surface: "deck" }]);
-  assert.deepEqual(f.of("threads.mode").map(x => x.input), [{ thread: "t-plan", mode: "acceptEdits", surface: "deck" }]);
+  assert.deepEqual(f.of("threads.mode").map(x => x.input), [{ thread: "t-plan", mode: "acceptEdits" }]);
   assert.match(text(c), /Building · Edits allowed/);
   assert.match(text(c), /Plan approved on this screen · 6 steps/);
   assert.equal(c.isOpen(), false);

@@ -1,5 +1,6 @@
 // Assistants and AI accounts from the real box: agents.list and agents.usage, agents.stop and agents.resume for pause, providers.list for the accounts.
 // No autonomy dial and no budget editor here: the box has no tool for either yet, so there is no control that would not work.
+import { ConnectClaude } from "./ConnectClaude";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
@@ -55,6 +56,7 @@ export function RealAi() {
   return (
     <Page title="AI accounts" back="/u/settings">
       <Banner>Nobody's work runs on someone else's account. Your sessions use your accounts and count against your budget.</Banner>
+      <ConnectClaude onConnected={load} />
       {err ? <Card flush><ErrorState title="AI accounts did not load" reason={err} retry={load} /></Card> : null}
       {ps === null && !err ? <LoadingState rows={3} /> : null}
       {ps ? (

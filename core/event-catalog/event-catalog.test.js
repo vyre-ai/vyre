@@ -1,6 +1,7 @@
 // @ts-check
 // events.catalog: every type the running modules may emit, and renamed types for one release.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

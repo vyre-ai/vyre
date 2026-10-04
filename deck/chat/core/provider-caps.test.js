@@ -2,6 +2,7 @@
 // deck/chat/core/provider-caps.js: controls read the provider's LIVE caps; the thread's snapshot
 // only renders the past (reviewer-2 M1). A missing flag hides or explains, never offers.
 
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { liveCaps, snapshotCaps, controls, meter, HIDE } from "./provider-caps.js";

@@ -6,6 +6,7 @@
 // the module registered, as vyred's router does; the last test runs the module inside a real
 // vyred and fetches over its socket.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -496,7 +497,7 @@ test("glass: an agent reaches only its own computer's files, never the box or an
     const call = (/** @type {string} */ tool, /** @type {any} */ input) => s.registry.call(tool, input, caller);
     for (const [tool, input] of /** @type {Array<[string, any]>} */ ([["glass.files.list", { target: "box" }], ["glass.files.list", { target: "computer:kit" }], ["glass.files.stat", { target: "box", path: "files" }], ["glass.files.download", { target: "box", path: "files/docs/readme.md" }], ["glass.files.upload", { target: "computer:kit", dir: "", name: "x.txt", size: 1 }], ["glass.files.mkdir", { target: "box", path: "files/x" }], ["glass.files.move", { target: "box", from: "files/a", to: "files/b" }], ["glass.files.trash", { target: "box", path: "files/docs/readme.md" }]])) {
       const r = await call(tool, input);
-      assert.match(String(r.error && r.error.message), /no computer of its own/, `${caller} ${tool}`);
+      assert.match(String(r.error && r.error.message), /no computer of its own|is not available to/, `${caller} ${tool}`);
     }
   }
   // the person's own surfaces are unaffected

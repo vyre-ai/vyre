@@ -1,5 +1,6 @@
 // A real vyred answers a call over its socket (a deleted line in route() once made EVERY socket call answer 500 "crossOrigin is not defined", and nothing in the suite noticed). One start, one
 // call over the socket as the CLI makes it, one health read: a 200 with data, not a 500. A test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -24,9 +25,9 @@ const THREADS = `
 async function boot(t) {
   const home = tempHome(t);
   const root = path.join(home, "mods");
-  writeModule(root, "threads", { does: { tools: ["threads.get"] } }, THREADS);
+  writeModule(root, "threads", { does: { tools: [{ name: "threads.get", reach: "modules" }] } }, THREADS);
   // A fake agents.list: aide is the assistant.
-  writeModule(root, "agents", { does: { tools: ["agents.list"] } }, `export default { async start(ctx) {
+  writeModule(root, "agents", { does: { tools: [{ name: "agents.list", reach: "modules" }] } }, `export default { async start(ctx) {
     ctx.tool("agents.list", { run: async () => [{ name: "juno", kind: "agent" }, { name: "kit", kind: "agent" }, { name: "aide", kind: "assistant" }] });
     return {}; } };`);
   const db = open(path.join(home, "vyre.db"));

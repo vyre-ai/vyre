@@ -2,6 +2,7 @@
 // RULES.md, "Every printed word is product copy": no cute sign-offs and no filler in what the installers print. The last thing
 // install-box.sh prints is the next step, not a send-off. Scans the printed lines of the three installers for banned phrases.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -29,5 +30,5 @@ test("install-box.sh finish() ends on the next step, with no line after it but a
   const says = fn.split("\n").map(l => l.trim()).filter(l => l.startsWith("say "));
   assert.equal(says[says.length - 1], 'say ""', "finish() closes with one blank line");
   const lastText = says.filter(l => l !== 'say ""').pop() || "";
-  assert.match(lastText, /Run it again|Start it|run that on your own computer|Back to your browser|stdout/, "the last printed text says what to do next");
+  assert.match(lastText, /Run it again|Start it|run that on your own computer|Back to your browser|stdout|Next: finish pairing/, "the last printed text says what to do next");
 });

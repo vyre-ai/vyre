@@ -2,6 +2,7 @@
 // The Changes row of a permission ask: line counts for Edit, MultiEdit and Write from their
 // input, and for a git push from `git diff --numstat` in a temp repo with a bare "remote".
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

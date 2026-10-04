@@ -1,5 +1,6 @@
 // @ts-check
 // The runner's start, stop, lock and move are the person's, and the person comes only from the kernel chain: a label never grants (kernel on).
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +18,7 @@ async function boot(t, chainFor, kernelExtra = {}) {
   seams.set(root, { ports: { device: "dev_kit", vault: sp.vault, sync: sp.sync, grants: () => ({ spaceAllows: true, memberAccepts: true }), spec: async () => null } });
   t.after(() => seams.delete(root));
   /** @type {Map<string, any>} */ const tools = new Map();
-  const ctx = { paths: { root }, events: { emit() {} }, tool: (name, def) => tools.set(name, def), kernel: chainFor ? { owner: "per_a", ...kernelExtra, chain: async meta => chainFor(meta) } : undefined };
+  const ctx = { paths: { root }, events: { emit() {}, on: () => () => {} }, tool: (name, def) => tools.set(name, def), kernel: chainFor ? { owner: "per_a", ...kernelExtra, chain: async meta => chainFor(meta) } : undefined };
   const h = await mod.start(ctx);
   t.after(() => h.stop());
   return (tool, meta) => tools.get(tool).run(TOOLS.find(x => x[0] === tool)[1], meta);

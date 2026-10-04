@@ -1,0 +1,29 @@
+# The release candidate's update path (scripts/rc-update-proof.sh): install the old line (v0.2.2), update it to this checkout's candidate with the kernel kept on and the data intact, roll back, data intact.
+# Throwaway key made in the run; the real key never appears. Dispatch, or called by rc-dry-run.
+name: rc-update
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: [work/launch-03] # the dispatch needs the file on the default branch; this branch's own proof runs on its pushes
+permissions:
+  contents: read
+concurrency:
+  group: rc-update-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0, fetch-tags: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Install the old line, update to the candidate, roll back
+        run: sh scripts/rc-update-proof.sh
+      - name: Diagnostics
+        if: failure()
+        run: |
+          tail -40 "$RUNNER_TEMP/rc-update/update.log" "$RUNNER_TEMP/rc-update/rollback.log" "$RUNNER_TEMP/rc-update/old-install.log" 2>/dev/null || true
+          docker logs vyre-vyre-1 2>&1 | tail -40 || true

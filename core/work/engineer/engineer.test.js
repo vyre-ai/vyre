@@ -1,6 +1,7 @@
 // @ts-check
 // @Engineer on the real kernel: admin-only, no outward or vault powers, a guarded and compiled draft, a card from the canonical form, and an
 // approval that only the admin's own chain with a proof over the task's hash can give. The language compiler and the Flow simulator are ports, stood in for here.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";

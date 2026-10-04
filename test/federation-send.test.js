@@ -5,6 +5,7 @@
 // the thread's events come back to the box's bus through link.events, labelled with the Mac,
 // until the answer is finished. Agents, MCP, guests and modules never reach the Mac.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -169,7 +170,7 @@ test("federation send: agents, MCP, guests and modules never reach the Mac; they
   for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:juno", "tailnet-guest:sam@harlow.example", "tailnet:agent:kit", "module:test", "unknown"]) {
     const r = await s.boxCall("threads.send", { thread: free.id, text: "hi", machine: "alex-mac" }, caller);
     assert.ok(r.error, `${caller}: ${JSON.stringify(r.data)}`);
-    assert.match(r.error.message, /^no thread|only the assistant/, caller);
+    assert.match(r.error.message, /^no thread|only the assistant|is not available to/, caller);
   }
   assert.deepEqual(macSends(s), [], "the Mac's registry saw no threads.send");
   assert.equal(inbox(s.mac).length, 0);

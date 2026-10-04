@@ -1,8 +1,9 @@
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";
 import { estateKit, SPACE } from "./testing/fixtures.js";
-import { KitManager, MemoryKitStore, installCard, diffKits, checkKit, kitParts } from "./kits.js";
+import { KitManager, MemoryKitStore, installCard, diffKits, checkKit, kitParts, kitHash } from "./kits.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 
@@ -167,7 +168,7 @@ test("kits: removing needs the right to, and a Kit that is not installed is not 
 test("kits: the installed Kits and waiting proposals are records, so they survive a restart on the real kernel", async () => {
   const w = await world();
   const { RecordsKitStore } = await import("./kits.js");
-  const sys = w.kernel.sysChain();
+  const sys = w.kernel.moduleChain({ module: "flows", approver: ALEX }); // the Flows service acting for the owner, as the daemon's host holds it: the kernel keeps the Kits' rows to it and to owners and admins
   const store = new RecordsKitStore({ kernel: w.kernel, chain: sys });
   await store.define();
   const mk = s => new KitManager({ kernel: w.kernel, runner: w.runner, store: s, catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x), forDoer: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, clock: () => w.clock.t, installerRole: () => "admin",
@@ -185,4 +186,64 @@ test("kits: the installed Kits and waiting proposals are records, so they surviv
   const listed = await new RecordsKitStore({ kernel: w.kernel, chain: sys }).list();
   assert.deepEqual(listed.map(r => [r.kit_id, r.status]), [["estate-planning", "installed"]]);
   assert.equal(await after.store.proposalByTask(p.task), null, "the proposal is gone once it is installed");
+});
+
+test("kits: the store reads a Kit's rows by the key they name, never the first row found: a planted row ahead of the real one is passed over, two rows for one key are refused", async () => {
+  const w = await world();
+  const { RecordsKitStore } = await import("./kits.js");
+  const sys = w.kernel.moduleChain({ module: "flows", approver: ALEX }); // the Flows service acting for the owner, as the daemon's host holds it: the kernel keeps the Kits' rows to it and to owners and admins
+  const store = new RecordsKitStore({ kernel: w.kernel, chain: sys });
+  await store.define();
+  // rows planted BEFORE the real ones: the key columns say the real ids, the bodies say something else
+  await w.kernel.records.create(sys, "kit-proposal", { proposal_id: "prop-1", task: "task-1", body: JSON.stringify({ id: "prop-evil", task: "task-evil", kit: { id: "evil" } }) });
+  await w.kernel.records.create(sys, "kit-install", { kit_id: "estate-planning", version: 9, hash: "x", status: "installing", by: "", at: 0, body: JSON.stringify({ kit_id: "other-kit", status: "installing", added: ["fake"] }) });
+  await store.putProposal({ id: "prop-1", task: "task-1", kit: { id: "estate-planning" }, hash: "h" });
+  await store.put({ kit_id: "estate-planning", version: 1, hash: "h", status: "installed", by: null, at: 1, added: ["real"] });
+  assert.equal((await store.getProposal("prop-1")).kit.id, "estate-planning", "the proposal whose body names prop-1");
+  assert.equal((await store.proposalByTask("task-1")).id, "prop-1");
+  assert.deepEqual((await store.get("estate-planning")).added, ["real"], "the ledger row whose body names the Kit");
+  assert.deepEqual((await store.list()).map(r => r.kit_id), ["estate-planning"], "a row whose body disagrees with its key is not listed");
+  // a second row that agrees with the key is an ambiguity: refused, not first-wins
+  await w.kernel.records.create(sys, "kit-proposal", { proposal_id: "prop-1", task: "task-1", body: JSON.stringify({ id: "prop-1", task: "task-1", kit: { id: "evil" } }) });
+  await assert.rejects(() => store.getProposal("prop-1"), /more than one kit-proposal record claims/);
+  await assert.rejects(() => store.proposalByTask("task-1"), { code: "ambiguous" });
+});
+
+test("a type-less Kit is checked against the approved kit_hash too: swapping the stored Kit and its stored hash after the card was shown installs nothing", async () => {
+  const { w, kits, caller } = await kitWorld();
+  const plain = n => ({ format: 1, id: "plain-kit", version: 1, name: "Plain", description: "Templates only.", includes: { templates: Array.from({ length: n }, (_, i) => ({ name: `note${i}`, kind: "email", body: `Hello ${i}` })) } });
+  const shown = plain(1), swapped = plain(2);
+  const p = await kits.propose(shown, ALEX, caller);
+  assert.equal(p.ok, true, JSON.stringify(p));
+  await settle(w);
+  // the stored proposal record holds the Kit and its hash side by side: an attacker who can write it replaces both
+  const stored = await kits.store.getProposal(p.proposal);
+  await kits.store.putProposal({ ...stored, kit: swapped, hash: kitHash(swapped) });
+  w.kernel.completeTask(p.task, { outcome: "approved" });
+  await settle(w); await new Promise(r => setImmediate(r)); await settle(w);
+  assert.equal(mine(w, "template").length, 0, "nothing was installed from a Kit the owner never saw");
+  assert.ok(!(await kits.list()).some(k => k.kit_id === "plain-kit" && k.status === "installed"));
+});
+
+test("the install card shows every part the hash covers: each part is named or counted, role abilities are listed, and changing any one part changes the hash", async () => {
+  const w = await world();
+  w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
+  const kit = estateKit(2);
+  const card = installCard(kit, w.cat);
+  assert.equal(card.ok, true, JSON.stringify(card.errors));
+  const parts = kitParts(kit);
+  const named = new Set([...card.adds.types.map(t => `type:${t.name}`), ...card.adds.templates.map(t => `template:${t.name}`), ...card.adds.roles.map(r => `role:${r.name}`), ...card.adds.teammates.map(t => `teammate:${t.name}`),
+    ...card.adds.flows.map(f => `flow:${f.name}`), ...card.adds.views.map(v => `view:${v}`)]);
+  for (const p of parts.filter(x => x.kind !== "seed")) assert.ok(named.has(`${p.kind}:${p.name}`), `the card names ${p.kind} ${p.name}`);
+  assert.equal(card.adds.seed, parts.filter(x => x.kind === "seed").length);
+  // what a role GRANTS is on the card, not just its name
+  for (const r of parts.filter(x => x.kind === "role")) assert.deepEqual(card.adds.roles.find(x => x.name === r.name).abilities, r.def.abilities || []);
+  // the hash covers each part: change one thing in each kind of part and the card's hash moves
+  const base = card.kit.hash;
+  const bump = (/** @type {(k: any) => void} */ f) => { const k = structuredClone(kit); f(k); return installCard(k, w.cat).kit.hash; };
+  assert.notEqual(bump(k => { k.includes.templates[0].body += " x"; }), base, "a template body");
+  assert.notEqual(bump(k => { k.includes.roles[0].abilities = [...(k.includes.roles[0].abilities || []), "kits.use"]; }), base, "a role's abilities");
+  assert.notEqual(bump(k => { k.includes.teammates[0].instructions += " x"; }), base, "a teammate's instructions");
+  assert.notEqual(bump(k => { k.includes.flows[0].steps = [...k.includes.flows[0].steps]; k.includes.flows[0].label = "Changed"; }), base, "a Flow");
+  assert.notEqual(bump(k => { k.includes.types[0].label = "Changed"; }), base, "a type");
 });

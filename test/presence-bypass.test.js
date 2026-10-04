@@ -3,6 +3,7 @@
 // vyred with the real Gate and a fake mail server. Each route must be refused with nothing sent,
 // and the person's own routes (a signed Capsule call, a code typed at a login terminal) must work.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -253,7 +254,10 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   const key = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
   const enroll = rp_id => ({ kind: "passkey", name: "x", public_key: key, alg: -7, rp_id, credential_id: "cred-" + rp_id.replace(/\./g, "-") });
   // What Claude could get: a fresh code, as a module (onboarding) would mint it.
-  const code = () => d.registry.call("presence.code", {}, "module:onboard").then(r => r.data.code);
+  // A module may NOT mint a passkey code (a code enrols a presence key, the root of every later approval): the registry refuses it, so a fixture mints through the Presence object itself.
+  const refusedForModule = await d.registry.call("presence.code", {}, "module:onboard");
+  assert.equal(refusedForModule.error && refusedForModule.error.code, "denied", "a module cannot mint a passkey code: " + JSON.stringify(refusedForModule));
+  const code = async () => (await d.registry.deps.presence.mintCode()).code;
   for (const caller of ["cli", "local", "capsule"]) {
     const r = await raw(d.paths.socket, "/v1/tools/presence.enroll", enroll("me.vyre.run"), { "x-vyre-caller": caller, "x-vyre-presence": `code code=${await code()}` });
     assert.equal(r.status, 403, caller);

@@ -3,6 +3,7 @@
 // JSON bodies, a device key made here and enrolled with a one-time code, and a Gate approval
 // signed with it. The world runs as its own process, as the apps' test runs start it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -15,8 +16,9 @@ import { inputHash } from "../../core/presence/index.js";
 const WORLD = path.join(path.dirname(fileURLToPath(import.meta.url)), "world.js");
 
 /** Start the world on a free port and wait for its URL. */
+// The phone signs with a device key on a development-kind daemon, which takes it only behind this switch (PW-1, 1ad4691e6); the release rule is in test/presence-strength.test.js.
 async function world(t) {
-  const p = spawn(process.execPath, [WORLD, "0"], { stdio: ["ignore", "pipe", "pipe"] });
+  const p = spawn(process.execPath, [WORLD, "0"], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VYRE_SEAL_SOFTWARE: "1" } });
   let out = "";
   p.stderr.on("data", c => (out += c));
   const exited = new Promise(r => p.on("exit", r));

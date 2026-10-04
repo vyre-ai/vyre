@@ -1,4 +1,6 @@
 // MA-5: the kernel is on by default; a packaged daemon refuses to start with it off and ignores VYRE_KERNEL=0; a development checkout may turn it off with VYRE_KERNEL=0.
+// A software signer is a development-build thing: a release-kind build takes attested signers only (the same packaged-refusal rule as the development stand-in).
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

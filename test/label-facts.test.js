@@ -2,6 +2,7 @@
 // LB-1 (reviewer-2): the kernel's person chain for a socket call was built from the x-vyre-caller LABEL alone. A person's surface label is a person only with the daemon's ancestry
 // measurement (`callerFacts` takes it as input and gives nothing without it); from under a `claude` the label is a model's and the chain is never a person. Real daemon, kernel on, a fake
 // `claude` above a forger for each label; a test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

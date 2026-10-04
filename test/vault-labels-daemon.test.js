@@ -1,6 +1,7 @@
 // The person comes from the kernel's chain, never from a caller label, in the four sites the vault team owned (presence's session check, Drive share and unshare, vault connections, the sync
 // namespace): on a REAL kernel-on daemon, with the facts from the daemon's own `callerFacts` and the home's relay rows. A confirmed owner device signed in is the person; a web device, a setup
 // device, a removed device, an id never paired, an unsigned owner device and a tailnet label with no proven facts get nothing. Run on a test box, never on a person's Mac.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start, callerFacts } from "../core/daemon/index.js";
@@ -16,12 +17,12 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   const ids = { app: "aaaaaaaaaaaaaaaa", web: "bbbbbbbbbbbbbbbb", setup: "cccccccccccccccc", gone: "dddddddddddddddd", never: "eeeeeeeeeeeeeeee" };
   ins.run(ids.app, "phone", "app", 0, null); ins.run(ids.web, "browser", "web", 1, null); ins.run(ids.setup, "setup page", "setup", 0, null); ins.run(ids.gone, "old", "app", 0, 5);
   // The home's own Space is known to the spaces module (devices enrol per Space; a device with no list yet is enrolled).
-  d.registry.deps.db.prepare("INSERT OR IGNORE INTO spaces_space (id, name, label, created_by, status, created_at, updated_at) VALUES (?, 'alex.vyre.run', 'alex', 'per_x', 'live', 1, 1)").run(d.kernel.id.space);
+  d.registry.deps.db.prepare("INSERT OR IGNORE INTO spaces_space (id, name, label, created_by, status, created_at, updated_at) VALUES (?, 'alex.vyre.run', 'alex', 'per_x', 'done', 1, 1)").run(d.kernel.id.space);
   /** The meta the daemon builds for one call from a device: its own facts from the relay row, the person session id as a stand-in carried as a fact. */
   const metaOf = async (id, signedIn) => {
     const label = `device:${id}`, via = signedIn ? { person: { id: "ps1" } } : {};
     const info = await d.registry.call("relay.device.info", { id }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data || null);
+    const facts = callerFacts(label, { caller: label }, via, d.kernel, false, info.data ? { ...info.data, person: d.kernel.id.owner } : null);
     return { label, meta: { caller: label, ...via, ...(facts ? { kernelFacts: facts } : {}) } };
   };
   const presence = d.registry.deps.presence;

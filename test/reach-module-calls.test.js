@@ -5,6 +5,7 @@
 // source for literal ctx.call("x.y"), call("x.y") and use("x.y") and fails when the callee's reach
 // would refuse a module. It reads files only; it boots nothing. A call that runs for the person on
 // purpose (a person-proxy path) goes in PERSON_PROXY with the reason.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -19,6 +20,8 @@ const PERSON_PROXY = new Set([
   "switchboard:mentions.search",
   // The Windows app's own page (local/capsule/native-win/app/ui/link.js) asks the box through the person's signed-in panel; it is the person calling, not a module.
   "capsule:files.drive.address",
+  // pluginagent.revoke is the person's own act (it needs presence): the agent it made is deleted with the revoking caller (ctx.call as: meta.caller), so agents.delete's person-only rule decides, not the module.
+  "pluginagent:agents.delete",
 ]);
 
 function* files(dir) {
@@ -97,4 +100,20 @@ test("a call with a computed tool name is only in a file on the reviewed list", 
   assert.deepEqual(more, [], "a module calls a tool by a computed name: use a literal name, or review it and list the file in test/reach-computed-calls.json");
   const stale = Object.keys(computed).filter(f => (counts[f] || 0) < computed[f].count).sort();
   assert.deepEqual(stale, [], "lower these counts in test/reach-computed-calls.json");
+});
+
+// A relay mark in a call's meta (`relayedBy`) would let a tool trust "the registry relayed this": only core/modules/index.js may ever write one (reviewer-3, plugin grant). Today nothing writes it; this keeps it that way.
+test("only core/modules/index.js may write a `relayedBy` mark", () => {
+  const bad = [];
+  for (const top of ["core", "modules", "local", "lib", "kernel", "harness"]) {
+    const dir = path.join(root, top);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of files(dir)) {
+      if (!/\.m?js$/.test(f) || f.endsWith(".test.js")) continue;
+      const rel = path.relative(root, f).split(path.sep).join("/");
+      if (rel === "core/modules/index.js") continue;
+      if (/\brelayedBy\b/.test(fs.readFileSync(f, "utf8"))) bad.push(rel);
+    }
+  }
+  assert.deepEqual(bad, [], "only the registry marks a relayed call");
 });

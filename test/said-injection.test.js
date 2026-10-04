@@ -8,6 +8,7 @@
 //
 // Pure: no daemon, no network, no real model, nothing outside this file's own inputs.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { extract } from "../lib/said/extract.js";

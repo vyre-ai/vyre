@@ -41,6 +41,7 @@ import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
 import { within } from "../../lib/within.js";
+import { isPerson, isDevice, modelKey } from "../../lib/caller.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -234,14 +235,12 @@ export default {
     // and agents.projects) rather than diverging here.
     /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
      * (module boundary) — this is memory's teach.js `within`, restated. */
-    const within = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
+    const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
-    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
-    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
-     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
-    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
+    const owner = caller => (isPerson(caller) && !isDevice(caller)) || modelKey(caller) === "caller:module";
+    /** A model's session that names no agent: a bare "mcp", or "mcp:thread:<id>". It is NOT the person (reviewer-2's recall verdict, MS-1/KW-1): reach() holds it to its own thread's project. */
+    const unnamedModel = caller => modelKey(caller) === "caller:mcp";
     /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
      * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
      * session, or a named agent — reach() below tells those apart and scopes the latter). Not
@@ -281,12 +280,46 @@ export default {
      * they must agree. When agents cannot be checked, a named agent is refused.
      * @param {string|undefined} agent @param {string|undefined} caller
      */
-    const reach = async (agent, caller) => {
-      const said = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
+    const reach = async (agent, caller, meta = {}) => {
+      // A kernel session token (set by the daemon from a vouched socket only, never by the call) says which person this is and which agent it runs as: the route a person's own Claude takes.
+      // [person] or [person, assistant] with the person the home's owner is the person: all of it. [person, <named agent>] is that agent, scoped below. Anything else: not the person.
+      let tokenAgent = null;
+      if (ctx.kernel && typeof ctx.kernel.chain === "function" && meta && typeof meta.token === "string" && meta.token) {
+        const c = await ctx.kernel.chain(meta).catch(() => null);
+        const hops = c && Array.isArray(c.hops) ? c.hops : [];
+        const first = hops[0] && hops[0].actor;
+        const canon = typeof ctx.kernel.canonicalPerson === "function" ? (/** @type {string} */ id) => ctx.kernel.canonicalPerson(id) : (/** @type {string} */ id) => id;
+        if (first && first.kind === "person" && canon(first.id) === canon(String(ctx.kernel.owner)) && !hops.slice(1).some((/** @type {any} */ h) => h.actor.kind === "person") && !(c.room)) {
+          const rest = hops.slice(1).filter((/** @type {any} */ h) => h.actor.kind === "agent");
+          const named = rest.map((/** @type {any} */ h) => String(h.actor.id)).filter((/** @type {string} */ n) => n !== "assistant");
+          if (!named.length && hops.slice(1).every((/** @type {any} */ h) => h.actor.kind === "agent")) return { all: true, agent: null, folders: [] };
+          if (named.length === 1) tokenAgent = named[0];
+        }
+      }
+      const said = tokenAgent || /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(caller || ""))?.[1] || null;
       if (said && agent && said !== agent) throw denied(`the call came from agent ${said} but names agent ${agent}`);
       const who = said || agent || null;
       if (!who) {
-        if (owner(caller) || ownSession(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        if (owner(caller) || ownerDevice(caller)) return { all: true, agent: null, folders: [] };
+        // An unnamed model session (`mcp`, `mcp:thread:<id>`: every model's shell) is never the person (MS-1, KW-1): it reads its OWN thread's project and nothing else, held to that project's
+        // folders like a named agent with one project. A bare `mcp` with no thread of its own has no project, so no folders, so no read.
+        if (unnamedModel(caller)) {
+          // The thread is what the DAEMON vouched (meta.thread, set from the session's own socket or key), never the `:thread:<id>` text of the label: a model sends any label it likes (RC-1).
+          const thread = typeof meta.thread === "string" && /^[A-Za-z0-9_-]{1,80}$/.test(meta.thread) ? meta.thread : null;
+          /** @type {string[]} */ let folders = [];
+          if (thread) {
+            const t = await ctx.call("threads.get", { thread, limit: 1 });
+            const rec = t && !t.error && t.data && t.data.thread ? t.data.thread : null;
+            if (rec && rec.project) folders = (await projectList()).filter(p => p.slug === String(rec.project)).flatMap(p => p.folders);
+            else if (rec && rec.cwd) folders = [String(rec.cwd)];
+            else {
+              // A terminal session bound to its claude process is no Vyre thread: its own transcript says where it runs, so it reads that project (or just that folder).
+              const row = /** @type {any} */ (sessionRow(db, thread));
+              if (row && row.cwd) { const inP = (await projectList()).filter(p => inFolders(String(row.cwd), p.folders)); folders = inP.length ? inP.flatMap(p => p.folders) : [String(row.cwd)]; }
+            }
+          }
+          return { all: false, agent: "an unnamed model session", folders };
+        }
         throw denied(`recall is for the user's own surfaces, modules and named agents, not ${String(caller || "an unnamed caller").slice(0, 60)}`);
       }
       const r = await ctx.call("agents.list", {});
@@ -295,6 +328,8 @@ export default {
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
       const assistant = a.kind === "assistant";
+      // "Claude Code on <this computer>": an agent the person granted their memory and every project's sessions to READ, once (agents `personal`, projects "*"). Reads only; it is never the person.
+      if (a.personal === true && a.projects === "*") return { all: true, agent: who, folders: [] };
       const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
       const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));
@@ -306,13 +341,13 @@ export default {
       return { all: false, agent: who, folders: checked.filter(Boolean).flatMap(p => p.folders) };
     };
     /** Narrows q.project_cwds to what a scoped agent may read, or throws. Owners/modules pass through. */
-    const scopeQuery = async (q, caller) => {
-      const r = await reach(q.agent, caller);
+    const scopeQuery = async (q, caller, meta = {}) => {
+      const r = await reach(q.agent, caller, meta);
       delete q.agent;
       if (r.all) return r;
       const requested = (q.project_cwds || []).map(String);
       if (requested.length) {
-        const outside = requested.filter(c => !within(c, r.folders));
+        const outside = requested.filter(c => !inFolders(c, r.folders));
         if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       } else {
         if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
@@ -339,10 +374,10 @@ export default {
         if (q.sessions && !/^(?:module:|deck$|cli$|local$|capsule$)/.test(String(caller || ""))) delete q.sessions;
         // A named agent (a project-scoped one, or one asked for by a module on its behalf) reads
         // only its granted projects' folders: no project_cwds, no cross-project cwds, no whole corpus.
-        const scopeR = await scopeQuery(q, caller);
+        const scopeR = await scopeQuery(q, caller, meta);
         // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
         // paired Mac is on an older build that does not scope its own side yet.
-        const scoped = hits => scopeR.all ? hits : hits.filter(h => within(h.cwd, scopeR.folders));
+        const scoped = hits => scopeR.all ? hits : hits.filter(h => inFolders(h.cwd, scopeR.folders));
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -365,14 +400,14 @@ export default {
         // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
         // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
         // the same way recall.search's does.
-        if (!(await reach(undefined, caller)).all) return { hits: [] };
+        if (!(await reach(undefined, caller, meta)).all) return { hits: [] };
         const text = String(input.text || "").trim();
         const cwds = [...new Set((input.project_cwds || []).map(String).filter(Boolean))];
         if (!text || !cwds.length) return { hits: [] };
         // Never an unmapped folder: at least one given folder must be a real project's own (or
         // inside one), never a raw path a caller made up.
         const projects = await projectList();
-        const mapped = cwds.filter(c => projects.some(p => within(c, p.folders)));
+        const mapped = cwds.filter(c => projects.some(p => inFolders(c, p.folders)));
         if (!mapped.length) return { hits: [] };
         const limit = Math.max(1, Math.min(3, input.limit || 3));
         const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -390,20 +425,20 @@ export default {
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, agent, ...q } = input;
-        const r = await reach(agent, caller);
+        const r = await reach(agent, caller, meta);
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
         // nothing about a session it may not read (not even that it exists).
-        const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
+        const gate = row => { if (!r.all && !inFolders(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
         // Resolved among only what this caller may read, so an id or prefix outside its grant
         // never surfaces even as "more than one session starts with X" (reviewer's LOW: that
         // told a scoped agent such a session exists before the gate above ever ran).
         const resolveScoped = session => {
           if (r.all) return session;
           const exact = /** @type {any} */ (db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(session));
-          if (exact) { if (!within(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
+          if (exact) { if (!inFolders(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
           const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session))
-            .filter(row => within(row.cwd, r.folders));
+            .filter(row => inFolders(row.cwd, r.folders));
           if (!like.length) throw new Error(`no session ${session}`);
           if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
           return like[0].id;
@@ -505,11 +540,11 @@ export default {
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
-        const r = await reach(agent, caller);
-        if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        const r = await reach(agent, caller, meta);
+        if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
-        const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
+        const scoped = rows => r.all ? rows : rows.filter(row => inFolders(row.cwd, r.folders));
         if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
@@ -643,7 +678,7 @@ export default {
         // A model load in flight writes into the home; let it settle before the home can go.
         // (This used to call `within`, the folder helper above, with a promise: it threw a TypeError, stop() ended there, the embedder's process was never closed and the daemon, and any
         // test that started one, never exited.) The embedder is closed whatever the wait does.
-        try { if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]); }
+        try { if (vec.loading) await within(vec.loading.catch(() => null), 5000); }
         finally { const e = /** @type {any} */ (vec.embedder); if (e && typeof e.close === "function") e.close(); }
       },
     };

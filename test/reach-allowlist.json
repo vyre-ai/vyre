@@ -23,7 +23,7 @@
   },
   "apps.list": {
    "module": "apps",
-   "default": "limited by callers in code"
+   "default": "open to any caller"
   },
   "apps.route": {
    "module": "apps",
@@ -31,7 +31,7 @@
   },
   "apps.send": {
    "module": "apps",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "apps.setup": {
    "module": "apps",
@@ -39,7 +39,7 @@
   },
   "apps.targets": {
    "module": "apps",
-   "default": "limited by callers in code"
+   "default": "open to any caller"
   },
   "capsule.act": {
    "module": "capsule",
@@ -59,7 +59,7 @@
   },
   "capsule.status": {
    "module": "capsule",
-   "default": "limited by callers in code"
+   "default": "open to any caller"
   },
   "capsule.view": {
    "module": "capsule",
@@ -149,7 +149,7 @@
   },
   "learn.add": {
    "module": "learn",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "learn.check": {
    "module": "learn",
@@ -281,7 +281,7 @@
   },
   "memory.curate": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.decisions": {
    "module": "memory",
@@ -313,7 +313,7 @@
   },
   "memory.mute": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.pace": {
    "module": "memory",
@@ -322,7 +322,7 @@
   },
   "memory.pin": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.profile": {
    "module": "memory",

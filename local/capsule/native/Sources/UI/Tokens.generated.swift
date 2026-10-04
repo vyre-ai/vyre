@@ -284,6 +284,8 @@ public enum Tokens {
             public static let title: (size: CGFloat, line: CGFloat) = (18, 24)
             public static let page: (size: CGFloat, line: CGFloat) = (24, 30)
             public static let display: (size: CGFloat, line: CGFloat) = (32, 38)
+            public static let control: (size: CGFloat, line: CGFloat) = (14, 20)
+            public static let micro: (size: CGFloat, line: CGFloat) = (11, 14)
             public static let label: CGFloat = 11
         }
 
@@ -296,6 +298,8 @@ public enum Tokens {
             public static let title: (size: CGFloat, line: CGFloat) = (20, 25)
             public static let page: (size: CGFloat, line: CGFloat) = (28, 34)
             public static let display: (size: CGFloat, line: CGFloat) = (34, 41)
+            public static let control: (size: CGFloat, line: CGFloat) = (15, 20)
+            public static let micro: (size: CGFloat, line: CGFloat) = (11, 14)
             public static let label: CGFloat = 11
         }
 

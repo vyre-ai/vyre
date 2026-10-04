@@ -2,6 +2,7 @@
 // A person's memory and Recall survive owner adoption (the claimed identity becomes the home's owner id). Nothing in memory or Recall is keyed by a person id, so the data stays; the one
 // place an id is read is the gate's membership check, which asks the kernel who the id is NOW (`canonicalPerson`). Real daemon, kernel on, a seeded Recall index and a told fact.
 // A session token minted BEFORE adoption names the old id: it must still be the owner's after.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -37,7 +38,7 @@ test("seed, adopt, still recalled: told facts, Recall's index and a pre-adoption
   const pre = await d.registry.call("memory.relevant", { text: "Harlow Legal", room: "unfiled" }, "deck", { token }); assert.ok(!pre.error, JSON.stringify(pre.error));
 
   const h = d.kernel.kernelFor({ name: "spaces", needs: { kernel: { actions: [], spaces: true } } });
-  assert.equal((await h.adoptOwner(NEW)).changed, true);
+  assert.equal((await h.adoptOwner(NEW, old)).changed, true);
   assert.equal(d.kernel.id.owner, NEW);
 
   // The same data, from the owner's surfaces (now built under the new id).

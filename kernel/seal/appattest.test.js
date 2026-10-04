@@ -1,6 +1,7 @@
 // @ts-check
 // Apple App Attest in the sealing process (kernel/seal/appattest.js). The simulator cannot attest, so these tests build the same STRUCTURE under a synthetic root: root -> intermediate -> leaf with the nonce
 // extension, a CBOR attestation object, authData, and assertions. They prove the code path and every refusal, NOT Apple's real bytes (APPATTEST_VERIFIED stays false until a real fixture passes, AA-3).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -114,7 +115,7 @@ test("B2: a proof needs an assertion with a counter strictly above the last; a m
   await enrol(r.s, w, alex);
   const prove = (/** @type {any} */ p) => r.s.presenceProve({ chain: p.ch, op: p.op, fields: p.fields, proof: p.proof });
   const p1 = proofWith(alex, w, 1);
-  assert.deepEqual(await prove(p1), { ok: true, method: "attested" });
+  assert.deepEqual(await prove(p1), { ok: true, method: "attested", strength: "hardware" });
   const noAssert = proofWith(alex, w, null);
   assert.equal((await prove(noAssert)).code, "assertion_required");
   assert.equal((await prove(proofWith(alex, w, 1))).code, "bad_assertion", "an equal counter");

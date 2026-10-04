@@ -35,7 +35,7 @@ export function createGateway(cfg) {
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply });
+  records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -128,8 +128,12 @@ export function createGateway(cfg) {
     const all = async () => { const out = []; let cursor; do { const p = await cfg.store.query(i.type, { include_deleted: true, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); out.push(...p.rows); cursor = p.next_cursor; } while (cursor); return out; };
     const has = (/** @type {any} */ v) => typeof v === "string" && v.length > 0;
     let moved = 0;
+    /** @type {Set<string>} the plain values that move: what the task texts are searched for afterwards */ const plain = new Set();
+    /** @type {string[]} */ const touched = [];
     for (const row of await all()) {
       if (!has(row.data[i.field])) continue;
+      plain.add(row.data[i.field]);
+      touched.push(`vyre://${cfg.space}/${i.type}/${row.id}`);
       const u = `vyre://${cfg.space}/${i.type}/${row.id}`;
       const binned = Boolean(row.deleted_at);
       let version = row.version;
@@ -142,8 +146,10 @@ export function createGateway(cfg) {
     const left = (await all()).filter((/** @type {any} */ r) => has(r.data[i.field])).length;
     if (left) throw new KernelError("unavailable", `${left} records still hold the plain value; nothing was hidden`);
     await records.define(chain, { change_types: [{ ...withField, fields: withField.fields.map((/** @type {any} */ x) => (x.name === i.field ? { ...x, hidden: true, required: false } : x)) }] });
-    let erased = 0;
+    let erased = 0, taskTextsCleared = 0;
     if (i.scrub_history !== false) {
+      // Free text a task kept (a form, a draft, an answer) may quote a value: it is cleared BEFORE the store's scrub, whose last step rewrites the file, so nothing survives in free pages.
+      if (plain.size && cfg.tasks) taskTextsCleared = (await cfg.tasks.scrubTexts({ values: [...plain], records: touched })).cleared;
       if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
       const prefix = `vyre://${cfg.space}/${i.type}/`;
       for (const e of cfg.log.read()) {
@@ -154,20 +160,57 @@ export function createGateway(cfg) {
       }
     }
     cfg.log.append(chain, { type: "records.field-sealed", sv: 1, subject: `vyre://${cfg.space}/definition/types`, data: { type: i.type, field: i.field, sealed_field: name, moved, erased_events: erased } }, { decision: dec.decision });
-    return { sealed_field: name, moved, erased_events: erased };
+    return { sealed_field: name, moved, erased_events: erased, task_texts_cleared: taskTextsCleared, task_texts_note: "Task texts that quote a value, in any spacing or case, were cleared whole, and so was every task about a changed record. Text typed anywhere else (a note, a message, another system) is not searched." };
+  }
+
+  /**
+   * Forget one record for good: the erasure a person asks for (a client leaves, a law says so). In this order: (1) the text of every task that concerned it is emptied (`tasks.scrubTexts({ record })`, the
+   * tasks service's own call), (2) the store destroys the row and what it keeps of it (its snapshot, its change log data, Twenty's timeline), (3) every event about the record keeps its envelope and loses
+   * its data, (4) one `records.forgotten` event says it happened, with the counts and never a value. The caller's chain needs `records.define` (Customize: admin and owner) and `records.remove` on the record.
+   * Links held by other records stay and point at nothing. A database keeps dead pages until it is vacuumed (the operator's step).
+   */
+  async function forget(/** @type {any} */ chain, /** @type {{ type: string, id: string, presence?: any }} */ i) {
+    if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+    if (!i || typeof i.type !== "string" || typeof i.id !== "string") throw new KernelError("bad_input", "forget needs a type and an id");
+    if (typeof cfg.store.destroy !== "function") throw new KernelError("unavailable", "this store cannot destroy a record");
+    const u = `vyre://${cfg.space}/${i.type}/${i.id}`;
+    // Permanent, so a presence act: `records.define` is an admin act (a presence session or a signed proof, never inherited by a chain that holds an agent), and the proof rides here.
+    const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`, i.presence ? { presence: i.presence } : {});
+    await gate(chain, "records.remove", u);
+    let there; try { there = await cfg.store.get(i.type, i.id, { include_deleted: true }); } catch (e) { throw new KernelError("unavailable", "the store could not read the record"); }
+    if (!there) throw new KernelError("not_found", "no such record");
+    // What the record holds that lives outside the store: sealed values (in the sealing process, by reference) and files (in Files, by id).
+    /** @type {string[]} */ const refs = []; let files = 0;
+    try {
+      const def = (await cfg.store.types()).find((/** @type {any} */ t) => t.name === i.type);
+      for (const f of (def && def.fields) || []) {
+        const v = there.data ? there.data[f.name] : undefined;
+        if (f.kind === "sealed" && v && typeof v === "object" && typeof v.ref === "string") refs.push(v.ref);
+        else if (f.kind === "file" && v && typeof v === "object" && typeof v.file === "string") files++;
+      }
+    } catch { /* the counts are best effort; the forget itself does not depend on them */ }
+    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
+    try { await cfg.store.destroy(i.type, i.id); } catch (e) { throw new KernelError("unavailable", "the store could not destroy the record; its tasks' text is already removed"); }
+    // Its sealed values are destroyed in the sealing process (overwritten, then removed); a value the process cannot drop is counted, never hidden.
+    let sealed_dropped = 0;
+    for (const ref of refs) { try { if (cfg.sealer && typeof cfg.sealer.drop === "function" && (await cfg.sealer.drop({ chain, ref })).dropped) sealed_dropped++; } catch { /* counted below */ } }
+    let erased = 0;
+    for (const e of cfg.log.read()) if (e.subject === u && !(e.data && e.data.erased === true)) { cfg.log.erase(e.seq); erased++; }
+    cfg.log.append(chain, { type: "records.forgotten", sv: 1, subject: u, data: { type: i.type, id: i.id, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files } }, { decision: dec.decision });
+    return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
   return Object.freeze({
     authorize: authorizer.authorize,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
-    ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, end: cfg.kitApply.end }) } : {}),
+    ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     ...(drive ? { drive } : {}),
     ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
     registry: authorizer.actions,
     limits,
     ...(seal ? { seal } : {}),
-    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
+    ...(gs ? { grants: Object.freeze({ create: gs.create, revoke: gs.revoke, narrow: gs.narrow, list: gs.list, setRole: gs.setRole, removeMember: gs.removeMember, transferOwner: gs.transferOwner, rules: Object.freeze({ list: gs.rulesList, get: gs.ruleGet, test: gs.ruleTest, enable: gs.ruleEnable, disable: gs.ruleDisable, set: gs.ruleSet, remove: gs.ruleRemove, propose: gs.rulePropose, accept: gs.ruleAccept, dismiss: gs.ruleDismiss }), addActor: gs.addActor, removeActor: gs.removeActor, sweep: gs.sweep, members: Object.freeze({ list: gs.membersList, get: gs.membersGet }), invites: Object.freeze({ create: gs.inviteCreate, confirm: gs.inviteConfirm, accept: gs.inviteAccept, get: gs.invitesGet, revoke: (/** @type {any} */ chain, /** @type {string} */ id, /** @type {any} */ proof) => gs.inviteRevoke(chain, id, { presence: proof }), list: gs.inviteList }), rebuild: gs.rebuild, defaultAssistant: Object.freeze({ present: gs.hasDefaultAssistant, add: (chain, o) => gs.addActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o), remove: (chain, o) => gs.removeActor(chain, { kind: "agent", id: "assistant", space: cfg.space }, o) }), chats: Object.freeze({ create: gs.chatCreate, change: gs.chatChange, read: gs.chatRead }), offers: Object.freeze({ offer: gs.offer, unoffer: gs.unoffer, lend: gs.lend, unlend: gs.unlend, active: gs.active, capOf: gs.capOf, find: gs.find, onRevoke: gs.onRevoke }) }) } : {}),
     /** The Space's type definitions, read through authorize like any record read (the tool surface and Customize list from here). */
     async definitions(chain) {
       await gate(chain, "records.read", `vyre://${cfg.space}/definition/types`);
@@ -185,7 +228,7 @@ export function createGateway(cfg) {
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
     ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
     records,
-    migrate: Object.freeze({ sealField }),
+    migrate: Object.freeze({ sealField, forget }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
     audit: Object.freeze({
       verify: async () => {

@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { printFlow, parseFlowText, parseFlowTextBounded, sameFlow, normalizeFlow, TextError, TEXT_LIMITS } from "./text.js";

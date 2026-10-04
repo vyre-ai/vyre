@@ -2,6 +2,7 @@
 // VYRE_TWENTY_LIVE_URL is set. It runs inside a container on the Space's internal network (see
 // run-on-testbox.sh) because Twenty has no published port. A real Twenty may only call a webhook host
 // listed in OUTBOUND_HTTP_ALLOWED_INTERNAL_HOSTS, so the listener's hostname is VYRE_TWENTY_LIVE_HOOK_HOST.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
@@ -130,6 +131,22 @@ if (!URL_ || !KEY_FILE) {
     await assert.rejects(() => R.create(c, "client2", { name: "Bob", ssn: "123-45-6799" }), { code: "sealed_value_refused" });
     await wait(5000);
     assert.equal((await timeline()).includes("123-45-6799"), false, "a refused plain value is nowhere in the timeline");
+  });
+  test("live: attr_filter filters by the mirrored kernel attributes inside Twenty, in a list and a total", async () => {
+    const store = await fresh();
+    store.mirrorReady.add("contact"); // fresh() destroyed every row and gives this store a new state folder: the type is empty, so every row from here is mirrored
+    const mk = async (name, attrs) => { const id = crypto.randomUUID(); await store.create("contact", id, { name, status: "open" }); store.meta.set(`vyre://${store.space}/contact/${id}`, attrs); return id; };
+    await mk("AF1", { project: "p1", owner: "per_x" }); await mk("AF2", { project: "p2" }); await mk("AF3", { project: "p1", owner: "per_y" }); await mk("AF4", {});
+    const prefix = `vyre://${store.space}/contact/`;
+    const names = async (any) => (await store.query("contact", { attr_filter: { urn_prefix: prefix, any }, page: { limit: 50 } })).rows.map((r) => r.data.name).sort();
+    assert.deepEqual(await names([{ project: "p1" }]), ["AF1", "AF3"]);
+    assert.deepEqual(await names([{ project: "p1", owner: "per_x" }, { project: "p2" }]), ["AF1", "AF2"]);
+    assert.deepEqual(await names([]), []);
+    const total = await store.aggregate("contact", { attr_filter: { urn_prefix: prefix, any: [{ project: "p1" }] }, group_by: ["status"], measures: [{ fn: "count" }] });
+    assert.deepEqual(total.map((g) => g.values.count), [2]);
+    // a read after the mirror write still sees version 1 and no phantom change
+    const one = (await store.query("contact", { filter: { field: "name", op: "eq", value: "AF1" }, page: { limit: 1 } })).rows[0];
+    assert.equal(one.version, 1, "the mirror write is not an outside edit");
   });
   test("live: close the listener", async () => { await new Promise((r) => (listener ? listener.close(() => r(null)) : r(null))); });
 }

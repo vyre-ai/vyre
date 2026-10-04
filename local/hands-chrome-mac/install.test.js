@@ -2,6 +2,7 @@
 // The native messaging installer for macOS, Linux and Windows, against a temp home, a temp host
 // folder and a fake registry: nothing here touches a real browser directory or the registry.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

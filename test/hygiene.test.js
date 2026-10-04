@@ -4,6 +4,7 @@
 // The forbidden words and the secret pattern live in scripts/lib/hygiene.js, shared with
 // scripts/docs-check, which holds the published docs to the same rules.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -91,6 +92,7 @@ const OWN_PERSON_SET = /=\s*new Set\(\[\s*"cli"/;
 const KNOWN_OWN_PERSON_SETS = new Set([
   "core/presence/index.js",  // the canonical home PERSON_SURFACES lives in
   "core/daemon/index.js",    // kernel's own dispatch, not a module hand-rolling the concept
+  "local/hands-chrome-mac/caller.js", // the standalone Chrome package's sanctioned copy: caller.test.js compares it to core/presence PERSON_SURFACES
   "core/harness/rules.js", "core/link/box.js", "core/link/mac.js", "core/files/drive.js",
 ]);
 test("hygiene: no new hand-rolled copy of PERSON_SURFACES (a Set of exactly cli/local/deck/capsule)", () => {

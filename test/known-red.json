@@ -1,173 +1,98 @@
 {
- "core/artifacts/artifacts.test.js": {
-  "owner": "vault"
- },
  "core/cli/commands/agents.test.js": {
-  "owner": "launch"
- },
- "core/cli/commands/needs.test.js": {
-  "owner": "launch"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/cli/commands/phone.test.js": {
-  "owner": "launch"
- },
- "core/cli/commands/threads-sessions.test.js": {
-  "owner": "launch"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/cli/screen/screen-live.test.js": {
-  "owner": "launch"
- },
- "core/files/drive.test.js": {
-  "owner": "vault"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/glass/glass.test.js": {
-  "owner": "tailnet"
+  "owner": "tailnet",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/hooks/hooks.test.js": {
-  "owner": "launch"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/mentions/mentions.test.js": {
-  "owner": "vault"
+ "core/names/system.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/publish/publish.test.js": {
-  "owner": "launch"
+ "core/runner/lent-wire.test.js": {
+  "owner": "runner",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/recall/embed-install.test.js": {
-  "owner": "records"
- },
- "core/relay/setup.test.js": {
-  "owner": "tailnet"
- },
- "core/runner/runner.test.js": {
-  "owner": "runner"
+ "core/runner/person-chain.test.js": {
+  "owner": "runner",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/sessions/api-key.test.js": {
-  "owner": "sessions"
- },
- "core/sessions/drivers/acp.test.js": {
-  "owner": "sessions"
- },
- "core/sessions/sessions-turns.test.js": {
-  "owner": "sessions"
+  "owner": "sessions",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/sessions/sessions.test.js": {
-  "owner": "sessions"
+  "owner": "sessions",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "core/switchboard/chat-steer.test.js": {
-  "owner": "sessions"
- },
- "core/switchboard/kernel-turn.test.js": {
-  "owner": "sessions"
- },
- "core/switchboard/launcher-only.test.js": {
-  "owner": "sessions"
- },
- "core/switchboard/switchboard.test.js": {
-  "owner": "sessions"
- },
- "core/vault/presence.test.js": {
-  "owner": "platform"
+ "core/settings/hub.test.js": {
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "core/watchers/reach.test.js": {
-  "owner": "platform"
- },
- "kernel/door/sinks.test.js": {
-  "owner": "platform"
- },
- "kernel/gateway/gateway.test.js": {
-  "owner": "platform"
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "kernel/golden/golden.test.js": {
-  "owner": "platform"
- },
- "kernel/home.test.js": {
-  "owner": "platform"
- },
- "kernel/retrofit/agent-reach.test.js": {
-  "owner": "platform"
- },
- "relay/client/e2e.test.js": {
-  "owner": "tailnet"
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/chrome-flags.test.js": {
-  "owner": "launch"
- },
- "test/cohesion-drift.test.js": {
-  "owner": "platform-2"
- },
- "test/docs-build.test.js": {
-  "owner": "platform-2"
- },
- "test/docs-check.test.js": {
-  "owner": "platform-2"
- },
- "test/docs-index.test.js": {
-  "owner": "platform-2"
- },
- "test/federation-answer.test.js": {
-  "owner": "tailnet"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/federation-send.test.js": {
-  "owner": "tailnet"
+  "owner": "tailnet",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/flows-daemon.test.js": {
-  "owner": "sessions"
+ "test/mobile-tailnet.test.js": {
+  "owner": "tailnet",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/hygiene.test.js": {
-  "owner": "platform-2"
+ "test/onboard-page.test.js": {
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/link.test.js": {
-  "owner": "tailnet"
+ "test/peer-race.test.js": {
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/module-sdk.test.js": {
-  "owner": "platform-2"
+ "test/peer.test.js": {
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/no-internal-words.test.js": {
-  "owner": "platform-2"
- },
- "test/one-identity.test.js": {
-  "owner": "windows"
- },
- "test/one-registry.test.js": {
-  "owner": "windows"
- },
- "test/pack-imports.test.js": {
-  "owner": "launch"
- },
- "test/person-label-hygiene.test.js": {
-  "owner": "platform-2"
- },
- "test/person.test.js": {
-  "owner": "windows"
- },
- "test/reach-anyone.test.js": {
-  "owner": "platform"
- },
- "test/reach-explicit.test.js": {
-  "owner": "platform"
- },
- "test/reach-registry.test.js": {
-  "owner": "platform"
- },
- "test/relay.test.js": {
-  "owner": "tailnet"
- },
- "test/roles-enforced.test.js": {
-  "owner": "platform"
+ "test/project-arg.test.js": {
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/stdin-hygiene.test.js": {
-  "owner": "launch"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/threadsock.test.js": {
-  "owner": "platform"
+  "owner": "platform",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/walk-identity-space.test.js": {
-  "owner": "windows"
- },
- "test/wink.test.js": {
-  "owner": "tailnet"
+  "owner": "windows",
+  "seen": "integrator run 37181895537 (FAIL)"
  },
  "test/within-hygiene.test.js": {
-  "owner": "launch"
+  "owner": "launch",
+  "seen": "integrator run 37181895537 (FAIL)"
  }
 }

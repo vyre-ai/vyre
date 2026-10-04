@@ -36,12 +36,18 @@ export function inviteRow(i) {
 }
 
 /** The words for a refused invite call. @param {string | undefined} code @param {string} message */
-export function inviteRefusal(code, message) {
+export function inviteRefusal(code, message, owner = "") {
   if (code === "not_allowed" || code === "denied") return "Only an owner or admin can invite people to this space.";
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That invite is already gone.";
+  // A space that lives on one person's computer (windows, work/spaces): the inviter cannot make a link; an invitee cannot reach it.
+  if (code === "this_computer") return "This space lives on this computer, so other people cannot join it. To invite people, make a space on your server.";
+  if (code === "unreachable") return `This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to invite you to a space on their server.`;
   return message || "The invite did not go through.";
 }
 
 /** The inviter's side after someone joins: who, and from which device. @param {{ who: string, device: string }} r */
 export const joinedLine = (r) => (r.who ? `Joined by ${r.who}${r.device ? ` from ${r.device}` : ""}.` : "");
+
+/** The live servers in wink.access (person surfaces): rows of kind "server" that are not removed. No row means the person has paired no server yet. @param {any} access */
+export const liveServers = (access) => (Array.isArray(access?.devices) ? access.devices.filter((/** @type {any} */ d) => d && d.kind === "server" && !d.removed) : []);

@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { record, load, diff, added, weakened, addedRuns, risky } from "./index.js";

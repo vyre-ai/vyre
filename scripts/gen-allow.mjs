@@ -34,6 +34,7 @@ export const OPEN_NOTES = Object.freeze({
   "records.create": "writes a record under the caller's own chain; an assistant's chain is narrowed by the kernel and a sealed value goes through a placeholder",
   "records.update": "edits a record under the caller's own chain; the kernel decides",
   "records.seal-put": "puts a sealed value through the sealing process: the kernel and the sealer decide, never the module",
+  "records.forget.propose": "asks the person to forget a record: it reads the record under the caller's own chain and makes a task for the person, who decides with their presence; nothing is forgotten here",
   "records.sees-as": "shows what a person or an assistant would see of a record; reads only",
   "records.events": "reads events the caller may see; the kernel decides",
   "rules.list": "lists the Space's standing rules the caller may see",

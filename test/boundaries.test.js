@@ -13,6 +13,7 @@
 // 2026-09-27; it only shrinks. A new edge needs the lead's OK. An entry nothing uses any more
 // fails too, so a fixed edge comes off the list. docs/architecture/boundaries.md explains each.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -46,6 +47,8 @@ export const ALLOW = {
     why: "the router asks whether a tailnet caller is a guest before it reaches the registry" },
   "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js"], next: "lib",
     why: "the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner): the confined spawner for a Vyre-started session; and the home's checkpoint store for an own-server session's per-turn seal (core/daemon/ownserver-host.js; moves to lib with the store)" },
+  "core/daemon -> core/spawner": { files: ["core/spawner/client.js", "core/spawner/confine.js"], next: "lib",
+    why: "a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start (ruling 4 Oct, b); it asks the root spawner, which is not a module" },
   "core/daemon -> core/switchboard": { files: ["core/switchboard/sessions.js"], next: "ctx.call",
     why: "the router resolves which Claude Code session a call comes from" },
   "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js"], next: "lib",

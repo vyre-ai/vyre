@@ -92,6 +92,10 @@ export const MIGRATIONS = [
   DUTIES_MIGRATION,
   DUTIES_SEEN_MIGRATION,
   DUTIES_TITLE_MIGRATION,
+  // NEVER insert or reorder above this line: a migration's number is its place in this list, and an existing box has already applied the earlier ones. (Inserting this one before the
+  // duties steps once made an upgraded box re-run "ADD COLUMN title" and lose the whole team module.) A charter a session drafted waits here, one per teammate, until the person accepts it
+  // (team.charter.accept): a charter is a teammate's system prompt.
+  `CREATE TABLE team_charter_drafts (teammate TEXT PRIMARY KEY, text TEXT NOT NULL, by TEXT NOT NULL, note TEXT, at INTEGER NOT NULL)`,
 ];
 
 /** How long stop() waits for in-flight dispatch and merge work before it stops anyway (milliseconds). */
@@ -930,7 +934,7 @@ export default {
       description: "A teammate's charter: what it is for and how it works, the current version's text, who wrote it and when, or null when it has none yet. A teammate may read its own.",
       input: { type: "object", properties: { ...charterRef } },
       callers: CHARTER_CALLERS,
-      run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, charter: charterCurrent(tm.agent) }; },
+      run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, charter: charterCurrent(tm.agent), pending: db.prepare("SELECT text, by, at FROM team_charter_drafts WHERE teammate = ?").get(tm.agent) || null }; },
     });
     ctx.tool("team.charter.history", {
       description: "Every version of a teammate's charter, newest first.",
@@ -970,10 +974,26 @@ export default {
         return { agent: tm.agent, version: cur.version, by: cur.by, note: cur.note, at: cur.at, text: cur.text, before: before ? { version: before.version, text: before.text, by: before.by } : null };
       },
     });
+    /** The person's own surfaces write a charter outright; a session or an agent's draft waits for the person. */
+    const DRAFTERS = [...CHARTER_WRITERS, "mcp"];
+    const personDrafts = (/** @type {any} */ meta) => ["cli", "local", "deck", "capsule", "module"].includes(String(meta.caller || "").split(/[\s:]/)[0]) && !meta.agent;
+    ctx.tool("team.charter.accept", {
+      description: "Accept (or, with decline: true, drop) the charter a session drafted for a teammate: it becomes a new version, written as the person's own act. The person's surfaces only.",
+      input: { type: "object", properties: { ...charterRef, decline: { type: "boolean" } } },
+      callers: CHARTER_WRITERS,
+      run: async (i, meta = {}) => {
+        const tm = await charterTarget(i, meta, { write: true });
+        const d = /** @type {any} */ (db.prepare("SELECT * FROM team_charter_drafts WHERE teammate = ?").get(tm.agent));
+        if (!d) throw Object.assign(new Error(`${tm.agent} has no drafted charter waiting`), { code: "not_found" });
+        db.prepare("DELETE FROM team_charter_drafts WHERE teammate = ?").run(tm.agent);
+        if (i.decline === true) return { agent: tm.agent, declined: true };
+        return writeCharter(tm.agent, String(d.text), `${meta.agent || String(meta.caller || "vyre")} (accepted draft by ${String(d.by).slice(0, 60)})`, d.note);
+      },
+    });
     ctx.tool("team.charter.draft", {
       description: "Write (or rewrite) a teammate's charter from what the project already knows: its brief, its role, the project's context and the teammate's notes, plus anything in from (a line or a conversation summary). Saved as a new version, and returned so the person can read and edit it. Nobody has to hand-write what a teammate is.",
       input: { type: "object", properties: { ...charterRef, from: { type: "string" } } },
-      callers: CHARTER_WRITERS,
+      callers: DRAFTERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const home = await projectHome(tm.project).catch(() => null);
@@ -992,6 +1012,12 @@ export default {
         if (!text) {
           drafted = "template";
           text = `You are ${tm.role} on the ${tm.project} project. ${tm.brief ? `You are here for this: ${tm.brief}.` : "Work out what the project needs in this role."} Read the project's context before you answer, keep your notes current, and say plainly when something is outside your role or you are not sure. Tell the person about anything that needs their decision.`;
+        }
+        // HD-10: a charter becomes the teammate's system prompt, so a model's draft is only PENDING: it is kept beside the current charter and takes effect when the person accepts it.
+        if (!personDrafts(meta)) {
+          const clean = String(text).trim().slice(0, CHARTER_MAX);
+          db.prepare("INSERT OR REPLACE INTO team_charter_drafts (teammate, text, by, note, at) VALUES (?,?,?,?,?)").run(tm.agent, clean, meta.agent || String(meta.caller || "session"), `drafted by ${drafted}`, Date.now());
+          return { agent: tm.agent, pending: true, drafted, text: clean, note: "Waiting for the person: team.charter.accept makes it the charter." };
         }
         return { ...writeCharter(tm.agent, text, `${meta.agent || String(meta.caller || "vyre")} (draft)`, `drafted by ${drafted}`), drafted };
       },

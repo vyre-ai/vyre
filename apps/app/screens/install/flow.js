@@ -38,12 +38,14 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  name: null, scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
-export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean }} */ ctx = {}) {
+export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean }} */ ctx = {}) {
+  // The scan step reached through "I already have a name" goes back to that choice, not to the name field.
+  if (step === "scan" && ctx.have) return "have";
   if (step === "srv2") return "srv1";
   if (step === "srv1") return ctx.vps ? "vps" : "cmd";
   return BACK[step] ?? null;
@@ -51,7 +53,7 @@ export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean }}
 
 // After the space has its home (the server is paired, or "On this computer" was chosen) setup carries on by itself on the device it started on:
 // look, members, connectors, the first Kit, then done (DESIGN-spaces-first.md, "The order, and where setup happens"). Nothing here asks the server anything.
-export const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+export const SETUP_STEPS = ["look", "members", "ai", "connectors", "kit"];
 /** The step the flow moves to the moment the space has its home. */
 export const AFTER_HOME = "look";
 /** The step after this one, inside setup. */
@@ -120,18 +122,56 @@ export const SERVER_FAILED = {
   used: "That code was already used. Run the install line on your server again to get a new one.",
   expired: "The pairing ran out of time, so nothing was paired. Run the install line on your server again to get a new code.",
   unreachable: "Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.",
+  unchecked: "Vyre could not check who this is right now. Nothing was paired. Try again in a minute.",
+  notThem: "That device is not the one you expected, so nothing was paired. If you did not start this, nobody was given access.",
+  directory: "Vyre cannot reach the names directory right now, so it cannot check this device. Nothing was paired. Try again in a minute.",
+  badCode: "That is not a code this server gave. Run the install line on your server again and use the new code.",
+  badOwner: "This server belongs to another Vyre name, so it cannot be paired to you. Nothing was paired.",
+  busy: "The server is in the middle of another pairing. Wait a minute, then try again.",
+  cancelled: "The pairing was cancelled. Nothing was paired.",
+  denied: "The server refused this pairing. Nothing was paired.",
+  noProof: "This phone did not prove which Vyre name it is, so the server refused. Nothing was paired. Try again.",
+  wrongProof: "The server could not match this phone's key to your Vyre name, so it refused. Nothing was paired.",
+  cannotCheck: "The server could not check which Vyre name this is right now. Nothing was paired. Try again in a moment.",
+  notHardware: "This server takes its owner only from a phone's own key. Pair this server from Vyre on your phone. Nothing was paired.",
+  noSession: "Paired, but this phone has no sign-in with the server yet. Try again.",
   abandoned: "The last pairing was not finished, so nothing was paired. Scan or paste the server's code again.",
   /** The server's own terminal says this on its side when the pairing fails. */
   serverLine: "Pairing failed. Nothing was set up. Run the install line again.",
 };
 
+const KNOWN = new Set(Object.values(SERVER_FAILED));
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
+  // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.
+  const c = String(e?.code ?? "");
+  // A plain string is a sentence that already went through here (the screens pass the mapped words back): it counts as the message.
+  const m0 = String(e?.message ?? (typeof e === "string" ? e : "")).trim();
+  if (c === "bad_code") return SERVER_FAILED.badCode;
+  if (c === "bad_owner") return SERVER_FAILED.badOwner;
+  if (c === "taken") return SERVER_FAILED.used;
+  if (c === "busy") return SERVER_FAILED.busy;
+  if (c === "denied_no_proof") return SERVER_FAILED.noProof;
+  if (c === "denied_wrong_proof") return SERVER_FAILED.wrongProof;
+  if (c === "denied") return SERVER_FAILED.denied;
+  if (c === "expired") return SERVER_FAILED.expired;
+  if (c === "unreachable") return SERVER_FAILED.unreachable;
+  if (c === "cancelled") return SERVER_FAILED.cancelled;
+  if (c === "cannot_check") return SERVER_FAILED.cannotCheck;
+  if (c === "no_session") return SERVER_FAILED.noSession;
+  if (c === "not_hardware") return SERVER_FAILED.notHardware;
+  // A server the person does not own yet is untrusted: its words are never shown. A code this app does not know is a refusal, in our own sentence.
+  if (c) return SERVER_FAILED.denied;
+  if (KNOWN.has(m0)) return m0;
+  // No code: only a short reason from the person's own box is matched, and only to our sentences; a long text from anywhere else is not read at all.
+  if (m0.length > 80) return SERVER_FAILED.ended;
   const t = `${e?.code ?? ""} ${e?.message ?? e ?? ""}`.toLowerCase();
+  if (/not them|not the same person|not who|identity.*(mismatch|differ)/.test(t)) return SERVER_FAILED.notThem;
+  if (/directory/.test(t)) return SERVER_FAILED.directory;
+  if (/could not be checked|cannot be checked|could not check|identity.*(check|verif)/.test(t)) return SERVER_FAILED.unchecked;
   if (/used|consumed|spent|already/.test(t)) return SERVER_FAILED.used;
   if (/expired|ran out|timeout|timed out/.test(t)) return SERVER_FAILED.expired;
   if (/offline|unreach|network|econn|no path|failed to fetch/.test(t)) return SERVER_FAILED.unreachable;
   if (/rejected/.test(t)) return SERVER_FAILED.rejected;
-  const m = String(e?.message ?? e ?? "").trim();
-  return m && /\s/.test(m) && m.length > 12 ? m : SERVER_FAILED.ended;
+  return SERVER_FAILED.ended;
 }

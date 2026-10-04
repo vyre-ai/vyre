@@ -1,4 +1,5 @@
 // @ts-check
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -146,4 +147,27 @@ test("a claim made by the Node client is read by the app's code: the chain verif
   const got = await C.verifyChain(raw.data.ops, { now: Date.now() + C.SKEW_MS, seenAt: () => 0 });
   assert.equal(got.id, g.id);
   assert.deepEqual(await openRecord("nodebob", raw.data.sealed), { v: 1, from: "node" });
+});
+
+test("NK-2 phone half: a genesis claimed with an enclave key carries it, and a list change signed with the seed plus a low-s esig is accepted by the chain; the seed alone is not", async () => {
+  const { lowS, p1363FromDer, b64url } = await import("../../modules/vyre-signer/presence-proof.js");
+  const enc = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const jwk = enc.publicKey.export({ format: "jwk" });
+  const point = new Uint8Array(65); point[0] = 4; point.set(Buffer.from(jwk.x, "base64url"), 1); point.set(Buffer.from(jwk.y, "base64url"), 33);
+  // what the Enclave does: DER over the message, then the module's conversion to the canonical form
+  const esign = async m => lowS(p1363FromDer(new Uint8Array(crypto.sign("sha256", Buffer.from(m), enc.privateKey))));
+  const key = await generateDeviceKey();
+  const code = await codeKey(newCode(), "", FAST);
+  const ts = Date.now();
+  const genesis = await C.makeGenesis({ kind: "person", entry: { eid: key.eid, kind: "device", pub: key.publicKey, enclave: b64url(point) }, code: { eid: code.eid, kind: "code", pub: code.publicKey }, nonce: C.b64u(crypto.randomBytes(12)), ts, sign: m => key.sign(m) });
+  const state = await C.verifyChain([genesis], { now: ts + 1 });
+  assert.equal(state.entries.find(e => e.eid === key.eid).enclave, b64url(point));
+  const other = await generateDeviceKey();
+  const body = { type: "add", entry: { eid: other.eid, kind: "device", pub: other.publicKey } };
+  const later = ts + 5000;
+  const alone = await C.makeOp(state, body, { by: key.eid, ts: later, sign: m => key.sign(m) });
+  await assert.rejects(C.applyOp(state, alone, { now: later }), e => e.code === "needs_enclave");
+  const both = await C.makeOp(state, body, { by: key.eid, ts: later, sign: m => key.sign(m), esign });
+  assert.equal(Buffer.from(both.esig, "base64url").length, 64);
+  await C.applyOp(state, both, { now: later });
 });

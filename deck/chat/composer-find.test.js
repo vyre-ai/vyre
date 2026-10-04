@@ -3,6 +3,7 @@
 // typed after the command name, or "" when there were none - the composer never sends the text.
 // Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../test/fake-dom.js";

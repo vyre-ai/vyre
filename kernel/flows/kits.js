@@ -214,20 +214,35 @@ export class RecordsKitStore {
   /** @param {{ kernel: any, chain: any }} o */
   constructor(o) { this.k = o.kernel; this.chain = o.chain; }
   async define() { return this.k.records.define(this.chain, { add_types: KIT_TYPES }); }
-  /** @param {string} type @param {string} field @param {string} value */
-  async #one(type, field, value) { return (await this.k.records.query(this.chain, type, { filter: { field, op: "eq", value }, page: { limit: 1 } })).rows[0] || null; }
-  /** @param {string} id */ async get(id) { const r = await this.#one("kit-install", "kit_id", id); return r ? JSON.parse(r.data.body) : null; }
+  /**
+   * The ONE row of `type` whose `field` is `value` AND whose stored body names the same key (`bodyKey`): never "the first row the filter returns". A row planted before the real one (a store that
+   * let a member create these types, an older one, a copy) cannot be read as the Kit's own: a row whose body disagrees with its key is passed over, and two rows that both claim the key are an
+   * error the caller sees (the install refuses), not a coin toss. The rows the kernel shows here are the ones the Flows service or an owner or admin made (the gateway's protected-type rule); the
+   * look is a page wide so a passed-over row cannot hide the real one.
+   * @param {string} type @param {string} field @param {string} value @param {(body: any) => unknown} bodyKey
+   */
+  async #one(type, field, value, bodyKey = () => value) {
+    const rows = (await this.k.records.query(this.chain, type, { filter: { field, op: "eq", value }, page: { limit: 50 } })).rows;
+    const mine = rows.filter((/** @type {any} */ r) => { try { return r.data && r.data[field] === value && bodyKey(JSON.parse(r.data.body)) === value; } catch { return false; } });
+    if (mine.length > 1) throw Object.assign(new Error(`more than one ${type} record claims ${field} ${value}: nothing is read or changed until the extra one is removed`), { code: "ambiguous" });
+    return mine[0] || null;
+  }
+  /** @param {string} id */ async get(id) { const r = await this.#one("kit-install", "kit_id", id, b => b.kit_id); return r ? JSON.parse(r.data.body) : null; }
   /** @param {any} row */ async put(row) {
     const data = { kit_id: row.kit_id, version: row.version ?? 0, hash: row.hash || "", status: row.status || "", by: row.by ? `${row.by.kind}:${row.by.id}` : "", at: row.at || 0, body: JSON.stringify(row) };
-    const cur = await this.#one("kit-install", "kit_id", row.kit_id);
+    const cur = await this.#one("kit-install", "kit_id", row.kit_id, b => b.kit_id);
     if (cur) await this.k.records.update(this.chain, "kit-install", cur.id, data, cur.version); else await this.k.records.create(this.chain, "kit-install", data);
   }
-  /** @param {string} id */ async del(id) { const cur = await this.#one("kit-install", "kit_id", id); if (cur) await this.k.records.remove(this.chain, "kit-install", cur.id, cur.version); }
-  async list() { return (await this.k.records.query(this.chain, "kit-install", { page: { limit: 200 } })).rows.map((/** @type {any} */ r) => JSON.parse(r.data.body)); }
+  /** @param {string} id */ async del(id) { const cur = await this.#one("kit-install", "kit_id", id, b => b.kit_id); if (cur) await this.k.records.remove(this.chain, "kit-install", cur.id, cur.version); }
+  async list() {
+    const out = [];
+    for (const r of (await this.k.records.query(this.chain, "kit-install", { page: { limit: 200 } })).rows) { try { const b = JSON.parse(r.data.body); if (b.kit_id === r.data.kit_id) out.push(b); } catch { /* a row that is not a ledger entry is not listed */ } }
+    return out;
+  }
   /** @param {any} p */ async putProposal(p) { await this.k.records.create(this.chain, "kit-proposal", { proposal_id: p.id, task: p.task || "", body: JSON.stringify(p) }); }
-  /** @param {string} id */ async getProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id); return r ? JSON.parse(r.data.body) : null; }
-  /** @param {string} id */ async delProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id); if (r) await this.k.records.remove(this.chain, "kit-proposal", r.id, r.version); }
-  /** @param {string} task */ async proposalByTask(task) { const r = await this.#one("kit-proposal", "task", task); return r ? JSON.parse(r.data.body) : null; }
+  /** @param {string} id */ async getProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id, b => b.id); return r ? JSON.parse(r.data.body) : null; }
+  /** @param {string} id */ async delProposal(id) { const r = await this.#one("kit-proposal", "proposal_id", id, b => b.id); if (r) await this.k.records.remove(this.chain, "kit-proposal", r.id, r.version); }
+  /** @param {string} task */ async proposalByTask(task) { const r = await this.#one("kit-proposal", "task", task, b => b.task); return r ? JSON.parse(r.data.body) : null; }
 }
 
 /**
@@ -296,7 +311,12 @@ export class KitManager {
     const row = await this.k.ask.get(this.#chain(cat, p.kit.id, p.approver), id);
     if (!row || row.state !== "done") return null;
     if (row.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
-    return this.apply(p.id);
+    try { return await this.apply(p.id); }
+    catch (e) {
+      // A Kit that is not the one that was approved is dropped, said plainly, and never retried.
+      if (e && /** @type {any} */ (e).code === "hash_mismatch") { await this.store.delProposal(p.id); return { refused: p.kit.id, reason: /** @type {Error} */ (e).message }; }
+      throw e;
+    }
   }
 
   /** Apply an approved proposal. Idempotent per step: a crash mid-way resumes from the ledger. @param {string} proposalId */
@@ -307,6 +327,14 @@ export class KitManager {
     const kit = p.kit;
     if (kitHash(kit) !== p.hash) throw Object.assign(new Error("the Kit changed after it was approved"), { code: "hash_mismatch" });
     const chain = this.#chain(cat, kit.id, p.approver);
+    // The stored Kit and its stored hash sit in one proposal record, so they prove nothing against each other. What the owner approved is the task's FORM (the kernel's proof covers its hash), and
+    // that form names the Kit by kit_hash: every Kit, with types or without, is checked against it before anything changes (the kernel's waiver repeats the check for the types).
+    if (p.task) {
+      const row = await this.k.ask.get(chain, p.task).catch(() => null);
+      const f = row && row.form;
+      if (!row || row.state !== "done" || row.outcome !== "approved" || !f || f.kind !== "kit_install" || f.kit_hash !== waiverHash(kit)) throw Object.assign(new Error("this Kit is not the one that was approved"), { code: "hash_mismatch" });
+      if (row.payload && row.payload.form_hash && ksha(kcanonical(f)) !== row.payload.form_hash) throw Object.assign(new Error("the approval does not cover this card"), { code: "hash_mismatch" });
+    }
     // The install is the approver's act: the kernel decides `kits.install` for their chain before anything changes (a person who is no longer an admin installs nothing). The ledger row below, a
     // record write the kernel logs, comes before any definition, so an install that stops half way is on the record and resumes from it.
     const may = await this.k.authorize({ chain, action: "kits.install", resource: `vyre://${cat.space}/kit/${kit.id}` });
@@ -319,18 +347,31 @@ export class KitManager {
 
     // types first, as one definition change
     const types = parts.filter(x => x.kind === "type").map(x => x.def);
-    if (types.length) {
-      const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
-      const add = types.filter(t => !old.has(t.name) && !cat.types[t.name]);
-      const change = types.filter(t => old.has(t.name) || cat.types[t.name]);
-      // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask
-      // for, once. A resumed install whose types are already defined (the ledger says so) asks for nothing, so a spent approval never blocks the rest.
-      const need = types.some(t => !row.added.includes(`type:${t.name}`));
-      const waiver = need && this.k.kits && p.task ? await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) }) : undefined;
-      if (need) await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
-      if (waiver && this.k.kits) await this.k.kits.end(waiver);
-      for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
+    const resuming = Boolean(prior && prior.status === "installing");
+    // Whether a type still needs defining comes from the LIVE catalog, never from the ledger row alone (a row is a record some chains can write).
+    const live = (await this.catalogFn()).types || {};
+    const missing = types.filter(t => !live[t.name]);
+    // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask for.
+    // A first install or an update takes it with `begin` for EVERY Kit (types or not, so the approval, the hash and the approver are checked and the approval is spent once); a RESUMED install, whose
+    // approval is already spent, takes `resume` and only for the types still missing.
+    /** @type {any} */ let waiver;
+    if (this.k.kits && p.task) {
+      if (!resuming) waiver = await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) });
+      else if (missing.length && this.k.kits.resume) {
+        // resume is repeatable for one approval (within a day, same hash): it covers only the types still missing, and answers { already_installed: true } (not a waiver) when nothing is.
+        const r = await this.k.kits.resume({ chain, task: p.task, kit: waiverKit(kit) });
+        waiver = r && r.already_installed ? undefined : r;
+      }
     }
+    const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
+    const toDefine = resuming ? missing : types;
+    if (toDefine.length) {
+      const add = toDefine.filter(t => !old.has(t.name) && !live[t.name]);
+      const change = toDefine.filter(t => old.has(t.name) || live[t.name]);
+      await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
+    }
+    if (waiver && this.k.kits) await this.k.kits.end(waiver);
+    for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
     for (const part of parts) {
       const key = `${part.kind}:${part.name}`;
       if (part.kind === "type" || part.kind === "seed") continue;

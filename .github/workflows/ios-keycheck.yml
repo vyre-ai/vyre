@@ -1,0 +1,99 @@
+# The build is signed ad hoc (identity "-") on purpose: an unsigned simulator build has no entitlements and the Keychain answers "A required entitlement isn't present" (seen on run 37176585244).
+# Does the iPhone app keep its key across a kill and relaunch? On a hosted Mac simulator (never on a person's computer): a Release simulator build with the keycheck page on
+# (EXPO_PUBLIC_VYRE_KEYCHECK=1), opened by vyre://keycheck three times: first launch makes the identity key, a kill and relaunch must find the same public key and sign with it.
+# Presence: Face ID is enrolled in the simulator and matched when the prompt shows; the simulator has no Secure Enclave, so that proof is a software key's. Screenshots and the log are the artifact.
+name: ios-keycheck
+on:
+  push:
+    paths:
+      - ".github/workflows/ios-keycheck.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ios-keycheck-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  keycheck:
+    runs-on: macos-latest
+    timeout-minutes: 70
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - name: Newest Xcode
+        run: |
+          x=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] && sudo xcode-select -s "$x"
+          xcodebuild -version
+      - run: npx expo prebuild -p ios --clean
+      - name: Build for the simulator, Release, no signing
+        env:
+          EXPO_PUBLIC_VYRE_KEYCHECK: "1"
+          EXPO_PUBLIC_VYRE_MOCK: "1"
+        run: |
+          ws=$(ls -d ios/*.xcworkspace | head -1)
+          scheme=$(basename "$ws" .xcworkspace)
+          set -o pipefail
+          xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath ios/dd \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=NO build 2>&1 | tee xcodebuild.log | tail -40
+      - name: Boot, install, make the key, kill, relaunch
+        run: |
+          set -u
+          out=keycheck-ios; mkdir -p "$out"
+          app=$(find ios/dd/Build/Products/Release-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          for runtime in sorted((r for r in devs if "iOS" in r), reverse=True):
+              for d in devs[runtime]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit()
+          ')
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          xcrun simctl shutdown "$udid"
+          plist="$HOME/Library/Developer/CoreSimulator/Devices/$udid/data/Library/Preferences/com.apple.launchservices.schemeapproval.plist"
+          mkdir -p "$(dirname "$plist")"
+          /usr/libexec/PlistBuddy -c 'Add :com.apple.CoreSimulator.CoreSimulatorBridge-->vyre string sh.vyre.app' "$plist" 2>/dev/null || /usr/libexec/PlistBuddy -c "Set :com.apple.CoreSimulator.CoreSimulatorBridge-->vyre sh.vyre.app" "$plist" || true
+          xcrun simctl boot "$udid"; xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" "$app"
+          # Face ID in the simulator: enrolled, so the biometric key can be made; a match is sent while the prompt is up.
+          xcrun simctl spawn "$udid" notifyutil -s com.apple.BiometricKit.enrollmentChanged 1 || true
+          xcrun simctl spawn "$udid" notifyutil -p com.apple.BiometricKit.enrollmentChanged || true
+          match() { for i in 1 2 3 4 5 6; do sleep 2; xcrun simctl spawn "$udid" notifyutil -p com.apple.BiometricKit_Sim.pearl.match || true; done; }
+          launch() { xcrun simctl launch "$udid" sh.vyre.app || true; sleep 8; xcrun simctl openurl "$udid" "vyre://keycheck"; }
+          # 1: first launch
+          launch; match & mpid=$!; sleep 20; wait "$mpid" || true
+          xcrun simctl io "$udid" screenshot "$out/1-first.png"
+          # 2: kill, relaunch
+          xcrun simctl terminate "$udid" sh.vyre.app || echo "terminate: the app was not running (crashed?)"; sleep 3
+          launch; match & mpid=$!; sleep 20; wait "$mpid" || true
+          xcrun simctl io "$udid" screenshot "$out/2-after-kill.png"
+          # 3: kill again, relaunch
+          xcrun simctl terminate "$udid" sh.vyre.app || echo "terminate: the app was not running (crashed?)"; sleep 3
+          launch; match & mpid=$!; sleep 20; wait "$mpid" || true
+          xcrun simctl io "$udid" screenshot "$out/3-after-second-kill.png"
+          xcrun simctl spawn "$udid" log show --last 15m --predicate 'process == "Vyre"' --style compact > "$out/vyre-all.log" 2>&1 || true
+          grep -E "KEYCHECK" "$out/vyre-all.log" > "$out/keycheck.log" || true
+          tail -60 "$out/vyre-all.log" | cut -c1-300 || true
+          mkdir -p "$out/crash"; cp "$HOME"/Library/Logs/DiagnosticReports/*Vyre* "$out/crash/" 2>/dev/null || true
+          cat "$out/keycheck.log" || true
+          xcrun simctl shutdown all || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-keycheck-${{ github.sha }}
+          path: |
+            apps/app/keycheck-ios/
+            apps/app/xcodebuild.log
+          retention-days: 14

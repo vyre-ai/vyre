@@ -1,6 +1,7 @@
 // @ts-check
 // Where the sealing master lives and who can reach it (the lead's rulings for 0.3): a file inside the Vyre home, private to its user. This checks, from the real profiles and files,
 // that a Vyre-started session on macOS and Linux cannot reach the sealing folder, that on the box image an agent's uid cannot, and says where neither holds (a Windows home).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

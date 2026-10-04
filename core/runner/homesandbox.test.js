@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +11,7 @@ import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig, checkEntri
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
+import { programDirs } from "../../lib/agent-sandbox.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hs-"));
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
@@ -320,4 +322,83 @@ test("HS-7: a workdir or temp folder that is, or contains, the shared temp folde
     }
     assert.doesNotThrow(() => checkEntries({ ...base, workdirs: [proj], temp: path.join(r, "t") }));
   } finally { fs.rmSync(r, { recursive: true, force: true }); }
+});
+
+test("HS-10: a session's temp lives outside the Vyre home, beside it, and the session reads and writes exactly its own folder there and cannot see a sibling session's", { skip: SKIP, timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  const sessions = path.join(path.dirname(r.home), path.basename(r.home) + ".sessions", "tmp"); t.after(() => rm(path.dirname(sessions)));
+  const mine = path.join(sessions, "s-mine"), theirs = path.join(sessions, "s-theirs"); fs.mkdirSync(mine, { recursive: true }); fs.mkdirSync(theirs, { recursive: true });
+  fs.writeFileSync(path.join(theirs, "secret.txt"), "SIBLING-SECRET");
+  const script = `const fs=require("fs");const o={};try{fs.writeFileSync(process.argv[1]+"/mine.txt","x");o.write=fs.readFileSync(process.argv[1]+"/mine.txt","utf8")}catch(e){o.write=e.code}
+    try{o.sibling=fs.readFileSync(process.argv[2]+"/secret.txt","utf8")}catch(e){o.sibling=e.code}try{o.list=fs.readdirSync(process.argv[3]).join(",")}catch(e){o.list=e.code}console.log(JSON.stringify(o))`;
+  const p = planHome({ platform: process.platform, command: process.execPath, args: ["-e", script, mine, theirs, sessions], home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: mine, readOnly: [path.dirname(process.execPath)], agent: r.agent, probes: r.probes });
+  const c = launch(p, { cwd: p.cwd }); let out = ""; c.stdout.on("data", d => out += d);
+  await new Promise(res => c.on("close", res));
+  const o = JSON.parse(out.trim().split("\n").pop());
+  assert.equal(o.write, "x", "the session writes and reads its own folder");
+  assert.notEqual(o.sibling, "SIBLING-SECRET", "a sibling session's temp is not readable");
+  assert.ok(!String(o.list).includes("s-theirs"), "a sibling session's folder is not even listed: " + o.list);
+});
+
+test("home sandbox: a computer with no bubblewrap fails the self-test with a reason and does not end the process (spawn ENOENT is handled)", { skip: process.platform !== "linux" || unavailable() !== "", timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  let uncaught = null; const on = e => { uncaught = e; }; process.on("uncaughtException", on); t.after(() => process.off("uncaughtException", on));
+  // the launcher starts a program that is not there, as a missing bwrap would be
+  const missing = () => spawn("/no/such/bwrap-for-test", [], { stdio: ["pipe", "pipe", "pipe"] });
+  const res = await selfTest({ platform: "linux", command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent, probes: r.probes, launch: missing });
+  await new Promise(r2 => setTimeout(r2, 200));
+  assert.equal(uncaught, null, uncaught && String(uncaught.stack));
+  assert.equal(res.ok, false);
+  assert.ok(res.failures.length >= 1, JSON.stringify(res));
+});
+
+/** An npm-style script agent: bin/agent is a link to pkg/cli.js, whose shebang is `env node` (node's folder is not a system one). */
+function npmAgent(t, shebang) {
+  const dir = tmp(); t.after(() => rm(dir));
+  const pkg = path.join(dir, "lib", "node_modules", "fake-agent"); fs.mkdirSync(pkg, { recursive: true });
+  fs.writeFileSync(path.join(pkg, "package.json"), '{"name":"fake-agent"}');
+  fs.writeFileSync(path.join(pkg, "cli.js"), `${shebang}\nconsole.log("fake-agent 1.0.0");\n`, { mode: 0o755 });
+  fs.mkdirSync(path.join(dir, "bin")); fs.symlinkSync("../lib/node_modules/fake-agent/cli.js", path.join(dir, "bin", "agent"));
+  return { command: path.join(dir, "bin", "agent"), pkg: fs.realpathSync(pkg), dir: fs.realpathSync(dir) };
+}
+
+test("programDirs: a script agent's own folder, its link target and package, and its interpreter's folder, and nothing wider", t => {
+  const a = npmAgent(t, "#!/usr/bin/env node");
+  const nodeDir = path.dirname(process.execPath);
+  const dirs = programDirs(a.command, `${nodeDir}${path.delimiter}/usr/bin`);
+  assert.ok(dirs.includes(path.dirname(a.command)) && dirs.includes(a.pkg) && dirs.includes(fs.realpathSync(nodeDir)), dirs.join(" "));
+  assert.ok(!dirs.includes(os.homedir()) && !dirs.includes("/"), "never a home or a root");
+  // an absolute shebang, and `env -S` flags
+  assert.ok(programDirs(npmAgent(t, `#!${process.execPath}`).command).includes(path.dirname(process.execPath)));
+  assert.ok(programDirs(npmAgent(t, "#!/usr/bin/env -S node --no-warnings").command, nodeDir).includes(fs.realpathSync(nodeDir)));
+  // a native binary has no interpreter to add
+  const native = new Set([path.dirname(process.execPath), path.dirname(fs.realpathSync(process.execPath))]);
+  assert.ok(programDirs(process.execPath).every(d => native.has(d)), "a binary adds only its own folder and its link target's");
+});
+
+test("home sandbox: an npm-installed script agent (env node) starts inside the sandbox, and so does a native binary (control)", { skip: SKIP, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const a = npmAgent(t, "#!/usr/bin/env node");
+  const base = { platform: process.platform, command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, probes: r.probes };
+  const prev = process.env.PATH; process.env.PATH = `${path.dirname(process.execPath)}${path.delimiter}${prev}`; t.after(() => { process.env.PATH = prev; });
+  const script = await selfTest({ ...base, agent: { ...r.agent, command: a.command, versionArgs: [] } });
+  assert.deepEqual(script.failures, [], JSON.stringify(script.results));
+  const native = await selfTest({ ...base, agent: r.agent });
+  assert.deepEqual(native.failures, [], JSON.stringify(native.results));
+});
+
+test("home sandbox: an abort signal ends the probe and the agent check at once", { skip: SKIP, timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  const ac = new AbortController(); setTimeout(() => ac.abort(), 500);
+  const t0 = Date.now();
+  await selfTest({ platform: process.platform, command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, probes: r.probes, signal: ac.signal, agent: { ...r.agent, versionArgs: ["-e", "setTimeout(()=>{},60000)"] } });
+  assert.ok(Date.now() - t0 < 15_000, "ended well before the agent's own 60 s");
+});
+
+test("home sandbox (Linux plan): with the egress proxy, the folder of the node that runs the shim is bound read-only (a node under a person's folder is found inside)", { skip: process.platform !== "linux" || unavailable() !== "" }, async t => {
+  const r = await rig(t);
+  const p = planHome({ platform: "linux", command: process.execPath, args: ["-v"], home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent, proxy: { socket: path.join(r.home, "egress.sock"), token: "t" } });
+  const dir = fs.realpathSync(path.dirname(process.execPath));
+  const i = p.argv.findIndex((a, k) => a === "--ro-bind" && p.argv[k + 1] === dir && p.argv[k + 2] === dir);
+  assert.ok(i >= 0, `node's folder ${dir} is bound: ${p.argv.join(" ").slice(0, 400)}`);
 });

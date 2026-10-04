@@ -3,6 +3,7 @@
 // runs projects.move (./move.js, ./index.js).
 // Every folder is under the test's temp home: VYRE_WORK_DIR and VYRE_OLD_PROJECTS_DIR point there.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

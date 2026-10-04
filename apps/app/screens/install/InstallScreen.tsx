@@ -8,12 +8,17 @@ import { loadInstall } from "./data";
 import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
+import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
+import { ConnectClaude } from "../settings/ConnectClaude";
+import { addThisDevice, hadIdentity, recoverIdentity } from "../../src/identity/restore";
+import { recoveryKeyOptions } from "../../src/keys";
+import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
-import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, makeServerSpace, STORE_ASK, storeAsked, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
 import { HIDDEN, claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
@@ -77,10 +82,15 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const [made, setMade] = useState<Made[]>([]);
   const [face, setFace] = useState<FaceAsk | null>(null);
   const [wrong, setWrong] = useState("");
+  const [storeAsk, setStoreAsk] = useState(false);
   const [session, setSession] = useState<PairingSession | null>(null);
   const [pairTo, setPairTo] = useState("me");
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
   const [pickKit, setPickKit] = useState<string | null>(null);
+  const [recName, setRecName] = useState("");
+  const [recCode, setRecCode] = useState("");
+  const [recPass, setRecPass] = useState("");
+  const [lostKey, setLostKey] = useState(false);
   // Real box: the Kits it offers (null: it offers none) and what asking for the picked one came to, for the done page.
   const [kitList, setKitList] = useState<{ id: string; label: string; sub: string }[] | null | undefined>(undefined);
   const [kitResult, setKitResult] = useState<{ ok: boolean; text: string } | null>(null);
@@ -102,7 +112,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     if (MOCK || !linkIn || opened.current === linkIn) return;
     opened.current = linkIn;
     setLink(linkIn); setBusy(true); setWrong("");
-    previewInvite(linkIn.trim()).then((p) => { setInvite(inviteFrom(p, linkIn.trim())); setStep((s) => (noId.current ? s : "invite")); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+    previewInvite(linkIn.trim()).then((p) => { setInvite(inviteFrom(p, linkIn.trim())); setStep((s) => (noId.current ? s : "invite")); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false));
   }, [linkIn]);
   const [invite, setInvite] = useState<ReturnType<typeof inviteFrom> | null>(null);
   const device = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "phone" : "computer";
@@ -112,7 +122,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const sn = spaceName.trim() || DATA.defaultSpaceName;
   const vps = where === "vps";
   // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
-  const back = !first && step === startStep(start) ? null : backOf(step, { vps });
+  const back = !first && step === startStep(start) ? null : backOf(step, { vps, have: !MOCK && !claimBlocked() });
   const finish = () => router.replace((first ? "/u/now" : "/u/spaces") as never);
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
@@ -120,15 +130,22 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     setStep(AFTER_HOME);
   };
   // The real box makes the space first (spaces.create), then setup carries on. A failure stays on the step with the box's words.
-  const makeReal = async (w: "server" | "vps" | "here") => {
-    setBusy(true); setWrong("");
+  const makeReal = async (w: "server" | "vps" | "here", acceptBuiltinStore = false) => {
+    setBusy(true); setWrong(""); setStoreAsk(false);
     try {
+      // On a server this device is paired to, the device makes the space itself and the directory claim follows (claimServerSpace); a browser says "Make this space in Vyre on your phone".
+      if (w === "server" && (await readIdentity().catch(() => null))) {
+        const id = await makeServerSpace(spaceSt.slug, sn, acceptBuiltinStore);
+        setSpaceId(id);
+        make(w);
+        return;
+      }
       let r = await createSpace(createInput({ slug: spaceSt.slug, name: sn, where: w }));
       if (r.state === "running" && r.id) r = await resumeSpace(r.id);
       if (r.state !== "done") { setWrong(r.say || "Setting up the space did not finish."); if (r.id) setSpaceId(r.id); return; }
       setSpaceId(r.id);
       make(w);
-    } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
+    } catch (e) { if (storeAsked(e)) setStoreAsk(true); else setWrong(said(e)); } finally { setBusy(false); }
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
   // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
@@ -164,7 +181,13 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         const who = await readIdentity();
         if (who) { setName(who.label); setStep((s) => (first && s === "name" ? "spaces" : s)); }
         // Identity first: a device with no name cannot create or join a space, so any other way in starts at the name. A kept invite waits for it.
-        else { noId.current = true; setStep((s) => (["scan", "scanwords", "recovery"].includes(s) ? s : "name")); }
+        else {
+          noId.current = true;
+          // A phone that once held a name and lost its key (after a restart) opens where it can bring the name back, saying so.
+          const lost = !claimBlocked() && (await hadIdentity().catch(() => false));
+          if (lost) setLostKey(true);
+          setStep((s) => (["scan", "scanwords", "recovery", "have", "recover"].includes(s) ? s : lost ? "have" : "name"));
+        }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.
         const kept = unpackProgress(await readProgress());
         const all = await listSpaces();
@@ -225,14 +248,44 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <Button kind="primary" label={busy ? "Creating your name" : "Create my name"} disabled={me.state !== "ok" || busy}
           onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(me.slug, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
         {me.state === "taken" ? <Text size="caption" tone="muted">{"If this name is yours, scan from another device that has it. The key on this " + device + " cannot be rebuilt from the name."}</Text> : null}
-        <Button kind="ghost" label="I already have a name, scan instead" onPress={() => setStep("scan")} />
+        <Button kind="ghost" label="I already have a name" onPress={() => setStep(MOCK || claimBlocked() ? "scan" : "have")} />
+      </Page>
+    );
+  } else if (step === "have") {
+    body = (
+      <Page title={lostKey ? HAVE.lostKeyTitle : HAVE.title} sub={lostKey ? HAVE.lostKeyLine : HAVE.line}>
+        <Card flush>
+          <Choice icon="share" title={HAVE.addTitle} sub={HAVE.addLine} onPress={() => setStep("scan")} />
+          <Divider />
+          <Choice icon="key" title={HAVE.codeTitle} sub={HAVE.codeLine} onPress={() => { setWrong(""); setStep("recover"); }} />
+        </Card>
+      </Page>
+    );
+  } else if (step === "recover") {
+    body = (
+      <Page title={HAVE.recoverTitle}>
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+        <Field label={HAVE.nameLabel} value={recName} onChangeText={setRecName} help={HAVE.nameHelp} />
+        <Field label={HAVE.codeLabel} value={recCode} onChangeText={setRecCode} help={HAVE.codeHelp} mono />
+        <Field label={HAVE.passwordLabel} value={recPass} onChangeText={setRecPass} kind="password" help={HAVE.passwordHelp} />
+        <Button kind="primary" label={busy ? HAVE.busy : HAVE.go} disabled={busy || !recName.trim() || !recCode.trim()} onPress={() => {
+          const bad = recoverCheck({ name: recName, code: recCode });
+          if (bad) { setWrong(bad.say); return; }
+          setBusy(true); setWrong("");
+          void recoveryKeyOptions().then((k) => recoverIdentity({ name: nameOf(recName), code: recCode, password: recPass || undefined, deviceLabel: device, ...k }))
+            .then((r) => { setName(r.name); setRecCode(""); setRecPass(""); setLostKey(false); noId.current = false; showToast(successToast(r.name)); setStep(invite ? "invite" : "spaces"); })
+            .catch((e) => setWrong(recoverRefusal((e as { code?: string }).code)))
+            .finally(() => setBusy(false));
+        }} />
+        <Button kind="ghost" label={HAVE.rather} onPress={() => { setWrong(""); setStep("scan"); }} />
       </Page>
     );
   } else if (step === "scan") {
     body = (
-      <Page title="Scan from your other device" sub="Open Vyre on a device that has your name and scan this, or paste the long code on it.">
-        <View className="w-ring self-center"><Ring seed={4} /></View>
-        {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { setSession(openPairing(c)); setStep("scanwords"); }} />}
+      <Page title={MOCK ? "Scan from your other device" : HAVE.scanTitle} sub={MOCK ? "Open Vyre on a device that has your name and scan this, or paste the long code on it." : HAVE.scanLine}>
+        {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+        {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { try { setSession(claimBlocked() ? openPairing(c) : addThisDevice(c, { deviceLabel: device })); setStep("scanwords"); } catch (e) { setWrong(recoverRefusal((e as { code?: string }).code)); } }} />}
       </Page>
     );
   } else if (step === "scanwords") {
@@ -321,6 +374,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     const to = pairToOptions(name, `${spaceSt.slug}.vyre.run`).find(([id]) => id === pairTo)?.[1] ?? "";
     body = (
       <Page title="Pair your server" sub={two ? (session.kind === "watch" ? "Say yes on the server only if it shows the same three words as below." : "The server shows who is asking and the same three words. Confirm only if they match.") : "The server printed a QR code and a long code. Scan the QR, or paste the long code."}>
+        {storeAsk ? <View className="gap-s2"><Banner tone="warn">{STORE_ASK}</Banner><Button kind="primary" label="Create" onPress={() => void makeReal("server", true)} /><Button kind="ghost" label="Cancel" onPress={() => setStoreAsk(false)} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <View className="gap-s2">
           <Text size="caption" strong tone="label">Your server</Text>
@@ -367,6 +421,16 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
             <Button kind="primary" label={inviteLine.trim() ? "Send the invite and continue" : "Continue"} onPress={() => { if (inviteLine.trim()) showToast(`Invite sent to ${inviteLine.trim()}.`); setInviteLine(""); advance("members"); }} />
             <Button kind="ghost" label="Later" onPress={() => advance("members")} />
           </> : <Button kind="primary" label="Continue" onPress={() => advance("members")} />}
+        </View>
+      </Page>
+    );
+  } else if (step === "ai") {
+    body = (
+      <Page title="Connect your AI accounts" sub="Your assistant works on your own AI account. Connect Claude now, or later from Settings.">
+        {MOCK ? <Card><Row dense title="Claude" sub="Connected with your Claude subscription" /></Card> : <ConnectClaude />}
+        <View className="flex-row gap-s2">
+          <Button kind="primary" label="Continue" onPress={() => advance("ai")} />
+          <Button kind="ghost" label="Later" onPress={() => advance("ai")} />
         </View>
       </Page>
     );
@@ -422,7 +486,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           <Button kind="primary" label="Open invite" disabled={!MOCK && (busy || !link.trim())} onPress={() => {
             if (MOCK) return setStep("invite");
             setBusy(true); setWrong("");
-            previewInvite(link.trim()).then((p) => { setInvite(inviteFrom(p, link.trim())); setStep("invite"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+            previewInvite(link.trim()).then((p) => { setInvite(inviteFrom(p, link.trim())); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false));
           }} />
           {MOCK ? <Button label="Simulate the scan" onPress={() => setStep("invite")} /> : null}
         </View>

@@ -1,5 +1,6 @@
 // reviewer-2 repro KW-1 against origin/work/kernel-work-handle 3ba1b7df3 (drop into core/work/memory/): the lines the session capture hands to work.know.capture have no `record`, so they are gated by
 // the session's own resource, and every Space member's role grant covers it. A member reads another person's private session through Space memory.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

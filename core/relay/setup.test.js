@@ -3,6 +3,7 @@
 // the session's life, the allowlist gate, and end to end against a real vyred and the Node relay
 // with the setup page played by relay/client/setup.js. The six refusal checks of tailnet plan
 // 3.6b condition 6 are the ones named "refusal" below.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -487,6 +488,7 @@ test("route key: only a name-directory message for this box's own route is signe
   }
   const person = await w.d.registry.call("relay.route.id", {}, "cli");
   assert.ok(person.error, "modules only");
+  assert.equal((await w.d.registry.call("relay.route.id", {}, "module:vyred")).data.box, id.box, "the daemon's own door (the invitee door) reads this box's id");
   for (const tool of ["relay.route.id", "relay.route.sign", "relay.setup.begin", "relay.setup.end"]) {
     const r = await w.d.registry.call(tool, { message: good.toString("base64url"), code: "x", reason: "x" }, "module:sneaky");
     assert.ok(r.error, `${tool} is refused to a module that is not on its list`);

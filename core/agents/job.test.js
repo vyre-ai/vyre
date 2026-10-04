@@ -2,6 +2,7 @@
 // agents.job: a scheduled job runs as the agent, in a side thread. In-process registry with fake
 // threads and projects modules in a temp home: no daemon, no real session is started.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -11,13 +12,13 @@ import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const THREADS = `export default { async start(ctx) {
-  ctx.tool("threads.launch", { run: async i => { (globalThis.__launched ||= []).push(i); return { id: "job1" }; } });
-  ctx.tool("threads.get", { run: async () => ({ thread: null }) });
+  ctx.tool("threads.launch", { internal: true, run: async i => { (globalThis.__launched ||= []).push(i); return { id: "job1" }; } });
+  ctx.tool("threads.get", { effect: "read", run: async () => ({ thread: null }) });
   return {};
 } };`;
 const PROJECTS = `export default { async start(ctx) {
-  ctx.tool("projects.list", { run: async () => ({ projects: [{ slug: "harlow-legal", home: "/tmp/x" }] }) });
-  ctx.tool("projects.access.check", { run: async () => ({ granted: true }) });
+  ctx.tool("projects.list", { effect: "read", run: async () => ({ projects: [{ slug: "harlow-legal", home: "/tmp/x" }] }) });
+  ctx.tool("projects.access.check", { effect: "read", run: async () => ({ granted: true }) });
   ctx.tool("projects.access.grant", { run: async () => ({ ok: true }) });
   ctx.tool("projects.access.revoke", { run: async () => ({ ok: true }) });
   ctx.tool("projects.access.clear", { run: async () => ({ ok: true }) });
@@ -25,7 +26,7 @@ const PROJECTS = `export default { async start(ctx) {
 } };`;
 
 const ASSISTANT = `export default { async start(ctx) {
-  ctx.tool("assistant.capabilities", { run: async () => ({ text: "CAPS-BLOCK" }) });
+  ctx.tool("assistant.capabilities", { effect: "read", run: async () => ({ text: "CAPS-BLOCK" }) });
   return {};
 } };`;
 

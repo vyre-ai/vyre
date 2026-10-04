@@ -2,6 +2,7 @@
 // Chat's tip on the composer hint line (tip-line.js) in the fake DOM with a fake vyred: what it
 // asks, when it hides, and what Show me, the × and "Hide tips about this" call. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $ } from "../test/fake-dom.js";

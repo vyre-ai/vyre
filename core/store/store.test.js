@@ -1,9 +1,10 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { open, migrate } from "./index.js";
+import { open, migrate, setRepairLog } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
 test("store: every connection is WAL with a busy timeout", t => {
@@ -42,5 +43,18 @@ test("store: a failed migration rolls back and is not recorded", t => {
   assert.throws(() => migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER); CREATE TABLE notes_a (id INTEGER)"]));
   assert.equal(db.prepare("SELECT COUNT(*) n FROM _migrations WHERE module='notes'").get().n, 0);
   assert.equal(db.prepare("SELECT COUNT(*) n FROM sqlite_master WHERE name='notes_a'").get().n, 0, "half a migration was left behind");
+  db.close();
+});
+
+test("store: a step that adds a column the box already has is not an error (an upgrade whose list was numbered differently), but any other failure still is", t => {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)"]);
+  db.exec("ALTER TABLE notes_a ADD COLUMN title TEXT");
+  const lines = [];
+  setRepairLog(l => lines.push(l));
+  migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)", "ALTER TABLE notes_a ADD COLUMN title TEXT; ALTER TABLE notes_a ADD COLUMN body TEXT"]);
+  assert.deepEqual(lines, ["migration notes v2: column already present, treated as applied"], "one plain line each time the repair fires");
+  assert.deepEqual(db.prepare("PRAGMA table_info(notes_a)").all().map(c => c.name), ["id", "title", "body"]);
+  assert.throws(() => migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)", "ALTER TABLE notes_a ADD COLUMN title TEXT; ALTER TABLE notes_a ADD COLUMN body TEXT", "ALTER TABLE notes_nope ADD COLUMN x TEXT"]), /no such table/);
   db.close();
 });

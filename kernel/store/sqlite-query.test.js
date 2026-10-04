@@ -1,4 +1,5 @@
 // The planner may only push down what it can prove exact: every page of every query below is compared, row for row and cursor for cursor, against the reference store.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

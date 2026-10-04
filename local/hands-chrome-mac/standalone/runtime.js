@@ -32,7 +32,25 @@ const HIDDEN = new Set(["chrome.release", "chrome.interject", "chrome.install", 
 /**
  * @param {{ dataDir?: string, sockPath?: string, hostDir?: string, extensionDir?: string, version?: string, log?: (m: string) => void, chrome?: Record<string, any> }} [o]
  */
+/**
+ * The pid of a vyred running for this person on this computer, or null. The standalone runtime treats its own MCP session as the person's (the install is the grant, sends still held); inside vyred
+ * an unnamed model holds no grant. The two must never serve the same extension side by side with different rules, so the standalone refuses to start while a vyred is up.
+ * @param {{ home?: string }} [o]
+ */
+export function vyredRunning(o = {}) {
+  const home = o.home || process.env.VYRE_HOME || path.join(os.homedir(), ".vyre");
+  try {
+    const pid = Number(fs.readFileSync(path.join(home, "vyred.pid"), "utf8").trim());
+    if (!Number.isInteger(pid) || pid <= 1) return null;
+    try { process.kill(pid, 0); return pid; } catch (e) { return /** @type {any} */ (e).code === "EPERM" ? pid : null; }
+  } catch { return null; }
+}
+
 export async function createRuntime(o = {}) {
+  if (!o.allowVyred) {
+    const running = vyredRunning();
+    if (running) throw Object.assign(new Error("Vyre is running on this computer and serves the Chrome extension with its own rules (agents hold a grant by name). Stop it with `vyre down`, or use Vyre's own Chrome tools; the two do not run side by side."), { code: "vyred_running" });
+  }
   const dataDir = o.dataDir || dataDirOf();
   const log = o.log || (m => process.stderr.write(`[vyre-chrome] ${m}\n`));
   const trace = createTrace({ dataDir, version: o.version });
@@ -130,7 +148,7 @@ export async function createRuntime(o = {}) {
     // The module's own caller rules apply here as they do in Vyre: "mcp" is the model, and a tool listed
     // for the person's surfaces is not the model's to call (reviewer-2 M3).
     if (Array.isArray(def.callers) && !def.callers.includes(callerKind(caller))) throw Object.assign(new Error(`${name} is for the person, not for a model`), { code: "denied" });
-    return def.run(input || {}, { caller });
+    return def.run(input || {}, { caller, standalone: true });
   }
 
   /**

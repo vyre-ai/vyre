@@ -14,7 +14,7 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 /** The calls that cross, by gateway group. Anything not here is refused (`no_such_call`); a call is only ever looked up, never built from a name. */
 export const CALLS = Object.freeze({
   grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
-  records: ["define", "get", "query", "aggregate", "search", "create", "update", "remove", "restore"],
+  records: ["definitions", "define", "get", "query", "aggregate", "search", "create", "update", "remove", "restore"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
   events: ["read"],
   surfaces: ["open", "revoke"],
@@ -25,10 +25,21 @@ export const CALLS = Object.freeze({
 });
 
 /** The reads a device may keep a marked copy of for its screens. */
-export const CACHEABLE = Object.freeze(new Set(["grants.list", "grants.members.list", "grants.members.get", "grants.invites.get", "records.get", "records.query", "records.aggregate", "events.read", "tasks.get", "tasks.needsYou", "tasks.card"]));
+export const CACHEABLE = Object.freeze(new Set(["grants.list", "grants.members.list", "grants.members.get", "grants.invites.get", "records.definitions", "records.get", "records.query", "records.aggregate", "events.read", "tasks.get", "tasks.needsYou", "tasks.card"]));
 
 /** Calls a person who is not a member yet may make: reading the join card and accepting the invite. */
 export const INVITEE_CALLS = Object.freeze(new Set(["grants.invites.get", "grants.invites.accept"]));
 
 export const pathOf = (/** @type {string} */ group, /** @type {string} */ name) => `${group}.${name}`;
 export const allCalls = () => Object.entries(CALLS).flatMap(([g, ns]) => ns.map(n => pathOf(g, n)));
+
+/**
+ * Presence over the wire (lead ruling, 4 Oct): an act that needs the owner's presence is asked with no proof first; the home answers `needs_presence` with a CHALLENGE
+ * `{ call, space, home, nonce, expires, args_hash, op?, fields?, payload_hash? }` (op, fields and payload_hash when the call is one a presence proof covers, kernel/remote/proof.js).
+ * The device signs it with its own presence key and resends the same call with `proof` (the kernel's PresenceProof, at most 4 KB) and `challenge` (the nonce) beside the args, never inside
+ * them. The home checks the nonce (its own, live, for this device, call and arguments, used once) and hands the proof to the kernel's one verifier, which checks the key, the role and the hash.
+ * The peer session alone is never presence and the home never signs for the person.
+ */
+export const MAX_PROOF_BYTES = 4096;
+export const CHALLENGE_TTL_MS = 2 * 60 * 1000;
+export const PRESENCE_CODES = Object.freeze(new Set(["needs_presence", "presence_required"]));

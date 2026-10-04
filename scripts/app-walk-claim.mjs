@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // app-walk-claim: the browser claims a Vyre name against a STAND-IN names directory, in headless Chromium. TEST ONLY.
 //
+//   With a pairing: add --code-cmd, --answer-cmd and --owned-cmd (the server's wink.server.status as JSON); the pairing check fails on any refusal line and unless the server says owned:true.
 //   node scripts/app-walk-claim.mjs --dist <web export built with rc.ts browserClaim flipped on a test copy, EXPO_PUBLIC_VYRE_NAMES_DIRECTORY=/names> --names http://host:port [--out dir]
 //
 // Stand-ins, written beside the step (the walk's rule): (1) the web claim is hidden in RC1 by screens/shell/rc.ts (`browserClaim: false`); a TEST copy of the tree is built with that one line flipped to true (sed on the copy, never on a release tree), plus EXPO_PUBLIC_VYRE_NAMES_DIRECTORY=/names; (2) the names directory is a stand-in
@@ -22,6 +23,9 @@ const OUT = path.resolve(flag("--out", "claim-out"));
 // --code-cmd prints a fresh wink.server.code qr on the (unowned) test server; --answer-cmd answers its pairing question, with {words} replaced by the three words the page shows.
 const CODE_CMD = flag("--code-cmd", "");
 const ANSWER_CMD = flag("--answer-cmd", "");
+// --owned-cmd prints the server's own wink.server.status (JSON); the pairing check passes only when it says owned:true. Required with --code-cmd and --answer-cmd: a page that merely stopped complaining is not proof.
+const OWNED_CMD = flag("--owned-cmd", "");
+const REFUSAL = /refus|could not|cannot reach|did not|failed|do not match|try again|denied|not available/i;
 const NAME = flag("--name", "walk" + Math.floor(Math.random() * 90000 + 10000));
 fs.mkdirSync(OUT, { recursive: true });
 const require = createRequire(process.env.PW_FROM || path.join(os.homedir(), "shots/"));
@@ -63,6 +67,7 @@ const body = () => page.locator("body").innerText();
 
 let alive = await check("install: the name step is open (the web claim flag is on)", async () => {
   await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
+  await page.getByText("Choose your Vyre name").first().waitFor({ timeout: 25000 }).catch(() => {}); // the app retries the missing box for a few seconds before it draws
   if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built from a tree whose rc.ts says browserClaim: false, or from a cached bundle)");
 });
 alive = alive && await check(`a free name is offered: ${NAME}`, async () => { await page.locator("input").first().fill(NAME); await page.getByText(/is yours to take/).waitFor({ timeout: 10000 }); });
@@ -112,9 +117,52 @@ if (CODE_CMD && ANSWER_CMD) {
     execSync(ANSWER_CMD.replace("{words}", words), { encoding: "utf8" });
     await page.waitForTimeout(Number(flag("--after-ms", "8000")));
     const t = await body();
-    if (/could not|cannot reach|did not|failed|do not match/i.test(t)) throw new Error("the page reports a failure: " + t.slice(0, 200).replace(/\n/g, " | "));
+    // Any refusal line on the page fails the walk ("The server refused this pairing" once passed 7 of 7), and the server itself must say it is owned.
+    const line = t.split("\n").find((l) => REFUSAL.test(l));
+    if (line) throw new Error("the page reports a refusal: " + line.slice(0, 200));
+    if (/asking to pair/i.test(t)) throw new Error("the page is still waiting at the pairing step");
+    if (!OWNED_CMD) throw new Error("no --owned-cmd given: the server's owned state is not asserted, so this walk cannot pass");
+    let st;
+    try { st = JSON.parse(execSync(OWNED_CMD, { encoding: "utf8" }).replace(/^[^{]*/, "").trim()); } catch (e) { throw new Error("--owned-cmd did not print JSON: " + String(e.message).slice(0, 120)); }
+    const owned = st?.data?.owned ?? st?.owned;
+    if (owned !== true) throw new Error("the server says owned: " + JSON.stringify(owned) + " (wink.server.status), so the pairing did not take");
+    return "server owned: true";
   });
 }
+// After the pairing, walk the screens over the peer wire (the page is paired; there is no box at its origin): each screen once, on a fresh load, reporting what it shows and any refusal in the server's words.
+const SCREENS = flag("--screens", "");
+// --after-cmd runs once after the pairing and before the screens (a seed through the owner on the test server; a stand-in for the owner's session)
+const AFTER_CMD = flag("--after-cmd", "");
+if (CODE_CMD && ANSWER_CMD && SCREENS) {
+  let afterOut = "";
+  if (AFTER_CMD) { try { afterOut = execSync(AFTER_CMD, { encoding: "utf8" }); console.log("  after-cmd: " + afterOut.replace(/\s+/g, " ").slice(0, 300)); } catch (e) { console.log("  after-cmd FAILED: " + String(e.stdout || e.message).slice(0, 300)); } }
+  const thread = /"id":\s*"([^"]+)"/.exec(afterOut)?.[1] ?? "";
+  for (const route0 of SCREENS.split(",")) {
+    const route = route0.replace("{thread}", thread);
+    await check(`screen ${route}`, async () => {
+      await page.goto(`${BASE}/app/${route}`, { waitUntil: "networkidle" }).catch(() => {});
+      await page.waitForTimeout(6000);
+      const t = (await body()).replace(/\n+/g, " | ").slice(0, Number(flag("--body-chars", "260")));
+      console.log(`  ${route}: ${t}`);
+      if (/refus|could not|cannot reach|did not answer|not available|denied|person_session_required|no_identity|Choose your Vyre name/i.test(t)) throw new Error("refused or empty: " + t.slice(0, 160));
+      return t.slice(0, 80);
+    });
+  }
+}
+// --steps "Label|Label|...": click each text in turn (from the last screen) and report what the page shows, so a record, a task and the chat can be opened by their names
+const STEPS = flag("--steps", "");
+if (CODE_CMD && ANSWER_CMD && STEPS) {
+  for (const label of STEPS.split("|")) {
+    await check(`open "${label}"`, async () => {
+      await page.getByText(label, { exact: false }).first().click({ timeout: 10000 });
+      await page.waitForTimeout(5000);
+      const t = (await body()).replace(/\n+/g, " | ").slice(0, 420);
+      console.log(`  after "${label}": ${t}`);
+      if (/refus|could not|cannot reach|did not answer|not available|denied|person_session_required|no_identity|did not load/i.test(t)) throw new Error("refused: " + t.slice(0, 200));
+    });
+  }
+}
+if (args.includes("--debug")) console.log("PK:", await page.evaluate(() => [sessionStorage.getItem("__PK"), sessionStorage.getItem("__PKERR")]).catch(() => "?"));
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), name: NAME, results }, null, 2));
 await browser.close(); server.close();
 process.exit(results.every((x) => x.ok) ? 0 : 1);

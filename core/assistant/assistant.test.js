@@ -2,6 +2,7 @@
 // The assistant module against fake waiting, agents, memory, settings and context modules in a
 // temp home. Nothing here reads real memory, real agents or a real clock.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -64,6 +65,10 @@ test("allowed: person surfaces, the user's own session, and the assistant itself
   globalThis.__agents = [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }];
   const c = (tool, input) => call(tool, input, "module:test");
   for (const caller of ["cli", "local", "deck", "capsule", "mcp", "mcp:thread:abc123"]) assert.equal(await allowed(caller, c), true, caller);
+  // The daemon's vouched meta decides, not the label text (RC-1).
+  assert.equal(await allowed("mcp:thread:abc123", c, { thread: "abc123" }), true, "a vouched session");
+  assert.equal(await allowed("mcp:thread:fake", c, { agent: "kit" }), false, "a vouched named agent that is not the assistant");
+  assert.equal(await allowed("mcp:agent:kit", c, { thread: "t1" }), true, "an agent label no one vouched for claims nothing: it is the session itself");
   assert.equal(await allowed("mcp:agent:juno", c), true, "the assistant");
   assert.equal(await allowed("mcp:agent:kit", c), false, "a project-scoped agent");
   assert.equal(await allowed("tailnet:alex@example.com", c), false);

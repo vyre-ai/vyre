@@ -1,6 +1,7 @@
 // @ts-check
 // Delegation on the REAL kernel (test/kernel-rig.js): the real grants store contains a teammate's grant in its parent, records the parent, carries the adder's
 // presence and approval conditions as obligations, and revokes a child with its parent. Only the presence verifier is a stand-in (SHIM(presence)).
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";

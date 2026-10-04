@@ -105,13 +105,13 @@ export function installFakeReach(mods, root, fixture = {}) {
   globalThis.__fakeReach = globalThis.__fakeReach || new Map();
   globalThis.__fakeReach.set(root, fixture);
   const reachModule = JSON.stringify(pathToFileURL(THIS_FILE).href);
-  writeModule(mods, "agents", { roles: ["local", "box"], does: { tools: ["agents.list"] } },
+  writeModule(mods, "agents", { roles: ["local", "box"], does: { tools: [{ name: "agents.list", reach: "modules" }] } },
     `export default { async start(ctx) {
       ctx.tool("agents.list", { input: { type: "object", properties: {} },
         run: async () => (globalThis.__fakeReach.get(ctx.paths.root) || {}).agents || [] });
       return { async stop() {} };
     } };`);
-  writeModule(mods, "projects", { roles: ["local", "box"], does: { tools: ["projects.list", "projects.access.check", "projects.reach"] } },
+  writeModule(mods, "projects", { roles: ["local", "box"], does: { tools: [{ name: "projects.list", reach: "modules" }, { name: "projects.access.check", reach: "modules" }, { name: "projects.reach", reach: "modules" }] } },
     `import { reachLogic } from ${reachModule};
     export default { async start(ctx) {
       const fx = () => globalThis.__fakeReach.get(ctx.paths.root) || {};

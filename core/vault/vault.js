@@ -188,6 +188,8 @@ export function ensureMacColumns(db) {
 
 const ACCOUNT = "account.json";
 const TOUCHID = "touchid.json";
+/** The wrong-password count and the end of a lock-out, kept in the vault folder so a restart or a crash does not hand out five fresh tries. */
+const THROTTLE = "unlock-throttle.json";
 const AGENT_VK = path.join("vaults", "agents.json");
 const STATE = "state.json";
 const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : ""}${kv}`;
@@ -700,30 +702,33 @@ export class Vault {
     // Every password attempt comes through here (unlock and enrolling Touch ID), so the guess limit lives here. The password is its own
     // proof (no separate presence prompt), so after 5 wrong tries in a row every try is refused for 30 s, doubling to 15 minutes; a right
     // password resets it. A refused try is not tested against the key at all.
-    const f = this.unlockFails || (this.unlockFails = { n: 0, until: 0 });
+    const f = this.unlockFails || (this.unlockFails = (() => { try { const j = readJsonFile(this.dir, THROTTLE); return j && Number.isFinite(j.n) && Number.isFinite(j.until) ? { n: Math.max(0, j.n), until: j.until } : { n: 0, until: 0 }; } catch { return { n: 0, until: 0 }; } })());
+    const persist = () => { try { writeJsonFile(this.dir, THROTTLE, { n: f.n, until: f.until }); } catch { /* the in-memory count still holds */ } };
     const t0 = now();
     if (t0 < f.until) {
       this.audit("account-unlock", null, who, false, "throttled after wrong passwords");
-      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled" });
+      throw Object.assign(new Error(`too many wrong passwords in a row · try again in ${Math.ceil((f.until - t0) / 1000)} seconds`), { code: "throttled", detail: { retry_after_s: Math.ceil((f.until - t0) / 1000) } });
     }
     const rec = readJsonFile(this.dir, ACCOUNT);
-    if (!rec) throw new Error("this vault has no account password yet · vyre vault account create");
+    if (!rec) throw Object.assign(new Error("this vault has no account password yet · vyre vault account create"), { code: "no_account" });
     await this.key();
     const params = clampKdf(rec, { test: Boolean(this.testKdf) });
     const text = await this.secretKeys.read();
-    if (!text) throw new Error("this device has no Secret Key for the account · use your recovery kit");
+    if (!text) throw Object.assign(new Error("this device has no Secret Key for the account · use your recovery kit"), { code: "no_secret_key" });
     const { acct, bytes } = parseSecretKey(text);
-    if (acct !== rec.acct) { bytes.fill(0); throw new Error("the Secret Key on this device belongs to another account"); }
+    if (acct !== rec.acct) { bytes.fill(0); throw Object.assign(new Error("the Secret Key on this device belongs to another account"), { code: "wrong_account" }); }
+    // The try is counted BEFORE it is tested and written down (a crash in the middle is a wrong try, not a free one); a right password resets the count.
+    f.n++;
+    if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
+    persist();
     try {
       const auk = accountUnlockKey({ password: String(password ?? ""), secretKey: bytes, acct, salt: Buffer.from(String(rec.salt), "base64"), params });
       unwrapVaultKey(auk, rec.personal, vkAad(PERSONAL, Number(rec.personal && rec.personal.kv), acct));
-      f.n = 0; f.until = 0;
+      f.n = 0; f.until = 0; persist();
       return { auk, rec, acct };
     } catch {
-      f.n++;
-      if (f.n >= 5) f.until = now() + Math.min(30_000 * 2 ** (f.n - 5), 15 * 60_000);
       this.audit("account-unlock", null, who, false, `wrong password (${f.n} in a row)`);
-      throw new Error("that password does not open your personal vault");
+      throw Object.assign(new Error("that password does not open your personal vault"), { code: "wrong_password" });
     } finally { bytes.fill(0); }
   }
 
@@ -1338,7 +1343,7 @@ export class Vault {
   async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
-    if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
+    if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);

@@ -2,6 +2,7 @@
 // The typed code end to end: a typing device (enterCode) through the Node relay, to a box's link
 // (core/relay/link.js) running the showing device's state machine (core/wink/code.js).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRelay } from "../node/server.js";

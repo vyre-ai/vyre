@@ -1,5 +1,6 @@
 // @ts-check
 // iq/fix: correcting a Vyre Memory answer where it is shown, remembered, and undone.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

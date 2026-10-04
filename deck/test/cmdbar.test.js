@@ -2,6 +2,7 @@
 // The command bar (js/cmdbar.js) and the page header (js/page-header.js) drawn on the fake DOM: Ctrl or Cmd K opens
 // it, what exists is listed by group, typing narrows, Enter goes, Esc closes and gives the focus back.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

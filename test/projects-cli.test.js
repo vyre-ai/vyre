@@ -3,6 +3,7 @@
 // home seeded with the fictional corpus, and a fake `claude` first on PATH that records how it
 // was started instead of starting anything.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -92,7 +93,7 @@ test("cli: vyre alone, piped, prints the home with this folder's project presele
   assert.match(inside.out, /› Harlow Legal {2}2 threads · \S+ · this folder/, "this folder's project is not preselected");
   assert.match(inside.out, /  Northwind {2}3 threads/);
   assert.match(inside.out, /New session without a project/);
-  assert.match(inside.out, /Agents\n\s+none yet/);
+  assert.match(inside.out, /Agents\n\s+engineer\b/, "the built-in Engineer is the one agent a fresh home lists");
   assert.doesNotMatch(inside.out, /What a new thread here is told/, "the home opened the project instead of preselecting it");
   const outside = await w.run([], { cwd: w.root });
   assert.match(outside.out, /› Northwind|› Harlow Legal/);

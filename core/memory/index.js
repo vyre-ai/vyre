@@ -41,6 +41,8 @@ const PERSONAL_BATCH = 2000;
 const cwds = { type: "array", items: { type: "string" } };
 /** The person's surfaces (deck also admits their own devices) and modules: who the writes that have no model use are open to. */
 const PEOPLE_MOD = ["cli", "local", "deck", "capsule", "module"];
+/** Steering reaches a model's own session too (a project agent pins and mutes in ITS project): the body's guard decides what that session may steer, never the registry's list. */
+const STEERERS = [...PEOPLE_MOD, "mcp", "harness"];
 /** The person's surfaces only (their own devices ride "deck"): the corrections, whose bodies refuse everyone else too. */
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
@@ -350,6 +352,8 @@ export default {
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
     const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
+    /** The person at one of their own surfaces or on their own device signed in, as the kernel's Who or (SHIM(legacy labels), kernel off) the surface labels: never a module and never a model label. */
+    const mayRebuild = caller => { const w = whoNow(); return w ? (w.ownerSurface || (w.device && w.signedIn)) : OWNER.has(String(caller)); };
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
@@ -377,11 +381,14 @@ export default {
      * @param {{ whole?: boolean, tailnet?: boolean }} [opts]  whole: the call reads or steers everything by design;
      *   tailnet: a read the user's tailnet devices make as the owner
      */
-    const guard = async ({ agent, project_cwds = [], room }, caller, { whole = false, tailnet = false } = {}) => {
+    const guard = async ({ agent, project_cwds = [], room }, caller, { whole = false, tailnet = false, firstParty = false } = {}) => {
       const r = await reach(agent, caller);
       const cwds = clean(project_cwds);
       const scoped = Boolean((room && room !== "*") || cwds.length);
       if (r.all) {
+        // MS-1: `reach` reads an unnamed model session (`mcp`, `mcp:thread:<id>`, `harness`) as every project, which is right for reading a project room it names but never lets it STEER or rebuild
+        // (whole: pin, mute, curate): that widens the graph the person sees, so it needs the person's own surface, a module, or a named agent held to its own project below.
+        if (whole && !r.agent && !mayRebuild(caller)) throw denied("this changes the whole graph, which only the person's own surfaces and the assistant may do");
         if (!scoped && !whole && !r.agent && !(tailnet ? reader(caller) : owner(caller))) throw signInHint() || denied("the main graph is drawn for the Deck and the assistant; pass room (a project's slug, or unfiled) or project_cwds");
         return { ...r, cwds: project_cwds };
       }
@@ -501,16 +508,16 @@ export default {
     });
     const steer = mode => ({
       effect: "write",
-      callers: PEOPLE_MOD,
+      callers: STEERERS,
       description: mode === "pin"
         ? "Pin a node so it ranks first wherever it is relevant, everywhere (scope '*') or in one project folder. off: true unpins."
         : "Mute a node so memory never offers it, everywhere (scope '*') or in one project folder. off: true unmutes.",
       input: { type: "object", required: ["node"], properties: { node: { type: "string" }, scope: { type: "string" }, off: { type: "boolean" }, ...agentField } },
-      run: async ({ node, scope = "*", off = false, agent }, { caller } = {}) => {
+      run: async ({ node, scope = "*", off = false, agent }, { caller, firstParty } = {}) => {
         // Steering everywhere is steering the main graph; steering one project needs that project,
         // and the node must be one its graph contains.
         const project_cwds = scope === "*" ? [] : [scope];
-        const r = await guard({ agent, project_cwds }, caller, { whole: true });
+        const r = await guard({ agent, project_cwds }, caller, { whole: true, firstParty });
         return graph.steer({ node, scope: scope === "*" ? "*" : clean([scope])[0], mode, off, who: r.agent ? `agent:${r.agent}` : caller || null, project_cwds: r.all ? [] : project_cwds });
       },
     });
@@ -1289,11 +1296,11 @@ export default {
     });
     ctx.tool("memory.curate", {
       effect: "write",
-      callers: PEOPLE_MOD,
+      callers: STEERERS,
       description: "Read any new turns and rebuild the graph now. full: true re-reads every turn. Returns counts.",
       input: { type: "object", properties: { full: { type: "boolean" }, ...agentField } },
-      run: async ({ full = false, agent }, { caller } = {}) => {
-        await guard({ agent }, caller, { whole: true });
+      run: async ({ full = false, agent }, { caller, firstParty } = {}) => {
+        await guard({ agent }, caller, { whole: true, firstParty });
         if (running) await running.catch(() => {});
         return run({ full, force: true });
       },

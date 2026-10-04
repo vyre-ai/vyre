@@ -5,6 +5,7 @@
 // guests and modules that do not ask get the box's own. A Mac that is away costs the box nothing
 // but its rows, and nothing the Mac answers is stored on the box.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -118,13 +119,13 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
     // a separate copy by design so recall never waits on projects being installed at all) may
     // refuse a caller outright, but ONLY one that names an agent this world never created, or one
     // recall's own OWNER/ownSession/ownerDevice never recognises as the owner (a tailnet guest,
-    // "unknown"): those cover "deck", "cli", every "module:" caller (module:x included) and a
-    // bare "mcp" session, so none of those may ever come back denied here, or a real regression
+    // "unknown"): those cover "deck", "cli" and every "module:" caller (module:x included; a bare "mcp"
+    // is an unnamed model session, never the person: MS-1, RC-1 3b98bbd80), so none of those may ever come back denied here, or a real regression
     // that refused the person's own surfaces (or a module) would pass this test silently
     // (reviewer, on the integrator's earlier "denied" is fine for every caller check — verified
     // by temporarily dropping "deck" from recall's own OWNER set: this now fails loudly instead
     // of passing quiet).
-    const mayDeny = /agent:/.test(caller) || caller === "unknown" || caller.startsWith("tailnet-guest:");
+    const mayDeny = /agent:/.test(caller) || caller === "mcp" || caller === "unknown" || caller.startsWith("tailnet-guest:");
     const recall = async (tool, args) => {
       const r = await s.boxCall(tool, args, caller, caller.startsWith("tailnet:") ? { peer: PHONE } : {});
       if (r.error) {
@@ -135,7 +136,8 @@ test("federation reads: machines local, agents, MCP, guests and modules that do 
       return r.data;
     };
     const rows = await recall("recall.sessions", { limit: 50, ...input });
-    if (rows) assert.deepEqual(rows.map(x => x.id), [BOX_ID], caller);
+    // A bare `mcp` is an unnamed model session: never the person (MS-1, KW-1, RC-1 3b98bbd80), it reads only its own thread's project, and a bare one has no thread, so it reads no sessions.
+    if (rows) assert.deepEqual(rows.map(x => x.id), caller === "mcp" ? [] : [BOX_ID], caller);
     else assert.ok(mayDeny, `${caller}: recall.sessions was refused but must have answered`);
     const hits = await recall("recall.search", { q: "intake form", ...input });
     if (hits) assert.ok(hits.every(h => h.session === BOX_ID), caller);

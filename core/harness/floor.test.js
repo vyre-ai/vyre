@@ -1,5 +1,6 @@
 // @ts-check
 // The floor's second layer (docs/adr/0004-presence.md): the model's own ways around presence proof.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import fs from "node:fs";
 import path from "node:path";

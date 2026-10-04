@@ -1,6 +1,7 @@
 // @ts-check
 // The nested payload hash (reviewer-2's WH-1): `fields` sits NESTED in the hashed object, so a field named op or space can never stand for the real one. The vector file is shared with native-core's
 // signer and app-wire's apps/app/src/real/payload-hash.js: each asserts its own implementation against it.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

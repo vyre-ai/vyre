@@ -30,14 +30,19 @@ function WideTable<T>({ columns, rows, onRow, empty, rowKey }: TableProps<T>) {
   const table = useReactTable({ data: rows, columns: defs, state: { sorting }, onSortingChange: setSorting, getCoreRowModel: getCoreRowModel(), getSortedRowModel: getSortedRowModel() });
   if (!rows.length) return <EmptyTable text={empty} />;
   const model = table.getRowModel().rows;
-  const flexes = columns.map((_, i) => (i === 0 ? 2 : 1));
+  // Name takes the remaining width; the other columns size to their content (the longest header or cell text, in characters), the same on every row so they line up.
+  const sizeOf = (i: number) => {
+    if (i === 0) return { flex: 1, minWidth: 0 };
+    const longest = Math.max(columns[i].label.length, ...model.map((r) => String(r.getVisibleCells()[i]?.getValue() ?? "").length));
+    return { flexGrow: 0, flexShrink: 0, width: Math.min(240, Math.max(72, longest * 8 + 8)) };
+  };
   return (
     <View accessibilityRole={"table" as any} className="overflow-hidden rounded-card border border-edge bg-surface-2">
       <View className="min-h-control-sm flex-row items-center gap-s3 border-b border-edge px-s4">
         {table.getHeaderGroups()[0].headers.map((h, i) => {
           const dir = h.column.getIsSorted();
           return (
-            <Pressable key={h.id} onPress={() => h.column.toggleSorting(dir === "asc")} style={{ flex: flexes[i] }} className="min-w-0 flex-row items-center gap-s1 py-s2" accessibilityRole="button" accessibilityLabel={`Sort by ${columns[i].label}`}>
+            <Pressable key={h.id} onPress={() => h.column.toggleSorting(dir === "asc")} style={sizeOf(i)} className="min-w-0 flex-row items-center gap-s1 py-s2" accessibilityRole="button" accessibilityLabel={`Sort by ${columns[i].label}`}>
               <Text size="caption" strong tone="label" className={columns[i].align === "right" ? "text-right" : ""}>{columns[i].label}</Text>
               {dir ? <Icon name={dir === "asc" ? "chevron-up" : "chevron-down"} size={12} tone="label" /> : null}
             </Pressable>
@@ -46,9 +51,9 @@ function WideTable<T>({ columns, rows, onRow, empty, rowKey }: TableProps<T>) {
       </View>
       {model.map((r, ri) => {
         const body = r.getVisibleCells().map((c, i) => (
-          <View key={c.id} style={{ flex: flexes[i] }} className="min-w-0">{asNode(cellOf(c), i === 0)}</View>
+          <View key={c.id} style={sizeOf(i)} className="min-w-0">{asNode(cellOf(c), i === 0)}</View>
         ));
-        const cls = cn("min-h-row flex-row items-center gap-s3 px-s4 py-s2", ri > 0 && "border-t border-edge");
+        const cls = cn("min-h-touch flex-row items-center gap-s3 px-s4 py-s1", ri > 0 && "border-t border-edge");
         return onRow ? (
           <Pressable key={rowKey(r.original)} accessibilityRole="button" onPress={() => onRow(r.original)} className={cls} style={({ pressed, hovered }: any) => (pressed ? { backgroundColor: "var(--press)" } : hovered ? { backgroundColor: "var(--hover)" } : undefined)}>{body}</Pressable>
         ) : <View key={rowKey(r.original)} className={cls}>{body}</View>;

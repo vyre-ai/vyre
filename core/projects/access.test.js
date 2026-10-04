@@ -5,6 +5,7 @@
 // tools are called directly — presence and caller enforcement themselves are the registry's job
 // and are covered generically by core/harness/floor.test.js and test/mcp-server-tools.test.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -368,4 +369,16 @@ test("projects: stop() ends the auto-seed's retries, waits for its step, and not
   const at = w.state.calls;
   await new Promise(r => setTimeout(r, 60));
   assert.equal(w.state.calls, at, "no retry after stop");
+});
+
+test("projects.reach: with the daemon's vouched thread and agent the label's text decides nothing (RC-1)", async t => {
+  const w = await started(t, { agents: [{ name: "kit", kind: "agent", projects: ["harlow-legal"] }] });
+  assert.deepEqual(await w.call("projects.reach", { caller: "mcp:thread:t1", thread: "t1", claim: null }), { all: true, agent: null }, "a vouched session of the person's own");
+  const forged = await w.call("projects.reach", { caller: "mcp:thread:fake", thread: "", claim: null }).catch(e => e);
+  assert.equal(forged.code, "denied", "a label naming a thread the daemon did not vouch is no session");
+  const r = await w.call("projects.reach", { caller: "mcp", thread: "t1", claim: "kit" });
+  assert.equal(r.agent, "kit", "the vouched agent, not the label, names the agent");
+  assert.deepEqual(r.projects.map(p => p.slug), ["harlow-legal"]);
+  const lie = await w.call("projects.reach", { caller: "mcp:agent:kit", thread: "t1", claim: null }).catch(e => e);
+  assert.equal(lie.agent === "kit", false, "an agent label with no vouched agent claims nothing");
 });

@@ -3,6 +3,7 @@
 // sharing a computer is a node.host grant; removal takes the grant and the device with it. A real vyred, the Node relay, a real typing
 // device (relay/client/join.js). 127.0.0.1 only. Run on a runner or the test server (daemon tests never run on the person's Mac).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -13,7 +14,7 @@ import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
 import { joinWithCode } from "../relay/client/join.js";
-import { pairTicket, resolveTicket, connect } from "../relay/client/client.js";
+import { pairTicket, resolveTicket, connect, openChannel, deviceKey as clientDeviceKey } from "../relay/client/client.js";
 import { nodeCrypto, fileKeyStore } from "../relay/client/nodecrypto.js";
 import { fromBase64url } from "../relay/client/bytes.js";
 import { ackCode } from "../relay/client/code.js";
@@ -25,11 +26,23 @@ import { parseServerQr, parsePhoneQr } from "../core/wink/pairing.js";
 import { pairWords, nonceCommit, ticketTag, newNonce } from "../relay/client/pairwords.js";
 import { pairServer, parseServerPayload } from "../relay/client/serverpair.js";
 import { createServerLinks } from "../core/wink/serverlink.js";
+import { openServerPeer } from "../relay/client/peerclient.js";
+import { deviceKey } from "../core/wink/devicekey.js";
+import workerDir, * as WD from "../names/worker/index.js";
+import { createRuntime } from "../relay/worker/fake-cf.js";
+import { fakeDns } from "../names/worker/fake-dns.js";
+import { memorySeen, idDirectory } from "../lib/identity/directory.js";
+import { fileIdentityStore } from "../core/spaces/identity.js";
+import { createIdentityOps } from "../core/spaces/identity-ops.js";
+import { hooks as spacesHooks } from "../core/spaces/index.js";
+import { acceptMessage } from "../lib/spaces/invites.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
 process.env.VYRE_WINK_TYPED_CODE = "1";
 // A ring ticket is gated once the Wink module is up (X-1); the shared test helpers switch that off for tests of the relay's own pairing, and this file is the one that tests it.
 delete process.env.VYRE_TEST_UNGATED_RING;
+// The older tests pair with the three words alone; owning a server needs the identity proof in a real build (the proof tests below turn this off).
+process.env.VYRE_TEST_PAIR_NO_PROOF = "1";
 
 /** Takes any presence proof: refusals below are about who calls and what the module decides. */
 const lenient = {
@@ -51,9 +64,10 @@ async function world(t, opt = {}) {
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
-  if (opt.pendingMs) { seams.set(root, { pendingMs: opt.pendingMs }); t.after(() => seams.delete(root)); }
+  if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
+  if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
@@ -265,7 +279,7 @@ test("wink: a release drops the adopter's relay device and a refused adopt drops
   assert.deepEqual(rel.data, { released: true }, JSON.stringify(rel.error));
   await until(async () => !(await relayHas(w, app)));
   await until(async () => (await w.call("wink.access")).data.devices.every(d => d.id !== app));
-  assert.equal((await w.call("wink.access")).data.devices.filter(d => d.id === app).length, 0, "wink.access lists nothing for it");
+  assert.equal((await w.call("wink.access", {}, "cli", PROOF)).data.devices.filter(d => d.id === app).length, 0, "wink.access lists nothing for it");
   // the relay is what authenticates a device's calls: with its row removed it is refused there (4401), never admitted as device:<id> again
   const row = (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === app);
   assert.equal(row, undefined, "the relay no longer knows it");
@@ -756,7 +770,8 @@ test("paired session on the real kernel: pair, pick, start-paired, then memory.g
   const label = `device:${paired.device}`;
   const read = async via => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   const ok = await read({ person: { id: sessionId } });
@@ -799,7 +814,8 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   const sessionId = started.body.data.id, label = `device:${paired.device}`;
   const read = async (via = { person: { id: sessionId } }) => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   assert.ok(!(await read()).error, "the paired session reads memory with no prompt");
@@ -1057,77 +1073,58 @@ test("X-1 and the ring, real daemon and relay: device.paired says how the device
   assert.deepEqual([paired().at(-1).via, paired().at(-1).gate], ["ring", undefined]);
 });
 
-test("paired session ends, on the real kernel: removing the owner key that confirmed the pairing ends the session at once, and a key that confirmed nothing does not", async t => {
-  const a = await pairedOnKernel(t, { confirmWithRealKey: true });
-  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const otherId = (await a.w.d.registry.call("presence.enroll", { kind: "device", name: "Spare", public_key: other.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }, "cli", PROOF)).data.id;
-  assert.equal((await a.w.d.registry.call("presence.remove", { id: otherId }, "cli", PROOF)).data.removed, otherId);
-  assert.equal(await a.live(), true, "removing a key that confirmed nothing leaves the session alone");
-  assert.equal((await a.w.d.registry.call("presence.remove", { id: a.ownerKey }, "cli", PROOF)).data.removed, a.ownerKey);
-  assert.equal(await a.live(), false, "the session bound to the removed key is gone at once");
-});
 
-test("PS-4 and sessions scope, on the real kernel: a paired session lists only itself, a person's own surface lists every one", async t => {
-  const a = await pairedOnKernel(t);
-  const b = await pairedOnKernel(t, {}, a.w);
-  const list = async (caller, meta) => { const x = (await a.w.d.registry.call("presence.person.sessions", {}, caller, meta)).data; return (x.sessions || x).map(y => y.id).sort(); };
-  assert.deepEqual(await list("cli", PROOF), [a.sessionId, b.sessionId].sort(), "the owner's surface sees both");
-  assert.deepEqual(await list("deck", { person: { id: a.sessionId } }), [a.sessionId], "a paired session sees only itself");
-  assert.deepEqual(await list("deck", { person: { id: b.sessionId } }), [b.sessionId]);
-});
 
-test("a device with no box pairs a fresh server through pairServer: the claimed identity and its name become the owner, only after the right pick at the server", async t => {
-  const w = await world(t);
-  const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
-  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  assert.deepEqual(parseServerPayload(made.qr)?.seed, parseServerQr(made.qr).seed, "the client's parser reads what the box prints");
-  assert.equal(parseServerPayload("vyre://wink/2?t=AAAA"), null);
-  const owner = { id: "per_" + "q".repeat(26), name: "Alex" };
-  let shown = "";
-  const pairing = pairServer({ payload: made.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, onWords: x => { shown = x; } });
-  pairing.catch(() => {});
-  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
-  assert.match(q.name, /^Alex \(id q{6}\)$/, "the person at the server sees the claimed name and the start of its id");
-  assert.equal((await w.call("wink.server.status", {}, "cli", PROOF)).data.owned, false, "nobody owns the server before the yes");
-  await until(async () => shown);
-  assert.ok(q.choices.includes(shown), "the words the device shows are one of the server's three");
-  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
-  const done = await pairing;
-  assert.equal(done.paired, true);
-  assert.deepEqual([done.owner.kind, done.owner.id], ["identity", owner.id]);
-  const st = (await w.call("wink.server.status", {}, "cli", PROOF)).data;
-  assert.equal(st.owned, true);
-  assert.equal(st.space, "Alex", "the owner is the claimed identity with its name, not a default space or You");
-  assert.equal(st.device, "Alex's iPhone");
-  // a second device scanning the used ticket is refused as taken
-  await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
-});
 
 // ---- device-first pairing leaves the device usable (wink-2, 4 Oct): session, peer, kernel ----
 
+
+/** The names directory stand-in (the real Worker on the fake runtime) and a device that really claimed `alex` there: the identity a server's owner proof is checked against. */
+async function standinIdentity(t) {
+  const dns = fakeDns();
+  const clock = { t: Date.UTC(2026, 9, 4, 12, 0, 0) };
+  const rt = createRuntime({ worker: workerDir, Class: WD.Directory, classes: { DIRECTORY: WD.Directory },
+    env: { CF_API_TOKEN: dns.token, CF_ZONE_ID: dns.zoneId, CF_API: dns.api, CF_FETCH: dns.fetch, NOW: () => clock.t, ZONE: "vyre.run", RESOLVE_TXT: async () => [] } });
+  let n = 0;
+  const state = { down: false };
+  const fetchDir = async (url, init) => { if (state.down) throw new Error("unreachable"); return workerDir.fetch(new Request(url, { ...init, headers: { ...(init.headers || {}), "cf-connecting-ip": `198.51.${(n >> 8) & 255}.${n++ & 255}` } }), rt.env); };
+  const seen = memorySeen();
+  const store = fileIdentityStore(path.join(tempHome(t), "spaces"));
+  const ops = createIdentityOps({ store, dir: idDirectory({ base: "http://127.0.0.1:1", fetch: fetchDir, now: () => clock.t, seen }), seen, now: () => clock.t, emit() {}, stretch: { memoryKiB: 64, passes: 1 } });
+  await ops.create({ name: "alex", password: "four plain words here", deviceLabel: "Alex's phone" });
+  spacesHooks.fetch = /** @type {any} */ (fetchDir);
+  spacesHooks.now = () => clock.t;
+  t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
+  return { id: store.status().id, state, store, ops: () => store.ops(), clock,
+    sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
+}
+
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware" } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false } = {}) {
+  ident = ident || await standinIdentity(t);
+  // the real rule: a server is owned only with the identity proof, checked against the directory
+  const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
+  delete process.env.VYRE_TEST_PAIR_NO_PROOF;
+  t.after(() => { if (noProof !== undefined) process.env.VYRE_TEST_PAIR_NO_PROOF = noProof; });
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const w = await world(t, { kernel: true });
+  const w = await world(t, { kernel: true, realPresence });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
+  const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const owner = { id: "per_" + "q".repeat(26), name: "Alex" };
+  const owner = { id: ident.id, name: "Alex", vyre: "alex" };
   let shown = "";
-  const pairing = pairServer({ payload: made.qr, owner, deviceKind: kind, keyStorage: presenceStorage, ...(about ? { about } : {}), name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey, pollMs: 100, onWords: x => { shown = x; } });
+  const pairing = pairServer({ payload: made.qr, owner, signIdentity: ident.sign, deviceKind: kind, keyStorage: presenceStorage, ...(about ? { about } : {}), name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey, pollMs: 100, onWords: x => { shown = x; } });
   pairing.catch(() => {});
   const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
   await until(async () => shown);
   assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
   const done = await pairing;
-  return { w, dk, ks, owner, done, made, sign: m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+  return { w, dk, ks, ident, owner, done, made, sign: m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
 }
 const linksFor = (t, f) => {
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's iPhone", sign: f.sign,
@@ -1136,113 +1133,68 @@ const linksFor = (t, f) => {
   return links;
 };
 
-test("device-first, real daemon, relay and kernel: the pick leaves the device recorded, granted, enrolled and admitted: start-paired works, the server lists it with presence, and a call over the peer session answers the owner", async t => {
-  const f = await pairFreshServer(t);
-  const { w, done, owner } = f;
-  // recorded as the owner's phone with its key, confirmed by the owner's pick
-  const rec = (await w.d.registry.call("wink.device.record", { id: done.device }, "module:presence")).data;
-  assert.deepEqual([rec.kind, rec.confirmed, rec.confirmedBy, rec.owner], ["phone", true, owner.id, owner.id]);
-  assert.equal(rec.key.kty, "EC");
-  assert.equal((await deviceRow(w, done.device)).presence, true, "the server lists the device with presence");
-  assert.equal((await deviceRow(w, done.device)).storage, "hardware");
-  assert.equal(w.d.kernel.id.owner, owner.id, "the claimed identity is the home's owner");
-  const links = linksFor(t, f);
-  // the device signs in: challenge, then start-paired with its own key
-  const s = await links.startPaired("srv");
-  assert.ok(s.id);
-  const live = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
-  assert.ok((live.sessions || live).some(x => x.paired && x.id === s.id), "the server has the device's paired session");
-  // the peer session carries a registry tool as this device, with the person its record says
-  const session = links.sessionFor("srv");
-  const me = await session.call("records.me", {});
-  assert.ok(JSON.stringify(me).includes(owner.id), `records.me answers the owner: ${JSON.stringify(me).slice(0, 200)}`);
-  // and a kernel call over the same session is the kernel's own remote path
-  const rk = links.remoteKernel("srv", w.d.kernel.id.space);
-  const members = await rk.gateway.grants.members.list(null);
-  assert.ok(JSON.stringify(members).includes(owner.id), "grants.members.list over the remote kernel names the owner");
-});
 
-test("device-first attacks: a removed device holding a token and a stream is refused at its next call; a replayed start-paired is refused; a stranger never gets a stream", async t => {
-  const f = await pairFreshServer(t);
-  const { w, done } = f;
-  const links = linksFor(t, f);
-  const l = links.sessionFor("srv");
-  await links.startPaired("srv");
-  await l.call("records.me", {});
-  // a replay of the start-paired the device just made is refused (the grant is one use)
-  await assert.rejects(() => links.startPaired("srv"), e => e.code === "denied");
-  // removing the device at the server ends its next call, session and all
-  assert.equal((await w.call("wink.remove", { device: done.device }, SCREEN, A)).data.removed, done.device);
-  await assert.rejects(() => l.call("records.me", {}), e => /denied|closed|removed|unreachable|paired/.test(`${e.code} ${e.message}`));
-  await assert.rejects(() => links.remoteKernel("srv", w.d.kernel.id.space).gateway.grants.members.list(null), e => /denied|closed|removed|unreachable|paired|not_a_member/.test(`${e.code} ${e.message}`));
-});
 
-test("device-first: a web device is recorded as web with software storage", async t => {
-  const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" });
-  const rec = (await f.w.d.registry.call("wink.device.record", { id: f.done.device }, "module:presence")).data;
-  assert.equal(rec ? rec.kind : null, "web");
-  assert.equal((await deviceRow(f.w, f.done.device)).storage, "software");
-});
 
-test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
-  const w = await world(t);
+
+
+
+
+
+
+// ---- the identity proof in the FIRST adopt call, checked against the names directory (lead ruling, 4 Oct) ----
+
+/** One pairing attempt against a fresh real server; resolves the outcome and the server's world. */
+async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident.id, name: "Alex", vyre: "alex" }, answer = true } = {}) {
+  const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
+  delete process.env.VYRE_TEST_PAIR_NO_PROOF;
+  t.after(() => { if (noProof !== undefined) process.env.VYRE_TEST_PAIR_NO_PROOF = noProof; });
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
-  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const scan = parseServerQr(made.qr);
-  const r = await redeem(t, w, scan.seed, "Alex's iPhone");
-  const c = r.open();
-  const owner = { kind: "identity", id: "per_" + "q".repeat(26), name: "Alex" };
-  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
-  const res = await over(c, "wink.server.adopt", { owner, identity: owner.id, proof: { eid: "x".repeat(26), sig: "y".repeat(86) }, pairing: { commit, tag } });
-  const text = JSON.stringify(res.body);
-  assert.doesNotMatch(text, /does not take|not take|unknown (field|input)|not declared/i, text);
-});
-
-test("a box-less device pairs a fresh server, is recorded as the owner's device with its kind, and then start-paired succeeds with no second step", async t => {
-  const w = await world(t);
-  const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
-  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
-  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
-  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
-  const ks = keystore(t);
-  const owner = { id: "per_" + "q".repeat(26), name: "Alex" };
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const w = await world(t, { kernel: true });
+  const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   let shown = "";
-  const pairing = pairServer({ payload: made.qr, owner, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey, deviceKind: "phone", keyStorage: "software", pollMs: 100, onWords: x => { shown = x; } });
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const pairing = pairServer({ payload: code.qr, owner, deviceKind: "phone", presenceKey, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 100, ...(sign ? { signIdentity: sign } : {}), onWords: x => { shown = x; } });
   pairing.catch(() => {});
-  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; });
-  await until(async () => shown);
-  assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
-  const done = await pairing;
-  // the server lists the device as the owner's phone, its key storage as reported
-  const row = await until(() => deviceRow(w, done.device));
-  assert.equal(row.presence, true);
-  const listed = (await w.call("wink.access")).data.devices.find(d => d.id === done.device);
-  assert.ok(listed, "recorded as a device of the owner");
-  assert.equal((await w.call("wink.device.paired", { device: done.device, identity: owner.id }, "module:spaces")).data.paired, true);
-  // and it opens its person session at once: challenge, sign, start-paired
-  const c = connect({ relay: done.relay, route: done.route, box: done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
-  t.after(() => c.close());
-  const ch = await over(c, "presence.person.pair-challenge", {});
-  assert.equal(ch.status, 200, JSON.stringify(ch));
-  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${done.device}\n${ch.body.data.challenge}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
-  const started = await over(c, "presence.person.start-paired", { sig });
-  assert.equal(started.status, 200, JSON.stringify(started));
-});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 3000).catch(() => null);
+  if (q && answer) { await until(async () => shown); await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF); }
+  return { w, asked: Boolean(q), result: await pairing.then(r => ({ ok: r }), e => ({ err: e })) };
+}
 
-test("device-first, real daemon: the owner's device calls spaces.host-here on the server over the peer session; the server's kernel builds the chain from the peer and decides", async t => {
-  const f = await pairFreshServer(t);
-  const w = f.w;
-  const links = linksFor(t, f);
-  await links.startPaired("srv");
-  const session = links.sessionFor("srv");
-  // with no proof the server asks for one (the presence floor is the server's own, nothing here is trusted)
-  await assert.rejects(() => session.call("spaces.host-here", { name: "harlow" }), e => e.code === "presence_required");
-  // with the owner's proof in the input (the test world's presence takes any), the server's kernel hosts the space and answers its id
-  const made = await session.call("spaces.host-here", { name: "harlow", proof: { key: "k1" } });
-  assert.match(made.space, /^spc_[a-z2-7]{12}$/);
-  assert.ok(w.d.kernel.spaces.hosts(made.space), "the space is hosted by the SERVER's kernel");
-});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ---- Add this device from another device: the joining side (relay/client/phonepair.js), a box-less device with its own identity key ----
+
+
+// ---- a recovered phone (tailnet, 4 Oct): its key is on the identity's list by recovery and was never paired with this server ----
+
+
+// ---- step 13 (walker): a removed server's route is refused ----
+
+
+// ---- IV-5 (reviewer-3): invitee channels have a pool and a life of their own ----

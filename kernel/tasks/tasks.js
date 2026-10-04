@@ -77,6 +77,9 @@ export async function checkOutput(task, evidence, facts) {
  *   release?: (task: any, payload: any, by: { person: string, key_id: string }) => void | Promise<void>, chains: any, clock?: () => number }} cfg
  *   chains: the kernel's chain builder (for events the kernel itself writes, such as stuck detection); release: the held act's egress, run only after a verified approval.
  */
+/** The refusal for a proof that did not stand: the code is needs_presence, and `detail.reason` is the verifier's stable code for why (expired, replayed, wrong_decision, wrong_payload, unknown_key, software_key, ...). The caller made the proof, so the reason tells it nothing it did not send; the message stays our own text. @param {string} message @param {string} reason */
+const needsPresence = (message, reason) => Object.assign(new KernelError("needs_presence", message), { detail: { reason: /^[a-z][a-z0-9_]{1,40}$/.test(String(reason)) ? String(reason) : "refused" } });
+
 export function createTasks(cfg) {
   const clock = cfg.clock || Date.now;
   /** A person id as the Space knows them now: the owner an adoption replaced is the identity that replaced them, so a task keyed by the old id is still its person's. */
@@ -385,7 +388,8 @@ export function createTasks(cfg) {
       // The approval covers the canonical payload as the kernel stored it, recomputed now, never the doer's description.
       if (!t.payload || !body || sha256(canonical(body)) !== t.payload.payload_hash) throw new KernelError("needs_presence", "this task has no approvable payload");
       // One verifier: the sealing process's. The signed fields are the task, the canonical payload hash and the decision it is bound to.
-      if (!p || await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, proof: p })) throw new KernelError("needs_presence", "approving needs your confirmation on this device, over exactly this");
+      const why = p ? await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, proof: p }) : "no_proof";
+      if (why) throw needsPresence("approving needs your confirmation on this device, over exactly this", why);
       rule(t, "done", "checker_approval");
       if (outward(t) && cfg.release) {
         // WF-2: the send happens before the event is written. If the event is refused the task goes back to waiting, and a second approval must not send again: the send is made once per
@@ -454,7 +458,8 @@ export function createTasks(cfg) {
       rule(t, "ready", "responsible_person_or_person_with_presence");
       const responsible = cfg.responsible ? cfg.responsible(person, t.doer) : false;
       if (!responsible) {
-        if (!o.proof || await cfg.presence.check({ chain, op: "task.unblock", fields: { task: id, reassign_to: o.reassign_to || null }, proof: o.proof })) throw new KernelError("needs_presence", "you are not responsible for this doer: unblocking needs your confirmation on this device");
+        const why = o.proof ? await cfg.presence.check({ chain, op: "task.unblock", fields: { task: id, reassign_to: o.reassign_to || null }, proof: o.proof }) : "no_proof";
+        if (why) throw needsPresence("you are not responsible for this doer: unblocking needs your confirmation on this device", why);
       }
       let doer = t.doer;
       if (o.reassign_to) {
@@ -560,10 +565,21 @@ export function createTasks(cfg) {
       const values = (Array.isArray(o.values) ? o.values : []).filter((/** @type {any} */ v) => typeof v === "string" && v.length >= 3);
       let cleared = 0;
       /** @type {Set<string>} */ const hit = new Set();
-      if (typeof o.record === "string" && o.record) for (const t of tasks.values()) if (t.record === o.record) hit.add(t.id);
+      // Every task about one of these records loses its text, whatever it says: a person's name or number can be written in more ways than any comparison can know ("Ana M. Lopez", "LOPEZ, Ana").
+      const recs = new Set([...(typeof o.record === "string" && o.record ? [o.record] : []), ...(Array.isArray(o.records) ? o.records.filter((/** @type {any} */ r) => typeof r === "string") : [])]);
+      if (recs.size) for (const t of tasks.values()) if (t.record && recs.has(t.record)) hit.add(t.id);
       if (values.length) {
+        // A value is looked for in the normalised text: compatibility-folded (NFKC), case-folded, without spaces (of any kind), punctuation or zero-width marks, so "123-45-6789", "123 45 6789",
+        // "ANA  MARIA" and a value split across two form fields (the leaves are joined) all match. Plain and JSON-escaped spellings are checked too.
+        const norm = (/** @type {string} */ x) => x.normalize("NFKC").toLowerCase().replace(/[\s\p{Z}\p{P}\p{Cf}]+/gu, "");
+        const wants = values.map((/** @type {string} */ v) => norm(v)).filter((/** @type {string} */ n) => n.length >= 3);
+        const leaves = (/** @type {any} */ x, /** @type {string[]} */ out) => { if (typeof x === "string") out.push(x); else if (Array.isArray(x)) for (const y of x) leaves(y, out); else if (x && typeof x === "object") for (const y of Object.values(x)) leaves(y, out); return out; };
         const rows = typeof texts.all === "function" ? texts.all() : [...tasks.keys()].map(id => [id, texts.get(id)]);
-        for (const [id, x] of rows) { let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; } if (values.some(v => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1)))) hit.add(String(id)); }
+        for (const [id, x] of rows) {
+          let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; }
+          const flat = norm(leaves(x, []).join(""));
+          if (values.some((/** @type {string} */ v) => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1))) || wants.some((/** @type {string} */ n) => flat.includes(n))) hit.add(String(id));
+        }
       }
       for (const id of hit) {
         const t = tasks.get(id);

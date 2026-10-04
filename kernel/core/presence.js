@@ -26,14 +26,31 @@ export function sealerPresence(sealer) {
 /**
  * The verifier `authorize` calls for a risk-`grant` action: the person signs `grant.<verb>` over the resource and the canonical input hash,
  * and the sealing process checks it (one verifier). Any other action has no kernel-signed form here and so is never met by a proof.
- * @param {PresenceVerifier} presence @returns {(proof: any, ctx: any) => Promise<boolean>}
+ * @param {PresenceVerifier} presence @returns {(proof: any, ctx: any) => Promise<{ ok: boolean, reason?: string }>} ok, or why the proof was refused (the verifier's stable code)
  */
 export function grantProofVerifier(presence) {
   return async (proof, ctx) => {
     const m = /^(grants|rules)\.([a-z_]+)$/.exec(String(ctx && ctx.action));
-    if (!m || !ctx.input_hash) return false;
+    if (!m || !ctx.input_hash) return { ok: false, reason: "no_proof" };
     // A standing-rule act is signed as a grant act named `grant.rule_<verb>`: the sealing process accepts only task and grant acts, and a rule is one (it changes what is allowed).
     const op = m[1] === "grants" ? `grant.${m[2]}` : `grant.rule_${m[2]}`;
-    return (await presence.check({ chain: ctx.chain, op, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof })) === null;
+    const why = await presence.check({ chain: ctx.chain, op, fields: { resource: ctx.resource, input_hash: ctx.input_hash }, proof });
+    return why === null ? { ok: true } : { ok: false, reason: why };
   };
+}
+
+/**
+ * Presence over the peer wire (the lead's ruling): a remote device signs a CHALLENGE the home issued, and the proof carries what ties it to that challenge as two extra fields that the signer
+ * signs like every other (the proof's signed bytes are every field but the signature): `home` (the home's own Space id) and `challenge` (the one-use nonce the home issued). The kernel's one
+ * verifier (the sealing process) checks the signature, the key (a device on the person's signed list, via the pinned-chain bind), the op and the nonce `nonce` (single use); THIS checks that the
+ * proof names this home and this challenge, so a proof made for another home, or another challenge, is refused, and a replay is refused by the single-use `nonce` and by the wire spending the
+ * challenge. The peer session alone is never presence. Returns null when the binding holds, else a short reason.
+ * @param {any} proof @param {{ home: string, challenge: string }} want @returns {string | null}
+ */
+export function remoteBinding(proof, want) {
+  if (!proof || typeof proof !== "object") return "no_proof";
+  if (typeof want.home !== "string" || !want.home || typeof want.challenge !== "string" || !want.challenge) return "no_challenge";
+  if (proof.home !== want.home) return "wrong_home";
+  if (proof.challenge !== want.challenge) return "wrong_challenge";
+  return null;
 }

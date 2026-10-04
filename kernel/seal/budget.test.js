@@ -2,6 +2,7 @@
 // The kernel's line budget for K3 (KERNEL-brief.md section 6: sealing process about 800 lines, inference door and ledger about 700), and the
 // dependency rule: nothing here imports a module, a library or the vault. Only node: built-ins and files inside kernel/. Counted as non-blank,
 // non-comment lines of non-test files; a new file or a raised cap needs reviewer-2's sign-off.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,7 +12,7 @@ const HERE = path.dirname(new URL(import.meta.url).pathname), KERNEL = path.reso
 const code = f => fs.readFileSync(path.join(KERNEL, f), "utf8").split("\n").filter(l => l.trim() && !l.trim().startsWith("//")).length;
 const GROUPS = {
   leases: { cap: 120, files: ["seal/leases.js"] },
-  attest: { cap: 250, files: ["seal/appattest.js"] },
+  attest: { cap: 250, files: ["seal/appattest.js", "seal/strength.js"] },
   sealing: { cap: 800, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },

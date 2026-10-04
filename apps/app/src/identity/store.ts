@@ -20,10 +20,18 @@ function open(): Promise<IDBDatabase | null> {
   });
 }
 
+/** The marker (not the key) that this device once held a name: a phone that lost its key opens at "This iPhone no longer has your key". localStorage on the web; the phone's store sets its own. */
+const HAD = "vyre.had-identity";
+export async function hadIdentity(): Promise<boolean> {
+  try { if (localStorage.getItem(HAD) === "1") return true; } catch { /* no localStorage here */ }
+  try { return Boolean(await loadIdentity()); } catch { return false; }
+}
+
 export async function saveIdentity(i: { name: string; id: string; eid: string; ops: unknown[]; pin: KeptIdentity["pin"]; key: DeviceKey }): Promise<void> {
   const rec: KeptIdentity = { name: i.name, id: i.id, eid: i.eid, ops: i.ops, pin: i.pin, kept: await wrapKept(i.key.keep()), software: i.key.software, createdAt: Date.now() };
   // Safari drops script-written storage after about a week unseen unless the browser is asked to keep it; a refusal changes nothing here.
   try { if (typeof navigator !== "undefined" && navigator.storage?.persist) await navigator.storage.persist(); } catch { /* best effort */ }
+  try { localStorage.setItem(HAD, "1"); } catch { /* no storage here */ }
   const db = await open();
   if (!db) { memory = rec; return; }
   await new Promise<void>((resolve, reject) => {
@@ -46,7 +54,17 @@ export async function loadIdentity(): Promise<(KeptIdentity & { key: DeviceKey }
 /** Forget what was kept (a claim that did not go through must not leave a key behind that names nothing). */
 export async function forgetIdentity(): Promise<void> {
   memory = null;
+  try { localStorage.removeItem(HAD); } catch { /* none */ }
   const db = await open();
   if (!db) return;
   await new Promise<void>((resolve) => { const tx = db.transaction("identity", "readwrite"); tx.objectStore("identity").delete(KEY); tx.oncomplete = () => resolve(); tx.onerror = () => resolve(); });
 }
+
+/** Is there an identity key on this device? */
+export async function hasIdentity(): Promise<boolean> { return (await loadIdentity()) !== null; }
+
+/** The identity key made before a claim (the browser keeps it with the record, so the claim makes its own): none. */
+export const createIdentityKey = async (): Promise<DeviceKey | undefined> => undefined;
+
+/** The key kept on this device, or null. */
+export async function identityKey(): Promise<DeviceKey | null> { return (await loadIdentity())?.key ?? null; }

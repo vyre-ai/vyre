@@ -1,6 +1,7 @@
 // `ctx.kernel.sealDetect` (SD-3) against the REAL sealing process: a first-party module that declares `needs.kernel.sealDetect` asks whether ONE candidate is a sealed field's value, and gets
 // yes or no. The kernel's own grants decide which records count; the registry's module name (never the call's) is what the process counts. Stand-in, labelled:
 //   SHIM(presence): the kernel's grants acts use the allow-all presence stand-in the other real-process gateway tests use.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -36,12 +36,28 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # The sandbox tests run for real (the self-test of the home sandbox needs bubblewrap), not skipped. Ubuntu 24.04 restricts unprivileged user namespaces for it, so the runner allows them.
+      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
       - run: npm ci --no-audit --no-fund
-      - if: ${{ runner.environment != 'github-hosted' }}
-        # --test-concurrency is not allowed in NODE_OPTIONS, so splice it into the package.json test command.
-        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-concurrency=2 --test-shard=${{ matrix.shard }}/5 ')")"
-      - if: ${{ runner.environment == 'github-hosted' }}
-        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-shard=${{ matrix.shard }}/5 ')")"
+      # The phone app's tests (apps/app/**) import @noble/*, which only apps/app's own lockfile installs; scripts are off, nothing builds.
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: apps/app
+      # scripts/test-counts.mjs runs one process per file with a time limit; VYRE_TEST_SHARD takes every fifth file, VYRE_TEST_CONCURRENCY caps the test box's load.
+      - run: npm test
+        env:
+          VYRE_TEST_SHARD: ${{ matrix.shard }}/5
+          VYRE_TEST_CONCURRENCY: ${{ runner.environment != 'github-hosted' && '2' || '' }}
+          VYRE_TEST_COUNTS_KEEP: ${{ runner.temp }}/test-counts-run.json
+      - if: ${{ always() && runner.environment == 'github-hosted' && matrix.node == 24 }}
+        # This shard's counts, to record into test/test-counts.json (node scripts/test-counts.mjs update <file>).
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-counts-run-${{ matrix.shard }}
+          path: ${{ runner.temp }}/test-counts-run.json
+          if-no-files-found: ignore
+      - if: ${{ github.event_name == 'pull_request' && matrix.node == 24 && matrix.shard == 1 }}
+        # A test count that fell must come with a deleted test( or it( in the diff (scripts/test-counts.mjs).
+        run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
       - if: ${{ matrix.shard == 1 }}
         run: npm run eval:answer
       - if: ${{ matrix.shard == 1 }}

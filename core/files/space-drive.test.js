@@ -1,12 +1,14 @@
 // @ts-check
 // The Space's Drive tools for the app (core/files/space-drive.js): upload, versions, restore, each under the caller's own chain; a call with no person is refused; paths and sizes are checked at
 // the entry; a Space with no Drive says so. The Drive is the kernel's real VyreDrive over a directory pool; the door is a minimal stand-in for ctx.kernel.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { registerSpaceDrive, MAX_UPLOAD } from "./space-drive.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { proofFrom } from "../../kernel/remote/proof.js";
 
 const SPACE = "spc_abcdefghijkl";
 const person = { hops: [{ actor: { kind: "person", id: "per_alex", space: SPACE } }] };
@@ -22,7 +24,7 @@ function rig({ drive = true, chain = person } = {}) {
   /** @type {Map<string, any>} */ const tools = new Map();
   const ctx = {
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async () => ({}),
-    kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway: drive ? { drive: gd } : {}, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; }, proofFrom: (/** @type {any} */ m) => m && m.kernel_proof },
+    kernel: { space: SPACE, owner: "per_alex", for: async () => ({ gateway: drive ? { drive: gd } : {}, surfaces: {} }), chainIn: async () => { if (!chain) throw Object.assign(new Error("x"), { code: "denied" }); return chain; }, proofFrom },
   };
   registerSpaceDrive(ctx);
   const run = (/** @type {string} */ n, /** @type {any} */ i, /** @type {any} */ meta = {}) => tools.get(n).run(i, meta);

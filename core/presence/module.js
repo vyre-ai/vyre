@@ -7,6 +7,9 @@
 // passkey from the Deck. Enrolling, removing and minting need presence themselves; they are on
 // the floor's list, and they say so here too.
 
+import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
+import { STRENGTHS, isNotSoftware } from "./strengths.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -20,10 +23,11 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export default {
   async start(ctx) {
     // Rows only: challenges and nonces live in vyred's own verifier, not in this one.
-    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m) });
+    // `softwareOk`: a development-kind build behind VYRE_SEAL_SOFTWARE takes a device key as presence (marked software); a release-kind one never does (PW-1), and a device key opens no session there (PS-1).
+    const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m), softwareOk: () => devSwitch(process.env.VYRE_SEAL_SOFTWARE) });
 
     ctx.tool("presence.keys", {
-      effect: "read", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
+      effect: "read", callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
       description: "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
       input: obj({}),
       // On a Mac with vyre-core, the list is core's (a read vyred may proxy, ADR 0040 section 3).
@@ -32,9 +36,9 @@ export default {
 
     ctx.tool("presence.enroll", {
       effect: "write",
-      // The person's surfaces and modules, stated rather than defaulted: the relay enrols a device's presence key at pairing from its own listener, where no running call exists to name an origin, so the
-      // default's "original caller of a module hop" check refused it (no_such_tool) and no paired device had a presence key. The presence floor still needs a proof for anyone but the relay's own hop.
-      callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
+      // Listed, not defaulted: the relay enrolls a paired device's key from its listener, where no person is the original caller, so the registry's origin check on a defaulted tool would hide it.
+      // The presence floor still needs a proof from every caller but a first-party module, and a device's passkey is enrolled by module:relay only (checked in the body).
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module"],
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
@@ -69,6 +73,9 @@ export default {
 
     ctx.tool("presence.remove", {
       effect: "write",
+      // Listed, not defaulted, like presence.enroll: the relay takes a device's presence key away when the device goes (a removal, the end of a setup session) from its own code, where no person is the
+      // original caller, so the registry's origin check on a defaulted tool refused it and the key stayed enrolled after its device was gone. A person still needs the presence proof.
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module"],
       description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),
@@ -185,15 +192,39 @@ export default {
           } else throw Object.assign(new Error("a paired device signs in with its own device key or passkey"), { code: "denied" });
           const k = input.key;
           if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
-          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null });
+          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y }, keyId: meta.presence.keyId || null, strength: openedBy(meta.presence.method) });
           ctx.events.emit("presence.signed-in", { id: s.id, node: label });
           return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
         }
-        const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null });
+        const s = people.start({ node, kind: "cookie", label, keyId: meta.presence.keyId || null, strength: openedBy(meta.presence.method) });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };
       },
     });
+
+    /** The strength a session records from the proof that opened it (what the server verified): a passkey with user verification is `passkey` (never `enclave`), Touch ID through the pinned Capsule is `enclave`, a device key is `software`. @param {string} method */
+    const openedBy = method => (method === "passkey" ? STRENGTHS[3] : method === "touchid" || method === "capsule" ? STRENGTHS[1] : STRENGTHS[0]);
+    // ---- a paired session's strength ----------------------------------------------------------------------------------------------------------------
+    // `software` is a session made with a key nobody had to touch. A device whose own key lives in the phone's Secure Enclave or the Android keystore (what the app reported at pairing, accepted
+    // unattested for now: ruling 6410c6a) opens a session that is NOT software; a software key opens a software one, which the peer door counts as presence only where software proofs are taken
+    // (a development build behind its switch). A session a phone approved takes the approving proof's strength instead (below).
+    const verifiedStrength = (/** @type {any} */ rec) => (rec && typeof rec.proofStrength === "string" && STRENGTHS.includes(rec.proofStrength) && rec.proofStrength !== "software" ? rec.proofStrength : "software");
+    /** The strength written on a paired session: from the key the device registered ("enclave, unattested": the app says Secure Enclave or keystore, no attestation verified), or the approving proof's when the owner's phone approved this sign-in. */
+    const strengthOf = (/** @type {string} */ device, /** @type {any} */ rec, peek = false) => approvedStrength(device, peek) || verifiedStrength(rec);
+    // ---- sign in approved on the owner's phone ---------------------------------------------------------------------------------------------------------------
+    // A browser (software key, no passkey on the peer path) asks; the owner's phone shows "Let <device> sign in" and answers with its own proof; the browser then signs in as usual (pair-challenge, start-paired)
+    // and that one session carries the strength of the approving proof (enclave, or unattested enclave), not the browser's key.
+    const ASK_MS = 5 * 60_000;
+    /** A sign-in a phone approved keeps its strength for that session, at most 12 hours: then the session ends and the next sign-in asks again (one working day, one yes). */
+    const APPROVED_MAX_MS = 12 * 3600_000;
+    /** A device the owner declined cannot ask again for 10 minutes. @type {Map<string, number>} */
+    const refusedUntil = new Map();
+    /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", strong: boolean, method?: string, asked?: number, expires: number }>} */
+    const asks = new Map();
+    const liveAsk = (/** @type {string} */ device) => { const a = asks.get(device); if (a && a.expires <= Date.now()) { asks.delete(device); return null; } return a || null; };
+    /** An approved, unexpired ask of this device with a strong approving proof; `peek` leaves it (the grant uses it once). */
+    const approvedStrength = (/** @type {string} */ device, peek = false) => { const a = liveAsk(device); if (!a || a.state !== "approved" || !a.strong) return null; if (!peek) asks.delete(device); return a.method === "passkey" ? STRENGTHS[3] : STRENGTHS[2]; };
+    const approvedStrong = (/** @type {string} */ device, peek = false) => approvedStrength(device, peek) !== null;
 
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
     // The pairing, once the owner confirmed it with a presence proof, asks for one grant. This tool
@@ -210,11 +241,11 @@ export default {
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
         if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
-        const software = rec.hardware !== true;
+        const strength = approvedStrength(String(input.device)) || STRENGTHS[0], software = strength === "software", capMs = software ? null : APPROVED_MAX_MS;
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
         const keyId = (meta.presence && meta.presence.keyId) || rec.confirmKeyId || null;
         if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof"), { code: "denied" });
-        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software });
+        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software, strength, capMs });
         // The challenge goes back to the pairing, which hands it to the device; the device can also ask for it (presence.person.pair-challenge).
         return { granted: true, expires: g.expires, challenge: g.challenge, ...(software ? { software: true } : {}) };
       },
@@ -224,15 +255,19 @@ export default {
       effect: "write",
       description: "A device its owner paired opens its person session: it signs `paired-start`, its id and the challenge of its grant with the key the owner confirmed. No prompt. Answers the token, or one refusal whatever the reason.",
       callers: RELAY_DEVICE_CALLERS,
-      input: obj({ sig: str, label: str }, ["sig"]),
+      input: obj({ sig: str, esig: str, label: str }, ["sig"]),
       run: async (input, meta = {}) => {
         const peer = meta.peer;
         const device = peer && peer.kind === "device" ? nodeOf(meta) : null;
         const refuse = () => Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
         if (!device) throw refuse();
-        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null });
+        const wr = await ctx.call("wink.device.record", { id: device }).catch(() => null);
+        // the enclave key counts only while it still stands on the identity's directory list (a revoked phone's entry no longer does): wink checks it, cached for 10 minutes
+        const live = typeof input.esig === "string" ? await ctx.call("wink.device.enclave-live", { device }).catch(() => null) : null;
+        const enclaveStands = Boolean(live && live.data && live.data.ok === true);
+        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: enclaveStands && wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
         if ("refused" in s) {
-          if (s.deleted) ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" });
+          if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
         }
         ctx.events.emit("presence.signed-in", { id: s.id, node: input.label || device });
@@ -240,6 +275,120 @@ export default {
       },
     });
 
+    // ---- renewal (lead ruling, 4 Oct): a paired session is RENEWED, not re-paired -------------------------------------------------------------------------
+    // A device that lapsed (its session idle past its time) and still holds the key the owner confirmed at pairing asks for its challenge and answers it with that key: the server makes the one-use grant
+    // itself, from the pairing record wink keeps (confirmed by the owner, key on it, device not removed). No owner step. Three wrong answers lock the device for fifteen minutes; the owner lifts that
+    // from their own device with `presence.person.renew-allow` (their presence). A removed device has no key on its record, so there is nothing to renew: re-pairing is for a removed device only.
+    const LOCK_MS = 15 * 60_000;
+    // The lock lives in the store, so a restart does not give a locked device fresh guesses.
+    const locked = {
+      get: (/** @type {string} */ d) => { const r = /** @type {any} */ (ctx.store.db.prepare("SELECT until FROM presence_renew_lock WHERE device = ?").get(String(d))); return r ? Number(r.until) : undefined; },
+      set: (/** @type {string} */ d, /** @type {number} */ until) => { ctx.store.db.prepare("INSERT OR REPLACE INTO presence_renew_lock (device, until) VALUES (?, ?)").run(String(d), until); },
+      delete: (/** @type {string} */ d) => { ctx.store.db.prepare("DELETE FROM presence_renew_lock WHERE device = ?").run(String(d)); },
+      /** The locks still in the future, for the owner's Devices list. */
+      live: () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT device, until FROM presence_renew_lock WHERE until > ? ORDER BY until").all(Date.now())).map(r => ({ device: String(r.device), until: Number(r.until) })),
+    };
+    const renewGrant = async (/** @type {string} */ device) => {
+      // a phone-approved sign-in (the owner's phone said yes to this device) is granted even when the device holds an older software grant: the session takes the approving proof's strength, once
+      if (people.holds(device) && !approvedStrong(device, true)) return;
+      const until = locked.get(device);
+      if (until && until > Date.now()) return;
+      const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
+      const rec = r && r.data;
+      if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
+      try { const strength = approvedStrength(device) || STRENGTHS[0]; people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: strength === "software", strength, ...(strength === "software" ? {} : { capMs: APPROVED_MAX_MS }) }); } catch { /* no grant: the device gets the random challenge */ }
+    };
+    ctx.tool("presence.person.locked", {
+      effect: "read",
+      description: "The paired devices that are locked after wrong sign-in answers, each with the time the lock ends by itself (ms): { locked: [{ device, until }] }. For the owner's Devices list; a removed device is never listed.",
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({}),
+      run: async () => {
+        const out = [];
+        for (const l of locked.live()) { const r = await ctx.call("wink.device.record", { id: l.device }).catch(() => null); if (r && r.data && r.data.id === l.device) out.push(l); }
+        return { locked: out };
+      },
+    });
+    ctx.tool("presence.person.renew-allow", {
+      effect: "write",
+      description: "Lift the lock on a paired device that answered its sign-in challenge wrongly three times, from the owner's own device. The device then renews itself with its key.",
+      presence: { summary: async input => `Let ${String((input && input.device) || "that device")} sign in again` },
+      callers: ["cli", "local", "deck", "capsule"],
+      input: obj({ device: str }, ["device"]),
+      run: async input => { locked.delete(String(input.device)); return { allowed: String(input.device) }; },
+    });
+
+    ctx.tool("presence.person.session-ask", {
+      effect: "write",
+      description: "A paired device with no live session asks its owner's phone to let it sign in: { id, expires_in_s }. One open ask per device. The owner answers with presence.person.session-answer from their own device; then the device signs in as usual and its session has the approving proof's strength.",
+      callers: RELAY_DEVICE_CALLERS,
+      input: obj({ label: str }),
+      run: async (input, meta = {}) => {
+        const peer = meta.peer;
+        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot ask that way"), { code: "denied" });
+        const device = nodeOf(meta);
+        const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
+        const rec = r && r.data;
+        if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("this device is not paired to an owner"), { code: "denied" });
+        const hold = refusedUntil.get(device);
+        if (hold && hold > Date.now()) throw Object.assign(new Error("the owner said no to this device a moment ago; try again in a few minutes"), { code: "rate_limited" });
+        const open = liveAsk(device);
+        if (open && open.state === "waiting") return { id: open.id, expires_in_s: Math.max(1, Math.round((open.expires - Date.now()) / 1000)) };
+        const a = { id: `ask_${crypto.randomBytes(9).toString("base64url")}`, device, label: String(input.label || "a device").slice(0, 64), state: /** @type {const} */ ("waiting"), strong: false, asked: Date.now(), expires: Date.now() + ASK_MS };
+        asks.set(device, a);
+        ctx.events.emit("presence.session-asked", { id: a.id, device, label: a.label });
+        return { id: a.id, expires_in_s: ASK_MS / 1000 };
+      },
+    });
+    ctx.tool("presence.person.session-status", {
+      effect: "read",
+      description: "The state of this device's own sign-in ask: waiting, approved, refused, none (no such ask) or timeout.",
+      callers: RELAY_DEVICE_CALLERS,
+      input: obj({ id: str }, ["id"]),
+      run: async (input, meta = {}) => {
+        const peer = meta.peer;
+        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot ask that way"), { code: "denied" });
+        const a = asks.get(nodeOf(meta));
+        if (!a || a.id !== String(input.id)) return { state: "none" };
+        if (a.expires <= Date.now()) { asks.delete(a.device); return { state: "timeout" }; }
+        return { state: a.state };
+      },
+    });
+    ctx.tool("presence.person.session-pending", {
+      effect: "read",
+      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({}),
+      run: async (_i, meta = {}) => {
+        // a paired device may read the list only with its own non-software session (the owner's phone); a software or no session sees nothing, and another device's ask is never shown to a browser
+        const caller = String((meta && meta.caller) || "");
+        if (caller.startsWith("device:")) { const sid = meta && meta.person && meta.person.id; const st = sid ? people.strength(String(sid)) : null; if (!isNotSoftware(st)) throw Object.assign(new Error("only the owner's own signed-in phone can see sign-in asks"), { code: "denied" }); }
+        const out = [];
+        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, label: a.label, asked_at: a.asked || 0 }); }
+        out.sort((x, y) => y.asked_at - x.asked_at);
+        return { asks: out };
+      },
+    });
+    ctx.tool("presence.person.session-answer", {
+      effect: "write",
+      description: "The owner answers a device's sign-in ask from their own device, with their presence: yes lets that device sign in once, with the strength of this proof.",
+      presence: { summary: async input => `Let a device sign in (${String((input && input.id) || "").slice(0, 24)})` },
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({ id: str, yes: { type: "boolean" } }, ["id", "yes"]),
+      run: async (input, meta = {}) => {
+        const a = [...asks.values()].find(x => x.id === String(input.id));
+        if (!a || a.expires <= Date.now()) throw Object.assign(new Error("that sign-in ask is gone"), { code: "not_found" });
+        if (a.state !== "waiting") return { state: a.state };
+        if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
+        const p = /** @type {any} */ (meta.presence);
+        // the approving proof's strength: a software key (method device) approves a software session; anything a person had to touch is strong
+        a.strong = Boolean(p && p.method && p.method !== "device"); a.method = p && p.method ? String(p.method) : "";
+        a.state = "approved";
+        a.expires = Date.now() + ASK_MS;
+        ctx.events.emit("presence.session-approved", { id: a.id, device: a.device, strong: a.strong });
+        return { state: "approved" };
+      },
+    });
     ctx.tool("presence.person.pair-challenge", {
       effect: "write",
       description: "A device its owner paired asks for the challenge of its grant, to sign for presence.person.start-paired. A device with no grant gets a random one, so nothing says whether a grant exists.",
@@ -248,7 +397,9 @@ export default {
       run: async (_, meta = {}) => {
         const peer = meta.peer;
         if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
-        return { challenge: people.challengeFor(nodeOf(meta)) };
+        const device = nodeOf(meta);
+        await renewGrant(device);
+        return { challenge: people.challengeFor(device) };
       },
     });
 
@@ -266,6 +417,16 @@ export default {
     });
 
     // Removal of a device, its key leaving the identity list, a recovery reset or sign-out-everywhere: wink says so, here it ends.
+    ctx.tool("presence.person.strength", {
+      internal: true,
+      description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.",
+      input: obj({ id: str }, ["id"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
+        return { strength: people.strength(String(input.id)) };
+      },
+    });
+
     ctx.tool("presence.person.end-paired", {
       internal: true,
       description: "End every paired session and grant of one device, or of all devices when none is named. Only the wink module asks.",
@@ -273,6 +434,7 @@ export default {
       run: async (input, meta = {}) => {
         if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("only the pairing ends paired sessions"), { code: "denied" });
         const n = people.endDevice(input.device ? String(input.device) : undefined);
+        if (input.device) { asks.delete(String(input.device)); refusedUntil.delete(String(input.device)); } else { asks.clear(); refusedUntil.clear(); }
         if (n) ctx.events.emit("presence.signed-out", { device: input.device || "all" });
         return { ended: n };
       },

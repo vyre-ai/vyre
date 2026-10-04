@@ -3,6 +3,7 @@
 // vyred in this process in a temp home whose Recall index holds the synthetic corpus
 // (test/fixtures). Vectors are off in config.json, so nothing loads a model or touches the network.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

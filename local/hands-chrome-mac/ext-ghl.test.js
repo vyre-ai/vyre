@@ -3,6 +3,7 @@
 // compile into ONE batch, saves that are verified, and the page module's robustness that the flows
 // lean on (waits, spinners, popups, stale controls, traces and failure detail). All against the fake
 // page model in test-support/fake-chrome.js: no Chrome, no network.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
