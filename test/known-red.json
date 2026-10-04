@@ -63,7 +63,7 @@
   "seen": "hosted run 37176623881"
  },
  "core/github/index.test.js": {
-  "owner": "unassigned",
+  "owner": "platform",
   "seen": "hosted run 37176623881"
  },
  "core/glass/glass.test.js": {
@@ -139,7 +139,7 @@
   "owner": "chat"
  },
  "core/suggest/suggest.test.js": {
-  "owner": "unassigned",
+  "owner": "assistant",
   "seen": "hosted run 37176623881"
  },
  "core/switchboard/kernel-turn.test.js": {
