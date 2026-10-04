@@ -30,6 +30,7 @@ import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
 import { deviceKey } from "./devicekey.js";
+import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { isReleaseBuild, devKindSwitch } from "./buildkind.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -888,6 +889,18 @@ export function createPairing(o) {
       if (r.error) { if (r.error.code === "no_such_tool") return null; throw fail("unavailable", words("pairOwnerFailed")); }
       return r.data && typeof r.data.claimed === "string" ? r.data.claimed : null;
     };
+    /** The presence key this device offered in its hello, as the home's sealing process takes it: a software key only from a computer that says it keeps it in software (the sealing process refuses it on a release-kind build), a hardware key only with the signer kind the device names. Anything else is not enrolled here. @param {string} device @param {any} confirmed @param {any} input */
+    const presenceKeyFor = (device, confirmed, input) => {
+      try {
+        if (!confirmed || typeof confirmed.key !== "string" || (confirmed.alg !== undefined && confirmed.alg !== -7)) return null;
+        const storage = String(confirmed.storage || input.keyStorage || "");
+        const kindOk = ["secure_enclave", "tpm", "windows_hello", "strongbox", "webauthn_platform"].includes(String(confirmed.signer || ""));
+        const signer = storage === "software" ? "software" : kindOk ? String(confirmed.signer) : null;
+        if (!signer) return null;
+        const der = Buffer.from(confirmed.key, "base64url");
+        return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer };
+      } catch { return null; }
+    };
     /**
      * Device-first pairing (lead ruling, 4 Oct): the pick of the three words at the server IS the owner's confirmation of the device that asked. When the app says what it is (`deviceKind`: phone,
      * computer or web), the device is recorded as one of the owner's with that kind, its key storage as the app reported it, and its paired session is granted in the same act, so it can go
@@ -907,7 +920,7 @@ export function createPairing(o) {
       // refused a different claimed owner.
       if (proven) {
         /** @type {any} */ let adopted;
-        try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }
+        try { adopted = await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}), ...(presenceKeyFor(device, confirmed, input) ? { presence_key: presenceKeyFor(device, confirmed, input) } : {}) }); } catch (e) { adopted = { error: { code: String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "failed"), message: String(/** @type {any} */ (e) && /** @type {any} */ (e).message || "") } }; }
         if (adopted && adopted.error && adopted.error.code !== "no_such_tool") {
           ctx.log(`wink: the kernel refused ${identity} as this home's owner (${adopted.error.code}); nothing was paired`);
           try { devices.remove(device); } catch { /* none */ }

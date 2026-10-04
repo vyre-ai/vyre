@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(kernel,spaces,wink): pairing a computer as a server's owner enrols its presence key in the home's sealing process in the same call as the owner adoption (software keys only on a development build; a failure leaves the pairing as it was and says why). The owner's computer can then prove its own invites.
+
 - feat(spaces): inviting to a space on a server is answered on the owner's computer with the person's own key. The home's one-use challenge is signed as a kernel proof carrying `home` and `challenge`: by a hardware signer a surface sets, or by a software key on a development build only (a release-kind build hands the call back as a request to sign). fix(kernel/remote): the challenge for `grants.invites.create` and `confirm` now says what to sign.
 
 - fix(permissions): the unattended answer stays the ordinary `presence_required` (not `held`), to match what the apps are built to.

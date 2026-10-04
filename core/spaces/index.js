@@ -248,7 +248,7 @@ export default {
         const full = { ...ch, space: ch.space || space };
         if (typeof hooks.signer === "function") { const p = await hooks.signer(full, { space, person: st.id }); if (p && typeof p === "object") return p; }
         if (!devSwitch(process.env.VYRE_SEAL_SOFTWARE, hooks.buildRoot)) return null;
-        return softwareProof(path.join(root, "presence-key.json"), st.id, full);
+        return softwareProof(path.join(ctx.paths.root, "wink-keys.json.device"), st.id, full);
       } catch { return null; }
     };
     const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => {
@@ -1005,7 +1005,7 @@ export default {
     });
     // A server paired to a person's identity (Wink pairing, once the pairing proved the identity's own key over this pairing) has the person's id as its owner too, not its first-start id (walker, step 4).
     // For the pairing module only: the kernel makes the change once, logged, and refuses a second one.
-    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str, name: str }, ["person"]), async (i, meta) => {
+    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str, name: str, presence_key: obj({ device: str, key_id: str, spki: str, signer: str }, ["device", "key_id", "spki", "signer"]) }, ["person"]), async (i, meta) => {
       // Second layer (the registry's reach is the first): only the Wink module, and only for the identity ITS OWN pairing record names (never a value a caller chose), on a home that has no adopted owner yet.
       onlyModules(meta, ["wink"]);
       const id = String(i.person);
@@ -1021,7 +1021,15 @@ export default {
       // a recovered or new phone of the owner is on that list and reaches the owner's spaces here without being paired again (member-device enrolment).
       const label = typeof i.name === "string" ? i.name.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
       if (label) { try { const v = await dir.resolve(label); if (v.ok && v.kind === "person" && v.id === id) await kv.put(`person-name/${id}`, label); } catch { /* the name is learned later, when the owner is next verified */ } }
-      return { owner: r.owner, previous: r.previous, changed: r.changed };
+      // The device that paired as this owner offered a presence key in its hello: it is enrolled in the sealing process inside this same pairing, so the owner's own acts (inviting, changing roles) can be proved by it.
+      // A refusal leaves the pairing as it is and says why (a release-kind home takes no software key; a person who already has a key needs that key's proof for a further device); nothing is kept half done.
+      /** @type {{ enrolled: boolean, reason?: string }} */ let presence = { enrolled: false, reason: "no presence key offered" };
+      const pk = i.presence_key;
+      if (pk && typeof pk === "object" && typeof K.enrolOwnerKey === "function") {
+        try { await K.enrolOwnerKey({ person: id, device: String(pk.device), key_id: String(pk.key_id), spki: String(pk.spki), signer: String(pk.signer) }); presence = { enrolled: true }; }
+        catch (e) { presence = { enrolled: false, reason: String(/** @type {any} */ (e).code || "failed").slice(0, 40) }; ctx.log.warn(`the owner's presence key was not enrolled (${presence.reason})`); }
+      }
+      return { owner: r.owner, previous: r.previous, changed: r.changed, presence };
     }, { internal: true });
     // For the pairing module: the identity that already took this home's owner place, or null. Wink refuses to pair a different identity to a home that has one (first owner wins).
     tool("spaces.owner.claimed", "For the pairing module: the identity id that took this home's owner place ({ claimed }), or { claimed: null } while the owner is still the first-start id. Read only.", obj(), async (_i, meta) => {

@@ -7,6 +7,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { proofBytes } from "../../kernel/core/presence.js";
+import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { proofChainHash } from "../../kernel/remote/proof.js";
 
 const PROOF_LIFE_MS = 60_000;
@@ -26,7 +27,7 @@ export function softwareKey(file) {
   }
   const key = priv;
   const spki = crypto.createPublicKey(key).export({ format: "der", type: "spki" });
-  return { key_id: `dk_${crypto.createHash("sha256").update(spki).digest("hex").slice(0, 16)}`, spki: spki.toString("base64"), signer: /** @type {const} */ ("software"), sign: (/** @type {Buffer} */ m) => crypto.sign("sha256", m, { key, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+  return { key_id: presenceKeyId(spki), spki: spki.toString("base64"), signer: /** @type {const} */ ("software"), sign: (/** @type {Buffer} */ m) => crypto.sign("sha256", m, { key, dsaEncoding: "ieee-p1363" }).toString("base64url") };
 }
 
 /**
