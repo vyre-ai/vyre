@@ -624,7 +624,7 @@ test("a release takes the adopter's relay device off the box; a stranger's refus
   // a stranger is refused, in words naming the owner, and its device goes
   const stranger = await b.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME }, identity: ME }, { caller: "device:stranger1" }).catch(e => e);
   assert.equal(stranger.code, "presence_required");
-  assert.match(stranger.message, /already belongs to Personal\./);
+  assert.match(stranger.message, /already belongs to alex\./);
   assert.deepEqual(b.drops, [["relay.devices.drop", { id: "stranger1" }]]);
   assert.ok(b.p.meta.get("owner"), "the owner did not move");
   // the adopter itself is not dropped by a refused change without presence
@@ -1336,7 +1336,7 @@ test("wink.server.status: not owned before the pairing, then the space and the p
   await adoptAs(w, "device:app1");
   const st = await atServer(w, "wink.server.status");
   assert.equal(st.owned, true);
-  assert.equal(st.space, "Personal");
+  assert.equal(st.space, "Alex", "an identity owner is shown by the name the app sent");
   assert.equal(typeof st.device, "string");
   await assert.rejects(() => w.call("wink.server.status", {}, "device:app1"), e => e.code === "denied");
 });

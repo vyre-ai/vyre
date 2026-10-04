@@ -735,7 +735,8 @@ export function createPairing(o) {
         try { const m = (await directory.memberships(cur.identity)).find(x => x.space === cur.id); if (m && m.name) return m.name; } catch { /* the directory may not know it */ }
         return "another space";
       }
-      return "Personal";
+      // an identity's own name, as the app sent it when it paired this server (never "You" or an id)
+      return cur.name ? String(cur.name) : "Personal";
     };
     // ---- Q-1 (ruling, 4 Oct 2026): the first adoption of an unowned server by a paired device is CONFIRMED at the server ----
     // A scan or a paste only gets a device paired to this box (the ticket is single use). Becoming its owner is a second step: the device calls wink.server.adopt, the server
