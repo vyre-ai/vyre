@@ -69,6 +69,9 @@ export default {
 
     ctx.tool("presence.remove", {
       effect: "write",
+      // Listed, not defaulted, like presence.enroll: the relay takes a device's presence key away when the device goes (a removal, the end of a setup session) from its own code, where no person is the
+      // original caller, so the registry's origin check on a defaulted tool refused it and the key stayed enrolled after its device was gone. A person still needs the presence proof.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module"],
       description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),
