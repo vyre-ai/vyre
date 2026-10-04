@@ -191,7 +191,7 @@ export function nativePerson(
 
   const presence = devicePresence({
     keyId: humanId,
-    sign: (message, tool) => Keys.sign(Keys.HUMAN, message, { prompt: `Confirm ${tool} on your box` }),
+    sign: (message, tool) => Keys.sign(Keys.HUMAN, message, { prompt: `Confirm ${tool} on your home` }),
     nonce: () => Keys.randomBytes(16),
     store: secureSlot(slotName("presence", name)),
     path: o.path,
@@ -273,7 +273,7 @@ export function nativePerson(
         ? devicePersonStart({
             signer: keySigner(Keys.PERSON),
             keyId: humanId,
-            sign: (message) => Keys.sign(Keys.HUMAN, message, { prompt: "Sign in to your box" }),
+            sign: (message) => Keys.sign(Keys.HUMAN, message, { prompt: "Sign in to your home" }),
             nonce,
             send: o.send as Send,
           })
