@@ -85,6 +85,8 @@ jobs:
       - name: Export the web app
         working-directory: apps/app
         run: |
+          # What this exports goes inside the signed app, so it is exactly apps/app/package-lock.json (npm ci fails on any drift from it, and no install script runs);
+          # a lockfile change is listed for the release approver (release.yml "apps/app dependency changes").
           npm ci --no-audit --no-fund --ignore-scripts
           npx expo export -p web --output-dir dist
           test -f dist/index.html
