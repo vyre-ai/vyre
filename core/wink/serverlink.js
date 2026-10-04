@@ -172,6 +172,8 @@ export function createServerLinks(o) {
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
     remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),
     token: (/** @type {string} */ sid) => (links.get(sid) ? links.get(sid)?.token : null),
+    /** Let go of the link to a server (its peer session and relay connection): the next call connects again from where pairing now says the server is. A removed and re-paired server is a new channel, never the old one. @param {string} sid */
+    forget(sid) { const l = links.get(sid); if (!l) return; try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } links.delete(sid); },
     close() { for (const l of links.values()) { try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } } links.clear(); },
   };
 }
