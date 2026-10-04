@@ -8,6 +8,7 @@ import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { createAggregator } from "../store/query.js";
+import { exprNames } from "../expr/expr.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
 import { createIdem } from "../core/idem.js";
@@ -50,8 +51,8 @@ const mergePatch = (/** @type {any} */ data, /** @type {any} */ patch) => {
   for (const [k, v] of Object.entries(patch || {})) { if (v === null) delete out[k]; else out[k] = v; }
   return out;
 };
-const redactDiff = (/** @type {any} */ data, /** @type {Set<string>} */ changed) =>
-  Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, isSealedShape(v) ? { sealed: true, changed: changed.has(k) } : v]));
+const redactDiff = (/** @type {any} */ data, /** @type {Set<string>} */ changed, /** @type {readonly string[]} */ also = []) =>
+  Object.fromEntries(Object.entries(data || {}).map(([k, v]) => [k, isSealedShape(v) || also.includes(k) ? { sealed: true, changed: changed.has(k) } : v]));
 const changedFields = (/** @type {any} */ a, /** @type {any} */ b) => {
   const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
   return [...keys].filter(k => canonical((a || {})[k] ?? null) !== canonical((b || {})[k] ?? null)).sort();
@@ -153,7 +154,8 @@ export function createRecords(cfg) {
     const def = defs.find((/** @type {any} */ t) => t.name === type);
     if (!def) return new Set();
     const role = roleOfChain(chain);
-    return new Set(def.fields.filter((/** @type {any} */ f) => f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role))).map((/** @type {any} */ f) => f.name));
+    // a removed field (`hidden: true`: its data is kept, nothing shows it) is hidden from everyone
+    return new Set(def.fields.filter((/** @type {any} */ f) => f.hidden === true || (Array.isArray(f.hidden_from) && role !== undefined && f.hidden_from.includes(role)) || (f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role)))).map((/** @type {any} */ f) => f.name));
   }
   const limitsOf = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ d) => ({ allow: allowList(d), hidden: (await hiddenFields(chain, type)) || new Set() });
   // ---- the room's view (CH-8): a session whose token names a chat with more than one person reads what EVERYONE in it may read, whoever asks and however it asks ----
@@ -179,6 +181,120 @@ export function createRecords(cfg) {
     return ok ? { allow, hidden } : null;
   }
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
+
+  /** A type may say it holds work: the one value is "project". */
+  function checkKinds(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (t.kind !== undefined && t.kind !== "project") throw new KernelError("bad_input", `${t.name}: kind is "project" or left out`);
+  }
+
+  /** A role type points at one contact or organization through one required link, and names stages that already exist. */
+  async function checkRoles(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
+      if (t.role === undefined) continue;
+      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name} cannot be a role: ${why}`);
+      if (!t.role || typeof t.role.link !== "string") throw bad("it needs role.link, the field that names who holds it");
+      const f = (t.fields || []).find((/** @type {any} */ x) => x.name === t.role.link);
+      if (!f || f.kind !== "link" || (f.to !== "contact" && f.to !== "organization")) throw bad(`${t.role.link} must be a link to a contact or an organization`);
+      if (f.required !== true) throw bad(`${t.role.link} must be required, so a role never exists without its holder`);
+      if (t.role.ended !== undefined) {
+        const sf = (t.fields || []).find((/** @type {any} */ x) => x.kind === "stage");
+        const names = (t.stages || []).map((/** @type {any} */ s) => s.name).concat(sf && sf.options ? sf.options : []);
+        if (!Array.isArray(t.role.ended) || !t.role.ended.every((/** @type {any} */ e) => names.includes(e))) throw bad("role.ended names stages the type does not have");
+      }
+    }
+  }
+  const COMPUTED_KINDS = new Set(["number", "text", "boolean", "date", "datetime"]);
+  const OVER_FNS = new Set(["count", "sum", "min", "max", "avg"]);
+  /** A computed field names its kind, and either an expression over this type's other fields or a total over the records that link to it. */
+  async function checkComputed(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) for (const f of t.fields || []) {
+      if (f.computed === undefined) continue;
+      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}.${f.name} cannot be computed: ${why}`);
+      const c = f.computed;
+      if (!c || typeof c !== "object" || (c.expr === undefined) === (c.over === undefined)) throw bad("give either expr or over");
+      if (!COMPUTED_KINDS.has(f.kind)) throw bad(`a computed field is a ${[...COMPUTED_KINDS].join(", ")} field`);
+      if (c.expr !== undefined) {
+        let tree; try { tree = parseComputed(String(c.expr)); } catch (e) { throw bad(String(/** @type {any} */ (e).message)); }
+        for (const n of exprNames(tree)) {
+          const g = t.fields.find((/** @type {any} */ x) => x.name === n);
+          if (!g) throw bad(`the expression names ${n}, which is not a field of ${t.name}`);
+          if (g.kind === "sealed") throw bad(`${n} is sealed and cannot be used in an expression`);
+          if (g.computed) throw bad(`${n} is computed too: a computed field reads stored fields only`);
+        }
+      } else {
+        const o = c.over;
+        if (!o || typeof o.type !== "string" || typeof o.via !== "string" || !OVER_FNS.has(o.fn) || (o.fn !== "count" && typeof o.field !== "string")) throw bad("over is { type, via, fn: count|sum|min|max|avg, field (not for count) }");
+        let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* checked when the other type is read */ }
+        const other = [...defs, ...(diff.add_types || []), ...(diff.change_types || [])].find((/** @type {any} */ x) => x.name === o.type);
+        if (other) {
+          const via = other.fields.find((/** @type {any} */ x) => x.name === o.via);
+          if (!via || via.kind !== "link" || (via.to !== undefined && via.to !== t.name)) throw bad(`${o.type}.${o.via} must be a link to ${t.name}`);
+          const meas = o.field ? other.fields.find((/** @type {any} */ x) => x.name === o.field.split(".")[0]) : null;
+          if (o.field && !meas) throw bad(`${o.type} has no field ${o.field}`);
+          if (meas && (meas.kind === "sealed" || meas.computed)) throw bad(`${o.field} cannot be measured`);
+        }
+      }
+    }
+  }
+  /** The definitions marked as roles. */
+  async function roleTypes() {
+    try { return (await store.types()).filter((/** @type {any} */ t) => t.role && typeof t.role.link === "string"); } catch (e) { throw mapError(e); }
+  }
+  /** A role record with its holder and whether the role is still going. */
+  const hold = (/** @type {any} */ t, /** @type {any} */ r) => {
+    const sf = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    const stage = sf ? r.data[sf.name] : undefined;
+    const link = r.data[t.role.link];
+    return { role: t.name, holder: link && link.urn, ...(stage !== undefined ? { stage } : {}), current: !r.deleted_at && !(stage !== undefined && (t.role.ended || []).includes(stage)), record: r };
+  };
+
+  /** Computed fields (a field with `computed`): worked out when a record is read, never stored, never written, never filtered on. */
+  const exprFn = () => (cfg.expr === undefined ? defaultExpr : cfg.expr);
+  /** @type {Map<string, any>} */ const parsed = new Map();
+  const parseComputed = (/** @type {string} */ src) => { let n = parsed.get(src); if (!n) { const e = exprFn(); if (!e) throw new KernelError("unavailable", "no evaluator is wired for computed fields"); n = e.parseExpr(src); parsed.set(src, n); } return n; };
+  /**
+   * Add the computed values to shaped records. A computed field is left out for a caller who cannot see everything it is made from: an expression that reads a
+   * field hidden from them (or outside their field limit) shows nothing, and a total over other records counts only what the caller may read.
+   * @param {any} chain @param {string} type @param {{ rec: any, lim: { allow: Set<string> | null, hidden: Set<string> } }[]} items
+   */
+  async function withComputed(chain, type, items) {
+    if (!items.length) return [];
+    let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { return items.map(x => x.rec); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    const cf = def ? def.fields.filter((/** @type {any} */ f) => f.computed) : [];
+    if (!cf.length) return items.map(x => x.rec);
+    const extra = items.map(() => ({}));
+    for (const f of cf) {
+      const seen = (/** @type {{ allow: Set<string> | null, hidden: Set<string> }} */ lim, /** @type {string} */ n) => !lim.hidden.has(n) && (!lim.allow || lim.allow.has(n));
+      if (f.computed.expr !== undefined) {
+        let tree, names; try { tree = parseComputed(f.computed.expr); names = [...exprNames(tree)]; } catch { continue; }
+        items.forEach((x, i) => { if (seen(x.lim, f.name) && names.every(n => seen(x.lim, n))) { try { /** @type {any} */ (extra[i])[f.name] = exprFn().evalExpr(tree, { values: x.rec.data, now: clock() }) ?? null; } catch { /* a value that cannot be worked out is absent */ } } });
+      } else if (f.computed.over) {
+        const o = f.computed.over;
+        const ok = items.map(x => seen(x.lim, f.name));
+        const urns = items.filter((_, i) => ok[i]).map(x => x.rec.urn);
+        if (!urns.length) continue;
+        let rows;
+        try {
+          const measure = o.fn === "count" && !o.field ? { fn: "count" } : { fn: o.fn, field: o.field };
+          const where = { field: o.via, op: "in", value: urns.map(u => ({ urn: u })) };
+          rows = await api.aggregate(chain, o.type, { filter: o.where ? { and: [o.where, where] } : where, group_by: [o.via], measures: [measure] });
+        } catch { continue; }
+        const key = o.fn === "count" && !o.field ? "count" : `${o.fn}:${o.field}`;
+        const by = new Map(rows.map((/** @type {any} */ r) => [r.group[o.via] && r.group[o.via].urn, r.values[key]]));
+        items.forEach((x, i) => { if (ok[i]) /** @type {any} */ (extra[i])[f.name] = by.has(x.rec.urn) ? by.get(x.rec.urn) : (o.fn === "count" ? 0 : null); });
+      }
+    }
+    return items.map((x, i) => (Object.keys(extra[i]).length ? Object.freeze({ ...x.rec, data: { ...x.rec.data, ...extra[i] } }) : x.rec));
+  }
+  /** A filter, sort, group or measure may not name a computed field: it has no stored value to compare. */
+  async function refuseComputed(/** @type {string} */ type, /** @type {any} */ spec) {
+    const heads = fieldHeads(spec);
+    if (!heads.size) return;
+    let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { return; }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    for (const f of def ? def.fields : []) if (f.computed && heads.has(f.name)) throw new KernelError("bad_input", `${f.name} is computed: it cannot be filtered, sorted, grouped or measured`);
+  }
 
   const isModel = (/** @type {any} */ chain) => hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
 
@@ -265,12 +381,23 @@ export function createRecords(cfg) {
     return Object.freeze({ ...r, data, urn: u, labels: { trust: modified ? "external" : "member", red: "internal", source_spaces: [space] }, ...(modified ? { modified_outside: true } : {}) });
   }
 
-  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs) {
+  async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = []) {
     checkType(type); checkId(id);
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     const lim = await limitsOf(chain, type, d);
-    if (op === "create" || op === "update") refuseOutside(lim.allow, input);
+    if (op === "create" || op === "update") {
+      refuseOutside(lim.allow, input);
+      // a removed field takes no new values (its data is kept, and a person can bring the field back)
+      let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read"); }
+      const fields = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []);
+      const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
+      for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
+      for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
+      // a field hidden from the writer's role cannot be written either (it could not even be read back)
+      const role = roleOfChain(chain);
+      for (const f of fields) if (role !== undefined && Array.isArray(f.hidden_from) && f.hidden_from.includes(role) && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is outside what this role may change`);
+    }
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
     let stage = {};
@@ -278,7 +405,7 @@ export function createRecords(cfg) {
     // What the store must show for this to be our change and no one else's: the exact data and deleted state.
     const merged = op === "create" ? input : op === "update" ? mergePatch(before ? before.data : {}, input) : before ? before.data : null;
     const expect = merged === null || merged === undefined ? null : sha256(canonical({ deleted: op === "remove", data: merged }));
-    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain), ...(attrs ? { attrs } : {}) };
+    const intent = { id: mintUuid(clock()), decision: d.decision, chain: chain.hops, record: u, base_version: base, operation: op, input_hash: sha256(canonical(input)), expect, redact, before_data: before ? before.data : null, state: "open", started_at: clock(), stored: await chains.serialize(chain), ...(attrs ? { attrs } : {}) };
     intents.set(intent.id, intent);
     let rec;
     try { rec = await run(); }
@@ -318,7 +445,7 @@ export function createRecords(cfg) {
     const sealed = Object.values(rec.data).some(isSealedShape);
     log.append(chain, {
       type: `${rec.type}.${verb}`, sv: 1, subject: intent.record,
-      data: { changed, version: rec.version, version_hash: hash, ...(verb === "created" && intent.attrs ? { attrs: intent.attrs } : {}), ...(before ? { before: redactDiff(before.data, set) } : {}), after: redactDiff(rec.data, set), ...(recovered ? { recovered: true } : {}) },
+      data: { changed, version: rec.version, version_hash: hash, ...(verb === "created" && intent.attrs ? { attrs: intent.attrs } : {}), ...(before ? { before: redactDiff(before.data, set, intent.redact) } : {}), after: redactDiff(rec.data, set, intent.redact), ...(recovered ? { recovered: true } : {}) },
       red: sealed ? "pii" : "internal",
       // Record events carry field values: only a chain that may read the record may read them (R2-1).
       vis: "subject",
@@ -340,10 +467,15 @@ export function createRecords(cfg) {
     return rec;
   }
 
-  return {
+  const api = {
     async define(chain, diff) {
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`);
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
+      checkKinds(diff); await checkRoles(diff);
+      // A removed field is never required (new records could not be written without it); its data stays.
+      await checkComputed(diff);
+      const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
+      diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       // The definition changes in the store and then its event is written; an event the log refuses puts the definitions back, so a defined type never stands without its line in the log.
       let was = null;
       try { was = typeof store.types === "function" ? await store.types() : null; } catch { was = null; }
@@ -371,11 +503,12 @@ export function createRecords(cfg) {
       try { dec = await gate(chain, "records.read", u); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       let r;
       try { r = await store.get(type, id); } catch (e) { throw mapError(e); }
-      if (!r || r.id !== id || r.type !== type) return null;
+      if (!(r && r.id === id && r.type === type)) return null;
       const vs = await viewersOf(chain);
       const room = vs ? await roomLim(vs, type, u) : undefined;
       if (room === null) return null;
-      return shape(chain, r, await limitsOf(chain, type, dec), room);
+      const lim = await limitsOf(chain, type, dec);
+      return (await withComputed(chain, type, [{ rec: shape(chain, r, lim, room), lim }]))[0];
     },
 
     async query(chain, type, spec) {
@@ -384,8 +517,10 @@ export function createRecords(cfg) {
       spec = checkPage(spec);
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
+      await refuseComputed(type, spec);
       const readDec = await countRead(chain, type);
       let cursor = spec.page.cursor, out = [], next;
+      /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
       for (let pages = 0; pages < 10; pages++) {
         let p;
         try { p = await store.query(type, { ...spec, build_index: Boolean(readDec), page: { limit: spec.page.limit, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
@@ -396,7 +531,8 @@ export function createRecords(cfg) {
           if (!dec) continue;
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
           if (room === null) continue;
-          out.push(shape(chain, r, { allow: allowList(dec), hidden: hiddenSet || new Set() }, room));
+          const lim = { allow: allowList(dec), hidden: hiddenSet || new Set() };
+          out.push(shape(chain, r, lim, room)); lims.push(lim);
         }
         next = p.next_cursor;
         if (out.length || !next) break;
@@ -410,7 +546,7 @@ export function createRecords(cfg) {
         for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
         if (!more) next = p.next_cursor;
       }
-      return { rows: out, ...(more ? { next_cursor: next } : {}) };
+      return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };
     },
 
     async aggregate(chain, type, spec) {
@@ -419,6 +555,7 @@ export function createRecords(cfg) {
       if (!spec || typeof spec !== "object" || !Array.isArray(spec.measures) || (spec.group_by !== undefined && !Array.isArray(spec.group_by))) throw new KernelError("bad_input", "an aggregate needs measures, and group_by as a list");
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
+      await refuseComputed(type, spec);
       const typeDec = await countRead(chain, type);
       // The store totals the rows itself (one GROUP BY) only when every row of the type gets this chain's answer: no room, grants that cover the whole type with no row predicate, no
       // rule on reading, no privileged record in the type, and every field it groups or measures is one the chain may see. Anything else is totalled below, row by row.
@@ -463,13 +600,31 @@ export function createRecords(cfg) {
       const vs = await viewersOf(chain);
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
+      const words = String(spec.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      /** does some word appear in a text field this caller may read (a hit with no stored text to check is kept: nothing to leak) */
+      const matchesWithin = async (/** @type {any} */ h, /** @type {Set<string> | null} */ al, /** @type {Set<string>} */ hid, /** @type {string[]} */ ws) => {
+        let rec, defs;
+        try { rec = await store.get(h.type, h.id); defs = typeof store.types === "function" ? await store.types() : []; } catch { return false; }
+        const def = defs.find((/** @type {any} */ t) => t.name === h.type);
+        if (!rec || !def) return false;
+        for (const f of def.fields) {
+          if (f.kind === "sealed" || hid.has(f.name) || (al && !al.has(f.name))) continue;
+          const v = rec.data[f.name];
+          const texts = typeof v === "string" ? [v] : Array.isArray(v) ? v.filter((/** @type {any} */ x) => typeof x === "string") : [];
+          if (texts.some(t => ws.some(w => t.toLowerCase().includes(w)))) return true;
+        }
+        return false;
+      };
       const rows = [];
       for (const h of p.rows) {
         const dec = await check(chain, "records.read", urn(h.type, h.id));
         if (!dec) continue;
         if (vs && !(await roomLim(vs, h.type, urn(h.type, h.id)))) continue;
         // A snippet is text from some field: it is shown only when the access has no field limit and no field is hidden from this chain.
-        const limited = vs !== null || allowList(dec) !== null || ((await hiddenFields(chain, h.type)) || new Set([1])).size > 0;
+        const al = allowList(dec), hid = (await hiddenFields(chain, h.type)) || new Set([1]);
+        const limited = vs !== null || al !== null || hid.size > 0;
+        // A caller with a field limit may only find a record by text in a field it may read: a hit that came from a field outside the limit is an oracle on that field.
+        if (limited && !(await matchesWithin(h, al, hid, words))) continue;
         const { snippet: _s, ...bare } = h;
         rows.push(limited ? bare : h);
       }
@@ -488,7 +643,7 @@ export function createRecords(cfg) {
       return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
-      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id)));
+      return idem.once(chain, "update", opts.idem, { type, id, patch, base }, () => write(chain, "update", type, id, patch, base, () => store.update(type, id, patch, base), () => store.get(type, id), undefined, opts.redact || []));
     },
     async remove(chain, type, id, base, opts = {}) {
       return idem.once(chain, "remove", opts.idem, { type, id, base }, () => write(chain, "remove", type, id, {}, base, () => store.remove(type, id, base), () => store.get(type, id)));
@@ -564,5 +719,173 @@ export function createRecords(cfg) {
       }
     },
     versionHash,
+
+    /**
+     * Merge two records of one type that turned out to be one (two contacts for one person). `drop` goes to the bin, `keep` keeps everything either held: an
+     * empty field takes the other's value, lists are joined, and a different value in a unique field (the other email) goes into the companion list
+     * `other_<field>s` when the type has one, else it is reported in `conflicts` and the kept record's value stands. Every record that linked to `drop` links to
+     * `keep` instead. Sealed values stay with the dropped record (a sealed reference belongs to the record it was put on) and are named in `sealed_left`. It all
+     * goes through this gateway's own update and remove (each checked for the caller, versioned and logged); a failure part-way puts back what was done. One
+     * `records.merged` event says what moved so `unmerge` can undo it.
+     */
+    async merge(chain, type, keepId, dropId) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      checkType(type); checkId(keepId); checkId(dropId);
+      if (keepId === dropId) throw new KernelError("bad_input", "a record cannot be merged into itself");
+      const keepUrn = urn(type, keepId), dropUrn = urn(type, dropId);
+      const dk = await gate(chain, "records.update", keepUrn);
+      await gate(chain, "records.remove", dropUrn);
+      let keep, drop, defs;
+      try { keep = await store.get(type, keepId); drop = await store.get(type, dropId); defs = await store.types(); } catch (e) { throw mapError(e); }
+      if (!keep || !drop || keep.deleted_at || drop.deleted_at) throw new KernelError("not_found", "no such record");
+      const def = defs.find((/** @type {any} */ t) => t.name === type);
+      if (!def) throw new KernelError("unknown_type", `no type ${type}`);
+      const LISTS = new Set(["multi_choice", "emails", "phones", "urls"]);
+      /** @type {Record<string, any>} */ const patch = {}, conflicts = {};
+      const sealed_left = [];
+      const present = (/** @type {any} */ v) => v !== undefined && v !== null && !(Array.isArray(v) && !v.length);
+      const join = (/** @type {any[]} */ a, /** @type {any[]} */ b) => { const seen = new Set(a.map(x => canonical(x))); return [...a, ...b.filter(x => !seen.has(canonical(x)))]; };
+      const addTo = (/** @type {string} */ name, /** @type {any[]} */ vals) => { const cur = patch[name] ?? keep.data[name] ?? []; const j = join(cur, vals); if (j.length !== cur.length) patch[name] = j; };
+      for (const f of def.fields) {
+        const kv = keep.data[f.name], dv = drop.data[f.name];
+        if (f.kind === "sealed") { if (present(dv)) sealed_left.push(f.name); continue; }
+        if (!present(dv)) continue;
+        if (!present(kv)) { patch[f.name] = dv; continue; }
+        if (LISTS.has(f.kind)) { addTo(f.name, dv); continue; }
+        if (canonical(kv) === canonical(dv)) continue;
+        const comp = def.fields.find((/** @type {any} */ x) => x.name === `other_${f.name}s` && LISTS.has(x.kind));
+        if (comp) addTo(comp.name, [dv]); else conflicts[f.name] = dv;
+      }
+      // Every record that links to `drop`, read from the store (the caller may not see all of them, and none may be left pointing at the bin).
+      /** @type {{ type: string, id: string, field: string, version: number }[]} */ const relink = [];
+      for (const t of defs) for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === type || x.to === undefined))) {
+        let cursor;
+        do {
+          let pg;
+          try { pg = await store.query(t.name, { filter: { field: lf.name, op: "eq", value: { urn: dropUrn } }, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
+          for (const r of pg.rows) if (r.type === t.name && !(t.name === type && r.id === dropId)) relink.push({ type: t.name, id: r.id, field: lf.name, version: r.version });
+          cursor = pg.next_cursor;
+        } while (cursor);
+      }
+      for (const x of relink) if (!(await allowed(chain, "records.update", urn(x.type, x.id)))) throw new KernelError("not_allowed", "this merge would change records you may not change");
+      /** @type {(() => Promise<any>)[]} */ const undo = [];
+      const done = [];
+      try {
+        const removed = await api.remove(chain, type, dropId, drop.version);
+        undo.push(() => api.restore(chain, type, dropId));
+        for (const x of relink) {
+          // a record linking through two fields shows up twice: take its version from the store each time
+          const cur = await store.get(x.type, x.id);
+          const upd = await api.update(chain, x.type, x.id, { [x.field]: { urn: keepUrn } }, cur.version);
+          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, upd.version));
+          done.push({ type: x.type, id: x.id, field: x.field });
+        }
+        let kept = keep;
+        if (Object.keys(patch).length) {
+          const upd = await api.update(chain, type, keepId, patch, keep.version);
+          undo.push(() => api.update(chain, type, keepId, Object.fromEntries(Object.keys(patch).map(k => [k, keep.data[k] ?? null])), upd.version));
+          kept = upd;
+        }
+        const keep_before = Object.fromEntries(Object.keys(patch).map(k => [k, keep.data[k] ?? null]));
+        const ev = log.append(chain, { type: "records.merged", sv: 1, subject: keepUrn, data: { type, keep: keepId, drop: dropId, patched: keep_before, merged: Object.fromEntries(Object.keys(patch).map(k => [k, patch[k]])), relinked: done, conflicts: Object.keys(conflicts), sealed_left, dropped_version: removed.version }, vis: "subject", red: "internal" }, { decision: dk.decision });
+        return { keep: await api.get(chain, type, keepId), dropped: dropUrn, relinked: done.length, conflicts, sealed_left, merge_id: ev.id };
+      } catch (e) {
+        for (const u of undo.reverse()) { try { await u(); } catch { /* best effort: the log shows what is where */ } }
+        throw e;
+      }
+    },
+
+    /** Undo a merge by its `merge_id`: the kept record gets its old values back where nobody has changed them since, the dropped record comes back, and what was relinked points at it again. */
+    async unmerge(chain, mergeId) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const ev = log.read({ type: "records.merged" }).find((/** @type {any} */ e) => e.id === mergeId);
+      if (!ev) throw new KernelError("not_found", "no such merge");
+      if (log.read({ type: "records.unmerged" }).some((/** @type {any} */ e) => e.corr === mergeId)) throw new KernelError("invalid", "this merge was already undone");
+      const m = ev.data, keepUrn = urn(m.type, m.keep), dropUrn = urn(m.type, m.drop);
+      const dk = await gate(chain, "records.update", keepUrn);
+      let keep;
+      try { keep = await store.get(m.type, m.keep); } catch (e) { throw mapError(e); }
+      if (!keep) throw new KernelError("not_found", "no such record");
+      // fields still holding what the merge put there go back; ones someone edited since stay as they are
+      const back = {}, edited = [];
+      for (const [k, v] of Object.entries(m.merged)) { if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
+      if (Object.keys(back).length) await api.update(chain, m.type, m.keep, back, keep.version);
+      const restored = await api.restore(chain, m.type, m.drop);
+      let relinked = 0;
+      for (const x of m.relinked) {
+        let cur;
+        try { cur = await store.get(x.type, x.id); } catch { continue; }
+        if (!cur || cur.deleted_at || !cur.data[x.field] || cur.data[x.field].urn !== keepUrn) continue;
+        await api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, cur.version); relinked++;
+      }
+      log.append(chain, { type: "records.unmerged", sv: 1, subject: keepUrn, corr: mergeId, data: { type: m.type, keep: m.keep, drop: m.drop, relinked, edited_since: edited } }, { decision: dk.decision });
+      return { keep: await api.get(chain, m.type, m.keep), restored: restored.urn, relinked, edited_since: edited };
+    },
+
+    /**
+     * Role records (a type marked `role: { link }`): what a contact or organization is to the Space. Both calls go through `query`, so every row is checked
+     * for the caller one by one; a holder the caller cannot read has no roles to show. The link field is the only index they need.
+     */
+    async roles(chain, holder, o = {}) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const parts = String(holder).split("/");
+      if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", "a holder is a record urn");
+      if (!(await allowed(chain, "records.read", holder))) return [];
+      const out = [];
+      for (const t of await roleTypes()) {
+        const to = t.fields.find((/** @type {any} */ f) => f.name === t.role.link)?.to;
+        if (to && to !== parts[3]) continue;
+        let cursor;
+        for (let pages = 0; pages < 20; pages++) {
+          const p = await api.query(chain, t.name, { filter: { field: t.role.link, op: "eq", value: { urn: holder } }, page: { limit: 100, ...(cursor ? { cursor } : {}) } });
+          for (const r of p.rows) out.push(hold(t, r));
+          if (!p.next_cursor) break;
+          cursor = p.next_cursor;
+        }
+      }
+      const rows = o.include_ended === false ? out.filter(x => x.current) : out;
+      return rows.sort((a, b) => Number(b.current) - Number(a.current) || b.record.updated_at - a.record.updated_at);
+    },
+
+    /** The holders of one role, optionally at one stage: a page of role records, each naming its holder. Ended roles are left out unless asked for. */
+    async holders(chain, spec) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      checkType(spec.role);
+      const t = (await roleTypes()).find((/** @type {any} */ x) => x.name === spec.role);
+      if (!t) throw new KernelError("bad_input", `${spec.role} is not a role type`);
+      const sf = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
+      const and = [];
+      if (spec.stage !== undefined) { if (!sf) throw new KernelError("bad_input", `${spec.role} has no stage`); and.push({ field: sf.name, op: "eq", value: spec.stage }); }
+      else if (spec.include_ended !== true && sf && (t.role.ended || []).length) and.push({ not: { field: sf.name, op: "in", value: t.role.ended } });
+      const p = await api.query(chain, t.name, { ...(and.length ? { filter: and.length === 1 ? and[0] : { and } } : {}), page: spec.page });
+      return { rows: p.rows.map((/** @type {any} */ r) => hold(t, r)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+    },
+
+    /** Everything that links to this record (the reverse of a link field), any type, newest first within a type; only rows the caller may read. At most `limit` rows in all (default 50, at most 200). */
+    async linked(chain, target, o = {}) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const parts = String(target).split("/");
+      if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", "a target is a record urn");
+      if (o.type !== undefined) checkType(o.type);
+      const limit = Math.min(200, Math.max(1, Math.trunc(Number(o.limit ?? 50)) || 50));
+      if (!(await allowed(chain, "records.read", target))) return { rows: [], truncated: false };
+      let defs;
+      try { defs = await store.types(); } catch (e) { throw mapError(e); }
+      const rows = []; let truncated = false;
+      for (const t of defs) {
+        if (o.type !== undefined && t.name !== o.type) continue;
+        for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === parts[3] || x.to === undefined) && (o.field === undefined || x.name === o.field))) {
+          let cursor;
+          for (let pages = 0; pages < 20 && !truncated; pages++) {
+            const p = await api.query(chain, t.name, { filter: { field: lf.name, op: "eq", value: { urn: target } }, page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
+            for (const r of p.rows) { if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, record: r }); }
+            if (!p.next_cursor) break;
+            cursor = p.next_cursor;
+          }
+        }
+      }
+      return { rows, truncated };
+    },
   };
+  return api;
 }
