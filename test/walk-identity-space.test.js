@@ -29,6 +29,8 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "walk-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` },
     modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  // a command line is a person only through `vyre signin` (SI-1b); this walk has no phone, so it uses the development stand-in file (a hand-made file in a development build)
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
   const lines = /** @type {string[]} */ ([]);
   const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
