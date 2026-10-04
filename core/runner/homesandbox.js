@@ -126,7 +126,9 @@ export function homeSeatbelt(o) {
     // (No rule per LAN address: seatbelt accepts only "*" or "localhost" as the host of a network address, so "(remote ip \"192.168.64.4:*\")" is a
     // profile error and nothing starts; measured on a hosted Mac, run 37162622014. The port rule above is what covers every address.)
     // ...then the session gets back only what it needs (these come last, so they win).
-    ...writable(o).map(d => `(allow file* (subpath ${q(d)}))`),
+    // The blanket `(deny file-write*)` above is not overridden by a later `(allow file* ...)` on macOS 14 (hosted run 37167578152: variant A failed, the same rule with the
+    // write operations named, F, passed), so each writable folder gets its write operations spelled out as well.
+    ...writable(o).flatMap(d => [`(allow file* (subpath ${q(d)}))`, `(allow file-write-create file-write-data file-write-unlink file-write-mode file-write-flags file-write-times file-write-xattr (subpath ${q(d)}))`]),
     ...ok.filter(d => !writable(o).includes(d)).map(d => `(allow file-read* (subpath ${q(d)}))`),
     ...[...new Set(ok.flatMap(ancestors))].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
     // The protected places are denied AGAIN after the allows, so no allowed folder can re-open them.
