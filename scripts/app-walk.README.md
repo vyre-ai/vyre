@@ -48,3 +48,5 @@ One-time enrolment of a walk home (a throwaway home only; the daemon must be sto
 Then `node scripts/standin-phone.mjs --home <abs .vyre dir> --answer yes|no|ignore --once` answers the next card. `scripts/app-walk-approval.mjs --socket <home>/.vyre/vyred.sock [--timeout]` runs the app's own ask code (`heldAsk`, `askYes`) against it: yes, no, and with `--timeout` a card nobody answers (5 minutes).
 
 Not walked: spending an approved card. The box reads an approval only from a paired device caller, so it needs a browser paired through the relay. Also, RC1 hides Reveal in a browser on purpose (screens/vault/RealVault.tsx), so no page starts this flow for a vault item.
+
+Run both scripts from an ssh login shell, in the foreground: the stand-in phone signs in with `signin.dev`, which the daemon allows only for a caller it already counts as the owner, and a detached process (setsid, nohup in the background) is not one. `--timeout` makes the run take about five minutes.
