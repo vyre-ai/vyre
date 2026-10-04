@@ -8,7 +8,7 @@ export const ASK_AGAIN = "Let Claude Code ask again";
 
 /** @param {string} computer */
 export const askTitle = (computer) => `Let Claude Code on ${computer} read your memory and your projects' sessions?`;
-export const ASK_CAPTION = "If you do nothing, this ends in 24 hours and Claude Code waits 7 days to ask again.";
+export const ASK_CAPTION = "It can read and suggest. It never acts as you. If you do nothing, this ends in 24 hours and Claude Code waits 7 days to ask again.";
 
 /** What Access shows for Claude Code: the open asks, then at most one standing row. @param {any} status @param {any} pending */
 export function pluginView(status, pending) {
