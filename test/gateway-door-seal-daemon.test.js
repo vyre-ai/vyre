@@ -2,8 +2,8 @@ import "../scripts/mac-test-guard.mjs";
 // @ts-check
 // The sealing process's own verdicts through the gateway door, on a REAL daemon (not a stubbed verifier): an owner's software key is enrolled the way the walk does it (scripts/dev-enrol-software-key.mjs),
 // the daemon runs with the dev switches, and tasks.decide is called over the socket with the proof in the x-vyre-kernel-proof header, as the app does. A proof that stands approves the task; a proof the
-// verifier refuses for any reason (wrong_decision, wrong_payload, unknown_key, bad_signature) leaves the task waiting and the caller gets needs_presence; a proof that stood once does not approve another task.
-// The verifier's reason is the kernel's to log, never the caller's to read (KernelError.hidden_reason), so the test asserts the code and that nothing about the key leaks.
+// verifier refuses for any reason (wrong_decision, wrong_payload, unknown_key, bad_signature) leaves the task waiting and the caller gets needs_presence with that reason as detail.reason; a proof that stood once does not approve another task.
+// The verifier's reason rides beside needs_presence as error.detail.reason (a stable code the app maps to its own words); the message stays our own text.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -62,10 +62,12 @@ test("the sealing verifier's verdicts reach the caller through the gateway door 
     "a proof with a damaged signature (bad_signature)": { ...good, nonce: "badsignonce", signature: Buffer.alloc(64, 7).toString("base64url") },
     "no proof at all": null,
   };
-  for (const [name, proof] of Object.entries(bad)) {
+  const reasons = ["wrong_decision", "wrong_payload", "unknown_key", "bad_signature", "no_proof"];
+  for (const [i, [name, proof]] of Object.entries(bad).entries()) {
     const r = proof ? await decide(task.id, proof) : await call("tasks.decide", { id: task.id, outcome: "approved" }, { root, caller: "cli" });
     assert.equal(r.error && r.error.code, "needs_presence", `${name}: ${JSON.stringify(r)}`);
-    assert.doesNotMatch(JSON.stringify(r), /wrong_|unknown_key|bad_signature|dk_/, `${name}: the verdict's reason is the kernel's, not the caller's`);
+    assert.equal(r.error.detail && r.error.detail.reason, reasons[i], `${name}: the verifier's reason rides beside needs_presence as a stable code: ${JSON.stringify(r)}`);
+    assert.doesNotMatch(r.error.message, /wrong_|unknown_key|bad_signature|dk_/, `${name}: the message stays our own text`);
     assert.equal(await stateOf(task.id), "needs_check", `${name}: the task is still waiting`);
   }
   // none of the refusals used up the good proof's nonce: it still stands, once
@@ -76,6 +78,7 @@ test("the sealing verifier's verdicts reach the caller through the gateway door 
   const second = await waiting();
   const again = await decide(second.id, good);
   assert.equal(again.error && again.error.code, "needs_presence", JSON.stringify(again));
+  assert.equal(again.error.detail && again.error.detail.reason, "wrong_payload");
   assert.equal(await stateOf(second.id), "needs_check");
   // and a fresh proof for that task approves it
   const fresh = await decide(second.id, sign(["--op", "task.decide", "--fields", JSON.stringify(fieldsOf(second))]));
