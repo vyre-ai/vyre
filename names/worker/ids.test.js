@@ -367,3 +367,19 @@ test("cors: the per-IP claim limit applies to claims from the app origin too", a
   assert.equal(results.filter(x => x === "ok").length, 5, JSON.stringify(results));
   assert.ok(results.slice(5).every(x => x !== "ok"));
 });
+
+test("cors: the name availability check answers any origin like resolve (no credentials), and the claim limit per address is configurable", async t => {
+  const w = world(t, { CLAIMS_PER_IP_PER_DAY: "8" });
+  for (const origin of ["https://app.vyre.run", "http://localhost:5173", "https://evil.example"]) {
+    const r = await raw(w, "GET", "/v1/names/check?name=freshname", { origin, headers: { "sec-fetch-site": "cross-site" } });
+    assert.equal(r.status, 200, origin);
+    assert.equal(r.h("access-control-allow-origin"), "*");
+    assert.equal(r.h("access-control-allow-credentials"), null);
+    assert.equal(r.json.data.status, "ok");
+  }
+  const pre = await raw(w, "OPTIONS", "/v1/names/check?name=x", { origin: "https://app.vyre.run", headers: { "access-control-request-method": "GET" } });
+  assert.equal(pre.status, 204);
+  const results = [];
+  for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk") } }); results.push(r.status === 200 ? "ok" : code(r)); }
+  assert.equal(results.filter(x => x === "ok").length, 8, JSON.stringify(results));
+});
