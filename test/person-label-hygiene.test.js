@@ -16,10 +16,10 @@ const CHAIN_BUILDERS = new Set(["core/modules/index.js", "lib/caller.js", "core/
 
 /** Existing hand-rolled label checks, by file: the most lines allowed. Lower a number when its owner removes one; never raise one. */
 export const FROZEN = Object.freeze({
-  "core/context/index.js": 1, "core/files/drive.js": 1, "core/memory/index.js": 3, "core/memory/site.js": 1,
+  "core/context/index.js": 1, "core/memory/index.js": 3, "core/memory/site.js": 1,
   "core/memory/write.js": 1, "core/modules/federate.js": 1, "core/onboard/index.js": 1,
   "core/presence/index.js": 1, "core/runner/index.js": 1, "core/settings/index.js": 4, "core/switchboard/index.js": 4,
-  "core/vault/connections.js": 1, "core/vault/index.js": 1, });
+  });
 
 const SHAPE = /(\^|\(\?:|\|)(device|tailnet|tailnet-guest):|startsWith\(["'`](device|tailnet):|\bcaller\s*===?\s*["'`](deck|capsule|cli)["'`]/;
 const CODE = /\.(js|mjs)$/;
