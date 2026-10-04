@@ -58,7 +58,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false, kernelFor = undefined } = {}) {
+async function device(t, { records = false, wink = false, kernelFor = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -70,6 +70,15 @@ async function device(t, { records = false, kernelFor = undefined } = {}) {
     fs.writeFileSync(path.join(dir, "records", "module.json"), JSON.stringify({ name: "records", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "records.workspace.create", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
     fs.writeFileSync(path.join(dir, "records", "index.js"), "export default { async start(ctx) { ctx.tool('records.workspace.create', { description: 'x', input: { type: 'object' }, run: async i => ({ workspaceId: 'ws_' + i.space }) }); return { async stop() {} }; } };\n");
     found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "records"));
+  }
+  if (wink) {
+    // A stand-in for Wink's two server tools: which device is a paired server, and a call to a tool on it (recorded, answered like the server's spaces module would).
+    const dir = fs.mkdtempSync(path.join(path.dirname(root), "wink-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(dir, "wink"));
+    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }, { name: "wink.server.call", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
+    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); ctx.tool('wink.server.call', { description: 'x', input: { type: 'object' }, run: async i => { globalThis.__winkCalls.push(i); if (globalThis.__winkRefuse) throw Object.assign(new Error('the server said no'), { code: 'forbidden' }); return i.tool === 'spaces.host-here' ? { space: 'spc_' + 'abcdefghjklm', existed: false } : { retired: true }; } }); return { async stop() {} }; } };\n");
+    found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "wink"));
   }
   const db = open(p.db);
   const events = new Events(db);
@@ -1155,5 +1164,50 @@ test("spaces.identity.name-of: a claimed name the directory confirms for that id
   const other = person().id;
   assert.equal((await d.ok("spaces.identity.name-of", { id: other, claimed: "alex.vyre.run" }, "module:wink")).name, null, "alex's name claimed for another id is not confirmed");
   assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "nosuchname" }, "module:wink")).name, null, "a name the directory does not know is not shown");
+  void w;
+});
+
+
+test("a space whose home is a PAIRED server is hosted by the server: the device asks it (with the owner's proof beside the call), keeps only a row, takes the server's id, and cancel gives it back there; a refusal makes nothing and never falls back to hosting here", async t => {
+  const w = world(t);
+  const d = await device(t, { wink: true });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const calls = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__winkCalls);
+  const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
+  const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.equal(made.data.status, "done", JSON.stringify(made.data));
+  assert.equal(made.data.space, "spc_abcdefghjklm", "THE id is the server's");
+  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }]], "one call to the server, the owner's proof beside it");
+  assert.ok((await d.ok("spaces.list")).some(x => x.id === "spc_abcdefghjklm" && x.hostedHere === undefined), "listed as a normal space, not as a local copy");
+  // giving it back: cancel asks the server to retire it
+  calls().length = 0;
+  const w2 = await d.call("spaces.create", { name: "secondone", home: { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(!w2.error, JSON.stringify(w2.error));
+  // a server that refuses: nothing is made on this device either
+  /** @type {any} */ (globalThis).__winkRefuse = true;
+  t.after(() => { /** @type {any} */ (globalThis).__winkRefuse = false; });
+  calls().length = 0;
+  const refused = await d.call("spaces.create", { name: "refusedone", home }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(refused.error, "the server's refusal is the answer");
+  assert.ok(!(await d.ok("spaces.list")).some(x => x.name === "refusedone.vyre.run"), "nothing was made here as a fallback");
+  void w;
+});
+
+test("the device reaches the paired server over the Wink peer session when the daemon supplies one: the proof rides in the input, the server's answer is THE id, a closed session refuses", async t => {
+  const w = world(t);
+  const d = await device(t, { wink: true });
+  const { hooks } = await import("./index.js");
+  /** @type {any[]} */ const seen = [];
+  hooks.sessionFor = async dev => ({ call: async (tool, input) => { seen.push([dev, tool, input]); return { ok: true, data: { space: "spc_" + "mnpqrstuvwxy", existed: false } }; } });
+  t.after(() => { hooks.sessionFor = null; });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const made = await d.call("spaces.create", { name: "overwire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true }, confirmed: true } }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.equal(made.data.space, "spc_mnpqrstuvwxy");
+  assert.deepEqual(seen.map(x => [x[0], x[1], x[2].name, x[2].proof]), [["srv_paired0000000001", "spaces.host-here", "overwire", { op: "t" }]]);
+  hooks.sessionFor = async () => { throw new Error("closed"); };
+  const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
+  assert.equal(down.error?.code, "server_unreachable");
   void w;
 });

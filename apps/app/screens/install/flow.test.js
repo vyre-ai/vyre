@@ -95,3 +95,12 @@ test("other devices and the server say the same thing in plain words", () => {
   assert.equal(setupElsewhere("this computer"), "Setup in progress on this computer");
   assert.equal(connectedLine("Northwind", "iPhone"), "Connected to Northwind. Finish setting up on your iPhone.");
 });
+
+test("a pairing that fails says what to do on the server", async () => {
+  const { serverSay, SERVER_FAILED } = await import("./flow.js");
+  assert.equal(serverSay({ code: "ticket_used" }), SERVER_FAILED.used);
+  assert.equal(serverSay(new Error("The pairing ran out of time")), SERVER_FAILED.expired);
+  assert.equal(serverSay(new Error("Failed to fetch")), SERVER_FAILED.unreachable);
+  assert.equal(serverSay(new Error("rejected")), SERVER_FAILED.rejected);
+  assert.equal(serverSay(new Error("x")), SERVER_FAILED.ended);
+});

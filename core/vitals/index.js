@@ -154,7 +154,10 @@ export default {
 
     const bufferOf = (device, scope) => (state.get(device) && state.get(device).get(scope) && state.get(device).get(scope).buffer) || [];
 
-    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
+    /** Everything but the aggregate summary is the person's (owner() still refuses a named agent); watch opens a 2 s sampler, so it writes. */
+    const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+    const EFFECT = { "vitals.watch": "write" };
+    const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, effect: EFFECT[name] || "read", ...(name === "vitals.summary" ? {} : { callers: PEOPLE }) });
 
     tool("vitals.watch", "Open or close one live subscription to this device's vitals, at ~2s while at least one is open. Answers the current sample and the in-memory sparkline buffer.",
       obj({ action: { type: "string", enum: ["open", "close"] }, device: str, scope: str }, ["action"]), async (i, { caller }) => {

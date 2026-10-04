@@ -122,6 +122,15 @@ export function createGrantsStore(cfg) {
   // assistant acting for a person is both, so it is bound by whichever of the two is stricter, never by the weaker only.
   const chainWho = (/** @type {any} */ chain) => /** @type {[boolean, boolean]} */ ([chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person"), chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation")]);
   const bindsWho = (/** @type {any} */ r, /** @type {boolean} */ member, /** @type {boolean} */ assistant) => (member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"));
+  /**
+   * What an admin may not make a rule do (DESIGN-spaces-first: an admin sets policies short of ownership). A rule that binds members binds the owner acting directly too, so over the acts that
+   * change who has access or owns the Space (every grants call, restoring the drive, installing or removing a Kit) it could lock an owner out; only an owner may make one.
+   * @param {any} issuer @param {any} rule
+   */
+  const lockout = (issuer, rule) => {
+    if (roleOf(issuer) === "owner") return;
+    if (rule.binds.includes("members") && rule.covers.actions.some((/** @type {string} */ a) => a.startsWith("grants.") || a === "drive.restore" || a.startsWith("kits."))) throw new KernelError("not_allowed", "only an owner makes a rule that binds members over who has access to the Space");
+  };
   const matching = (/** @type {boolean} */ member, /** @type {boolean} */ assistant, /** @type {string} */ action, /** @type {string} */ resource) => [...rules.values()].filter(r => r.status === "active" && bindsWho(r, member, assistant) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
 
   /** Switch a rule off (it stays, binds nothing) or on again. An owner's act with presence, like every change to the rules. */
@@ -129,12 +138,12 @@ export function createGrantsStore(cfg) {
     const issuer = person(chain);
     const action = on ? "rules.enable" : "rules.disable";
     const d = await gate(chain, action, urn("rule", String(id)), { id }, o.presence);
-    if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", `only an owner turns a standing rule ${on ? "on" : "off"}`);
+    if (!isAdmin(issuer)) throw new KernelError("not_allowed", `only an owner or an admin turns a standing rule ${on ? "on" : "off"}`);
     const r = rules.get(String(id));
     if (!r) throw new KernelError("not_found", "no such rule");
     const status = on ? "active" : "disabled";
     if (r.status === status) return r;
-    const rec = freeze({ ...structuredClone(r), status, switched_by: issuer.id, switched_at: clock() });
+    const rec = freeze({ ...structuredClone(r), status });
     rules.set(rec.id, rec);
     await note(chain, on ? "rule.enabled" : "rule.disabled", urn("rule", rec.id), { id: rec.id, by: issuer.id }, d.decision);
     return rec;
@@ -793,8 +802,9 @@ export function createGrantsStore(cfg) {
       const issuer = person(chain);
       const rule = checkRule(r);
       checkDraftable(rule, a => reg().get(a));
+      lockout(issuer, rule);
       const d = await gate(chain, "rules.set", urn("rule"), rule, o.presence);
-      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner sets a standing rule");
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin sets a standing rule");
       const rec = freeze({ id: `rule_${mintUuid(clock())}`, space: cfg.space, ...rule, status: "active", by: issuer.id, at: clock() });
       rules.set(rec.id, rec);
       await note(chain, "rule.set", urn("rule", rec.id), { rule: rec }, d.decision);
@@ -804,7 +814,7 @@ export function createGrantsStore(cfg) {
     async ruleRemove(chain, id, o = {}) {
       const issuer = person(chain);
       const d = await gate(chain, "rules.remove", urn("rule", String(id)), { id }, o.presence);
-      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner removes a standing rule");
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin removes a standing rule");
       if (!rules.has(String(id))) throw new KernelError("not_found", "no such rule");
       rules.delete(String(id));
       await note(chain, "rule.removed", urn("rule", String(id)), { id: String(id), by: issuer.id }, d.decision);
@@ -829,9 +839,10 @@ export function createGrantsStore(cfg) {
     /** The owner accepts a proposal, with presence: it becomes a standing rule exactly as proposed. @param {any} chain @param {string} id @param {{ presence?: any }} [o] */
     async ruleAccept(chain, id, o = {}) {
       const issuer = person(chain);
-      const d = await gate(chain, "rules.accept", urn("rule", String(id)), { id }, o.presence);
-      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner accepts a proposed rule");
       const p = proposals.get(String(id));
+      if (p) lockout(issuer, p);
+      const d = await gate(chain, "rules.accept", urn("rule", String(id)), { id }, o.presence);
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin accepts a proposed rule");
       if (!p) throw new KernelError("not_found", "no such proposal");
       const { by: _by, at: _at, id: _id, space: _sp, ...rule } = p;
       const rec = freeze({ id: `rule_${mintUuid(clock())}`, space: cfg.space, ...rule, status: "active", by: issuer.id, at: clock(), proposed_by: p.by });
@@ -844,7 +855,7 @@ export function createGrantsStore(cfg) {
     async ruleDismiss(chain, id, o = {}) {
       const issuer = person(chain);
       const d = await gate(chain, "rules.dismiss", urn("rule", String(id)), { id }, o.presence);
-      if (roleOf(issuer) !== "owner") throw new KernelError("not_allowed", "only an owner turns down a proposed rule");
+      if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin turns down a proposed rule");
       if (!proposals.has(String(id))) throw new KernelError("not_found", "no such proposal");
       proposals.delete(String(id));
       await note(chain, "rule.dismissed", urn("rule", String(id)), { id: String(id), by: issuer.id }, d.decision);

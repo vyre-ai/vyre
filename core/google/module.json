@@ -6,11 +6,11 @@
   "does": {
     "reads": ["google.calendar.list", "google.calendar.search", "google.find", "google.mail.read", "google.mail.search"],
     "tools": [
-      { "name": "google.accounts", "reach": "anyone" }, { "name": "google.add", "reach": "anyone" }, { "name": "google.remove", "reach": "anyone" }, { "name": "google.test", "reach": "anyone" },
-      { "name": "google.connect", "reach": "anyone" }, { "name": "google.connect.finish", "reach": "anyone" }, { "name": "google.connect.cancel", "reach": "anyone" },
-      { "name": "google.calendar.next", "reach": "anyone" }, { "name": "google.calendar.today", "reach": "anyone" }, { "name": "google.calendar.list", "reach": "anyone" }, { "name": "google.calendar.search", "reach": "anyone" }, { "name": "google.calendar.create", "reach": "anyone" }, { "name": "google.calendar.update", "reach": "anyone" },
-      { "name": "google.mail.search", "reach": "anyone" }, { "name": "google.mail.read", "reach": "anyone" }, { "name": "google.mail.draft", "reach": "anyone" }, { "name": "google.mail.send", "reach": "anyone" },
-      { "name": "google.find", "reach": "anyone" }, { "name": "google.open", "reach": "person" }, { "name": "google.release", "reach": "modules" }
+      { "name": "google.accounts", "reach": "anyone", "effect": "read" }, { "name": "google.add", "reach": "anyone", "effect": "write" }, { "name": "google.remove", "reach": "anyone", "effect": "write" }, { "name": "google.test", "reach": "anyone", "effect": "write" },
+      { "name": "google.connect", "reach": "anyone", "effect": "write" }, { "name": "google.connect.finish", "reach": "anyone", "effect": "write" }, { "name": "google.connect.cancel", "reach": "anyone", "effect": "write" },
+      { "name": "google.calendar.next", "reach": "anyone", "effect": "read" }, { "name": "google.calendar.today", "reach": "anyone", "effect": "read" }, { "name": "google.calendar.list", "reach": "anyone", "effect": "read" }, { "name": "google.calendar.search", "reach": "anyone", "effect": "read" }, { "name": "google.calendar.create", "reach": "anyone", "effect": "write" }, { "name": "google.calendar.update", "reach": "anyone", "effect": "write" },
+      { "name": "google.mail.search", "reach": "anyone", "effect": "read" }, { "name": "google.mail.read", "reach": "anyone", "effect": "read" }, { "name": "google.mail.draft", "reach": "anyone", "effect": "write" }, { "name": "google.mail.send", "reach": "anyone", "effect": "write" },
+      { "name": "google.find", "reach": "anyone", "effect": "read" }, { "name": "google.open", "reach": "person", "effect": "write" }, { "name": "google.release", "reach": "modules" }
     ]
   },
   "watches": { "emits": ["google.added", "google.removed", "google.drafted", "google.scheduled", "google.sent", "google.connected", "google.connect-failed"] },

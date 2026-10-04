@@ -13,7 +13,7 @@ const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /**
- * @param {{ space: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number } }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -22,7 +22,8 @@ export function createRemoteServer(cfg) {
   /** @type {Map<string, { at: number, bytes: number, done: boolean, p: Promise<any> }>} the calls in flight and answered, oldest first */ const seen = new Map();
   let stored = 0;
   /** @type {Map<string, number[]>} device -> the times of its recent requests */ const rate = new Map();
-  const tree = (/** @type {string} */ group) => (group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
+  // A group is the gateway's, the Surfaces door's, or a SERVICE the home registered (`cfg.services`, e.g. the lent computer's): a service group that is not registered answers no_such_call.
+  const tree = (/** @type {string} */ group) => (cfg.services && Object.hasOwn(cfg.services, group) ? cfg.services[group] : group === "lent" ? undefined : group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
   /** Calls whose local signature is not `(chain, ...args)` or that need the home's own check before they run. */
   const ADAPT = {
     "surfaces.revoke": () => (/** @type {any} */ chain, /** @type {string} */ session) => k.surfaces.revoke(session, chain),

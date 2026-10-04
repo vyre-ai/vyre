@@ -54,12 +54,14 @@ export default {
     };
 
     ctx.tool("network.guests.list", {
+      effect: "read",
       description: "Guests from other tailnets this box serves: whether guests are on, each listed login with its tools, and the view-only tools a guest can ever reach.",
       input: obj(),
       run: async (_, { caller } = {}) => { notGuest(caller); return view(); },
     });
 
     ctx.tool("network.guests.add", {
+      effect: "write",
       description: "Serve a person from another tailnet as a guest, with these tools (only view-only ones: see network.guests.list's safe). Replaces the person's tools when already listed.",
       input: obj({ login: str, tools: { type: "array", items: str } }, ["login", "tools"]),
       presence: { summary: ({ login, tools }) => `Let ${login} use ${(tools || []).join(", ") || "no tools"} on this box` },
@@ -82,6 +84,7 @@ export default {
     });
 
     ctx.tool("network.guests.remove", {
+      effect: "write",
       description: "Stop serving a guest listed in config. A guest the tailnet policy grants vyre.run/cap/guest is still served until that grant is removed.",
       input: obj({ login: str }, ["login"]),
       presence: { summary: ({ login }) => `Stop serving ${login} on this box` },
@@ -99,6 +102,7 @@ export default {
     });
 
     ctx.tool("network.guests.enable", {
+      effect: "write",
       description: "Turn guests on or off. Off, the tailnet listener serves only the owner, whatever the list or the tailnet policy says.",
       input: obj({ on: { type: "boolean" } }, ["on"]),
       presence: { summary: ({ on }) => (on ? "Serve guests from other tailnets on this box" : "Stop serving every guest on this box") },
@@ -111,6 +115,7 @@ export default {
     });
 
     ctx.tool("network.guests.check", {
+      effect: "read",
       description: "Who could reach this box as a guest now: asks Tailscale who each online person's device other than the owner's is, and says whether the listener would serve them and with which tools.",
       input: obj({ login: str }),
       run: async ({ login } = {}, { caller } = {}) => {

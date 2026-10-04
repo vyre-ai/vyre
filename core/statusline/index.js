@@ -92,6 +92,7 @@ export default {
     tick.unref();
 
     ctx.tool("statusline.line", {
+      effect: "write",
       description: "The Vyre status line as it is right now, recomputed: what needs the user, the box, the assistant.",
       input: { type: "object", properties: {} },
       // For the terminal and the surfaces; Claude already sees all of this where it matters.

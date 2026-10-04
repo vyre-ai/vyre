@@ -113,6 +113,9 @@ export const _test = {
 };
 
 const PERSONAL = "personal";
+/** Who may call a tool that changes state: the person's own surfaces and Vyre's modules (PEOPLE), and for the tools a model uses to make and keep its own work, a model session too (WITH_AGENTS). Every one of those tools scopes what a model reaches to its own project or own work (scopeOf). */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const WITH_AGENTS = [...PEOPLE, "mcp", "harness"];
 const DAY = 86_400_000;
 const EXPIRES = /** @type {Record<string, number|null>} */ ({ "1d": DAY, "7d": 7 * DAY, "30d": 30 * DAY, never: null });
 const UNDO_DAYS = 30;
@@ -838,6 +841,7 @@ export default {
     const idIn = { type: "object", required: ["id"], properties: { id: str } };
 
     ctx.tool("artifacts.create", {
+      callers: WITH_AGENTS,
       description: "Make an artifact for the person: a document or report (Markdown), a page or small app (one HTML file that runs in a locked frame with no network), a diagram (Mermaid or SVG), a deck (Markdown slides split by ---) or a dashboard (a chart spec as JSON, {type: line or bar, x: the column for the x axis, series: [column names]}, plus its data as a list of rows; at most three series are drawn, and every chart has a table). A diagram in Mermaid is drawn as a flowchart or a sequence diagram; any other Mermaid type is shown as its source. An SVG is cleaned of scripts and links. A deck is Markdown, one slide per block split by a line of ---, with a Notes: line for speaker notes, a line of ... to split two columns, and images only as data URIs. The design is yours: a chart spec takes a theme (background, text, font, series colours) and per-series color, dash, marker and height; a deck takes an @theme line (bg, text, font, logo as a data URI) and an @slide line per slide (bg, image, color, align, valign); a Mermaid diagram takes a %%theme line and its own style and classDef; an SVG keeps its styles, gradients and data-URI images; a Markdown document takes an @theme line; a page or app is your own HTML and CSS. Colours, fonts and images are checked, never network: nothing loads from outside. An interactive page or app (HTML) runs your code in a locked frame, but it can still send the browser to another address and put anything it contains into that address, which no header stops: put nothing in one that the person has not chosen to send to the internet, and prefer a document, report, dashboard, diagram or deck, which run no code. It is kept on the person's server with every version and is private to them. Use this, not your own artifact or publish feature, whenever you make something for the person to look at or use. An agent's artifact lands in its own project.",
       input: { type: "object", required: ["kind", "content"], properties: {
         kind: { type: "string", enum: Object.keys(KINDS) }, format: { type: "string", enum: Object.keys(MAIN_FILE) },
@@ -847,6 +851,7 @@ export default {
     });
 
     ctx.tool("artifacts.update", {
+      callers: WITH_AGENTS,
       description: "Save a new version of an artifact: new content (and data, for a dashboard), a new title, or both. Earlier versions stay, and artifacts.diff shows what changed.",
       input: { type: "object", required: ["id"], properties: { id: str, content: str, data: {}, title: str, message: str } },
       examples: [{ id: "a_3fK2x9LqWm1p", content: "# Intake, October\n\nNew matters: 46, against 39 in September.\n\nReferrals are up.", message: "add referrals" }],
@@ -967,6 +972,7 @@ export default {
     });
 
     ctx.tool("artifacts.restore", {
+      callers: WITH_AGENTS,
       description: "Go back to an earlier version. It becomes a new version, so nothing is lost and it can be undone the same way.",
       input: { type: "object", required: ["id", "version"], properties: { id: str, version: { type: "integer", minimum: 1 } } },
       examples: [{ id: "a_3fK2x9LqWm1p", version: 1 }],
@@ -985,6 +991,7 @@ export default {
     });
 
     ctx.tool("artifacts.move", {
+      callers: WITH_AGENTS,
       description: "Move an artifact, with every version, to another project (the person), or into an agent's own project from the person's own space.",
       input: { type: "object", required: ["id"], properties: { id: str, project: { type: ["string", "null"] } } },
       examples: [{ id: "a_3fK2x9LqWm1p", project: "harlow-legal" }],
@@ -1004,6 +1011,7 @@ export default {
     });
 
     ctx.tool("artifacts.archive", {
+      callers: WITH_AGENTS,
       description: "Archive an artifact (it leaves the lists and any public link stops), or bring it back with archived: false.",
       input: { type: "object", required: ["id"], properties: { id: str, archived: { type: "boolean" } } },
       examples: [{ id: "a_3fK2x9LqWm1p" }],
@@ -1019,6 +1027,7 @@ export default {
     });
 
     ctx.tool("artifacts.delete", {
+      callers: WITH_AGENTS,
       description: `Delete an artifact. Its public link stops at once. artifacts.undelete brings it back for ${UNDO_DAYS} days; after that every version is gone.`,
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
@@ -1032,6 +1041,7 @@ export default {
     });
 
     ctx.tool("artifacts.undelete", {
+      callers: WITH_AGENTS,
       description: `Bring back an artifact deleted in the last ${UNDO_DAYS} days. A public link it had stays off.`,
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
@@ -1061,6 +1071,7 @@ export default {
     });
 
     ctx.tool("artifacts.share", {
+      callers: PEOPLE,
       description: "Make a public link to an artifact that anyone with it can open, served by the person's own server. It shows the version shared unless version is \"latest\", and it expires (1d, 7d, 30d by default, or never). Sharing publicly is posting as the person: it runs when the person tapped it or asked for it, and otherwise waits for their approval. Refused when public links are off or when the artifact looks like it holds a secret.",
       input: { type: "object", required: ["id"], properties: { id: str, version: { oneOf: [{ type: "integer", minimum: 1 }, { type: "string", enum: ["latest"] }] }, expires: { type: "string", enum: Object.keys(EXPIRES) } } },
       examples: [{ id: "a_3fK2x9LqWm1p", expires: "30d" }],
@@ -1089,6 +1100,7 @@ export default {
     });
 
     ctx.tool("artifacts.unshare", {
+      callers: WITH_AGENTS,
       description: "Stop an artifact's public link. It stops at once and never needs approval.",
       input: idIn, examples: [{ id: "a_3fK2x9LqWm1p" }],
       run: async (i, meta) => {
@@ -1244,6 +1256,7 @@ export default {
     });
 
     ctx.tool("artifacts.media.read", {
+      callers: PEOPLE,
       description: "The bytes of an image, a video or a sound, in chunks (offset and length up to 4 MB), for Vyre's own surfaces and modules such as Drive previews. A model does not read bytes here: it copies the file into its folder with artifacts.media.copy.",
       input: { type: "object", required: ["id"], properties: { id: str, offset: { type: "integer", minimum: 0 }, length: { type: "integer", minimum: 1, maximum: 4 * 1024 * 1024 } } },
       examples: [{ id: "a_3fK2x9LqWm1p", offset: 0, length: 1048576 }],
@@ -1261,6 +1274,7 @@ export default {
     });
 
     ctx.tool("artifacts.media.copy", {
+      callers: WITH_AGENTS,
       description: "Put an image, a video or a sound an earlier turn made (by any model) into your own artifacts folder, so you can open it as a file: \"use the image Grok made\". Returns the path. You reach what your project's artifacts reach, plus anything the person tagged into your thread with #.",
       input: { type: "object", required: ["id"], properties: { id: str, thread: str } },
       examples: [{ id: "a_3fK2x9LqWm1p" }],

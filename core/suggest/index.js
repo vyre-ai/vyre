@@ -323,18 +323,22 @@ export default {
 
     const people = ["cli", "local", "deck", "capsule", "module"];
     ctx.tool("suggest.query", {
+      effect: "read",
       description: "What the user may be typing, at the cursor: names after @ (agents, projects, threads, people), commands after /, and otherwise entities, phrases, accounts and upcoming times for the last word. Answers from cached lists in a few ms; a module's offered source that misses 25 ms is named in late. Returns { items: [{ kind, sub?, label, insert, detail?, action?, source, id, score }], ms, late? }; insert replaces the token at the cursor.",
       input: { type: "object", required: ["text", "surface"], properties: { text: str, cursor: { type: "integer" }, surface: str, context: { type: "object" }, limit: { type: "integer" } } },
       callers: people,
       run: async (/** @type {any} */ input) => query(input),
     });
     ctx.tool("suggest.offer", {
+      effect: "write",
       internal: true,
       description: "A module adds a suggestion source: tool, one of its own tools (<module>.<name>), and the kinds it answers. The tool gets { prefix, text, surface, context, limit } and has 25 ms; it returns items [{ label, kind?, insert?, detail?, action?, id?, score? (0 to 1), last? }]. Offer again at every start; it replaces the last.",
       input: { type: "object", required: ["tool", "kinds"], properties: { tool: str, kinds: { type: "array", items: { type: "string", enum: KINDS } } } },
+      callers: ["module"],
       run: (/** @type {any} */ input, /** @type {any} */ { caller }) => offer(input, caller),
     });
     ctx.tool("suggest.picked", {
+      effect: "write",
       description: "The user chose a suggestion: its kind, source and id as suggest.query gave them. It ranks higher next time; the lift fades over weeks.",
       input: { type: "object", required: ["kind", "source", "id"], properties: { kind: { type: "string", enum: KINDS }, source: str, id: str } },
       callers: people,
