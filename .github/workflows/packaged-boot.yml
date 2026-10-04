@@ -1,5 +1,6 @@
 # The packaged box, end to end (scripts/packaged-boot-proof.sh): build the release package with a throwaway key, install it with the real installer, and check that with the
 # kernel on and no development variable every listed module runs and a tampered module file is refused. It runs on every push to the release lines, so a package that cannot boot
+# Run twice: release-kind (the release rules, no owner in CI) and dev-owned (development-kind, the terminal is the owner: own-server sealing and kill-and-resume run there).
 # (a folder missing from package.json "files", two modules with one name) is caught the day it is made. The real release key is never here.
 name: packaged-boot
 on:
@@ -14,8 +15,15 @@ concurrency:
   cancel-in-progress: true
 jobs:
   proof:
+    name: proof (${{ matrix.kind }})
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [release, dev-owned]
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      DEV_KIND: ${{ matrix.kind == 'dev-owned' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

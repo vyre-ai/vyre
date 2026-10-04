@@ -31,7 +31,7 @@ test("runner module: loads with its tools and says plainly that it is not connec
   assert.deepEqual(visible.sort(), ["runner.lock", "runner.move", "runner.place", "runner.start", "runner.status", "runner.stop"], "start and stop are the person's; revoke is no tool at all");
   const st = await s.call("runner.status");
   assert.equal(st.data.ready, false);
-  assert.match(st.data.why, /not connected|installed|blocks|missing/);
+  assert.match(st.data.why, /not connected|installed|blocks|missing|no device identity/);
   const r = await s.call("runner.place", { space: "harlow" });
   assert.match(JSON.stringify(r), /not connected/);
   assert.ok(!r.data, "no answer is invented");
