@@ -60,6 +60,7 @@ function owner(meta, what) {
  *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
  *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
  *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
+ *   vyreName (identity) => the Vyre name the directory has claimed for that identity (e.g. "alex.vyre.run") or null: shown beside the asker's display name at the server
  *   identityEntry (identity, eid) => the entry on that identity's list ({ eid, kind, pub, identity? }) or null: proves the app for a server installed with --pair-to (Q-3)
  *   signIdentity (message) => { eid, sig }: this app's signature with a key on its own identity list, sent when it adopts a server (Q-3)
  * @param {{ ports?: import("./pairing.js").Ports, directory?: import("./pairing.js").Directory, pool?: any, poolBackend?: (c: any, offer: any) => any, bridge?: { createBridge: any, backendFor: any, home?: () => string | null, roots?: string[] }, offers?: any, network?: Parameters<typeof registerNetwork>[1], handover?: import("./pairing.js").Handover }} [inject]
@@ -67,6 +68,7 @@ function owner(meta, what) {
 export function createWink(inject = {}) {
   /** @type {any} */
   let live = null;
+  /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
     if (ctx.config.role !== "box") return { async stop() {} };
@@ -260,8 +262,21 @@ export function createWink(inject = {}) {
     };
     /** What this box calls its own space: its name, else the name the app gave the space that adopted it, never "this space". */
     const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
-    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
+    const baseDirectory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName, label: id => { const om = ownerMeta(); return om && om.identity === id && om.name ? String(om.name) : null; } })
       : ownDirectory({ identity: owner1, space: spaceId, name: boxName }));
+    // The spaces the person made here (spaces.create) are kernel-hosted Spaces with their own ids: they are targets too, beside the home's own, and the identity's name is the one it claimed.
+    const directory = inject.directory ? baseDirectory : {
+      async memberships(/** @type {string} */ identity) {
+        const base = await baseDirectory.memberships(identity);
+        let more = []; try { const r = await ctx.call("spaces.admin-list", { person: identity }); more = (r && r.data && r.data.spaces) || []; } catch { /* the spaces module is not here */ }
+        return [...base, ...more.filter((/** @type {any} */ m) => !base.some(b => b.space === m.space))];
+      },
+      async label(/** @type {string} */ identity) {
+        const own = baseDirectory.label ? await baseDirectory.label(identity) : null;
+        if (own) return own;
+        try { const r = await ctx.call("spaces.admin-list", { person: identity }); return (r && r.data && r.data.identity && r.data.identity.name) || null; } catch { return null; }
+      },
+    };
     // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
     // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
@@ -275,6 +290,8 @@ export function createWink(inject = {}) {
       // Q-3: the identity port (the entry on an identity's list, read live) that checks the proof of a server installed to pair to one identity, and the app's own signer for that proof. A box given
       // neither refuses every unattended pairing ("cannot check who is asking"): naming an identity is never enough.
       identityEntry, signIdentity,
+      // The Vyre name for an identity id comes from the directory through the spaces module, which checks a name the app CLAIMS (owner.vyre) against the directory; a bare claim is never shown as a name.
+      vyreName: inject.vyreName || (async (/** @type {string} */ id, /** @type {string | undefined} */ claimed) => { try { const r = await ctx.call("spaces.identity.name-of", { id, ...(claimed ? { claimed } : {}) }); return (r && r.data && typeof r.data.name === "string" && r.data.name) || null; } catch { return null; } }),
       // Who may pair to a space: the kernel's grants store when ctx.kernel offers it (work/kernel), else a fake that makes the box owner the owner of its own space.
       directory,
       ports: inject.ports,
@@ -287,6 +304,9 @@ export function createWink(inject = {}) {
     pairing.tools();
     registerReset({ ctx, pairing, now, identity: owner1, dropMs: inject.dropMs, dataStores: inject.dataStores || ctx.dataStores });
     live = pairing.peers;
+    liveLinks = pairing.serverLinks;
+    // handed up by name (core/modules provideOnce): the spaces and runner modules reach a paired server's peer session and kernel through ctx.sessionFor and ctx.remoteKernel
+    try { ctx.provide("winkSessionFor", (/** @type {string} */ id) => pairing.serverLinks().sessionFor(id)); ctx.provide("remoteKernel", (/** @type {string} */ id, /** @type {string} */ sp) => pairing.serverLinks().remoteKernel(id, sp)); } catch { /* provided already (a restart in one process), or no daemon (a test ctx) */ }
     /** A space's own name for a card, never its id. */
     const spaceName = async (/** @type {string} */ id) => {
       try { const m = (await directory.memberships(await owner1())).find(x => x.space === id); if (m && m.name) return String(m.name); } catch {}
@@ -557,7 +577,9 @@ export function createWink(inject = {}) {
           pairing.devices.remove(d.id);
           // Its relay connections close at once through relay.devices.drop (a module's door to the relay's own removal); `closed` says what happened.
           let closed = false;
-          if (d.kind !== "server" && d.kind !== "storage") { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
+          // a server that let go (release "released") has ended its side of the channel itself, so the connection is closed then too
+          if (d.kind === "server" || d.kind === "storage") closed = release === "released";
+          else { const rr = /** @type {any} */ (await ctx.call("relay.devices.drop", { id: d.id })); closed = !rr.error && Boolean(rr.data && rr.data.closed); }
           ctx.events.emit("wink.removed", { device: d.id });
           return { removed: d.id, closed, ...(release ? { release } : {}), prompt: removal({ what: "device", name: d.name }).prompt, done: removed({ what: "device", name: d.name, release }) };
         }
@@ -667,6 +689,7 @@ export function createWink(inject = {}) {
       ownHandover: () => pairing.ownHandover(),
       async stop() {
         live = null;
+        liveLinks = null;
         clearInterval(timer);
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
@@ -684,6 +707,11 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "holds", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.holds; } });
   Object.defineProperty(mod, "bridgeServe", { enumerable: false, get() { if (!live) throw fail("unavailable", "the wink module has not started"); return live.bridgeServe; } });
   // What this server was handed when it was adopted, WITH the secrets (auth key, peer secret), for core/wink/compose.js only: it is not a tool, so no other module can ask.
+  // This device's open peer session to a server it paired (the one remote path): `wink.sessionFor(serverId)` -> { call(tool, input), close() }, `wink.remoteKernel(serverId, space)` the kernel's own
+  // remote client over it, and `wink.startPaired(serverId)` this device's sign-in to that server (needs the app's key signer). Not tools: no other module can ask a tool for a session.
+  Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
+  Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
+  Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;

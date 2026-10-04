@@ -1,0 +1,173 @@
+{
+ "core/artifacts/artifacts.test.js": {
+  "owner": "vault"
+ },
+ "core/cli/commands/agents.test.js": {
+  "owner": "launch"
+ },
+ "core/cli/commands/needs.test.js": {
+  "owner": "launch"
+ },
+ "core/cli/commands/phone.test.js": {
+  "owner": "launch"
+ },
+ "core/cli/commands/threads-sessions.test.js": {
+  "owner": "launch"
+ },
+ "core/cli/screen/screen-live.test.js": {
+  "owner": "launch"
+ },
+ "core/files/drive.test.js": {
+  "owner": "vault"
+ },
+ "core/glass/glass.test.js": {
+  "owner": "tailnet"
+ },
+ "core/hooks/hooks.test.js": {
+  "owner": "launch"
+ },
+ "core/mentions/mentions.test.js": {
+  "owner": "vault"
+ },
+ "core/publish/publish.test.js": {
+  "owner": "launch"
+ },
+ "core/recall/embed-install.test.js": {
+  "owner": "records"
+ },
+ "core/relay/setup.test.js": {
+  "owner": "tailnet"
+ },
+ "core/runner/runner.test.js": {
+  "owner": "runner"
+ },
+ "core/sessions/api-key.test.js": {
+  "owner": "sessions"
+ },
+ "core/sessions/drivers/acp.test.js": {
+  "owner": "sessions"
+ },
+ "core/sessions/sessions-turns.test.js": {
+  "owner": "sessions"
+ },
+ "core/sessions/sessions.test.js": {
+  "owner": "sessions"
+ },
+ "core/switchboard/chat-steer.test.js": {
+  "owner": "sessions"
+ },
+ "core/switchboard/kernel-turn.test.js": {
+  "owner": "sessions"
+ },
+ "core/switchboard/launcher-only.test.js": {
+  "owner": "sessions"
+ },
+ "core/switchboard/switchboard.test.js": {
+  "owner": "sessions"
+ },
+ "core/vault/presence.test.js": {
+  "owner": "platform"
+ },
+ "core/watchers/reach.test.js": {
+  "owner": "platform"
+ },
+ "kernel/door/sinks.test.js": {
+  "owner": "platform"
+ },
+ "kernel/gateway/gateway.test.js": {
+  "owner": "platform"
+ },
+ "kernel/golden/golden.test.js": {
+  "owner": "platform"
+ },
+ "kernel/home.test.js": {
+  "owner": "platform"
+ },
+ "kernel/retrofit/agent-reach.test.js": {
+  "owner": "platform"
+ },
+ "relay/client/e2e.test.js": {
+  "owner": "tailnet"
+ },
+ "test/chrome-flags.test.js": {
+  "owner": "launch"
+ },
+ "test/cohesion-drift.test.js": {
+  "owner": "platform-2"
+ },
+ "test/docs-build.test.js": {
+  "owner": "platform-2"
+ },
+ "test/docs-check.test.js": {
+  "owner": "platform-2"
+ },
+ "test/docs-index.test.js": {
+  "owner": "platform-2"
+ },
+ "test/federation-answer.test.js": {
+  "owner": "tailnet"
+ },
+ "test/federation-send.test.js": {
+  "owner": "tailnet"
+ },
+ "test/flows-daemon.test.js": {
+  "owner": "sessions"
+ },
+ "test/hygiene.test.js": {
+  "owner": "platform-2"
+ },
+ "test/link.test.js": {
+  "owner": "tailnet"
+ },
+ "test/module-sdk.test.js": {
+  "owner": "platform-2"
+ },
+ "test/no-internal-words.test.js": {
+  "owner": "platform-2"
+ },
+ "test/one-identity.test.js": {
+  "owner": "windows"
+ },
+ "test/one-registry.test.js": {
+  "owner": "windows"
+ },
+ "test/pack-imports.test.js": {
+  "owner": "launch"
+ },
+ "test/person-label-hygiene.test.js": {
+  "owner": "platform-2"
+ },
+ "test/person.test.js": {
+  "owner": "windows"
+ },
+ "test/reach-anyone.test.js": {
+  "owner": "platform"
+ },
+ "test/reach-explicit.test.js": {
+  "owner": "platform"
+ },
+ "test/reach-registry.test.js": {
+  "owner": "platform"
+ },
+ "test/relay.test.js": {
+  "owner": "tailnet"
+ },
+ "test/roles-enforced.test.js": {
+  "owner": "platform"
+ },
+ "test/stdin-hygiene.test.js": {
+  "owner": "launch"
+ },
+ "test/threadsock.test.js": {
+  "owner": "platform"
+ },
+ "test/walk-identity-space.test.js": {
+  "owner": "windows"
+ },
+ "test/wink.test.js": {
+  "owner": "tailnet"
+ },
+ "test/within-hygiene.test.js": {
+  "owner": "launch"
+ }
+}

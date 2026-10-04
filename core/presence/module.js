@@ -23,6 +23,7 @@ export default {
     const presence = new Presence({ db: ctx.store.db, log: m => ctx.log(m) });
 
     ctx.tool("presence.keys", {
+      effect: "read", callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"], // key names and ids are the person's, not a model's
       description: "The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.",
       input: obj({}),
       // On a Mac with vyre-core, the list is core's (a read vyred may proxy, ADR 0040 section 3).
@@ -30,6 +31,10 @@ export default {
     });
 
     ctx.tool("presence.enroll", {
+      effect: "write",
+      // The person's surfaces and modules, stated rather than defaulted: the relay enrols a device's presence key at pairing from its own listener, where no running call exists to name an origin, so the
+      // default's "original caller of a module hop" check refused it (no_such_tool) and no paired device had a presence key. The presence floor still needs a proof for anyone but the relay's own hop.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
@@ -63,6 +68,7 @@ export default {
     });
 
     ctx.tool("presence.remove", {
+      effect: "write",
       description: "Remove an enrolled Capsule key, device key or passkey by id. Needs presence.",
       presence: { summary: async input => `Remove the presence key ${String(input.id)}` },
       input: obj({ id: str }, ["id"]),
@@ -74,6 +80,7 @@ export default {
     });
 
     ctx.tool("presence.capsule.pin", {
+      effect: "write",
       description: "Pins the Capsule build `vyre capsule install` just signed, so vyred can tell that real build apart from anything else with its own ambiguous, tty-less process shape (its own proof, not ancestry: core/daemon/peer.js's verifiedCapsule). Signed by the Capsule's own enrolled presence key (method \"capsule\"), the same identity a paired Capsule already proves with, not a new one -- so only the real Capsule, not a model's shell with a same-uid file write, can ever set this.",
       presence: { summary: async () => "Pin this Mac's Capsule build" },
       input: obj({ cdhash: str }, ["cdhash"]),
@@ -96,6 +103,7 @@ export default {
     });
 
     ctx.tool("presence.code", {
+      effect: "write",
       description: "A one-time code, valid 10 minutes, that enrolls one passkey from the Deck. Needs presence.",
       presence: { summary: async () => "Make a one-time code to enroll a passkey" },
       input: obj({}),
@@ -115,6 +123,7 @@ export default {
     });
 
     ctx.tool("presence.session.open", {
+      effect: "write",
       description: "After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.",
       presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },
       input: obj({}),
@@ -129,6 +138,7 @@ export default {
     const nodeOf = meta => (meta.peer && (meta.peer.stableId || meta.peer.node)) || null;
 
     ctx.tool("presence.person.start", {
+      effect: "write",
       description: "Sign this browser or app in as the person for 30 days (90 at most), on this device only, with a passkey or the device's own key. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the app trades at /v1/person/token; a device paired over the relay sends its request-signing key (key, an ES256 public JWK) and gets the token itself.",
       presence: { summary: async input => {
         if (!input.cc) return "Sign this browser in for 30 days";
@@ -198,7 +208,7 @@ export default {
         const r = await ctx.call("wink.device.record", { id: String(input.device) }).catch(() => null);
         const rec = r && r.data;
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
-        if (!["phone", "computer"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone or a computer paired to its owner gets a person session"), { code: "denied" });
+        if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
         const software = rec.hardware !== true;
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
@@ -211,6 +221,7 @@ export default {
     });
 
     ctx.tool("presence.person.start-paired", {
+      effect: "write",
       description: "A device its owner paired opens its person session: it signs `paired-start`, its id and the challenge of its grant with the key the owner confirmed. No prompt. Answers the token, or one refusal whatever the reason.",
       callers: RELAY_DEVICE_CALLERS,
       input: obj({ sig: str, label: str }, ["sig"]),
@@ -230,6 +241,7 @@ export default {
     });
 
     ctx.tool("presence.person.pair-challenge", {
+      effect: "write",
       description: "A device its owner paired asks for the challenge of its grant, to sign for presence.person.start-paired. A device with no grant gets a random one, so nothing says whether a grant exists.",
       callers: RELAY_DEVICE_CALLERS,
       input: obj({}),
@@ -241,6 +253,7 @@ export default {
     });
 
     ctx.tool("presence.person.rotate", {
+      effect: "write",
       description: "A paired device's session gets a new secret, signed by the device's key. The old one stops working.",
       callers: RELAY_DEVICE_CALLERS,
       input: obj({ t: str, n: str, sig: str }, ["t", "n", "sig"]),
@@ -266,12 +279,14 @@ export default {
     });
 
     ctx.tool("presence.person.status", {
+      effect: "read",
       description: "Whether this request is signed in as the person (a person session), and until when.",
       input: obj({}),
       run: async (_, meta) => ({ signed: Boolean(meta.person), ...(meta.person ? { id: meta.person.id, kind: meta.person.kind } : {}) }),
     });
 
     ctx.tool("presence.person.sessions", {
+      effect: "read",
       description: "The browsers and apps signed in as the person: id, how (cookie or app), device, made, last used, when it lapses. Never a secret.",
       callers: ["cli", "local", "deck", "capsule"],
       input: obj({}),
@@ -283,6 +298,7 @@ export default {
     });
 
     ctx.tool("presence.person.revoke", {
+      effect: "write",
       description: "Sign one browser or app out now, by session id.",
       callers: ["cli", "local", "deck", "capsule"],
       input: obj({ id: str }, ["id"]),
@@ -301,6 +317,7 @@ export default {
     });
 
     ctx.tool("presence.session.close", {
+      effect: "write",
       description: "End a presence session now.",
       input: obj({ session: str }, ["session"]),
       run: async ({ session }) => ({ closed: presence.closeSession(session) }),

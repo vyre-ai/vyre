@@ -872,8 +872,10 @@ export default {
      * owner; an agent's call carries `as` so the box applies the agent's rules. A `local` tool
      * (the parser: pure, no state) answers where it is asked.
      */
+    const READS = new Set(["planner.list", "planner.get", "planner.ringing", "planner.agenda", "planner.upcoming", "planner.parse"]);
     const tool = (name, description, input, run, { agents = false, local = false } = {}) => ctx.tool(name, {
-      description, input, callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
+      // `as` is the Mac's forward of an agent's call to the box (who() honours it only from a person's label).
+      description, input: { ...input, properties: { ...(input.properties || {}), as: { type: "object" } } }, effect: READS.has(name) ? "read" : "write", callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
       run: async (i, meta) => {
         const w = await who(i, meta.caller, meta.thread || null);
         const { as: _as, ...rest } = i || {};

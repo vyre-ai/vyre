@@ -25,16 +25,15 @@ export function isPackaged(root) {
 /** Is an environment developer switch honoured here? Only in a development build, and only when it is exactly "1". @param {string | undefined} value @param {string} [root] */
 export function devSwitch(value, root) { return value === "1" && !isPackaged(root); }
 
-/** The one line a packaged daemon prints when it is started with the kernel off. */
-export const KERNEL_OFF_REFUSAL = "This Vyre release does not run with its security layer off. Start it with VYRE_KERNEL=1.";
-
 /**
- * Is the kernel on for this start? `opts.kernel` decides when it is given, else VYRE_KERNEL=1. @param {{ kernel?: boolean }} opts @param {Record<string, string | undefined>} [env]
+ * MA-5, as ruled: every protection the kernel gates applies only with the kernel on, so a release-kind build ALWAYS runs with it on. An opt-out (VYRE_KERNEL=0, `opts.kernel === false`) is ignored there,
+ * not refused: the daemon starts, says so in its log and in its status (`ignored`). A development checkout keeps today's rule (on when asked: opts.kernel, or VYRE_KERNEL=1).
+ * @param {{ kernel?: boolean }} opts @param {string} [root] a package folder, for tests @param {Record<string, string | undefined>} [env]
+ * @returns {{ on: boolean, ignored: string | null }}
  */
-export const kernelWanted = (opts, env = process.env) => opts.kernel === true || (opts.kernel === undefined && env.VYRE_KERNEL === "1");
-
-/**
- * MA-5: every protection the kernel gates applies only with the kernel on, so a packaged build refuses to start without it. Returns the refusal line, or null when the start may go ahead
- * (the kernel is on, or this is a development checkout, which keeps today's behaviour). @param {boolean} kernelOn @param {string} [root]
- */
-export const kernelOffRefusal = (kernelOn, root) => (kernelOn || !isPackaged(root) ? null : KERNEL_OFF_REFUSAL);
+export function kernelPlan(opts, root, env = process.env) {
+  const asked = opts.kernel === true || (opts.kernel === undefined && env.VYRE_KERNEL === "1");
+  if (!isPackaged(root)) return { on: asked, ignored: null };
+  const optedOut = opts.kernel === false ? "opts.kernel=false" : opts.kernel === undefined && env.VYRE_KERNEL === "0" ? "VYRE_KERNEL=0" : null;
+  return { on: true, ignored: optedOut };
+}

@@ -27,6 +27,9 @@ import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toO
 export const CONFORMANCE_REVISION = 5;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
+/** A search ranks the first this many matching rows of each type per tier: a scan of every match cost minutes at 20,000 records (testbox4, 5 Oct). */
+const SEARCH_SCAN = 1_000;
+const SEARCH_KEEP_MS = 10_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
 
 export class StoreError extends Error {
@@ -53,6 +56,7 @@ export class TwentyStore {
     this.client = o.client; this.space = o.space; this.dir = o.dir; this.secret = o.webhookSecret;
     this.graceMs = o.graceMs ?? 250; this.now = o.now ?? Date.now;
     /** @type {boolean | undefined} */ this.auditSwitch = undefined;
+    /** @type {Map<string, { at: number, hits: any[] }>} */ this.searchKept = new Map();
     /** @type {Map<string, import("./plan.js").TypePlan>} */ this.plans = new Map();
     this.snaps = new SnapshotStore(o.dir ? path.join(o.dir, "snapshots.jsonl") : null);
     /** @type {any[]} */ this.log = [];
@@ -89,6 +93,7 @@ export class TwentyStore {
   #snap(p, row) { const r = this.#rec(p, row); this.snaps.set(p.vyre, row.id, { version: r.version, updatedAt: row.updatedAt, data: r.data }); return r; }
   /** @param {any} entry */
   #note(entry) {
+    this.searchKept.clear();
     const e = { cursor: `c${this.log.length + 1}`, ...entry };
     this.log.push(e);
     if (this.logFile) { fs.mkdirSync(path.dirname(this.logFile), { recursive: true, mode: 0o700 }); fs.appendFileSync(this.logFile, JSON.stringify(e) + "\n", { mode: 0o600 }); }
@@ -151,6 +156,7 @@ export class TwentyStore {
   }
 
   /**
+   * (Twenty v2.44.0 does not offer it: a live write adds one timeline activity each, so `scrub` is what removes a sealed field's old values there.)
    * Whether this Twenty can switch an object's timeline off (`isAuditLogged`). It is switched off on every Vyre object, so the values of a field that is
    * sealed later were never copied into Twenty's history; `scrub` still destroys what an older Space already holds. A Twenty that does not offer the switch
    * answers false and nothing changes. Asked once.
@@ -276,11 +282,12 @@ export class TwentyStore {
   #snapIfNew(/** @type {import("./plan.js").TypePlan} */ p, /** @type {any} */ row) { const r = this.#rec(p, row); if (!this.snaps.get(p.vyre, row.id)) this.snaps.set(p.vyre, row.id, { version: r.version, updatedAt: row.updatedAt, data: r.data }); return r; }
 
   /** Pull rows through query() until done, up to a ceiling. @param {string} type @param {any} spec */
-  async #scan(type, spec) {
+  async #scan(type, spec, stopAt = Infinity) {
     /** @type {any[]} */ const all = []; let cursor;
     do {
       const r = await this.query(type, { ...spec, page: { limit: MAX_PAGE, ...(cursor ? { cursor } : {}) } });
       all.push(...r.rows); cursor = r.next_cursor;
+      if (all.length >= stopAt) return all;
       if (all.length > MAX_SCAN) throw new StoreError("unsupported", `a search scans at most ${MAX_SCAN} rows; narrow the filter`);
     } while (cursor);
     return all;
@@ -369,22 +376,27 @@ export class TwentyStore {
     const want = spec.page.limit + 1;
     /** @param {"and" | "or"} mode @param {Set<string>} skip */
     const gather = async (mode, skip) => {
+      // a page after the first (and the gateway's look-ahead) asks again for the same words a moment later: the scan is kept for a few seconds, and dropped at once when anything is written
+      const key = `${mode}|${(spec.types || []).join(",")}|${words.join(" ")}`;
+      const kept = this.searchKept.get(key);
+      if (kept && Date.now() - kept.at < SEARCH_KEEP_MS) return kept.hits.filter((h) => !skip.has(h.id));
       /** @type {any[]} */ const hits = [];
       for (const [type, p] of this.plans) {
         if (spec.types && !spec.types.includes(type)) continue;
         const fields = p.fields.filter((f) => f.type === "TEXT" && !f.sealed && f.def.hidden !== true);
         if (!fields.length) continue;
         const per = (/** @type {string} */ w) => ({ or: fields.map((f) => ({ field: f.vyre, op: "contains", value: w })) });
-        const r = await this.#scan(type, { filter: mode === "and" ? { and: words.map(per) } : { or: words.flatMap((w) => per(w).or) } });
+        const r = await this.#scan(type, { filter: mode === "and" ? { and: words.map(per) } : { or: words.flatMap((w) => per(w).or) } }, SEARCH_SCAN);
         for (const rec of r) {
-          if (skip.has(rec.id)) continue;
           let score = 0, snippet;
           for (const f of fields) { const text = rec.data[f.vyre]; if (typeof text !== "string") continue; const low = text.toLowerCase(); for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet ?? text.slice(0, 80); } }
           if (score) hits.push({ type, id: rec.id, score, ...(snippet ? { snippet } : {}) });
         }
       }
       hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
-      return hits;
+      if (this.searchKept.size >= 8) this.searchKept.delete(this.searchKept.keys().next().value);
+      this.searchKept.set(key, { at: Date.now(), hits });
+      return hits.filter((h) => !skip.has(h.id));
     };
     let hits = words.length > 1 ? await gather("and", new Set()) : [];
     // the cursor is the id of the last hit served, so the page is found by position in the whole list: the first page and the next need the first tier to reach one past the cursor
@@ -399,6 +411,7 @@ export class TwentyStore {
   // ---- writes ----------------------------------------------------------------------------------
   /** @param {string} type @param {string} id @param {Record<string, any>} data */
   async create(type, id, data) {
+    this.searchKept.clear();
     const p = this.#plan(type);
     if (!isUuid(id)) throw new StoreError("invalid", "id must be a time-prefixed uuid");
     const bad = checkData(p, data); if (bad) throw new StoreError(bad.code, bad.message);
@@ -417,6 +430,7 @@ export class TwentyStore {
 
   /** @param {string} type @param {string} id @param {Record<string, any>} patch @param {number} base */
   async update(type, id, patch, base) {
+    this.searchKept.clear();
     const p = this.#plan(type);
     if (!isUuid(id)) throw new StoreError("not_found", `no ${type} ${id}`);
     return this.#t(async () => {
@@ -438,6 +452,7 @@ export class TwentyStore {
 
   /** Soft delete. @param {string} type @param {string} id @param {number} base */
   async remove(type, id, base) {
+    this.searchKept.clear();
     const p = this.#plan(type);
     if (!isUuid(id)) throw new StoreError("not_found", `no ${type} ${id}`);
     const P = pascal(p.singular);
@@ -462,6 +477,7 @@ export class TwentyStore {
 
   /** @param {string} type @param {string} id */
   async restore(type, id) {
+    this.searchKept.clear();
     const p = this.#plan(type);
     if (!isUuid(id)) throw new StoreError("not_found", `no deleted ${type} ${id}`);
     const P = pascal(p.singular);

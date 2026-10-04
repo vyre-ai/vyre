@@ -54,7 +54,7 @@ export async function bootHomeKernel(cfg) {
   const devFileKey = cfg.fileKey === true || devSwitch(process.env.VYRE_KERNEL_FILE_KEY);
   if (process.env.VYRE_KERNEL_FILE_KEY === "1" && !devFileKey) log("kernel: VYRE_KERNEL_FILE_KEY ignored (this is a packaged daemon)");
   if (!sealer && !devFileKey) {
-    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
+    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(devSwitch(process.env.VYRE_SEAL_SOFTWARE) ? { software: true } : {}), ...(!isPackaged() && (process.env.VYRE_SEAL_UNATTESTED === "1" || (typeof cfg.standIn === "function" && cfg.standIn() === true)) ? { unattested: true } : {}), ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
     catch (e) { if (sealer) await sealer.close().catch(() => {}); throw new KernelError("key_custody", "the kernel will not start here: its key must live in the sealing process, and the sealing process cannot run safely on this machine (a server with its own OS user, or the OS keystore)", String(e && /** @type {any} */ (e).code || e)); }
   }
   if (sealer) {
@@ -63,10 +63,13 @@ export async function bootHomeKernel(cfg) {
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
   /** The person claimed their identity: its id is the owner's id from now on, written beside the Space's own id so the next start reads it, and said once in the log. */
-  const adoptedOwner = (/** @type {string} */ to, /** @type {string} */ from) => {
+  /** @type {((to: string, from: string) => Promise<any>) | null} */ let hostedAdopt = null;
+  const adoptedOwner = async (/** @type {string} */ to, /** @type {string} */ from) => {
     id.owner = to;
     try { fs.writeFileSync(path.join(id.dir, "space.json"), JSON.stringify({ space: id.space, owner: to, made_at: id.made_at, previous_owner: from }), { mode: 0o600 }); } catch (e) { (cfg.log || (() => {}))(`kernel: the owner's id could not be written beside the Space (${/** @type {Error} */ (e).message}); it will be adopted again at the next start`); }
     (cfg.log || (() => {}))(`kernel: the owner is now the claimed identity ${to} (was ${from}), once`);
+    // every Space this home hosts, whose owner is that same person, takes the identity too
+    if (hostedAdopt) { try { await hostedAdopt(to, from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } }
   };
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
   // The home Space's own Drive (versions, conflicts, backups): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
@@ -78,7 +81,17 @@ export async function bootHomeKernel(cfg) {
       drive = new Drive(pool);
     } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { adoptedOwner(to, from); }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, ...(sealer ? { checkpoints: true } : {}), door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), ...(cfg.runnerHost ? { runnerHost: cfg.runnerHost } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { adoptedOwner(to, from); }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  // BL-2: the restart's checks. The log against the last signed checkpoint, and against the anchor the sealing process keeps outside the database. A packaged build that finds the log
+  // rolled back, rewritten or broken does not start: the owner's own `anchor.reset` (a presence-gated act on the sealing process) is the way out after a restore from backup. A development
+  // build says so and goes on.
+  if (k.boot && !k.boot.ok) {
+    const way = k.boot.why && String(k.boot.why).startsWith("anchor_") ? "; after a restore from a backup the owner's anchor.reset (with their presence) lets it start: run `sudo vyre admin anchor-reset` on this server" : "";
+    const msg = `the kernel's log does not match what was signed or anchored (${k.boot.why || "broken"})${way}`;
+    if (isPackaged(cfg.packageRoot)) { if (ownSealer && sealer) await sealer.close().catch(() => {}); throw new KernelError("log_rolled_back", `the kernel will not start: ${msg}`); }
+    log(`kernel: DEVELOPMENT build, starting anyway: ${msg}`);
+  }
+  if (k.checkpoints) k.checkpoints.start();   // a 60-second timer that never keeps the process alive; a checkpoint when 1,000 events or 10 minutes have passed
   // The migration pass ran inside the rebuild if there was anything to migrate; once the log holds a snapshot under the new seal the old key file has no use.
   if (sealer && legacyKeys.length && k.migrated) { try { fs.rmSync(id.keyFile, { force: true }); } catch { /* the file is harmless now */ } }
   // First party is a signature by the COMPILED release key (lib/release-sig.js), and a counter-signed list of minimum versions the release ships beside it
@@ -174,6 +187,15 @@ export async function bootHomeKernel(cfg) {
       };
     }
   }
+  // The command line's sign-in (`vyre signin`): the owner's phone signs this and the daemon then gives that one terminal a person session. The terminal is named by a hash of the login key the daemon
+  // measured (never a label or anything the caller sends), so a proof made for one terminal's ask never satisfies another's. The sealing process checks and uses the proof like any other grant act.
+  const cliSigninFields = (/** @type {string} */ ask, /** @type {string} */ terminal) => ({ ask: String(ask), terminal: crypto.createHash("sha256").update(String(terminal)).digest("hex").slice(0, 32) });
+  const cliSigninPayload = (/** @type {string} */ ask, /** @type {string} */ terminal) => { const fields = cliSigninFields(ask, terminal); return { op: "grant.cli_signin", space: id.space, fields, payload_hash: payloadHash("grant.cli_signin", id.space, fields) }; };
+  const cliSigninCheck = async (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask, /** @type {string} */ terminal) => {
+    if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
+    const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.cli_signin", fields: cliSigninFields(ask, terminal), proof });
+    return why ? { ok: false, why } : { ok: true };
+  };
   /** @type {any} */ let host;
   const egress = createEgress({ space: id.space, log: k.log, chains: k.chains, hostsOf: (/** @type {string} */ n) => host && host.hostsOf(n) });
   const supervisor = createSupervisor({ egress });
@@ -186,7 +208,10 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}), ...(cfg.remote ? { remote: cfg.remote } : {}) });
   await spaces.start();
-  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
+  // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
+  { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
+  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

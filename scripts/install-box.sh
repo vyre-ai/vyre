@@ -39,6 +39,7 @@ set -eu
 DRY=0
 YES=0
 FROM=""
+DEVSIGNED=0
 UNINSTALL=0
 PURGE=0
 SUDO=""
@@ -173,7 +174,7 @@ finish() {
       say "  The setup link went to stdout for the program that asked."
     else
       if [ "$PAIRED" = 1 ]; then
-        say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your device."
+        say "  Connected to ${BOLD}${PAIRED_NAME}${RESET}. Finish setting up on your ${PAIRED_DEVICE:-device}."
       elif [ -n "$CODE" ]; then
         say "  Done. Back to your browser."
       else
@@ -377,6 +378,32 @@ mkdir_owned() {
   fi
 }
 
+# dev_sign: an install from a checkout has no release to verify, so it makes its own, in a throwaway container of the pinned node image: the checkout is packed like a release is (npm pack),
+# unpacked, a throwaway key (never kept) replaces the pinned release key in THAT copy only, and the copy's module list is signed with it (scripts/dev-sign.mjs). The box is then built from the
+# copy and published the list, so it boots its signed modules with no path rule and no development switch. The checkout and the real release key are never touched. A tampered module is refused as in a release.
+dev_sign() {
+  TMP=$(mktemp -d)
+  nodeimg=$(sed -n 's/^FROM \(node:[^ ]*\).*/\1/p' "$FROM/box/Dockerfile" | head -n 1)
+  [ -n "$nodeimg" ] || die "$FROM/box/Dockerfile names no node image to pack and sign with"
+  say "packing the checkout and signing it with a throwaway key (this install only)"
+  dk docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$FROM:/from:ro" -v "$TMP:/out" "$nodeimg" sh -c '
+    set -e
+    mkdir /tmp/w /tmp/u && cd /from && tar --exclude=.git --exclude=node_modules --exclude=./site/box -cf - . | tar -C /tmp/w -xf -
+    cd /tmp/w && npm pack --silent --pack-destination /tmp >/dev/null
+    tar -xzf /tmp/*.tgz -C /tmp/u --strip-components=1
+    node /from/scripts/dev-sign.mjs --root /tmp/u --out /out
+    cp /tmp/u/box/vyre /out/vyre
+    tar -czf /out/vyre.tgz --transform "s,^\./,package/," -C /tmp/u .
+  ' || die "could not pack and sign the checkout (see the lines above); nothing was installed"
+  [ -s "$TMP/vyre.tgz" ] && [ -s "$TMP/SHA256SUMS.sig" ] || die "the packed checkout is incomplete; nothing was installed"
+  TGZ=1; DEVSIGNED=1
+  # An image left from an earlier install is used as it is (compose never rebuilds a present vyre:local), so it would run the OLD tree with none of this signing: remove it, and the box is built fresh.
+  dk docker image rm -f vyre:local >/dev/null 2>&1 || true
+  unpack
+  WRAPPER_SRC="$TMP/vyre"
+  done_step "the checkout is signed for this server only"
+}
+
 # The box files: from a checkout with --from, else downloaded from BASE.
 write_stack() {
   if [ -n "$FROM" ]; then
@@ -388,6 +415,8 @@ write_stack() {
     put "$FROM/box/compose.build.yml" "$DIR/compose.build.yml" 0644
     put "$FROM/box/vyre.env.example" "$DIR/vyre.env.example" 0644
     WRAPPER_SRC="$FROM/box/vyre"
+    # VYRE_DEV_SIGN=0 skips it (the tests' stub docker makes no files); the box then needs VYRE_KERNEL_PATH_RULE=1 to run its modules.
+    { [ "$DRY" = 1 ] || [ "${VYRE_DEV_SIGN:-1}" = 0 ]; } || dev_sign
   else
     TMP=$(mktemp -d)
     files="compose.yml compose.build.yml vyre.env.example vyre"
@@ -468,7 +497,7 @@ write_env() {
     printf '%s\n' "COMPOSE_PROJECT_NAME=vyre"
     if [ -n "$FROM" ]; then
       printf '%s\n' "COMPOSE_FILE=compose.yml:compose.build.yml"
-      printf '%s\n' "VYRE_SOURCE=$FROM"
+      if [ "${DEVSIGNED:-0}" = 1 ]; then printf '%s\n' "VYRE_SOURCE=$DIR/src"; else printf '%s\n' "VYRE_SOURCE=$FROM"; fi
     elif [ "$TGZ" = 1 ]; then
       printf '%s\n' "COMPOSE_FILE=compose.yml:compose.build.yml"
       printf '%s\n' "VYRE_SOURCE=$DIR/src"
@@ -489,7 +518,7 @@ write_env() {
 # publish_signed_files: the release's SHA256SUMS, its signature, modules.json and shell.json go where the box reads them (the wrapper's publish-release checks the
 # signature with the pinned release key and publishes nothing for an unsigned release). Not for an install from a checkout, which has none of them.
 publish_signed_files() {
-  [ "$DRY" != 1 ] && [ -z "$FROM" ] && [ -s "$TMP/SHA256SUMS.sig" ] || return 0
+  [ "$DRY" != 1 ] && { [ -z "$FROM" ] || [ "${DEVSIGNED:-0}" = 1 ]; } && [ -s "$TMP/SHA256SUMS.sig" ] || return 0
   if ! priv env "VYRE_DIR=$DIR" "$WRAPPER" publish-release "$TMP"; then
     # A release with a signed module list that cannot be placed would start a box whose modules the kernel refuses: stop here, plainly.
     [ ! -f "$TMP/modules.json" ] || die "the release's signed files could not be placed, so the box would start with no modules; nothing was started. See the line above, then run this again."
@@ -528,6 +557,29 @@ verify_up() {
     i=$((i + 1))
     [ $i -lt "${VYRE_VERIFY_TRIES:-30}" ] || die "the install finished but Vyre is not running; see: docker compose -p vyre ps (in $DIR), then run: vyre up"
     sleep 2
+  done
+  # Running is not enough: a box whose modules did not start (a build the kernel does not recognise as signed) answers its socket with nothing behind it. Say so, loudly, with the reason.
+  [ "${VYRE_MODULES_TRIES:-60}" != 0 ] || return 0   # a test seam: the tests' stub docker runs no daemon
+  j=0; mods=0
+  while [ "$j" -lt "${VYRE_MODULES_TRIES:-60}" ]; do
+    st=$(dk env "VYRE_DIR=$DIR" "$WRAPPER" status 2>/dev/null | tr -d '\033' || true)
+    mods=$(printf '%s\n' "$st" | sed -n 's/.*[^0-9]\([0-9][0-9]*\) modules running.*/\1/p' | head -n 1)
+    [ "${mods:-0}" -gt 0 ] && return 0
+    j=$((j + 1)); sleep 2
+  done
+  why=$(dk_quiet logs --tail 40 vyre-vyre-1 2>&1 | sed -n 's/.*\(modules from outside Vyre run only under[^"]*\).*/\1/p' | head -n 1)
+  die "Vyre is running but none of its modules started${why:+ ($why)}. A box built from a checkout (--from) has no signed module list, so it cannot run them: install a release, or build one with scripts/build-site.sh and install from that. Nothing is set up on this server."
+}
+# verify_running_build: the container that is running must be the build just laid out. An install from a tree (--from, or a tgz) builds its image from DIR/src; a stale image left by an earlier
+# install would otherwise run the OLD tree while this installer reports the new one. The kind and the pinned key (lib/build-kind.js, lib/release-sig.js) and the version are compared byte for byte.
+verify_running_build() {
+  [ -d "$DIR/src/lib" ] || return 0
+  [ "$TGZ" = 1 ] || [ -n "$FROM" ] || return 0
+  for f in lib/build-kind.js lib/release-sig.js package.json; do
+    [ -f "$DIR/src/$f" ] || continue
+    want=$(sha256 "$DIR/src/$f")
+    got=$(dk docker exec vyre-vyre-1 sha256sum "/opt/vyre/$f" 2>/dev/null | cut -d' ' -f1)
+    [ "$want" = "$got" ] || die "the server is running an older build than the one installed ($f differs from the copy in $DIR/src). Remove the old image (docker image rm -f vyre:local), then run this installer again. Nothing is set up."
   done
 }
 start() {
@@ -694,7 +746,7 @@ write_code() {
 # three sets of three words, takes the pick of the set the device shows, and ends with the line the person acts on. A step that fails says why and offers to try again on a
 # terminal; nothing is created before the pick, so nothing is left half-made. Under --yes or with no terminal it prints the code and the way back and ends.
 # The tools are the daemon's (wink.server.code, wink.server.pairing, wink.server.pair.answer); VYRE_PAIR_TO names the one identity an unattended install is for.
-PAIRED=0; PAIRED_NAME=""
+PAIRED=0; PAIRED_NAME=""; PAIRED_DEVICE=""
 tool() { dk env "VYRE_DIR=$DIR" "$WRAPPER" call "$@" 2>/dev/null | tr -d '\n'; }
 json_str() { printf '%s' "$1" | sed -n "s/.*\"$2\": *\"\\(\\([^\"\\\\]\\|\\\\.\\)*\\)\".*/\\1/p"; }
 pair_server() {
@@ -744,7 +796,7 @@ pair_server() {
                # The device finishes the pairing a moment after the yes; the server then names whose it is (the space), and the closing line says it.
                w=0; while [ "$w" -lt 10 ]; do
                  pd=$(tool wink.server.pairing '{}' || true)
-                 case "$pd" in *'"paired": true'*|*'"paired":true'*) o=$(json_str "$pd" owner); [ -z "$o" ] || PAIRED_NAME=$o; break ;; esac
+                 case "$pd" in *'"paired": true'*|*'"paired":true'*) o=$(json_str "$pd" owner); [ -z "$o" ] || PAIRED_NAME=$o; PAIRED_DEVICE=$(json_str "$pd" device); break ;; esac
                  w=$((w + 1)); sleep 1
                done
                return 0 ;;
@@ -1018,7 +1070,7 @@ main() {
   else
     step "Starting Vyre"
     start
-    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; install_space_helper; done_step "Vyre is up"; pair_server; fi
+    if [ "$DRY" = 1 ]; then done_step "nothing started (dry run)"; else verify_up; verify_running_build; install_space_helper; done_step "Vyre is up"; pair_server; fi
     show_words
   fi
   finish

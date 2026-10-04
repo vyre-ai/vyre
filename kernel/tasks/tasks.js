@@ -106,6 +106,7 @@ export function createTasks(cfg) {
   // A task changes in memory and then its event is written; if the write fails the task goes back to what it was, so memory never shows a change the log does not hold (an approval
   // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
   /** @type {Map<string, any>} */ const pending = new Map();
+  /** @type {Set<string>} task|payload pairs already released (sent) whose approval event may not have been written yet */ const sent = new Set();
   const stage = (/** @type {string} */ id, /** @type {any} */ next) => { if (!pending.has(id)) pending.set(id, tasks.get(id)); tasks.set(id, next); return next; };
   const put = (/** @type {any} */ t, /** @type {any} */ patch) => stage(t.id, freeze({ ...t, ...patch, updated_at: clock() }));
   const unstage = (/** @type {string} */ id) => {
@@ -151,7 +152,8 @@ export function createTasks(cfg) {
   const guarded = guardedSkip;
   const appendOrUndo = (/** @type {string} */ id, /** @type {any} */ chain, /** @type {any} */ ev, /** @type {any} */ opt) => { try { const e = cfg.log.append(chain, ev, opt); pending.delete(id); return e; } catch (e) { unstage(id); throw e; } };
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
-    try { const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
+    // The event carries the task as it stands after the change (never the canonical body: that holds the draft, which the log must not), so the log alone rebuilds every task at the next start (`rebuild` below): tasks used to live in memory only.
+    try { const now = tasks.get(t.id) || t; const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state, task: now } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
   };
 
   /** The transition table is the one source: ask it which rule applies, and check the caller's role is the rule's. */
@@ -303,12 +305,13 @@ export function createTasks(cfg) {
         decision = o.decision;
         // The facts the card shows are the kernel's: recipients checked against the record's own contact points, slot classes read from the vault. Whatever cannot be resolved shows as unverified.
         const facts = await resolveFacts(ev);
-        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts });
-      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)) });
-      const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)) });
+        // PR-2: the form a Flow sent with the task (a proposal's diff, a Kit card) is part of what the checker approves: its hash is in the body the proof covers.
+        body = deepFreeze({ action: ev.action, resource: ev.resource, payload: ev.payload, facts, ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
+      } else body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
+      const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       const n = put(t, { state: "needs_check", payload });
-      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
+      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision, ...(["decision", "fields", "note"].includes(t.output.kind) ? { evidence: body.evidence } : {}) });
       return n;
     },
 
@@ -366,11 +369,15 @@ export function createTasks(cfg) {
       if (!p || await cfg.presence.check({ chain, op: "task.decide", fields: { task: id, payload_hash: t.payload.payload_hash, decision: t.payload.decision }, proof: p })) throw new KernelError("needs_presence", "approving needs your confirmation on this device, over exactly this");
       rule(t, "done", "checker_approval");
       if (outward(t) && cfg.release) {
-        try { await cfg.release(t, body, { person: person.id, key_id: p.key_id }); } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
+        // WF-2: the send happens before the event is written. If the event is refused the task goes back to waiting, and a second approval must not send again: the send is made once per
+        // task and payload (`sent`), and the release is told the same key so an egress can refuse a repeat too.
+        const idem = `${id}|${t.payload.payload_hash}`;
+        try { if (!sent.has(idem)) { await cfg.release(t, body, { person: person.id, key_id: p.key_id, idem }); sent.add(idem); } } catch (e) { throw new KernelError("unavailable", "it could not be sent, so it was not approved as sent", String(e && /** @type {any} */ (e).message)); }
       }
       const answer = !outward(t) && body && body.evidence !== undefined ? answerOf(t, body.evidence) : undefined;
       const n = put(t, { state: "done", outcome: "approved", ...(answer !== undefined ? { answer } : {}) });
       note(chain, "task.approved", n, { payload_hash: t.payload.payload_hash, key_id: p.key_id, ...(n.answer !== undefined ? { answer: n.answer } : {}) }, d.decision);
+      sent.delete(`${id}|${t.payload.payload_hash}`);
       approvedBy.set(id, { approver_chain: chain, use_proof: a.proofs && a.proofs.use ? a.proofs.use : null });
       const proposed = proposals.get(id);
       if (proposed) { const pt = tasks.get(proposed); if (pt && (pt.state === "ready" || pt.state === "stuck")) { rule(pt, "skipped", "proposal_for_person_with_presence"); note(chain, "task.skipped", put(pt, { state: "skipped" }), { by: "approved proposal" }); } }
@@ -499,6 +506,17 @@ export function createTasks(cfg) {
     },
 
     /**
+     * What a Kit install needs to know about an approved task (kernel/tasks/kit-apply.js): its form, the payload the checker's proof covered, the approver's own chain and when it was approved.
+     * Null unless a person approved it (done, approved, the body it was approved with still the one hashed).
+     * @param {string} id
+     */
+    kitApproval(id) {
+      const t = tasks.get(id), a = api.approvalFor(id);
+      if (!t || !a || t.form === undefined) return null;
+      return { form: t.form, payload: t.payload, approver: a.approver_chain, at: t.updated_at };
+    },
+
+    /**
      * Does this approved held-act task cover exactly this act by this chain? Pure (it consumes nothing: the gateway counts the use once). The chain's acting actor must
      * be the task's doer, and the approved body's action and resource must be the ones asked.
      * @param {{ id: string, chain: any, action: string, resource: string }} q
@@ -523,6 +541,25 @@ export function createTasks(cfg) {
       return Boolean(b && b.payload && Array.isArray(b.payload.sealed_slots) && b.payload.sealed_slots.some((/** @type {any} */ s) => s.use_hash === payload_hash));
     },
   };
+  // The tasks the log holds, at start: the newest event of each task carries the task as it was after that change (never its canonical body, which holds the draft). A task that was waiting for a check had its draft only in memory: it goes back to `ready` so its doer makes the draft again, rather than waiting for a card nobody can open. An event from before this was written (no `task`) adds nothing.
+  /** @type {Map<string, any>} */ const evidence = new Map();
+  try {
+    const f = { type: "task.*" };
+    const evs = cfg.log && typeof cfg.log.read === "function" ? (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f)) : [];
+    for (const e of evs) {
+      const d = e && e.data;
+      if (!d || !d.task || typeof d.task.id !== "string" || d.task.space !== cfg.space) continue;
+      tasks.set(d.task.id, deepFreeze(structuredClone(d.task)));
+      if (e.type === "task.created" && typeof d.proposal_for === "string") proposals.set(d.task.id, d.proposal_for);
+      if (e.type === "task.needs-check" && d.evidence !== undefined) evidence.set(d.task.id, d.evidence);
+    }
+    // A decision, fields or note waiting for its check has its answer in its needs-check event (as a completed one always did): its canonical body is rebuilt from it, and used only if it hashes to what was shown.
+    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id) && t.payload && evidence.has(id) && ["decision", "fields", "note"].includes(t.output.kind)) {
+      const body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence.get(id))) });
+      if (sha256(canonical(body)) === t.payload.payload_hash) bodies.set(id, body);
+    }
+    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
+  } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }
   const { _decideOnce, _requestOnce, ...pub } = api;
   const frozen = Object.freeze(pub);
   VIEWS.set(frozen, (/** @type {string} */ record, /** @type {string} */ stage) => [...tasks.values()].filter(t => t.record === record && t.stage === stage).map(t => ({ title: t.title, state: t.state, required: Boolean(t.required) })));

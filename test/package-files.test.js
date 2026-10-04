@@ -43,3 +43,22 @@ test("package files: every relative import of the packed daemon code lands on a 
   }
   assert.deepEqual([...problems].sort(), [], "add the folder to package.json files (or stop importing it from packed code)");
 });
+
+test("package files: every script the box wrapper runs inside the image (`/opt/vyre/scripts/*` in box/vyre, so every `vyre admin` step) is packed, with its own relative imports", () => {
+  const wrapper = fs.readFileSync(path.join(ROOT, "box", "vyre"), "utf8");
+  const scripts = [...new Set([...wrapper.matchAll(/\/opt\/vyre\/(scripts\/[A-Za-z0-9._-]+)/g)].map(m => m[1]))];
+  assert.ok(scripts.length >= 2, `the wrapper names its image scripts (${scripts.join(", ")})`);
+  const problems = [];
+  for (const rel of scripts) {
+    if (!packed(rel)) problems.push(`box/vyre runs ${rel} but it is not packed: the step would say "this release has no such step" on every image`);
+    else for (const m of fs.readFileSync(path.join(ROOT, rel), "utf8").matchAll(/(?:from|import\()\s*["'](\.{1,2}\/[^"']+)["']/g)) { const to = path.relative(ROOT, path.resolve(path.dirname(path.join(ROOT, rel)), m[1])); if (!packed(to)) problems.push(`${rel} imports ${to}, which is not packed`); }
+  }
+  assert.deepEqual(problems, []);
+});
+
+test("package files: the walk's dev scripts ship but refuse on a release-kind tree (kernel/dev-enrol.test.js proves the refusal), so a release image cannot make a software key", () => {
+  for (const s of ["scripts/dev-enrol-software-key.mjs", "scripts/dev-sign-proof.mjs"]) {
+    assert.ok(packed(s), `${s} is packed`);
+    assert.match(fs.readFileSync(path.join(ROOT, s), "utf8"), /if \(!devSwitch\("1"\)\) die\(2, "this is a release-kind build/, `${s} refuses on a release-kind build before it does anything`);
+  }
+});

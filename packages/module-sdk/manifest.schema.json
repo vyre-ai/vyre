@@ -39,6 +39,7 @@
       "patternProperties": { "^x-": {} },
       "properties": {
         "tools": { "type": "array", "items": { "anyOf": [{ "$ref": "#/$defs/tool" }, { "$ref": "#/$defs/toolEntry" }] }, "uniqueItems": true, "description": "Its tools: a name (the built in grace form, reach anyone) or an object with reach and outward. Added modules use the object form (ADR 0047)." },
+        "reads": { "type": "array", "items": { "$ref": "#/$defs/tool" }, "uniqueItems": true, "description": "The tools of this module that change nothing. A tool open to anyone that is not named here (or given effect: read on its entry) is a write: it is open to the person's surfaces and modules until its callers list says otherwise." },
         "providers": { "type": "array", "items": { "$ref": "#/$defs/moduleName" }, "uniqueItems": true, "description": "Session drivers (ADR 0030). Built in only in 0.2." },
         "watchers": { "type": "array", "items": { "type": "string", "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).+\\.json$", "x-message": "must be a relative path to a .json file inside the module" }, "uniqueItems": true, "description": "Watcher preset files the module ships. A preset only describes; it never runs code of its own." },
         "connections": { "$ref": "#/$defs/tool", "x-status": "planned", "description": "The tool that returns this module's connection rows for the connections module (docs/design/cohesion.md). One of this module's own tools." },
@@ -118,7 +119,7 @@
       "x-unknown": "warn",
       "patternProperties": { "^x-": {} },
       "properties": {
-        "daemon": { "type": "array", "uniqueItems": true, "items": { "enum": ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials"] }, "description": "What only the daemon can hand a module, by declaration: a first-party module names it here and the loader gives it exactly that on ctx, and nothing else." },
+        "daemon": { "type": "array", "uniqueItems": true, "items": { "enum": ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "dataStores", "devStandIn", "tunnelEnd", "modulesListReset", "modulesListResetPayload", "cliSigninPayload", "cliSigninCheck", "cliSessions"] }, "description": "What only the daemon can hand a module, by declaration: a first-party module names it here and the loader gives it exactly that on ctx, and nothing else." },
         "vault": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "x-message": "must be a vault item name, or per-<thing>" }, "uniqueItems": true, "description": "Raw vault item names. Built in only in 0.2; an added module uses needs.credentials and ctx.vault.request." },
         "connections": {
           "type": "array", "uniqueItems": true, "description": "Vendor-hosted MCP connections it reads through ctx.connections.call (P5, P20).",
@@ -190,6 +191,7 @@
         "reach": { "enum": ["anyone", "asked", "person", "modules", "hook"], "description": "anyone (default), asked (an agent only when the person's own turn asked), person (reserved for Vyre), modules (other modules only), hook (the webhook route only)." },
         "outward": { "enum": ["send", "post", "pay", "delete"], "description": "It acts as the person outside. The registry runs it from the person's own surface and files every other call at the Gate." },
         "cost": { "const": "paid", "description": "It spends money through the module's own model or API use." },
+        "effect": { "enum": ["read", "write"], "description": "What the tool does to state: read (changes nothing) or write. Left out, a plain read verb at the end of the name (list, get, status, search ...) is a read and everything else a write; a write that declares no callers list is open to the person's surfaces and modules only." },
         "projectArg": { "anyOf": [{ "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, { "type": "array", "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, "minItems": 1 }], "description": "The input field (or fields) that hold a project. An agent calling this tool for a project it is not granted is refused with not_found before the tool runs, and the tool gets meta.reach (which projects the caller may reach) for listings." },
         "cwdArg": { "anyOf": [{ "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, { "type": "array", "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,30}$" }, "minItems": 1 }], "description": "The input field (or fields) that hold a folder. An agent calling this tool for a folder in a project it is not granted, or in no project, is refused with not_found before the tool runs." },
         "target": { "$ref": "#/$defs/tool", "description": "For an asked tool (built in only): an internal tool of this module that answers what one call acts on, so the person's yes binds that thing and not the whole tool." }

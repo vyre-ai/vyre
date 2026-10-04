@@ -58,7 +58,7 @@ const presence = {
 };
 
 /** A box-role registry running only the spaces module (one device). Extra modules (a fake records driver) can ride along. */
-async function device(t, { records = false, kernelFor = undefined } = {}) {
+async function device(t, { records = false, wink = false, kernelFor = undefined } = {}) {
   const root = tempHome(t);
   const p = config.ensure(root);
   const found = discover([CORE]).filter(f => f.manifest && f.manifest.name === "spaces");
@@ -70,6 +70,15 @@ async function device(t, { records = false, kernelFor = undefined } = {}) {
     fs.writeFileSync(path.join(dir, "records", "module.json"), JSON.stringify({ name: "records", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "records.workspace.create", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
     fs.writeFileSync(path.join(dir, "records", "index.js"), "export default { async start(ctx) { ctx.tool('records.workspace.create', { description: 'x', input: { type: 'object' }, run: async i => ({ workspaceId: 'ws_' + i.space }) }); return { async stop() {} }; } };\n");
     found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "records"));
+  }
+  if (wink) {
+    // A stand-in for Wink's two server tools: which device is a paired server, and a call to a tool on it (recorded, answered like the server's spaces module would).
+    const dir = fs.mkdtempSync(path.join(path.dirname(root), "wink-"));
+    t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(dir, "wink"));
+    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }, { name: "wink.server.call", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
+    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); ctx.tool('wink.server.call', { description: 'x', input: { type: 'object' }, run: async i => { globalThis.__winkCalls.push(i); if (globalThis.__winkRefuse) throw Object.assign(new Error('the server said no'), { code: 'forbidden' }); globalThis.__hn = (globalThis.__hn || 0) + 1; return i.tool === 'spaces.host-here' ? { space: 'spc_' + 'abcdefghjkl' + 'mnopqrstuvwx'[globalThis.__hn - 1], existed: false } : { retired: true }; } }); return { async stop() {} }; } };\n");
+    found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "wink"));
   }
   const db = open(p.db);
   const events = new Events(db);
@@ -1031,4 +1040,174 @@ test("presence recovery is carried: begin and recover reach the sealing process 
   assert.equal(calls.filter(c => c[0] === "sync").length, before + 1);
   assert.equal(calls.filter(c => c[0] === "sync").at(-1)[1].person, me.id);
   void w; void other;
+});
+
+test("lending a computer to a space is a stored grant: Face ID only at the first grant, never to stop, listed on the device, and only the person's own devices", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const st0 = await d.ok("spaces.devices.lend.status", { space: a.space, device: eid });
+  assert.deepEqual([st0.lent, st0.first_grant_at, st0.allowed_by], [false, null, null]);
+  assert.equal((await d.call("spaces.devices.lend", { space: a.space, device: eid, on: true })).error?.code, "presence_required", "the first grant asks");
+  const on = await d.ok("spaces.devices.lend", { space: a.space, device: eid, on: true }, "cli", { proof: "touch" });
+  assert.deepEqual([on.lent, typeof on.first_grant_at, on.allowed_by], [true, "number", me.id]);
+  const first = on.first_grant_at;
+  assert.equal((await d.ok("spaces.devices.lend.status", { space: a.space, device: eid })).lent, true);
+  assert.equal((await d.ok("spaces.devices.list", { device: eid })).spaces[0].lent, true);
+  const off = await d.ok("spaces.devices.lend", { space: a.space, device: eid, on: false });
+  assert.deepEqual([off.lent, off.first_grant_at], [false, first], "stopping never asks, and the first grant stays on record");
+  const again = await d.ok("spaces.devices.lend", { space: a.space, device: eid, on: true });
+  assert.deepEqual([again.lent, again.first_grant_at], [true, first], "after the first grant, on again asks nothing");
+  assert.equal((await d.call("spaces.devices.lend", { space: a.space, device: "nope", on: true }, "cli", { proof: "touch" })).error?.code, "not_found");
+  w && void 0;
+});
+
+test("lend attacks (LD-1 to LD-4): a removal ends the consent, an owner's off withdraws the space's, the status is not for any member, and concurrent changes end where the last event says", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const lend = (on, proof) => d.call("spaces.devices.lend", { space: a.space, device: eid, on }, "cli", proof ? { proof: "touch" } : {});
+  // LD-1: lend, remove the device from the space, add it back: the consent is gone and the first grant asks again
+  assert.equal((await lend(true, true)).error, undefined);
+  assert.equal((await d.ok("spaces.devices.list", { device: eid })).spaces[0].lent, true);
+  await d.ok("spaces.devices.remove", { space: a.space, device: eid });
+  await d.ok("spaces.devices.enrol", { space: a.space, device: eid });
+  assert.equal((await d.ok("spaces.devices.list", { device: eid })).spaces[0].lent, false, "lent is not remembered across a removal");
+  assert.equal((await lend(true, false)).error?.code, "presence_required", "and it asks again");
+  assert.equal((await lend(true, true)).error, undefined);
+  // LD-1: pairing's list (devices.set) that leaves the space out clears it too
+  await d.ok("spaces.devices.set", { device: eid, spaces: [] });
+  await d.ok("spaces.devices.enrol", { space: a.space, device: eid });
+  assert.equal((await lend(true, false)).error?.code, "presence_required");
+  // LD-2: a space owner switching off a device that is not theirs withdraws the space's consent (the record is a foreign person's device)
+  const foreign = "dev_foreign000000";
+  d.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`lend/${a.space}/${foreign}`, JSON.stringify({ lent: true, device: foreign, first_grant_at: 1, allowed_by: "per_other", at: 1 }));
+  const off = await d.ok("spaces.devices.lend", { space: a.space, device: foreign, on: false });
+  assert.deepEqual([off.lent, off.first_grant_at, off.allowed_by], [false, null, null], "the owner's off clears the first grant");
+  // LD-3: the status answers the device's person and the space's owners and admins; a plain member asking about a device that is not theirs is refused
+  assert.equal((await d.ok("spaces.devices.lend.status", { space: a.space, device: foreign })).lent, false);
+  // LD-4: twenty concurrent on/off pairs end in the state the last emitted event says
+  assert.equal((await lend(true, true)).error, undefined);
+  const before = d.of("space.device-lent").length;
+  await Promise.all(Array.from({ length: 20 }, (_, k) => lend(k % 2 === 0, true)));
+  const evs = d.of("space.device-lent").slice(before);
+  const final = (await d.ok("spaces.devices.lend.status", { space: a.space, device: eid })).lent;
+  assert.equal(final, evs[evs.length - 1].lent, "the stored state is the last emitted event's");
+  void w;
+});
+
+test("lend.status is for the device's person and the space's owners and admins: a person who is not in the space, and a stranger's device, are refused", async t => {
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  assert.equal((await d.ok("spaces.devices.lend.status", { space, device: alex.eid })).lent, false, "the owner may ask");
+  assert.equal((await d.ok("spaces.devices.lend.status", { space, device: "dev_somebodyelse01" })).lent, false, "an owner may ask about any device in the space");
+  await actAs(d, "bobby");
+  const r = await d.call("spaces.devices.lend.status", { space, device: alex.eid });
+  assert.ok(r.error && ["not_found", "not_a_member", "forbidden"].includes(r.error.code), JSON.stringify(r));
+  void w;
+});
+
+test("an invite made `to` a person refuses another person at redeem (forbidden), accepts the named one, and the list names who joined", async t => {
+  const w = world(t);
+  const { d, space } = await harlow(t, w);
+  const named = person(), other = person();
+  const made = await d.ok("spaces.invites.create", { space, role: "member", to: named.id });
+  const tok = made.token || (made.member && made.member.token);
+  assert.ok(tok, JSON.stringify(made));
+  const id = JSON.parse(Buffer.from(tok.split(".")[0], "base64url")).id;
+  const prove = p => crypto.sign(null, Buffer.from(`vyre-invite-accept-v1\n${id}\nharlow.vyre.run\n${p.id}`), crypto.createPrivateKey({ key: Buffer.from(p.privateKey, "base64url"), format: "der", type: "pkcs8" })).toString("base64url");
+  const wrong = await d.call("spaces.invites.redeem", { token: tok, person: { id: other.id, publicKey: other.publicKey }, proof: prove(other) }, "tailnet:x");
+  assert.equal(wrong.error?.code, "forbidden", JSON.stringify(wrong));
+  const right = await d.call("spaces.invites.redeem", { token: tok, person: { id: named.id, publicKey: named.publicKey }, proof: prove(named) }, "tailnet:x");
+  assert.ok(!right.error, JSON.stringify(right.error));
+  const row = (await d.ok("spaces.invites.list", { space })).invites.find(r => r.id === id);
+  assert.deepEqual([row.accepted_by, row.joined_by_label, row.joined_device, row.to], [[named.id], [null], null, named.id]);
+  void w;
+});
+
+test("spaces.admin-list gives the pairing module the finished spaces a person owns or administers, under the kernel ids' names, and the identity's own name", async t => {
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  const r = await d.ok("spaces.admin-list", { person: alex.id }, "module:wink");
+  assert.deepEqual(r.spaces.map(x => [x.space, x.name, x.role]), [[space, "Harlow Legal", "owner"]]);
+  assert.deepEqual(r.identity, { id: alex.id, name: "alex" });
+  const other = await d.ok("spaces.admin-list", { person: person().id }, "module:wink");
+  assert.deepEqual([other.spaces, other.identity], [[], null]);
+  void w;
+});
+
+test("spaces.identity.name-of: this device's own claimed name, a verified name the home knows, else null (never an unchecked claim)", async t => {
+  const w = world(t);
+  const { d, alex } = await harlow(t, w);
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id }, "module:wink")).name, "alex.vyre.run");
+  const stranger = person().id;
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger }, "module:wink")).name, null);
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger, claimed: "alex.vyre.run" }, "module:wink")).name, null, "a claimed name that the directory does not resolve to this id is not shown");
+  d.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${stranger}`, JSON.stringify("kit"));
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger }, "module:wink")).name, "kit.vyre.run");
+  assert.equal((await d.call("spaces.identity.name-of", { id: alex.id }, "cli")).error?.code !== undefined, true, "modules only");
+  void w;
+});
+
+test("spaces.identity.name-of: a claimed name the directory confirms for that id is shown; one it does not confirm is not", async t => {
+  const w = world(t);
+  const { d, alex } = await harlow(t, w);          // alex claims "alex" in the directory
+  const bobby = await actAs(d, "bobby");            // this device is now bobby's: alex is a stranger to it
+  const confirmed = await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "alex.vyre.run" }, "module:wink");
+  assert.equal(confirmed.name, "alex.vyre.run", "the directory resolves alex to exactly this id");
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "alex" }, "module:wink")).name, "alex.vyre.run", "with or without the zone");
+  assert.equal((await d.ok("spaces.identity.name-of", { id: bobby.id, claimed: "alex.vyre.run" }, "module:wink")).name, "bobby.vyre.run", "bobby's own id gets bobby's own name, never the claimed alex");
+  const other = person().id;
+  assert.equal((await d.ok("spaces.identity.name-of", { id: other, claimed: "alex.vyre.run" }, "module:wink")).name, null, "alex's name claimed for another id is not confirmed");
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id, claimed: "nosuchname" }, "module:wink")).name, null, "a name the directory does not know is not shown");
+  void w;
+});
+
+
+test("a space whose home is a PAIRED server is hosted by the server: the device asks it (with the owner's proof beside the call), keeps only a row, takes the server's id, and cancel gives it back there; a refusal makes nothing and never falls back to hosting here", async t => {
+  const w = world(t);
+  const d = await device(t, { wink: true });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const calls = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__winkCalls);
+  const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
+  const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.equal(made.data.status, "done", JSON.stringify(made.data));
+  assert.equal(made.data.space, "spc_abcdefghjklm", "THE id is the server's");
+  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }]], "one call to the server, the owner's proof beside it");
+  assert.ok((await d.ok("spaces.list")).some(x => x.id === "spc_abcdefghjklm" && x.hostedHere === undefined), "listed as a normal space, not as a local copy");
+  // giving it back: cancel asks the server to retire it
+  calls().length = 0;
+  const w2 = await d.call("spaces.create", { name: "secondone", home: { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(!w2.error, JSON.stringify(w2.error));
+  // a server that refuses: nothing is made on this device either
+  /** @type {any} */ (globalThis).__winkRefuse = true;
+  t.after(() => { /** @type {any} */ (globalThis).__winkRefuse = false; });
+  calls().length = 0;
+  const refused = await d.call("spaces.create", { name: "refusedone", home }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(refused.error, "the server's refusal is the answer");
+  assert.ok(!(await d.ok("spaces.list")).some(x => x.name === "refusedone.vyre.run"), "nothing was made here as a fallback");
+  void w;
+});
+
+test("the device reaches the paired server over the Wink peer session when the daemon supplies one: the proof rides in the input, the server's answer is THE id, a closed session refuses", async t => {
+  const w = world(t);
+  const d = await device(t, { wink: true });
+  const { hooks } = await import("./index.js");
+  /** @type {any[]} */ const seen = [];
+  hooks.sessionFor = async dev => ({ call: async (tool, input) => { seen.push([dev, tool, input]); return { ok: true, data: { space: "spc_" + "mnpqrstuvwxy", existed: false } }; } });
+  t.after(() => { hooks.sessionFor = null; });
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const made = await d.call("spaces.create", { name: "overwire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true }, confirmed: true } }, "cli", { kernel_proof: { op: "t" } });
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.equal(made.data.space, "spc_mnpqrstuvwxy");
+  assert.deepEqual(seen.map(x => [x[0], x[1], x[2].name, x[2].proof]), [["srv_paired0000000001", "spaces.host-here", "overwire", { op: "t" }]]);
+  hooks.sessionFor = async () => { throw new Error("closed"); };
+  const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
+  assert.equal(down.error?.code, "server_unreachable");
+  void w;
 });

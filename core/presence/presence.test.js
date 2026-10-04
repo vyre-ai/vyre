@@ -336,9 +336,9 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "gate", { does: { tools: ["gate.approve"] } },
-    `export default { async start(ctx) { ctx.tool("gate.approve", { input: { type: "object" }, run: async i => ({ approved: i.id }) }); return {}; } };`);
+    `export default { async start(ctx) { ctx.tool("gate.approve", { effect: "read", input: { type: "object" }, run: async i => ({ approved: i.id }) }); return {}; } };`);
   writeModule(root, "chat", { requires: ["gate"], does: { tools: ["chat.press"] } },
-    `export default { async start(ctx) { ctx.tool("chat.press", { run: async i => (await ctx.call("gate.approve", i)).data }); return {}; } };`);
+    `export default { async start(ctx) { ctx.tool("chat.press", { effect: "read", run: async i => (await ctx.call("gate.approve", i)).data }); return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const events = new Events(db);
@@ -862,12 +862,14 @@ test("paired: a grant is made only through the tool, for the wink module, from a
   rec = null; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
   rec = { ...good, confirmedBy: "someone-else" }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed by its owner/);
   rec = { ...good, confirmed: false }; await assert.rejects(grant("dev1", "module:wink"), /not confirmed/);
-  rec = { ...good, kind: "web" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
-  rec = { ...good, kind: "setup" }; await assert.rejects(grant("dev1", "module:wink"), /phone or a computer/);
+  rec = { ...good, kind: "server" }; await assert.rejects(grant("dev1", "module:wink"), /phone, a computer or a browser/);
+  // a browser paired to its owner gets the session and nothing more (lead ruling, 4 Oct)
+  rec = { ...good, kind: "web" }; assert.equal((await grant("dev1", "module:wink")).granted, true);
+  rec = { ...good, kind: "setup" }; await assert.rejects(grant("dev1", "module:wink"), /phone, a computer or a browser/);
   rec = good;
   await assert.rejects(grant("dev1", "module:relay"), /only the pairing/);
   await assert.rejects(grant("dev1", "cli"), /only the pairing/);
-  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants").get().n, 0, "no refusal wrote anything");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_pair_grants").get().n, 1, "no refusal wrote anything: the one row is the browser's grant");
   rec = { ...good, hardware: false };
   const sw = await grant("dev1", "module:wink");
   assert.deepEqual([sw.granted, sw.software], [true, true], "a software key is recorded as one, with no prompt and no refusal");

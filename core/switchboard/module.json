@@ -1,28 +1,457 @@
 {
   "name": "threads",
   "version": "0.1.0",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
   "does": {
-    "tools": [{ "name": "threads.start", "reach": "anyone", "projectArg": "project", "cwdArg": "cwd" }, { "name": "threads.continue-here", "reach": "person" }, { "name": "threads.send", "reach": "anyone" }, { "name": "threads.list", "reach": "anyone" }, { "name": "threads.get", "reach": "anyone" }, { "name": "threads.lease", "reach": "anyone" }, { "name": "threads.release", "reach": "anyone" },
-      { "name": "threads.asks", "reach": "anyone" }, { "name": "threads.answer", "reach": "anyone" }, { "name": "threads.interrupt", "reach": "anyone" }, { "name": "threads.delete", "reach": "anyone" }, { "name": "threads.items", "reach": "anyone" }, { "name": "threads.archive", "reach": "anyone" }, { "name": "threads.unarchive", "reach": "anyone" }, { "name": "threads.switch", "reach": "anyone" }, { "name": "threads.origin", "reach": "modules" }, { "name": "threads.lineage", "reach": "modules" }, { "name": "threads.busy", "reach": "modules" }, { "name": "threads.interrupt-in", "reach": "modules" }, { "name": "threads.mode", "reach": "person" }, { "name": "threads.fork", "reach": "anyone" }, { "name": "threads.branch", "reach": "person" }, { "name": "threads.edit-retry", "reach": "person" }, { "name": "threads.retry", "reach": "person" }, { "name": "threads.rewind", "reach": "anyone" }, { "name": "threads.model", "reach": "anyone" }, { "name": "threads.effort", "reach": "anyone" }, { "name": "threads.quick", "reach": "modules" }, { "name": "threads.commands", "reach": "anyone" }, { "name": "threads.tasks", "reach": "anyone" }, { "name": "threads.kill-task", "reach": "person" }, { "name": "threads.thinking", "reach": "anyone" }, { "name": "threads.shell", "reach": "person" }, { "name": "threads.remember", "reach": "person" }, { "name": "threads.unqueue", "reach": "person" }, { "name": "threads.queue", "reach": "anyone" }, { "name": "threads.edit", "reach": "person" }, { "name": "threads.send-now", "reach": "anyone" }, { "name": "threads.stop", "reach": "anyone" }, { "name": "threads.launch", "reach": "modules" }, { "name": "threads.watch", "reach": "anyone" }, { "name": "threads.unwatch", "reach": "anyone" },
-      { "name": "threads.claimed", "reach": "modules" }, { "name": "threads.contend", "reach": "modules" }, { "name": "threads.vouch", "reach": "modules" }, { "name": "threads.pids", "reach": "modules" }, { "name": "threads.bind", "reach": "anyone" }, { "name": "threads.history", "reach": "modules" }, { "name": "threads.usage", "reach": "modules" }, { "name": "threads.notice", "reach": "modules" }, { "name": "threads.halt", "reach": "modules" }, { "name": "threads.inbox", "reach": "modules" }, { "name": "threads.replied", "reach": "modules" }, { "name": "threads.post", "reach": "modules" }, { "name": "threads.providers.learn", "reach": "modules" }, { "name": "threads.live", "reach": "modules" }]
+    "reads": [
+      "threads.get",
+      "threads.list"
+    ],
+    "tools": [
+      {
+        "name": "threads.start",
+        "reach": "anyone",
+        "projectArg": "project",
+        "cwdArg": "cwd",
+        "effect": "write"
+      },
+      {
+        "name": "threads.continue-here",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.send",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "threads.get",
+        "reach": "anyone"
+      },
+      {
+        "name": "threads.lease",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.release",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.asks",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.answer",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.interrupt",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.delete",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.items",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.archive",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.unarchive",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.switch",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.origin",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.own-transcript",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.lineage",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.busy",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.interrupt-in",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.mode",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.fork",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.branch",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.edit-retry",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.retry",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.rewind",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.model",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.effort",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.quick",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.commands",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.tasks",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.kill-task",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.thinking",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.shell",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.remember",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.unqueue",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.queue",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.edit",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.send-now",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.stop",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.launch",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.watch",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.unwatch",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.claimed",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.contend",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.vouch",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.pids",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.bind",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.history",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.usage",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.notice",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.halt",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.inbox",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.replied",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.post",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.providers.learn",
+        "reach": "modules"
+      },
+      {
+        "name": "threads.live",
+        "reach": "modules"
+      }
+    ]
   },
-  "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.continued", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.status", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "thread.provider", "thread.deleted", "turn.said", "thread.mentioned", "thread.plan", "thread.archived", "thread.unarchived", "effort.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
-  "shows": { "cli": ["threads"] },
-  "needs": { "daemon": ["kernelSession", "sandbox", "credentials"], "vault": ["claude-setup-token", "anthropic-api-key", "per-account"] },
+  "watches": {
+    "emits": [
+      "thread.started",
+      "thread.sent",
+      "thread.text",
+      "thread.tool",
+      "thread.finished",
+      "thread.stopped",
+      "ask.raised",
+      "ask.answered",
+      "lease.changed",
+      "thread.contended",
+      "thread.continued",
+      "thread.watched",
+      "thread.limit",
+      "thread.queued",
+      "mode.changed",
+      "thread.turn",
+      "thread.state",
+      "thread.status",
+      "thread.usage",
+      "thread.steered",
+      "thread.unqueued",
+      "thread.rewound",
+      "model.switched",
+      "thread.provider",
+      "thread.deleted",
+      "turn.said",
+      "thread.mentioned",
+      "thread.plan",
+      "thread.archived",
+      "thread.unarchived",
+      "effort.switched",
+      "thread.task",
+      "thread.thinking",
+      "thinking.switched",
+      "thread.shell",
+      "thread.remembered"
+    ]
+  },
+  "shows": {
+    "cli": [
+      "threads"
+    ]
+  },
+  "needs": {
+    "daemon": [
+      "kernelSession",
+      "sandbox",
+      "credentials"
+    ],
+    "vault": [
+      "claude-setup-token",
+      "anthropic-api-key",
+      "per-account"
+    ]
+  },
   "teaches": {
     "tips": [
-      {"id": "stop-a-turn", "text": "Stop a running turn with `threads.interrupt`, as Escape does in Claude Code. The session stays for your next message.", "surfaces": ["chat", "deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#stop-a-turn"},
-      {"id": "take-keyboard", "text": "One surface holds a session's keyboard at a time. Press Take, or just start typing, to hold it here.", "surfaces": ["chat", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/chat.md#type-into-a-session"},
-      {"id": "answer-ask", "text": "Answer a headless thread's permission question from the terminal: `vyre threads answer <ask> allow`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre threads answer <ask> allow", "docs": "using/projects-and-threads.md#headless-threads"},
-      {"id": "plan-mode", "text": "Put a session in plan mode with `threads.mode`: `plan` reads and plans only, `acceptEdits` edits without asking.", "surfaces": ["chat", "deck", "cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#permission-modes"},
-      {"id": "fork", "text": "Fork a session a terminal has open with `threads.fork`. The copy carries on and the terminal's session is never touched.", "surfaces": ["chat", "deck", "cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#your-existing-sessions"},
-      {"id": "headless-start", "text": "Start a thread that outlives every window with `vyre threads start --project harlow-legal` and a first message.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre threads start --project harlow-legal \"Summarise this week's invoices\"", "docs": "using/projects-and-threads.md#headless-threads"},
-      {"id": "watch", "text": "Follow a headless thread live from the terminal with `vyre threads watch 3f2a9c1e`.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre threads watch 3f2a9c1e", "docs": "using/projects-and-threads.md#headless-threads"},
-      {"id": "queued-for", "text": "A message to a session busy in your terminal waits, marked Queued for, and goes in when that turn ends.", "surfaces": ["chat", "phone"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/chat.md#type-into-a-session"},
-      {"id": "person-answers", "text": "Only a person answers a permission question. A model never approves one, its own or another session's.", "surfaces": ["chat", "deck", "phone", "capsule", "cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/projects-and-threads.md#headless-threads"}
+      {
+        "id": "stop-a-turn",
+        "text": "Stop a running turn with `threads.interrupt`, as Escape does in Claude Code. The session stays for your next message.",
+        "surfaces": [
+          "chat",
+          "deck",
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#stop-a-turn"
+      },
+      {
+        "id": "take-keyboard",
+        "text": "One surface holds a session's keyboard at a time. Press Take, or just start typing, to hold it here.",
+        "surfaces": [
+          "chat",
+          "deck"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/chat.md#type-into-a-session"
+      },
+      {
+        "id": "answer-ask",
+        "text": "Answer a headless thread's permission question from the terminal: `vyre threads answer <ask> allow`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre threads answer <ask> allow",
+        "docs": "using/projects-and-threads.md#headless-threads"
+      },
+      {
+        "id": "plan-mode",
+        "text": "Put a session in plan mode with `threads.mode`: `plan` reads and plans only, `acceptEdits` edits without asking.",
+        "surfaces": [
+          "chat",
+          "deck",
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#permission-modes"
+      },
+      {
+        "id": "fork",
+        "text": "Fork a session a terminal has open with `threads.fork`. The copy carries on and the terminal's session is never touched.",
+        "surfaces": [
+          "chat",
+          "deck",
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/sessions.md#your-existing-sessions"
+      },
+      {
+        "id": "headless-start",
+        "text": "Start a thread that outlives every window with `vyre threads start --project harlow-legal` and a first message.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre threads start --project harlow-legal \"Summarise this week's invoices\"",
+        "docs": "using/projects-and-threads.md#headless-threads"
+      },
+      {
+        "id": "watch",
+        "text": "Follow a headless thread live from the terminal with `vyre threads watch 3f2a9c1e`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "vyre threads watch 3f2a9c1e",
+        "docs": "using/projects-and-threads.md#headless-threads"
+      },
+      {
+        "id": "queued-for",
+        "text": "A message to a session busy in your terminal waits, marked Queued for, and goes in when that turn ends.",
+        "surfaces": [
+          "chat",
+          "phone"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/chat.md#type-into-a-session"
+      },
+      {
+        "id": "person-answers",
+        "text": "Only a person answers a permission question. A model never approves one, its own or another session's.",
+        "surfaces": [
+          "chat",
+          "deck",
+          "phone",
+          "capsule",
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/projects-and-threads.md#headless-threads"
+      }
     ]
   }
 }

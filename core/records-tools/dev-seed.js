@@ -32,31 +32,56 @@ export async function seed(d) {
   const { gateway: gw, surfaces, chain, space } = d;
   const me = chain.hops[0].actor.id;
   await gw.records.define(chain, { add_types: [CONTACT_TYPE, MATTER_TYPE] }).catch((/** @type {any} */ e) => { if (e && e.code !== "invalid") throw e; });
+  // Idempotent: a record or task that is already there (by name or title) is reused, so a second run adds only what is missing.
+  const rowsOf = async (/** @type {string} */ type) => {
+    /** @type {any[]} */ const out = []; let cursor;
+    for (let i = 0; i < 10; i++) {
+      const p = await gw.records.query(chain, type, { page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+      out.push(...p.rows); if (!p.next_cursor) break; cursor = p.next_cursor;
+    }
+    return out.map((/** @type {any} */ r) => ({ ...r, urn: r.urn || `vyre://${space}/${type}/${r.id}` }));
+  };
+  const haveContacts = await rowsOf("contact"), haveMatters = await rowsOf("matter");
   const people = [["Jane Doe", "jane@harlowlegal.test", "555-0101"], ["Marcus Hale", "marcus@northwind.test", "555-0102"], ["Priya Raman", "priya@juno.test", "555-0103"]];
   /** @type {any[]} */ const contacts = [];
-  for (const [name, email, phone] of people) contacts.push(await gw.records.create(chain, "contact", { name, email, phone }));
-  // one sealed value: the plaintext goes to the sealing process, the record keeps the reference
-  if (gw.seal) {
-    const put = await gw.seal.put(chain, { record: contacts[0].urn, field: "ssn", class: "us-ssn", value: "123-45-6789" });
-    await gw.records.update(chain, "contact", contacts[0].id, { ssn: put && put.ref ? put.ref : put }, contacts[0].version);
+  for (const [name, email, phone] of people) {
+    const was = haveContacts.find((/** @type {any} */ r) => r.data && r.data.name === name);
+    if (was) { contacts.push(was); continue; }
+    const c = await gw.records.create(chain, "contact", { name, email, phone });
+    contacts.push(c);
+    // one sealed value: the plaintext goes to the sealing process, the record keeps the reference
+    if (gw.seal && name === people[0][0]) {
+      const put = await gw.seal.put(chain, { record: c.urn, field: "ssn", class: "us-ssn", value: "123-45-6789" });
+      await gw.records.update(chain, "contact", c.id, { ssn: put && put.ref ? put.ref : put }, c.version);
+    }
   }
   const matters = [["Doe estate plan", "Intake", 0, 4200], ["Hale trust amendment", "Drafting", 1, 1800], ["Raman probate", "Review", 2, 9500], ["Doe guardianship", "Closed", 0, 3000]];
   /** @type {any[]} */ const made = [];
-  for (const [title, stage, who, fee] of matters) made.push(await gw.records.create(chain, "matter", { title, stage, client: { urn: contacts[/** @type {number} */ (who)].urn }, fee: { amount: fee, currency: "USD" } }));
+  for (const [title, stage, who, fee] of matters) {
+    const was = haveMatters.find((/** @type {any} */ r) => r.data && r.data.title === title);
+    made.push(was || await gw.records.create(chain, "matter", { title, stage, client: { urn: contacts[/** @type {number} */ (who)].urn }, fee: { amount: fee, currency: "USD" } }));
+  }
   const assistant = { kind: "agent", id: "assistant", space };
   const person = { kind: "person", id: me, space };
+  const haveTasks = await gw.ask.list(chain, {});
+  const approvalTitle = "Should we take on the Doe guardianship matter?", doingTitle = "Summarise Hale trust amendment for the file";
+  /** @type {any} */ let approval = haveTasks.find((/** @type {any} */ t) => t.title === approvalTitle), doing = haveTasks.find((/** @type {any} */ t) => t.title === doingTitle);
   // a task waiting for the person: the assistant reaches a decision and the person checks it (a send would need an outward grant this Space has not been given)
-  const approval = await gw.ask.request(chain, { title: "Should we take on the Doe guardianship matter?", doer: assistant, checker: person, output: { kind: "decision" }, record: made[0].urn });
-  const s1 = await surfaces.open(chain, { agent: "assistant", ttl_ms: 60_000 });
-  try {
-    const ac = await surfaces.chainFor(s1.token);
-    await gw.ask.start(ac, approval.id);
-    await gw.ask.complete(ac, approval.id, { answer: "yes", reason: "The conflict check is clear and the fee agreement matches the Doe estate plan." });
-  } finally { surfaces.revoke(s1.session); }
+  if (!approval) {
+    approval = await gw.ask.request(chain, { title: approvalTitle, doer: assistant, checker: person, output: { kind: "decision" }, record: made[0].urn });
+    const s1 = await surfaces.open(chain, { agent: "assistant", ttl_ms: 60_000 });
+    try {
+      const ac = await surfaces.chainFor(s1.token);
+      await gw.ask.start(ac, approval.id);
+      await gw.ask.complete(ac, approval.id, { answer: "yes", reason: "The conflict check is clear and the fee agreement matches the Doe estate plan." });
+    } finally { surfaces.revoke(s1.session); }
+  }
   // a plain task the assistant is working on
-  const doing = await gw.ask.request(chain, { title: "Summarise Hale trust amendment for the file", doer: assistant, output: { kind: "note" }, record: made[1].urn });
-  const s2 = await surfaces.open(chain, { agent: "assistant", ttl_ms: 60_000 });
-  try { await gw.ask.start(await surfaces.chainFor(s2.token), doing.id); } finally { surfaces.revoke(s2.session); }
+  if (!doing) {
+    doing = await gw.ask.request(chain, { title: doingTitle, doer: assistant, output: { kind: "note" }, record: made[1].urn });
+    const s2 = await surfaces.open(chain, { agent: "assistant", ttl_ms: 60_000 });
+    try { await gw.ask.start(await surfaces.chainFor(s2.token), doing.id); } finally { surfaces.revoke(s2.session); }
+  }
   return { space, person: me, contacts: contacts.map(c => c.urn), matters: made.map(m => m.urn), tasks: { approval: approval.id, doing: doing.id } };
 }
 

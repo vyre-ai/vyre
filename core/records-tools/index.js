@@ -5,6 +5,7 @@
 import { createDoor } from "../../lib/gateway-door.js";
 import { segments } from "../../kernel/core/urn.js";
 import { registerDevSeed } from "./dev-seed.js";
+import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
 const str = { type: "string" };
@@ -69,6 +70,16 @@ export default {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.update(d.chain, u.type, u.id, i.patch, i.base_version) };
     }, byUrn);
+
+    // ---- what links to a record, and the Kits this build ships ----
+    tool("records.linked", "Everything that links to a record (the reverse of a link field), across types, only what the caller may read. `truncated` is true when more exist than `limit` (default 50, at most 200).", obj({ urn: str, type: str, field: str, limit: { type: "integer" } }, ["urn"]), async (i, d) => {
+      parseUrn(i.urn);
+      return d.gateway.records.linked(d.chain, String(i.urn), { ...(i.type ? { type: String(i.type) } : {}), ...(i.field ? { field: String(i.field) } : {}), ...(Number.isInteger(i.limit) ? { limit: i.limit } : {}) });
+    }, byUrn);
+    tool("records.kits.library", "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds (types, templates, roles, flows, views, sealed fields).", obj({ space: str }), async () => ({ kits: kitLibrary() }));
+    tool("records.kits.get", "One Kit from the library in the form the Flows tools take (flows.kit.card to see what it would do, flows.kit.propose to ask for the install).", obj({ space: str, id: str }, ["id"]), async i => {
+      try { return { kit: kitFromLibrary(String(i.id)) }; } catch (e) { throw refuse(/** @type {any} */ (e).message, "not_found"); }
+    });
 
     // ---- sealed values and the event feed ----
     tool("records.seal-put", "Put a value into a record's sealed field. It goes straight to the sealing process and never rides the record; the record keeps only the reference. The person's own act.", obj({ urn: str, field: str, value: str, class: str }, ["urn", "field", "value"]), async (i, d) => {

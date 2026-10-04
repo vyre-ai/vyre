@@ -33,6 +33,8 @@ export function patternCovers(pattern, action, since = 0, version = undefined, r
 // The dimensions a grant has, and the keys each may carry. A dimension or a key this file does not list is NOT known, and an unknown one makes containment fail: a field added to
 // grants later refuses delegation until `contains` and `clampTo` learn it, never passes by being ignored.
 const GRANT_KEYS = new Set(["id", "space", "subject", "actions", "action_set_version", "resource", "conditions", "issuer", "source", "parent", "status", "created_at", "revoked_at", "reason"]);
+/** Resource types only the person they belong to may read (the `owner` attribute names them): a session's lines. */
+export const OWNER_SCOPED_TYPES = new Set(["session"]);
 const RESOURCE_KEYS = new Set(["prefix", "where", "fields"]);
 const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once"]);
 const sameJson = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
@@ -161,6 +163,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
  * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
+ * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
  * @property {(proof: any, ctx: any) => boolean | Promise<boolean>} [verifyPresence] the hardware-signer check (core/presence.js); default none
  * @property {(chain: any) => boolean} [hasPresenceSession]
  * @property {number} [policy_version]
@@ -198,6 +201,14 @@ export function createAuthorizer(cfg) {
       for (const h of chain.hops) if (h.actor.space !== cfg.space) return deny("wrong_space");
       const attrs = (cfg.attrs && cfg.attrs(resource)) || {};
       if (attrs.space !== undefined && attrs.space !== cfg.space) return deny("wrong_space");
+      // A session's lines are its person's own (reviewer-2's KW-1): reading one needs the session's owner attribute to name the person asking, whatever role or `*/*` grant they hold. A session
+      // with no owner attribute is read by nobody (fail closed), so a capture that does not say whose session it is leaks nothing. The Space's owner reads their own, like anyone.
+      const segs = segments(resource);
+      if (segs && OWNER_SCOPED_TYPES.has(segs[1]) && def.risk === "read") {
+        const asker = chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor.id : null;
+        const canon = (/** @type {string} */ id) => (typeof cfg.canonicalPerson === "function" ? cfg.canonicalPerson(id) : id);
+        if (!asker || typeof attrs.owner !== "string" || canon(attrs.owner) !== canon(asker)) return deny("not_yours");
+      }
       const risk = def.risk;
       // Taint (6.3 step 5, invariant 9): what the chain consumed limits what it may drive.
       // An unknown trust value is the most restrictive, never trusted (invariant 9).
@@ -294,7 +305,9 @@ export function createAuthorizer(cfg) {
       // A session stands for presence on admin and grant only when the chain is exactly one person: an assistant in the chain never inherits it.
       const sessionOk = !(risk === "admin" || risk === "grant") || isExactlyPerson(chain);
       const presenceMet = presence === "none" || (presence === "session" && sessionOk && (cfg.hasPresenceSession ? cfg.hasPresenceSession(chain) : false))
-        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false);
+        || (input.presence && cfg.verifyPresence ? await cfg.verifyPresence(input.presence, ctxEvidence) === true : false)
+        // The owner's approval of a Kit's install card, held by the kernel as a waiver only it can make (kernel/tasks/kit-apply.js): presence for that install and no other act.
+        || (input.waiver !== undefined && typeof cfg.waives === "function" ? cfg.waives(input.waiver, { chain, action, resource }) === true : false);
       // The same obligation reached by two grants of a delegation chain (a child and the parent it came from) is one obligation.
       const out = obligations.filter((o, i) => obligations.findIndex(x => JSON.stringify(x) === JSON.stringify(o)) === i);
       if (presence !== "none") out.push({ type: "presence", method: presence });
@@ -377,5 +390,42 @@ export function createAuthorizer(cfg) {
     return { ok: true, obligations: obs };
   }
 
-  return Object.freeze({ authorize, actions: reg });
+  /**
+   * Does this chain get the SAME answer for every record of one type? True only when it can be proven from the grants alone, and it is deliberately narrow: every grant of every hop that
+   * could reach the type covers the whole type, none carries a row predicate or a delegation parent, no standing rule touches the action, no hop is a temporary member or a bare
+   * service. When it is true the type-level decision (a probe) is the decision for every row, so a store may total rows without asking row by row. Anything else is false.
+   * @param {{ chain: any, action: string, type: string }} input
+   */
+  async function rowUniform(input) {
+    try {
+      const { chain, action, type } = input;
+      if (!input || !isChain(chain) || !chain.hops.length || !reg.get(action)) return false;
+      if (chain.space !== cfg.space || !/^[a-z][a-z0-9_]{0,63}$/.test(type)) return false;
+      if (cfg.rules && cfg.rules.touches ? cfg.rules.touches(chain, action) : Boolean(cfg.rules)) return false;
+      const proto = `vyre://${cfg.space}/${type}/x`;
+      for (const h of chain.hops) {
+        const actor = h.actor;
+        if (!cfg.members.has(actor) || actor.kind === "service") return false;
+        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
+        if (ms && ms.role === "temp") return false;
+        let wholeCover = false;
+        for (const g of await cfg.grants.forSubject(actor, h, { chain, action, resource: proto, probe: true })) {
+          if (g.status !== "active" || g.space !== cfg.space) continue;
+          const p = segments(g.resource.prefix);
+          if (!p) return false;
+          const reaches = p.length <= 2 ? p.every((seg, i) => seg === "*" || seg === [cfg.space, type][i]) : p.slice(0, 2).every((seg, i) => seg === "*" || seg === [cfg.space, type][i]);
+          if (!reaches) continue;
+          const whole = p.length <= 2 || p[2] === "*" && p.length === 3;
+          if (!whole || (g.resource.where && g.resource.where.length) || g.parent) return false;
+          wholeCover = true;
+        }
+        // Uniform means every hop has a grant that reaches the whole type. No grant at all is a refusal for every row, which a total must not be the first to find out: not uniform.
+        if (!wholeCover) return false;
+      }
+      return true;
+    } catch { return false; }
+  }
+
+  return Object.freeze({ authorize, rowUniform, actions: reg });
 }

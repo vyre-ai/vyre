@@ -4,7 +4,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, present } from "./helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -100,4 +100,22 @@ test("Flows run in a hosted FIRM Space too: its own kernel, its own Flow records
   assert.deepEqual((await d.registry.call("flows.list", {}, "cli", await homeMeta())).data, []);
   assert.equal((await d.registry.call("flows.list", { space }, "cli", await firmMeta())).data.length, 1);
   assert.ok((await d.registry.call("flows.list", { space: "spc_zzzzzzzzzzzz" }, "cli", await firmMeta())).error, "a Space this home does not host");
+});
+
+test("Call a service on a real daemon: the connector catalog reaches the compiler, so a Flow may call a connector the vault holds (inside its route) and no other", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const meta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" }), {})).token });
+  const mk = (/** @type {string} */ connector, /** @type {string} */ path) => ({ format: 1, name: "ping_" + connector, label: "Ping", authorship: "human", trigger: { on: "manual" },
+    steps: [{ id: "s", kind: "service", connector, method: "GET", path }] });
+  const none = await d.registry.call("flows.define", { flow: mk("clio", "/v4/matters") }, "cli", await meta());
+  assert.ok(none.data && none.data.ok === false && /there is no connector clio/.test(JSON.stringify(none.data.errors)), JSON.stringify(none));
+  const put = await d.registry.call("vault.put", { name: "clio", kind: "api-credential", fields: { config: JSON.stringify({ auth: { type: "bearer" }, hosts: ["api.clio.test"], service: { allow: [{ method: "GET", path: "/v4/*" }] } }), secret: "fixture-clio-" + "x".repeat(20) } }, "cli");
+  assert.ok(!put.error, JSON.stringify(put));
+  const ok = await d.registry.call("flows.define", { flow: mk("clio", "/v4/matters") }, "cli", await meta());
+  assert.ok(ok.data && ok.data.ok, JSON.stringify(ok));
+  assert.deepEqual(ok.data.effects.services.map((/** @type {any} */ x) => [x.connector, x.method, x.outward]), [["clio", "GET", false]]);
+  const out = await d.registry.call("flows.define", { flow: mk("clio", "/v9/other") }, "cli", await meta());
+  assert.ok(out.data && out.data.ok === false && /does not allow GET/.test(JSON.stringify(out.data.errors)), JSON.stringify(out));
 });

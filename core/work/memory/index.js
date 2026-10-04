@@ -46,13 +46,31 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
   migrate(db, "memory_engine", SCHEMA);
   const lines = createLines(db, redactors);
   const idx = createIndex(db, { embed, redactors });
-  const facts = createFacts({ kernel, db, clock, space, chainFor, redactors, fieldDef, ownerOf, autoAccept, personChain });
+  const facts = createFacts({ kernel, db, clock, space, chainFor, redactors, fieldDef, ownerOf, autoAccept, personChain,
+    canCite: async (/** @type {any} */ chain, /** @type {string} */ c) => {
+      const a = parseLineAddress(c);
+      if (a) { const m = lines.meta(a.session); return Boolean(m) && mayReadLine(chain, /** @type {any} */ (m).record); }
+      return parseUrn(c) ? mayRead(chain, c) : true;
+    } });
   const inSpace = (/** @type {string} */ urn) => { const p = parseUrn(urn); return !p || p.space === space; };
   let lastSweep = -Infinity;
 
   /** May this chain read the source's resource? A refusal looks like absence. @param {any} chain @param {string} resource */
   const mayRead = async (chain, resource) => {
     try { return (await kernel.authorize({ chain, action: READ, resource })).effect !== "deny"; } catch { return false; }
+  };
+  /**
+   * KW-1: a session's lines are what a person said in their own sessions, so they are the OWNER's, however the record they sit under is granted: every member's role grant covers
+   * `vyre://<space>/*` and would otherwise read them. The chain's first hop must hold the owner role (a teammate acting for the owner has the owner first), as well as `records.read` on the
+   * record (a teammate also needs its own grant on the project). A member, a manager, an admin who is not the owner: nothing.
+   * @param {any} chain @param {string} resource
+   */
+  const mayReadLine = async (chain, resource) => {
+    try {
+      const first = chain && chain.hops && chain.hops[0] && chain.hops[0].actor;
+      if (!first || first.kind !== "person" || !kernel.members || kernel.members.roleOf(first) !== "owner") return false;
+    } catch { return false; }
+    return mayRead(chain, resource);
   };
   const sessionUrn = (/** @type {string} */ id) => `vyre://${space}/session/${id}`;
 
@@ -86,12 +104,12 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
       /** Exact lines, only when the caller may read the session. */
       async recall(/** @type {any} */ chain, /** @type {string} */ session, /** @type {number} */ from, /** @type {number} */ to) {
         const m = lines.meta(session);
-        if (!m || !(await mayRead(chain, m.record))) return [];
+        if (!m || !(await mayReadLine(chain, m.record))) return [];
         return lines.recall(session, from, to).map(l => ({ ...l, address: lineAddress(session, l.seq) }));
       },
       async window(/** @type {any} */ chain, /** @type {any} */ q) {
         const m = lines.meta(q.session);
-        if (!m || !(await mayRead(chain, m.record))) return [];
+        if (!m || !(await mayReadLine(chain, m.record))) return [];
         return lines.window(q).map(l => ({ ...l, address: lineAddress(q.session, l.seq) }));
       },
     },
@@ -132,7 +150,9 @@ export function createMemoryEngine({ kernel, db, space, serviceChain, chainFor, 
       const out = new Map();
       for (const r of await idx.rank(text, k * 3)) {
         if (!inSpace(r.resource) || r.labels.source_spaces.some(s => s !== space)) continue;
-        if (!(await mayRead(chain, r.resource))) continue;
+        if (!(await (r.kind === "line" ? mayReadLine : mayRead)(chain, r.resource))) continue;
+        // Lines are one person's: in a room of more than one person they are withheld.
+        if (inRoom && r.kind === "line") { held.add(r.resource); continue; }
         if (!(await mayAll(r.resource))) { held.add(r.resource); continue; }
         // Event text carries values and cannot be rebuilt per field, so in a room it is withheld (A-2); lines are prose the viewers may all read, gated above.
         if (inRoom && r.kind === "event") { held.add(r.resource); continue; }

@@ -4,7 +4,13 @@
 // state when it has nothing, and an error line when it cannot be reached. Never sample people.
 
 import { call } from "../api/box";
+import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
+import { claimBlocked } from "../../screens/shell/rc";
+import { needsPerson, onPhoneFor } from "./on-phone.js";
+import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
+import { useApproval } from "./approval-state";
+import { Platform } from "react-native";
 import { passkeyProof, PresenceError } from "./presence";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
@@ -19,8 +25,29 @@ export class BoxError extends Error {
 }
 
 /** One tool call; resolves the data, throws BoxError with the box's own code and words. */
+/** The words a screen shows while the phone is asked. */
+export const WAITING_TITLE = APPROVE_ON_PHONE;
 export async function tool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
+  // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
+  if (peerWanted()) {
+    try { return await peerCall<T>(name, input); }
+    catch (e) { const x = e as { code?: string; message?: string }; throw new BoxError(x.code ?? "error", x.message ?? ""); }
+  }
   let r = await call<T>(name, input).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
+  // A kernel act a person signs (a rule, say), asked from the web app: the paired phone approves it ("Approve on your phone"), then the act goes again with the proof it signed.
+  if (r.error && Platform.OS === "web" && phoneRoute(name, r.error)) {
+    const space = typeof input.space === "string" && input.space ? input.space : String(((await call<{ space?: string }>("records.me")).data as { space?: string } | undefined)?.space ?? "");
+    const st = useApproval.getState();
+    const ask = (t: string, i?: Record<string, unknown>) => call<any>(t, i ?? {}).then((x) => { if (x.error) throw new BoxError(x.error.code ?? "error", x.error.message ?? ""); return x.data; });
+    st.show(actWords(name));
+    try {
+      const out = await askPhone(ask, { tool: name, input, space, signal: st.signal });
+      if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
+      r = await call<T>(name, input, { kernelProof: proofHeader(out.proof) }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
+    } finally { useApproval.getState().hide(); }
+  }
+  // RC1: a browser does not answer a person-only ask (vault secrets, pairing a device, an outbound send): the person does it in Vyre on their phone.
+  if (r.error && claimBlocked() && needsPerson(r.error)) throw new BoxError("on_phone", onPhoneFor(name));
   // A human-only call: the box asks for presence, and in a browser the person's passkey answers it. Once, for this call.
   if (r.error && wantsPasskey(r.error)) {
     try {

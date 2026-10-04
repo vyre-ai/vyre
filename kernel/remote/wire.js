@@ -13,11 +13,15 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 
 /** The calls that cross, by gateway group. Anything not here is refused (`no_such_call`); a call is only ever looked up, never built from a name. */
 export const CALLS = Object.freeze({
-  grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "offers.offer", "offers.unoffer"],
+  grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
   records: ["define", "get", "query", "aggregate", "search", "create", "update", "remove", "restore"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
   events: ["read"],
   surfaces: ["open", "revoke"],
+  // A member's computer running one of this Space's sessions (docs/work/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
+  // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
+  leases: ["issue", "renew", "use"],
+  lent: ["status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"],
 });
 
 /** The reads a device may keep a marked copy of for its screens. */

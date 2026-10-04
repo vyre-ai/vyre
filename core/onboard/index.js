@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, onTailnet } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
@@ -69,6 +69,18 @@ const joinOwnerOnly = (caller, meta, what) => {
   if ((meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `"${c}" is an agent; ${what} is the owner's`);
   if (["anonymous", "hook"].includes(c)) throw joinFail("denied", `${what} is the owner's`);
 };
+// HD-1: the tools that write the assistant's sign-in, claim a name, set up Tailscale, index sessions or finish onboarding are the person's own. The callers they have today are the
+// person's surfaces, the onboarding page on the loopback address ("onboard"), a paired device or tailnet peer, and this module and launch; a model client (mcp, a thread, an agent) and any
+// other module are refused. Before the server has an owner (a paired device) every write is refused ("pair_first"); afterwards the registry asks for presence (the tools declare presence.when).
+const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "onboard", "web", "setup"];
+export const ownerWrite = (/** @type {unknown} */ caller, /** @type {any} */ meta, /** @type {string} */ what, /** @type {boolean} */ owned, writes = true) => {
+  const c = String(caller || "");
+  const ok = SURFACES.includes(c) || /^(device|setup|tailnet):[\w.-]+$/.test(c) || c === "module:onboard" || c === "module:launch";
+  if (!ok || (meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `${what} is the person's own; "${c || "anonymous"}" may not do it`);
+  // No setup on a server before it has an owner (the user's order: identity first, on the person's device; the server takes only the pairing). Once it has one, the registry asks the person's
+  // presence for these writes (the tools declare presence.when), so a hijacked page cannot swap credentials or claim a name.
+  if (writes && !owned) throw joinFail("pair_first", `${what} comes after this server is paired to you: pair it from your Vyre app first`);
+};
 /**
  * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
  * `lock init` or `lock sign`. The init line names the Mac's key (which only the Mac can show) and
@@ -85,6 +97,9 @@ export const slug = s => {
 };
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
+
+/** Who may reach the setup tools at all: the person's surfaces, the owner's devices, the setup page's own loopback ("onboard") and modules. A model session is not one; each tool that changes something also checks personOnly(caller), which refuses an agent riding a person's label. */
+const ONBOARD_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "onboard", "module"]);
 
 /** `claude --version`, remembered for half a minute: the page asks every couple of seconds. */
 let known = { at: 0, version: /** @type {Promise<string|null>|null} */ (null) };
@@ -124,6 +139,8 @@ export default {
   async start(ctx) {
     const save = patch => config.save(patch, ctx.paths.root, ctx.config);
     const ob = () => ctx.config.onboard || {};
+    /** Does this server have an owner (a paired device)? config's ownerSeen (the tailnet owner) counts too. */
+    const isOwned = async () => Boolean(net().ownerSeen) || Boolean(((await ctx.call("wink.server.owned", {}).catch(() => null)) || {}).owned);
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
     /** The setup page (or an earlier step) already claimed a vyre.run address on this box: ctx.config.name is that address, not the person. */
@@ -279,7 +296,9 @@ export default {
       const current = STEPS.find(k => steps[k] === "todo") || null;
       // The signed-in AI account's own display name, to prefill the person's name (editable; null when it says none).
       const accountName = await aiAccount().then(a => a.name).catch(() => null);
-      const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
+      // The sign-in and owner-claim links are the person's: a model session that reads the status is not handed them.
+      if (!personOrPage(caller)) { tailscale.loginUrl = null; tailscale.claimUrl = null; }
+      const mode = caller === "onboard" ? "loopback" : onTailnet({ caller }) ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
       // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
@@ -381,12 +400,14 @@ export default {
     }
 
     ctx.tool("onboard.status", {
+      effect: "read", // a read open to every caller: the body keeps the person's name and the sign-in and claim links from a model
       description: "Where the onboarding stands: every step's state and what it needs.",
       input: obj(),
       run: async (_, { caller }) => status(caller),
     });
 
     ctx.tool("onboard.you", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Step 1: your name as you like it shown, and your assistant's name. A name that is also a valid vyre.run name becomes the default candidate.",
       input: obj({ name: { type: "string" }, assistant: { type: "string" } }, ["name"]),
       run: async ({ name, assistant }, { caller }) => {
@@ -404,6 +425,7 @@ export default {
     });
 
     ctx.tool("onboard.machine", {
+      effect: "write",
       description: "ADR 0039: how Vyre runs on this machine. solo (everything here) or server (always on for other devices) are the person's own choice; device is set by onboard.join/relay.join once a connection to another server is confirmed, never chosen directly by a person.",
       // "device" stays in the type (checkInput has no per-caller schema, and removing it would
       // break the already-shipped, already-reviewed relay.join -> onboard.machine wiring); the
@@ -448,10 +470,14 @@ export default {
     });
 
     ctx.tool("onboard.name", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
+      presence: { when: i => !["check", "status", undefined].includes(i && i.action) , summary: async () => "Claim a name for this server" },
       input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
-      run: async ({ name, action = "check", confirm }, { caller }) => {
+      run: async ({ name, action = "check", confirm }, { caller, ...meta }) => {
         boxOnly();
+        ownerWrite(caller, meta, "claiming a name", await isOwned(), !["check", "status"].includes(action));
+        if (action !== "check" && action !== "status") personOnly(caller);
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           // No zone token and no own domain: the address is this machine's ts.net name, so there
@@ -484,11 +510,16 @@ export default {
     });
 
     ctx.tool("onboard.claude", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
+      presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
       input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
-      run: async ({ mode, key, code, kind, token }, { caller }) => {
+      run: async ({ mode, key, code, kind, token }, { caller, ...meta }) => {
         boxOnly();
+        ownerWrite(caller, meta, "signing in to Claude", await isOwned());
+        // Only a read (no mode, or detect, and nothing to store) is open to a non-person; storing a key or starting the sign-in is the person's (HD-1).
+        if (mode !== "detect" && (mode || key || code || kind || token)) personOnly(caller);
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
           [kind, token] = ["subscription", await signin.finish(code)];
@@ -509,10 +540,14 @@ export default {
     });
 
     ctx.tool("onboard.tailscale", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on. policy merges the tailnet policy JSON for whatever is turned on today (Taildrive, Taildrop, SSH, and egress if it is on) into one snippet to paste, instead of one per feature.",
+      presence: { when: i => (i && i.action) !== "status", summary: async () => "Change this server's Tailscale setup" },
       input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock", "policy"] } }),
-      run: async ({ action = "status" }, { caller }) => {
+      run: async ({ action = "status" }, { caller, ...meta }) => {
         boxOnly();
+        ownerWrite(caller, meta, "the Tailscale step", await isOwned(), action !== "status");
+        if (action === "connect") personOnly(caller);
         if (action === "lock") {
           const l = await lockStatus();
           return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) };
@@ -538,6 +573,7 @@ export default {
      * relay and reachability go through ctx.call, since those live in other modules.
      */
     ctx.tool("onboard.join", {
+      effect: "write",
       description: "Adding a second device or a server: status says whether Tailscale or the relay is ready to pair with; tailscale (step: status|connect|policy|lock) is onboard.tailscale's own logic, callable any time; relay mints a QR/link pairing code; verify checks a device or node is reachable now (link.health) and, when becomeDevice is true, flips this machine to \"device\" once reachability is confirmed (per ADR 0039 section 5; never on the Solo/server side accepting a join). The owner's alone: a guest, an agent (its own node, its thread, or an mcp/harness claim) and hook/anonymous callers are refused outright, whatever proof they carry, the same as relay.pair.start already refuses them.",
       input: obj({ action: { type: "string", enum: ["status", "tailscale", "relay", "verify"] }, step: { type: "string", enum: ["status", "connect", "policy", "lock"] }, node: { type: "string" }, becomeDevice: { type: "boolean" } }),
       callers: ["cli", "local", "deck", "capsule"],
@@ -578,10 +614,14 @@ export default {
     });
 
     ctx.tool("onboard.history", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Find and index this machine's Claude Code sessions, in the background.",
+      presence: { when: i => (i && i.action) === "start", summary: async () => "Import your Claude sessions" },
       input: obj({ action: { type: "string", enum: ["status", "start"] } }),
-      run: async ({ action = "status" }, { caller }) => {
+      run: async ({ action = "status" }, { caller, ...meta }) => {
         boxOnly();
+        ownerWrite(caller, meta, "importing your Claude sessions", await isOwned(), action === "start");
+        if (action === "start") personOnly(caller);
         if (action === "start" && !indexing) {
           save({ onboard: { history: true } });
           indexing = call("recall.index").catch(e => ctx.log("onboard: indexing failed: " + e.message)).finally(() => { indexing = null; });
@@ -591,6 +631,7 @@ export default {
     });
 
     ctx.tool("onboard.skip", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Skip a step for now; it can be finished later from Settings.",
       input: obj({ step: { type: "string", enum: STEPS } }, ["step"]),
       run: async ({ step }, { caller }) => {
@@ -657,6 +698,7 @@ export default {
     }
 
     ctx.tool("onboard.assistant", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Make the assistant now, if it is not made: the name given in the You step, on every project. The retry for \"your assistant was not made\". Says whether it exists and, when not, why.",
       input: obj({ retry: { type: "boolean" } }),
       run: async (_, { caller }) => {
@@ -682,6 +724,7 @@ export default {
     }
 
     ctx.tool("onboard.passkey", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
       input: obj(),
       run: async (_, { caller }) => {
@@ -692,10 +735,14 @@ export default {
     });
 
     ctx.tool("onboard.finish", {
+      effect: "write", callers: ONBOARD_CALLERS,
       description: "Finish the onboarding.",
+      presence: { when: () => true, summary: async () => "Finish setting up this server" },
       input: obj(),
-      run: async (_, { caller }) => {
+      run: async (_, { caller, ...meta }) => {
         boxOnly();
+        ownerWrite(caller, meta, "finishing setup", await isOwned());
+        personOnly(caller);
         const assistant = await meet();
         save({ onboard: { finished: new Date().toISOString() } });
         ctx.events.emit("onboard.finished", {});
@@ -740,6 +787,8 @@ export default {
     }
 
     ctx.tool("onboard.setup", {
+      // Reading the step list is open to a model session (the name stays out of it); skip, unskip and pass check personOnly in the body.
+      effect: "write", callers: [...ONBOARD_CALLERS, "mcp", "harness"],
       description: "The setup step list the box holds: the ten steps in order, each done, current, skipped or todo, with the current step and whether setup is finished. skip puts one of ai, phone, computers or history aside to finish later (it stays listed as skipped), unskip takes it back, pass says the person has been through history. It never completes a step the box can see for itself.",
       input: obj({ skip: { type: "string", enum: [...SKIPPABLE] }, unskip: { type: "string", enum: [...SKIPPABLE] }, pass: { type: "string", enum: [...PASSABLE] } }),
       run: async (input, { caller }) => {
@@ -758,6 +807,7 @@ export default {
     });
 
     ctx.tool("onboard.link", {
+      effect: "write", callers: ["cli", "local", "capsule"],
       description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
       input: obj({ mint: { type: "boolean" } }),
       run: async (input, { caller }) => {

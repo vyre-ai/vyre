@@ -13,6 +13,7 @@
 // app, window or URL. Nothing here polls: it is idle until a surface reports or asks.
 
 import { ownerDevice } from "../modules/index.js";
+import { deviceIdOf } from "../../lib/caller.js";
 
 /** Fields a surface may report. Anything else in the input is ignored, except REFUSED. */
 export const FIELDS = ["project", "cwd", "thread", "view", "app", "window", "url", "tz", "localTime"];
@@ -173,6 +174,7 @@ export default {
     };
 
     ctx.tool("context.report", {
+      effect: "write",
       description: "Say where the user is on this surface: the project, folder (cwd), thread, front app, window title or page URL it sees. Fields not given stay as they were for this surface; null clears one. The URL is kept without its query or fragment. Screen text, selection and field values are refused.",
       input: { type: "object", required: ["surface"], properties: {
         surface: { type: "string", description: "Which surface is reporting: capsule, chat, deck, phone, cli." },
@@ -191,9 +193,8 @@ export default {
       run: async (input, meta) => {
         if (stopped) throw fail("stopped", "context is stopping");
         const { surface, device: said, fields } = clean(input || {});
-        // A device paired through the relay is named by its caller; a report need not repeat it.
-        const paired = /^device:([a-z2-7]{16})$/.exec(String(meta && meta.caller));
-        const device = said || (paired ? paired[1] : null);
+        // A device paired through the relay is named by its caller; a report need not repeat it. The id is bookkeeping (which device), never a statement about who the person is.
+        const device = said || deviceIdOf(meta || {});
         const key = keyOf(surface, device);
         let rec = surfaces.get(key);
         const at = now();
@@ -221,6 +222,7 @@ export default {
     });
 
     ctx.tool("context.now", {
+      effect: "read",
       description: "Where the user is now: the newest project, cwd, thread, app, window and url across every surface that reported, the surface and device that reported last (the focus), and the list of surfaces. The project is found from the folder when only a folder is known. tz, localTime and day come from whichever device most recently reported them: the device's own clock, never the server's, and null until some surface has reported one. parts: [\"screen\"] adds what sight sees on this Mac (not over the tailnet).",
       input: { type: "object", properties: {
         parts: { type: "array", items: { type: "string", enum: ["screen"] }, description: "Extra parts: screen." },

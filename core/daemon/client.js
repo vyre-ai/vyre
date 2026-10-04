@@ -4,6 +4,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import * as config from "../config/index.js";
+import { readSession } from "../../lib/cli-session.js";
 
 /**
  * One request to vyred over its socket. Resolves to the parsed { data } or { error } body, or to
@@ -27,8 +28,11 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
     const key = /(?:^|[\s:])agent:/.test(caller) && process.env.VYRE_AGENT_KEY ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY } : {};
     // A caller in a bound session says which one, with the key its SessionStart hook was given.
     const bound = session && session.id && session.key ? { "x-vyre-session": session.id, "x-vyre-session-key": session.key } : {};
+    // The command line's sign-in (`vyre signin`): its credential rides on the CLI's own calls to its own home. The daemon honours it only from the terminal login it was made for.
+    const cliToken = /^cli$/.test(caller) && !socket && !headers.authorization ? readSession(root) : null;
+    const signedIn = cliToken ? { authorization: `Vyre ${cliToken}` } : {};
     const req = http.request({ socketPath, path, method, timeout, agent: false,
-      headers: { ...headers, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
+      headers: { ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });

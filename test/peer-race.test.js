@@ -207,7 +207,7 @@ async function vyredWithProbe(t) {
   const root = tempHome(t);
   globalThis.__probeMineRan = 0;
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.mine"] } }, `export default { async start(ctx) {
-    ctx.tool("probe.mine", { input: { type: "object" }, callers: ["cli", "local", "deck", "capsule"], run: async () => { globalThis.__probeMineRan++; return { ok: true }; } });
+    ctx.tool("probe.mine", { effect: "read", input: { type: "object" }, callers: ["cli", "local", "deck", "capsule"], run: async () => { globalThis.__probeMineRan++; return { ok: true }; } });
     return {};
   } };`);
   const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });

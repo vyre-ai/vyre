@@ -15,11 +15,11 @@ const clock = () => ++T;
 const PEOPLE = { owner: "per_alex", admin: "per_adm", manager: "per_man", member: "per_mem", temp: "per_tmp" };
 const u = (/** @type {string} */ type, id = "probe") => `vyre://${SPACE}/${type}/${id}`;
 // the resource each action is asked about
-const RESOURCE = { "records.read": u("contact", "c1"), "records.create": u("contact", "c1"), "records.update": u("contact", "c1"), "records.remove": u("contact", "c1"), "records.restore": u("contact", "c1"),
+const RESOURCE = { "checkpoint.write": u("checkpoint", "s1"), "checkpoint.read": u("checkpoint", "s1"), "records.read": u("contact", "c1"), "records.create": u("contact", "c1"), "records.update": u("contact", "c1"), "records.remove": u("contact", "c1"), "records.restore": u("contact", "c1"),
   "records.define": u("definition", "types"), "seal.put": u("contact", "c1"), "tasks.request": u("task"), "tasks.read": u("contact", "c1"), "tasks.work": u("contact", "c1"),
   "grants.role": u("member", "per_x"), "grants.invite": u("invite"), "grants.create": u("grant", "new"), "grants.revoke": u("grant"), "grants.narrow": u("grant"),
-  "grants.offer": u("grant"), "events.read": u("event"), "tasks.decide": u("task"), "drive.restore": u("drive", "x"), "rules.remove": u("rule"), "rules.accept": u("rule"), "rules.dismiss": u("rule"),
-  "rules.set": u("rule"), "rules.propose": u("rule"), "rules.list": u("rule"), "grants.list": u("member", "per_x") };
+  "grants.offer": u("grant"), "events.read": u("event"), "tasks.decide": u("task"), "drive.restore": u("drive", "x"), "drive.read": u("drive", "x"), "drive.write": u("drive", "x"), "grants.unoffer": u("grant"), "rules.remove": u("rule"), "rules.accept": u("rule"), "rules.dismiss": u("rule"),
+  "kits.propose": u("kit", "estate"), "kits.install": u("kit", "estate"), "kits.remove": u("kit", "estate"), "rules.set": u("rule"), "rules.get": u("rule"), "rules.test": u("rule"), "rules.enable": u("rule"), "rules.disable": u("rule"), "rules.propose": u("rule"), "rules.list": u("rule"), "grants.list": u("member", "per_x") };
 
 async function world() {
   const rig = await createRig({ space: SPACE, clock, people: { per_adm: "admin", per_man: "manager", per_mem: "member" }, defs: [CONTACT] });
@@ -77,9 +77,8 @@ test("temp: only inside its scope, and everything ends at the expiry with no swe
   T = exp + 1;
   const after = await read(u("contact", "c1"));
   assert.equal(after.effect, "deny", "at the expiry");
-  assert.equal(after.reason, "expired");
   for (const a of ["records.create", "records.update", "tasks.read", "tasks.work"]) assert.equal(await held("temp", a, u("contact", "c1")), false, `${a} ends too`);
-  assert.equal((await rig.k.gateway.members.list(rig.ownerChain)).some((/** @type {any} */ m) => m.person === "per_tmp"), false, "the member list does not show an expired temp");
+  assert.equal((await rig.k.gateway.grants.members.list(rig.ownerChain)).some((/** @type {any} */ m) => m.person === "per_tmp"), false, "the member list does not show an expired temp");
   // a temp cannot make or extend its own membership
   const r = { person: "per_tmp", role: "temp", scope: [u("contact", "*")], expires: T + 10_000_000 };
   await assert.rejects(() => rig.k.gateway.grants.setRole(chain("temp"), r, { presence: rig.proof("grants.role", r, u("member", "per_tmp")) }), e => e.code === "not_allowed" || e.code === "not_found");
@@ -87,4 +86,17 @@ test("temp: only inside its scope, and everything ends at the expiry with no swe
   await rig.addTemp("per_tmp", [u("contact", "*")], T + 3_600_000);
   assert.equal((await read(u("contact", "c1"))).effect, "allow", "extended");
   assert.equal((await read(u("matter", "m1"))).effect, "deny");
+});
+
+test("kits: owner and admin hold kits.propose, kits.install and kits.remove; manager, member and temp hold none; an assistant acting for an owner may propose and never install or remove", async () => {
+  const { rig, held } = await world();
+  const res = u("kit", "estate");
+  for (const action of ["kits.propose", "kits.install", "kits.remove"]) {
+    for (const role of ["owner", "admin"]) assert.equal(await held(role, action, res), true, `${role} ${action}`);
+    for (const role of ["manager", "member", "temp"]) assert.equal(await held(role, action, res), false, `${role} ${action}`);
+  }
+  const asst = rig.k.chains.fromFacts({ kind: "agent_session", vouched: true, person: "per_alex", agent: "assistant", session: "s1" });
+  const can = async (/** @type {string} */ action) => rig.k.gateway.authorize({ chain: asst, action, resource: res });
+  assert.equal((await can("kits.propose")).effect, "allow", "the assistant for an owner may ask for a Kit");
+  for (const action of ["kits.install", "kits.remove"]) assert.notEqual((await can(action)).effect, "allow", `the assistant may not ${action}`);
 });

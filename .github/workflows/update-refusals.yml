@@ -5,6 +5,7 @@
 #             override set, a hostile .env image changes nothing, and a hand-run update ignores every override.
 name: update-refusals
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     paths: ["box/vyre", "box/Dockerfile", "box/compose.yml", "scripts/strip-wrapper.mjs", "scripts/build-site.sh", "scripts/install-box.sh", "scripts/matrix/j2-update-refusals.sh", ".github/workflows/update-refusals.yml"]

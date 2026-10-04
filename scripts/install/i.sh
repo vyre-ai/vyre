@@ -84,7 +84,11 @@ install_box() {
     say "Vyre is already installed here. Leaving it as it is."
     return 0
   fi
+  # An install from a checkout (--from DIR) uses that checkout's own installer, never the live one from the site.
+  from_dir=""; prev=""
+  for a in "$@"; do [ "$prev" = --from ] && from_dir=$a; case "$a" in --from=*) from_dir=${a#--from=} ;; esac; prev=$a; done
   if [ -n "${VYRE_INSTALLER:-}" ]; then cp "$VYRE_INSTALLER" "$TMP/install-box.sh"
+  elif [ -n "$from_dir" ] && [ -f "$from_dir/scripts/install-box.sh" ]; then cp "$from_dir/scripts/install-box.sh" "$TMP/install-box.sh"
   else
     say "Downloading the Vyre installer from $SITE"
     fetch "$SITE/box/install-box.sh" "$TMP/install-box.sh"
@@ -191,7 +195,7 @@ wait_connected() {
     st=$(vyre_call wink.server.status '{}' || true)
     case "$st" in
       *'"owned":true'*|*'"owned": true'*)
-        sp=$(printf '%s' "$st" | json_field space); dv=$(printf '%s' "$st" | json_field device)
+        sp=$(printf '%s' "$st" | json_field space | LC_ALL=C tr -d '\000-\037\177'); dv=$(printf '%s' "$st" | json_field device | LC_ALL=C tr -d '\000-\037\177')
         say ""
         say "  Connected to ${sp:-your space}. Finish setting up on your ${dv:-device}."
         return 0 ;;

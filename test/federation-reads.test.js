@@ -103,11 +103,16 @@ test("federation reads: the person on the box reads both machines, every row lab
 test("federation reads: machines local, agents, MCP, guests and modules that do not ask get the box's rows only", async t => {
   const s = await world(t);
   const boxOnly = async (caller, input = {}) => {
-    const c = await asBox(s, "projects.catalog", { limit: 100, ...input }, caller);
+    // projects.catalog lists every session with its first message, so a model, a guest and an unknown label are refused it by the callers list (group D, kernel-declare); the person's surfaces and modules get the box's rows.
+    const private_ = !/^(deck|cli|module:)/.test(caller);
+    let c;
+    try { c = await asBox(s, "projects.catalog", { limit: 100, ...input }, caller); } catch (e) { if (private_ && /not available/.test(String(e && e.message))) c = null; else throw e; }
+    if (!c) { assert.ok(private_, caller); } else {
     assert.equal(c.total, 1, `${caller}: ${JSON.stringify(c.sources)}`);
     assert.equal(c.sources, undefined, caller);
     assert.deepEqual(c.sessions.map(r => r.id), [BOX_ID], caller);
     assert.ok(c.sessions.every(r => r.source === undefined), `${caller}: rows are as they were, unlabelled`);
+    }
     // Recall's own scope (memory-iq 6f898294, core/recall/index.js's own reach(), a 1:1 mirror of
     // core/memory's — it does NOT call projects.reach; that's core/projects/core/files' own door,
     // a separate copy by design so recall never waits on projects being installed at all) may

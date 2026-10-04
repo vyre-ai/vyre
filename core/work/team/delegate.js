@@ -159,6 +159,8 @@ export async function recheckParent(kernel, chain, { adder, grants, now = Date.n
     for (const g of grants) {
       const p = g.parent && live.get(g.parent);
       if (!p || (p.conditions?.when?.expires && p.conditions.when.expires <= now)) return { ok: false, paused: true, reason: "parent_gone" };
+      // The owner narrowed the adder's grant in place: the kernel no longer treats a child it does not contain as live, so the teammate is paused here too, not left looking active.
+      if (!covers(p, [...g.actions], g.resource.prefix)) return { ok: false, paused: true, reason: "parent_narrowed" };
     }
     return { ok: true, paused: false };
   } catch {

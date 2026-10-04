@@ -37,6 +37,8 @@ const int = { type: "integer" };
 const emails = { anyOf: [str, { type: "array", items: str }], description: "an address, a comma list, or a list" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
+/** The person's surfaces plus a model session: for the tools whose every outward effect waits at the Gate or touches only the person's own calendar and drafts. */
+const WITH_MODELS = [...PEOPLE, "mcp", "harness"];
 const account = { type: "string", description: "an account name from google.accounts; reads default to every account" };
 
 /** What a held item of a google:<account> sender carries, for gate.senders. */
@@ -309,6 +311,7 @@ export default {
       attendees: { ...emails, description: "attendee addresses; naming any holds the invite at the Gate" }, time_zone: str, account, why: str };
 
     ctx.tool("google.calendar.create", {
+      callers: WITH_MODELS,
       description: "Create an event. Without attendees it is written at once and nobody is told. With attendees an invite would go out, so it is held at the Gate for the user: returns { held, message }.",
       input: obj(eventInput, ["title", "start"]),
       run: safe(async (input, meta) => {
@@ -326,12 +329,15 @@ export default {
     });
 
     ctx.tool("google.calendar.update", {
+      callers: WITH_MODELS,
       description: "Change an event: only the fields given. Without a change to attendees it is written at once with no notice to anyone. Giving `attendees` (the full new list) holds it at the Gate, since Calendar mails them: returns { held, message }.",
       input: obj({ id: str, ...eventInput }, ["id"]),
       run: safe(async (input, meta) => {
         const acct = forWrite(accounts.all(), named(input.account));
         const fields = fieldsOf(input, { create: false });
         const to = input.attendees === undefined ? [] : addresses(input.attendees, "attendees");
+        // Clearing the guest list sends nothing to hold, so it is the person's own call, not a model's.
+        if (input.attendees !== undefined && !to.length && /^(mcp|harness)(:|$)/.test(String(meta?.caller || ""))) throw fail("removing every attendee is for the person; ask them", "denied");
         if (!to.length) {
           const event = await cal.write(acct, { op: "update", event_id: input.id, fields,
             ...(input.attendees !== undefined ? { attendees: [] } : {}), sendUpdates: "none" });
@@ -394,6 +400,7 @@ export default {
     };
 
     ctx.tool("google.mail.draft", {
+      callers: WITH_MODELS,
       description: "Put an email in Gmail's drafts. It goes nowhere: the user sends it from Gmail, or you ask with google.mail.send.",
       input: obj(mailInput, ["to", "subject", "body"]),
       run: safe(async input => {
@@ -406,6 +413,7 @@ export default {
     });
 
     ctx.tool("google.mail.send", {
+      callers: WITH_MODELS,
       description: "Send an email as the user. It is always held at the Gate until the user approves it (and may edit it); returns { held, message }. Nothing is sent from here.",
       input: obj({ ...mailInput, why: str, on_behalf: obj({ thread: str, agent: str }) }, ["to", "subject", "body"]),
       run: safe(async (input, meta) => {

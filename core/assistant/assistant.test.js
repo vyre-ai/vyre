@@ -12,27 +12,27 @@ import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const AGENTS = `export default { async start(ctx) {
-  ctx.tool("agents.list", { run: async () => globalThis.__agents || [{ name: "juno", kind: "assistant", doing: "idle" }] });
+  ctx.tool("agents.list", { effect: "read", run: async () => globalThis.__agents || [{ name: "juno", kind: "assistant", doing: "idle" }] });
   return {};
 } };`;
 
 const WAITING = `export default { async start(ctx) {
-  ctx.tool("waiting.count", { run: async () => globalThis.__waiting || { count: 0, by_kind: { ask: 0, draft: 0, reminder: 0, pairing: 0 } } });
+  ctx.tool("waiting.count", { effect: "read", run: async () => globalThis.__waiting || { count: 0, by_kind: { ask: 0, draft: 0, reminder: 0, pairing: 0 } } });
   return {};
 } };`;
 
 const MEMORY = `export default { async start(ctx) {
-  ctx.tool("memory.facts", { run: async () => ({ facts: globalThis.__facts || [] }) });
+  ctx.tool("memory.facts", { effect: "read", run: async () => ({ facts: globalThis.__facts || [] }) });
   return {};
 } };`;
 
 const SETTINGS = `export default { async start(ctx) {
-  ctx.tool("settings.get", { run: async ({ key }) => ({ value: globalThis.__settings ? globalThis.__settings[key] : undefined }) });
+  ctx.tool("settings.get", { effect: "read", run: async ({ key }) => ({ value: globalThis.__settings ? globalThis.__settings[key] : undefined }) });
   return {};
 } };`;
 
 const CONTEXT = `export default { async start(ctx) {
-  ctx.tool("context.now", { run: async () => globalThis.__now || { day: null, tz: null, localTime: null } });
+  ctx.tool("context.now", { effect: "read", run: async () => globalThis.__now || { day: null, tz: null, localTime: null } });
   return {};
 } };`;
 

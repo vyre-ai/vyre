@@ -22,7 +22,6 @@ const MIGRATION = `
   CREATE TABLE IF NOT EXISTS kernel_events (seq INTEGER PRIMARY KEY, space TEXT NOT NULL, event TEXT NOT NULL, salt TEXT, ${Object.keys(GENERATED).map(gen).join(", ")});
   CREATE TABLE IF NOT EXISTS kernel_cursors (name TEXT PRIMARY KEY, seq INTEGER NOT NULL);
 `;
-const like = (/** @type {string} */ s) => s.replace(/[\\%_]/g, "\\$&");
 
 /** @param {{ db: import("node:sqlite").DatabaseSync, space: string, clock?: () => number, rand?: (n: number) => Uint8Array, window?: { events?: number, bytes?: number } }} cfg */
 export function createSqliteEventLog(cfg) {
@@ -46,7 +45,7 @@ export function createSqliteEventLog(cfg) {
     CREATE INDEX IF NOT EXISTS kernel_events_corr ON kernel_events (space, corr, seq) WHERE corr IS NOT NULL;
   `);
   const win = cfg.window?.events ?? 2000;
-  const last = /** @type {any[]} */ (db.prepare("SELECT seq, event, salt FROM kernel_events WHERE space = ? ORDER BY seq DESC LIMIT ?").all(cfg.space, win)).reverse();
+  const last = /** @type {any[]} */ (db.prepare("SELECT seq, event, salt FROM kernel_events NOT INDEXED WHERE space = ? ORDER BY seq DESC LIMIT ?").all(cfg.space, win)).reverse();
   const window = last.map(r => JSON.parse(r.event));
   const salts = last.filter(r => r.salt !== null).map(r => /** @type {[number, string]} */ ([r.seq, r.salt]));
   const cursors = db.prepare("SELECT name, seq FROM kernel_cursors").all().map((/** @type {any} */ r) => /** @type {[string, number]} */ ([r.name, r.seq]));
@@ -71,7 +70,7 @@ export function createSqliteEventLog(cfg) {
         const where = ["space = ?", "seq > ?"], args = /** @type {any[]} */ ([cfg.space, q.after]);
         if (q.before !== undefined) { where.push("seq < ?"); args.push(q.before); }
         const t = f.type;
-        if (t && t !== "*") { if (t.endsWith(".*")) { where.push("type LIKE ? ESCAPE '\\'"); args.push(like(t.slice(0, -1)) + "%"); } else { where.push("type = ?"); args.push(t); } }
+        if (t && t !== "*") { if (t.endsWith(".*")) { const pre = t.slice(0, -1); where.push("type >= ? AND type < ?"); args.push(pre, pre.slice(0, -1) + String.fromCharCode(pre.charCodeAt(pre.length - 1) + 1)); } else { where.push("type = ?"); args.push(t); } }
         if (f.subject_prefix) { const p = f.subject_prefix.replace(/\/$/, ""); where.push("(subject = ? OR (subject >= ? AND subject < ?))"); args.push(f.subject_prefix, p + "/", p + "0"); }
         if (f.corr) { where.push("corr = ?"); args.push(f.corr); }
         if (f.actor) { where.push("actor = ?"); args.push(f.actor); }

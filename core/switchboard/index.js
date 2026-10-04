@@ -28,6 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
+import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { isPerson } from "../../lib/caller.js";
@@ -1628,6 +1629,8 @@ export class Switchboard {
     const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!all.length) return;
     // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
+    // A queued turn written before adoption names the replaced owner id: read it as the identity so it groups with, and runs as, the same person.
+    for (const r of all) r.kturn = this.canonTurn(r.kturn);
     const lead = all[0].kturn || null;
     const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
@@ -1800,7 +1803,7 @@ export class Switchboard {
       // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
       await this.assertAsker(id, this.record(id), kernelTurn);
       const st = this.live.get(id), askedBy = this.turnAsker.get(id);
-      if (st && st.turn && askedBy !== kernelTurn.asker) {
+      if (st && st.turn && this.canon(askedBy) !== this.canon(kernelTurn.asker)) {
         // Another person's message mid-turn waits as the NEXT turn, under its own asker: it never steers the running one, and the running turn's kernel session is never replaced. A chat turn that
         // arrives while a turn with no chat is running (someone typing on their own surface) waits the same way.
         return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn });
@@ -2090,6 +2093,15 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
+  /** @param {string} person */
+  canon(person) { const f = this.deps.canonicalPerson; return typeof f === "function" ? f(person) : person; }
+
+  /** A stored queued-turn key `{chat, asker}` with its asker read through canonicalPerson. @param {string | null} k */
+  canonTurn(k) {
+    if (!k) return k || null;
+    try { const o = JSON.parse(k); return o && typeof o.asker === "string" ? JSON.stringify({ chat: o.chat, asker: this.canon(o.asker) }) : k; } catch { return k; }
+  }
+
   queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
@@ -3009,6 +3021,11 @@ function imagesOf(list) {
  * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
  * @param {string} [caller]
  */
+/** The one person hop of a kernel chain (a person's own call, no agent or service behind it), or null. @param {any} kc */
+export function personHop(kc) {
+  return kc && Array.isArray(kc.hops) && kc.hops.length === 1 && kc.hops[0].actor && kc.hops[0].actor.kind === "person" ? kc.hops[0] : null;
+}
+
 /**
  * Who is typing, as the keyboard lease sees it. Identity comes from the caller vyred verified, never from what the call says about itself:
  *  - the owner (a tailnet:<login> whose login is the recorded network.owner, or a relay-paired device:<id>) is the person's own surface: "deck" or
@@ -3019,16 +3036,28 @@ function imagesOf(list) {
  *    replaced by "via:<label>", which contests like any other holder.
  * The link's words are always the box's surface: a box:<name> it names stands, any other name becomes box:via:<label>.
  * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
+ * @param {any} [kc] the call's kernel chain (`ctx.kernel.chain(meta)`), or null when the kernel refused it; undefined only when this build has no kernel
+ * @param {string} [kernelOwner] the kernel's owner person, to compare a chain's person with
  */
-export function surfaceFor(input, caller, owner) {
+export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   const c = String(caller || "");
   const asked = String((input && input.surface) || "");
-  const o = String(owner || "").trim().toLowerCase();
-  const login = /^tailnet:(?!agent:)(.+)$/.exec(c);
-  const verifiedOwner = Boolean(login && o && login[1].trim().toLowerCase() === o) || /^device:[a-z2-7]{16}$/.test(c);
+  let verifiedOwner = false, device = false, ownSocket = false;
+  if (kc !== undefined) {
+    // The kernel decides who this is: one person hop, from the daemon's proven facts or a verified token, never from the label.
+    const h = personHop(kc);
+    if (h && h.via && (h.via.device || h.via.node) && h.actor.id === kernelOwner) { verifiedOwner = true; device = Boolean(h.via.device); }
+    else if (h && h.via && h.via.surface) ownSocket = true;
+  } else {
+    // SHIM(legacy labels): only a build with no kernel reads the label, and it goes with the cut-over that makes the kernel mandatory.
+    const o = String(owner || "").trim().toLowerCase();
+    verifiedOwner = Boolean(ownerOverTailnet(c) && o && c.slice("tailnet:".length).trim().toLowerCase() === o) || (ownerDevice(c) && !ownerOverTailnet(c));
+    device = verifiedOwner && !ownerOverTailnet(c);
+    ownSocket = !verifiedOwner && isPerson(c) && !ownerDevice(c);
+  }
   let s;
-  if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
-  else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
+  if (verifiedOwner) s = ownSurface(asked) ? asked : (device ? "phone" : "deck");
+  else if (ownSocket) s = asked || c || "vyre";
   // The link's words are the box's person (core/link/mac.js marks its surface "box:<name>" and a write needs as:"person"): a box: name stands, any other is via:<label>.
   else if (fromLink(c) && asked.startsWith("box:")) s = asked;
   // The computers module takes and gives back the keyboard for a person's screen it has already checked is a person's (computers.takeover is a person-only tool,
@@ -3147,6 +3176,8 @@ export default {
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
+      // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
+      canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       threadSocket: cfg.thread_socket === "off" ? null
         : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
@@ -3158,7 +3189,8 @@ export default {
     });
     sb.recover();
     // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
-    setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500).unref?.();
+    const resumeTimer = setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500);
+    resumeTimer.unref?.();
     // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
     // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
     // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
@@ -3213,7 +3245,10 @@ export default {
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner);
+    const kernelOwner = () => (ctx.kernel ? String(ctx.kernel.owner || "") : undefined);
+    /** The kernel chain of the call being run (set by tool()): undefined when this build has no kernel, null when the kernel refused the call. */
+    const kchainNow = () => { const v = /** @type {any} */ (calls.getStore()); return v && "kchain" in v ? v.kchain : (ctx.kernel ? null : undefined); };
+    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner, kchainNow(), kernelOwner());
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;
@@ -3262,12 +3297,13 @@ export default {
         return run(i, meta, ...rest);
       }
       : run;
-    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: (i, m, ...r) => calls.run(m, () => inner(i, m, ...r)), callers, ...extra }); };
+    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
     const isAdminCall = (/** @type {any} */ peer) => !peer || !(peer.login || peer.stableId || peer.node) || String(peer.login || "") === String(((ctx.config && ctx.config.network) || {}).owner || "\u0000");
 
+    const START_FIELDS = new Set(["project", "cwd", "prompt", "name", "model", "surface", "append", "purpose", "provider", "effort", "lean", "chat", "asker", "parent"]);
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
@@ -3286,7 +3322,11 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, ...rest } = i;
+        const { mentions, pasted, starter: _claimed, ...restAll } = i;
+        // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
+        // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
+        const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
+        const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
@@ -3305,7 +3345,7 @@ export default {
       // ONE form at this boundary: the kernel's own person id (per_...). An actor string (person:per_x), a bare name or anything else is refused, never quietly rewritten: a mismatch between the stream
       // and the Switchboard must show, because this id decides whose authority a turn runs under.
       if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
-      return { chat: i.chat, asker: i.asker };
+      return { chat: i.chat, asker: sb.canon(i.asker) };
     };
     const sendToMac = async (i, caller) => {
       const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
@@ -3376,12 +3416,17 @@ export default {
      */
     const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine) || hasPairedMacs());
     /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
-    const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
+    const onOwnerDevice = caller => {
+      const kc = kchainNow();
+      if (kc === undefined) return ownerDevice(caller); // SHIM(legacy labels): a build with no kernel
+      const h = personHop(kc);
+      return Boolean(h && h.via && (h.via.device || h.via.node));
+    };
 
     const answerOnMac = async (i, caller, peer, meta = {}) => {
       // Defence in depth until the registry's person-session rule (ADR 0032) is on this branch: an
       // owner device answers a Mac's ask only inside a person session. Nothing is signed or sent.
-      if (ownerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
+      if (onOwnerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
       // An ask that approves a floor tool needs a fresh proof (the registry checked it; a presence session is not one).
       if (gatedOnMac(i) && (!meta.presence || meta.presence.method === "session")) throw Object.assign(new Error("this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it"), { code: "presence_required" });
       const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),
@@ -3415,7 +3460,7 @@ export default {
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
-        if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
+        if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
@@ -3456,7 +3501,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
+        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
@@ -3483,7 +3528,8 @@ export default {
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); });
+      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); },
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
@@ -3495,7 +3541,7 @@ export default {
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
         const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
-        if (!wantsMacs(ctx, i, caller)) return own;
+        if (!(await wantsMacs(ctx, i, caller, meta))) return own;
         // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
         // so a surface that reconnects has one list to reconcile from. What answering one takes is
         // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
@@ -3518,7 +3564,7 @@ export default {
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
         // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
-        if (!a && !thread && wantsMacs(ctx, {}, caller)) {
+        if (!a && !thread && (await wantsMacs(ctx, {}, caller, meta))) {
           const mac = await answerOnMac(i, caller, peer, meta);
           if (mac) return mac;
         }
@@ -3847,6 +3893,19 @@ export default {
         return sb.busyIn(String(dir));
       },
     });
+    // For the runner's own-server sealing (core/runner ports.ownServer.resolve): which transcript file a finished turn belongs to, and the provider's projects folder it sits under (`root`,
+    // which the seal pins the file to). Only the thread's own provider session, only Claude's layout (<root>/<project>/<session>.jsonl), and nothing for a session this Switchboard has no record of.
+    ctx.tool("threads.own-transcript", {
+      description: "The transcript file of a session this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. A session it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["session"], properties: { session: str } },
+      run: async i => {
+        const rec = sb.record(String(i.session));
+        if (!rec || (rec.provider || "claude") !== "claude") return null;
+        const t = findSession(sb.deps.transcripts || [], String(i.session));
+        if (!t) return null;
+        return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
+      },
+    });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
@@ -3882,6 +3941,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { clearTimeout(resumeTimer); offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

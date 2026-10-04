@@ -54,6 +54,9 @@ if (!state.chat) {
   await sealer.close();
   sdb.close();
 }
+// Devices enrol per Space (the spaces module answers spaces.devices.enrolled, and a device not enrolled gets no kernel chain). This harness has no claimed identity to enrol carol's paired device
+// with, so the spaces module is switched off for this home: with no list every device is enrolled (core/daemon deviceEnrolled). A stand-in, named in team/0.3/E2E-RUN.md.
+{ const cp = path.join(root, "config.json"); /** @type {any} */ let c = {}; try { c = JSON.parse(fs.readFileSync(cp, "utf8")); } catch { /* none yet */ } c.modules = { ...(c.modules || {}), disable: [...new Set([...((c.modules && c.modules.disable) || []), "spaces"])] }; fs.writeFileSync(cp, JSON.stringify(c)); }
 const d = await start({ root, presence: present, kernel: true, log: m => console.log(`${new Date().toISOString()} ${m}`) }).catch(e => { console.error("vyred: " + e.stack); process.exit(1); });
 const k = /** @type {any} */ (d.kernel);
 const ALEX = k.id.owner;
