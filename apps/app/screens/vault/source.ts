@@ -1,12 +1,12 @@
 // Vault's calls, over whatever `call` it is given (the app's box connection, or a fake box in a test).
 import type { ListRow, UseRow } from "./real-model";
 
-export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
+export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string; detail?: { retry_after_s?: number } } }>;
 
 export function vaultSource(call: Call) {
   async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
     const r = await call<T>(tool, input);
-    if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
+    if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code, detail: r.error.detail });
     return r.data as T;
   }
   return {
