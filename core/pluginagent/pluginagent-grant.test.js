@@ -63,7 +63,7 @@ test("the grant names exactly what it gives; a decline, a revoke and an expiry e
   assert.ok(!(await call("projects.list", {}, as)).error, "reads the projects");
   const rem = await call("memory.remember", { text: "my wife is Jordan" }, as);
   assert.equal(rem.data && rem.data.pending, true, "its one write is a pending suggestion");
-  for (const [tool, input] of [["google.calendar.today", {}], ["vault.list", {}], ["settings.set", { key: "x", value: 1 }], ["planner.add", { kind: "reminder", title: "x", at: Date.now() + 1000 }], ["mail.accounts", {}], ["link.call", { tool: "vault.list", input: {} }], ["memory.pin", { node: "x" }], ["memory.write", { text: "x", project: "p" }]]) {
+  for (const [tool, input] of [["google.calendar.today", {}], ["vault.list", {}], ["settings.set", { key: "x", value: 1 }], ["planner.add", { kind: "reminder", title: "x", at: Date.now() + 1000 }], ["mail.accounts", {}], ["link.call", { tool: "vault.list", input: {} }], ["memory.pin", { node: "x" }], ["memory.write", { text: "x", project: "p" }], ["sessions.accounts.signin", {}], ["flows.kit.propose", {}]]) {
     const r = await call(tool, input, as);
     assert.equal(r.error && r.error.code, "not_in_grant", `${tool}: ${JSON.stringify(r).slice(0, 160)}`);
   }
