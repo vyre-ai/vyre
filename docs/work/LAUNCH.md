@@ -2,6 +2,12 @@
 
 Branch: work/launch-onboard-fix · Worktree: ../vyre-launch · Plan: team/0.2/plans/launch.md
 
+## 0.3 resume (launch, 4 Oct 2026, work/launch-03)
+
+Done and pushed (sha d72038399 or earlier): env fix (VYRE_KERNEL and VYRE_STORE kept across a root-run update, compose kernel "1", packaged-boot update step, green on b9594691); appbuild.json now fetched by the installer and updater (was a 503 on /app/); SH-4 and SH-5; system.build and the counter and tree in appbuild.json (MW-5 daemon half; sw.js and the manifest are not signed, said in CHAT); path-triggered Mac and phone workflows (2295cc79a); installer closing line names the space (wink.server.pairing `paired` and `owner`); publish-fill verb with four tests; update-refusals candidate version fixed.
+Doing: the real-box run on testbox4 (booked in CHAT 4 Oct 01:20 UTC): packaged install from a throwaway-key build in ~/l3work, then RH-3, RH-7, SH-4 against the real helper, then uninstall and write "free" in CHAT.
+Open: the L-2 (c) reading is unclear (kernel/modules/rollback-presence.test.js covers no proof, other counter, other act, tampered, non-owner key, stranger, replay; it lacks a malformed or oversized proof header, which is the daemon header path); the onboard label item (core/onboard/index.js line 282 derives `mode` from a label, platform-2 FROZEN count 1, display only); node and docs reds on the branch are docs/work/chat.md rendering (chat's file, not mine); a "failed step leaves no space" is the device side (setup page), the server side creates nothing.
+
 ## Scope
 
 Install, onboarding, updates, uninstall, export, import from other agents (team/0.2/CHARTER.md's
