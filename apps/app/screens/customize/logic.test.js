@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { KINDS, addField, addStage, buildType, callThemCases, fieldLine, moveStage, pluralOf, rename, renameStage, sealField, typeLine } from "./logic.js";

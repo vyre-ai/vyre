@@ -34,6 +34,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
@@ -106,7 +107,7 @@ export default {
           if (!byWhois) return vault.onRelay(env, meta);
           return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onSync: env => (isDeviceGroupId(env && env.vault) ? vault.devices.onSync(env) : vault.shared.onSync(env)),
         onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);

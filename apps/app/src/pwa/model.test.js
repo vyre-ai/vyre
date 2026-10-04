@@ -1,5 +1,6 @@
 // @ts-check
 // The installed web app's pure pieces: routing a worker's navigate message, and push.seen's timing.
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

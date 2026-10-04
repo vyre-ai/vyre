@@ -212,7 +212,8 @@
   },
   "needs": {
     "kernel": {
-      "membership": true
+      "membership": true,
+      "sealDetect": true
     }
   },
   "teaches": {

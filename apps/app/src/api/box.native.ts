@@ -137,6 +137,11 @@ const b = makeBox(async () => {
 
 export const { connect, listen, call, send, prove, disconnect, socket } = b;
 
+/** The phone proves presence with its biometric key inside call(); it has no route of its own to post. */
+export async function post(_path: string, _input: Record<string, unknown>): Promise<{ data?: unknown; error?: { code?: string; message?: string } }> {
+  return { error: { code: "unsupported", message: "this build proves presence with its device key" } };
+}
+
 /** A hint that need not outlive the app (push.seen): one call, never queued, never thrown. */
 export async function beacon(tool: string, input: Record<string, unknown>): Promise<void> {
   await b.call(tool, input).catch(() => {});

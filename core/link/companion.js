@@ -10,6 +10,7 @@
 // and untouched by removal, checked on every use, so the order of two removals never matters. A companion has link scope only.
 // Not usable until a transport authenticates the core's key (v0.2.3: over the tailnet, as the Mac's link does).
 
+import { deviceIdOf } from "../../lib/caller.js";
 import crypto from "node:crypto";
 
 export const WINDOW_MS = 15 * 60_000;
@@ -74,8 +75,9 @@ export function companionSide(ctx, { db, now, deviceInfo, box = () => null, maxN
 
   const deviceOf = (caller, meta) => {
     const c = String(caller || "");
-    if (!/^device:[a-z2-7]{16}$/.test(c) || (meta && meta.agent)) throw fail("denied", "a companion is requested by a paired desktop app over its own relay channel");
-    return c.slice("device:".length);
+    const id = deviceIdOf(c);
+    if (id === null || !/^[a-z2-7]{16}$/.test(id) || (meta && meta.agent)) throw fail("denied", "a companion is requested by a paired desktop app over its own relay channel");
+    return id;
   };
   /** The box's own key as the core pins it at pairing, so a later call is never trusted by name or address alone. */
   const boxAnswer = () => { const b = box(); return b && b.pub ? { box: { pub: b.pub, id: boxId(b.pub) } } : {}; };

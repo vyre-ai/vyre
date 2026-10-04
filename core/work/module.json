@@ -107,6 +107,17 @@
   "shows": {
     "cli": []
   },
-  "needs": {},
+  "needs": {
+    "kernel": {
+      "work": true,
+      "attrs": true,
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update",
+        "events.read"
+      ]
+    }
+  },
   "teaches": {}
 }

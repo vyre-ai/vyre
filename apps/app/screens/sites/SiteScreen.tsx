@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, StageSteps, Switch, Tabs, Text, showToast, markRef } from "@vyre/ui";
+import { AskCard, Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, StageSteps, Switch, Tabs, Text, showToast, markRef , allowsMock} from "@vyre/ui";
 import { Block, FaceIdSheet } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { SPACES } from "../places/scope";
 import { sitesRepo, type Site } from "./data";
 import { useSites } from "./store";
 import { flowText, goLive, grantedOf, liveOf, PIPE, previewOf, rollBack, setSecret, waitingOnYou } from "./logic.js";
+import { RealSite } from "./RealSites";
 
 type Tab = "pipeline" | "history" | "domain" | "secrets" | "logs";
 
-export default function SiteScreen() {
+function SampleSiteScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { sites, setSites } = useSites();
@@ -108,4 +109,9 @@ export default function SiteScreen() {
         }} />
     </Frame>
   );
+}
+
+/** The sample site in a mock build; the box's own publishing everywhere else. */
+export default function SiteScreen() {
+  return allowsMock() ? <SampleSiteScreen /> : <RealSite />;
 }

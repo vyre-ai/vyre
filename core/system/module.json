@@ -12,6 +12,7 @@
     ],
     "tools": [
       "system.info",
+      "system.build",
       "system.echo",
       {
         "name": "system.rename",

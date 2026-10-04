@@ -28,6 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
+import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { isPerson } from "../../lib/caller.js";
@@ -442,6 +443,7 @@ export class Switchboard {
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
     /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
+    /** @type {Map<string, Promise<any>>} the tail of each thread's chat sends, so they run one at a time */ this.sendChain = new Map();
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
@@ -1773,17 +1775,23 @@ export class Switchboard {
   async send(id, text, surface, opts = {}) {
     // A chat turn's check (whose turn is running), its kernel-session swap and its write must not interleave with another chat send to the same thread: two askers sending at once to an idle thread
     // would both pass the check and the second would end the first's session. One promise chain per thread, for chat sends only; everything else goes straight through as before.
-    if (!opts || !opts.kernelTurn) return this.sendNow(id, text, surface, opts);
+    if (!opts || !opts.kernelTurn) return this.sendOne(id, text, surface, opts);
     const prev = this.sendChain.get(id) || Promise.resolve();
-    const run = prev.then(() => this.sendNow(id, text, surface, opts), () => this.sendNow(id, text, surface, opts));
+    const run = prev.then(() => this.sendOne(id, text, surface, opts), () => this.sendOne(id, text, surface, opts));
     const tail = run.catch(() => {});
     this.sendChain.set(id, tail);
     tail.then(() => { if (this.sendChain.get(id) === tail) this.sendChain.delete(id); });
     return run;
   }
 
-  async sendNow(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
-    // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session.
+  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
+    // The same message again (a retry whose first answer was lost): already handed over or queued.
+    if (uuid) {
+      const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
+        || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
+      if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
+    }
+    // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session. (A duplicate was answered above, before anything is opened.)
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
       // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
@@ -1798,12 +1806,6 @@ export class Switchboard {
       // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
       if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
       if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
-    }
-    // The same message again (a retry whose first answer was lost): already handed over or queued.
-    if (uuid) {
-      const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
-        || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
-      if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
     }
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
@@ -2946,6 +2948,18 @@ export class Switchboard {
     return null;
   }
 
+  /**
+   * After a restart: a chat message that was queued behind a turn the restart cut off is still in the queue (it is a row in the home's database), and its thread is stopped. Resume each such thread
+   * so the next turn runs: the queue hands over the leading messages of one asker, opening THAT asker's kernel session first. Nothing is lost, and nothing runs under anyone else's authority.
+   */
+  async resumeQueuedChats() {
+    if (this.closing) return;
+    let rows;
+    try { rows = /** @type {any[]} */ (this.db.prepare("SELECT DISTINCT thread FROM threads_inbox WHERE delivered_at IS NULL AND kturn IS NOT NULL").all()); } catch { return; } // the home closed before the timer fired: nothing to run
+    for (const r of rows) {
+      if (this.closing) return; try { if (!this.live.has(String(r.thread))) await this.launch({ resume: String(r.thread) }); } catch (e) { this.deps.log(`threads: could not run the queued chat messages of ${String(r.thread).slice(0, 8)} (${/** @type {Error} */ (e).message})`); } }
+  }
+
   /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
     // No new spare starts, and one being started is waited for, so it is stopped with the rest.
@@ -2993,6 +3007,11 @@ function imagesOf(list) {
  * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
  * @param {string} [caller]
  */
+/** The one person hop of a kernel chain (a person's own call, no agent or service behind it), or null. @param {any} kc */
+export function personHop(kc) {
+  return kc && Array.isArray(kc.hops) && kc.hops.length === 1 && kc.hops[0].actor && kc.hops[0].actor.kind === "person" ? kc.hops[0] : null;
+}
+
 /**
  * Who is typing, as the keyboard lease sees it. Identity comes from the caller vyred verified, never from what the call says about itself:
  *  - the owner (a tailnet:<login> whose login is the recorded network.owner, or a relay-paired device:<id>) is the person's own surface: "deck" or
@@ -3003,16 +3022,28 @@ function imagesOf(list) {
  *    replaced by "via:<label>", which contests like any other holder.
  * The link's words are always the box's surface: a box:<name> it names stands, any other name becomes box:via:<label>.
  * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
+ * @param {any} [kc] the call's kernel chain (`ctx.kernel.chain(meta)`), or null when the kernel refused it; undefined only when this build has no kernel
+ * @param {string} [kernelOwner] the kernel's owner person, to compare a chain's person with
  */
-export function surfaceFor(input, caller, owner) {
+export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   const c = String(caller || "");
   const asked = String((input && input.surface) || "");
-  const o = String(owner || "").trim().toLowerCase();
-  const login = /^tailnet:(?!agent:)(.+)$/.exec(c);
-  const verifiedOwner = Boolean(login && o && login[1].trim().toLowerCase() === o) || /^device:[a-z2-7]{16}$/.test(c);
+  let verifiedOwner = false, device = false, ownSocket = false;
+  if (kc !== undefined) {
+    // The kernel decides who this is: one person hop, from the daemon's proven facts or a verified token, never from the label.
+    const h = personHop(kc);
+    if (h && h.via && (h.via.device || h.via.node) && h.actor.id === kernelOwner) { verifiedOwner = true; device = Boolean(h.via.device); }
+    else if (h && h.via && h.via.surface) ownSocket = true;
+  } else {
+    // SHIM(legacy labels): only a build with no kernel reads the label, and it goes with the cut-over that makes the kernel mandatory.
+    const o = String(owner || "").trim().toLowerCase();
+    verifiedOwner = Boolean(ownerOverTailnet(c) && o && c.slice("tailnet:".length).trim().toLowerCase() === o) || (ownerDevice(c) && !ownerOverTailnet(c));
+    device = verifiedOwner && !ownerOverTailnet(c);
+    ownSocket = !verifiedOwner && isPerson(c) && !ownerDevice(c);
+  }
   let s;
-  if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
-  else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
+  if (verifiedOwner) s = ownSurface(asked) ? asked : (device ? "phone" : "deck");
+  else if (ownSocket) s = asked || c || "vyre";
   // The link's words are the box's person (core/link/mac.js marks its surface "box:<name>" and a write needs as:"person"): a box: name stands, any other is via:<label>.
   else if (fromLink(c) && asked.startsWith("box:")) s = asked;
   // The computers module takes and gives back the keyboard for a person's screen it has already checked is a person's (computers.takeover is a person-only tool,
@@ -3145,6 +3176,8 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
+    // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
+    setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500).unref?.();
     // ADR 0041 section 5, end side (start side is where()'s github.session.worktree call above):
     // a github project's worktree is cleaned up once its session reaches "finished" - a one-shot's
     // own natural completion (threads.launch's own purpose: "job", once: true; never resumed by
@@ -3199,7 +3232,10 @@ export default {
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner);
+    const kernelOwner = () => (ctx.kernel ? String(ctx.kernel.owner || "") : undefined);
+    /** The kernel chain of the call being run (set by tool()): undefined when this build has no kernel, null when the kernel refused the call. */
+    const kchainNow = () => { const v = /** @type {any} */ (calls.getStore()); return v && "kchain" in v ? v.kchain : (ctx.kernel ? null : undefined); };
+    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner, kchainNow(), kernelOwner());
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;
@@ -3248,7 +3284,7 @@ export default {
         return run(i, meta, ...rest);
       }
       : run;
-    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: (i, m, ...r) => calls.run(m, () => inner(i, m, ...r)), callers, ...extra }); };
+    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
@@ -3368,12 +3404,17 @@ export default {
      */
     const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine) || hasPairedMacs());
     /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
-    const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
+    const onOwnerDevice = caller => {
+      const kc = kchainNow();
+      if (kc === undefined) return ownerDevice(caller); // SHIM(legacy labels): a build with no kernel
+      const h = personHop(kc);
+      return Boolean(h && h.via && (h.via.device || h.via.node));
+    };
 
     const answerOnMac = async (i, caller, peer, meta = {}) => {
       // Defence in depth until the registry's person-session rule (ADR 0032) is on this branch: an
       // owner device answers a Mac's ask only inside a person session. Nothing is signed or sent.
-      if (ownerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
+      if (onOwnerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
       // An ask that approves a floor tool needs a fresh proof (the registry checked it; a presence session is not one).
       if (gatedOnMac(i) && (!meta.presence || meta.presence.method === "session")) throw Object.assign(new Error("this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it"), { code: "presence_required" });
       const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),

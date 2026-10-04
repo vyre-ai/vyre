@@ -95,7 +95,9 @@ export default [
       if (!name) return usage("vyre call needs a tool", "vyre tools lists them · vyre call system.echo '{\"text\":\"hi\"}'");
       let input = {};
       if (input0) { try { input = JSON.parse(input0); } catch { return usage("vyre call: the input must be JSON", `vyre call ${name} '{"key":"value"}'`); } }
-      const r = await callAsPerson(name, input, { tty, io: personIO() });
+      // A kernel presence proof the owner made on their own device (base64url JSON, 4 KB at most), for a tool the kernel gates (the box wrapper's rollback passes one for modules.list.reset).
+      const kp = String(process.env.VYRE_KERNEL_PROOF || "");
+      const r = await callAsPerson(name, input, { tty, io: personIO(), ...(/^[A-Za-z0-9_-]{1,5600}$/.test(kp) ? { headers: { "x-vyre-kernel-proof": kp } } : {}) });
       // Under --view it is one frame of the tool's data, or an error frame.
       if (viewing()) return r.error ? failTool(r.error) : emit(r.data);
       if (r.error) {

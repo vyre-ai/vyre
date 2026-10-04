@@ -297,11 +297,17 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     /** Share and unshare are the owner's: the box's terminal, the Capsule, or a paired Mac. Never an agent. */
-    const owner = meta => {
+    /** Is the kernel's chain for this call exactly one person (never a label)? A build with no kernel (development) takes the daemon's verified person-session fact: SHIM(legacy labels). */
+    const personCall = async meta => {
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return Boolean(meta && meta.person);
+      try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+    };
+    const owner = async meta => {
       const caller = String(meta && meta.caller);
       if ((meta && meta.agent) || isAgent(caller)) throw refuse("an agent cannot share or unshare the box's folders; that is for the owner");
       if (OWNER_SOCKET.has(caller)) return;
-      if (caller.startsWith("tailnet:") && meta.peer && meta.peer.stableId && paired().has(String(meta.peer.stableId))) return;
+      // A paired Mac: its own paired peer id AND the kernel's chain saying the call is the person's. What the caller's label looks like decides nothing.
+      if (meta && meta.peer && meta.peer.stableId && paired().has(String(meta.peer.stableId)) && await personCall(meta)) return;
       throw refuse("only the owner shares the box's folders: from the box's terminal, the Capsule or a paired Mac");
     };
 
@@ -488,7 +494,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right after.",
       input: nameInput,
       run: async ({ name }, meta) => {
-        owner(meta);
+        await owner(meta);
         return shareOne(name);
       },
     });
@@ -504,7 +510,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.",
       input: { type: "object", required: ["name", "mode"], properties: { name: { type: "string" }, mode: { type: "string", enum: ["ro", "rw"] } } },
       run: async ({ name, mode }, meta) => {
-        owner(meta);
+        await owner(meta);
         known(name);
         if (mode !== "ro" && mode !== "rw") throw refuse('mode is "ro" or "rw"', "bad_input");
         const drv = (ctx.config.files && ctx.config.files.drive) || {};
@@ -521,7 +527,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Stop sharing one of the box's folders over VyreDrive. Owner only.",
       input: nameInput,
       run: async ({ name }, meta) => {
-        owner(meta);
+        await owner(meta);
         known(name);
         const r = await tailscale(["drive", "unshare", name]);
         if (r.code !== 0) throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale drive unshare failed", "failed");

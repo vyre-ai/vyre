@@ -65,6 +65,18 @@
         "reach": "anyone"
       },
       {
+        "name": "files.drive.upload",
+        "reach": "person"
+      },
+      {
+        "name": "files.drive.versions",
+        "reach": "person"
+      },
+      {
+        "name": "files.drive.restore",
+        "reach": "person"
+      },
+      {
         "name": "files.drive.share",
         "reach": "person",
         "effect": "write"

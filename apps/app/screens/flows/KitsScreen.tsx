@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Button, Card, Chip, Divider, Row, Text, showToast } from "@vyre/ui";
+import { Button, Card, Chip, Divider, Row, Text, allowsMock, showToast } from "@vyre/ui";
+import { RealKits } from "./RealKits";
 import { FaceIdSheet, IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { flowsRepo, type KitCard } from "./data";
 import { useFlowsState } from "./store";
 import { addsLine } from "./logic.js";
 
-export default function KitsScreen() {
+function SampleKitsScreen() {
   const router = useRouter();
   const { installed, updated, install } = useFlowsState();
   const [pick, setPick] = useState<KitCard | null>(null);
@@ -42,4 +43,9 @@ export default function KitsScreen() {
       </FaceIdSheet>
     </Frame>
   );
+}
+
+/** The sample Kits in a mock build; the space's own everywhere else. */
+export default function KitsScreen() {
+  return allowsMock() ? <SampleKitsScreen /> : <RealKits />;
 }

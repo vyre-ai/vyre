@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { TermClient, HOLD_MAX } from "./client.js";

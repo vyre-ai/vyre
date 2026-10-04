@@ -116,7 +116,24 @@ export function normalize(i) {
   const readers = i.readers === undefined ? undefined : normalizeReaders(i.readers);
   const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
   const rate = i.rate === undefined ? undefined : normalizeRate(i.rate);
-  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}) };
+  const service = i.service === undefined ? undefined : normalizeService(i.service);
+  return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}) };
+}
+
+/**
+ * `service: { allow, deny }`: what a Flow's "Call a service" step may reach through this credential (core/vault/service.js), each rule `{ method?, path }`. A path is exact, `*` is one
+ * segment, a trailing `/*` is the rest; deny wins and the default is no. Written with the credential, so only a person's own surface sets it. A credential with no `service` is not a connector.
+ * @param {any} sv @returns {{ allow: { method?: string, path: string }[], deny: { method?: string, path: string }[] }}
+ */
+function normalizeService(sv) {
+  if (!isObj(sv)) throw bad("service is { allow: [{ method?, path }], deny: [{ method?, path }] }");
+  const rule = (/** @type {any} */ r) => {
+    if (!isObj(r) || typeof r.path !== "string" || !/^\/[A-Za-z0-9._~\/*-]{0,200}$/.test(r.path) || /(^|\/)\.\.?(\/|$)/.test(r.path) || /\*[^/]|[^/]\*/.test(r.path) || r.path.slice(0, -2).includes("**")) throw bad("a service rule is { method?, path }: a path from the root, with `*` for one whole segment or a trailing /*");
+    if (r.method !== undefined && !METHODS.includes(String(r.method).toUpperCase())) throw bad("a service rule's method is GET, HEAD, POST, PUT, PATCH, DELETE or *");
+    return { ...(r.method !== undefined && r.method !== "*" ? { method: String(r.method).toUpperCase() } : {}), path: r.path };
+  };
+  const list = (/** @type {any} */ l, /** @type {string} */ w) => { if (l === undefined) return []; if (!Array.isArray(l) || l.length > 100) throw bad(`service.${w} is a list of rules`); return l.map(rule); };
+  return { allow: list(sv.allow, "allow"), deny: list(sv.deny, "deny") };
 }
 
 /**

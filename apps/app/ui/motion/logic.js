@@ -64,7 +64,7 @@ export function holdDuration(motion) {
 
 const SWIPE = {
   done: { id: "done", label: "Mark done", icon: "check", tone: "ok", side: "leading", haptic: "approve" },
-  reassign: { id: "reassign", label: "Reassign", icon: "agents", tone: "accent", side: "trailing", haptic: "selection" },
+  reassign: { id: "reassign", label: "Reassign", icon: "person", tone: "accent", side: "trailing", haptic: "selection" },
   open: { id: "open", label: "Open", icon: "chev-r", tone: "plain", side: "trailing", haptic: "selection" },
 };
 

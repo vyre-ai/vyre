@@ -30,6 +30,7 @@
 // The upload protocol itself is core/sync's, which asks link.peer-of (internal) to turn a
 // connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
+import { deviceIdOf } from "../../lib/caller.js";
 import crypto from "node:crypto";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { createHealth, unknown, shaped, sinceTracker } from "./health.js";
@@ -60,7 +61,7 @@ const cleanCode = c => String(c || "").replace(/\D/g, "");
 export const showCode = c => `${c.slice(0, 3)}-${c.slice(3)}`;
 
 /** Callers of the box's own socket: its terminal. Claude's processes are here too, which is why the code matters. */
-const SOCKET = new Set(["cli", "local"]);
+const SOCKET = new Set(["cli", "local", "deck", "capsule"]);
 /** Who may read the box's pairing lists and approve there: its terminal, the Deck and Capsule, and the owner's own devices. A model session is not one. */
 const BOX_PEOPLE = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"]);
 // Only the owner's devices: "tailnet:<login>". A guest ("tailnet-guest:<login>") never matches, and
@@ -245,7 +246,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   /** Who may ask link.health: a module, the person at the box, or the owner over the tailnet. */
   const healthCaller = caller => {
-    if (caller.startsWith("module:") || SOCKET.has(caller) || caller === "deck" || caller === "capsule") return true;
+    if (caller.startsWith("module:") || SOCKET.has(caller)) return true;
     const login = tailnetLogin(caller);
     if (!login || login.startsWith("agent:") || /\s/.test(login)) return false;
     const owner = ctx.config.network && ctx.config.network.owner;
@@ -265,7 +266,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const caller = String(meta.caller);
       // A paired device over the relay channel is on the relay by definition. The start of that
       // path is the channel's own when the bridge says (meta.since), else the first time it asked.
-      if (caller.startsWith("device:") && !/\s/.test(caller)) {
+      if (deviceIdOf(caller) !== null) {
         const at = Number.isFinite(meta.since) ? meta.since : reachSince.at(caller, "relay");
         return { path: "unknown", relay: null, latencyMs: null, lastHandshake: null, online: true, checkedAt: now(), cached: false,
           reach: "relay", why: "Connected through Vyre's relay.", since: at };

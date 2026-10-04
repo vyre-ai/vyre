@@ -221,7 +221,9 @@ async function startLocked(opts, root, p, release) {
     // Flows and stages made of tasks run in ONE assembly per Space (core/daemon/flows-host.js): the home's own Space here, and every hosted Space through the Spaces registry's
     // `stageFactory`. The `flows` module only registers the tools over it. A Flow's "Call a service" step reaches the vault's forward after the kernel has allowed it.
     const { createFlowsHost } = await import("./flows-host.js");
-    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" });
+    const flowsHost = createFlowsHost({ log, tzFor: () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
+      connectors: async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; } });
     registry.deps.flowsHost = flowsHost;
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
@@ -248,11 +250,16 @@ async function startLocked(opts, root, p, release) {
       if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
       return !r || !r.data || r.data.enrolled !== false;
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
-        if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
         const r = q.request;
+        // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
+        if (!q.route) {
+          const via = await registry.call("vault.service.forward", { connector: q.connector, request: r, ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) }, "module:leases", q.files ? { files: q.files } : undefined);
+          if (via.error) throw Object.assign(new Error(via.error.message), { code: via.error.code });
+          return via.data;
+        }
         // A file request goes to vault.forward.file with the route's limits and Drive lists, and the Drive is this call's own door (q.files: the kernel's Drive under the caller's chain, FW-2),
         // handed in-process as meta, never as data a module could name. A plain request carries the route's header names.
         const base = { credential: q.ref, method: r.method, url: `https://${q.route}${r.path}`, ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(q.allow_headers ? { allow_headers: q.allow_headers } : {}), session: q.session || q.idem || "home" };
@@ -290,6 +297,7 @@ async function startLocked(opts, root, p, release) {
     });
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
+    registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
@@ -331,6 +339,13 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
+    if (presence && typeof kernel.kernelFor === "function") {
+      const gateKernel = kernel.kernelFor({ name: "presence-gate" });
+      presence.personOf = async (/** @type {any} */ meta) => {
+        try { const c = await gateKernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
+      };
+    }
     if (kernel.firstPartyCheck) registry.deps.firstPartyCheck = kernel.firstPartyCheck;
     if (kernel.reservedName) registry.deps.reservedName = kernel.reservedName;
     registry.deps.moduleApprovals = kernel.moduleApprovals;
@@ -832,6 +847,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
+    if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };

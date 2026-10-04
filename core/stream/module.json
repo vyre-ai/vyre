@@ -2,7 +2,7 @@
   "name": "stream",
   "version": "0.1.0",
   "roles": ["box", "local"],
-  "requires": [],
+  "requires": ["threads"],
   "does": { "tools": [
     { "name": "stream.open", "reach": "person", "effect": "write" },
     { "name": "stream.send", "reach": "person", "effect": "write" },
@@ -13,7 +13,7 @@
   ] },
   "watches": { "emits": [] },
   "shows": { "streams": ["session"] },
-  "needs": {},
+  "needs": { "daemon": ["kernelThreads"] },
   "teaches": { "tips": [] },
   "settings": []
 }

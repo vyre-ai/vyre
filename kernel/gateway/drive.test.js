@@ -30,10 +30,15 @@ test("drive: every call asks authorize first, the version's author is the chain'
   const g = k.gateway.grants, D = k.gateway.drive;
   const role = { person: BOB, role: "member" };
   await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${BOB}`) });
-  // a member's role has no drive actions: the file is not there for them
-  await D.put(owner, "proj/a.txt", new TextEncoder().encode("secret text"), {}).catch(() => {});
+  // a member's role has no drive actions: the file is not there for them, and the drive is never touched
   await assert.rejects(() => D.put(bob, "proj/a.txt", new Uint8Array([1])), { code: "not_found" });
+  await assert.rejects(() => D.get(bob, "proj/a.txt"), { code: "not_found" });
   assert.deepEqual(drive.calls, [], "refused before the drive was touched");
+  // the owner (the admin bundle) reads and writes the space's whole Drive with no grant of their own; what they wrote is gone again so the rest of this test starts clean
+  assert.equal((await D.put(owner, "owner/own.txt", new TextEncoder().encode("mine"))).version, 1);
+  assert.equal(new TextDecoder().decode(await D.get(owner, "owner/own.txt")), "mine");
+  assert.deepEqual(drive.calls.at(-1), ["put", "owner/own.txt", `person:${OWNER}`]);
+  drive.files.delete("owner/own.txt"); drive.calls.length = 0;
   // grant Bob read on one folder only
   const gi = { subject: { kind: "actor", actor: { kind: "person", id: BOB, space: SPACE } }, actions: ["drive.read", "drive.write"], resource: { prefix: `vyre://${SPACE}/file/proj/*` }, conditions: {}, source: "test" };
   await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
@@ -41,7 +46,6 @@ test("drive: every call asks authorize first, the version's author is the chain'
   assert.equal(r.version, 1);
   assert.deepEqual(drive.calls.at(-1), ["put", "proj/a.txt", `person:${BOB}`], "by is the chain's actor, not a caller's word");
   assert.equal(new TextDecoder().decode(await D.get(bob, "proj/a.txt")), "hello");
-  await D.put(owner, "other/b.txt", new Uint8Array([2])).catch(() => {});
   drive.files.set("other/b.txt", [{ ver: 1, bytes: new Uint8Array([2]), by: "x" }]);
   assert.deepEqual((await D.list(bob, "proj/")).map(e => e.path), ["proj/a.txt"]);
   await assert.rejects(() => D.get(bob, "other/b.txt"), { code: "not_found" }, "outside the grant is absence");
@@ -54,7 +58,7 @@ test("drive: every call asks authorize first, the version's author is the chain'
   // the log names the path and the version and carries no bytes
   const ev = k.log.read({ type: "file.written" });
   assert.ok(ev.length >= 2 && ev.every(e => !JSON.stringify(e.data).includes("hello")));
-  assert.deepEqual(k.log.read({ type: "file.accessed" })[0].data.path, "proj/a.txt");
+  assert.ok(k.log.read({ type: "file.accessed" }).some(e => e.data.path === "proj/a.txt"), "the read of proj/a.txt is logged by path");
 });
 
 test("F-2: restore and restoreBackup are their own admin act: a drive.write grant (a member's or an assistant's) does not reach them, and a version must be a positive integer", async () => {
