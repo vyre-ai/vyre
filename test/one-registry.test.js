@@ -138,7 +138,7 @@ test("lend is the one switch: it makes the kernel's compute offers (the space's 
   assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "off withdrew both");
 });
 
-test("PA-1: creating a space is all or nothing in the kernel's registry too: a refused name, ten failures and a cancel leave no hosted Space and no folder; resume hosts the same id again", async t => {
+test("PA-1: creating a space is all or nothing in the kernel's registry too: a refused name, ten failures and a cancel leave no hosted Space and no folder", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
