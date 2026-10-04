@@ -41,7 +41,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, requireProof: o.requireProof ?? false, buildRoot: o.buildRoot, releaseProof: "releaseProof" in o ? o.releaseProof : false, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, identityPin: o.identityPin, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -1575,5 +1575,18 @@ test("wink.pair.server never hangs silently: a step that does not answer ends th
     const t0 = Date.now();
     await assert.rejects(() => w.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(1), "ws://relay.test"), target: { kind: "identity", id: ME } }), e => e.code === "unavailable" && new RegExp(`did not finish ${name}`).test(e.message) && /Try again/.test(e.message));
     assert.ok(Date.now() - t0 < 2000, `${name}: bounded`);
+  }
+});
+
+test("PI-2, computer side: a computer that pairs a server sends the head and length of the identity chain it last verified as owner.pin; with none held it sends none", async () => {
+  const BOX = "Qm94S2V5", DEV = "app1dev";
+  const pin = { id: "per_" + "q".repeat(26), seq: 3, head: "h".repeat(43) };
+  for (const [held, want] of [[pin, pin], [null, undefined]]) {
+    const seen = [];
+    const w = world({ typedCode: false, paired: { route: "route-juno", name: "juno", box: BOX, device: DEV }, identityPin: async () => held, callServer: async (_p, _t, input) => { seen.push(input); return { owner: input.owner }; } });
+    const q = await w.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(5), "ws://relay.test"), target: { kind: "identity", id: ME } });
+    await new Promise(x => setTimeout(x, 80));
+    assert.equal((await w.call("wink.pair.status", { pairing: q.pairing })).state, "done");
+    assert.deepEqual(seen[0].owner.pin, want);
   }
 });
