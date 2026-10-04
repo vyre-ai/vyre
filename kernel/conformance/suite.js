@@ -272,6 +272,18 @@ export function conformance(make, { test, assert }, label = "store") {
     assert.deepEqual(by.map((/** @type {any} */ r) => [r.group.status, r.values.count]).sort(), [["closed", live.filter(i => i % 3 === 0).length], ["open", live.filter(i => i % 3 !== 0).length]]);
   });
 
+  T("types keeps the whole definition: a hidden field, a role mark, and the data of a hidden field is still stored", async s => {
+    const t = { name: "client", label: "Client", role: { link: "who", ended: ["Gone"] }, fields: [
+      { name: "who", kind: "link", label: "Who", to: "contact", required: true },
+      { name: "stage", kind: "stage", label: "Stage", options: ["On", "Gone"] },
+      { name: "old", kind: "text", label: "Old", hidden: true },
+    ], stages: [{ name: "On" }, { name: "Gone" }] };
+    await s.define({ add_types: [t] });
+    assert.deepEqual((await s.types()).find((/** @type {any} */ x) => x.name === "client"), t);
+    const r = await s.create("client", mintUuid(), { who: { urn: "vyre://spc_aaaaaaaaaaaa/contact/0190c3f2-1111-4abc-8def-000000000000" }, stage: "On", old: "kept" });
+    assert.equal((await s.get("client", r.id)).data.old, "kept");
+  });
+
   T("health, version and features are honest", async s => {
     const h = await s.health();
     assert.equal(h.ok, true);

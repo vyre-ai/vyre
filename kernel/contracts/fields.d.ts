@@ -57,6 +57,8 @@ export interface FieldDefinition {
   readonly seal?: SealConfig;
   /** Among the type's live records no two hold the same non-null value. Kinds text, number, url, choice, date, datetime. A store enforces it atomically (store error `unique_violation`). */
   readonly unique?: boolean;
+  /** Removed from view, data kept: nothing reads, writes, filters or searches it, and it is never required. Set it back to false and the data is there again. Deleting for good is a migration. */
+  readonly hidden?: boolean;
 }
 
 export interface TaskTemplateDef {

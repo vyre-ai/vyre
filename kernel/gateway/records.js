@@ -96,7 +96,8 @@ export function createRecords(cfg) {
     const def = defs.find((/** @type {any} */ t) => t.name === type);
     if (!def) return new Set();
     const role = roleOfChain(chain);
-    return new Set(def.fields.filter((/** @type {any} */ f) => f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role))).map((/** @type {any} */ f) => f.name));
+    // a removed field (`hidden: true`: its data is kept, nothing shows it) is hidden from everyone
+    return new Set(def.fields.filter((/** @type {any} */ f) => f.hidden === true || (f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role)))).map((/** @type {any} */ f) => f.name));
   }
   const limitsOf = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ d) => ({ allow: allowList(d), hidden: (await hiddenFields(chain, type)) || new Set() });
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
@@ -209,7 +210,13 @@ export function createRecords(cfg) {
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     const lim = await limitsOf(chain, type, d);
-    if (op === "create" || op === "update") refuseOutside(lim.allow, input);
+    if (op === "create" || op === "update") {
+      refuseOutside(lim.allow, input);
+      // a removed field takes no new values (its data is kept, and a person can bring the field back)
+      let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read"); }
+      const gone = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []).filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
+      for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
+    }
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
     let stage = {};
@@ -281,6 +288,9 @@ export function createRecords(cfg) {
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`);
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
       await checkRoles(diff);
+      // A removed field is never required (new records could not be written without it); its data stays.
+      const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => f.hidden === true && f.required) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => (f.hidden === true && f.required ? { ...f, required: false } : f)) } : t;
+      diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       let res;
       try { res = await store.define(diff); } catch (e) { throw mapError(e); }
       if (res.applied) log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision });

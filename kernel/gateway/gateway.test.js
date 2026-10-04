@@ -546,6 +546,24 @@ test("merge: a record that links to the dropped one and may not be changed stops
   assert.equal((await r.get(owner(), "contact", a.id)).version, 1, "the kept record is untouched");
 });
 
+test("remove a field softly: nothing shows, writes, filters or finds it, the data is kept, and bringing it back shows the data again", async () => {
+  const { r } = await rig();
+  const def = hidden => ({ name: "memo", label: "Memo", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "secret", kind: "text", label: "Secret", required: true, ...(hidden ? { hidden: true } : {}) }] });
+  await r.define(owner(), { add_types: [def(false)] });
+  const m = await r.create(owner(), "memo", { title: "Plan", secret: "needle" });
+  assert.equal((await r.search(owner(), { text: "needle", page: { limit: 5 } })).rows.length, 1);
+  await r.define(owner(), { change_types: [def(true)] });
+  assert.equal("secret" in (await r.get(owner(), "memo", m.id)).data, false, "not shown");
+  assert.equal("secret" in (await r.query(owner(), "memo", { page: { limit: 5 } })).rows[0].data, false, "not listed");
+  await assert.rejects(() => r.update(owner(), "memo", m.id, { secret: "x" }, 1), { code: "bad_input" });
+  await assert.rejects(() => r.query(owner(), "memo", { filter: { field: "secret", op: "eq", value: "needle" }, page: { limit: 5 } }), { code: "bad_input" });
+  assert.equal((await r.search(owner(), { text: "needle", page: { limit: 5 } })).rows.length, 0, "not found by its text");
+  const n = await r.create(owner(), "memo", { title: "No secret needed" });
+  assert.equal(n.version, 1, "a removed field is never required");
+  await r.define(owner(), { change_types: [{ ...def(false), fields: def(false).fields.map(f => ({ ...f, required: false })) }] });
+  assert.equal((await r.get(owner(), "memo", m.id)).data.secret, "needle", "the data was kept");
+});
+
 // ---- stage gates ----
 import { parseExpr, evalExpr } from "../../records/language/expr.js";
 const DEAL = { name: "deal", label: "Deal", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "signed", kind: "boolean", label: "Signed" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Drafting", "Done"] }],
