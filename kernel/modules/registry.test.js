@@ -48,7 +48,8 @@ test("registry: with a proved supervisor an added module runs sandboxed and its 
   const host = createModuleHost({ space: SPACE, log, chains, isFirstParty: () => false, supervisor });
   const reg = await boot(t, { moduleHost: host });
   assert.equal(reg.status().find(m => m.name === "notes").state, "running");
-  const r = await reg.call("notes.add", { text: "hello" });
+  // An undeclared state-changing tool is person-only by the registry default (RG-1), so the call comes from a person's surface, not from the default "unknown" caller.
+  const r = await reg.call("notes.add", { text: "hello" }, "cli");
   assert.equal(r.data.saved, "hello");
   assert.deepEqual(r.data.env, [], "no ambient environment in the sandbox");
 });
