@@ -3,46 +3,54 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { withPending, ASK_LIFE_MS, SESSION_ANSWER, SESSION_ASKED, answerSession, askTitle, sessionRefusal, withAsk } from "./session-asks.js";
+import { ASK_LIFE_MS, SESSION_ANSWER, answerSession, askFacts, askTitle, sessionRefusal, withPending } from "./session-asks.js";
+import { payloadHash } from "./payload-hash.js";
 
-const ev = (id, label) => ({ type: SESSION_ASKED, payload: { id, device: "dev1", label } });
+const row = (id, over = {}) => ({ id, device: "dev1", line: "Vyre on browser wants to reveal or use \"Bank\" in your vault", moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } }, asked_at: 1, ...over });
+const SPACE = "spc_abcdefghijkl";
 
-test("an ask event adds one card once, with the label in our title", () => {
-  let l = withAsk([], ev("a1", "Vyre on browser"), 1000);
-  l = withAsk(l, ev("a1", "Vyre on browser"), 2000);
-  assert.equal(l.length, 1);
-  assert.equal(askTitle(l[0]), "Let Vyre on browser sign in");
+test("the pending answer gives one card each, titled with the server's own line", () => {
+  const l = withPending([], { asks: [row("a1"), row("a1"), row("a2")] }, 1000);
+  assert.deepEqual(l.map((a) => a.id), ["a1", "a2"]);
+  assert.match(askTitle(l[0]), /wants to reveal or use "Bank" in your vault/);
+  assert.deepEqual(askFacts(l[0]), ["name: Bank"]);
 });
 
-test("other events and unlabeled or odd asks are handled", () => {
-  assert.deepEqual(withAsk([], { type: "device.added", payload: {} }, 1), []);
-  assert.equal(askTitle(withAsk([], ev("a2", undefined), 1)[0]), "Let a browser sign in");
-  assert.equal(askTitle(withAsk([], ev("a3", "<b>x</b>"), 1)[0]), "Let bxb sign in");
+test("rows with no request are ignored, a missing line has our own, and gone asks drop out", () => {
+  assert.deepEqual(withPending([], { asks: [{ id: "x" }] }, 1), []);
+  assert.equal(askTitle(withPending([], { asks: [row("a", { line: "" })] }, 1)[0]), "A device is asking for your yes");
+  const l = withPending([], { asks: [row("a1")] }, 1000);
+  assert.deepEqual(withPending(l, { asks: [] }, 2000), []);
+  assert.deepEqual(withPending(l, undefined, 2000), []);
 });
 
-test("an ask older than five minutes is dropped", () => {
-  const l = withAsk([], ev("a1", "x"), 0);
-  assert.deepEqual(withAsk(l, { type: "other" }, ASK_LIFE_MS + 1), []);
+test("an ask keeps its first-seen time and ends after five minutes", () => {
+  const l = withPending([], { asks: [row("a1")] }, 0);
+  assert.deepEqual(withPending(l, { asks: [row("a1")] }, ASK_LIFE_MS + 1), []);
 });
 
-test("Allow and Don't allow answer with the id and yes, and say what happened", async () => {
+test("Allow signs the exact request and sends the proof with yes", async () => {
+  const a = withPending([], { asks: [row("a1")] }, 1)[0];
+  const hash = payloadHash("vault.reveal", SPACE, { name: "Bank" });
+  /** @type {any[]} */ const seen = []; /** @type {any[]} */ const signed = [];
+  const signer = { signPresence: async (/** @type {any} */ r) => { signed.push(r); return { payload_hash: r.payload_hash, sig: "s" }; } };
+  const say = await answerSession(a, true, async (t, i) => { seen.push([t, i]); return {}; }, { signer, person: "per_1", space: SPACE });
+  assert.equal(say, "Allowed.");
+  assert.equal(signed[0].payload_hash, hash); assert.equal(signed[0].op, "vault.reveal"); assert.deepEqual(signed[0].fields, { name: "Bank" });
+  assert.deepEqual(seen, [[SESSION_ANSWER, { id: "a1", yes: true, proof: { payload_hash: hash, sig: "s" } }]]);
+});
+
+test("Don't allow sends no proof, and a proof for another payload is never sent", async () => {
+  const a = withPending([], { asks: [row("a1")] }, 1)[0];
   /** @type {any[]} */ const seen = [];
-  const call = async (/** @type {string} */ t, /** @type {any} */ i) => { seen.push([t, i]); return {}; };
-  const a = { id: "a1", device: "d", label: "x", at: 0 };
-  assert.match(await answerSession(a, true, call), /Allowed/);
-  assert.match(await answerSession(a, false, call), /Not allowed/);
-  assert.deepEqual(seen, [[SESSION_ANSWER, { id: "a1", yes: true }], [SESSION_ANSWER, { id: "a1", yes: false }]]);
+  assert.match(await answerSession(a, false, async (t, i) => { seen.push(i); return {}; }), /Not allowed/);
+  assert.deepEqual(seen, [{ id: "a1", yes: false }]);
+  await assert.rejects(answerSession(a, true, async () => ({}), { signer: { signPresence: async () => ({ payload_hash: "other" }) }, person: "p", space: SPACE }), (/** @type {any} */ e) => e.code === "needs_presence");
+  await assert.rejects(answerSession(a, true, async () => ({}), { signer: null, person: "p", space: SPACE }), (/** @type {any} */ e) => e.code === "no_signer");
 });
 
 test("a failed answer has our words", () => {
-  assert.match(sessionRefusal("needs_presence"), /Face ID/);
+  assert.match(sessionRefusal("software_key"), /key in your phone/);
   assert.match(sessionRefusal("expired"), /ended/);
   assert.match(sessionRefusal("ERR_CANCELED"), /Cancelled/);
-});
-
-test("the pending list fills in asks made while the app was closed, once each", () => {
-  const l = withPending(withAsk([], ev("a1", "x"), 1), [{ id: "a1", label: "x" }, { id: "a2", label: "Vyre on browser" }], 2);
-  assert.deepEqual(l.map((a) => a.id), ["a1", "a2"]);
-  assert.equal(withPending([], { asks: [{ id: "b1" }] }, 1).length, 1);
-  assert.deepEqual(withPending([], undefined, 1), []);
 });
