@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1189,"event":454,"config":254,"env":242,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1190,"event":454,"config":254,"env":244,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -944,6 +944,7 @@
     {"kind":"tool","name":"presence.grant.mint","definedIn":"core/presence/module.js","page":"reference/tools.md#presencegrantmint","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.keys","definedIn":"core/presence/module.js","page":"reference/tools.md#presencekeys","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.end-paired","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonend-paired","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":126,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
+    {"kind":"tool","name":"presence.person.locked","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonlocked","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.pair-challenge","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonpair-challenge","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":118,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
     {"kind":"tool","name":"presence.person.pair-grant","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonpair-grant","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":106,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
     {"kind":"tool","name":"presence.person.renew-allow","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonrenew-allow","module":"presence","mentions":[]},
@@ -2267,6 +2268,8 @@
     {"kind":"env","name":"VYRE_EVAL_SEALED_RECORD","definedIn":"scripts/eval-bar.js","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_EVAL_SPEND_FILE","definedIn":"scripts/eval-bar.js","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_EXPECT_WALL","definedIn":"scripts/check-wall-installed.mjs","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_FINISH_MS","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_FINISH_POLL_MS","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_FREEZE_FD","definedIn":"core/computers/image/computerd/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_GEMINI_HOME","definedIn":"core/import/formats/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_GH_BIN","definedIn":"core/github/index.js","page":"reference/config.md#set-by-vyre","mentions":[]},
