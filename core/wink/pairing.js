@@ -133,6 +133,7 @@ export function createPairing(o) {
   /** Node's crypto and a key file under the box's home: the typing side has no IndexedDB. @type {any} */
   // This computer's own device key (P-256, software) is offered in every pairing hello, so a server it pairs can bind this computer's paired session to it; the same key signs the sign-in.
   const ownKey = o.keyFile && !o.signDevice ? (() => { try { return deviceKey(`${o.keyFile}.device`); } catch { return null; } })() : null;
+  const stepMs = o.stepMs ?? 20_000;
   const pairOptions = o.keyFile ? { crypto: nodeCrypto(), keyStore: fileKeyStore(o.keyFile), ...(ownKey ? { presenceKey: ownKey.presenceKey } : {}) } : {};
   /** Pairings this device is typing for (secret seeds stay in memory). @type {Map<string, any>} */
   const pending = new Map();
@@ -246,6 +247,12 @@ export function createPairing(o) {
     const out = [{ kind: "identity", id: identity, label }];
     for (const m of await directory.memberships(identity)) if (ADMIN_ROLES.includes(m.role)) out.push({ kind: "space", id: m.space, label: m.name || m.space, role: m.role });
     return out;
+  };
+  /** One step of a pairing, bounded: a step that does not answer in `stepMs` ends the call with words for the person and a log line naming the step. @template T @param {string} name @param {Promise<T>} p @returns {Promise<T>} */
+  const stepOf = (name, p) => {
+    /** @type {any} */ let timer;
+    const limit = new Promise((_, rej) => { timer = setTimeout(() => { ctx.log(`wink: pairing is stuck at "${name}" (no answer in ${Math.round(stepMs / 1000)} s)`); rej(fail("unavailable", words("pairStuck", { step: name }))); }, stepMs); if (timer.unref) timer.unref(); });
+    return Promise.race([p, limit]).finally(() => clearTimeout(timer));
   };
   /** Checks a target for a kind of device and returns it; throws a plain reason. @param {string} identity @param {string} kind @param {any} t */
   const checkTarget = async (identity, kind, t) => {
@@ -623,15 +630,16 @@ export function createPairing(o) {
         owner(meta, "pairing a server");
         const kind = String(input.kind || "server");
         if (kind !== "server" && kind !== "storage") throw fail("bad_input", words("chooseTarget"));
-        const identity = await o.identity();
-        const target = await checkTarget(identity, kind, input.target);
-        const label = (await targets(identity)).find(x => x.kind === target.kind && x.id === target.id)?.label;
+        // Each step is bounded and named: a step that never answers ends this call with a plain reason in seconds (and one log line saying which step), never a silent minute and a half
+        const identity = await stepOf("looking up your identity", o.identity());
+        const target = await stepOf("checking where this server should go", checkTarget(identity, kind, input.target));
+        const label = (await stepOf("listing your spaces", targets(identity))).find(x => x.kind === target.kind && x.id === target.id)?.label;
         const scan = input.payload ? parseServerQr(String(input.payload)) : null;
         if (input.payload && !scan) throw fail("bad_input", words("notACode"));
         if (!scan && !input.code) throw fail("bad_input", words("wrongCode"));
         if (!scan && !typedOn()) throw fail("typed_code_off", words("typedCodeOff"));
         const who = scan ? { seed: scan.seed, relay: scan.relay || undefined } : { code: String(input.code) };
-        return { ...(await startTyping({ ...who, kind, target, label, name: input.name })), target: { ...target, ...(label ? { label } : {}) } };
+        return { ...(await stepOf("starting the pairing", startTyping({ ...who, kind, target, label, name: input.name }))), target: { ...target, ...(label ? { label } : {}) } };
       },
     });
     ctx.tool("wink.pair.status", {
