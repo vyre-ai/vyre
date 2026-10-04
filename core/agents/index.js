@@ -547,9 +547,11 @@ export default {
     ctx.tool("agents.delete", {
       description: "Remove an agent's record and its spend. Refused while one of its threads is running (agents.stop first), and for the assistant. Its threads' transcripts and events stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, id: { type: "string", description: "The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted" } } },
-      // A paired device is the person too (isPerson): pluginagent.revoke from the phone relays here as that device.
+      // A paired device reaches this only through pluginagent.revoke's relay (checked in run): the phone revokes Claude Code's access and its agent goes with it.
       callers: ["cli", "local", "deck", "capsule", "device"],
-      run: async ({ agent, id }) => {
+      run: async ({ agent, id }, { caller, relayedBy } = {}) => {
+        // A paired device deletes an agent only through pluginagent's revoke (the relay below sets relayedBy, which no client can); its own call never does (reviewer-3 PR-5: a session alone is not a presence proof).
+        if (/^device:/.test(String(caller || "")) && relayedBy !== "pluginagent") throw Object.assign(new Error("a paired device deletes no agent by itself: use the terminal or the app's Agents page with a person present"), { code: "denied" });
         const a = must(agent);
         if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id`), { code: "not_found" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays`), { code: "denied" });

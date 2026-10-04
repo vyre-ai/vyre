@@ -44,6 +44,8 @@ test("a revoke from a paired device (with the person's session) removes the agen
   assert.ok((await names(call)).includes(agent));
   // The phone's own call to agents.delete needs the person's session; without it nothing is deleted.
   assert.equal((await call("agents.delete", { agent }, phone)).error.code, "person_session_required");
+  // And with the session, its OWN delete is still refused: a device removes an agent only through the plugin's revoke.
+  assert.equal((await call("agents.delete", { agent }, phone, { person: { session: "s1" } })).error.code, "denied");
   // Revoke from the phone with the person's session: the relayed delete carries it, so the revoke does not stop halfway.
   const r = await call("pluginagent.revoke", {}, phone, { person: { session: "s1" } });
   assert.ok(!r.error && r.data.revoked === true, JSON.stringify(r));
