@@ -223,3 +223,18 @@ test("RN-3b loop: another process swaps the transcript and its folder for links 
   assert.ok(!stored.some(l => l.includes("TOP-SECRET")), "a line of the secret was stored");
   assert.ok(sealed > 0, "at least some seals went through between swaps");
 });
+
+test("a transcript that belongs to another uid (the packaged box's account file) is put back IN PLACE: same file, same content as the checkpoint, no leftover temp", async t => {
+  // lstatSync says another uid owns the file; the other calls are the real ones
+  const fsx = { ...fs, lstatSync: (...a) => { const st = fs.lstatSync(...a); return /\.jsonl$/.test(String(a[0])) ? Object.assign(Object.create(Object.getPrototypeOf(st)), st, { uid: (process.getuid?.() ?? 0) + 1 }) : st; } };
+  const h = mk(t, fsx), s = h.seal();
+  fs.writeFileSync(h.file, line(1) + "\n" + line(2) + "\n");
+  await s.seal({ state: { id: S } });
+  const ino = fs.statSync(h.file).ino;
+  fs.appendFileSync(h.file, line(3) + "\n" + '{"type":"asst');                                  // what a kill leaves
+  const r = await h.seal().recover();
+  assert.equal(r.seq, 2);
+  assert.equal(fs.statSync(h.file).ino, ino, "the same file, not a replacement");
+  assert.equal(fs.readFileSync(h.file, "utf8"), line(1) + "\n" + line(2) + "\n");
+  assert.deepEqual(fs.readdirSync(path.dirname(h.file)).filter(n => n.includes(".tmp-")), []);
+});
