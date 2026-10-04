@@ -59,7 +59,7 @@ export default {
       run: async () => {
         const a = current();
         return a ? { granted: true, agent: String(a.agent), computer: String(a.computer) }
-          : { granted: false, say: "Claude Code can read only this session's project until you allow it in Vyre. It then reads your memory and the sessions of your projects. To do it from a terminal: vyre call pluginagent.grant" };
+          : { granted: false, say: "Allow it in Vyre to give access to the sessions of your projects" };
       },
     });
 
