@@ -994,8 +994,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
     // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.
     /** @type {{ inside: boolean } | undefined} */
-    const ancestry = socket && !policy.caller ? { inside: shell.model === true } : undefined;
-    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, ancestry);
+    const measured = socket && !policy.caller ? { inside: shell.model === true } : undefined;
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
