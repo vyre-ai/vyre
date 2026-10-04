@@ -78,7 +78,6 @@ put_probes() { # the package carries no developer scripts: the signer and the si
   docker exec vyre-vyre-1 mkdir -p /opt/vyre/scripts || fail "could not make the scripts folder in the box"
   docker cp "$HERE/scripts/dev-sign-proof.mjs" vyre-vyre-1:/opt/vyre/scripts/dev-sign-proof.mjs
   docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
-  docker exec vyre-vyre-1 chmod 644 /opt/vyre/scripts/dev-sign-proof.mjs /tmp/signin-approve.mjs
 }
 person_call() { # TOOL JSON: the call from a signed-in terminal inside the box; prints the call's answer
   enrol_owner
