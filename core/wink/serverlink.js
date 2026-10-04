@@ -140,8 +140,11 @@ export function createServerLinks(o) {
     const post = postOn(l);
     const ch = await post("presence.person.pair-challenge", {});
     const device = String((l.conn.reply && l.conn.reply.device) || "");
-    const sig = await o.sign(`paired-start\n${device}\n${ch.challenge}`);
-    const t = await post("presence.person.start-paired", { sig, ...(o.name ? { label: o.name } : {}) });
+    const message = `paired-start\n${device}\n${ch.challenge}`;
+    const sig = await o.sign(message);
+    // a device whose identity entry has an enclave (or keystore) key signs the same message with it too: the server then marks this session enclave-strength (a device key copied off the phone cannot)
+    const esig = typeof o.signEnclave === "function" ? await Promise.resolve(o.signEnclave(message)).catch(() => null) : null;
+    const t = await post("presence.person.start-paired", { sig, ...(esig ? { esig: String(esig) } : {}), ...(o.name ? { label: o.name } : {}) });
     l.token = t;
     return { id: t.id, expires: t.expires };
   };

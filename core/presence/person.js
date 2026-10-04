@@ -290,10 +290,10 @@ export class PersonSessions {
    * id and the challenge this box made for the grant), and the grant becomes a session bound to
    * that key. A signed start from an earlier grant for the same device is worth nothing. One refusal
    * for no grant, an expired one, a used one and a wrong key; three wrong attempts delete it.
-   * @param {{ device: string, sig: string, label?: string|null }} o
+   * @param {{ device: string, sig: string, label?: string|null, esig?: string|null, enclaveKey?: string|null }} o  `esig`: the same message signed by the identity entry's enclave key (`enclaveKey`, the uncompressed P-256 point the server verified at pairing): when it verifies, this session is `enclave, unattested`; otherwise the grant's strength (software unless the owner's phone approved this sign-in) stands
    * @returns {{ id: string, token: string, expires: number } | { refused: true, deleted?: boolean }}
    */
-  startPaired({ device, sig, label = null }) {
+  startPaired({ device, sig, label = null, esig = null, enclaveKey = null }) {
     const now = this.now();
     this.prune();
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_pair_grants WHERE device = ?").get(String(device || "")));
@@ -309,13 +309,25 @@ export class PersonSessions {
       this.db.prepare("UPDATE presence_pair_grants SET tries = ? WHERE device = ?").run(tries, row.device);
       return { refused: true };
     }
+    // The strength is proven at EACH sign-in: a signature by the identity entry's enclave key over this challenge (a key copied off a phone cannot make one) makes the session `enclave, unattested`;
+    // the device key alone gives what the grant says (software, or the strength the owner's phone approved this sign-in with).
+    let strength = typeof row.strength === "string" && row.strength ? row.strength : "software";
+    if (strength === "software" && esig && enclaveKey) {
+      try {
+        const pt = Buffer.from(String(enclaveKey), "base64url");
+        if (pt.length === 65 && pt[0] === 4) {
+          const pub = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: pt.subarray(1, 33).toString("base64url"), y: pt.subarray(33).toString("base64url") }, format: "jwk" });
+          if (crypto.verify("sha256", Buffer.from(pairedStart({ device: row.device, challenge: row.challenge })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(String(esig), "base64url"))) strength = "enclave, unattested";
+        }
+      } catch { /* not an enclave signature: software */ }
+    }
     // One use: the row goes and the session exists together, or neither.
     let s;
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
-      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software), strength: row.software ? "software" : (typeof row.strength === "string" && row.strength) || "software" });
+      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: strength === "software", strength });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
     return { id: s.id, token: s.token, expires: s.expires };

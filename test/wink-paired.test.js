@@ -1401,16 +1401,28 @@ test("SW-1 on a release-kind build (software switch off): a software paired sess
   delete process.env.VYRE_SEAL_SOFTWARE;
   const { CONTACT } = await import("../kernel/conformance/suite.js");
   const defineOn = (f, links) => links.remoteKernel("srv", f.w.d.kernel.id.space).gateway.records.define(null, { add_types: [CONTACT] }).then(() => "ok", e => String(e.code || e.message));
-  // an enclave key (the owner proof's key is the app's enclave key, which the server verified: unattested is accepted, ruling 6410c6a): not software, passes. The harness's own proof is a software key, so
-  // the verified strength is set on the device's record the way an enclave owner proof sets it at pairing (pairing.test.js PI-1 covers the proof itself), and the device signs in again.
-  { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f);
-    await links.startPaired("srv");
-    assert.match(await defineOn(f, links), /needs_presence|presence/, "a software-verified session is refused on release");
-    f.w.d.registry.deps.db.prepare("UPDATE wink_devices SET proof_strength = 'enclave, unattested' WHERE id = ?").run(f.done.device);
+  // enclave strength is proven at EACH sign-in: the identity entry's enclave key (recorded at pairing) signs the same `paired-start` message. The harness's own owner proof is a software key, so the enclave key
+  // the server verified is set on the device's record the way an enclave owner proof sets it (pairing.test.js PI-1 covers the proof itself).
+  { const f = await pairFreshServer(t, { presenceStorage: "hardware" });
+    const enc = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }), other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const jwk = enc.publicKey.export({ format: "jwk" });
+    f.w.d.registry.deps.db.prepare("UPDATE wink_devices SET enclave_key = ? WHERE id = ?").run(Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, "base64url"), Buffer.from(jwk.y, "base64url")]).toString("base64url"), f.done.device);
+    const signWith = k => m => crypto.sign("sha256", Buffer.from(m), { key: k.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    const linksWith = signEnclave => { const l = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's iPhone", sign: f.sign, ...(signEnclave ? { signEnclave } : {}), channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) }); t.after(() => l.close()); return l; };
+    const strengths = async () => { const m = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; return (m.sessions || m).map(x => x.strength); };
+    // the device key alone (a key copied off the phone): software, refused on release
+    let links = linksWith(null); await links.startPaired("srv");
+    assert.deepEqual(await strengths(), ["software"]); assert.match(await defineOn(f, links), /needs_presence|presence/, "a device-key-only sign-in is software");
+    // an enclave signature by some other key: still software
     await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
-    await links.startPaired("srv");
-    const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok((mine.sessions || mine).some(s => s.strength === "enclave, unattested" && !s.software), "an enclave-key session is not software-marked and says its strength");
-    assert.equal(await defineOn(f, links), "ok", "an enclave-key session passes"); }
+    links = linksWith(signWith(other)); await links.startPaired("srv");
+    assert.deepEqual(await strengths(), ["software"], "a signature by a key that is not the identity entry's enclave key proves nothing");
+    // the identity entry's enclave key signs this sign-in: enclave, unattested, passes
+    await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
+    links = linksWith(signWith(enc)); await links.startPaired("srv");
+    const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
+    assert.ok((mine.sessions || mine).some(x => x.strength === "enclave, unattested" && !x.software), "an enclave-signed sign-in is enclave, unattested and not software-marked");
+    assert.equal(await defineOn(f, links), "ok", "an enclave-strength session passes"); }
   // a software-key browser: refused, until the owner's phone approves its sign-in
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     assert.match(await defineOn(f, links), /needs_presence|presence/, "a software session is refused");

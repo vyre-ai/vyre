@@ -237,7 +237,7 @@ export default {
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
         if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
-        const strength = strengthOf(String(input.device), rec), software = strength === "software";
+        const strength = approvedStrength(String(input.device)) || STRENGTHS[0], software = strength === "software";
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
         const keyId = (meta.presence && meta.presence.keyId) || rec.confirmKeyId || null;
         if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof"), { code: "denied" });
@@ -251,13 +251,14 @@ export default {
       effect: "write",
       description: "A device its owner paired opens its person session: it signs `paired-start`, its id and the challenge of its grant with the key the owner confirmed. No prompt. Answers the token, or one refusal whatever the reason.",
       callers: RELAY_DEVICE_CALLERS,
-      input: obj({ sig: str, label: str }, ["sig"]),
+      input: obj({ sig: str, esig: str, label: str }, ["sig"]),
       run: async (input, meta = {}) => {
         const peer = meta.peer;
         const device = peer && peer.kind === "device" ? nodeOf(meta) : null;
         const refuse = () => Object.assign(new Error("this device cannot sign in that way; sign in with its key"), { code: "denied" });
         if (!device) throw refuse();
-        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null });
+        const wr = await ctx.call("wink.device.record", { id: device }).catch(() => null);
+        const s = people.startPaired({ device, sig: String(input.sig), label: input.label || null, esig: typeof input.esig === "string" ? input.esig : null, enclaveKey: wr && wr.data && typeof wr.data.enclaveKey === "string" ? wr.data.enclaveKey : null });
         if ("refused" in s) {
           if (s.deleted) { locked.set(device, Date.now() + LOCK_MS); ctx.events.emit("presence.refused", { device, why: "pairing grant withdrawn after three wrong attempts" }); }
           throw refuse();
@@ -288,7 +289,7 @@ export default {
       const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
       const rec = r && r.data;
       if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
-      try { const strength = strengthOf(device, rec); people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: strength === "software", strength }); } catch { /* no grant: the device gets the random challenge */ }
+      try { const strength = approvedStrength(device) || STRENGTHS[0]; people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: strength === "software", strength }); } catch { /* no grant: the device gets the random challenge */ }
     };
     ctx.tool("presence.person.locked", {
       effect: "read",

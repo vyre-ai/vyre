@@ -5600,6 +5600,7 @@ A device its owner paired opens its person session: it signs `paired-start`, its
 
 - Input:
   - `sig` string, required
+  - `esig` string
   - `label` string
 - Callers: `device`, `relay`, `tailnet`
 
