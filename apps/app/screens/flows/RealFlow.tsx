@@ -85,13 +85,13 @@ export function RealFlow({ id }: { id: string }) {
           <Block label="See as code">{card.text}</Block>
         </Sec>
       ) : null}
-      {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} onPress={busy ? () => {} : runNow} /></View> : null}
+      {!waiting ? <View className="self-start"><Button kind="primary" size="sm" icon="play" label={busy ? "Starting" : "Run now"} disabled={busy} onPress={runNow} /></View> : null}
       {painted && picked_run ? (
         <Sec title={`What run ${picked_run.id.slice(0, 8)} did`}>
           <Card flush>
             {recordLines(painted).map((l, i) => <View key={l.id}>{i ? <Divider /> : null}<Row dense title={l.title} sub={l.sub} /></View>)}
           </Card>
-          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} onPress={busy ? () => {} : () => retry(picked_run.id)} /></View> : null}
+          {canRetry(picked_run.state) ? <View className="self-start pt-s2"><Button size="sm" label={busy ? "Retrying" : "Retry this run"} disabled={busy} onPress={() => retry(picked_run.id)} /></View> : null}
         </Sec>
       ) : null}
       <FlowCode id={id} version={meta.version} onSaved={() => setN((x) => x + 1)} />

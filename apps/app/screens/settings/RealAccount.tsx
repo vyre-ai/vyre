@@ -48,7 +48,7 @@ export function RealAccount() {
               ) : (
                 <>
                   <Text tone="muted">{hasCode(es) ? "A recovery code is on your list. With it you are back in at once if you lose every device." : "You have no recovery code. Make one so you can get back in if you lose every device."}</Text>
-                  <View className="flex-row"><Button size="sm" icon="face" label={hasCode(es) ? "Make a new recovery code" : "Make a recovery code"} onPress={busy ? () => {} : newCode} /></View>
+                  <View className="flex-row"><Button size="sm" icon="face" label={hasCode(es) ? "Make a new recovery code" : "Make a recovery code"} disabled={busy} onPress={newCode} /></View>
                 </>
               )}
             </Card>

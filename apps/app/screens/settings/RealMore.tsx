@@ -27,8 +27,8 @@ export function RealUpdates() {
             <Text size="caption" tone="label">{`${checkedLine(s.checkedAt, Date.now())} Channel: ${s.channel}.`}</Text>
             {s.notes.length ? <View className="gap-s1 pt-s1">{s.notes.map((n, i) => <Text key={i} size="secondary">{n}</Text>)}</View> : null}
             <View className="flex-row gap-s2 pt-s2">
-              <Button size="sm" label={busy ? "Checking" : "Check for updates"} onPress={busy ? () => {} : check} />
-              {s.available && s.canApply ? <Button size="sm" kind="primary" label="Update now" onPress={busy ? () => {} : apply} /> : null}
+              <Button size="sm" label={busy ? "Checking" : "Check for updates"} disabled={busy} onPress={check} />
+              {s.available && s.canApply ? <Button size="sm" kind="primary" label="Update now" disabled={busy} onPress={apply} /> : null}
             </View>
             {howLine(s) ? <Text size="caption" tone="label">{howLine(s)}</Text> : null}
           </Card>

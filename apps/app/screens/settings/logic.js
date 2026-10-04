@@ -46,10 +46,10 @@ export const PRIVACY_ROWS = [
   ["mem", "Memory learns from what assistants read", "Sealed values are never read, so they are never remembered."],
 ];
 
-/** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, Rules and sealing policy. Kits are managed by admins too. */
-const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/rules", "/u/settings/privacy", "/u/kits"];
+/** Rows only an owner or admin can use (DESIGN-spaces-first.md, roles): Customize, sealing policy and Kits. Rules stay for everyone but temp: anyone can propose one (RulesScreen). */
+const ADMIN_ROWS = ["/u/settings/customize", "/u/settings/privacy", "/u/kits"];
 /** Rows a temp member has no use for: they see only the projects named, so the space-wide places stay out of Settings. */
-const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing"];
+const NOT_FOR_TEMP = ["/u/memory", "/u/flows", "/u/settings/seeing", "/u/settings/rules"];
 
 /**
  * Settings home, in the prototype's groups. `space` names the group for the space showing. `role` is the person's role in it: a row their role cannot use

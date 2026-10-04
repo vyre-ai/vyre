@@ -49,6 +49,8 @@ test("settings hides what a role cannot use", () => {
   assert.ok(hrefs("admin").includes("/u/settings/customize"));
   assert.ok(!hrefs("member").includes("/u/settings/customize"));
   assert.ok(!hrefs("manager").includes("/u/settings/privacy"));
+  assert.ok(hrefs("member").includes("/u/settings/rules"));
+  assert.ok(!hrefs("temp").includes("/u/settings/rules"));
   assert.ok(hrefs("member").includes("/u/spaces"));
   assert.ok(!hrefs("temp").includes("/u/memory"));
   assert.ok(hrefs("member").includes("/u/memory"));
