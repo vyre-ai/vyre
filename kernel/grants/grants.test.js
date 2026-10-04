@@ -677,8 +677,9 @@ test("lend (ruling 5 Oct): after the member's own off, on again needs only the l
   await gs.rebuild();
   await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}), "and still after a rebuild");
   await g.offers.lend(personChain(BOB), l, { presence: proof("grants.offer", { lend: l }, `vyre://${SPACE}/offer/lend`) });
-  // a role change ends the offer without the member's own act: first grant again
-  await g.setRole(owner(), { person: BOB, role: "manager" }, P.role({ person: BOB, role: "manager" }));
+  // removing the member ends the offer without their own act: back in, it is a first grant again
+  await g.removeMember(owner(), { person: BOB }, P.role({ remove: BOB }));
+  await set({ person: BOB, role: "member" });
   assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false);
   await assert.rejects(() => g.offers.lend(personChain(BOB), l, {}));
   // a different computer key is a different grant
