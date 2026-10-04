@@ -55,6 +55,13 @@ export function usesLine(rows: UseRow[], now: number): { key: string; who: strin
 export function useCount(rows: UseRow[], now: number): number { return rows.filter((u) => now - u.at <= DAY && u.ok).length; }
 
 /** The words a refused reveal gets, from the box's error code, never from a value. */
+/** The words for an unlock of the personal vault from the phone. A wrong password comes back in the server's own words (it is the person's own home); a server without the tool says so. */
+export function personalUnlockRefusal(code: string | undefined, message: string): string {
+  if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
+  if (code === "no_such_tool" || code === "not_found") return "This server cannot unlock it from a phone yet.";
+  return message || "The personal vault did not open. Nothing was changed.";
+}
+
 export function revealRefusal(code: string | undefined, message: string, how: "phone" | "touchid" | "browser" = "browser"): string {
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "locked") return "The vault is locked. Enter its passphrase to open it, then try again.";

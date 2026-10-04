@@ -29,6 +29,8 @@ export function vaultSource(call: Call) {
       if (r.error) return null;
       return { locked: Boolean(r.data?.locked), unlock: r.data?.unlock === "passphrase" ? "passphrase" : "none" };
     },
+    /** Unlock the PERSONAL vault from the phone: its password and the person's presence (vault.account.unlock-phone; the desk tool takes the password as the whole proof, a phone must not). */
+    unlockPersonalReal: (password: string) => ask<unknown>("vault.account.unlock-phone", { password }),
     /** Unlock a passphrase vault (the first unlock sets the passphrase). */
     unlockReal: (passphrase: string) => ask<unknown>("vault.unlock", { passphrase }),
     /** Add an item: a person's own call, the box asks for presence on this exact save. The value goes to the box and is not kept here. */
