@@ -1,6 +1,7 @@
 // @ts-check
 // Forgetting a record, end to end on a real daemon (a temp home, restarted; a test box, never a Mac): a task about the record holds a test value in its text; after the record is forgotten and the
 // kernel restarts, the value is in no task event, not in the task-text table, not behind any task, and the record, its events and its change history are gone.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
