@@ -220,7 +220,7 @@ export function createRunner(o) {
         const line = buf.slice(0, i); buf = buf.slice(i + 1);
         if (!line) continue;
         h.queue = h.queue.then(async () => {
-          await sy.line(line);
+          try { await sy.line(line); } catch (e) { emit({ type: "checkpoint", session: s.session, ok: false, reason: e?.code === "disk_full" ? "disk_full" : "error", turn: sy.turn }); return; }
           if (!endsTurn(line)) return;
           // The reader runs inside the sandbox (reader.js), so a racing helper cannot reach a host file, and it reads only files whose size or
           // modification time changed. The session is NOT paused: stopping it for the length of the read blocked every write (measured:
@@ -230,7 +230,7 @@ export function createRunner(o) {
             h.labels = cur;
             const st = { labels: cur, routes: routes.map(r => r.prefix), session: o.sessionState?.(s.session) };
             const ok = await sy.checkpoint(st);
-            emit({ type: "checkpoint", session: s.session, ok, turn: sy.turn });
+            emit({ type: "checkpoint", session: s.session, ok, ...(ok || !sy.refused ? {} : { reason: sy.refused }), turn: sy.turn });
           }
         }).catch(() => {});
       }
