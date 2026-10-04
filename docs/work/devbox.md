@@ -21,6 +21,9 @@ Stopped on the usage limit (4 Oct). Trunk origin/work/devbox is e9b23e36b: boot-
 HELD: kernel-default-on 1263898fa, memory-shim-removal, tailnet's work/join-e2e (scratch, never to trunk), reviewer-3's runner findings CF-1/CF-2/CF-3 (box uid confinement is not to be called confined in release notes until runner fixes them).
 Open: test/wink.test.js (or wink-paired) leaks timers and does not exit (platform-2 and wink-2 in CHAT.md); agent start on the dev box under bwrap needs runner's script-agent bind (54f4b2fe5 is on trunk, re-check: `vyre call threads.start` with agent on the dev box).
 
+## Done (5 Oct, 21:2x Z)
+- Trunk 0cc349f41 pushed and deployed: wink-session ccf4fab5d + app-wire cfe3d7968 (wink, wink-paired, wink-paired-2 all exit: 39/22/27 pass), vault-labels d6337e81f, runner 92313423e, wink-rc1 204d07144. Gate each time: merge-check clean (vault merge reports presence/module.js session-* lines absent: superseded, trunk a8649e0e0 removed those tools), lint 0, boot-check ok, smoke 123/0.
+
 ## Done (deploy)
 - Dev box (testbox, ~/devbox/src, unit vyre-dev) runs this branch; deploy = `rsync -a --delete --exclude node_modules --exclude .git ./ testbox:~/devbox/src/`, `npm ci --omit=dev`, `systemctl --user restart vyre-dev`. Probe a tool with a script that sets the unit's env (HOME=~/devbox/home) and runs `node bin/vyre call <tool> '<json>'`.
 - records.dev-seed now adds only what is missing (by name or title); second run adds nothing (test in core/records-tools).
