@@ -282,6 +282,86 @@ test("ids: a space's list holds its owners; a person who is not on a chain the d
   assert.equal(code(await space.post("/v1/ids/append", { name: "harlow", ops: [bad] })), "not_on_list");
 });
 
+test("ids: a space's record (where its home is) cannot be repointed by a device under 24 hours old unless it signed the record itself; an older device can", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const ctxFor = async id => id === alex.state.id ? alex.ops : null;
+  const space = await identity(w, phone, { kind: "space", ctxFor });
+  await space.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id }, phone.eid);
+  data(await space.claim("harlow", "aG9tZQ", phone, phone.eid));
+  // a thief adds a device with a stolen recovery code: it is on the list at once and is a newcomer for 24 hours
+  const thief = await key("thief");
+  w.clock.t += HOUR;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  space.pos = await C.viaOf(alex.ops);
+  w.clock.t += 1000;
+  assert.equal(code(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "ZXZpbA", thief, thief.eid) })), "newcomer", "a young device cannot repoint the space");
+  // the founding phone can
+  w.clock.t += 1000;
+  data(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "bW92ZWQ", phone, phone.eid) }));
+  // once the thief's device is a day old it is an older device
+  w.clock.t += 25 * HOUR;
+  w.clock.t += 1000;
+  data(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "bGF0ZXI", thief, thief.eid) }));
+});
+
+test("ids: the same newcomer rule holds for a person's record: a young device cannot repoint it, the founding phone can, and a young device may keep what it signed", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const thief = await key("thief");
+  w.clock.t += HOUR;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  w.clock.t += 1000;
+  assert.equal(code(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "ZXZpbA", thief) })), "newcomer", "a young device cannot repoint a person's record");
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "bW92ZWQ", phone) }));
+  w.clock.t += 25 * HOUR;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "bGF0ZXI", thief) }));
+  // a device added later is young and is not the record's signer: refused; the record's own signer keeps going
+  const laptop = await key("laptop");
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: laptop.entry("device") }, phone))] }));
+  w.clock.t += 1000;
+  assert.equal(code(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "b3duIQ", laptop) })), "newcomer");
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "c2FtZQ", thief) }));
+});
+
+test("ids: a key that was removed and put back is a newcomer again: it cannot repoint the record it once signed (a removal resets a key's age)", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const thief = await key("thief");
+  w.clock.t += HOUR;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  w.clock.t += 25 * HOUR;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "bW92ZWQ", thief) }));
+  // control: while it stays on the list it keeps going
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "c3RpbGw", thief) }));
+  // the phone removes it, then it is put back (the old key and the recovery code, say): it is a newcomer again
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "remove", target: thief.eid }, phone))] }));
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  w.clock.t += 1000;
+  assert.equal(code(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "ZXZpbA", thief) })), "newcomer", "a re-added key cannot repoint the record");
+  // after 24 hours on the list again it is no newcomer
+  w.clock.t += 25 * HOUR;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "YmFjaw", thief) }));
+});
+
+test("ids: a young device may keep updating the space's record it signed itself (the phone that made the space this morning finishes setting it up)", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const ctxFor = async id => id === alex.state.id ? alex.ops : null;
+  const laptop = await key("laptop");
+  w.clock.t += HOUR;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: laptop.entry("device") }, phone))] }));
+  const space = await identity(w, laptop, { kind: "space", ctxFor });
+  await space.genesis({ eid: alex.state.id, kind: "owner", subject: alex.state.id }, laptop.eid);
+  data(await space.claim("harlow", "aG9tZQ", laptop, laptop.eid));
+  w.clock.t += 1000;
+  data(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "cm91dGU", laptop, laptop.eid) }));
+});
+
 test("ids: the unchanged box claim path still works beside identities", async t => {
   const w = world(t), box = who(w), alex = await person(w);
   const c = data(await box.post("/v1/names/claim", { name: "harlow" }));

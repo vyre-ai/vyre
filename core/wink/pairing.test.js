@@ -37,7 +37,7 @@ function world(o = {}) {
     finish: async a => { finishes.push(a); if (o.finishResult) return o.finishResult; return { ok: true, paired: o.paired || { route: "route-juno", name: "juno" } }; },
   };
   const p = createPairing({
-    ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: async () => ME, space: async () => HARLOW, directory, ports,
+    ctx, now: o.now || (() => 1_000_000), offers: o.offers, identity: o.identity || (async () => ME), stepMs: o.stepMs, space: async () => HARLOW, directory, ports,
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
@@ -1567,4 +1567,13 @@ test("the build KIND decides release behaviour, on three builds: a checkout and 
     assert.equal(w.p.autoPresence, false, "a release-stamped copy ignores the switch");
     await assert.rejects(() => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" }), e => e.code === "not_hardware");
   } finally { if (saved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = saved; }
+});
+
+
+test("wink.pair.server never hangs silently: a step that does not answer ends the call with plain words naming it, and one log line", async () => {
+  for (const [name, w] of [["looking up your identity", world({ stepMs: 40, identity: () => new Promise(() => {}) })], ["checking where this server should go", world({ stepMs: 40, directory: { memberships: () => new Promise(() => {}) } })]]) {
+    const t0 = Date.now();
+    await assert.rejects(() => w.call("wink.pair.server", { payload: serverQrPayload(new Uint8Array(16).fill(1), "ws://relay.test"), target: { kind: "identity", id: ME } }), e => e.code === "unavailable" && new RegExp(`did not finish ${name}`).test(e.message) && /Try again/.test(e.message));
+    assert.ok(Date.now() - t0 < 2000, `${name}: bounded`);
+  }
 });

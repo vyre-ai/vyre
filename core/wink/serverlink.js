@@ -30,7 +30,7 @@ export function createServerLinks(o) {
     const iv = invitees.get(sid);
     const ch = iv ? iv.channel : o.channelOf(sid);
     if (!ch) throw err("not_found", "this device has no paired server by that id");
-    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}) }), peer: null, opening: null, token: null, ...(iv ? { hello: iv.hello } : {}) };
+    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}), ...(iv ? { invitee: true } : {}) }), peer: null, opening: null, token: null, ...(iv ? { hello: iv.hello } : {}) };
     links.set(sid, l);
     return l;
   };
@@ -40,7 +40,10 @@ export function createServerLinks(o) {
     if (l.peer && !l.peer.closed) return l.peer;
     if (l.opening) return l.opening;
     l.opening = (async () => {
-      const chan = await l.conn.ready();
+      // The relay client opens the channel only to the box key named by the route (the Noise handshake pins it). A box with another key never opens, so no stream head, and so no hello, is ever sent to it.
+      let chan;
+      try { chan = await Promise.race([l.conn.ready(), new Promise((_, rej) => { const t = setTimeout(() => rej(err("unreachable", "no answer")), o.openMs ?? 10_000); if (t.unref) t.unref(); })]); }
+      catch { throw err("unreachable", l.hello ? "that server is not the one this space names, or it cannot be reached" : "the server could not be reached"); }
       const s = chan.open({ peer: "wink", space: PEER_HOME, ...(l.hello ? { invitee: l.hello } : {}) });
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { s.reset("no answer"); reject(err("unreachable", "the server did not accept the peer stream")); }, o.openMs ?? 10_000);

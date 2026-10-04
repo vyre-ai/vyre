@@ -36,6 +36,7 @@ import { memorySeen, idDirectory } from "../lib/identity/directory.js";
 import { fileIdentityStore } from "../core/spaces/identity.js";
 import { createIdentityOps } from "../core/spaces/identity-ops.js";
 import { hooks as spacesHooks } from "../core/spaces/index.js";
+import { acceptMessage } from "../lib/spaces/invites.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
 process.env.VYRE_WINK_TYPED_CODE = "1";
@@ -1427,10 +1428,10 @@ test("sessionFor signs the device in by itself when a call needs the person (no 
 
 
 test("a computer's own device key makes the owner's proof for an act that needs presence over the peer wire: REAL presence on the server checks the key it enrolled at pairing", async t => {
-  // the server accepts a software key's proof only on a development build behind the software signer's switch (vault's rule), marked method software
-  const savedSw = process.env.VYRE_SEAL_SOFTWARE;
+  // the server takes a software key as presence only on a development build behind this switch; this test sets it itself (and puts it back) so it does not depend on the shell or on test order
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
   process.env.VYRE_SEAL_SOFTWARE = "1";
-  t.after(() => { if (savedSw === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = savedSw; });
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
   const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
   assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
@@ -1486,7 +1487,8 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const names = await (async () => { const { spawn } = await import("node:child_process"); const port = 33000 + Math.floor(Math.random() * 2000); const child = spawn(process.execPath, [path.resolve("scripts/standin-directory.mjs"), "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] }); t.after(() => { child.kill("SIGTERM"); }); await new Promise(res => child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); })); return port; })();
   const droot = tempHome(t);
   fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "device-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${names}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
+  let silent = false; // a server that stops answering (down, rebuilt)
+  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => (silent ? { call: () => new Promise(() => {}) } : links.sessionFor("srv")), log: () => {} });
   const { hooks: spacesHooks } = await import("../core/spaces/index.js");
   spacesHooks.sessionFor = async () => links.sessionFor("srv");
   t.after(() => { spacesHooks.sessionFor = null; });
@@ -1530,6 +1532,27 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   // and the record is on the SERVER, not on the device
   const onServer = server.kernel.spaces.hosted(id);
   assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", { page: { limit: 50 } })).includes("Jane"), "the record lives in the server's store");
+  // a person who named a server that is not paired to them never gets a local space instead: the create refuses and makes nothing
+  const listed = (await dcall("spaces.list")).data.length;
+  const unpaired = await dcall("spaces.create", { name: "nolocal", home: { kind: "server", device: { id: "srv_notpaired0001", name: "someone else's", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.equal(unpaired.error && unpaired.error.code, "server_not_paired", JSON.stringify(unpaired).slice(0, 200));
+  assert.equal((await dcall("spaces.list")).data.length, listed, "nothing was made on this computer");
+  // a paired server that cannot be reached: the same refusal with a plain reason, nothing made here
+  { const keep = spacesHooks.sessionFor; spacesHooks.sessionFor = async () => { throw new Error("down"); };
+    const down = await dcall("spaces.create", { name: "nolocal2", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+    spacesHooks.sessionFor = keep;
+    assert.equal(down.error && down.error.code, "server_unreachable", JSON.stringify(down).slice(0, 200));
+    assert.equal((await dcall("spaces.list")).data.length, listed, "nothing was made on this computer when the server was down"); }
+  // a server that stops answering must not hold up the lists and the pairing that ask who belongs where: the read gives up and the creator is still the owner
+  silent = true;
+  spacesHooks.remoteMs = 400;
+  t.after(() => { spacesHooks.remoteMs = null; });
+  const t0 = Date.now();
+  const adm = await device.registry.call("spaces.admin-list", { person: me.id }, "module:wink");
+  assert.ok(!adm.error, JSON.stringify(adm.error));
+  assert.ok(Date.now() - t0 < 8000, `admin-list answered in ${Date.now() - t0} ms with the server silent`);
+  assert.ok(adm.data.spaces.some((/** @type {any} */ x) => x.space === id && x.role === "owner"), "the space this device made stays listed as its own");
+  silent = false;
   // a create that fails after the server hosted the space gives it back ON THE SERVER (the name is taken, so the claim step refuses): the server hosts no extra space and the device lists none
   const before = server.kernel.spaces.list().length;
   const dup = await dcall("spaces.create", { name: "harlowsrv", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
@@ -1557,13 +1580,13 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
 
 test("an invitee's session opens the stream with the signed hello in its head and only for that route; a new hello replaces the old link", async t => {
   const heads = [], closed = [];
-  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
+  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, invitee: o.invitee === true, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
   const links = createServerLinks({ connect, options: {}, name: "Kit's phone", channelOf: () => null });
   t.after(() => links.close());
   const ch = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
   const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
-  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  assert.deepEqual(heads[0], { route: "rt-harlow", invitee: true, head: { peer: "wink", space: "home", invitee: hello } }, "the channel hello says invitee (the relay client sends { v: 1, invitee: true })");
   // a second hello for the same invite closes the first link and opens a new one with the new hello
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");
@@ -1593,6 +1616,28 @@ test("a box-less client makes its first space on a paired server: the server hos
   assert.ok(r.ok, JSON.stringify(r));
   assert.deepEqual([r.kind, r.payload.id, r.payload.ownerName, r.payload.home.kind], ["space", made.space, "alex", "server"]);
   assert.deepEqual(r.payload.route, ROUTE);
+  assert.equal(r.payload.rootPublic, made.rootPublic, "the record carries the server's key");
+  assert.ok(fs.existsSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key")), "the server holds the key, not the device");
+  // the server proves it: it signs a nonce with that key (spaces.attest, answered inside the invite preview)
+  const att = (await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "module:vyred")).data;
+  assert.equal(att.pub, made.rootPublic);
+  assert.equal(crypto.verify(null, Buffer.from(`vyre-space-attest-v1\n${made.space}\n${"n".repeat(22)}`), crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), Buffer.from(att.pub, "base64url")]), format: "der", type: "spki" }), Buffer.from(att.sig, "base64url")), true);
+  assert.equal((await f.w.d.registry.call("spaces.attest", { space: made.space, nonce: "n".repeat(22) }, "cli")).error?.code !== undefined, true, "a person or a model cannot ask a server to sign for a space");
+  // NO authority derives from this key: a token the key signed for an invite the kernel never issued is refused by the server's redeem, and the kernel itself has no such invite
+  const { privateKeyOf } = await import("../core/spaces/identity.js");
+  const serverKey = privateKeyOf(fs.readFileSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key"), "utf8").trim());
+  const payload = Buffer.from(JSON.stringify({ id: "inv_" + "0".repeat(32), space: "harlow.vyre.run", sid: made.space, role: "owner" })).toString("base64url");
+  const forged = `${payload}.${crypto.sign(null, Buffer.from(payload), serverKey).toString("base64url")}`;
+  // the person's side is well formed (a real key, a real signature over the accept message), so the refusal can only come from the token: the key's signature makes no invite
+  const joiner = crypto.generateKeyPairSync("ed25519");
+  const joinerPub = joiner.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const joinerId = "per_" + "z".repeat(26);
+  const joinProof = crypto.sign(null, acceptMessage("inv_" + "0".repeat(32), "harlow.vyre.run", joinerId), joiner.privateKey).toString("base64url");
+  const redeemed = await f.w.d.registry.call("spaces.invites.redeem", { token: forged, person: { id: joinerId, publicKey: joinerPub }, proof: joinProof }, "tailnet");
+  assert.ok(redeemed.error, "a token signed by the space's server key is not an invite");
+  assert.ok(!["bad_proof", "bad_input"].includes(redeemed.error.code), `the refusal is about the token, not the person's proof: ${JSON.stringify(redeemed.error)}`);
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  await assert.rejects(() => hosted.gateway.grants.invites.get(hosted.kernel.chains.fromFacts({ kind: "invitee", person: "per_" + "z".repeat(26), vouched: true }), "inv_" + "0".repeat(32)), e => e.code === "not_found");
   // a refused host call claims nothing in the directory
   await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
   assert.equal((await dir.check("nopeproof")).status, "ok");
@@ -1700,4 +1745,22 @@ test("the three-strikes count is in the store too: two wrong answers, a restart,
   await call(d2, "presence.person.pair-challenge", {});
   await call(d2, "presence.person.start-paired", { sig: "AAAA" });
   assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
+});
+
+test("an invitee link pointed at a box whose key is not the record's route.box sends no hello and answers with a plain refusal", async t => {
+  const f = await pairFreshServer(t);
+  const ch = { relay: f.w.status.url, route: f.done.route, box: Buffer.alloc(32, 5).toString("base64url") };
+  const hello = { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(22), sig: "s".repeat(86) };
+  const heads = [];
+  const spy = o => { const c = connect(o); const ready = c.ready.bind(c); c.ready = async () => { const chan = await ready(); const open = chan.open.bind(chan); chan.open = h => { heads.push(h); return open(h); }; return chan; }; return c; };
+  const links = createServerLinks({ connect: spy, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Kit's phone", openMs: 4000, channelOf: () => null });
+  t.after(() => links.close());
+  await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "unreachable");
+  assert.deepEqual(heads, [], "no stream head, so no hello, reached a box with the wrong key");
+  // control: the same link to the box key the record names does open a channel and sends the head (this build's door then refuses it, which is not the point here)
+  const links2 = createServerLinks({ connect: spy, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Kit's phone", openMs: 4000, channelOf: () => null });
+  t.after(() => links2.close());
+  await assert.rejects(() => links2.inviteeSessionFor({ ...ch, box: f.done.box }, hello).call("grants.invites.get", {}));
+  assert.equal(heads.length, 1, "the right box key opens the channel and the head goes");
+  assert.deepEqual(heads[0].invitee, hello);
 });

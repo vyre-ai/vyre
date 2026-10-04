@@ -295,6 +295,8 @@ export default {
       const a = list.find(x => x && x.name === who);
       if (!a) throw denied(`no agent ${who}`);
       const assistant = a.kind === "assistant";
+      // "Claude Code on <this computer>": an agent the person granted their memory and every project's sessions to READ, once (agents `personal`, projects "*"). Reads only; it is never the person.
+      if (a.personal === true && a.projects === "*") return { all: true, agent: who, folders: [] };
       const wildcard = a.projects === "*";
       const mine = new Set(Array.isArray(a.projects) ? a.projects.map(String) : []);
       const granted = assistant || wildcard ? await projectList() : (await projectList()).filter(p => mine.has(p.slug) || mine.has(p.name));

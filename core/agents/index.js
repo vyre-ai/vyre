@@ -36,6 +36,8 @@ export const MIGRATIONS = [
   `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
   // Built in by Vyre (the Engineer): listed like any agent, but it cannot be deleted, renamed, given projects, credentials or a computer.
   `ALTER TABLE agents_agents ADD COLUMN builtin INTEGER NOT NULL DEFAULT 0`,
+  // The person granted this agent their PERSONAL memory and every project's sessions to read ("Claude Code on <this computer>"): reads only, never writes, never the person. Appended last, like every step.
+  `ALTER TABLE agents_agents ADD COLUMN personal INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /**
@@ -100,7 +102,7 @@ export default {
 
     const shape = r => r && ({ name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
     // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
@@ -274,7 +276,7 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, personal: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
 
     const checkProjects = p => {
@@ -308,7 +310,7 @@ export default {
     ctx.tool("agents.scope", {
       description: "The kind and stored project grant (\"*\" or a list of slugs) of one agent, for vyred to put on the meta of that agent's calls.", internal: true, callers: ["module"],
       input: { type: "object", required: ["name"], properties: { name: { type: "string" } } },
-      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects, ...(a.builtin && a.name === ENGINEER.name ? { only: ENGINEER.tools } : {}) } : null; },
+      run: async i => { const a = get(String(i.name)); return a ? { kind: a.kind, projects: a.kind === "assistant" ? "*" : a.projects, ...(a.personal ? { personal: true } : {}), ...(a.builtin && a.name === ENGINEER.name ? { only: ENGINEER.tools } : {}) } : null; },
     });
 
     ctx.tool("agents.list", {
@@ -317,7 +319,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer,
+        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
@@ -346,6 +348,7 @@ export default {
         db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at)
           VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
           JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now);
+        if (i.personal === true && kind !== "assistant") db.prepare("UPDATE agents_agents SET personal = 1 WHERE name = ?").run(i.name);
         return get(i.name);
       },
     });
@@ -379,9 +382,9 @@ export default {
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
         if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.name, a.projects, next.projects);
-        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, updated_at = ? WHERE name = ?`)
+        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
-            next.computer ? 1 : 0, next.model || null, next.effort || null, Date.now(), a.name);
+            next.computer ? 1 : 0, next.model || null, next.effort || null, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
         return get(a.name);
       },
     });

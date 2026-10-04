@@ -29,10 +29,14 @@ const MIGRATIONS = [`CREATE TABLE assistant_state (k TEXT PRIMARY KEY, v TEXT NO
 /** A caller allowed to ask for the digest or the patterns: the person's own surfaces, their own
  * Claude Code session, or the assistant itself. Never a project-scoped agent: this is the
  * person's day, not a project's. @param {string} caller @param {(tool: string, input?: any) => Promise<any>} call */
-export async function allowed(caller, call) {
+export async function allowed(caller, call, meta = {}) {
   const c = String(caller || "");
-  if (["cli", "local", "deck", "capsule"].includes(c) || /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(c)) return true;
-  const m = /^mcp:agent:(.+)$/.exec(c);
+  // The agent and the session are what the daemon vouched (meta.agent, meta.thread), never the text of a label (RC-1). SHIM: with no verified meta at all the label is read as before.
+  const verified = Boolean(meta && (meta.agent || meta.thread));
+  const claim = verified ? (meta.agent ? String(meta.agent) : null) : ((/^mcp:agent:(.+)$/.exec(c) || [])[1] || null);
+  if (["cli", "local", "deck", "capsule"].includes(c)) return true;
+  if (!claim && (verified ? /^mcp(?:$|:)/.test(c) : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(c))) return true;
+  const m = claim ? [c, claim] : null;
   if (!m) return false;
   const r = await call("agents.list", {});
   if (r.error) return false;
@@ -127,7 +131,7 @@ export default {
 
     const asCall = (tool, input) => ctx.call(tool, input);
     const gate = async meta => {
-      if (!(await allowed(meta.caller, asCall))) throw Object.assign(new Error("this is for the person and the assistant"), { code: "denied" });
+      if (!(await allowed(meta.caller, asCall, meta))) throw Object.assign(new Error("this is for the person and the assistant"), { code: "denied" });
     };
 
     ctx.tool("assistant.glance", {
@@ -218,7 +222,7 @@ export default {
       description: "One paragraph: what's waiting on you, how many agents are working, and any pattern memory noticed (a fact still in conflict, or corrected in the last week). Never a dashboard. Works whether or not the daily digest setting is on; that setting only controls whether this also fires once a day on its own.",
       input: { type: "object", properties: {} },
       run: async (_, meta = {}) => {
-        if (!(await allowed(meta.caller, (tool, input) => ctx.call(tool, input)))) throw Object.assign(new Error("the brief is for the person and the assistant"), { code: "denied" });
+        if (!(await allowed(meta.caller, (tool, input) => ctx.call(tool, input), meta))) throw Object.assign(new Error("the brief is for the person and the assistant"), { code: "denied" });
         return brief();
       },
     });
@@ -227,7 +231,7 @@ export default {
       description: "Patterns memory already surfaces, read-only: facts still in conflict between two projects, and facts corrected in the last week. Never reads memory.corrections directly, which stays the person's own surfaces; this reads only what memory.facts already carries on every fact.",
       input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 200 } } },
       run: async (input = {}, meta = {}) => {
-        if (!(await allowed(meta.caller, (tool, i) => ctx.call(tool, i)))) throw Object.assign(new Error("patterns are for the person and the assistant"), { code: "denied" });
+        if (!(await allowed(meta.caller, (tool, i) => ctx.call(tool, i), meta))) throw Object.assign(new Error("patterns are for the person and the assistant"), { code: "denied" });
         return { patterns: await patterns((tool, i) => ctx.call(tool, i), input) };
       },
     });

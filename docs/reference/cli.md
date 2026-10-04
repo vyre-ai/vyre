@@ -80,6 +80,7 @@ In the order `vyre help` lists them.
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
 | [`vyre signin`](#vyre-signin) | sign in this terminal (approve on your phone) |
 | [`vyre signout`](#vyre-signout) | sign this terminal out |
+| [`vyre space`](#vyre-space) | which space this terminal acts in |
 | [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre module`](#vyre-module) | make, check, test and add a module of your own |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
@@ -786,6 +787,16 @@ Sign this terminal out.
 vyre signout [--json]
 ```
 
+### vyre space
+
+Which space this terminal acts in.
+
+```
+vyre space [use <name> | use --clear] [--json]
+```
+
+`vyre space use harlow` remembers harlow for this terminal's calls. `vyre call records.list` then acts in it; `--space <name>` on one call overrides it. With none, calls act in the home's own space.
+
 ### vyre tips
 
 Short tips on using each part of Vyre.
@@ -841,7 +852,7 @@ vyre tools [--json]
 Run any tool, e.g. vyre call system.echo '{"text":"hi"}'.
 
 ```
-vyre call [--tty] <tool> [json]
+vyre call [--tty] [--space <name>] <tool> [json]
 ```
 
 Prints the tool's data as JSON. A tool that needs you (approving a draft, answering an ask)
