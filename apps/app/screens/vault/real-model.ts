@@ -57,7 +57,9 @@ export function useCount(rows: UseRow[], now: number): number { return rows.filt
 /** The words a refused reveal gets, from the box's error code, never from a value. */
 export function revealRefusal(code: string | undefined, message: string): string {
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
-  if (code === "locked") return "The vault is locked. Unlock it, then try again.";
+  if (code === "locked") return "The vault is locked. Enter its passphrase to open it, then try again.";
+  // A release server takes an approval only from a phone key it can verify (vault, 5 Oct): until that check exists no phone can give it, and "approve on your phone" would send the person in a circle.
+  if (code === "software_key") return "This server cannot accept an approval from this phone yet. Nothing was revealed or changed.";
   return message || "The vault did not answer.";
 }
 
