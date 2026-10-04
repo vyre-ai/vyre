@@ -31,6 +31,9 @@ const code = await Promise.race([closed, sleep(60_000).then(() => "timeout")]);
 if (code !== 0) die(`vyre signin did not finish signed in (exit ${code}): ${out.trim()} ${err.trim()}`);
 say("vyre signin finished: this terminal is signed in");
 // A call only the person may make, from the signed-in terminal (a plain terminal got "no kernel chain" for it).
-const me = spawnSync(process.execPath, [`${root}/bin/vyre`, "call", "memory.me", "{}"], { encoding: "utf8", env: process.env });
+// With a tool and input after the root (node signin-approve.mjs <root> <tool> <json>), that call is the one made from the signed-in terminal and its text follows a RESULT line (the proof reads and writes records this way).
+const [tool = "memory.me", input = "{}"] = process.argv.slice(3);
+const me = spawnSync(process.execPath, [`${root}/bin/vyre`, "call", tool, input], { encoding: "utf8", env: process.env });
+if (process.argv[3]) { process.stdout.write("RESULT:\n" + me.stdout + me.stderr); process.exit(me.status === 0 ? 0 : 1); }
 if (/no kernel chain|caller_unknown|denied/.test(me.stdout + me.stderr)) die(`after signin memory.me is still refused: ${(me.stdout + me.stderr).trim().slice(0, 300)}`);
 say("a person-only call (memory.me) answers after signin");
