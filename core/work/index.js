@@ -20,6 +20,8 @@ import { createEngineer } from "./engineer/index.js";
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+/** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
+const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
 const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(s);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -53,6 +55,20 @@ export default {
       if (typeof room.read !== "function" || typeof room.canRead !== "function") throw unknown("this is a group chat and its audience is not known, so nothing is built for it");
       return room;
     };
+    // KW-1 (kernel side): a `session` resource is read only by the person its `owner` attribute names, and no attribute means nobody. This module holds a session's lines, so it says whose they
+    // are: the Space's owner (Recall indexes the owner's own sessions), and the project when the lines sit under one. Only for its own type, only `owner` and `project` (AT-1).
+    if (ctx.kernel && typeof ctx.kernel.registerAttrs === "function") {
+      ctx.kernel.registerAttrs("session", (/** @type {string} */ urn) => {
+        const m = /^vyre:\/\/[^/]+\/session\/([A-Za-z0-9_.:-]{1,128})$/.exec(String(urn));
+        if (!m) return {};
+        try {
+          const meta = engineOf().lines.meta(m[1]);
+          if (!meta) return {};
+          const p = /^vyre:\/\/[^/]+\/project\/([a-z0-9][a-z0-9_-]{0,79})$/i.exec(meta.record);
+          return { owner: String(ctx.kernel.owner), ...(p ? { project: p[1] } : {}) };
+        } catch { return {}; }
+      });
+    }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
     const engineOf = () => {
       if (engine) return engine;
@@ -75,6 +91,7 @@ export default {
     ctx.tool("work.call", {
       description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",
       input: obj({ tool: { type: "string" }, input: { type: "object" } }, ["tool"]),
+      callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await surfaceOf().call(chain, String(input.tool), input.input || {});
@@ -148,6 +165,7 @@ export default {
     ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
+      callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await engineOf().answer(chain, String(input.question), { room: await audienceOf(extra) });

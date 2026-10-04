@@ -5,7 +5,7 @@
   "description": "Every event type the running modules may emit, and the old names still accepted for one release.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "events.catalog", "reach": "anyone" }] },
+  "does": { "tools": [{ "name": "events.catalog", "reach": "anyone", "effect": "read" }] },
   "watches": {},
   "shows": {},
   "needs": {},

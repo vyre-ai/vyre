@@ -1,7 +1,4 @@
 {
- "apps/app/src/identity/identity.test.js": {
-  "owner": "chat"
- },
  "core/cli/commands/agents.test.js": {
   "owner": "launch"
  },

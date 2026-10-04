@@ -414,7 +414,7 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   const asModule = (name, input) => d.registry.call(name, input, "module:planner");
   for (const held of [`cli:${process.pid}`, "box:x", "agent:kit"]) {
     assert.equal((await tool("threads.lease", { thread: id, surface: held })).data.holder, held, `the holder is ${held}`);
-    const joined = (await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held })).data;
+    const jr = await asModule("threads.send", { thread: id, text: `module naming ${held}`, surface: held }); const joined = jr.data || assert.fail(JSON.stringify(jr));
     assert.deepEqual([joined.sent, joined.holder], [false, held], `a module naming ${held} is refused while it holds the keyboard`);
   }
   assert.equal((await asOwner("threads.lease", { thread: id })).data.holder, "deck", "the owner takes it back");
@@ -541,7 +541,7 @@ test("agents: the assistant and an agent on its own credentials, with the fallba
   assert.match((await tool("agents.create", { name: "juno2", kind: "assistant" })).error.message, /already an assistant/);
   await tool("agents.create", { name: "scout", projects: [], auth: { vault: "setup-token", fallback: "api-key", budget_usd: 1 }, instructions: "Research only." });
 
-  const list = (await tool("agents.list", {})).data;
+  const list = (await tool("agents.list", {})).data.filter(a => !a.builtin);
   assert.deepEqual(list.map(a => [a.name, a.kind, a.doing]), [["juno", "assistant", "not started"], ["scout", "agent", "not started"]]);
   assert.ok(list.every(a => "instructions" in a), "the Deck's agent page reads the job from the list");
 
@@ -637,7 +637,7 @@ test("agents: an API-key agent stops at its budget", async t => {
   const r = (await tool("agents.ask", { agent: "ledger", text: "whoami" })).data;
   assert.equal(r.text, "auth=api-key");
   await tool("agents.stop", { agent: "ledger" });
-  await until(async () => (await tool("agents.list", {})).data[0].status === "stopped", "ledger stopping");
+  await until(async () => (await tool("agents.list", {})).data.filter(a => !a.builtin)[0].status === "stopped", "ledger stopping");
   const again = await tool("agents.ask", { agent: "ledger", text: "whoami" });
   assert.match(again.error.message, /spent its \$0.2 budget/);
 });
@@ -804,7 +804,7 @@ test("agents.history: each question with its answer and thread, newest last, pag
   await tool("agents.create", { name: "juno", kind: "assistant" });
   await tool("agents.create", { name: "scout", projects: [], computer: true });
   // agents.list says whether each may have a computer; core/computers decides on it.
-  assert.deepEqual((await tool("agents.list", {})).data.map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
+  assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
   for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
     assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
   }
@@ -1049,7 +1049,7 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.match((await tool("agents.delete", { agent: "juno" })).error.message, /is the assistant/);
   await tool("agents.stop", { agent: "probe" });
   assert.deepEqual((await tool("agents.delete", { agent: "probe" }, "deck")).data, { agent: "probe", deleted: true });
-  assert.deepEqual((await tool("agents.list", {})).data.map(a => a.name), ["juno"]);
+  assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => a.name), ["juno"]);
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
 });
@@ -1328,7 +1328,7 @@ test("agents.create: computer true, as the Deck's New agent and Create your assi
   const juno = await tool("agents.create", { name: "juno", kind: "assistant", projects: "*", computer: true }, "deck");
   assert.equal(juno.error, undefined, juno.error && juno.error.message);
   await tool("agents.create", { name: "pax", kind: "agent", projects: [] }, "deck");
-  const list = (await tool("agents.list", {})).data;
+  const list = (await tool("agents.list", {})).data.filter(a => !a.builtin);
   assert.equal(list.find(a => a.name === "kit").computer, true);
   assert.equal(list.find(a => a.name === "juno").computer, true);
   assert.equal(list.find(a => a.name === "pax").computer, false, "unticked stays without one");

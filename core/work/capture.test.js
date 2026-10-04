@@ -11,6 +11,7 @@ import manifest from "./module.json" with { type: "json" };
 
 async function boot(t) {
   const rig = await createRig({ people: { per_bob: "member" } });
+  rig.k.kernelFor({ name: "work", needs: { kernel: { actions: [], attrs: true } } }).registerAttrs("session", () => ({ owner: rig.owner }));
   const mem = rig.k.kernelFor({ name: "memory", needs: { kernel: { actions: ["records.read", "events.read"] } } });
   await mem.records.query(mem.serviceChain(), "x", { page: { limit: 1 } }).catch(() => {});
   const db = open(path.join(tempHome(t), "work.db"));

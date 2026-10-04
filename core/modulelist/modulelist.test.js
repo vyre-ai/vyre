@@ -10,7 +10,7 @@ import mod from "./index.js";
 /** The module with a fake kernel: records what it was handed. */
 async function loaded(reset) {
   const tools = new Map();
-  const ctx = { tool: (n, d) => tools.set(n, d), modulesListReset: reset, kernel: { chain: async m => ({ hops: [m.who] }), proofFrom: m => m.proof } };
+  const ctx = { tool: (n, d) => tools.set(n, d), modulesListReset: reset, kernel: { chain: async m => ({ hops: [m.who] }), proofFrom: m => (m.proof ? { presence: m.proof } : {}) } };
   await mod.start(ctx);
   return tools.get("modules.list.reset");
 }
@@ -49,7 +49,7 @@ test("on a real daemon: only the owner's own surfaces reach it, with no proof it
 async function whole({ reset, payload }) {
   const tools = new Map();
   const clock = { t: 1_000_000 };
-  const ctx = { tool: (n, d) => tools.set(n, d), now: () => clock.t, modulesListReset: reset, modulesListResetPayload: payload, kernel: { chain: async m => ({ hops: [m.who] }), proofFrom: m => m.proof } };
+  const ctx = { tool: (n, d) => tools.set(n, d), now: () => clock.t, modulesListReset: reset, modulesListResetPayload: payload, kernel: { chain: async m => ({ hops: [m.who] }), proofFrom: m => (m.proof ? { presence: m.proof } : {}) } };
   await mod.start(ctx);
   return { t: tools, clock, run: (n, i, m = {}) => tools.get(n).run(i, m) };
 }

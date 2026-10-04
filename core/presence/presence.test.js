@@ -337,9 +337,9 @@ test("presence: through the registry, every claimed caller needs a proof, and on
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "gate", { does: { tools: ["gate.approve"] } },
-    `export default { async start(ctx) { ctx.tool("gate.approve", { input: { type: "object" }, run: async i => ({ approved: i.id }) }); return {}; } };`);
+    `export default { async start(ctx) { ctx.tool("gate.approve", { effect: "read", input: { type: "object" }, run: async i => ({ approved: i.id }) }); return {}; } };`);
   writeModule(root, "chat", { requires: ["gate"], does: { tools: ["chat.press"] } },
-    `export default { async start(ctx) { ctx.tool("chat.press", { run: async i => (await ctx.call("gate.approve", i)).data }); return {}; } };`);
+    `export default { async start(ctx) { ctx.tool("chat.press", { effect: "read", run: async i => (await ctx.call("gate.approve", i)).data }); return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const events = new Events(db);

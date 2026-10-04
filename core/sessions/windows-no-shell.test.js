@@ -34,15 +34,16 @@ test("spawnSession applies the guard before anything starts", () => {
   assert.throws(() => spawnSession("codex", ["exec"], { platform: "win32", env: {} }), e => e.code === "sandbox_failed");
 });
 
-test("on a real Windows machine the stand-in claude is started with the shell tools denied", { skip: process.platform !== "win32", timeout: 60_000 }, async () => {
+test("on a real Windows machine a program named claude is started with the shell tools denied, and an agent without that way is refused", { skip: process.platform !== "win32", timeout: 60_000 }, async () => {
+  // node.exe copied to claude.exe: it does not know the option the guard puts first and says so on stderr, which proves what it was started with.
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nsh-"));
   try {
-    const bin = path.join(dir, "claude.cmd");
-    fs.writeFileSync(bin, "@echo off\r\necho ARGS:%*\r\n");
+    const bin = path.join(dir, "claude.exe"); fs.copyFileSync(process.execPath, bin);
     const child = spawnSession(bin, ["-p", "hello"], { cwd: dir, env: { ...process.env } });
-    let out = ""; child.stdout.on("data", d => out += d);
+    let err = ""; child.stderr.on("data", d => err += d);
     await new Promise(r => child.on("close", r));
-    assert.match(out, /ARGS:--disallowedTools Bash,BashOutput,KillShell,KillBash,PowerShell -p hello/, out);
-    assert.throws(() => spawnSession(path.join(dir, "codex.cmd"), ["exec"], { cwd: dir, env: {} }), e => e.code === "sandbox_failed");
+    assert.match(err, /--disallowedTools/, `the program was not started with the shell tools denied: ${err}`);
+    fs.copyFileSync(process.execPath, path.join(dir, "codex.exe"));
+    assert.throws(() => spawnSession(path.join(dir, "codex.exe"), ["exec"], { cwd: dir, env: {} }), e => e.code === "sandbox_failed");
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": [{ "name": "term.open", "reach": "person" }, { "name": "term.attach", "reach": "person" }, { "name": "term.list", "reach": "person" }, { "name": "term.close", "reach": "person" }] },
+  "does": { "tools": [{ "name": "term.open", "effect": "write", "reach": "person" }, { "name": "term.attach", "effect": "write", "reach": "person" }, { "name": "term.list", "effect": "read", "reach": "person" }, { "name": "term.close", "effect": "write", "reach": "person" }] },
   "watches": { "emits": ["term.opened", "term.closed", "term.command"] },
   "shows": { "streams": ["pty"] },
   "needs": {},

@@ -16,7 +16,7 @@ const clock = () => ++T;
 const PEOPLE = { owner: "per_alex", admin: "per_adm", manager: "per_man", member: "per_mem", temp: "per_tmp" };
 const u = (/** @type {string} */ type, id = "probe") => `vyre://${SPACE}/${type}/${id}`;
 // the resource each action is asked about
-const RESOURCE = { "records.read": u("contact", "c1"), "records.create": u("contact", "c1"), "records.update": u("contact", "c1"), "records.remove": u("contact", "c1"), "records.restore": u("contact", "c1"),
+const RESOURCE = { "checkpoint.write": u("checkpoint", "s1"), "checkpoint.read": u("checkpoint", "s1"), "records.read": u("contact", "c1"), "records.create": u("contact", "c1"), "records.update": u("contact", "c1"), "records.remove": u("contact", "c1"), "records.restore": u("contact", "c1"),
   "records.define": u("definition", "types"), "seal.put": u("contact", "c1"), "tasks.request": u("task"), "tasks.read": u("contact", "c1"), "tasks.work": u("contact", "c1"),
   "grants.role": u("member", "per_x"), "grants.invite": u("invite"), "grants.create": u("grant", "new"), "grants.revoke": u("grant"), "grants.narrow": u("grant"),
   "grants.offer": u("grant"), "events.read": u("event"), "tasks.decide": u("task"), "drive.restore": u("drive", "x"), "drive.read": u("drive", "x"), "drive.write": u("drive", "x"), "grants.unoffer": u("grant"), "rules.remove": u("rule"), "rules.accept": u("rule"), "rules.dismiss": u("rule"),

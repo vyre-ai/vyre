@@ -626,7 +626,10 @@ test("X-1, real daemon and relay: a phone that redeems the QR is a waiting pairi
     assert.ok(rr.status === 404 || rr.status === 403 || rr.status === 0 || rr.status === 405, `${method} ${path} is closed to a waiting pairing (got ${rr.status})`);
   }
   // what wink.phone.wait does is its own: it cannot answer its own question, add itself, or be called with another's name
-  assert.equal((await over(c, "wink.phone.wait", { state: "yes", yes: true, device: "someone" })).body.data.state, "waiting");
+  // fields the tool does not declare are refused by the registry, so it cannot be told it was answered; the call it does take answers waiting
+  const extra = await over(c, "wink.phone.wait", { state: "yes", yes: true, device: "someone" });
+  assert.ok(extra.status >= 400 && !(extra.body && extra.body.data), "undeclared fields are refused");
+  assert.equal((await over(c, "wink.phone.wait", {})).body.data.state, "waiting");
   assert.equal(await relayHas(w, r.paired.device), false);
   assert.equal((await w.call("wink.access")).data.devices.length, 0);
   // it cannot sign in either: no presence key was enrolled and no session can start
@@ -1100,4 +1103,20 @@ test("a device with no box pairs a fresh server through pairServer: the claimed 
   assert.equal(st.device, "Alex's iPhone");
   // a second device scanning the used ticket is refused as taken
   await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
+});
+
+test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const scan = parseServerQr(made.qr);
+  const r = await redeem(t, w, scan.seed, "Alex's iPhone");
+  const c = r.open();
+  const owner = { kind: "identity", id: "per_" + "q".repeat(26), name: "Alex" };
+  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
+  const res = await over(c, "wink.server.adopt", { owner, identity: owner.id, proof: { eid: "x".repeat(26), sig: "y".repeat(86) }, pairing: { commit, tag } });
+  const text = JSON.stringify(res.body);
+  assert.doesNotMatch(text, /does not take|not take|unknown (field|input)|not declared/i, text);
 });

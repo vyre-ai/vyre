@@ -4,7 +4,7 @@
 // terminal methods held to the floor and to the session's folder, and the per-provider hooks.
 
 import "../../../scripts/mac-test-guard.mjs";
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -16,6 +16,9 @@ import { conform } from "../conformance.js";
 import { rules } from "../../harness/rules.js";
 import { projectCodexConfig, seedTampered, promptTokens, acpProvider, askFor, mediaOf, modelsOf } from "./acp.js";
 import { seedFiles } from "../spawn.js";
+
+// Some tests start a fake agent and end before its process does; once the file is done, whatever child of THIS process is still running is stopped, so the run exits on its own (no force exit).
+after(() => { for (const h of /** @type {any[]} */ (/** @type {any} */ (process)._getActiveHandles())) if (h && h.constructor && h.constructor.name === "ChildProcess" && h.exitCode === null) { try { h.kill("SIGKILL"); } catch { /* gone */ } } });
 import { codexProvider } from "./codex.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "testing", "fake-acp.js");

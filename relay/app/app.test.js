@@ -120,6 +120,10 @@ test("worker: strict headers everywhere, immutable folders, the loader for any a
   assert.equal(page.headers.get("content-security-policy"), CSP);
   assert.match(CSP, /script-src 'self';/);
   assert.doesNotMatch(CSP, /unsafe/);
+  // CSP-1: the claim, the append and the name check go to the names directory, exactly that origin and no wildcard (published sites live under *.vyre.run).
+  const connect = (CSP.split("; ").find(d => d.startsWith("connect-src")) || "").split(" ").slice(1);
+  assert.ok(connect.includes("https://names.vyre.run"));
+  assert.ok(!connect.some(x => /^https?:\/\/\*\.vyre\.run$/.test(x) || x === "https://*" || x === "*"), "no wildcard host");
   assert.equal(page.headers.get("cache-control"), "no-cache");
   assert.equal(page.headers.get("set-cookie"), null);
   assert.equal(page.headers.get("x-content-type-options"), "nosniff");

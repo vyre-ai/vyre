@@ -149,7 +149,7 @@ function fetchRaw(url, { method = "GET", headers = {}, body } = /** @type {any} 
 test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a direct one does not", async t => {
   const relayed = await boot(t, { link: { path: "relay", relay: "fra", latencyMs: 80, lastHandshake: null, online: true, checkedAt: 1, cached: false } });
   const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
-  const o = await relayed.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const o = await relayed.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(o.error, undefined, o.error?.message);
   assert.deepEqual(o.data.link, { path: "relay", latencyMs: 80 });
   assert.deepEqual(relayed.link.asked, [{ input: { node: "nPHONE" }, caller: "module:glass" }]);
@@ -160,11 +160,11 @@ test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a di
   assert.equal(relayed.link.asked.length, 1);
 
   const far = await boot(t, { link: { path: "direct", relay: null, latencyMs: 180, lastHandshake: null, online: true, checkedAt: 1, cached: true } });
-  await far.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  await far.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(far.computers.calls.find(c => c.tool === "computers.watch").input.slow, true, "over 150 ms is slow too");
 
   const direct = await boot(t, { link: { path: "direct", relay: null, latencyMs: 12, lastHandshake: null, online: true, checkedAt: 1, cached: false } });
-  const d = await direct.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const d = await direct.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.deepEqual(d.data.link, { path: "direct", latencyMs: 12 });
   assert.deepEqual(direct.computers.calls.find(c => c.tool === "computers.watch").input, { agent: "kit", surface: "phone:pocket" });
 });
@@ -172,19 +172,19 @@ test("glass: a tailnet viewer on a relay gets link facts and a slow ticket; a di
 test("glass: open never fails for link.health, whether it errors or is slow to answer", async t => {
   const peer = { node: "alex-phone", stableId: "nPHONE", login: "alex@example.com" };
   const broken = await boot(t, { link: "throw" });
-  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const a = await broken.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(a.error, undefined);
   assert.equal(a.data.link, undefined);
   assert.ok(a.data.screen.ticket);
   const hung = await boot(t, { link: "hang" });
   const at = Date.now();
-  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const b = await hung.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(b.error, undefined);
   assert.ok(Date.now() - at < 5000, "the open waited only briefly");
   assert.ok(b.data.screen.ticket);
   // No link module at all.
   const none = await boot(t);
-  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer });
+  const c = await none.registry.call("glass.open", { target: "computer:kit", surface: "phone:pocket" }, "tailnet:alex@example.com", { peer, person: { id: "s1", kind: "bearer" } });
   assert.equal(c.error, undefined);
   assert.equal(c.data.link, undefined);
 });

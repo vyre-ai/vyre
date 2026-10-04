@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MAX = 50;
+const MAX = 49;
 const list = JSON.parse(fs.readFileSync(path.join(REPO, "test", "known-red.json"), "utf8"));
 
 test("the known-red list only shrinks, and every entry names a test file and an owner", () => {

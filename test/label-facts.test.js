@@ -9,14 +9,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "./helpers.js";
-import { start, callerFacts } from "../core/daemon/index.js";
+import { start, callerFacts, surfaceAncestry } from "../core/daemon/index.js";
 import { setPeerHosting } from "../core/daemon/peer.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 setPeerHosting(false);
-const LABELS = ["cli", "local", "deck", "mobile"];
+const LABELS = ["cli", "local"];
+const CLAIMS = ["deck", "mobile"];
 const k = { id: { owner: "per_" + "a".repeat(26) } };
+
+test("a deck or mobile label on the socket never gets person facts, whatever the ancestry says", () => {
+  for (const label of CLAIMS) for (const a of [undefined, { inside: false }, { inside: false, outside: true }, { inside: true }]) assert.equal(callerFacts(label, {}, null, k, false, null, a), null, `${label} ${JSON.stringify(a)}`);
+});
 
 test("callerFacts gives a person's-surface label nothing without the ancestry measurement, nothing from under a model, and person facts only from a measured outsider", () => {
   for (const label of LABELS) {
@@ -66,10 +71,34 @@ test("on a real daemon: a process under a fake claude sending each person label 
   // the control: the same label from a plain process (this test hosting vyred is the one seam) is the person's
   const js = path.join(dir, "person.mjs");
   fs.writeFileSync(js, `import http from "node:http";
-const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.who", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "deck" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
+const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.who", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "cli" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
 req.end("{}");`);
   globalThis.__who = [];
   setPeerHosting(true);
   try { await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r)); } finally { setPeerHosting(false); }
-  assert.deepEqual(globalThis.__who.map((/** @type {any} */ w) => w.kind), ["person"], "the person's own deck label still gets the person chain");
+  assert.deepEqual(globalThis.__who.map((/** @type {any} */ w) => w.kind), ["person"], "the person's own cli label still gets the person chain");
+});
+
+test("the development stand-in makes a surface label that is not inside a model the owner; a model's shell and a release build never are", () => {
+  const unread = { model: false, outside: false }, ssh = { model: false, outside: false, server: { exe: "/usr/sbin/sshd", pid: 9, started: "x", uid: 0 } }, tmpSsh = { model: false, outside: false, server: { exe: "/tmp/sshd", pid: 9, started: "x", uid: 0 } }, userSsh = { model: false, outside: false, server: { exe: "/usr/sbin/sshd", pid: 9, started: "x", uid: 1000 } }, tmux = { model: false, outside: false, server: { exe: "/usr/bin/tmux", pid: 9, started: "x", uid: 1000 } }, sh = { model: false, outside: false, server: { exe: "/bin/sh", pid: 9, started: "x" } }, inside = { model: true, outside: false }, outside = { model: false, outside: true };
+  assert.deepEqual(surfaceAncestry(unread, false), { inside: false, outside: false }, "no stand-in: an unreadable ancestry is no person");
+  assert.deepEqual(surfaceAncestry(unread, true), { inside: false, outside: false }, "stand-in: an unknown is still no person (SI-1)");
+  assert.deepEqual(surfaceAncestry(sh, true), { inside: false, outside: false }, "stand-in: a bare sh at the top (a setsid'd model) is no person");
+  assert.deepEqual(surfaceAncestry(tmpSsh, true), { inside: false, outside: false }, "stand-in: an sshd copied somewhere a model can write is no person");
+  assert.deepEqual(surfaceAncestry(tmux, true), { inside: false, outside: false }, "stand-in: a user-owned tmux a model can start is no person (SI-1b)");
+  assert.deepEqual(surfaceAncestry(userSsh, true), { inside: false, outside: false }, "stand-in: a user-owned process named sshd is no person");
+  assert.deepEqual(surfaceAncestry(ssh, true), { inside: false, outside: true }, "stand-in: a login over the root sshd is the owner");
+  assert.deepEqual(surfaceAncestry(ssh, false), { inside: false, outside: false }, "no stand-in file or a release build: never");
+  assert.deepEqual(surfaceAncestry(outside, false), { inside: false, outside: true });
+  assert.deepEqual(surfaceAncestry(inside, true), { inside: true, outside: false }, "a model's shell stays one");
+  for (const label of LABELS) {
+    assert.equal(callerFacts(label, {}, null, k, false, null, surfaceAncestry(unread, false)), null);
+    assert.equal(/** @type {any} */ (callerFacts(label, {}, null, k, false, null, surfaceAncestry(ssh, true))).inside_model_process, false);
+    assert.equal(callerFacts(label, {}, null, k, false, null, surfaceAncestry(inside, true))?.inside_model_process, true);
+  }
+});
+
+test("devStandIn is false in a release-kind build, so the stand-in file is ignored there", async () => {
+  const { devSwitch } = await import("../kernel/devbuild.js");
+  assert.equal(devSwitch("1", fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "pk-"))), false, "a folder with no development build marker is packaged");
 });

@@ -316,7 +316,7 @@ test("L-2 rollback route with a REAL sealing process: ask, the phone's proof ove
   await enrolDevice(sealer, phone);
   const tools = new Map();
   const clock = { t: Date.now() };
-  await modulesTool.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, modulesListReset: k.resetModulesList, modulesListResetPayload: k.modulesListReset, kernel: { chain: async m => m.chain, proofFrom: m => m.proof } });
+  await modulesTool.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, modulesListReset: k.resetModulesList, modulesListResetPayload: k.modulesListReset, kernel: { chain: async m => m.chain, proofFrom: m => (m.proof ? { presence: m.proof } : {}) } });
   const run = (n, i, m = {}) => tools.get(n).run(i, m);
   const owner = k.chains.fromFacts({ kind: "socket", surface: "cli", uid: process.getuid() });
   const op = "grant.modules_list_reset";

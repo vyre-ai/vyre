@@ -20,6 +20,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
+| [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 4 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`artifacts`](#artifacts) | `core/artifacts` | `box` | 28 | 10 | capsule, cli, deck |
 | [`assistant`](#assistant) | `core/assistant` | `box`, `local` | 8 | 4 | cli |
@@ -71,6 +72,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
+| [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 74 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -126,6 +128,18 @@ The theme preset, the scheme and the design tokens as hub settings (ADR 0035), c
 - Tools: [3](tools.md#appearance)
 - Emits: [1 events](events.md#appearance)
 - Shows on: cli
+
+## approvals
+
+Approve on your phone: a session that cannot give a presence proof (the web app's software key) asks, the paired phone shows what will happen and signs it with Face ID, and the asker takes the proof back to attach to its act.
+
+- Folder: `core/approvals`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#approvals)
+- Emits: no events
+- Shows on: cli
+- Needs kernel: `{"actions":[]}`
 
 ## apps
 
@@ -706,6 +720,19 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
 
+## signin
+
+The command line's sign-in: `vyre signin` asks the owner's phone to approve, and on a yes that one terminal login holds a person session until it signs out or goes unused for 30 days.
+
+- Folder: `core/signin`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [6](tools.md#signin)
+- Emits: no events
+- Shows on: cli
+- Needs daemon: `cliSigninPayload`, `cliSigninCheck`, `cliSessions`, `devStandIn`
+- Needs kernel: `{"actions":[]}`
+
 ## spaces
 
 Identity, spaces, members and invites: your Vyre name, a space with a home you choose, the five roles with temp access, and join links.
@@ -950,4 +977,4 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Tools: [15](tools.md#work)
 - Emits: no events
 - Shows on: cli
-- Needs kernel: `{"work":true,"actions":["records.read","records.create","records.update","events.read"]}`
+- Needs kernel: `{"work":true,"attrs":true,"actions":["records.read","records.create","records.update","events.read"]}`

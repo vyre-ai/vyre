@@ -31,7 +31,7 @@ const TEAM = `export default { async start(ctx) {
 } };`;
 // settings.request as the settings module asks it: the call's key, value and level become one string, matched against what the person said.
 const SETTINGS = `export default { async start(ctx) {
-  ctx.tool("settings.request", { effect: "read", run: async (i, meta) => {
+  ctx.tool("settings.request", { callers: ["mcp"], run: async (i, meta) => {
     const to = globalThis.__settingTo(i);
     const m = await ctx.call("vault.said.match", { kind: "setting", to: [to], consume: true, thread: meta.thread });
     if (!(m.data && m.data.matched)) throw Object.assign(new Error("changes only when the person asks"), { code: "not_asked" });

@@ -54,7 +54,7 @@ export async function bootHomeKernel(cfg) {
   const devFileKey = cfg.fileKey === true || devSwitch(process.env.VYRE_KERNEL_FILE_KEY);
   if (process.env.VYRE_KERNEL_FILE_KEY === "1" && !devFileKey) log("kernel: VYRE_KERNEL_FILE_KEY ignored (this is a packaged daemon)");
   if (!sealer && !devFileKey) {
-    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
+    try { sealer = startSealer({ dir: path.join(id.dir, "seal"), dev: process.env.VYRE_SEAL_DEV === "1", ...(!isPackaged() && (process.env.VYRE_SEAL_UNATTESTED === "1" || (typeof cfg.standIn === "function" && cfg.standIn() === true)) ? { unattested: true } : {}), ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) }); ownSealer = true; await sealer.health(); }
     catch (e) { if (sealer) await sealer.close().catch(() => {}); throw new KernelError("key_custody", "the kernel will not start here: its key must live in the sealing process, and the sealing process cannot run safely on this machine (a server with its own OS user, or the OS keystore)", String(e && /** @type {any} */ (e).code || e)); }
   }
   if (sealer) {
@@ -177,6 +177,15 @@ export async function bootHomeKernel(cfg) {
       };
     }
   }
+  // The command line's sign-in (`vyre signin`): the owner's phone signs this and the daemon then gives that one terminal a person session. The terminal is named by a hash of the login key the daemon
+  // measured (never a label or anything the caller sends), so a proof made for one terminal's ask never satisfies another's. The sealing process checks and uses the proof like any other grant act.
+  const cliSigninFields = (/** @type {string} */ ask, /** @type {string} */ terminal) => ({ ask: String(ask), terminal: crypto.createHash("sha256").update(String(terminal)).digest("hex").slice(0, 32) });
+  const cliSigninPayload = (/** @type {string} */ ask, /** @type {string} */ terminal) => { const fields = cliSigninFields(ask, terminal); return { op: "grant.cli_signin", space: id.space, fields, payload_hash: payloadHash("grant.cli_signin", id.space, fields) }; };
+  const cliSigninCheck = async (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask, /** @type {string} */ terminal) => {
+    if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
+    const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.cli_signin", fields: cliSigninFields(ask, terminal), proof });
+    return why ? { ok: false, why } : { ok: true };
+  };
   /** @type {any} */ let host;
   const egress = createEgress({ space: id.space, log: k.log, chains: k.chains, hostsOf: (/** @type {string} */ n) => host && host.hostsOf(n) });
   const supervisor = createSupervisor({ egress });
@@ -194,5 +203,5 @@ export async function bootHomeKernel(cfg) {
   hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
   // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
   { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
-  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

@@ -47,8 +47,8 @@ const PROOF = { proof: { method: "passkey", id: "x" } };
 /** The write chaos.test.js uses: it counts itself in the event log. @param {string} root */
 function chaosModule(root) {
   writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow"] }, watches: { emits: ["chaos.added"] } }, `export default { async start(ctx) {
-    ctx.tool("chaos.add", { input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
-    ctx.tool("chaos.slow", { input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
+    ctx.tool("chaos.add", { effect: "read", input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
+    ctx.tool("chaos.slow", { effect: "read", input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
       run: async i => { await new Promise(r => setTimeout(r, i.ms)); ctx.events.emit("chaos.added", { n: i.n }); return { n: i.n }; } });
     return {};
   } };`);

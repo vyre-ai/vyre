@@ -249,3 +249,53 @@ test("retire (PA-1): a Space that was only started is taken back, folder and all
   assert.ok(spaces.list().includes(again.space) && fs.existsSync(path.join(root, "kernel", "spaces", again.space)), "a Space with content stays");
   await assert.rejects(() => spaces.retire(pid), { code: "not_allowed" });
 });
+
+test("retire fails closed (RT-1): a message or drive event, a file in the folder, an unreadable database, or old content behind thousands of later boot events all refuse and leave the Space and its folder", async () => {
+  const { spaces, root } = await home();
+  const folderOf = a => path.join(root, "kernel", "spaces", a.space);
+  // a record event the deny list used to miss: any event type that making a Space does not write refuses
+  const a = await spaces.host({ owner: ME });
+  const ca = await ownerChain(a.kernel, ME);
+  await a.kernel.log.append(ca, { type: "message.created", sv: 1, subject: `vyre://${a.space}/message/m1`, data: { text: "hello" }, vis: "owner", red: "internal" });
+  await assert.rejects(() => spaces.retire(a.space), { code: "not_allowed" });
+  assert.ok(fs.existsSync(folderOf(a)) && spaces.list().includes(a.space), "a Space with a message stays, folder and all");
+  // a file the Space's folder should not hold (a drive or pool file)
+  const b = await spaces.host({ owner: ME });
+  fs.writeFileSync(path.join(folderOf(b), "drive-file.bin"), "x");
+  await assert.rejects(() => spaces.retire(b.space), { code: "not_allowed" });
+  assert.ok(fs.existsSync(path.join(folderOf(b), "drive-file.bin")));
+  // a record behind thousands of later boot-type events: the whole table is read, not a window
+  const c = await spaces.host({ owner: ME });
+  const cc = await ownerChain(c.kernel, ME);
+  await c.kernel.log.append(cc, { type: "record.created", sv: 1, subject: `vyre://${c.space}/contact/c1`, data: { name: "Jane" }, vis: "owner", red: "internal" });
+  for (let i = 0; i < 300; i++) await c.kernel.log.append(cc, { type: "kernel.modules-list", sv: 1, subject: `vyre://${c.space}/kernel/m${i}`, data: { n: i }, vis: "owner", red: "internal" });
+  await assert.rejects(() => spaces.retire(c.space), { code: "not_allowed" });
+  assert.ok(fs.existsSync(folderOf(c)));
+  // an empty Space is still taken back, and the unreadable case: a Space whose folder lost its space.json is refused, never deleted
+  const e = await spaces.host({ owner: ME });
+  fs.rmSync(path.join(folderOf(e), "space.json"));
+  await assert.rejects(() => spaces.retire(e.space), { code: "not_allowed" });
+  assert.ok(fs.existsSync(folderOf(e)));
+  const f = await spaces.host({ owner: ME });
+  assert.deepEqual(await spaces.retire(f.space), { retired: true });
+});
+
+test("retire (RT-1, more): a database that cannot be read refuses with the folder intact, and a record behind 3,000 later boot-type events still refuses", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-spaces-"));
+  const pid = `spc_${"c".repeat(12)}`;
+  const personal = await bootKernel({ db: new DatabaseSync(":memory:"), space: pid, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 1), clock, presence: presenceFor() });
+  /** @type {DatabaseSync[]} */ const opened = [];
+  const spaces = createSpaceKernels({ root, personal: { space: pid, kernel: personal }, openDb: () => { const db = new DatabaseSync(":memory:"); opened.push(db); return db; }, clock, fileKey: true, bootOptions: { presence: presenceFor() } });
+  const folder = h => path.join(root, "kernel", "spaces", h.space);
+  const a = await spaces.host({ owner: ME });
+  opened[opened.length - 1].close(); // the Space's database can no longer be read
+  await assert.rejects(() => spaces.retire(a.space), { code: "not_allowed" });
+  assert.ok(fs.existsSync(folder(a)) && spaces.list().includes(a.space), "an unreadable Space is never deleted");
+  const b = await spaces.host({ owner: ME });
+  const cb = await ownerChain(b.kernel, ME);
+  await b.kernel.log.append(cb, { type: "record.created", sv: 1, subject: `vyre://${b.space}/contact/c1`, data: { name: "Jane" }, vis: "owner", red: "internal" });
+  for (let i = 0; i < 3000; i++) await b.kernel.log.append(cb, { type: "kernel.modules-list", sv: 1, subject: `vyre://${b.space}/kernel/m${i}`, data: { n: i }, vis: "owner", red: "internal" });
+  await assert.rejects(() => spaces.retire(b.space), { code: "not_allowed" });
+  assert.ok(fs.existsSync(folder(b)));
+  // member.removed and grant.revoked are allowed only because any record they could hide stays in the table, where it is found
+});

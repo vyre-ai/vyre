@@ -554,3 +554,19 @@ test("software signer (ruling 4): a development-kind process takes a software ke
   assert.equal(devSwitch("1", pkg), false, "release-kind: refused");
   assert.equal(devSwitch("1"), true, "this development checkout: allowed");
 });
+
+test("SW-2: a real sealing child from a release-stamped copy ignores VYRE_SEAL_DEV, VYRE_SEAL_UNATTESTED and VYRE_SEAL_SOFTWARE: unattested and software keys are refused", async t => {
+  const fsx = await import("node:fs"), osx = await import("node:os"), { pathToFileURL } = await import("node:url");
+  const here = path.dirname(new URL(import.meta.url).pathname), root = path.resolve(here, "..", "..");
+  const copy = fsx.mkdtempSync(path.join(osx.tmpdir(), "rel-"));
+  t.after(() => fsx.rmSync(copy, { recursive: true, force: true }));
+  for (const d of ["kernel", "lib"]) fsx.cpSync(path.join(root, d), path.join(copy, d), { recursive: true, filter: f => !/\.test\.js$/.test(f) });
+  fsx.writeFileSync(path.join(copy, "package.json"), '{"type":"module"}');
+  fsx.writeFileSync(path.join(copy, "lib", "build-kind.js"), 'export const BUILD_KIND = "release";\n');
+  const { startSealer: startCopy } = await import(pathToFileURL(path.join(copy, "kernel", "seal", "client.js")).href);
+  const dir = tmp("rel"), s = startCopy({ dir, timeoutMs: 8000, dev: true, unattested: true, software: true });
+  t.after(async () => { await s.close(); fsx.rmSync(dir, { recursive: true, force: true }); });
+  assert.equal((await s.health()).unattested_allowed, false, "the release build ignores VYRE_SEAL_UNATTESTED");
+  await assert.rejects(() => enrolDevice(s, signer("per_alex", undefined, "software")), { code: "software_refused" });
+  await assert.rejects(() => enrolDevice(s, signer("per_alex")), { code: "unattested" }, "an unattested hardware-class key is refused too");
+});

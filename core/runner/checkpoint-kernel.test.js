@@ -23,7 +23,7 @@ test("registered, in no role, and granted per session to that session's own chai
   const r = { person: BOB, role: "member" }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${BOB}`) });
   const kit = { kind: "agent", id: "kit", space: SPACE };
   await g.addActor(owner, kit, { presence: proof("grants.role", { actor: kit }, `vyre://${SPACE}/member/kit`) });
-  const urn = id => `vyre://${SPACE}/session/${id}`;
+  const urn = id => `vyre://${SPACE}/checkpoint/${id}`;
   const gi = { subject: { kind: "actor", actor: kit }, actions: ["checkpoint.write", "checkpoint.read"], resource: { prefix: urn("s1") }, conditions: {}, source: "test" };
   const asst = () => k.chains.fromFacts({ kind: "agent_session", vouched: true, person: OWNER, agent: "kit", session: "s1" });
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });

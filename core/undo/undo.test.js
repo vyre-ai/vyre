@@ -17,17 +17,17 @@ const g = /** @type {any} */ (globalThis);
 
 const PLANNER = ["planner", { does: { tools: ["planner.add", "planner.remove", "planner.person", "planner.present"] } },
   `export default { async start(ctx) {
-    ctx.tool("planner.add", { run: async i => { globalThis.items.add(i.title); return { item: i.title }; } });
-    ctx.tool("planner.remove", { run: async i => { globalThis.removed.push(i); if (globalThis.breakRemove) throw new Error("the planner is busy"); globalThis.items.delete(i.item); return { ok: true }; } });
+    ctx.tool("planner.add", { effect: "read", run: async i => { globalThis.items.add(i.title); return { item: i.title }; } });
+    ctx.tool("planner.remove", { effect: "read", run: async i => { globalThis.removed.push(i); if (globalThis.breakRemove) throw new Error("the planner is busy"); globalThis.items.delete(i.item); return { ok: true }; } });
     ctx.tool("planner.person", { callers: ["cli", "deck"], run: async () => ({}) });
-    ctx.tool("planner.present", { presence: true, run: async () => ({}) });
+    ctx.tool("planner.present", { effect: "read", presence: true, run: async () => ({}) });
     return {}; } };`];
 const MAIL = ["mail", { does: { tools: [{ name: "mail.unsend", reach: "asked", outward: "send" }] } },
-  `export default { async start(ctx) { ctx.tool("mail.unsend", { run: async () => ({}) }); return {}; } };`];
+  `export default { async start(ctx) { ctx.tool("mail.unsend", { effect: "read", run: async () => ({}) }); return {}; } };`];
 const THREADS = ["threads", { does: { tools: ["threads.answer"] } },
-  `export default { async start(ctx) { ctx.tool("threads.answer", { run: async () => ({}) }); return {}; } };`];
+  `export default { async start(ctx) { ctx.tool("threads.answer", { effect: "read", run: async () => ({}) }); return {}; } };`];
 const AGENTS = ["agents", { does: { tools: ["agents.list"] } },
-  `export default { async start(ctx) { ctx.tool("agents.list", { run: async () => { globalThis.agentCalls++; return [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }]; } }); return {}; } };`];
+  `export default { async start(ctx) { ctx.tool("agents.list", { effect: "read", run: async () => { globalThis.agentCalls++; return [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }]; } }); return {}; } };`];
 
 async function world(t, fakes = [PLANNER, MAIL, THREADS, AGENTS]) {
   g.items = new Set(); g.removed = []; g.breakRemove = false; g.agentCalls = 0;
