@@ -61,7 +61,14 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   assert.deepEqual((await ok("tasks.list", { space })).tasks, []);
   // `vyre space add-agent`: the kernel's actor membership; without the person's proof it is refused plainly and nothing is added
   const addAgent = await deck("spaces.members.add-agent", { space, agent: "kit" });
-  console.log("ADD-AGENT", JSON.stringify(addAgent).slice(0, 300));
+  assert.equal(addAgent.error && addAgent.error.code, "presence_required", JSON.stringify(addAgent).slice(0, 200));
+  assert.equal(await d.kernel.spaces.hosted(space).gateway.grants.members.list(d.kernel.spaces.hosted(space).kernel.chains.fromFacts({ kind: "device", device_key_id: "d", person: made.id, path: "direct", session: "s" })).then(l => l.length), 1, "nothing was added");
+  // with the development stand-in (a hand-made file in a development build) the person's proof is satisfied and the agent joins as an actor, and again is no error
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
+  const added = await call("spaces.members.add-agent", { space, agent: "kit" }, { root, caller: "cli", headers: { "x-vyre-presence": "stand-in" } });
+  assert.ok(!added.error, JSON.stringify(added).slice(0, 300));
+  assert.deepEqual(added.data.agent, { kind: "agent", id: "kit" });
+  assert.equal((await call("spaces.members.add-agent", { space, agent: "Bad Name!" }, { root, caller: "cli", headers: { "x-vyre-presence": "stand-in" } })).error.code, "bad_input");
   // one id for the space everywhere
   const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
   const row = (Array.isArray(listed) ? listed : listed.spaces).find(x => x.name === "estatedev.vyre.run");
