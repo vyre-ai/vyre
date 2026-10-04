@@ -63,7 +63,7 @@ function NameField({ value, onChange, label, also, space, real }: { value: strin
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
-export function InstallScreen({ start, inviteLink }: { start?: "create" | "join"; inviteLink?: string }) {
+export function InstallScreen({ start }: { start?: "create" | "join" }) {
   const router = useRouter();
   const first = !start;
   const [step, setStep] = useState(startStep(start));
@@ -87,15 +87,8 @@ export function InstallScreen({ start, inviteLink }: { start?: "create" | "join"
   const [recovery, setRecovery] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [elsewhere, setElsewhere] = useState<ReturnType<typeof setupElsewhere>>([]);
-  const [link, setLink] = useState(inviteLink ?? "");
+  const [link, setLink] = useState("");
   const [invite, setInvite] = useState<ReturnType<typeof inviteFrom> | null>(null);
-  // A join link that opened the app (vyre://join?link=, from the web join page): verify it and show its card at once.
-  useEffect(() => {
-    if (!inviteLink || MOCK) return;
-    setBusy(true);
-    previewInvite(inviteLink).then((p) => { setInvite(inviteFrom(p, inviteLink)); setStep("invite"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inviteLink]);
   const device = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "phone" : "computer";
   const me = MOCK ? nameStatus(name) : nameStatusReal(name, taken[slug(name)] ?? null);
   const spaceSlug = addr ?? slug(spaceName);
