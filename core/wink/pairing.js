@@ -988,7 +988,6 @@ export function createPairing(o) {
         return d ? { paired: true, name: d.name } : { paired: false };
       },
     });
-<<<<<<< HEAD
     ctx.tool("wink.server.owned", {
       internal: true,
       description: "Does this server have an owner yet (a device paired and was confirmed)? Answers { owned: boolean }, nothing else. Asked by the onboarding module, which refuses every sign-in and name before it is true.",
@@ -997,7 +996,8 @@ export function createPairing(o) {
         const c = String((meta0 && meta0.caller) || "");
         if (!c.startsWith("module:")) throw fail("denied", "this is for the server's own modules");
         return { owned: Boolean(meta.get("owner") && meta.get("adopter")) };
-=======
+      },
+    });
     ctx.tool("wink.device.paired", {
       internal: true,
       description: "For the spaces module: is this device (of any kind) one of this identity's, still paired? Answers { paired, kind? }. Modules only, read only; it names no one else's devices.",
@@ -1006,7 +1006,6 @@ export function createPairing(o) {
         if (!String((meta0 && meta0.caller) || "").startsWith("module:")) throw fail("denied", "this is for modules");
         const d = devices.list(String(input.identity)).find((/** @type {any} */ x) => x.id === String(input.device));
         return d ? { paired: true, kind: d.kind } : { paired: false };
->>>>>>> origin/work/devbox
       },
     });
     ctx.tool("wink.server.handover", {

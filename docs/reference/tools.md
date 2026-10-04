@@ -11275,371 +11275,569 @@ Dry-run a watcher folder once, from since (default null), filing nothing. Return
 
 What you have added with a Wink: your devices (a phone, a computer, a server, a storage device, each with its kind, who it belongs to and what it offers) and the grants given to people, as cards. Devices belong to you, not to a space. Answers { devices, grants }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `status` "active" or "revoked"
 - Callers: any caller
 
 ### `wink.approve`
 
 Approve a person who redeemed a sensitive invitation, after reading their fingerprint words back (the card shows them). Answers { grant }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `offer` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.cancel`
 
 Close an offer that has not been used: its code or invitation stops working. Answers { cancelled }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `offer` string, required
 - Callers: any caller
 
 ### `wink.card`
 
 The card for an offer or a grant: four lines and two buttons, in the words of team/0.3/wink-copy.md. Answers { card }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `grant` string
+  - `offer` string
 - Callers: any caller
 
 ### `wink.code.ack`
 
-No description.
+Development only (the typed code is switched off in a release build; a phone, a computer and a server are added by scan or paste and three words, never this). Type back the code the new device is showing. One try per code: the right one adds the device and uses the code up, a wrong one closes the code and a new one is showing. Answers { ok }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `offer` string, required
+  - `typed` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.code.open`
 
 Development only: show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `flow` one of "W1", "W2", "W3"
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.code.status`
 
 The code that is showing now, if any: { offer, code, expires, state }. The screen that opened it asks again after a replacement (a closed code is replaced with no tap).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.decline`
 
 Say no to a person who redeemed a sensitive invitation. Nothing is added. Answers { declined }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `offer` string, required
 - Callers: any caller
 
 ### `wink.device.key`
 
 Register the key an owner's device signs instructions with (SPKI, base64url: Ed25519 or P-256), so a headless box can take a signed instruction from it (wink.relay.apply). Needs the owner's presence. Answers { device }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `device` string, required
+  - `key` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.device.paired`
 
-No description.
+For the spaces module: is this device (of any kind) one of this identity's, still paired? Answers { paired, kind? }. Modules only, read only; it names no one else's devices.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `device` string, required
+  - `identity` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `wink.device.record`
 
-No description.
+What this module recorded when the owner confirmed a device: { id, kind, owner, confirmed, confirmedBy, confirmKeyId, key, hardware }, for the presence module to decide on a paired session. Only the presence module asks; null for a device the owner never confirmed.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `id` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `wink.invite`
 
 Invite a person into this space: a Wink with the offer sealed into it (role and projects). Answers { offer, ticket, expiresAt }: show the ticket as a ring or a link. The invited person's own device redeems it and a card asks them to join; a sensitive role (admin) waits for your approval (wink.approve).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `days` number
+  - `name` string
+  - `projects` list of string
+  - `role` one of "member", "contributor", "guest", "admin"
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.network.join`
 
 Internal, for the network module, after the owner's check and presence: bring up this machine's link to a space it has been given a way into.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `space` string, required
 - Callers: any caller
 
 ### `wink.network.leave`
 
 Internal, for the network module, after the owner's check and presence: take this machine's link to a space down.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `space` string, required
 - Callers: any caller
 
 ### `wink.network.status`
 
 Internal, for the network module: how the network looks from this machine (signed in, per space the link, direct or relayed, the relay, the server's door, storage, the clock). Read only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `ping` boolean
 - Callers: any caller
 
 ### `wink.network.whois`
 
 Internal, for the network module: who is the connected device at an address or with a device id, from the identity list and the connections this machine admitted.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `addr` string
+  - `eid` string
 - Callers: any caller
 
 ### `wink.offer.set`
 
 Set what a device offers. Without a space: the device's own offers (a phone: access; a computer: access, compute; a server: access, compute, storage; a storage device: storage). With a space and offer compute: the space's side (an admin of it, side space) or the member's side (the device's owner, side member). Compute reaches a space only when both sides are on. Answers { device, offers } or { allowed }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `device` string, required
+  - `offer` one of "access", "compute", "storage", required
+  - `on` boolean, required
+  - `side` "space" or "member"
+  - `space` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.offers`
 
 What is waiting on a person right now: the offers that are showing or waiting for a card, without any secret. Answers { offers }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.pair.server`
 
 Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. A short typed code is switched off in this release (`code` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `target` object, required
+    - `id` string, required
+    - `kind` "identity" or "space", required
+  - `code` string
+  - `kind` "server" or "storage"
+  - `name` string
+  - `payload` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.pair.status`
 
 Where a pairing is: { state: waiting | confirm | done | failed | expired, device?, reason?, words? }. `confirm` means the person at the server is being asked: show `words` (the same three words the server shows) and say to answer yes there only if they match. A failed pairing says why in plain words (for example that the server already belongs to someone and must be removed first).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `pairing` string, required
 - Callers: any caller
 
 ### `wink.pair.targets`
 
 The "Pair to:" choices for a server or storage device: you, and each space you administer. Answers { targets: [{ kind: identity | space, id, label, role? }] }. A phone and a computer pair to you only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.peer.allow`
 
 Whether a device may open a peer stream to this space: only a live paired server of this space or its owner. Answers { allow }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `device` string, required
 - Callers: any caller
 
 ### `wink.phone.open`
 
-No description.
+Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. A short typed code is switched off in this release (`typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `space` string
+  - `typed` boolean
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.phone.pair.answer`
 
 On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `yes` boolean, required
+  - `pick` integer
+  - `words` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.phone.pairing`
 
 On the computer showing the QR: is a phone asking to be added right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `choices` are three sets of three words, one of them what the phone shows and two decoys in an order made fresh for this pairing, and `line` the question to put to the person (answer with wink.phone.pair.answer).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.phone.scan`
 
 On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `code` string
+  - `payload` string
+  - `target` object
+    - `id` string
+    - `kind` string
 - Callers: any caller
 
 ### `wink.phone.wait`
 
-No description.
+From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `commit` string
+  - `name` string
+  - `reveal` string
+  - `tag` string
+- Callers: `web`
 
 ### `wink.relay.apply`
 
 Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see docs/work/tailnet.md). Answers { applied, url }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `action` "relay.enable", required
+  - `box` string, required
+  - `device` string, required
+  - `nonce` string, required
+  - `sig` string, required
+  - `ts` number, required
+  - `v` number, required
+  - `url` string
 - Callers: any caller
 
 ### `wink.remove`
 
 Take something back: a grant (a member, a share) is revoked, or a device (give `device`) is removed with its connections closed, and a line is written. Answers { removed, prompt } where prompt is the words the screen showed before asking.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `device` string
+  - `grant` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.server.adopt`
 
-No description.
+On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `owner` object, required
+    - `id` string, required
+    - `kind` "identity" or "space", required
+    - `name` string
+  - `deviceKind` one of "phone", "computer", "web"
+  - `deviceName` string
+  - `handover` object
+    - `authKey` string
+    - `box` string
+    - `controlUrl` string
+    - `device` string
+    - `home` string
+    - `relay` string
+    - `space` string
+  - `identity` string
+  - `keyStorage` "hardware" or "software"
+  - `pairing` object
+    - `cancel` boolean
+    - `commit` string
+    - `reveal` string
+    - `tag` string
+  - `peerSecret` string
+  - `proof` object
+    - `eid` string
+    - `sig` string
+- Callers: `web`
 
 ### `wink.server.code`
 
-No description.
+On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires }: `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). A short typed code is switched off in this release; `typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `pairTo` string
+  - `qr` boolean
+  - `typed` boolean
 - Callers: any caller
 
 ### `wink.server.confirm`
 
 On the new server: type back the code the app is showing. One try per code. Answers { ok, message }. A right code means the codes matched, nothing more: the app finishes the pairing (wink.server.adopt) and wink.pair.status on the app is the one place that says it is done or that it failed and why.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `offer` string, required
+  - `typed` string, required
 - Callers: any caller
 
 ### `wink.server.handover`
 
-No description.
+What this server was handed when it was adopted, to reach its home: { home, box, controlUrl, authKey, relay, space, device } (any may be missing), and the peer secret. The auth key joins the control plane and the peer secret proves this server to its home, so this answers only the Wink module itself, never another module, a person or a device, and never a caller that is not named. Answers { handover } or { handover: null }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `wink.server.owned`
 
-No description.
+Does this server have an owner yet (a device paired and was confirmed)? Answers { owned: boolean }, nothing else. Asked by the onboarding module, which refuses every sign-in and name before it is true.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input: none
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `wink.server.pair.answer`
 
-No description.
+At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `words` (all three, typed); a bare yes is refused and adds nothing, and a wrong pick or words is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `yes` boolean, required
+  - `pick` integer
+  - `words` string
 - Callers: any caller
 
 ### `wink.server.paired`
 
-No description.
+For the spaces module: is this device a server paired to this identity, and still paired? Answers { paired, name? }. Modules only, read only; it names no one else's devices.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `device` string, required
+  - `identity` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `wink.server.pairing`
 
-No description.
+At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.server.release`
 
-No description.
+On a server: let go of its owner. The app that adopted it calls this over the paired channel when the person removes the server there (the app has the owner's presence for the removal). Only the app that adopted this server may; anyone else is refused, and a person at this server uses wink.server.reset. Clears the owner, the adopter and the hand-over and keeps the server's own keys, so it can be paired again. Answers { released }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.server.reset.begin`
 
-No description.
+On the server's own console only: start a reset. The command line (vyre wink reset --begin) makes a one-time code, shows it on the person's terminal, and sends this only its salted hash { salt, hash }. The code is valid 5 minutes and once. The local command line only: never a deck, hook, agent, module, device, tailnet or relay caller. Answers { begun, until }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `hash` string, required
+  - `salt` string, required
+- Callers: `cli`
 
 ### `wink.server.reset.confirm`
 
-No description.
+On the server's own console only: finish a reset with the code that vyre wink reset --begin showed. The server forgets its owner (owner, adopter, hand-over, peer secret, the app's devices) and keeps its own keys; the previous owner's devices get a card. Five wrong codes lock this for an hour. The local command line only. Answers { reset, had }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
-- Callers: any caller
+- Input:
+  - `code` string, required
+- Callers: `cli`
 
 ### `wink.server.retarget`
 
 On this server, from the owner's own screen with presence: change who it belongs to (an identity or a space). The same as wink.server.adopt once there is an owner. Answers { owner }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `owner` object, required
+    - `id` string, required
+    - `kind` "identity" or "space", required
+    - `name` string
+  - `deviceKind` one of "phone", "computer", "web"
+  - `deviceName` string
+  - `handover` object
+    - `authKey` string
+    - `box` string
+    - `controlUrl` string
+    - `device` string
+    - `home` string
+    - `relay` string
+    - `space` string
+  - `identity` string
+  - `keyStorage` "hardware" or "software"
+  - `pairing` object
+    - `cancel` boolean
+    - `commit` string
+    - `reveal` string
+    - `tag` string
+  - `peerSecret` string
+  - `proof` object
+    - `eid` string
+    - `sig` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.server.status`
 
 At the server: has it been paired yet? Answers { owned: false } or { owned: true, space, device }: `space` is the name of what it belongs to (a space's name, or Personal for an identity) and `device` the name of the device that paired it, so the installer can say "Connected to <space>. Finish setting up on your <device>." Only this server's own screen or terminal (cli, local, deck, capsule) reads it.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.share`
 
 Lend one of my own computers to my own space: it may run my sessions while it is awake, within the limits I set. Creates a node.host grant. Answers { grant }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `device` string, required
+  - `awake` boolean
+  - `cpu` number
+  - `hours_day` number
+  - `on_power` boolean
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.storage.bridge`
 
-wink.storage.bridge.accept
+A storage frame for a drive this device serves, from the space's home (a put, get, delete or ping of one encrypted chunk, signed with the drive's secret). Answers { status, body? }. Only the home this device is paired to may ask.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `offer` string, required
+  - `op` one of "put", "get", "del", "ping", required
+  - `sig` string, required
+  - `ts` number, required
+  - `body` string
+  - `key` string
+  - `nonce` string
 - Callers: any caller
 
 ### `wink.storage.bridge.accept`
 
-No description.
+The device that has a drive accepts it from its home: step open answers a one-time key, step seal takes the drive's secret sealed to that key. The secret is never an input in the clear. Answers { pub } or { ok }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `capacity` number, required
+  - `offer` string, required
+  - `step` "open" or "seal", required
+  - `box` string
+  - `epk` string
+  - `kind` string
+  - `location` object
 - Callers: any caller
 
 ### `wink.storage.bridge.drive`
 
-No description.
+Use a drive that only another device can reach: the home picks the drive (an offer from wink.storage.pick) and names the device that has it. That device is asked to open, the home makes the drive's secret and hands it over sealed, and the device starts serving. Answers { ok }. The device must be connected to this home.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `device` string, required
+  - `offer` string, required
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.storage.card`
 
-No description.
+The words a person reads before adding storage: pass a candidate from discover, or the bucket details without the secret. Answers { card }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `bucket` string
+  - `candidate` string
+  - `capacity` number: Bytes Vyre may use here (needed unless the drive reports its size).
+  - `classes` list of one of "cold", "backup", "working"
+  - `expires` number: When the offer ends, in milliseconds since 1970.
+  - `name` string
+  - `owner` string or object: Who the storage belongs to: leave out for yourself, or space:<id> for a space you administer.
+  - `residency` string: Where it sits, in a few words (for example: US only, office).
+  - `schedule` string
 - Callers: any caller
 
 ### `wink.storage.discover`
 
-No description.
+Look for drives this device can see: file servers that announce themselves, shared folders, exported folders and disks plugged in. Runs when asked, at most once a minute (a second ask gets the last answer). Answers { candidates: [{ id, name, kind, size?, seenFrom, label }], notes, cached }. Notes say plainly why something could not be looked for.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input: none
 - Callers: any caller
 
 ### `wink.storage.offers`
 
-No description.
+The storage offers: each paired drive with its room, what is used, the classes of data allowed, when it ends and where it sits. Everything stored is encrypted. Answers { offers }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `owner` string or object: Who the storage belongs to: leave out for yourself, or space:<id> for a space you administer.
 - Callers: any caller
 
 ### `wink.storage.pair`
 
-No description.
+Add a cloud volume or an S3-compatible bucket as storage. The access details are tried first, then saved in the vault and nowhere else; the answer never repeats them. Answers { device, card }, or says plainly why the login did not work.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `accessKey` string, required
+  - `bucket` string, required
+  - `endpoint` string, required
+  - `kind` "s3" or "volume", required
+  - `secretKey` string, required
+  - `capacity` number: Bytes Vyre may use here (needed unless the drive reports its size).
+  - `classes` list of one of "cold", "backup", "working"
+  - `expires` number: When the offer ends, in milliseconds since 1970.
+  - `name` string
+  - `owner` string or object: Who the storage belongs to: leave out for yourself, or space:<id> for a space you administer.
+  - `region` string
+  - `residency` string: Where it sits, in a few words (for example: US only, office).
+  - `schedule` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.storage.pick`
 
-No description.
+Add a drive found by discover as storage for you or a space you administer. Answers { device, card }. A drive that needs a login takes username and password, which go to the vault only.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `candidate` string, required
+  - `capacity` number: Bytes Vyre may use here (needed unless the drive reports its size).
+  - `classes` list of one of "cold", "backup", "working"
+  - `expires` number: When the offer ends, in milliseconds since 1970.
+  - `name` string
+  - `owner` string or object: Who the storage belongs to: leave out for yourself, or space:<id> for a space you administer.
+  - `password` string
+  - `residency` string: Where it sits, in a few words (for example: US only, office).
+  - `schedule` string
+  - `username` string
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.storage.remove`
 
-No description.
+Take a storage device back. With drain, Vyre records that everything must be copied off first and keeps the device listed until it is empty; without it the device and its saved login go now. Answers { removed, draining, prompt }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string, required
+  - `drain` boolean
 - Callers: any caller
+- Needs a person present.
 
 ### `wink.storage.status`
 
-No description.
+Is each storage device there? Looks again if the last look is over a minute old. Answers { devices }.
 
-- Input: not known. The module did not register this tool when started without a live box, so its schema could not be read.
+- Input:
+  - `id` string
+  - `refresh` boolean
 - Callers: any caller
 
 ## work
