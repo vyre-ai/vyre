@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { FlowCode } from "./FlowCode";
@@ -47,8 +47,8 @@ export function RealFlow({ id }: { id: string }) {
     runReal(runId).then((r) => setPainted(r.painted?.nodes ?? null)).catch(() => setPainted(null));
   }, [runId]);
 
-  if (err) return <Frame title="Flows" back="/u/flows"><EmptyState title="Flows did not answer" body={err} action={{ label: "Try again", onPress: () => { setErr(""); setN((x) => x + 1); } }} /></Frame>;
-  if (!g || !meta) return <Frame title="Flows" back="/u/flows"><EmptyState title="Loading" body="Asking your Vyre." /></Frame>;
+  if (err) return <Frame title="Flows" back="/u/flows"><ErrorState title="Flows did not load" reason={err} retry={() => { setErr(""); setN((x) => x + 1); }} /></Frame>;
+  if (!g || !meta) return <Frame title="Flows" back="/u/flows"><LoadingState rows={3} /></Frame>;
   const nodes = painted ?? g.nodes;
   const node = nodes.find((x) => x.id === picked);
   const waiting = meta.status !== "approved";

@@ -15,7 +15,7 @@ export default function ProjectsScreen() {
   return (
     <View className="min-h-0 flex-1">
       <LargeTitleScreen title="Projects" own onRefresh={q.reload}>
-        {q.error && !q.data ? <ErrorState title="Projects are not available." reason={q.error.message} retry={q.reload} />
+        {q.error && !q.data ? <ErrorState title="Projects did not load" reason={q.error.message} retry={q.reload} />
           : !q.data ? <LoadingState rows={5} />
           : <ProjectsList world={q.data.world} items={q.data.items} onOpen={open} onNew={create} />}
       </LargeTitleScreen>

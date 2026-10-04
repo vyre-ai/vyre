@@ -16,7 +16,7 @@ export function RecordScreen({ id }: { id: string }) {
   const rec = world ? Object.values(world.byType).flat().find((r) => (urn ? r.urn === urn : r.id === id)) : undefined;
   const events = useRecordEvents(rec?.urn);
   const back = () => (router.canGoBack() ? router.back() : router.replace(`/u/records/${rec?.type ?? "contact"}` as never));
-  if (error && !world) return <ErrorState title="Could not load this record" reason={error.message} retry={reload} />;
+  if (error && !world) return <ErrorState title="This record did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <View className="min-h-0 flex-1"><PageHeader title="Record" onBack={back} /><View className="p-s4"><SkeletonRows rows={4} /></View></View>;
   const def = rec && world?.types.find((t) => t.name === rec.type);
   if (!world || !rec || !def) return <EmptyState title="That record is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Go back", onPress: back }} />;

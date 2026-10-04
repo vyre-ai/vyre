@@ -1,7 +1,7 @@
 // Updates and Notifications from the real box: update.status, update.check and update.apply; push.settings (which kinds reach you, quiet hours) and push.devices.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Divider, EmptyState, Row, Switch, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Divider, EmptyState, Row, Switch, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { autoLine, checkedLine, howLine, KIND_ROWS, QUIET_DEFAULT, quietLine, updateLine, type PushDevice, type PushSettings, type UpdateStatus } from "./real-model";
 import { pushDevices, pushSet, pushSettings, updateApply, updateCheck, updateStatus } from "./real";
@@ -18,7 +18,7 @@ export function RealUpdates() {
   const apply = () => { setBusy(true); updateApply().then((r) => { showToast(r.requested === false ? r.reason ?? "Not started." : "Update requested."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   return (
     <Page title="Updates" back="/u/settings">
-      {err ? <Card flush><EmptyState title="Updates did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Updates did not load" reason={err} retry={load} /></Card> : null}
       {s ? (
         <>
           <Card className="gap-s2">
@@ -35,7 +35,7 @@ export function RealUpdates() {
           <Card className="gap-s1"><Text size="caption" strong tone="label">How updates happen</Text><Text tone="muted">{autoLine(s.auto)}</Text></Card>
           <Card className="gap-s1"><Text size="caption" strong tone="label">Safety</Text><Text tone="muted">Updates are signed. Vyre refuses a release that is unsigned, altered or older.</Text></Card>
         </>
-      ) : !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      ) : !err ? <LoadingState rows={3} /> : null}
     </Page>
   );
 }
@@ -50,7 +50,7 @@ export function RealNotifications() {
   const quiet = (on: boolean) => pushSet({ quiet: on ? QUIET_DEFAULT : null }).then(setS).catch((e) => showToast(say(e)));
   return (
     <Page title="Notifications" sub="What can reach you, and when." back="/u/settings">
-      {err ? <Card flush><EmptyState title="Notifications did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Notifications did not load" reason={err} retry={load} /></Card> : null}
       {s ? (
         <>
           <Card flush>
@@ -66,7 +66,7 @@ export function RealNotifications() {
           </Group>
           <Banner>A notification never carries content. It is a generic line and an id. The details open inside Vyre.</Banner>
         </>
-      ) : !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      ) : !err ? <LoadingState rows={3} /> : null}
     </Page>
   );
 }

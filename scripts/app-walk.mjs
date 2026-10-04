@@ -38,7 +38,7 @@ const SAMPLE = [
   "Doe estate plan", "Trail map.pdf", "Wink page copy", "Passport portal", "Firm Visa", "Claude Sonnet 5.5", "On payment", "Mt7!hQ2-sail", "Chris Park", "Mei Tanaka",
 ];
 /** Words that make a state an error state. */
-const ERROR_WORDS = /(did not answer|did not open|could not be|could not load|could not open|cannot reach|went wrong|not available on this box|is not available\.)/i;
+const ERROR_WORDS = /(did not answer|did not open|did not load|could not be|could not load|could not open|cannot reach|went wrong|not available on this box|not available on your home|is not available\.)/i;
 
 // ---- the server: the web export, and /v1 forwarded to the box ----
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".json": "application/json", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".map": "application/json" };

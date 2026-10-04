@@ -2,7 +2,7 @@
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, SealedMask, Tabs, Text, showToast } from "@vyre/ui";
+import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, SealedMask, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { REVEAL_MS } from "./logic.js";
@@ -112,8 +112,8 @@ export default function RealVault() {
     <Frame title="Vault" sub="Logins, keys and cards.">
       <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
       <Tabs<Tab> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"]]} />
-      {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {err ? <Card flush><ErrorState title="The vault did not load" reason={err} retry={load} /></Card> : null}
+      {!err && rows === null ? <LoadingState rows={3} /> : null}
       {!err && rows && locked ? <Card flush><EmptyState title="The vault is locked" body="Unlock it on your home, then come back." action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows && !locked ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
