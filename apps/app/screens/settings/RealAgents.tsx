@@ -34,7 +34,7 @@ export function RealAssistants() {
                   <View className="flex-row flex-wrap items-center gap-s2"><Text strong>{a.name}</Text>{isStopped(a) ? <Chip tone="warn">Paused</Chip> : null}</View>
                   <Text size="caption" tone="label">{`${roleOf(a)}. ${agentLine(a)}`}</Text>
                 </View>
-                {a.thread ? <Button kind="ghost" size="sm" label={isStopped(a) ? "Resume" : "Pause"} onPress={busy === a.name ? () => {} : () => flip(a)} /> : null}
+                {a.thread ? <Button kind="ghost" size="sm" label={isStopped(a) ? "Resume" : "Pause"} disabled={busy === a.name} onPress={() => flip(a)} /> : null}
               </View>
             </View>
           ))}

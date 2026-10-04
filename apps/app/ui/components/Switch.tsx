@@ -19,7 +19,7 @@ export function Switch({ on, onChange, label, disabled }: { on: boolean; onChang
   useEffect(() => { x.value = reduced ? withTiming(on ? TRAVEL : 0, { duration: motion.duration.state }) : withSpring(on ? TRAVEL : 0, SPRING["spatial.fast"]); }, [on, reduced, x]);
   const thumb = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
   return (
-    <P.Root checked={on} onCheckedChange={(v) => { haptic.selection(); (onChange ?? (() => {}))(v); }} disabled={disabled} accessibilityLabel={label}
+    <P.Root checked={on} onCheckedChange={(v) => { haptic.selection(); (onChange ?? (() => {}))(v); }} disabled={disabled} accessibilityLabel={label} hitSlop={{ top: 9, bottom: 9, left: 4, right: 4 }}
       style={{ height: 26, width: 44, flexShrink: 0, flexGrow: 0, justifyContent: "center", borderRadius: 999, borderWidth: 1, borderColor: on ? color.accent : color["edge-strong"], backgroundColor: on ? color.accent : color["surface-3"], opacity: disabled ? 0.45 : 1 }}>
       <P.Thumb asChild>
         <Animated.View style={[{ marginLeft: 3, width: 20, height: 20, borderRadius: 10, backgroundColor: on ? color["accent-ink"] : color["text-2"] }, thumb]} />

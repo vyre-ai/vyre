@@ -9,6 +9,8 @@ import { showingName } from "../shell/real-model";
 import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
 import { VERSION } from "./data";
+import { MOCK } from "../../src/real/box";
+import { useMembers } from "../spaces/state";
 
 /** Settings, rebuilt around who sets what: you, your devices, the space showing, more places, Vyre. One card per section; every row opens something. */
 export function SettingsHome() {
@@ -19,10 +21,13 @@ export function SettingsHome() {
   useEffect(() => { void loadDevices(); }, [loadDevices]);
   const shell = useShell((s) => s.data);
   const name = showingName(shell, space);
+  const loadMembers = useMembers((s) => s.load);
+  const role = useMembers((s) => s.spaces.find((x) => x.id === space)?.role);
+  useEffect(() => { void loadMembers(); }, [loadMembers]);
   const state = (href: string) => (href === "/u/settings/devices" ? `${devices} ${devices === 1 ? "device" : "devices"}` : undefined);
   return (
     <Frame title="Settings" top>
-      {settingsGroups(name).map((g) => (
+      {settingsGroups(name, MOCK ? undefined : role).map((g) => (
         <Sec key={g.title} title={g.title}>
           <Card flush>
             {g.rows.map(([t, sub, href, icon], i) => (
@@ -31,7 +36,7 @@ export function SettingsHome() {
           </Card>
         </Sec>
       ))}
-      <View className="items-center pt-s6"><Text size="secondary" tone="faint" style={{ fontSize: 13, lineHeight: 18 }}>{`Vyre ${VERSION}`}</Text></View>
+      <View className="items-center pt-s6"><Text size="secondary" tone="faint">{`Vyre ${VERSION}`}</Text></View>
     </Frame>
   );
 }

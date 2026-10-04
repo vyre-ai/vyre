@@ -33,7 +33,7 @@ test("updates say where things stand in words, and never a time that was not giv
   assert.equal(m.updateLine({ ...s, error: "offline" }), "The last look failed: offline");
   assert.equal(m.checkedLine(null, 5), "Not checked yet.");
   assert.equal(m.checkedLine(1_000_000, 1_000_000 + 3 * 60_000), "Checked 3 minutes ago.");
-  assert.equal(m.howLine(s), "To update, run vyre update on the box.");
+  assert.equal(m.howLine(s), "To update, run vyre update on your home.");
   assert.equal(m.howLine({ ...s, canApply: true }), "");
   assert.match(m.autoLine("notify"), /never installs one by itself/);
 });

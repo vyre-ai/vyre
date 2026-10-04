@@ -65,7 +65,7 @@ export function RealEngineer() {
           <View className="gap-s3">
             <Text strong>Set up @Engineer</Text>
             <Text tone="muted">@Engineer is an assistant you talk to. It proposes Flows, record types and Kits for you to approve, and never acts on its own.</Text>
-            <View className="self-start"><Button kind="primary" label={busy ? "Setting up" : "Set up @Engineer"} onPress={busy ? () => {} : setup} /></View>
+            <View className="self-start"><Button kind="primary" label={busy ? "Setting up" : "Set up @Engineer"} disabled={busy} onPress={setup} /></View>
           </View>
         </Card>
       ) : null}
@@ -74,7 +74,7 @@ export function RealEngineer() {
           <View className="gap-s3">
             <Text strong>Tell @Engineer what you need</Text>
             <Field label="Your message" multiline lines={4} value={text} onChangeText={setText} placeholder="Make me an intake Flow for estate leads." />
-            <View className="self-start"><Button kind="primary" label={busy ? "Sending" : "Send"} onPress={busy || !text.trim() ? () => {} : send} /></View>
+            <View className="self-start"><Button kind="primary" label={busy ? "Sending" : "Send"} disabled={busy || !text.trim()} onPress={send} /></View>
           </View>
         </Card>
       ) : null}
