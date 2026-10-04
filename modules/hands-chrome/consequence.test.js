@@ -23,3 +23,13 @@ for (const [label, c] of [["hands-chrome", hc], ["hands-desktop", hd]]) {
     assert.equal(c.of({ role: "entry", name: "Send to" }).consequential, true);
   });
 }
+
+test("HD-6b: a page's own role or an allowed verb in front of a grant word does not make a control observable; native submit and consent links are consequential", () => {
+  for (const c of [{ name: "Authorize", role: "tab" }, { name: "Allow all access", role: "option" }, { name: "Open Authorize app" }, { name: "Select Continue to grant access" }, { name: "Next: Authorize" }]) {
+    assert.equal(hc.of(c).consequential, true, c.name);
+    assert.equal(hd.of(c).consequential, true, c.name);
+  }
+  assert.equal(hc.of({ name: "Next", submit: true }).consequential, true);
+  assert.equal(hc.of({ name: "Learn more", href: "https://x.test/oauth/consent?id=1" }).consequential, true);
+  assert.equal(hc.of({ name: "Learn more", href: "https://x.test/docs" }).consequential, false);
+});
