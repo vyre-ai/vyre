@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ADD_PHONE, BROWSER, EMPTY, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -61,12 +61,14 @@ test("what is missing: a phone or browser with no Vyre, a Mac with no phone, and
   assert.equal(gapOf({ kind: "web", paired: false, hasBox: true, devices: null }), null);
   assert.equal(gapOf({ kind: "mac", paired: false, hasBox: true, devices: [{ device: "computer" }] }), GAP.mac);
   assert.equal(gapOf({ kind: "mac", paired: false, hasBox: true, devices: [{ device: "phone" }] }), null);
+  assert.equal(gapOf({ kind: "mac", paired: false, hasBox: true, devices: [{ kind: "app" }] }), null, "the native app is the phone");
+  assert.equal(gapOf({ kind: "mac", paired: false, hasBox: true, devices: [{ kind: "web" }] }), GAP.mac, "a browser cannot approve");
   assert.equal(gapOf({ kind: "mac", paired: false, hasBox: true, devices: null }), null, "an unread list is not a missing phone");
 });
 
 test("each landing screen has one line and one action, and none says server or install line", () => {
-  for (const c of [...Object.values(EMPTY), ...Object.values(GAP)]) {
-    assert.ok(c.title && c.line && c.action && c.route.startsWith("/"));
+  for (const c of [...Object.values(EMPTY), ...Object.values(GAP), WAITING]) {
+    assert.ok(c.title && c.line && c.action && (c.route === "refresh" || c.route.startsWith("/")));
     assert.doesNotMatch(`${c.title} ${c.line} ${c.action}`, /server|install line|terminal|command/i);
   }
 });
