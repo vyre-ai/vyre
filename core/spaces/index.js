@@ -740,7 +740,8 @@ export default {
       const cur = (await enrolledList(dev.eid)) || await personSpaceIds(s, meta);
       const next = on ? [...new Set([...cur, row.id])] : cur.filter(x => x !== row.id);
       await kv.put(`device-spaces/${dev.eid}`, next);
-      if (!on) clearLends(row.id, { device: dev.eid });
+      // taking the device out of the space takes its compute offers with it (kernel withdraw: a live session, no fresh proof), then the stored lend record goes
+      if (!on) { await kernelOffers(row.id, dev, false, meta, m ? m.role : "owner", /** @type {string} */ (s.id)); clearLends(row.id, { device: dev.eid }); }
       if (next.length !== cur.length) emit(on ? "space.device-restored" : "space.device-removed", { space: row.id, device: dev.eid });
       return { space: row.id, device: dev.eid, enrolled: on, removed: !on };
     };
@@ -754,7 +755,7 @@ export default {
         const mineIds = new Set(await personSpaceIds(s, meta));
         const ids = [...new Set(i.spaces.map((/** @type {any} */ x) => spaceOf(x).id))].filter(x => mineIds.has(x));
         await kv.put(`device-spaces/${dev.eid}`, ids);
-        for (const sid of mineIds) if (!ids.includes(sid)) clearLends(sid, { device: dev.eid });
+        for (const sid of mineIds) if (!ids.includes(sid)) { await kernelOffers(sid, dev, false, meta, "member", /** @type {string} */ (s.id)); clearLends(sid, { device: dev.eid }); }
         emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
         return { device: dev.eid, spaces: ids };
       });

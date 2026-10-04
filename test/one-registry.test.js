@@ -136,6 +136,12 @@ test("lend is the one switch: it makes the kernel's compute offers (the space's 
   const off = await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: false });
   assert.equal(off.lent, false);
   assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "off withdrew both");
+  // taking the device out of the space takes the offers with it, and the stored first grant goes too
+  assert.equal((await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: true })).lent, true);
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: true, memberAccepts: true });
+  await ok("spaces.devices.remove", { space: sp.space, device: made.eid });
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "a removed device is not lent");
+  assert.equal((await ok("spaces.devices.lend.status", { space: sp.space, device: made.eid })).first_grant_at, null);
 });
 
 test("PA-1: creating a space is all or nothing in the kernel's registry too: a refused name, ten failures and a cancel leave no hosted Space and no folder", async t => {
