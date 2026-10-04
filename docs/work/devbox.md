@@ -24,6 +24,9 @@ Open: test/wink.test.js (or wink-paired) leaks timers and does not exit (platfor
 ## Done (5 Oct, 21:2x Z)
 - Trunk 0cc349f41 pushed and deployed: wink-session ccf4fab5d + app-wire cfe3d7968 (wink, wink-paired, wink-paired-2 all exit: 39/22/27 pass), vault-labels d6337e81f, runner 92313423e, wink-rc1 204d07144. Gate each time: merge-check clean (vault merge reports presence/module.js session-* lines absent: superseded, trunk a8649e0e0 removed those tools), lint 0, boot-check ok, smoke 123/0.
 
+## Done (5 Oct, later)
+- Trunk a92ef1d97: windows work/spaces 418a994c3 (invite signer, owner key enrolment). Gate green (merge-check clean, lint 0, boot-check ok, smoke 123/0, wink 39, paired 23, paired-2 27); docs:ref regenerated. Held: outward-flags (reviewer-3 OW-2/3/4).
+
 ## Done (deploy)
 - Dev box (testbox, ~/devbox/src, unit vyre-dev) runs this branch; deploy = `rsync -a --delete --exclude node_modules --exclude .git ./ testbox:~/devbox/src/`, `npm ci --omit=dev`, `systemctl --user restart vyre-dev`. Probe a tool with a script that sets the unit's env (HOME=~/devbox/home) and runs `node bin/vyre call <tool> '<json>'`.
 - records.dev-seed now adds only what is missing (by name or title); second run adds nothing (test in core/records-tools).
