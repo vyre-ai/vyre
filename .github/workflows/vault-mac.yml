@@ -8,7 +8,7 @@
 name: vault-mac
 on:
   push:
-    branches-ignore: ["work/*-draft*"]
+    branches: ["main", "work/vault*", "work/sealing*"]
     paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*", ".github/workflows/vault-mac.yml"]
   pull_request:
     paths: ["core/vault/**", "kernel/seal/**", "lib/vault-wipe*"]
