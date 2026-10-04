@@ -31,8 +31,19 @@ export function namesIn(root) {
 /** Folders the packaged-boot proof leaves out for a known problem, one per line, comments and blanks ignored. @param {string} file @returns {string[]} */
 export const knownFolders = file => (fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#")) : []);
 
-/** Duplicate names, ignoring folders listed as known. @param {Map<string, string[]>} names @param {string[]} known @returns {[string, string[]][]} */
-export const duplicates = (names, known) => [...names].map(([n, dirs]) => /** @type {[string, string[]]} */ ([n, dirs.filter(d => !known.includes(d))])).filter(([, dirs]) => dirs.length > 1);
+/** The roles a module folder runs in (a manifest without them runs everywhere). @param {string} root @param {string} dir @returns {string[]} */
+const rolesOf = (root, dir) => { const m = JSON.parse(fs.readFileSync(path.join(root, dir, "module.json"), "utf8")); return Array.isArray(m.roles) && m.roles.length ? m.roles : ["box", "local"]; };
+
+/**
+ * Duplicate names, ignoring folders listed as known. Two folders may share a name only for different machines (disjoint `roles`, like the box's chrome and the Mac's): the signed list
+ * carries one entry per folder (`also`). Anything else is a clash. @param {Map<string, string[]>} names @param {string[]} known @param {string} [root] @returns {[string, string[]][]}
+ */
+export const duplicates = (names, known, root = REPO) => [...names].map(([n, dirs]) => /** @type {[string, string[]]} */ ([n, dirs.filter(d => !known.includes(d))])).filter(([, dirs]) => {
+  if (dirs.length < 2) return false;
+  const seen = new Set();
+  for (const d of dirs) for (const r of rolesOf(root, d)) { if (seen.has(r)) return true; seen.add(r); }
+  return false;
+});
 
 test("no two module folders share a manifest name (the signed module list is never ambiguous)", () => {
   const known = knownFolders(KNOWN), names = namesIn(REPO);
@@ -53,12 +64,12 @@ test("the duplicate check sees what buildModuleList refuses, and sees nothing in
   try {
     const mod = (/** @type {string} */ dir, /** @type {string} */ name) => { fs.mkdirSync(path.join(root, dir), { recursive: true }); fs.writeFileSync(path.join(root, dir, "module.json"), JSON.stringify({ name, version: "1.0.0" })); };
     mod("core/alpha", "alpha"); mod("local/beta-mac", "beta"); mod("modules/gamma", "gamma");
-    assert.deepEqual(duplicates(namesIn(root), []), []);
+    assert.deepEqual(duplicates(namesIn(root), [], root), []);
     assert.doesNotThrow(() => buildModuleList(root, { counter: 1, release: "0.0.1" }));
     mod("modules/beta", "beta");
-    const dup = duplicates(namesIn(root), []);
+    const dup = duplicates(namesIn(root), [], root);
     assert.deepEqual(dup, [["beta", ["local/beta-mac", "modules/beta"]]]);
     assert.throws(() => buildModuleList(root, { counter: 1, release: "0.0.1" }), /two modules are named beta/);
-    assert.deepEqual(duplicates(namesIn(root), ["local/beta-mac"]), [], "a folder listed as known is set aside");
+    assert.deepEqual(duplicates(namesIn(root), ["local/beta-mac"], root), [], "a folder listed as known is set aside");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
