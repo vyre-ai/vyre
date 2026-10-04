@@ -762,22 +762,17 @@ export default {
     const lendKey = (/** @type {string} */ space, /** @type {string} */ device) => `lend/${space}/${device}`;
     const lendSync = (/** @type {string} */ key) => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(key)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
     /** The kernel's compute offers for a lent computer, the ONE mechanism: the Space's side (an owner or admin) and the member's own side, bound to the computer's key. A Space with no kernel has only the stored record. */
-    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ role) => {
+    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member) => {
       const h = kernelHandle(spaceId);
       const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
-      if (!offers) return false;
-      const s = me();
-      // the person's chain IN that Space (a hosted Space has its own key), and the proof that comes with the call
+      if (!offers || typeof offers.lend !== "function") return false;
+      // the person's chain IN that Space (a hosted Space has its own key), and the proof that comes with the call. ONE kernel act: the first lend takes one proof bound to it and makes both
+      // sides (an owner or admin's Space side and the member's own); the member's own turning on again, and any turning off, take only the live session (kernel ruling 5 Oct).
       const k = await kctxOf(meta, spaceId);
-      const sides = role === "owner" || role === "admin" ? ["space_allows", "member_accepts"] : ["member_accepts"];
       try {
-        for (const side of on ? sides : [...sides].reverse()) {
-          const at = { side, member: /** @type {string} */ (s.id), device: dev.eid };
-          const have = offers.find(at);
-          if (on) { if (!have) await offers.offer(k.chain, { ...at, ...(side === "member_accepts" ? { device_key: dev.eid } : {}) }, k.proof); }
-          else if (have) await offers.unoffer(k.chain, have.id, k.proof);
-        }
-      } catch (e) { ctx.log.warn(`lend: the kernel refused the offer: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")} ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); throw plainKernelError(e); }
+        if (on) await offers.lend(k.chain, { member, device: dev.eid, device_key: dev.eid }, k.proof);
+        else await offers.unlend(k.chain, { member, device: dev.eid }, k.proof);
+      } catch (e) { ctx.log.warn(`lend: the kernel refused: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")}`); throw plainKernelError(e); }
       return true;
     };
     /** Delete lend records (LD-1): a removal of the device from the Space, of the person from it, or of the Space ends the consent, so the next first grant asks Face ID again. @param {string} space @param {{ device?: string, person?: string }} [only] */
@@ -827,7 +822,7 @@ export default {
             let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }
             if (!mine && !(owner && cur)) throw refuse("That is not one of your devices.", "not_found");
             if (!cur || !cur.lent) return { space: row.id, device: String(i.device), lent: false, first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
-            const viaKernel = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, m ? m.role : "owner");
+            const viaKernel = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, m ? m.role : "owner", cur.device_person || /** @type {string} */ (s.id));
             // LD-2: the space's owner switching a computer off that is not theirs withdraws the space's consent: turning it on again asks the device's person for Face ID again
             const next = { ...cur, lent: false, ended_at: now(), ended_by: s.id, kernel: viaKernel, ...(mine ? {} : { first_grant_at: null, allowed_by: null }) };
             await kv.put(key, next);
@@ -836,7 +831,7 @@ export default {
           }
           const dev = await deviceOf(i.device, meta);
           if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
-          const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner");
+          const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id));
           const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
           const next = { lent: true, kernel: viaKernel, device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
           await kv.put(key, next);

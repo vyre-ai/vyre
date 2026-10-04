@@ -23,6 +23,8 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.narrow", resource_type: "grant", risk: "grant", label: "reduce access", gloss: "Make an existing access smaller." },
   { action: "grants.role", resource_type: "grant", risk: "grant", label: "set a role", gloss: "Make someone an owner, admin, manager, member or temp." },
   { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
+  // Taking access away asks for no fresh proof, only the person's live session (risk "admin" = session presence): withdrawing can only reduce what a computer may do.
+  { action: "grants.unoffer", resource_type: "offer", risk: "admin", label: "stop sharing a computer", gloss: "Withdraw an offer of a computer for work." },
   { action: "grants.invite", resource_type: "invite", risk: "grant", label: "invite someone", gloss: "Invite a person to join with a role." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
   // Standing rules for a Space (DESIGN-flows-joints 5a): an owner sets them with presence; they only ever tighten.
@@ -481,15 +483,64 @@ export function createGrantsStore(cfg) {
     /** Withdraw an offer. An admin withdraws the Space's side; the member withdraws their own acceptance. The runner is told at once. */
     async unoffer(chain, id, opt = {}) {
       const issuer = person(chain);
-      const d = await gate(chain, "grants.offer", urn("offer", id), { revoke: id }, opt.presence);
+      const d = await gate(chain, "grants.unoffer", urn("offer", id), { revoke: id }, opt.presence);
       const o = offers.get(id);
       if (!o || o.status !== "active") throw new KernelError("not_found", "no such offer");
       if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", "that is not yours to withdraw");
-      const n = freeze({ ...o, status: "revoked", revoked_at: clock() });
+      const n = freeze({ ...o, status: "revoked", revoked_at: clock(), ended_by: issuer.id });
       offers.set(id, n);
-      await note(chain, "offer.revoked", urn("offer", id), { id }, d.decision);
+      await note(chain, "offer.revoked", urn("offer", id), { id, by: issuer.id }, d.decision);
       tell(n, "withdrawn", chain);
       return n;
+    },
+
+
+    /**
+     * Lend one computer to this Space in ONE act (the first lend of a device, ruled 5 Oct): the Space's side (only when the caller is an owner or admin) and the member's own side, bound to the
+     * computer's key, made under ONE presence proof that is bound to this compound input (member, device, key; the sides made follow from the caller's role). The proof covers nothing else and is spent
+     * once. Withdrawing is `unlend`, which needs only the live session.
+     * @param {any} chain @param {{ member: string, device: string, device_key: string }} o @param {{ presence?: any }} [opt]
+     * @returns {Promise<{ offers: any[] }>}
+     */
+    async lend(chain, o, opt = {}) {
+      const issuer = person(chain);
+      if (!o || typeof o.member !== "string" || typeof o.device !== "string" || !o.device || o.device.length > 200 || typeof o.device_key !== "string" || !o.device_key || o.device_key.length > 200) throw new KernelError("bad_input", "lending needs a member, a computer and its key");
+      if (issuer.id !== o.member) throw new KernelError("not_allowed", "only the member lends their own computer");
+      const both = isAdmin(issuer);
+      // The member's own earlier lend of this very computer that THEY ended is still their grant: turning it on again takes the live session, not a fresh proof. Anything else that ended it (an owner's off, a
+      // removal, a role change) leaves no such record, so the next lend is a first grant and takes the proof again.
+      const prior = [...offers.values()].filter(x => x.side === "member_accepts" && x.status === "revoked" && x.member === o.member && x.device === o.device && x.device_key === o.device_key).sort((a, b) => (b.revoked_at || 0) - (a.revoked_at || 0))[0];
+      const resume = Boolean(prior && prior.ended_by === issuer.id);
+      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key } }, opt.presence);
+      if (!memberOk({ kind: "person", id: o.member, space: cfg.space })) throw new KernelError("not_found", "no such member");
+      /** @type {any[]} */ const made = [];
+      for (const side of both ? ["space_allows", "member_accepts"] : ["member_accepts"]) {
+        const have = [...offers.values()].find(x => x.status === "active" && x.side === side && x.member === o.member && x.device === o.device);
+        if (have) { made.push(have); continue; }
+        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, status: "active", made_by: issuer.id, at: clock() });
+        offers.set(rec.id, rec);
+        await note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
+        made.push(rec);
+      }
+      return { offers: made };
+    },
+
+    /** Stop lending a computer: withdraws the caller's own side and, for an owner or admin, the Space's side too. Needs only the person's live session. @param {any} chain @param {{ member: string, device: string }} o @param {{ presence?: any }} [opt] */
+    async unlend(chain, o, opt = {}) {
+      const issuer = person(chain);
+      if (!o || typeof o.member !== "string" || typeof o.device !== "string") throw new KernelError("bad_input", "name the member and the computer");
+      const d = await gate(chain, "grants.unoffer", urn("offer", "lend"), { unlend: { member: o.member, device: o.device } }, opt.presence);
+      let n = 0;
+      for (const x of [...offers.values()]) {
+        if (x.status !== "active" || x.member !== o.member || x.device !== o.device) continue;
+        if (x.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== x.member && !isAdmin(issuer)) continue;
+        const r = freeze({ ...x, status: "revoked", revoked_at: clock(), ended_by: issuer.id });
+        offers.set(x.id, r);
+        await note(chain, "offer.revoked", urn("offer", x.id), { id: x.id, by: issuer.id }, d.decision);
+        tell(r, "withdrawn", chain);
+        n++;
+      }
+      return { withdrawn: n };
     },
 
     /** Are both sides of the compute pair active for this member and computer? Read at every session start. Sync: it reads the store, never the network. */
@@ -1010,7 +1061,7 @@ export function createGrantsStore(cfg) {
         else if (e.type === "actor.added") actors.add(actorKey(d.actor));
         else if (e.type === "actor.removed") actors.delete(actorKey(d.actor));
         else if (e.type === "offer.created") offers.set(d.offer.id, freeze(structuredClone(d.offer)));
-        else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time })); }
+        else if (e.type === "offer.revoked") { const o = offers.get(d.id); if (o) offers.set(d.id, freeze({ ...o, status: "revoked", revoked_at: e.time, ...(typeof d.by === "string" ? { ended_by: d.by } : {}) })); }
         else if (e.type === "rule.set") { rules.set(d.rule.id, freeze(structuredClone(d.rule))); if (d.from) proposals.delete(d.from); }
         else if (e.type === "rule.removed") rules.delete(d.id);
         else if (e.type === "rule.enabled" || e.type === "rule.disabled") { const r = rules.get(d.id); if (r) rules.set(d.id, freeze({ ...structuredClone(r), status: e.type === "rule.enabled" ? "active" : "disabled" })); }
@@ -1072,7 +1123,7 @@ export function createGrantsStore(cfg) {
   // the log refused) restores the store from the log, which is the durable copy, so memory never shows a change the log does not hold, and the caller is told it failed.
   // A refusal the call itself makes before changing anything (a KernelError) needs no restore.
   let lock = Promise.resolve();
-  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
+  for (const name of ["create", "revoke", "narrow", "setRole", "transferOwner", "adoptOwner", "bootstrap", "inviteRevoke", "removeMember", "addActor", "offer", "unoffer", "lend", "unlend", "inviteCreate", "inviteConfirm", "inviteAccept", "sweep", "installModule", "chatCreate", "chatChange", "ruleSet", "ruleRemove", "ruleAccept", "ruleDismiss", "rulePropose", "ruleEnable", "ruleDisable"]) {
     const f = /** @type {(...a: any[]) => Promise<any>} */ (/** @type {any} */ (api)[name]);
     /** @type {any} */ (api)[name] = (/** @type {any[]} */ ...a) => {
       const run = async () => {
