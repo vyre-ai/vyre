@@ -717,8 +717,13 @@ export default {
       return e;
     };
     /** The ids of every space this person is in (finished or not), for the default list of a device. @param {any} s @param {any} meta */
+    /** The kernel's HOME space as a row like any other (by its spc_ id): a device paired to the identity that owns the home is enrolled in it, or the daemon (which treats "not enrolled" as no chain) would give a paired phone nothing there. Not stored, not in spaces.list. */
+    const homeRow = (/** @type {any} */ s) => (K && typeof K.space === "string" ? { id: K.space, name: "home", label: "home", displayName: null, status: "done", createdBy: /** @type {string} */ (s.id), home: true } : null);
+    const spaceOrHome = (/** @type {any} */ ref) => { try { return spaceOf(ref); } catch (e) { const h = homeRow(me()); if (h && String(ref) === h.id) return h; throw e; } };
     const personSpaceIds = async (s, meta) => {
       const ids = [];
+      const h = homeRow(s);
+      if (h) { const m = await membershipOf(h.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m) ids.push(h.id); }
       for (const row of spaces.all()) { const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m || row.createdBy === s.id) ids.push(row.id); }
       return ids;
     };
@@ -727,6 +732,8 @@ export default {
         const s = me();
         const dev = await deviceOf(i.device, meta);
         const out2 = [];
+        const hr = homeRow(s);
+        if (hr) { const m = await membershipOf(hr.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m) { const enrolled = await isEnrolled(dev.eid, hr.id); out2.push({ space: hr.id, name: hr.name, label: hr.label, displayName: null, role: m.role, enrolled, removed: !enrolled, home: true }); } }
         for (const row of spaces.all()) {
           if (row.status !== "done") continue;
           const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
@@ -739,7 +746,7 @@ export default {
     /** Change the list: enrol (on) or remove (off) one space for a device. Enrolling one of the person's own devices asks for nothing more. */
     const setEnrol = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ on) => {
       const s = me();
-      const row = spaceOf(i.space);
+      const row = spaceOrHome(i.space);
       const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
       if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
       const dev = await deviceOf(i.device, meta);
@@ -759,7 +766,7 @@ export default {
         const s = me();
         const dev = await deviceOf(i.device, meta);
         const mineIds = new Set(await personSpaceIds(s, meta));
-        const ids = [...new Set(i.spaces.map((/** @type {any} */ x) => spaceOf(x).id))].filter(x => mineIds.has(x));
+        const ids = [...new Set(i.spaces.map((/** @type {any} */ x) => spaceOrHome(x).id))].filter(x => mineIds.has(x));
         await kv.put(`device-spaces/${dev.eid}`, ids);
         for (const sid of mineIds) if (!ids.includes(sid)) { await kernelOffers(sid, dev, false, meta, "member", /** @type {string} */ (s.id)); clearLends(sid, { device: dev.eid }); }
         emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
@@ -1396,6 +1403,19 @@ export default {
 
     // At start: an identity claimed before this start, on a home whose kernel still has its first-start owner, is adopted now, not at the first spaces call.
     adoptOwner().catch(() => {});
+    // Existing homes: a device that already has an explicit list (paired before the home was a row here) is enrolled in the home space once, logged. A device with no list needs nothing.
+    (async () => {
+      try {
+        const hid = K && typeof K.space === "string" ? K.space : null;
+        if (!hid) return;
+        let n = 0;
+        for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'device-spaces/%'").all())) {
+          let list = null; try { list = JSON.parse(r.value); } catch { continue; }
+          if (Array.isArray(list) && !list.includes(hid)) { await kv.put(String(r.key), [hid, ...list]); n++; }
+        }
+        if (n) (ctx.log.info || ctx.log.warn).call(ctx.log, `${n} device list(s) now include the home space (${hid})`);
+      } catch (e) { ctx.log.warn(`the home space could not be added to the device lists: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
+    })();
     return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
   },
 };
