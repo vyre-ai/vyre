@@ -1521,6 +1521,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   assert.equal(rec.data.name, "Jane");
   const rows = await rk.gateway.records.query(null, "contact", { page: { limit: 50 } });
   assert.ok(JSON.stringify(rows).includes("Jane"));
+  // the device's own records tools reach the server-hosted space through the same remote kernel (lib/gateway-door), and refuse a caller that is not a signed-in person
+  const viaTool = await dcall("records.list", { space: id, type: "contact" });
+  assert.ok(!viaTool.error, JSON.stringify(viaTool.error));
+  assert.ok(JSON.stringify(viaTool.data).includes("Jane"), "records.list on the device reads the record that lives on the server");
+  const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
+  assert.ok(stranger.error, "a caller that is not the signed-in person is refused");
   // and the record is on the SERVER, not on the device
   const onServer = server.kernel.spaces.hosted(id);
   assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", { page: { limit: 50 } })).includes("Jane"), "the record lives in the server's store");
