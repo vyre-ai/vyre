@@ -133,7 +133,7 @@ export default {
     ctx.tool("assistant.glance", {
       description: "The morning glance: {day, waiting, running, finished, next, lines}. Lines are three at most. Built from reads alone, no model call. next is null until a calendar read exists.",
       input: { type: "object", properties: {} },
-      run: async (_, meta = {}) => { await gate(meta); const g = await glance(asCall); ctx.events.emit("assistant.glanced", { day: g.day }); return g; },
+      run: async (_, meta = {}) => { await gate(meta); return glance(asCall); },
     });
 
     ctx.tool("assistant.capabilities", {

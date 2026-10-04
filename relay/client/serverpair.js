@@ -31,7 +31,7 @@ export function parseServerPayload(s) {
 
 /**
  * @param {{ payload: string, owner: { id: string, name?: string, kind?: "identity" | "space" }, name?: string, proof?: { eid: string, sig: string },
- *   signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string }> | { eid: string, sig: string }, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: { kind?: "app" | "web", release?: string, manifest?: string }, presenceKey?: any, passkey?: any,
+ *   deviceKind?: "phone" | "computer" | "web", keyStorage?: "hardware" | "software", signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string }> | { eid: string, sig: string }, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: { kind?: "app" | "web", release?: string, manifest?: string }, presenceKey?: any, passkey?: any,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function pairServer(o) {
@@ -62,7 +62,7 @@ export async function pairServer(o) {
   // (`proof`) or made here from the device's identity key (`signIdentity`); a device with neither is checked by the three words alone.
   /** @type {{ eid: string, sig: string } | undefined} */ let proof = o.proof;
   if (!proof && o.signIdentity) proof = await o.signIdentity(new TextEncoder().encode(`vyre-wink-pair-to-v1\n${paired.box}\n${paired.device}`));
-  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}) };
+  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind, deviceName: deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}) };
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;
     const code = e && e.code;

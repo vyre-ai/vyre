@@ -525,6 +525,17 @@ export function createTasks(cfg) {
     },
 
     /**
+     * What a Kit install needs to know about an approved task (kernel/tasks/kit-apply.js): its form, the payload the checker's proof covered, the approver's own chain and when it was approved.
+     * Null unless a person approved it (done, approved, the body it was approved with still the one hashed).
+     * @param {string} id
+     */
+    kitApproval(id) {
+      const t = tasks.get(id), a = api.approvalFor(id);
+      if (!t || !a || t.form === undefined) return null;
+      return { form: t.form, payload: t.payload, approver: a.approver_chain, at: t.updated_at };
+    },
+
+    /**
      * Does this approved held-act task cover exactly this act by this chain? Pure (it consumes nothing: the gateway counts the use once). The chain's acting actor must
      * be the task's doer, and the approved body's action and resource must be the ones asked.
      * @param {{ id: string, chain: any, action: string, resource: string }} q
