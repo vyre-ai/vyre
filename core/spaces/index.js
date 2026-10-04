@@ -451,7 +451,7 @@ export default {
       if (!K || typeof K.adoptOwner !== "function") return;
       let s; try { s = identity.status(); } catch { return; }
       if (!s || !s.exists || !s.id || s.id === K.owner) return;
-      try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+      try { await K.adoptOwner(s.id, { from: K.owner }); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
     };
     // Hosted spaces are NOT adopted here (HA-1): the kernel moves a hosted space to the claimed identity itself (kernel/spaces adoptOwner(to, from), at the claim and at every boot), only where the
     // replaced home owner is its owner, keyed on the sealed owner.adopted event. This module never calls a hosted kernel's adoptOwner: through a handle that call replaces ANY owner.
@@ -919,7 +919,7 @@ export default {
       if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to.", "forbidden");
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
       if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
-      try { const r = await K.adoptOwner(id); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
+      try { const r = await K.adoptOwner(id, { from: K.owner }); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
     }, { internal: true });
     // The spaces a person owns or administers, for the pairing module's "Pair to:" choices (one id: the kernel's space id, the name the person gave it, the person's role there).
     tool("spaces.admin-list", "The finished spaces a person owns or administers here: { spaces: [{ space, name, role }] }, and the identity's own name when it is this device's. For modules (pairing targets).", obj({ person: str }, ["person"]), async (i, meta) => {
