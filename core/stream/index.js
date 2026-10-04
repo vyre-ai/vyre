@@ -173,11 +173,34 @@ export default {
         const { session, who, from } = await prepare(i, meta);
         const log = logs.get(session);
         const id = `st_${crypto.randomBytes(18).toString("base64url")}`;
+        // PS-A: the viewer and chain were decided at open, but access can end while the stream runs (a grant revoked, the person out of the chat, the role changed). So no frame leaves until
+        // access has been asked again, AFTER the frame was appended: frames wait in a queue, one re-check serves every frame queued while it ran (so a burst costs one ask, never one each),
+        // a refusal ends the stream with `access_ended` and sends nothing more, and the roles the viewer is drawn with are the ones the re-check just read.
+        const recheck = async () => {
+          const r = await access.read(session, meta, i);
+          if (r.viewer.id !== who.id) throw new Error("the viewer changed");
+          who.roles.splice(0, who.roles.length, ...r.viewer.roles);
+        };
         meta.peerStream.open(id, ({ emit, end }) => {
           /** @type {(() => void)[]} */ const closers = [];
-          const conn = { send: (/** @type {any} */ f) => { if (!emit(f)) throw new Error("the stream is closed"); }, onClose: (/** @type {() => void} */ cb) => { closers.push(cb); }, close: () => end("done"), buffered: () => 0 };
+          /** @type {any[]} */ let queue = [];
+          let pumping = false, gone = false, closing = false;
+          const pump = async () => {
+            if (pumping) return;
+            pumping = true;
+            try {
+              while (queue.length && !gone) {
+                const batch = queue; queue = [];
+                try { await recheck(); } catch { gone = true; queue = []; end("access_ended"); return; }
+                for (const f of batch) { if (gone) return; if (!emit(f)) { gone = true; queue = []; return; } }
+              }
+              // the serve asked to close (a reset frame is its last word): the frames queued before it go out first
+              if (closing && !gone) end("done");
+            } finally { pumping = false; if (queue.length && !gone) void pump(); }
+          };
+          const conn = { send: (/** @type {any} */ f) => { if (gone) throw new Error("the stream is closed"); queue.push(f); void pump(); }, onClose: (/** @type {() => void} */ cb) => { closers.push(cb); }, close: () => { closing = true; if (!pumping && !queue.length) end("done"); }, buffered: () => 0 };
           const h = serve(log, conn, { viewer: who, ...(from === null ? {} : { from }), ...(groups ? { also: (/** @type {any} */ send) => groups.hear(who.id, (/** @type {any} */ f) => { if (f.session === session) send(f); }) } : {}) });
-          return () => { try { h.close(); } catch { /* closed */ } for (const c of closers.splice(0)) { try { c(); } catch { /* closed */ } } };
+          return () => { gone = true; queue = []; try { h.close(); } catch { /* closed */ } for (const c of closers.splice(0)) { try { c(); } catch { /* closed */ } } };
         });
         return { stream: id, session, viewer: who.id, head: log.head, floor: log.floor };
       },

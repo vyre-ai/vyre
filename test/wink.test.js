@@ -1728,6 +1728,43 @@ test("a paired device opens a chat's stream over the peer wire: frames for its p
 });
 
 
+test("PS-A, real daemon: a web device with a software session may open a chat's stream, but a call that needs presence is refused over the same wire", async t => {
+  const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software", realPresence: true });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's browser", crypto: nodeCrypto(), keyStore: f.ks }));
+  t.after(() => peer.close());
+  const frames = [];
+  const s = await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: d => frames.push(d), onend: () => {} });
+  assert.match(s.id, /^st_/, "a software-strength session opens a chat's stream");
+  await peer.call("stream.send", { session: chat.id, text: "from the browser" });
+  await until(async () => frames.some(d => JSON.stringify(d).includes("from the browser")), 8000);
+  // a call that needs the person's presence: no proof, and a made-up one, are both refused (the session alone never counts)
+  const code = e => String(e && e.code);
+  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail" }), e => /presence_required|presence|denied/.test(code(e)), "no proof: refused");
+  await assert.rejects(() => peer.call("vault.reveal", { name: "northwind-mail", proof: { method: "passkey", id: "made-up" } }), e => /presence|denied|bad_proof|invalid/.test(`${code(e)} ${e.message}`), "a made-up proof: refused");
+});
+
+test("PS-A, real daemon: the ninth stream.open-peer on one device is refused, and closing one makes room", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const k = f.w.d.kernel;
+  const oc = await k.chains.fromFacts({ kind: "socket", surface: "deck", uid: process.getuid(), pid: 1, inside_model_process: false, capsule_verified: true });
+  const chat = await k.gateway.grants.chats.create(oc, { people: [] });
+  const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
+  t.after(() => peer.close());
+  const opened = [];
+  for (let i = 0; i < 8; i++) opened.push(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }));
+  await assert.rejects(() => peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), e => /rate_limited|too many/.test(`${e.code} ${e.message}`), "the ninth is refused");
+  opened[0].close();
+  await new Promise(r => setTimeout(r, 200));
+  assert.ok(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), "closing one makes room");
+});
+
 test("renewal lock survives a restart: three wrong answers, the daemon restarts on the same home, and the device is still locked: no fresh tries, until the owner lifts it", async t => {
   const f = await pairFreshServer(t);
   const id = f.done.device, as = `device:${id}`, peer = { peer: { kind: "device", stableId: id, node: id } };
