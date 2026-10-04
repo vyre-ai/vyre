@@ -68,8 +68,6 @@ const META_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_provider_meta (provi
 export function askedOnly(meta, what, { assistant = false } = {}) {
   const m = meta || {};
   if (isPerson(m)) return;
-  // The setup page before the box is claimed (`setup:<id>`, BR-2) is the person starting the box; the registry lets that class reach only its setup tools, sign-in and an API key among them.
-  if (/^setup:[a-z2-7]{16}$/.test(String(m.caller || ""))) return;
   if (m.asked) return;
   // The box's own setup page (`setup:<id>`, made only by the relay's setup channel, which reaches only the tools a module declares under setupTools): the person is at it, setting up their box.
   // Not a person anywhere else (reviewer-3 LB-2): the label is refused on the socket and every other tool's reach list.
