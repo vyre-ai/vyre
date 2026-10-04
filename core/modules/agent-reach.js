@@ -9,6 +9,11 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["signin.ask", "needs the person's Face ID or presence: it asks the phone to sign the command line in, from a terminal login only"],
+  ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
+  ["signin.answer", "needs the person's Face ID or presence: the person's approval of a sign-in"],
+  ["signin.status", "needs the person's Face ID or presence: it hands the credential only to the terminal that asked"],
+  ["signin.end", "the person's own sign-out of their terminal"],
   ["memory.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["vault.provider.remove", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
