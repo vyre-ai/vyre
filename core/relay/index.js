@@ -124,6 +124,7 @@ export const seams = new Map();
 export default {
   async start(ctx, seam0 = {}) {
     const seam = { ...seam0, ...(seams.get(ctx.paths.root) || {}) };
+    /** @type {Set<any>} the invitee channels open now (IV-5) */ const inviteePool = new Set();
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
     const now = seam.now || Date.now;
@@ -583,9 +584,23 @@ export default {
         const door = inviteesFor(ctx);
         if (!door) { channel.close(4401, "this box does not take invitees"); return; }
         const iid = String(reply.invitee);
+        // IV-5: invitee channels have a small pool of their own and a life of their own, so a stranger who knows the route can never hold the slots the paired devices need: 8 at a time (the rest are refused at once),
+        // closed when no stream opens within 30 s, when the stream they opened has ended (accept or refusal), and after 5 minutes whatever they do.
+        if (inviteePool.size >= (seam.inviteePool ?? 8)) { channel.close(4429, "too many invitations are open here; try again in a minute"); return; }
+        inviteePool.add(channel);
+        let streams = 0, opened = false;
+        const timers = /** @type {any[]} */ ([]);
+        const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; inviteePool.delete(channel); };
+        const end = (/** @type {string} */ why) => { stop(); try { channel.close(1000, why); } catch { /* closed */ } };
+        const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, seam.inviteeIdleMs ?? 30_000);
+        const total = setTimeout(() => end("invite channel time is up"), seam.inviteeTotalMs ?? 5 * 60_000);
+        for (const t of [idle, total]) { if (t.unref) t.unref(); timers.push(t); }
+        const prevClose = channel.onclose;
+        channel.onclose = (/** @type {any[]} */ ...a) => { stop(); return typeof prevClose === "function" ? prevClose.apply(channel, a) : undefined; };
         // no HTTP-like request reaches anything for an invitee: every one is refused; the one door is the peer stream
         const refuse = (/** @type {any} */ _req, /** @type {any} */ res) => { try { res.writeHead(403, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "denied", message: "an invite opens one door" } })); } catch { /* gone */ } };
-        bridge(channel, { handler: refuse, caller: `invitee:${iid}`, peer: { node: "invitee", stableId: iid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), invitees: door });
+        bridge(channel, { handler: refuse, caller: `invitee:${iid}`, peer: { node: "invitee", stableId: iid, login: null, tags: [], caps: {}, kind: "device" }, log: m => ctx.log(m), invitees: door,
+          oninvitee: { opened: () => { streams++; opened = true; }, closed: () => { streams = Math.max(0, streams - 1); if (opened && streams === 0) setTimeout(() => end("invite stream ended"), 100).unref?.(); } } });
         return;
       }
       if (reply && reply.pending) {

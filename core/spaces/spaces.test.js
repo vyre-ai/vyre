@@ -197,6 +197,9 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const w = world(t);
   const d = await device(t);
   assert.equal((await d.call("spaces.create", { name: "harlow", home: { kind: "this-computer" } })).error?.code, "no_identity");
+  // with no claimed identity, acts on a space say so (no_identity), not "no such space"
+  assert.equal((await d.call("spaces.invites.create", { space: "spc_aaaaaaaaaaaa", role: "member" })).error?.code, "no_identity");
+  assert.equal((await d.call("spaces.members.set-role", { space: "spc_aaaaaaaaaaaa", person: "bob", role: "admin" })).error?.code, "no_identity");
   const alex = await d.ok("spaces.identity.create", { name: "alex" });
   const assess = await d.ok("spaces.assess-computer", { device: { name: "alex's laptop", alwaysOn: false } });
   assert.match(assess.warning, /unreachable while/);

@@ -38,6 +38,8 @@ export function recoverRefusal(code) {
     case "unreachable": return "Cannot reach the names directory right now. Nothing was changed. Try again.";
     case "rolled_back": return "The names directory is showing an older version of this name than this device has already seen, so Vyre will not trust it. Nothing was changed. Try again later, or add this phone from another device that has your name.";
     case "exists": return "This iPhone already holds a different Vyre name, so it cannot take this one. Nothing was changed.";
+    case "no_biometrics": return "Set up Face ID or Touch ID on this iPhone, then try again. Nothing was changed.";
+    case "not_hardware": return "This iPhone could not give its secure key. Nothing was changed.";
     case "not_built": return "This is not available in this build yet. Nothing was changed.";
     case "rate_limited": return "Too many tries from here. Try again later.";
     case "newcomer": return "A phone added in the last 24 hours cannot do that yet. Use an older device, or wait.";

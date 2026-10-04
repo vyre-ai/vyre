@@ -56,6 +56,7 @@ export const hooks = {
   /** @type {any} */ vpsDeps: null,
   /** @type {((channel: { relay: string, route: string, box: string }, hello: any) => Promise<{ call(tool: string, input: any): Promise<any> }> | { call(tool: string, input: any): Promise<any> }) | null} an invitee's peer session to the home a space's record names (the daemon wires it); a test sets it */ inviteeSessionFor: null,
   /** @type {((spaceId: string) => { relay: string, route: string, box: string } | null) | null} the home's route for a space's directory record (read at call time) */ route: null,
+  /** @type {number | null} how long a read of a SERVER-hosted space's members waits for the server before it counts as unknown (default 4000 ms; read at call time) */ remoteMs: null,
   /** @type {(() => Promise<any>) | null} replaces the kernel's store plan in host-here (read at call time) */ storePlan: null,
   /** @type {boolean | null} when set, answers "does this space live on this computer" for every space (read at call time) */ livesHere: null,
   /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
@@ -177,7 +178,12 @@ export default {
     const spaceOf = ref => {
       const text = String(ref || "").trim().toLowerCase();
       const row = SPACE_ID_RE.test(text) ? spaces.get(text) : spaces.byName(text.endsWith(".vyre.run") ? text : `${text}.vyre.run`);
-      if (!row) throw refuse("No such space on this device.", "not_found");
+      if (!row) {
+        // A home with no claimed identity has nobody to own or invite into a space yet: say that, not "no such space".
+        let who = null; try { who = identity.status(); } catch { who = null; }
+        if (!who || !who.exists || who.pending) throw refuse("Choose your Vyre name first.", "no_identity");
+        throw refuse("No such space on this device.", "not_found");
+      }
       return row;
     };
     /** The creator, or an owner of a space that exists. */
@@ -242,7 +248,16 @@ export default {
       return createKernelMembers({ space: id, handle: h, now, displayNames: rnames.load(id), reader: () => k });
     };
     /** A person's role in a space from the place that decides it. @param {string} id @param {string} person @param {any} [meta] */
-    const membershipOf = async (id, person, meta) => (kernelHandle(id) ? (await (await members(id, meta)).get(person)) : mstore.get(id, person)) || null;
+    const membershipOf = async (id, person, meta) => {
+      const h = kernelHandle(id);
+      if (!h) return mstore.get(id, person) || null;
+      const ask = async () => (await (await members(id, meta)).get(person)) || null;
+      // A space on a SERVER is read over the network: a server that is down, rebuilt or silent must not hold up every list and every pairing that asks who belongs where (walker, 4 Oct: wink.pair.server
+      // hung 90 s on a stale server-hosted row). No answer in time is "unknown", and the caller falls back to what this device itself knows.
+      if (h.hosted !== false) return ask();
+      const ms = typeof hooks.remoteMs === "number" ? hooks.remoteMs : 4000;
+      return Promise.race([ask().catch(() => null), new Promise(res => { const t = setTimeout(() => res(null), ms); if (t.unref) t.unref(); })]);
+    };
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
     /** @type {Map<string, any>} */ const memberSvc = new Map();
@@ -670,16 +685,27 @@ export default {
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
         let spaceId = `spc_${crypto.randomBytes(8).toString("hex")}`;
+        // The same person asking again for a name whose earlier attempt did not finish picks that attempt up (its id, its stored steps) instead of colliding with what it left behind: a refused or
+        // failed create retires what the server started, and the retry resumes the pending row (walker, 4 Oct: a retry under the same name answered "That name is taken").
+        let resumed = false;
+        { const prior = spaces.all().find(r => r.label === label && r.createdBy === s.id && r.status !== "done");
+          const prec = prior ? /** @type {any} */ (await kv.get(`space-create/${prior.id}`)) : null;
+          if (prior && prec && prec.status !== "cancelled" && prec.status !== "done") { spaceId = prior.id; resumed = true; } }
         // A Space the kernel hosts here is made by the kernel (its own id, store and key). The kernel says first what store it would use: on a server too small for the larger one
         // it needs the person's confirmation, in the kernel's own words, and only on "create" is the Space made, with the flag that says they accepted the built-in store.
         // A space whose home is a PAIRED SERVER is hosted by that server (DESIGN-spaces-first, "Where a space is hosted"): the server's kernel makes it (key, store, log, files there) and answers THE id;
         // this device keeps only the row. A server that is not yet paired goes through the code step as before. "On this computer" stays local.
         let remoteServer = null;
-        if (i.home && i.home.kind === "server" && i.home.device && typeof i.home.device.id === "string" && await pairedServer(i.home.device.id)) remoteServer = i.home.device.id;
+        if (i.home && i.home.kind === "server" && i.home.device && typeof i.home.device.id === "string" && i.home.device.id) {
+          // A person who named THEIR server never gets a space on this computer instead: a server that is not paired to this person is refused, and nothing is made. (A new server with no device named
+          // still goes through the typed-code step below.)
+          if (!(await pairedServer(i.home.device.id))) throw refuse("That server is not paired with you yet, so Vyre did not make the space. Pair the server first, then try again. Nothing was made.", "server_not_paired");
+          remoteServer = i.home.device.id;
+        }
         const KS = !remoteServer && K && K.spaces && typeof K.spaces.host === "function" ? K.spaces : null;
         if (remoteServer) {
           let made;
-          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
+          try { made = await remoteCall(remoteServer, "spaces.host-here", { name: label, ...(resumed ? { id: spaceId } : {}), ...(i.storeChoice === "create" ? { acceptBuiltinStore: true } : {}) }, meta); }
           catch (e) {
             if (/** @type {any} */ (e).code === "needs_store_confirmation") {
               if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
@@ -691,7 +717,7 @@ export default {
           spaceId = made.space;
           await kv.put(`server-hosted/${spaceId}`, { device: remoteServer, at: now(), ...(typeof made.rootPublic === "string" && made.rootPublic ? { rootPublic: made.rootPublic } : {}) });
         }
-        if (KS) {
+        if (KS && !(resumed && typeof K.spaces.hosts === "function" && K.spaces.hosts(spaceId) === true)) {
           const plan = typeof KS.storePlan === "function" ? await KS.storePlan() : null;
           const confirm = plan && plan.confirm ? plan.confirm : null;
           if (confirm) {
@@ -701,9 +727,11 @@ export default {
           const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
           spaceId = hosted.space || hosted.id;
         }
+        if (resumed && !spaces.get(spaceId)) resumed = false;
         const home = { ...i.home };
         if (home.kind === "this-computer" && !home.device) home.device = { id: s.keyId, name: "this computer", alwaysOn: false };
-        spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
+        if (!resumed) spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
+        else spaces.patch(spaceId, { status: "running" }, now());
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         /** @type {any} */ let view;
         try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token }); } catch (e) { if (KS || remoteServer) await retireHosted(spaceId, meta); throw e; }
@@ -1303,6 +1331,25 @@ export default {
         await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
+    tool("spaces.members.add-agent", "Add an agent (an assistant that does work in the space, for example as the doer of a task) to a space. The kernel's own actor membership: owners and admins only, under the person's proof.",
+      obj({ space: str, agent: str }, ["space", "agent"]),
+      async (i, meta) => {
+        const row = spaceOf(i.space);
+        await gate(row.id, undefined, meta);
+        const agent = String(i.agent || "").trim().toLowerCase();
+        if (!/^[a-z][a-z0-9_-]{0,39}$/.test(agent)) throw refuse("An agent's name is letters, digits, - and _, up to 40.", "bad_input");
+        const h = kernelHandle(row.id);
+        if (!h || !h.gateway || !h.gateway.grants || typeof h.gateway.grants.addActor !== "function") throw refuse("This space has no kernel here to add an agent to.", "unavailable");
+        const k = await kctxOf(meta, row.id);
+        try { await h.gateway.grants.addActor(k.chain, { kind: "agent", id: agent, space: row.id }, k.proof); }
+        catch (e) {
+          const c = String(/** @type {any} */ (e).code || "");
+          if (c === "needs_presence") throw refuse("This change needs your approval on your device.", "needs_presence");
+          if (c === "not_allowed") throw refuse("Only an owner or an admin can add an agent.", "forbidden");
+          throw e;
+        }
+        return { space: row.id, agent: { kind: "agent", id: agent } };
+      }, { presence: { summary: (/** @type {any} */ i) => `Add the agent ${i && i.agent} to ${i && i.space}` } });
     tool("spaces.members.remove", "Remove a person from a space. A space always keeps at least one owner.", obj({ space: str, person: str }, ["space", "person"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);

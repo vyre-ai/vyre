@@ -106,3 +106,26 @@ test("storage.index: the pool's backup head goes into the log, and the head to e
   assert.throws(() => k.recordStorageIndex({ seq: -1, hash: "x", copies: 1 }));
   assert.throws(() => k.recordStorageIndex({ seq: 1, hash: "bad hash with spaces", copies: 1 }));
 });
+
+test("createKernel: the module handle's records is a read-only Proxy over a copy; gateway.records stays frozen and the boot does not throw (FZ-1)", async () => {
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key });
+  assert.equal(Object.isFrozen(k.gateway.records), true, "the gateway's records is frozen");
+  for (const needs of [undefined, { kernel: { actions: [] } }]) {
+    const h = k.kernelFor({ name: needs ? "probe-declared" : "probe-bare", ...(needs ? { needs } : {}) });
+    const o = ownerChain(k);
+    // function members answer through the Proxy (they wait for the module's own setup), and plain values come from the target
+    assert.equal(typeof h.records.define, "function");
+    await h.records.define(o, { add_types: [CONTACT] });
+    const c = await h.records.create(o, "contact", { name: needs ? "Declared" : "Bare" });
+    assert.equal((await h.records.get(o, "contact", c.id)).data.name, c.data.name);
+    assert.equal((await k.gateway.records.get(o, "contact", c.id)).data.name, c.data.name, "the same store behind both");
+    // read only: no holder can replace what another caller gets
+    assert.throws(() => { h.records.create = () => null; }, TypeError);
+    assert.throws(() => { delete h.records.get; }, TypeError);
+    assert.throws(() => Object.defineProperty(h.records, "get", { value: () => null }), TypeError);
+    assert.throws(() => Object.setPrototypeOf(h.records, {}), TypeError);
+    assert.equal(typeof h.records.get, "function");
+  }
+  assert.equal(Object.isFrozen(k.gateway.records), true, "still frozen after handles were made and poked");
+  assert.equal((await k.gateway.audit.verify()).ok, true);
+});

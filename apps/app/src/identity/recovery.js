@@ -38,3 +38,16 @@ export async function codeKey(code, password = "", params = STRETCH) {
   const pub = ed25519.getPublicKey(seed);
   return { eid: await eidOf(pub), publicKey: b64u(pub) };
 }
+
+/**
+ * The same key as codeKey, with its signer: for the one moment a recovery code is used (a new device is added to the list, signed by the code's key). The private half lives for this call.
+ * @param {string} code @param {string} [password] @param {{ memoryKiB: number, passes: number }} [params]
+ * @returns {Promise<{ eid: string, publicKey: string, sign: (m: Uint8Array) => Promise<Uint8Array> }>}
+ */
+export async function codeSigner(code, password = "", params = STRETCH) {
+  if (!codeLooksRight(code)) throw Object.assign(new Error("that is not a recovery code"), { code: "bad_code" });
+  const secret = new TextEncoder().encode(`${normalizeCode(code)}\n${String(password ?? "").normalize("NFKC")}`);
+  const seed = await argon2idAsync(secret, new TextEncoder().encode(STRETCH_SALT), { t: params.passes, m: params.memoryKiB, p: 1, dkLen: 32, asyncTick: 20 });
+  const pub = ed25519.getPublicKey(seed);
+  return { eid: await eidOf(pub), publicKey: b64u(pub), sign: async m => ed25519.sign(m, seed) };
+}

@@ -221,6 +221,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.members.add-agent", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.members.set-role", "effect": "write",
     "reach": "person"
    },

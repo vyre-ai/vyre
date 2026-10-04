@@ -441,6 +441,50 @@ export function createSqliteStore(cfg) {
           try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* not in WAL mode, or the checkpoint is blocked by a reader: the next one does it */ }
         }
       },
+      /**
+       * A record was forgotten (the gateway's `forget`): its row goes, what the change log holds of it loses its data (the entry keeps its envelope), the full-text index is rebuilt without it, and
+       * the file is vacuumed and its write-ahead log truncated so the values do not survive in free pages. @param {string} type @param {string} id
+       */
+      destroy: (type, id) => {
+        const was = /** @type {any} */ (db.prepare("PRAGMA secure_delete").get());
+        db.exec("PRAGMA secure_delete = ON");
+        try {
+          // One savepoint (it joins a caller's transaction, stands alone otherwise): the log entries, the row, the kept stage counts and the attribute row go together or not at all.
+          db.exec("SAVEPOINT kdestroy");
+          try {
+            const upd = db.prepare("UPDATE kernel_changes SET entry = ? WHERE seq = ?");
+            let from = 0;
+            for (;;) {
+              const rows = /** @type {any[]} */ (db.prepare("SELECT seq, entry FROM kernel_changes WHERE seq > ? ORDER BY seq LIMIT 500").all(from));
+              if (!rows.length) break;
+              for (const r of rows) {
+                from = r.seq;
+                const e = JSON.parse(r.entry);
+                if (e.type !== type || e.id !== id) continue;
+                delete e.before; delete e.after; e.erased = true;
+                upd.run(JSON.stringify(e), r.seq);
+              }
+            }
+            // A live record is counted under each kept stage count: take it out in the same transaction (a removed one was taken out when it was removed).
+            const row = /** @type {any} */ (db.prepare("SELECT data, deleted_at FROM kernel_records WHERE type = ? AND id = ?").get(type, id));
+            if (row && row.deleted_at == null) {
+              const data = JSON.parse(row.data);
+              for (const f of countFields(type)) if (countsReady.has(`${type}\u0000${f}`)) decCount.run(type, f, valKey(data[f]));
+            }
+            db.prepare("DELETE FROM kernel_records WHERE type = ? AND id = ?").run(type, id);
+            // The attribute row is keyed by urn (space/type/id): the space is not known here, so it is found by its tail.
+            const tail = `/${type}/${id}`;
+            db.prepare("DELETE FROM kernel_attrs WHERE substr(urn, -?) = ?").run(tail.length, tail);
+            for (const k of [...attrCache.keys()]) if (k.endsWith(tail)) attrCache.delete(k);
+            ftsRestart();
+            db.exec("RELEASE kdestroy");
+          } catch (err) { db.exec("ROLLBACK TO kdestroy"); db.exec("RELEASE kdestroy"); throw err; }
+          try { db.exec("VACUUM"); } catch { /* inside a transaction of the caller's: the freed pages stay until the next vacuum */ }
+        } finally {
+          db.exec(`PRAGMA secure_delete = ${was && was.secure_delete ? was.secure_delete : 0}`);
+          try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } catch { /* the next checkpoint does it */ }
+        }
+      },
       // The record and its change entry are one transaction: the memory store calls them back to back.
       record: r => { pending = r; },
       change: e => {

@@ -415,20 +415,24 @@ export default {
     // with every project as its candidate set.
     const REACH_OWNER = new Set(["deck", "cli", "local", "capsule"]);
     const reachOwner = c => REACH_OWNER.has(String(c)) || String(c || "").startsWith("module:");
-    const reachOwnSession = c => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
-    const reachAgentOf = c => /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
+    // The session and the agent are what the daemon vouched (meta.thread and meta.agent, forwarded by the asking module as `thread` and `claim`), never the `:thread:<id>` or `:agent:<name>` text of a label (RC-1).
+    // SHIM (kernel off, or an asking module that does not forward meta yet): when neither `thread` nor `claim` is given, the label's own text is read as before.
+    const reachOwnSession = (c, thread, claim) => (thread !== undefined || claim !== undefined)
+      ? !claim && /^mcp(?:$|[\s:])/.test(String(c || "")) && (c === "mcp" || Boolean(thread))
+      : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
+    const reachAgentOf = (c, claim) => claim !== undefined ? (claim ? String(claim) : null) : /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
-      input: { type: "object", properties: { agent: str, caller: str, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },
+      input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },
       callers: ["module"],
-      run: async ({ agent, caller, kind = "content", person }) => {
-        const said = reachAgentOf(caller);
+      run: async ({ agent, caller, kind = "content", person, thread, claim }) => {
+        const said = reachAgentOf(caller, claim);
         if (said && agent && said !== agent) throw refuse(`the call came from agent ${said} but names agent ${agent}`, "denied");
         const who = said || agent || null;
         if (!who) {
           // The asking module passes `person` from the kernel's chain for the call (exactly one person hop): then that fact, never the label, decides the owner. Without it (no kernel) the labels do, as before.
           if (typeof person === "boolean") { if (person || String(caller || "").startsWith("module:")) return { all: true, agent: null }; throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied"); }
-          if (reachOwner(caller) || reachOwnSession(caller) || ownerDevice(caller)) return { all: true, agent: null };
+          if (reachOwner(caller) || reachOwnSession(caller, thread, claim) || ownerDevice(caller)) return { all: true, agent: null };
           throw refuse(`refused for ${String(caller || "an unnamed caller").slice(0, 60)}`, "denied");
         }
         const r = await ctx.call("agents.list", {});

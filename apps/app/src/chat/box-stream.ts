@@ -11,6 +11,7 @@
 import { connect as connectStream, wsDuplex } from "@vyre/stream/client.js";
 import { newUuid } from "@vyre/chat-core/composer-state.js";
 import { call, send, socket } from "../api/box";
+import { peerDuplex, peerWanted } from "../real/peer";
 import { SURFACE } from "../state/live";
 import { streamSource } from "./stream-source.js";
 import type { StreamSource } from "./mock-stream";
@@ -55,6 +56,13 @@ export function boxStream(session: string): BoxStream {
   const source = streamSource({
     connect: connectStream,
     open: async ({ from }) => {
+      // A device paired to its server over the relay has no WebSocket to it: the stream rides the peer wire (stream.follow), resumed by `from` like any other.
+      if (peerWanted()) {
+        const d = await peerDuplex(session, from);
+        if (typeof d.info.head === "number") head = d.info.head;
+        if (d.info.viewer) viewer = d.info.viewer;
+        return d;
+      }
       const r = await call<{ path: string; viewer?: string; head?: number }>("stream.open", { session, from });
       if (r.error) throw new Error(reason(r.error));
       if (typeof r.data.head === "number") head = r.data.head;
