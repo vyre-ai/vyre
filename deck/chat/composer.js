@@ -1102,7 +1102,7 @@ export function mountComposer(opts) {
     // status code alone - it would mark team.ask missing FOR GOOD the first time any one role
     // came up empty, breaking every later @role even to a teammate that exists. Checked directly,
     // same distinction session.js's own recall.transcript not_found already makes.
-    const r = await attempt("team.ask", { to: role, text, surface: "deck" });
+    const r = await attempt("team.ask", { to: role, text });
     sending = false; send.disabled = false;
     if (!r.error) { setValue(""); put(note); note.classList.remove("soft"); nearFor = null; return; }
     if (r.error.missing && r.error.code !== "not_found") { say(NEEDS_UPDATE); return; }

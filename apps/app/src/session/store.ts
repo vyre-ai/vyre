@@ -538,7 +538,7 @@ function createStore(thread: string) {
     /** Take a queued message back (threads.unqueue). */
     async takeBack(q: Queued): Promise<string | null> {
       if (q.local && q.queued == null && q.uuid) touch(dropLocal(s, q.uuid));
-      const r = await CAPS.use("threads.unqueue", () => write("threads.unqueue", { thread, uuid: q.uuid, queued: q.queued }));
+      const r = await CAPS.use("threads.unqueue", () => write("threads.unqueue", { thread, queued: q.queued }));
       if (r.missing) return NEEDS_UPDATE;
       if (r.error) return r.error.message || "Could not take it back";
       s.queued = s.queued.filter((x) => x !== q);
