@@ -1687,3 +1687,17 @@ test("renewal lock survives a restart: three wrong answers, the daemon restarts 
   const ch2 = (await call(d2, "presence.person.pair-challenge", {})).data.challenge;
   assert.ok((await call(d2, "presence.person.start-paired", { sig: f.sign(`paired-start\n${id}\n${ch2}`) })).data, "after renew-allow the device renews with its key");
 });
+
+test("the three-strikes count is in the store too: two wrong answers, a restart, one wrong answer, and the device is locked", async t => {
+  const f = await pairFreshServer(t);
+  const id = f.done.device, as = `device:${id}`, peer = { peer: { kind: "device", stableId: id, node: id } };
+  const call = (d, tool, input) => d.registry.call(tool, input, as, peer);
+  for (let i = 0; i < 2; i++) { await call(f.w.d, "presence.person.pair-challenge", {}); await call(f.w.d, "presence.person.start-paired", { sig: "AAAA" }); }
+  assert.equal((await f.w.d.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.length, 0, "two wrong answers do not lock");
+  await f.w.d.stop();
+  const d2 = await start({ presence: lenient, root: f.w.root, log: () => {}, coreKeys: macCore(), kernel: true });
+  t.after(() => d2.stop());
+  await call(d2, "presence.person.pair-challenge", {});
+  await call(d2, "presence.person.start-paired", { sig: "AAAA" });
+  assert.ok((await d2.registry.call("presence.person.locked", {}, "cli", PROOF)).data.locked.some(l => l.device === id), "the count survived the restart: the third wrong answer locks");
+});
