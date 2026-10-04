@@ -41,10 +41,11 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
       <View className="flex-row flex-wrap items-center gap-s2"><Text strong>Claude</Text><Chip tone={st.state === "connected" ? "ok" : st.state === "failed" || st.state === "blocked" || st.state === "pair_first" ? "warn" : "plain"}>{{ not_connected: "Not connected", blocked: "Cannot connect yet", waiting: "Waiting for you", connected: "Connected", failed: "Did not connect", pair_first: "Pair first", on_phone: "On your phone" }[st.state]}</Chip></View>
       <Text tone="muted">{st.line}</Text>
       {!loaded ? <LoadingState rows={1} /> : null}
+      {st.state === "connected" && claimBlocked() ? <Text size="caption" tone="label">Disconnect it in Vyre on your phone.</Text> : null}
       {st.state === "connected" && !claimBlocked() ? (
         <View className="gap-s2">
           <Text size="caption" tone="label">{DISCONNECT_NOTE}</Text>
-          <View className="self-start"><Button kind="hold" size="sm" label={busy ? "Disconnecting" : "Disconnect"} onPress={busy ? () => {} : () => void disconnect()} /></View>
+          <View className="self-start"><Button kind="hold" size="sm" label={busy ? "Disconnecting" : "Disconnect"} disabled={busy} onPress={() => void disconnect()} /></View>
         </View>
       ) : null}
       {loaded && (st.state === "not_connected" || st.state === "waiting" || st.state === "failed") ? (
