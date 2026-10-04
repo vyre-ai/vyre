@@ -21,6 +21,8 @@ jobs:
         # Team branches run Node 24 only (half the load on the shared runners); stage, main and pull
         # requests run both versions.
         node: ${{ fromJSON((startsWith(github.ref_name, 'work/') && github.ref_name != 'work/stage-0.2') && '[24]' || '[22, 24]') }}
+        # Five shards (node --test-shard) so a run is about a fifth of the suite per job; the eval and the perf gate run on shard 1 only.
+        shard: [1, 2, 3, 4, 5]
     # Every branch runs on the hosted runner. The self-hosted test-box runners (8 cores, shared) were CPU-bound
     # and left node jobs queued for hours. Set the repo variable NODE_ON_TESTBOX=1 to send team branches (work/*
     # except the stage mirror) back to the test box; those runs also cap test concurrency at 2.
@@ -37,11 +39,13 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - if: ${{ runner.environment != 'github-hosted' }}
         # --test-concurrency is not allowed in NODE_OPTIONS, so splice it into the package.json test command.
-        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-concurrency=2 ')")"
+        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-concurrency=2 --test-shard=${{ matrix.shard }}/5 ')")"
       - if: ${{ runner.environment == 'github-hosted' }}
-        run: npm test
-      - run: npm run eval:answer
-      - run: npm run perf-check
+        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-shard=${{ matrix.shard }}/5 ')")"
+      - if: ${{ matrix.shard == 1 }}
+        run: npm run eval:answer
+      - if: ${{ matrix.shard == 1 }}
+        run: npm run perf-check
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,
   # only files that pass there), so a red result means something, and it blocks: a regression cannot
   # hide. It is bounded to 10 minutes so it cannot hold up stage. No eval:answer or perf-check, which assume a Linux/Mac process model.
