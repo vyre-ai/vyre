@@ -32,6 +32,10 @@ import { agentClaim } from "../modules/index.js";
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
+/** The person's own surfaces; a module hop is checked against the original caller by the registry. */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+/** An agent's own hands (mcp:agent:<name>, a model session) and the harness; only the tools that act on the caller's OWN computer list them. */
+const OWN = [...PEOPLE, "module", "mcp", "harness"];
 
 /** The vault item a shared computer's member tokens are derived from (pool.js's memberToken()) --
  * declared in module.json's needs.vault, the same shape tailnet's own authkey item is. Never
@@ -156,6 +160,12 @@ export default {
       return String(agent);
     };
 
+    /** A model session that names no agent (a bare "mcp", "mcp:thread:<id>", the harness) has no computer of its own, so it may not name one: the person's surfaces and modules say which agent they mean. */
+    const ownOnly = caller => {
+      const c = String(caller || "");
+      if (!agentClaim(c) && /^(mcp|harness)\b/.test(c)) throw Object.assign(new Error("a model session may only act on its own agent's computer; it names no agent"), { code: "denied" });
+    };
+
     const surfaceOf = input => {
       if (!isSurface(input.surface)) throw new Error(`surface must name a person's screen: glass:<device>, deck:<device>, phone:<device> or capsule:<device>`);
       return String(input.surface);
@@ -220,14 +230,15 @@ export default {
 
     tool("computers.checkout", "Give an agent a screen and a running computer (made on first need, thawed if frozen). Waits up to 30 s when every screen is held.",
       obj({ agent: str, thread: str, why: str }), async (i, { caller, thread: live }) => {
+        ownOnly(caller);
         if (!driver) throw new Error(NO_DRIVER);
         // A model's thread is the verified one the harness gives the call, never a thread id it names in its input.
         const thread = agentClaim(caller) ? live : i.thread;
         return pool.checkout(await resolve(i, caller), { thread, why: i.why });
-      });
+      }, { callers: OWN });
 
     tool("computers.release", "Let go of an agent's screen. The computer freezes a little later.", obj({ agent: str }),
-      async (i, { caller }) => ({ released: pool.release(await resolve(i, caller), "released") }));
+      async (i, { caller }) => { ownOnly(caller); return { released: pool.release(await resolve(i, caller), "released") }; }, { callers: OWN });
 
     tool("computers.stop", "Stop an agent's computer. Its home volume stays; the next checkout starts it again.", obj({ agent: str }),
       async (i, { caller }) => {
@@ -241,7 +252,7 @@ export default {
       });
 
     tool("computers.restart", "Restart an agent's computer: a new container on the same home, so its files and Chrome profile stay, with its current limits. Whatever is open on its screen closes.",
-      obj({ agent: str }), async (i, { caller }) => pool.restart(await resolve(i, caller)));
+      obj({ agent: str }), async (i, { caller }) => { ownOnly(caller); return pool.restart(await resolve(i, caller)); }, { callers: OWN });
 
     tool("computers.limits", `Set an agent's processor cores (cpus, ${LIMITS.cpus.min} to ${LIMITS.cpus.max}) and memory (memory_gb, ${LIMITS.memoryGb.min} to ${LIMITS.memoryGb.max}). They apply at the next restart. A person's or the assistant's to set, never an agent's own.`,
       obj({ agent: str, cpus: { type: "number" }, memory_gb: { type: "number" } }), async (i, { caller }) => {
@@ -262,7 +273,7 @@ export default {
       }, { internal: true });
 
     tool("computers.pause", "Pause an agent's hands: its input actions are refused until resumed. The computer keeps running.", obj({ agent: str }),
-      async (i, { caller }) => pool.pause(await resolve(i, caller), true));
+      async (i, { caller }) => { ownOnly(caller); return pool.pause(await resolve(i, caller), true); }, { callers: OWN });
 
     tool("computers.resume", "Let a paused agent's hands act again.", obj({ agent: str }),
       async (i, { caller }) => pool.pause(await resolve(i, caller), false));
