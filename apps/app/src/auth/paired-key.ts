@@ -5,6 +5,8 @@ import { keepToken, personKey } from "./person.web";
 export type PairedKey = {
   /** ES256 over the message, raw 64 bytes r||s. */
   sign(message: Uint8Array): Promise<Uint8Array>;
+  /** The identity entry's enclave or keystore key over the same message (phone only; a browser has none). */
+  signEnclave?(message: Uint8Array): Promise<Uint8Array>;
   /** Keep the session token where this device's box client reads it. `route` names the paired server (the phone keys its store by it). */
   keep(route: string, token: string): Promise<void>;
 };

@@ -40,3 +40,12 @@ test("a phone signs paired-start with its hardware key through `sign` (raw r||s)
   assert.equal(s.token, "t");
   await assert.rejects(startPaired({ device: "d", call }), /needs the device key/);
 });
+
+test("a phone sends esig beside sig, both over paired-start", async () => {
+  const sent = [];
+  const call = async (tool, input) => { sent.push(input); return tool.endsWith("pair-challenge") ? { data: { challenge: "c2" } } : { data: { token: "t", id: "i", expires: 1 } }; };
+  const sig = new Uint8Array(64).fill(1);
+  await startPaired({ device: "d", call, sign: async () => sig, signEnclave: async () => sig });
+  assert.equal(sent[1].esig, Buffer.from(sig).toString("base64url"));
+  assert.equal(sent[1].sig, sent[1].esig);
+});

@@ -173,7 +173,7 @@ async function openPairedSession(r: { relay: string; route: string; box: string;
   const ch = await channelCall({ relay: r.relay, route: r.route, box: r.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
   try {
     const key = await pairedKey();
-    const s = await startPaired({ device: r.device, call: ch.call, sign: key.sign, label: deviceName() });
+    const s = await startPaired({ device: r.device, call: ch.call, sign: key.sign, signEnclave: key.signEnclave, label: deviceName() });
     await key.keep(r.route, s.token);
   } finally { ch.close(); }
 }

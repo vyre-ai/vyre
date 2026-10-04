@@ -68,7 +68,7 @@ export function renewSession(): Promise<boolean> {
       const { startPaired, channelCall } = await import("../auth/paired");
       const { pairedKey } = await import("../auth/paired-key");
       const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
-      try { await startPaired({ device: String(pairing.device), call: ch.call, sign: (await pairedKey()).sign, label: deviceName() }); } finally { ch.close(); }
+      try { const k = await pairedKey(); await startPaired({ device: String(pairing.device), call: ch.call, sign: k.sign, signEnclave: k.signEnclave, label: deviceName() }); } finally { ch.close(); }
       closePeer();
       return true;
     } catch (e) { notice.noteRenewFailed((e as { code?: string })?.code); return false; }
@@ -94,7 +94,8 @@ export async function renewSessionOnPhone(): Promise<boolean> {
     st.show("Sign this browser in");
     const out = await askPhoneForSession(ch.call, { signal: st.signal });
     if ("ended" in out) throw Object.assign(new Error(sessionEndLine(out.ended)), { code: "not_approved" });
-    await startPaired({ device: String(pairing.device), call: ch.call, sign: (await pairedKey()).sign, label: deviceName() });
+    const k = await pairedKey();
+    await startPaired({ device: String(pairing.device), call: ch.call, sign: k.sign, signEnclave: k.signEnclave, label: deviceName() });
     closePeer();
     return true;
   } finally { useApproval.getState().hide(); ch.close(); }
