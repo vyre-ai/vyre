@@ -9,6 +9,7 @@
 name: sessions-sdk
 on:
   push:
+    branches: ["main", "work/v0.3", "work/sessions*", "work/switchboard*"]
     paths: ["core/sessions/**", "core/switchboard/**", "core/agents/**", "core/learn/**", "harness/**", "scripts/sessions-smoke.mjs", ".github/workflows/sessions-sdk.yml"]
   pull_request:
     paths: ["core/sessions/**", "core/switchboard/**", "core/agents/**", "core/learn/**", "harness/**", "scripts/sessions-smoke.mjs", ".github/workflows/sessions-sdk.yml"]

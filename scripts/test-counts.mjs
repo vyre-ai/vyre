@@ -65,8 +65,10 @@ function diff(base) {
 const [cmd, ...rest] = process.argv.slice(2);
 if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "run") {
-    const full = rest.length === 0;
-    const files = (full ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter((f, i, a) => a.indexOf(f) === i).sort();
+    const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
+    const full = rest.length === 0 && !shard;
+    const files = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter((f, i, a) => a.indexOf(f) === i).sort()
+      .filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1);
     const limit = Number(process.env.VYRE_TEST_FILE_LIMIT_MS || 300000), width = Number(process.env.VYRE_TEST_CONCURRENCY || Math.max(2, os.availableParallelism() - 1));
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-test-counts-"));
     /** @type {Record<string, number>} */ const ran = {};
