@@ -114,14 +114,14 @@ test("the identity refusals of a pairing say what happened and that nothing was 
 
 test("a pairing refusal is decided by its code, and a denied one shows the server's own words", async () => {
   const { serverSay, SERVER_FAILED } = await import("./flow.js");
-  for (const [code, key] of [["bad_code", "badCode"], ["bad_owner", "badOwner"], ["taken", "used"], ["busy", "busy"], ["expired", "expired"], ["unreachable", "unreachable"], ["cancelled", "cancelled"], ["cannot_check", "cannotCheck"], ["no_session", "noSession"]]) {
+  for (const [code, key] of [["bad_code", "badCode"], ["bad_owner", "badOwner"], ["taken", "used"], ["busy", "busy"], ["expired", "expired"], ["unreachable", "unreachable"], ["cancelled", "cancelled"], ["cannot_check", "cannotCheck"], ["no_session", "noSession"], ["not_hardware", "notHardware"]]) {
     assert.equal(serverSay(Object.assign(new Error("x"), { code })), SERVER_FAILED[key], code);
   }
   assert.equal(serverSay(Object.assign(new Error("The app did not prove which Vyre identity it is"), { code: "denied" })), SERVER_FAILED.denied);
   assert.equal(serverSay(Object.assign(new Error("x"), { code: "denied_no_proof" })), SERVER_FAILED.noProof);
   assert.equal(serverSay(Object.assign(new Error("x"), { code: "denied_wrong_proof" })), SERVER_FAILED.wrongProof);
   // The words that come back through a screen (already mapped) are left alone.
-  for (const k of ["badCode", "badOwner", "busy", "cancelled", "denied", "cannotCheck", "noSession"]) assert.equal(serverSay(SERVER_FAILED[k]), SERVER_FAILED[k], k);
+  for (const k of ["badCode", "badOwner", "busy", "cancelled", "denied", "cannotCheck", "noSession", "notHardware"]) assert.equal(serverSay(SERVER_FAILED[k]), SERVER_FAILED[k], k);
 });
 
 test("a server that is not yet the person's is never quoted: an unknown code with a long message shows only our refusal", async () => {
