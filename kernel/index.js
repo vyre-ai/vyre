@@ -80,15 +80,17 @@ export async function createKernel(cfg) {
   /** @type {any} */ let gateway;
   const members = grantsStore ? grantsStore.members : cfg.members;
   const tasks = createTasks({
-    canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
+    canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), texts: cfg.texts,
     space: cfg.space, log, chains, clock, presence: presence || { check: async () => "no_presence_verifier" }, members: { has: (/** @type {any} */ a) => members.has(a), roleOf: (/** @type {any} */ a) => (grantsStore ? grantsStore.roleOf(a) : null) },
     authorizer: { authorize: (/** @type {any} */ i) => gateway.authorize(i), get actions() { return gateway.registry; } },
     approver: () => ({ kind: "person", id: ownerRef.id, space: cfg.space }), resolve: cfg.resolve, enforce: (/** @type {any} */ c, /** @type {any} */ d) => limits.enforce(c, d),
   });
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
-  const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock });
+  const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
   gateway = createGateway({
+    // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
+    attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,

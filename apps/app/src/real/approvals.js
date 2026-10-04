@@ -12,10 +12,16 @@ export const ACTS = {
   "rules.remove": (i) => ({ call: "ruleRemove", args: [i.id] }),
   "rules.accept": (i) => ({ call: "ruleAccept", args: [i.id] }),
   "rules.dismiss": (i) => ({ call: "ruleDismiss", args: [i.id] }),
+  // Members and invites (platform, 5 Oct): the spaces module maps these onto the kernel's calls with the same fields. A temp member or invite carries its scope and end date.
+  "spaces.members.set-role": (i) => ({ call: "setRole", args: [{ person: i.person, role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}) }] }),
+  "spaces.members.remove": (i) => ({ call: "removeMember", args: [{ person: i.person }] }),
+  "spaces.invites.confirm": (i) => ({ call: "inviteConfirm", args: [i.id, { words: i.words }] }),
+  // A named invite (`to`) is resolved to a person by the spaces module before the kernel sees it, which the app cannot reproduce: it has no phone route and says to do it on the phone.
+  "spaces.invites.create": (i) => (i.to ? null : { call: "inviteCreate", args: [{ role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * 86_400_000 } : {}) }] }),
 };
 
-/** Is this a refusal that the kernel wants the person's own proof, for an act the phone route covers? @param {string} tool @param {{ code?: string } | null | undefined} error */
-export const phoneRoute = (tool, error) => Boolean(error) && ["needs_presence", "presence_required"].includes(String(error?.code)) && Object.hasOwn(ACTS, tool);
+/** Is this a refusal that the kernel wants the person's own proof, for an act the phone route covers? @param {string} tool @param {{ code?: string } | null | undefined} error @param {any} [input] */
+export const phoneRoute = (tool, error, input = {}) => Boolean(error) && ["needs_presence", "presence_required"].includes(String(error?.code)) && Object.hasOwn(ACTS, tool) && ACTS[tool](input) !== null;
 
 /** base64url of the proof object, as x-vyre-kernel-proof takes it (at most 4 KB). @param {unknown} proof */
 export function proofHeader(proof) {

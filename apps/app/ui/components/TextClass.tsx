@@ -6,7 +6,7 @@ import { useUiTheme } from "../theme";
 
 const text = cva("", {
   variants: {
-    size: { caption: "text-caption", secondary: "text-secondary", body: "text-body", headline: "text-headline", read: "text-read", title: "text-title", page: "text-page", display: "text-display" },
+    size: { caption: "text-caption", secondary: "text-secondary", body: "text-body", headline: "text-headline", control: "text-control", micro: "text-micro", read: "text-read", title: "text-title", page: "text-page", display: "text-display" },
     tone: { default: "text-text", muted: "text-text-2", label: "text-label", faint: "text-faint", accent: "text-accent", ok: "text-ok", warn: "text-warn", err: "text-err", inverse: "text-primary-ink" },
   },
   defaultVariants: { size: "body", tone: "default" },
