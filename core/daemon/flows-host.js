@@ -37,7 +37,8 @@ export function createFlowsHost(o) {
     const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
-    await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
+    // Best effort: a handle whose records are wrapped in a lazy proxy (spaces/kernel) may refuse the property read itself; the host then simply does not wait here.
+    try { await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }); } catch { /* the handle waits for its own grant */ }
 
     const kernel = {
       records: gw.records, ask: gw.ask, ...(gw.kits ? { kits: gw.kits } : {}), authorize: (/** @type {any} */ i) => gw.authorize(i), grants: gw.grants,
