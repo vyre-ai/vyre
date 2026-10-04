@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, real Vyre, 4 Oct): a Flow on the real vyred can be run and its run read (app-wire). Run now is flows.start (one key per tap), a selected run shows what each step did in the Flow's order from the kernel's painted run, and a failed or paused run offers Retry (flows.retry). A paused or unapproved Flow says so in words. Builds on native-core's list, canvas, approve, runs and pause.
+
 - feat(0.3, real Vyre, 4 Oct): Memory beside the facts, on the real vyred (app-wire). Ask is memory.ask (the answer with its sources, or an honest nothing, never the sample answer); a map of what Memory holds from memory.graph by room, with Pin first and Never offer (memory.pin, memory.mute, everywhere); and What you corrected from memory.corrections with Undo (memory.uncorrect). The sample boundary notes show only in a mock build.
 
 - feat(0.3, real Vyre, 4 Oct): Vault reads the real vyred (app-wire). vault.list for the items (logins, cards, and every other kind as keys), vault.uses for the last day of use, vault.revoke for Remove, and Reveal per field through vault.reveal, a person's own call that the box answers with presence; the value lives in screen state for 30 seconds and is never logged. A locked vault, an empty one and an error each say so. The sample vault stays behind a mock build. Held fields and Share are not on this screen yet: grants are made by the module that needs the item.
