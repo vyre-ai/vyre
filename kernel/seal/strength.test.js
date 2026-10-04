@@ -70,11 +70,19 @@ test("each dev switch admits only its own kind of key: VYRE_SEAL_SOFTWARE a soft
 
 test("by method (the registry's presence): the methods that need a person's gesture count as hardware, a device-method file key and anything unknown are software", () => {
   for (const m of ["touchid", "capsule", "passkey", "tty", "code"]) { assert.equal(strengthOfMethod(m), "hardware", m); assert.equal(strengthRefusal(strengthOfMethod(m), false), null, m); }
-  for (const m of ["device", "grant", "", "whatever"]) { assert.equal(strengthOfMethod(m), "software", m); assert.equal(strengthRefusal(strengthOfMethod(m), false), SOFTWARE_KEY, m); assert.equal(strengthRefusal(strengthOfMethod(m), true), null, `${m} on dev`); }
+  for (const m of ["device", "grant", "stand-in", "", "whatever", "a-new-method"]) { assert.equal(strengthOfMethod(m), "software", m); assert.equal(strengthRefusal(strengthOfMethod(m), false), SOFTWARE_KEY, m); assert.equal(strengthRefusal(strengthOfMethod(m), true), null, `${m} on dev`); }
 });
 
 test("a presence session inherits the method that opened it: touchid or the terminal code keep satisfying presence; a device-opened session is software (refused on release, accepted on dev); an old session with no opener is software", () => {
   for (const opener of ["touchid", "capsule", "passkey", "tty", "code"]) { assert.equal(strengthOfMethod("session", opener), "hardware", opener); assert.equal(strengthRefusal(strengthOfMethod("session", opener), false), null, `session opened by ${opener}`); }
   assert.equal(strengthOfMethod("session", "device"), "software"); assert.equal(strengthRefusal(strengthOfMethod("session", "device"), false), SOFTWARE_KEY, "release"); assert.equal(strengthRefusal(strengthOfMethod("session", "device"), true), null, "dev");
   for (const none of [undefined, null, "", "session", "unknown"]) { assert.equal(strengthOfMethod("session", /** @type {any} */ (none)), "software", `opener ${String(none)}`); assert.equal(strengthRefusal(strengthOfMethod("session", /** @type {any} */ (none)), false), SOFTWARE_KEY); }
+});
+
+test("the terminal window inherits its opener like a session: opened by tty or touchid it stays hardware, opened by a device proof it is software (software_key on release), with no opener it is software; a window is never a gesture of its own", () => {
+  for (const opener of ["tty", "touchid", "capsule", "passkey", "code"]) assert.equal(strengthRefusal(strengthOfMethod("window", opener), false), null, `window opened by ${opener}`);
+  assert.equal(strengthRefusal(strengthOfMethod("window", "device"), false), SOFTWARE_KEY, "device-opened window on release");
+  assert.equal(strengthRefusal(strengthOfMethod("window", "device"), true), null, "and on dev");
+  for (const none of [undefined, null, "", "window", "session"]) assert.equal(strengthOfMethod("window", /** @type {any} */ (none)), "software", `opener ${String(none)}`);
+  assert.equal(strengthOfMethod("window"), "software", "no opener argument at all");
 });

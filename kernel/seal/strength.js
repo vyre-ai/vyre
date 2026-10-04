@@ -21,9 +21,12 @@ export const methodOf = strength => (strength === "hardware" ? "attested" : "sof
  * The revised PW-1 rule is by METHOD for the registry's presence (lead's ruling): a method that needed a person's gesture when the proof was made keeps the strength it has today on release and dev alike (Touch ID through
  * the pinned Capsule, a passkey assertion with user verification on the box's own origin, the code typed at a login terminal, the phone's Enclave key behind Face ID once App Attest is verified): those count as `hardware`
  * here, meaning "a gesture was required". A `device`-method proof (a file key a daemon or browser can use with nobody there) is not a presence method: `software`, session only; refused on release by strengthRefusal.
- * A presence SESSION is not a method of its own: it inherits the method of the proof that opened it (PS-1), so the registry records the opener's method on the session row and passes it as `opener`; a session opened by
+ * A presence SESSION (and the terminal WINDOW, a reuse window opened by a proof) is not a method of its own: it inherits the method of the proof that opened it (PS-1), so the registry records the opener's method on the session row and passes it as `opener`; a session opened by
  * a gesture method keeps satisfying what it satisfies today for its lifetime, a session opened by `device` (never on release; on dev only) is software, and a session row with no opener recorded (an old row) is
  * software: fail closed. An unknown method is software. @param {string} method @param {string | null} [opener] the method that opened the session, when `method` is "session" @returns {"hardware" | "software"}
  */
-export const strengthOfMethod = (method, opener = null) => (String(method) === "session" ? strengthOfMethod(String(opener || ""), null) : GESTURE_METHODS.has(String(method)) ? "hardware" : "software");
-const GESTURE_METHODS = new Set(["touchid", "capsule", "passkey", "tty", "code", "window"]);
+export const strengthOfMethod = (method, opener = null) => (INHERITS.has(String(method)) ? strengthOfMethod(String(opener || ""), null) : GESTURE_METHODS.has(String(method)) ? "hardware" : "software");
+/** A presence session and the terminal's reuse window are not gestures: each is opened by a proof and inherits that proof's method (record the opener on the row and on the window). */
+const INHERITS = new Set(["session", "window"]);
+/** The methods that needed a person's gesture when the proof was made. Everything else is software by default; named here so a new method is a decision: `grant` enrols the first passkey only, `stand-in` is development only. */
+const GESTURE_METHODS = new Set(["touchid", "capsule", "passkey", "tty", "code"]);
