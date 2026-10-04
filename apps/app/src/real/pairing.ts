@@ -107,6 +107,9 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   // Continue under "Pair this server to <name>?" (the install page) is the person's yes before anything is redeemed.
   if (await loadPairing()) return null;
   const { connect, disconnect } = await import("../api/box");
+  // A phone whose Secure Enclave key stands behind Face ID (the simulator's software key does not count) answers as hardware; the chain entry's `enclave` is what the server checks it against.
+  const { hasKeys, keyStorage, signListChange } = await import("../keys");
+  const phoneKeys = (await hasKeys()).presence && (await keyStorage()).presence === "secure-enclave";
   let words: [string, string, string] = ["", "", ""];
   let wake: () => void = () => {};
   const seen = new Promise<void>((r) => { wake = r; });
@@ -114,12 +117,18 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   const abort = new AbortController();
   // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
   const run = pairServer({
-    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name) },
-    // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B)
-    signIdentity: async (m: Uint8Array) => ({ eid: mine.key.eid, sig: toB64u(await mine.key.sign(m)) }), name: deviceName(),
+    // The pin (head and length of this identity's chain) is what a release server checks the proof against; without it a release server refuses (no_pin).
+    payload: textOf(code), owner: { id: mine.id, name: plainName(mine.name), pin: mine.pin },
+    // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B). A phone with its Secure Enclave key adds `esig` over the same
+    // message (the ticket tag is in it) behind Face ID: sig and esig come from one signListChange, so Face ID is asked once, and a release server accepts only that pair (PI-1).
+    signIdentity: async (m: Uint8Array) => {
+      if (!phoneKeys) return { eid: mine.key.eid, sig: toB64u(await mine.key.sign(m)) };
+      const { sig, esig } = await signListChange(m, "Pair this server to your Vyre name");
+      return { eid: mine.key.eid, sig: toB64u(sig), esig: toB64u(esig) };
+    }, name: deviceName(),
     crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), signal: abort.signal,
     // what this device is, honestly: the server records it as the owner's device of this kind and makes its paired session grant at the person's pick (tailnet, wink-rc1)
-    deviceKind: "web", keyStorage: "software",
+    deviceKind: phoneKeys ? "phone" : "web", keyStorage: phoneKeys ? "hardware" : "software",
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
   run.catch((e: Error) => { failed = e; wake(); });

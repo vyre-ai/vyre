@@ -2,11 +2,11 @@
 export function parseServerPayload(s: string): { seed: Uint8Array; relay: string } | null;
 export function pairServer(o: {
   payload: string;
-  owner: { id: string; name?: string; kind?: "identity" | "space" };
+  owner: { id: string; name?: string; kind?: "identity" | "space"; vyre?: string; pin?: { id: string; seq: number; head: string } };
   name?: string;
-  proof?: { eid: string; sig: string };
+  proof?: { eid: string; sig: string; esig?: string };
   deviceKind?: "phone" | "computer" | "web"; keyStorage?: "hardware" | "software";
-  signIdentity?: (message: Uint8Array) => Promise<{ eid: string; sig: string }> | { eid: string; sig: string };
+  signIdentity?: (message: Uint8Array) => Promise<{ eid: string; sig: string; esig?: string }> | { eid: string; sig: string; esig?: string };
   crypto?: unknown; keyStore?: unknown; WebSocket?: unknown; relay?: string;
   about?: { kind?: "app" | "web"; release?: string; manifest?: string };
   presenceKey?: unknown; passkey?: unknown;
