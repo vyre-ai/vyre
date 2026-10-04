@@ -15,7 +15,6 @@ const KNOWN_WRITERS = new Set([
   "agents.history", // memory_runs gains a row on a second call (a background pass or the read itself: its owner says which, then declares write or fixes it)
   "appearance.resolve", "settings.get", "settings.snapshot", // three existing settings rows change on every call (settings)
   "assistant.glance", // emits an event and writes it (assistant)
-  "vault.health", // appends to vault_audit (vault)
 ]);
 
 test("a tool declared effect read changes no state when called with no input", { timeout: 280_000 }, async t => {

@@ -77,7 +77,7 @@ test("vault.update: merges fields, generates on the box, never returns a value",
   const events = JSON.stringify(d.events.since(0, { limit: 1000 }));
   const audit = JSON.stringify((await cli("vault.audit", { limit: 500 })).data);
   const listing = JSON.stringify(d.registry.listTools("mcp")) + JSON.stringify((await cli("vault.list")).data);
-  const health = JSON.stringify((await as("mcp")("vault.health")).data);
+  const health = JSON.stringify((await as("cli")("vault.health")).data);
   for (const [where, text] of Object.entries({ events, audit, listing, health, logs: lines.join("\n") })) assert.ok(!text.includes(canary), `canary in ${where}`);
   const db = fs.readFileSync(path.join(root, "vyre.db")).toString("latin1");
   assert.ok(!db.includes(canary), "canary in vyre.db");
@@ -90,7 +90,7 @@ test("vault.health, vault.caps and the breach switch through vyred", async t => 
   await cli("vault.put", { name: "forum", kind: "login", fields: { username: "alex", password: "Summer2024!" }, url: "https://forum.acme.test" });
   await cli("vault.put", { name: "gh", kind: "login", fields: { username: "alex", password: shared }, url: "https://github.com/login" });
   await cli("vault.put", { name: "deploy", kind: "secret", fields: { value: shared } });
-  const h = (await mcp("vault.health")).data;
+  const h = (await cli("vault.health")).data;
   const by = Object.fromEntries(h.items.map(i => [i.name, i.reasons]));
   assert.deepEqual(by.forum, ["weak"]);
   assert.deepEqual(by.gh, ["reused", "2fa-available", "passkey-available"]);
