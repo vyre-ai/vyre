@@ -15,12 +15,12 @@ import { withKernelCall } from "../../kernel/remote/wink.js";
 export const PEER_HOME = "home";
 const DEVICE = /^[a-z2-7]{16}$/;
 /** Streams over the peer wire: caps and the frame size. */
-export const STREAM_LIMITS = Object.freeze({ perDevice: 8, frameBytes: 15_000, queuedBytes: 1_000_000, checkMs: 500 });
+export const STREAM_LIMITS = Object.freeze({ perDevice: 8, frameBytes: 15_000, queuedBytes: 1_000_000, checkMs: 5_000, framesPerSecond: 200 });
 const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, now?: () => number, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, people?: { list(): any[] } | null, now?: () => number, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -59,6 +59,9 @@ export function createPeerDoor(o) {
   const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "relay" });
   /** @type {Map<string, number>} device -> its open streams, across its peer streams */
   const openByDevice = new Map();
+  /** @type {Set<{ id: string, check: () => void }>} the accepted peer streams with streams open, re-checked when a device is removed or a session ends (PS-C: an event, not a fast poll) */
+  const watchers = new Set();
+  if (o.events && typeof o.events.on === "function") for (const type of ["device.removed", "wink.removed", "presence.signed-out", "presence.refused"]) { try { o.events.on(type, () => { for (const w of [...watchers]) w.check(); }); } catch { /* no bus */ } }
 
   return {
     space: PEER_HOME,
@@ -82,12 +85,16 @@ export function createPeerDoor(o) {
         openByDevice.set(id, Math.max(0, (openByDevice.get(id) || 1) - 1));
         if (tell) send(T.streamEnd, { id: sid, why });
         try { if (st.cleanup) st.cleanup(); } catch { /* the producer must not break the door */ }
-        if (!open.size && timer) { clearInterval(timer); timer = null; }
+        if (!open.size) { watchers.delete(watcher); if (timer) { clearInterval(timer); timer = null; } }
       };
       const endAll = (/** @type {string} */ why, /** @type {boolean} */ tell) => { for (const sid of [...open.keys()]) finishStream(sid, why, tell); };
+      const check = () => { rowOf(id).then(r => { rowOk = Boolean(r); if (!live()) endAll("session_ended", true); }, () => { rowOk = false; endAll("session_ended", true); }); };
+      const watcher = { id, check };
+      // an event re-checks at once; the slow timer (5 s) only covers a build whose bus does not say
       const watch = () => {
+        watchers.add(watcher);
         if (timer) return;
-        timer = setInterval(() => { rowOf(id).then(r => { rowOk = Boolean(r); if (!live()) endAll("session_ended", true); }, () => { rowOk = false; endAll("session_ended", true); }); }, STREAM_LIMITS.checkMs);
+        timer = setInterval(check, STREAM_LIMITS.checkMs);
         if (timer.unref) timer.unref();
       };
       const peerStream = Object.freeze({
@@ -99,7 +106,7 @@ export function createPeerDoor(o) {
           if (open.has(sid)) throw err("conflict", "that stream is already open");
           if ((openByDevice.get(id) || 0) >= STREAM_LIMITS.perDevice) throw err("rate_limited", "this device has too many streams open");
           if (!live()) throw err("denied", "this device has no live paired session");
-          const st = { seq: 0, cleanup: /** @type {(() => void) | null} */ (null) };
+          const st = { seq: 0, cleanup: /** @type {(() => void) | null} */ (null), win: /** @type {number[]} */ ([]) };
           open.set(sid, st);
           openByDevice.set(id, (openByDevice.get(id) || 0) + 1);
           watch();
@@ -109,11 +116,18 @@ export function createPeerDoor(o) {
             let text; try { text = JSON.stringify({ id: sid, seq: st.seq + 1, data }); } catch { finishStream(sid, "bad_frame", true); return false; }
             if (Buffer.byteLength(text) > STREAM_LIMITS.frameBytes) { finishStream(sid, "too_large", true); return false; }
             if (pipe.buffered() > STREAM_LIMITS.queuedBytes) { finishStream(sid, "slow", true); return false; }
+            // PS-D: a stream may not flood the peer stream its calls share: more than framesPerSecond in any second ends it
+            const nowMs = Date.now();
+            while (st.win.length && nowMs - st.win[0] > 1000) st.win.shift();
+            if (st.win.length >= STREAM_LIMITS.framesPerSecond) { finishStream(sid, "slow", true); return false; }
+            st.win.push(nowMs);
             st.seq += 1;
             send(T.stream, { id: sid, seq: st.seq, data });
             return true;
           };
-          const cleanup = producer({ emit, end: (why = "done") => finishStream(sid, String(why).slice(0, 40), true), alive: () => open.has(sid) && live() });
+          /** @type {any} */ let cleanup;
+          try { cleanup = producer({ emit, end: (why = "done") => finishStream(sid, String(why).slice(0, 40), true), alive: () => open.has(sid) && live() }); }
+          catch (e) { finishStream(sid, "failed", false); throw e; }
           if (typeof cleanup === "function") { if (open.has(sid)) st.cleanup = cleanup; else { try { cleanup(); } catch { /* gone */ } } }
           return { id: sid };
         },
@@ -130,7 +144,7 @@ export function createPeerDoor(o) {
           try { const j = JSON.parse(f.payload.toString("utf8")); if (j && typeof j.id === "string") finishStream(j.id, "client", false); } catch { /* not a frame */ }
           return true;
         } });
-      session.onclose = () => { endAll("closed", false); };
+      session.onclose = () => { endAll("closed", false); watchers.delete(watcher); };
       log(`peer door: ${caller} opened a peer stream`);
     },
   };

@@ -76,10 +76,14 @@ function streamDoor() {
       return { data: { stream: open.id } };
     }
     if (tool === "chat.say") return { data: { ok: true } };
+    if (tool === "chat.broken") { meta.peerStream.open(input.id, () => { throw new Error("the producer failed"); }); return { data: { stream: input.id } }; }
     return { data: null };
   }, tools: new Map() };
   const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
-  const door = createPeerDoor({ kernel, registry, people: { list: () => state.sessions }, callerFacts: (c, p, via, k, cap, device) => (device ? { kind: "device", device_key_id: ID, person: "per_x", path: "relay" } : null) });
+  const handlers = [];
+  const events = { on: (t, f) => { handlers.push([t, f]); } };
+  state.fire = t => { for (const [type, f] of handlers) if (type === t) f({}); };
+  const door = createPeerDoor({ kernel, registry, events, people: { list: () => state.sessions }, callerFacts: (c, p, via, k, cap, device) => (device ? { kind: "device", device_key_id: ID, person: "per_x", path: "relay" } : null) });
   const connect = () => { const { a, b } = streamPair(); door.accept(a, { deviceId: ID }); return peerClient(b); };
   return { state, connect };
 }
@@ -157,4 +161,42 @@ test("a device cannot close another device's stream by its id, the per-device ca
   state.emitters.get("stream_ffffffff").emit({ blob: "x".repeat(STREAM_LIMITS.frameBytes + 10) });
   assert.equal(state.emitters.get("stream_ffffffff").alive(), false, "the oversize frame ended its stream");
   void ends; owner.close(); other.close(); big.close();
+});
+
+
+test("PS-B: a producer that throws inside open leaves no stream and no count behind", async () => {
+  const { connect } = streamDoor();
+  const peer = connect();
+  for (let i = 0; i < 20; i++) await assert.rejects(() => peer.call("chat.broken", { id: `stream_brk_${i}xx` }));
+  // 20 failures did not use up the 8 slots
+  for (let i = 0; i < STREAM_LIMITS.perDevice; i++) await peer.openStream("chat.open", { id: `stream_ok_${i}xxx`, turns: 0 }, { onframe() {} });
+  peer.close();
+});
+
+test("PS-C: a removal or a signed-out session ends the streams at once, by event, without waiting for a timer", async () => {
+  const { state, connect } = streamDoor();
+  const peer = connect();
+  const ended = [];
+  await peer.openStream("chat.open", { id: "stream_evtevent", turns: 0 }, { onframe() {}, onend: w => ended.push(w) });
+  state.row = { kind: "app", removed: true };
+  state.fire("device.removed");
+  await tick(60);
+  assert.deepEqual(ended, ["session_ended"], "ended by the event, long before the 5 s fallback");
+  assert.ok(STREAM_LIMITS.checkMs >= 5000, "the fallback timer is no faster than 5 s");
+  peer.close();
+});
+
+test("PS-D: a flood of small frames ends the stream slow and a call on the same peer stream still answers", async () => {
+  const { state, connect } = streamDoor();
+  const peer = connect();
+  const ended = [];
+  await peer.openStream("chat.open", { id: "stream_floodxxx", turns: 0 }, { onframe() {}, onend: w => ended.push(w) });
+  const h = state.emitters.get("stream_floodxxx");
+  let sent = 0;
+  for (let i = 0; i < 10_000; i++) if (h.emit({ n: i })) sent++;
+  assert.ok(sent <= STREAM_LIMITS.framesPerSecond, `${sent} frames went out before the cap`);
+  await tick(60);
+  assert.ok(ended.includes("slow"));
+  assert.deepEqual(await peer.call("chat.say", { id: "x" }), { ok: true }, "calls on the same peer stream are unaffected");
+  peer.close();
 });
