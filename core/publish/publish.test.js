@@ -385,7 +385,8 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
 test("publish: nothing sensitive leaves in events or returned objects", async t => {
   const b = await boxRegistry(t);
   const id = (await b.ok("publish.create", DRAFT)).deployment.id;
-  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build", "runtime"] });
+  assert.equal((await b.call("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build", "runtime"] })).error?.code, "isolation", "a static site takes no runtime secret");
+  const g = await b.ok("publish.secret.grant", { deployment: id, ref: "vault://harlow/stripe", name: "STRIPE_KEY", use: ["build"] });
   await b.ok("publish.decide", { task: g.task, approve: true });
   b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }], logs: `building with ${STRIPE}` });
   const pv = await b.ok("publish.preview", { deployment: id });
@@ -444,4 +445,14 @@ test("publish: the module's tables and tools are its own", () => {
   const m = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
   assert.ok(m.does.tools.every((/** @type {any} */ x) => x.name.startsWith("publish.")));
   assert.deepEqual(m.does.tools.filter((/** @type {any} */ x) => x.reach === "person").map((/** @type {any} */ x) => x.name).sort(), ["publish.decide", "publish.domain.remove", "publish.retire"]);
+});
+
+test("publish: a build that hands over a link, or a path that climbs out, is refused before anything is previewed (a symlink in a site would serve /etc/passwd or a dotfile)", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  for (const evil of [{ path: "p", type: "symlink", target: "/etc/passwd", content: "" }, { path: "e", symlink: ".env", content: "" }, { path: "../x", content: "x" }]) {
+    b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }, evil], logs: "" });
+    assert.equal((await b.call("publish.preview", { deployment: id })).error?.code, "bad_output", JSON.stringify(evil));
+  }
+  assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Draft");
 });

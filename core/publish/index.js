@@ -449,7 +449,7 @@ export default {
         await put("join.html", joinPageHtml(), 0o644);
         // Runtime secrets: only the deployments in the compose, only what each was granted for runtime.
         for (const d of await storeFor(b.space.id).list("deployments")) {
-          if (!compose.services["w-" + d.id.replace(/^dep_/, "")]) continue;
+          if (!compose.services["w-" + d.id.replace(/^dep_/, "")] || (d.runtime && d.runtime.kind === "static")) continue;
           for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
         }
         // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
