@@ -286,7 +286,7 @@ export default {
     });
 
     ctx.tool("publish.preview", {
-      callers: PEOPLE,
+      callers: WITH_MODELS,
       description: "Build a draft and put it at a private preview address. Refused if a sealed value or one of its own secrets is in the build output.",
       input: obj({ deployment: str }, ["deployment"]),
       run: async (i, meta) => {
@@ -429,7 +429,7 @@ export default {
     });
 
     ctx.tool("publish.secret.grant", {
-      callers: PEOPLE,
+      callers: WITH_MODELS,
       description: "Let one deployment use one vault secret, as an environment name. A real secret is held for a person; nothing is shared with other deployments.",
       input: obj({ deployment: str, ref: str, name: str, use: { type: "array", items: { type: "string", enum: ["build", "runtime"] } }, task: str }, ["deployment", "ref", "name"]),
       run: async (i, meta) => {
