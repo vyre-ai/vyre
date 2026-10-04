@@ -313,12 +313,12 @@ async function authenticate(request, url, text, now) {
 // ---- Cloudflare DNS, fenced to the zone and to three record types ----
 
 /** @param {any} env */
-function dnsFor(env) {
+export function dnsFor(env) {
   const zone = env.ZONE || "vyre.run";
   const api = env.CF_API || "https://api.cloudflare.com/client/v4";
   const doFetch = env.CF_FETCH || globalThis.fetch.bind(globalThis);
   const guard = (fqdn, type) => {
-    if (!fqdn.endsWith("." + zone) || !/^[a-z0-9_.-]+$/.test(fqdn) || !["A", "AAAA", "TXT"].includes(type)) throw new Error("refused: outside the zone");
+    if (!fqdn.endsWith("." + zone) || !/^[a-z0-9_.-]+$/.test(fqdn) || !["A", "AAAA", "TXT", "CAA"].includes(type)) throw new Error("refused: outside the zone");
     return fqdn;
   };
   async function call(method, path, body) {
@@ -354,6 +354,11 @@ function dnsFor(env) {
       if (have.some(r => r.content === quoted)) return;
       for (const r of have.slice(0, Math.max(0, have.length - cap + 1))) await call("DELETE", `${base}/${r.id}`);
       await call("POST", base, { type: "TXT", name: fqdn, content: quoted, ttl: 60 });
+    },
+    /** The CAA records at fqdn: issue and issuewild both name one ACME account, nothing else may issue. */
+    async setCaa(fqdn, value) {
+      for (const r of await list(fqdn, "CAA")) await call("DELETE", `${base}/${r.id}`);
+      for (const tag of ["issue", "issuewild"]) { guard(fqdn, "CAA"); await call("POST", base, { type: "CAA", name: fqdn, data: { flags: 0, tag, value }, content: `0 ${tag} "${value}"`, ttl: 60 }); }
     },
     async clear(fqdn, type) { for (const r of await list(fqdn, type)) await call("DELETE", `${base}/${r.id}`); },
   };
