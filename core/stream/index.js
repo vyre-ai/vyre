@@ -13,7 +13,7 @@
 import crypto from "node:crypto";
 import { Logs } from "./log.js";
 import { createAdapter, pipe } from "./adapter.js";
-import { serveWS } from "./server.js";
+import { serve, serveWS } from "./server.js";
 import { createGroups } from "./group.js";
 import { createAccess } from "./access.js";
 
@@ -126,30 +126,60 @@ export default {
       feed(e);
     });
 
+    /**
+     * Who may read a session and the viewer that draws it: the one authorisation both ways of opening a stream use (the WebSocket ticket and the peer wire), so a device gets exactly what a ticket would.
+     * Nothing below runs, and no log or set entry is made, for a session the caller may not read.
+     * @param {any} i @param {any} meta
+     */
+    const prepare = async (i, meta) => {
+      const session = String(i.session || "");
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
+      const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
+      // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
+      if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
+      // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
+      const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
+      if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
+      else if (seeding.has(session)) await seeding.get(session);
+      const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
+      return { session, who, from };
+    };
+
     ctx.tool("stream.open", {
       description: "A one-use ticket (15 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
       input: obj({ session: str, from: int, as: str }, ["session"]),
       callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const session = String(i.session || "");
-        if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
-        // Who may read it comes first: nothing below runs, and no log or set entry is made, for a session the caller may not read.
-        const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
-        // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
-        if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
-        // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
-        const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
-        if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
-        else if (seeding.has(session)) await seeding.get(session);
+        const { session, who, from } = await prepare(i, meta);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
-        const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
         const viewer = who.id;
         const peer = meta && meta.peer;
         const device = peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : "";
         tickets.set(ticket, { session, expires: now() + ticketMs, from, person: viewer, caller: String((meta && meta.caller) || ""), device, viewer: who });
         const log = logs.get(session);
         return { session, ticket, viewer, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
+      },
+    });
+
+    // The same stream over the Wink peer wire (a paired phone or browser has no WebSocket to its server): the session's frames, drawn for THIS viewer exactly as the socket would draw them, go to the
+    // door's stream as messages tagged with the stream's id. Authorised by the person in the call's own chain (prepare), the door ends it when the device's paired session ends, and `from` resumes.
+    ctx.tool("stream.open-peer", {
+      description: "Open the session's stream over the Wink peer wire (for a paired device): answers { stream, session, viewer, head, floor }; the frames then arrive as peer stream messages for `stream`, resuming after cursor from. Only over the peer wire.",
+      input: obj({ session: str, from: int, as: str }, ["session"]),
+      callers: PEOPLE,
+      run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+        if (!meta || !meta.peerStream || typeof meta.peerStream.open !== "function") throw Object.assign(new Error("this stream opens only over a paired device's peer wire"), { code: "bad_input" });
+        const { session, who, from } = await prepare(i, meta);
+        const log = logs.get(session);
+        const id = `st_${crypto.randomBytes(18).toString("base64url")}`;
+        meta.peerStream.open(id, ({ emit, end }) => {
+          /** @type {(() => void)[]} */ const closers = [];
+          const conn = { send: (/** @type {any} */ f) => { if (!emit(f)) throw new Error("the stream is closed"); }, onClose: (/** @type {() => void} */ cb) => { closers.push(cb); }, close: () => end("done"), buffered: () => 0 };
+          const h = serve(log, conn, { viewer: who, ...(from === null ? {} : { from }), ...(groups ? { also: (/** @type {any} */ send) => groups.hear(who.id, (/** @type {any} */ f) => { if (f.session === session) send(f); }) } : {}) });
+          return () => { try { h.close(); } catch { /* closed */ } for (const c of closers.splice(0)) { try { c(); } catch { /* closed */ } } };
+        });
+        return { stream: id, session, viewer: who.id, head: log.head, floor: log.floor };
       },
     });
 

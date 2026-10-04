@@ -1426,6 +1426,10 @@ test("sessionFor signs the device in by itself when a call needs the person (no 
 
 
 test("a computer's own device key makes the owner's proof for an act that needs presence over the peer wire: REAL presence on the server checks the key it enrolled at pairing", async t => {
+  // the server accepts a software key's proof only on a development build behind the software signer's switch (vault's rule), marked method software
+  const savedSw = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (savedSw === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = savedSw; });
   const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
   assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
@@ -1601,4 +1605,16 @@ test("host-here on a server too small for the larger store asks for the owner's 
   const made = await session.call("spaces.host-here", { name: "smallroom", acceptBuiltinStore: true, proof: { key: "k2" } });
   assert.match(made.space, /^spc_[a-z2-7]{12}$/);
   assert.ok(sp.hosts(made.space));
+});
+
+test("a software device key's presence proof is refused by the server without the dev switch, whatever the client signs: \"approve this in Vyre on your phone\"", async t => {
+  const savedSw = process.env.VYRE_SEAL_SOFTWARE;
+  delete process.env.VYRE_SEAL_SOFTWARE;
+  t.after(() => { if (savedSw !== undefined) process.env.VYRE_SEAL_SOFTWARE = savedSw; });
+  const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
+  const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
+  const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's Mac", sign: m => devKey.sign(m), proveTool: devKey.proveTool, autoPresence: true,
+    channelOf: sid => (sid === "srv" ? { relay: f.w.status.url, route: f.done.route, box: f.done.box } : null) });
+  t.after(() => links.close());
+  await assert.rejects(() => links.sessionFor("srv").call("spaces.host-here", { name: "harlow" }), e => /software|phone/i.test(e.message));
 });
