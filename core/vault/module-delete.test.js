@@ -60,7 +60,8 @@ test("an added module that lists vault.delete in needs.tools is refused it (not_
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   assert.equal((await d.registry.call("vault.put", { name: "persons-key", value: "p" }, "local")).error, undefined);
-  const added = (await d.registry.call("bakery.del", { name: "persons-key" }, "local")).data;
-  assert.equal(added.ok, false); assert.equal(added.error, "not_declared", JSON.stringify(added));
+  // An added module is sandboxed with the kernel on and cannot ctx.call; the door still refuses its caller label.
+  const added = await d.registry.call("vault.delete", { name: "persons-key" }, "module:bakery");
+  assert.equal(added.error && added.error.code, "not_declared", JSON.stringify(added));
   assert.ok((await d.registry.call("vault.list", {}, "local")).data.items.some(i => i.name === "persons-key"));
 });

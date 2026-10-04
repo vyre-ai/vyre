@@ -67,12 +67,12 @@ test("an added module that lists the vault's put, totp and relay in needs.tools 
   } };`);
   const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
-  assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
+  // With the kernel on an added module runs in the sandbox and cannot ctx.call; the door is still what refuses it, so call as the module's own caller.
   for (const [tool, input] of Object.entries(TOOLS)) {
-    const r = await d.registry.call("bakery.try", { tool, input }, "local");
-    assert.equal(r.data && r.data.code, "not_declared", `${tool}: ${JSON.stringify(r)}`);
+    const r = await d.registry.call(tool, input, "module:bakery");
+    assert.equal(r.error && r.error.code, "not_declared", `${tool}: ${JSON.stringify(r)}`);
   }
   // Positive control: the same door lets a read-only vault tool through to its own code, so not_declared is the guard and not a missing tool.
-  const list = await d.registry.call("bakery.try", { tool: "vault.list" }, "local");
-  assert.notEqual(list.data && list.data.code, "not_declared", JSON.stringify(list));
+  const list = await d.registry.call("vault.list", {}, "module:bakery");
+  assert.notEqual(list.error && list.error.code, "not_declared", JSON.stringify(list));
 });

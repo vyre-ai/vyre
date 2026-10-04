@@ -96,7 +96,7 @@ async function boot(t) {
     verify: async () => (pres.deny ? { ok: false, code: "presence_required", message: "prove presence" } : { ok: true, method: "test" }),
     challenge: async () => ({ error: { code: "bad_input", message: "no challenge in this test" } }) };
   const lines = [];
-  const d = await start({ root, presence: pres, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, presence: pres, firstPartyRoots: [path.join(root, "modules")], log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   return { root, d, pres, lines, as: caller => (tool, input = {}) => call(tool, input, { root, caller }) };
 }
