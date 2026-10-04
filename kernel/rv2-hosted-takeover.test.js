@@ -1,5 +1,6 @@
 // reviewer-2 repro HA-1 against origin/work/devbox 3176efeec (drop into kernel/): the module path (core/spaces adoptHosted) calls the HOSTED kernel's own adoptOwner(identity) for every hosted Space.
 // A hosted kernel's adoptOwner replaces its single owner, whoever that is, so a Space hosted for another person is taken over. The kernel handle must refuse unless the Space's owner is the replaced home owner.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tempHome } from "../test/helpers.js";
