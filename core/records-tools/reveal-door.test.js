@@ -46,6 +46,9 @@ test("records.reveal: a daemon with the kernel on has the inference door, and a 
   assert.ok(!JSON.stringify(shown).includes("not wired"), "reveal: " + JSON.stringify(shown));
   assert.ok(!shown.error, JSON.stringify(shown));
   assert.equal(JSON.stringify(shown.data).includes("123-45-6789"), true, "the person is shown the value");
+  const logged = d.kernel.log.read({ type: "field.revealed" });
+  assert.equal(logged.length, 1, "a reveal is always in the kernel's log, once");
+  assert.ok(!JSON.stringify(logged).includes("123-45-6789"), "and never with the value");
   // The terminal is no screen: the same call over the socket is refused, and shows nothing.
   const cli = await call("records.reveal", { urn: made.urn, field: "ssn", purpose: "check" }, { root, caller: "cli" });
   assert.ok(cli.error && !JSON.stringify(cli).includes("123-45-6789"), JSON.stringify(cli));
