@@ -51,6 +51,13 @@ jobs:
         run: |
           arch=${{ matrix.arch }}; [ "$arch" = aarch64 ] && arch=arm64
           VYRE_CAPSULE_ARCH=$arch sh local/capsule/native/build.sh app
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: matrix.arch == 'aarch64'
+        with:
+          node-version: 22
+      - name: The Mac installer's tests (box-url, rc channel source, fake sudo and launchctl; no real service)
+        if: matrix.arch == 'aarch64'
+        run: node --test --test-reporter=spec test/install-mac-server.test.js
       - name: The binary is for ${{ matrix.arch }}
         run: |
           archs="$(lipo -archs local/capsule/native/.build/Vyre.app/Contents/MacOS/Vyre)"
@@ -152,6 +159,7 @@ jobs:
           hdiutil detach "$mnt" >/dev/null
       - name: Status
         run: |
+          case "${{ steps.v.outputs.version }}" in *-*) echo "note: this is a prerelease build; its box-url names https://github.com/vyre-ai/vyre/releases/download/v${{ steps.v.outputs.version }}/, which 404s until that release is cut (a rehearsal)" | tee -a "$GITHUB_STEP_SUMMARY" ;; esac
           cat dist-mac/mac-app-*.status
           { echo "### Lumen Mac app (${{ matrix.arch }})"; echo; echo '```'; cat dist-mac/mac-app-*.status; echo '```'; ls -l dist-mac; } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
