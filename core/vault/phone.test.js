@@ -47,7 +47,8 @@ test("the personal vault from the phone: password plus presence unlocks it; a wr
   assert.ok((await reg("vault.account.create", { password: pw }, "cli")).data, "account made at the desk");
   await reg("vault.account.lock", {}, "cli");
   assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked");
-  assert.ok((await reg("vault.account.unlock-phone", { password: "not the password at all" }, "mobile")).error, "a wrong password is refused");
+  const wrong = await reg("vault.account.unlock-phone", { password: "not the password at all" }, "mobile");
+  assert.equal(wrong.error && wrong.error.code, "wrong_password", "a wrong password is refused with its own code");
   assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked", "and nothing opened");
   for (const [who, caller, meta] of /** @type {[string, string, any][]} */ ([["a model", "mcp", {}], ["a named agent", "mcp:agent:juno", { agent: "juno" }], ["a module", "module:probe", {}], ["a guest", "tailnet-guest:x@y.test", {}], ["a hook", "hook", {}]])) {
     assert.ok((await reg("vault.account.unlock-phone", { password: pw }, caller, meta)).error, `${who} is refused`);
@@ -66,4 +67,15 @@ test("the personal vault from the phone with no presence (a browser session, a d
   const none = await daemon(t, { keystore: "file" }, absent);
   const r = await none("vault.account.unlock-phone", { password: pw }, "mobile");
   assert.equal(r.error && r.error.code, "presence_required");
+});
+
+test("the personal vault from the phone: five wrong passwords lock further tries out with code throttled and a retry_after_s the app can name; a right password is refused too while locked out", async t => {
+  const reg = await daemon(t);
+  const pw = "a long sample password for the phone test";
+  await reg("vault.account.create", { password: pw }, "cli"); await reg("vault.account.lock", {}, "cli");
+  for (let n = 1; n <= 5; n++) assert.equal((await reg("vault.account.unlock-phone", { password: `wrong ${n}` }, "mobile")).error.code, "wrong_password", `try ${n}`);
+  const locked = await reg("vault.account.unlock-phone", { password: pw }, "mobile");
+  assert.equal(locked.error.code, "throttled");
+  assert.ok(locked.error.detail && locked.error.detail.retry_after_s > 0 && locked.error.detail.retry_after_s <= 30, JSON.stringify(locked.error));
+  assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked");
 });
