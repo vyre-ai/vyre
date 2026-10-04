@@ -36,11 +36,11 @@ export async function answerSession(a, yes, call) {
   return yes ? allowedToast : refusedToast;
 }
 
-/** The words for a failed answer. @param {string | undefined} code */
-export function sessionRefusal(code) {
-  if (code === "presence_required" || code === "needs_presence") return "That needs your Face ID. Nothing was allowed.";
+/** The words for a failed answer. @param {string | undefined} code @param {string} [how] the method on this device (on-phone.js howWord) */
+export function sessionRefusal(code, how = "Face ID or Touch ID") {
+  if (code === "presence_required" || code === "needs_presence") return `That needs your ${how}. Nothing was allowed.`;
   if (code === "expired" || code === "none") return "That request ended before you answered.";
-  return answerRefusal(code);
+  return answerRefusal(code, how);
 }
 
 /** The asks from presence.person.session-pending (an array, or { asks } / { pending }; each { id, device, label }), merged into what the event stream gave. A box with no such tool gives nothing. @param {SessionAsk[]} list @param {any} answer @param {number} now @returns {SessionAsk[]} */

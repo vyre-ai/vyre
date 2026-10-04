@@ -7,6 +7,7 @@ import { call, listen } from "../../src/api/box";
 import { phoneSigner } from "../../src/real/phone-signer";
 import { proofHeader } from "../../src/real/approvals.js";
 import { ASK_BODY, ALLOW, DONT_ALLOW, answerSession, askTitle, sessionRefusal, withAsk, withPending, type SessionAsk } from "../../src/real/session-asks.js";
+import { howWord } from "../../src/real/on-phone.js";
 import { answerRefusal, approveCard, askedLine, cardsFrom, factLines, refuseCard, type Pending } from "../../src/real/phone-approve.js";
 
 const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => {
@@ -30,7 +31,7 @@ export function PhoneApprovals() {
   const answer = async (a: SessionAsk, yes: boolean) => {
     setBusy(a.id);
     try { showToast(await answerSession(a, yes, ask)); setAsks((l) => l.filter((x) => x.id !== a.id)); }
-    catch (e) { const code = (e as { code?: string }).code; showToast(sessionRefusal(code)); if (code === "expired" || code === "none" || code === "not_found") setAsks((l) => l.filter((x) => x.id !== a.id)); }
+    catch (e) { const code = (e as { code?: string }).code; showToast(sessionRefusal(code, howWord(Platform.OS))); if (code === "expired" || code === "none" || code === "not_found") setAsks((l) => l.filter((x) => x.id !== a.id)); }
     finally { setBusy(""); }
   };
   const load = useCallback(() => {
@@ -55,7 +56,7 @@ export function PhoneApprovals() {
       await approveCard(c, await phoneSigner(), ask, proofHeader, person);
       showToast("Approved.");
     }
-    catch (e) { showToast(answerRefusal((e as { code?: string }).code)); }
+    catch (e) { showToast(answerRefusal((e as { code?: string }).code, howWord(Platform.OS))); }
     finally { setBusy(""); load(); }
   };
   const no = async (c: Pending) => { setBusy(c.id); await refuseCard(c, ask).catch(() => {}); setBusy(""); load(); };

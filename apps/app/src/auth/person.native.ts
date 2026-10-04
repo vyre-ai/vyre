@@ -93,6 +93,14 @@ function secureSlot(name: string): Slot<string> {
   };
 }
 
+/** A slot that reads `first`, then `then`, and saves to both (so a renewed token is never shadowed by an older one in the first); a null clears both. */
+function routeFirst(first: Slot<string>, then: Slot<string>): Slot<string> {
+  return {
+    async load() { return (await first.load()) ?? (await then.load()); },
+    async save(v) { await first.save(v); await then.save(v); },
+  };
+}
+
 /** Secure-store keys take letters, digits, ".", "-" and "_". */
 const slotName = (what: string, origin: string) => `vyre.person.${what}.` + origin.replace(/^https?:\/\//, "").replace(/[^A-Za-z0-9._-]/g, "_");
 
@@ -173,7 +181,7 @@ export type NativePerson = PersonSession & {
 export function nativePerson(
   box: string,
   onSignIn?: () => void,
-  o: { human?: boolean; onSignedIn?: (ok: boolean) => void; path?: () => string; send?: Send; name?: string } = {},
+  o: { human?: boolean; onSignedIn?: (ok: boolean) => void; path?: () => string; send?: Send; name?: string; route?: string } = {},
 ): NativePerson {
   const origin = new URL(box).origin;
   const name = o.name || origin;
@@ -225,7 +233,8 @@ export function nativePerson(
   const session: PersonSession = personSession({
     // A relay route URL keeps its route, so a request's proof never signs the transport's prefix.
     box: new URL(box).pathname.length > 1 ? box.replace(/\/+$/, "") : origin,
-    stores: { token: secureSlot(slotName("token", name)) },
+    // A paired phone keeps its session token under the pairing's route (keepPairedToken); with a direct address too, the box is named by its host, so the route is looked up first, then the host.
+    stores: { token: o.route && o.route !== name ? routeFirst(secureSlot(slotName("token", o.route)), secureSlot(slotName("token", name))) : secureSlot(slotName("token", name)) },
     ...(o.path ? { path: o.path } : {}),
     ...(o.send ? { send: o.send } : {}),
     signer: keySigner(Keys.PERSON),

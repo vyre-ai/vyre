@@ -72,6 +72,7 @@ const makePerson = (at: string) =>
     path: () => pathNow(),
     send: (path, init) => (transport ? transport(path, init) : Promise.reject(new Error("not connected to the box"))),
     name: boxName(),
+    route: paired ? paired.route : undefined,
   });
 /** Where the person session was made for, so a new pairing makes a new one. */
 let personAt = "";

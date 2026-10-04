@@ -55,7 +55,7 @@ test("the phone keeps the paired token where the native box client reads it (vyr
   const person = fs.readFileSync(new URL("./person.native.ts", import.meta.url), "utf8");
   const box = fs.readFileSync(new URL("../api/box.native.ts", import.meta.url), "utf8");
   assert.match(person, /keepPairedToken\(route: string, token: string\)[\s\S]{0,120}slotName\("token", route\)/);
-  assert.match(person, /stores: \{ token: secureSlot\(slotName\("token", name\)\) \}/);
+  assert.match(person, /routeFirst\(secureSlot\(slotName\("token", o\.route\)\), secureSlot\(slotName\("token", name\)\)\)/);
   assert.match(box, /name: boxName\(\)/);
   assert.match(box, /paired \? paired\.route : ""/);
 });
