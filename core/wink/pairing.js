@@ -721,7 +721,7 @@ export function createPairing(o) {
     let ask = null;
     const norm = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase();
     /** The name the person sees for who is asking: the target's own name from the app, else the identity's id. @param {any} input */
-    const askName = (input) => String((input.owner && input.owner.name) || input.identity || (input.owner && input.owner.id) || "someone").replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+    const askName = askNameOf;
     /**
      * Q-3: an unattended install named one identity (`pairTo`), and completing the pairing needs PROOF that the one asking is that identity, never a claim. Everything the caller
      * supplies about itself (identity, owner.id, owner.name) is a claim and is ignored here. The proof is a signature by a key on that identity's list over this pairing's box and
@@ -1177,4 +1177,19 @@ export function ownDirectory(o) {
     async memberships(identity) { return identity === await o.identity() ? [{ space: await o.space(), name: o.name(), role: "owner" }] : []; },
     async label() { return null; },
   };
+}
+
+/**
+ * The line a person reads for who is asking to pair (PA-2): the asker's NAME is a claim, so it is never alone. The identity id's first characters stand beside it, and a name that mixes scripts
+ * (a Cyrillic letter in `alex`) is shown as the id alone, so a look-alike cannot pass for the person's own name. The words check stays the real proof.
+ * @param {any} input
+ */
+export function askNameOf(input) {
+  const raw = String((input && input.owner && input.owner.name) || (input && input.identity) || (input && input.owner && input.owner.id) || "someone");
+  const clean = raw.replace(/[^\p{L}\p{N} ._@:-]/gu, "").slice(0, 64) || "someone";
+  const id = String((input && input.owner && input.owner.id) || (input && input.identity) || "");
+  const short = /^per_[a-z2-7]{26}$/.test(id) ? id.slice(0, 10) : "";
+  const scripts = new Set(["Latin", "Cyrillic", "Greek", "Armenian", "Hebrew", "Arabic", "Han", "Hangul", "Hiragana", "Katakana"].filter(sc => new RegExp(`\\p{Script=${sc}}`, "u").test(clean)));
+  if (scripts.size > 1) return short ? short : "someone";
+  return short && clean !== id ? `${clean} (${short})` : clean;
 }

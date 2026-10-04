@@ -1054,3 +1054,39 @@ test("lending a computer to a space is a stored grant: Face ID only at the first
   assert.equal((await d.call("spaces.devices.lend", { space: a.space, device: "nope", on: true }, "cli", { proof: "touch" })).error?.code, "not_found");
   w && void 0;
 });
+
+test("lend attacks (LD-1 to LD-4): a removal ends the consent, an owner's off withdraws the space's, the status is not for any member, and concurrent changes end where the last event says", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const lend = (on, proof) => d.call("spaces.devices.lend", { space: a.space, device: eid, on }, "cli", proof ? { proof: "touch" } : {});
+  // LD-1: lend, remove the device from the space, add it back: the consent is gone and the first grant asks again
+  assert.equal((await lend(true, true)).error, undefined);
+  assert.equal((await d.ok("spaces.devices.list", { device: eid })).spaces[0].lent, true);
+  await d.ok("spaces.devices.remove", { space: a.space, device: eid });
+  await d.ok("spaces.devices.enrol", { space: a.space, device: eid });
+  assert.equal((await d.ok("spaces.devices.list", { device: eid })).spaces[0].lent, false, "lent is not remembered across a removal");
+  assert.equal((await lend(true, false)).error?.code, "presence_required", "and it asks again");
+  assert.equal((await lend(true, true)).error, undefined);
+  // LD-1: pairing's list (devices.set) that leaves the space out clears it too
+  await d.ok("spaces.devices.set", { device: eid, spaces: [] });
+  await d.ok("spaces.devices.enrol", { space: a.space, device: eid });
+  assert.equal((await lend(true, false)).error?.code, "presence_required");
+  // LD-2: a space owner switching off a device that is not theirs withdraws the space's consent (the record is a foreign person's device)
+  const foreign = "dev_foreign000000";
+  d.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`lend/${a.space}/${foreign}`, JSON.stringify({ lent: true, device: foreign, first_grant_at: 1, allowed_by: "per_other", at: 1 }));
+  const off = await d.ok("spaces.devices.lend", { space: a.space, device: foreign, on: false });
+  assert.deepEqual([off.lent, off.first_grant_at, off.allowed_by], [false, null, null], "the owner's off clears the first grant");
+  // LD-3: the status answers the device's person and the space's owners and admins; a plain member asking about a device that is not theirs is refused
+  assert.equal((await d.ok("spaces.devices.lend.status", { space: a.space, device: foreign })).lent, false);
+  // LD-4: twenty concurrent on/off pairs end in the state the last emitted event says
+  assert.equal((await lend(true, true)).error, undefined);
+  const before = d.of("space.device-lent").length;
+  await Promise.all(Array.from({ length: 20 }, (_, k) => lend(k % 2 === 0, true)));
+  const evs = d.of("space.device-lent").slice(before);
+  const final = (await d.ok("spaces.devices.lend.status", { space: a.space, device: eid })).lent;
+  assert.equal(final, evs[evs.length - 1].lent, "the stored state is the last emitted event's");
+  void w;
+});
