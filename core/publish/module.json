@@ -31,15 +31,15 @@
         "reach": "anyone", "effect": "read"
       },
       {
-        "name": "publish.approve", "outward": true,
+        "name": "publish.approve", "asks": true, "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.publish", "outward": true,
+        "name": "publish.publish", "asks": true, "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.rollback", "outward": true,
+        "name": "publish.rollback", "asks": true, "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
@@ -51,7 +51,7 @@
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.secret.grant", "outward": true,
+        "name": "publish.secret.grant", "asks": true, "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {

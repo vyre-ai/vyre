@@ -105,6 +105,30 @@ export default {
         return { id, payload_hash, expires_in_s: ASK_MS / 1000 };
       },
     });
+    // The registry holds an outward tool's call from an agent, a model, a module or a guest here (core/modules, one yes): the same card as a device's, bound to the asker the registry names (never anything the
+    // asker said) and to the call's input by digest. The registry alone calls this; the asker later retries its call with the card's id and the registry spends it (yes, `{ card }`).
+    ctx.tool("approvals.hold", {
+      internal: true,
+      description: "The registry's own: hold an outward call from a caller that is not you as a card on your phone. Answers { id, line }.",
+      input: obj({ tool: { type: "string" }, fields: { type: "object" }, from: { type: "string" } }, ["tool", "fields", "from"]),
+      callers: ["module"],
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        if (String((meta && meta.caller) || "") !== "module:registry") throw refuse("only the registry holds a call", "denied");
+        sweep();
+        const request = cardRequest("outward", { op: input.tool, fields: input.fields });
+        if (!request) throw refuse("that call does not fit an outward card", "bad_input");
+        const from = String(input.from || "");
+        const same = [...open.values()].find(a => a.moment && a.from === from && a.state === "waiting" && a.request.op === request.op && canon(a.request.fields) === canon(request.fields));
+        if (same) return { id: same.id, line: same.line };
+        if ([...open.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many approvals are waiting: answer or wait for them to end", "rate_limited");
+        const sg = signOf("outward", request), space = String((ctx.kernel && ctx.kernel.space) || "");
+        const payload_hash = payloadHash(sg.op, space, sg.fields);
+        const id = `ap_${randomBytes(9).toString("base64url")}`;
+        const line = lineOfOp(request.op, request.fields, `An assistant (${from.replace(/^[a-z]+:/, "").slice(0, 40) || "unknown"})`);
+        open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, at: now(), state: "waiting", moment: "outward", request, line });
+        return { id, line };
+      },
+    });
     ctx.tool("approvals.pending", {
       description: "What is waiting for the person, as the phone shows it: [{ id, title, body, op, space, fields, payload_hash, asked_from, expires_in_s }]. Sign payload_hash and nothing else.",
       input: obj(),

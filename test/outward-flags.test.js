@@ -66,11 +66,30 @@ function allTools() {
       const f = path.join(base, d, "module.json");
       if (!fs.existsSync(f)) continue;
       const m = JSON.parse(fs.readFileSync(f, "utf8"));
-      for (const t of (m.does && m.does.tools) || []) out.push(typeof t === "string" ? { module: m.name || d, name: t, outward: undefined } : { module: m.name || d, name: t.name, outward: t.outward });
+      for (const t of (m.does && m.does.tools) || []) out.push(typeof t === "string" ? { module: m.name || d, name: t, outward: undefined, asks: false } : { module: m.name || d, name: t.name, outward: t.outward, asks: t.asks === true });
     }
   }
   return out;
 }
+
+/** What each `asks: true` tool's declared ask flow is proven by: a test where an agent's call is held (or refused) and never runs. The file must hold the named test. A tool that does not say `asks` is held in the approvals queue by the registry (core/modules/modules.test.js, the held_for_approval case). */
+const ASKS_PROOF = {
+  "publish.approve": ["core/publish/publish.test.js", "a model chain can create, preview and request, never decide, approve or publish"],
+  "publish.publish": ["core/publish/publish.test.js", "a model chain can create, preview and request, never decide, approve or publish"],
+  "publish.rollback": ["core/publish/publish.test.js", "create, preview, plan, approve held then decided, publish held then decided, rollback"],
+  "publish.secret.grant": ["core/publish/publish.test.js", "a secret granted to deployment A is absent from B"],
+  "github.project.pr.open": ["core/github/registry.test.js", "reach asked - an agent is refused not_asked"],
+  "github.project.pr.merge": ["core/github/registry.test.js", "reach asked - an agent is refused not_asked"],
+  "github.project.pr.review": ["core/github/registry.test.js", "reach asked - an agent is refused not_asked"],
+  "google.mail.send": ["core/google/module.test.js", "holds sends and invites"],
+  "google.calendar.create": ["core/google/module.test.js", "holds sends and invites"],
+  "google.calendar.update": ["core/google/module.test.js", "holds sends and invites"],
+  "apps.send": ["local/apps/module.test.js", "apps.send needs a person's proof from every non-module caller"],
+  "vault.api.send": ["core/vault/api-credential.test.js", "vault.request and its Gate sender: who may call"],
+  "vault.forward": ["core/vault/api-credential.test.js", "vault.request and its Gate sender: who may call"],
+  "vault.forward.file": ["core/vault/api-credential.test.js", "vault.request and its Gate sender: who may call"],
+  "vault.service.forward": ["core/vault/api-credential.test.js", "vault.request and its Gate sender: who may call"],
+};
 
 const tools = allTools();
 
@@ -108,4 +127,15 @@ test("the reviewer's 70 candidates each end up marked or listed", () => {
     if (!(t && t.outward) && !NOT_OUTWARD[n]) loose.push(n);
   }
   assert.deepEqual(loose, []);
+});
+
+test("a tool that says `asks: true` is outward and names the test that proves its own flow holds an agent", () => {
+  for (const t of tools.filter(x => x.asks)) {
+    assert.ok(t.outward, `${t.name}: asks without outward`);
+    const p = ASKS_PROOF[t.name];
+    assert.ok(p, `${t.name}: add it to ASKS_PROOF with the test where an agent's call is held and never runs`);
+    const src = fs.readFileSync(path.join(ROOT, p[0]), "utf8");
+    assert.ok(src.includes(p[1]), `${t.name}: ${p[0]} has no test named "${p[1]}"`);
+  }
+  for (const n of Object.keys(ASKS_PROOF)) assert.ok(tools.some(t => t.name === n && t.asks), `${n} is in ASKS_PROOF but does not say asks: true`);
 });

@@ -222,7 +222,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.members.add", "effect": "write",
+    "name": "spaces.members.add", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
@@ -258,7 +258,7 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.invites.create", "effect": "write",
+    "name": "spaces.invites.create", "outward": true, "effect": "write",
     "reach": "person"
    },
    {

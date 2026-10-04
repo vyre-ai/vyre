@@ -300,6 +300,7 @@ export function toolEntries(m) {
     if (typeof t.projectArg === "string" || Array.isArray(t.projectArg)) extra.projectArg = t.projectArg;
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
+    if (t.asks === true) extra.asks = true;
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }

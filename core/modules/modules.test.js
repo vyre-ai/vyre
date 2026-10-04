@@ -2,6 +2,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { setCardRedeemer } from "../../lib/one-yes.js";
 import path from "node:path";
 import fs from "node:fs";
 import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
@@ -679,6 +680,8 @@ const bakerySrc = `export default { async start(ctx) {
   }
   return { async stop() {} };
 } };`;
+/** A stand-in for the approvals queue: it holds a call as a card and nothing more. */
+const holdSrc = `export default { async start(ctx) { globalThis.__cards = []; ctx.tool("approvals.hold", { input: { type: "object" }, run: async (input, meta) => { if (meta.caller !== "module:registry") throw new Error("denied"); const id = "ap_card" + globalThis.__cards.length + "xyz"; globalThis.__cards.push({ id, ...input }); return { id, line: "held" }; } }); return { async stop() {} }; } };`;
 const notesSrc = `export default { async start(ctx) { ctx.tool("notes.add", { effect: "read", run: async () => ({}) }); return { async stop() {} }; } };`;
 
 test("modules v1: validate accepts object tool entries, mac and windows, and requires with ranges", () => {
@@ -733,7 +736,7 @@ test("modules v1: a mac module runs on a Mac device and stays off elsewhere", as
 test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach sets who may call", async t => {
   /** @type {any} */ (globalThis).__bakeryOwn = true;
   t.after(() => { delete /** @type {any} */ (globalThis).__bakeryOwn; });
-  const reg = await registry(t, [["bakery", bakeryBuiltIn(), bakerySrc], ["notes", good, notesSrc]], { builtIn: true });
+  const reg = await registry(t, [["bakery", bakeryBuiltIn(), bakerySrc], ["notes", good, notesSrc], ["approvals", { version: "0.1.0", does: { tools: [{ name: "approvals.hold", reach: "modules" }] } }, holdSrc]], { builtIn: true });
   assert.equal(reg.modules.get("bakery").state, "running", reg.modules.get("bakery").error);
   for (const n of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.mailout", "bakery.sync", "bakery.hook", "bakery.own"]) assert.ok(reg.tools.has(n), n);
   // One yes: the outward moment is any tool marked `outward` in its module.json (true or a kind word), read from one place.
@@ -750,6 +753,31 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
     assert.equal(r.error && r.error.code, "held_unavailable", c);
     assert.match(r.error.message, /lands with the Gate wiring/);
   }
+  // One yes: an outward tool marked `outward: true` is HELD for a caller that is not you (an agent, the harness, a module with no person behind it, a guest): a card, never a run, until the card's yes comes back.
+  const ran0 = (await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "cli")).data.ran;
+  assert.equal(ran0, "bakery.mailout", "you: no prompt");
+  for (const c of ["mcp:agent:kit", "cli:agent:kit", "mcp", "harness", "module:notes", "tailnet-guest:juno"]) {
+    const r = await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, c);
+    assert.equal(r.error && r.error.code, "held_for_approval", c);
+    assert.ok(!r.data, `${c}: nothing ran`);
+    assert.match(r.error.approval, /^ap_/);
+  }
+  assert.equal(globalThis.__cards.at(-1).tool, "bakery.mailout");
+  assert.equal(globalThis.__cards.at(-1).fields.to, "supplier");
+  assert.match(globalThis.__cards.at(-1).fields.input_sha256, /^[0-9a-f]{32}$/);
+  // a retry with an approval id the queue never answered runs nothing
+  const bad = await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "mcp:agent:kit", { approval: "ap_cardnever123" });
+  assert.equal(bad.error && bad.error.code, "approval_refused");
+  // once the person's phone answered it, the same call retried with the card runs, once, and only for the same asker and the same input
+  const card = globalThis.__cards.at(-1);
+  let spent = false;
+  setCardRedeemer((id, moment, request, device) => (id === card.id && moment === "outward" && request.op === "bakery.mailout" && JSON.stringify(request.fields) === JSON.stringify(card.fields) && device === card.from && !spent ? (spent = true, "ok") : "no_proof"));
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(501) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "other input, other asker");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).data.ran, "bakery.mailout");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "spent once");
+  setCardRedeemer(null);
+  // a module acting for you (its origin is you) is you
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "module:notes", { origin: "cli" })).data.ran, "bakery.mailout");
   // modules: internal, hidden from everyone but another module.
   assert.equal((await reg.call("bakery.sync", {}, "cli")).error.code, "no_such_tool");
   // Default-deny (H4): reach modules is for Vyre's own modules; notes sits in the home, mail ships.
