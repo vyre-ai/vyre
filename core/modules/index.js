@@ -415,7 +415,8 @@ const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "s
 export const callerKind = caller => {
   const c = String(caller);
   // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
+  // a browser `web:<id>` and a setup page `setup:<id>` (the relay listener, BR-2) are classes of their own, named only by a tool that lists them
+  return c.startsWith("module:") ? "module" : /^web:[a-z2-7]{16}$/.test(c) ? "web" : /^setup:[a-z2-7]{16}$/.test(c) ? "setup" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -470,7 +471,7 @@ export const agentAskFirst = (/** @type {string} */ tool, /** @type {any} */ cal
  * it as a label.
  * @param {string[]|null|undefined} callers
  */
-export const callerAllowed = (callers, caller) => !callers || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
+export const callerAllowed = (callers, caller) => !callers || callerKind(caller) === "setup" || (callers.includes(callerKind(caller)) && !CLASS_ONLY.has(callerKind(caller)))
   || (callers.includes("deck") && ownerDevice(caller))
   || (callers.includes("tailnet") && ownerDevice(caller))
   || (callers.includes("device") && deviceLabel(caller));
@@ -1049,7 +1050,8 @@ export class Registry {
         const e = entries.get(name), reach = e ? e.reach : "anyone";
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run,
           internal: Boolean(def.internal) || reach === "modules",
-          callers: reach === "person" ? [...PERSON_CALLERS] : Array.isArray(def.callers) ? def.callers : null,
+          // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
+          callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
@@ -1150,6 +1152,9 @@ export class Registry {
       }
       if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
+      // a browser (`web:<id>`) is none of the person's classes: a tool that lists callers (every person tool) does not exist for it unless it names `web` (BR-2); a tool open to anyone stays open. A setup page (`setup:<id>`) is held to a list of names by the relay's own
+      // setup gate (core/relay/setup.js) before a call gets here, so the registry only lets that class through.
+      if (callerKind(caller) === "web" && Array.isArray(def.callers) && !def.callers.includes("web")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
       if (!(callerAllowed(def.callers, caller) || agentOpensPerson(tool, def, caller, meta)) || personRefusesAgent(tool, def, caller, meta)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
       // A guest from another tailnet is never a person proving they are here, whatever proof it
       // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's

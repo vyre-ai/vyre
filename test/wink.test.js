@@ -707,6 +707,8 @@ test("paired session, real daemon, relay and presence module: the owner's pick r
   assert.equal((await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred")).data.trusted, true);
   // the line shows only when the app reports a software key (self-reported, display only; the grant still treats the key as unattested)
   await until(async () => (await w.call("wink.access")).data.devices.find(d => d.id === paired.device)?.software === true);
+  // the relay's own device view carries the same self-report, for the Devices screen
+  assert.equal((await deviceRow(w, paired.device)).storage, "software");
   // the device gets its challenge over its own channel, signs it, and has a person session with no prompt and no passkey
   const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
   t.after(() => c.close());
@@ -807,6 +809,36 @@ test("paired session ends, on the real kernel: sign-out-everywhere (wink asks pr
   const ended = await a.w.d.registry.call("presence.person.end-paired", {}, "module:wink");
   assert.ok(ended.data.ended >= 1, JSON.stringify(ended));
   assert.equal(await a.live(), false, "after sign-out-everywhere the session is gone");
+});
+
+test("BR-2 over the relay: a browser's channel is web:<id> (it may ask to be trusted, about itself), an app's is device:<id> (it may not), an unknown id gets no channel, and none reaches vault.session.status", async t => {
+  process.env.VYRE_TEST_UNGATED_RING = "1";
+  t.after(() => { delete process.env.VYRE_TEST_UNGATED_RING; });
+  const w = await world(t);
+  const via = async about => {
+    const ks = keystore(t);
+    const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+    const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: about.kind === "web" ? "A browser" : "A phone", crypto: nodeCrypto(), keyStore: ks, about });
+    assert.ok(paired.device && !paired.pending, JSON.stringify(paired));
+    const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "x", crypto: nodeCrypto(), keyStore: ks });
+    t.after(() => c.close());
+    return { c, id: paired.device, paired };
+  };
+  const browser = await via({ kind: "web", release: "0.3.0" });
+  const asked = await over(browser.c, "relay.devices.ask-trust", {});
+  assert.equal(asked.status, 200, JSON.stringify(asked));
+  assert.equal(asked.body.data.asked, true, "web:<id> is a browser asking about itself");
+  const phone = await via({ kind: "app" });
+  const refused = await over(phone.c, "relay.devices.ask-trust", {});
+  assert.notEqual(refused.status, 200, "device:<id> is not a browser");
+  const asBrowser = await over(browser.c, "vault.session.status", {});
+  assert.equal(asBrowser.body?.error?.code, "no_such_tool", `a browser: ${JSON.stringify(asBrowser)}`);
+  // (a confirmed app device is `device:<id>`, the class the platform's PH-1 and the kernel gates decide for; that layer is not this test's)
+  // an id the home never paired has no channel at all
+  const stranger = connect({ relay: w.status.url, route: browser.paired.route, box: browser.paired.box, name: "z", crypto: nodeCrypto(), keyStore: keystore(t) });
+  t.after(() => stranger.close());
+  const none = await over(stranger, "vault.session.status", {});
+  assert.ok(none.status === 0 || none.status === 404 || none.status === 401, `an unknown id reaches nothing (${none.status})`);
 });
 
 test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {

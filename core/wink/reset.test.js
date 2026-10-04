@@ -23,7 +23,7 @@ function box(o = /** @type {any} */ ({})) {
   const clock = o.clock || { t: 1_000_000 };
   /** @type {Map<string, any>} */ const tools = new Map();
   const events = /** @type {any[]} */ ([]), logs = /** @type {string[]} */ ([]), calls = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "juno" }, log: (/** @type {string} */ m) => logs.push(m), events: { emit: (/** @type {string} */ n, /** @type {any} */ d) => events.push([n, d]) }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); return { data: {} }; } };
+  const ctx = { store: { db }, config: { name: "juno" }, log: (/** @type {string} */ m) => logs.push(m), events: { emit: (/** @type {string} */ n, /** @type {any} */ d) => events.push([n, d]) }, tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), call: async (/** @type {string} */ t, /** @type {any} */ i) => { calls.push([t, i]); if (o.endFails && t === "presence.person.end-paired") return { error: { code: "unavailable", message: "presence is down" } }; return { data: {} }; } };
   const p = createPairing({ ctx, now: () => clock.t, identity: async () => ME, space: async () => "spc_x", directory: { memberships: async () => [] }, ports: {}, openCode: async () => ({}), ack: async () => ({ ok: true }), owner: () => {}, dropMs: 0, relayUrl: async () => "ws://r", spaceNow: () => "spc_x" });
   p.tools();
   registerReset({ ctx, pairing: p, now: () => clock.t, identity: async () => ME, dropMs: 0, dataStores: o.dataStores === null ? undefined : (o.dataStores || (async () => [])), newSpace: o.newSpace, wipeDelayMs: 0 });
@@ -272,4 +272,15 @@ test("no daemon path destroys data: a begin that asks to wipe still refuses on a
   await assert.rejects(() => c.call("wink.server.reset.confirm", { code }), e => e.code === "holds_data");
   assert.ok(c.p.meta.get("owner"));
   assert.equal(late.wiped, 0);
+});
+
+test("a reset that cannot end the paired sessions fails and leaves the owner; with them ended it asks presence to end all of them first", async () => {
+  const bad = box({ endFails: true }); bad.own();
+  const { code } = await bad.begin();
+  await assert.rejects(() => bad.call("wink.server.reset.confirm", { code }), e => e.code === "sessions_not_ended");
+  assert.ok(bad.p.meta.get("owner"), "still owned");
+  const good = box(); good.own();
+  const g = await good.begin();
+  assert.equal((await good.call("wink.server.reset.confirm", { code: g.code })).reset, true);
+  assert.ok(good.calls.some(c => c[0] === "presence.person.end-paired" && !c[1].device), "end-paired for all");
 });

@@ -127,11 +127,11 @@ export function registerReset(o) {
       // The card goes first, while the previous owner's devices are still reachable; then the owner goes and so do their devices here.
       if (had) ctx.events.emit("wink.server-reset", { at, devices: devs.map((/** @type {any} */ d) => d.id), card: resetCard(at) });
       ctx.log(`wink: this server was reset from its console at ${new Date(at).toISOString()}`);
+      // every paired person session and grant ends with the owner (ADR 0032 2d), and that is awaited: a reset that cannot end them fails and leaves the owner in place
+      await pairing.endPairedNow();
       const adopter = String(meta.get("adopter") || "");
       pairing.clearOwner(); // drops the adopter's relay device
       for (const d of devs) { pairing.devices.remove(d.id); if (`device:${d.id}` !== adopter) dropDevice(d.id); }
-      // every paired person session and grant ends with the owner (ADR 0032 2d): a reset is a recovery reset
-      if (typeof ctx.call === "function") Promise.resolve(ctx.call("presence.person.end-paired", {})).catch(() => null);
       return { reset: true, had };
     },
   });

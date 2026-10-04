@@ -549,6 +549,12 @@ export function createPairing(o) {
     if (typeof ctx.call !== "function") return;
     Promise.resolve(ctx.call("presence.person.end-paired", device ? { device } : {})).catch(() => null);
   };
+  /** The same, awaited: a removal or a reset that cannot end the paired sessions fails instead of leaving them (reviewer-2 PS-2). No presence module (a bare test ctx) is nothing to end. @param {string} [device] */
+  const endPairedNow = async device => {
+    if (typeof ctx.call !== "function") return;
+    const r = /** @type {any} */ (await ctx.call("presence.person.end-paired", device ? { device } : {}));
+    if (r && r.error && r.error.code !== "no_such_tool") throw fail("sessions_not_ended", `the paired sessions could not be ended (${r.error.message || r.error.code}); nothing was removed`);
+  };
   /** A P-256 public key as base64url SPKI DER to the JWK the paired session binds to; null for anything else. @param {unknown} spki */
   const jwkOf = spki => {
     try {
@@ -654,6 +660,18 @@ export function createPairing(o) {
       description: "On the new server: type back the code the app is showing. One try per code. Answers { ok, message }. A right code means the codes matched, nothing more: the app finishes the pairing (wink.server.adopt) and wink.pair.status on the app is the one place that says it is done or that it failed and why.",
       input: obj({ offer: str, typed: str }, ["offer", "typed"]),
       run: async (input, meta = {}) => { owner(meta, "adding this server"); const r = await o.ack(String(input.offer), String(input.typed)); return r && r.ok ? { ...r, message: words("codeMatched") } : r; },
+    });
+    ctx.tool("wink.server.status", {
+      description: "At the server: has it been paired yet? Answers { owned: false } or { owned: true, space, device }: `space` is the name of what it belongs to (a space's name, or Personal for an identity) and `device` the name of the device that paired it, so the installer can say \"Connected to <space>. Finish setting up on your <device>.\" Only this server's own screen or terminal (cli, local, deck, capsule) reads it.",
+      input: obj(),
+      run: async (_, meta0 = {}) => {
+        owner(meta0, "the server's owner");
+        atServer(meta0);
+        const cur = meta.get("owner"), by = String(meta.get("adopter") || "");
+        if (!cur) return { owned: false };
+        const dev = by.startsWith("device:") ? devices.get(by.slice(7)) : null;
+        return { owned: true, space: await ownerWords({ ...cur, identity: cur.identity }), device: (dev && dev.name) || (cur.name ? String(cur.name) : "device") };
+      },
     });
     ctx.tool("wink.server.pairing", {
       description: "At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
@@ -1105,7 +1123,7 @@ export function createPairing(o) {
 
   /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
   const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
-  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { devices, endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */
