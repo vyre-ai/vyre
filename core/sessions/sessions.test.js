@@ -367,6 +367,26 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(back.error && back.error.code, "account_removed", JSON.stringify(back));
   });
 
+  test(`${driver}: account.changed is announced when an AI account becomes usable or goes, with no credential in it, and never for a label edit`, { skip }, async t => {
+    const w = await boot(t, { driver, vault: { "work-token": "fake-work-value" } });
+    /** @type {any[]} */ const seen = [];
+    const off = w.d.events.on("*", /** @type {any} */ e => { if (e.type === "account.changed") seen.push(e.payload); });
+    t.after(() => { if (typeof off === "function") off(); });
+    const added = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Work", kind: "setup-token", vault_item: "work-token" })).data;
+    assert.deepEqual(seen.at(-1), { provider: "claude", account: added.id, signed_in: true, why: "added" });
+    // a login account has not signed in yet: nothing is announced until its sign-in ends
+    const n = seen.length;
+    const login = (await w.tool("sessions.accounts.add", { provider: "codex", label: "Mine", kind: "login" })).data;
+    assert.equal(seen.length, n, "a login that has not signed in announces nothing");
+    // a scope or default edit changes nothing about whether the account works
+    assert.equal((await w.tool("sessions.accounts.bind", { id: added.id, is_default: true })).error, undefined);
+    assert.equal(seen.length, n, "a bind on a working account announces nothing");
+    assert.equal((await w.tool("sessions.accounts.remove", { id: added.id })).error, undefined);
+    assert.deepEqual(seen.at(-1), { provider: "claude", account: added.id, signed_in: false, why: "removed" });
+    assert.ok(!JSON.stringify(seen).includes("fake-work-value"), "no credential in an event");
+    assert.equal((await w.tool("sessions.accounts.remove", { id: login.id })).error, undefined);
+  });
+
   test(`${driver}: providers: Grok runs a thread on the ACP driver, providers.list names them all, and a resume loads the agent's own session`, { skip }, async t => {
     const w = await boot(t, { driver });
     noMemoryBlocks(w);
