@@ -433,6 +433,10 @@
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
   },
+  "flows.propose": {
+   "module": "flows",
+   "reason": "callers list names the person's surfaces and model sessions; the kernel chain decides who may propose and a proposal is only a draft until a person approves it"
+  },
   "flows.retry": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
@@ -969,14 +973,6 @@
    "module": "presence",
    "reason": "read-only, scoped by the module itself"
   },
-  "presence.person.sessions": {
-   "module": "presence",
-   "reason": "callers limited in code to capsule, cli, deck, local"
-  },
-  "presence.person.start-paired": {
-   "module": "presence",
-   "reason": "callers are the relay, tailnet and device labels (a paired device presenting its own key, never a model, agent or assistant); the signature over the grant's challenge with the key the owner confirmed is the proof"
-  },
   "presence.person.pair-challenge": {
    "module": "presence",
    "reason": "callers are the relay, tailnet and device labels; it answers a challenge for the paired grant (random for a device with no grant, so it says nothing about whether one exists) and only the confirmed key can sign it"
@@ -985,9 +981,17 @@
    "module": "presence",
    "reason": "callers are the relay, tailnet and device labels; the new secret is signed by the paired device's key and the old one stops working"
   },
+  "presence.person.sessions": {
+   "module": "presence",
+   "reason": "callers limited in code to capsule, cli, deck, local"
+  },
   "presence.person.start": {
    "module": "presence",
    "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
+  },
+  "presence.person.start-paired": {
+   "module": "presence",
+   "reason": "callers are the relay, tailnet and device labels (a paired device presenting its own key, never a model, agent or assistant); the signature over the grant's challenge with the key the owner confirmed is the proof"
   },
   "presence.remove": {
    "module": "presence",
@@ -1812,6 +1816,10 @@
   "vault.ssh.keys": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
+  },
+  "vault.state": {
+   "module": "vault",
+   "reason": "callers list limits it to the person's surfaces and their own devices (cli, local, deck, capsule, mobile, device); it returns the vault's lock state only"
   },
   "vault.sweep": {
    "module": "vault",
