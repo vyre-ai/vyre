@@ -6,7 +6,6 @@
 //   const r = await pairServer({ payload, owner: { id: "per_...", name: "Alex" }, name: "Alex's iPhone", crypto, keyStore, onWords: w => show(w) });
 //
 // payload   the text of the server's QR, or the long code pasted: `vyre://wink/2?t=<16-byte seed, base64url>&r=<relay wss url>`.
-// device    "phone" (the default) or "computer": what this device is; a browser (`about.kind` "web") is recorded as web. Pass `presenceKey` too: it is the key this device's paired session is bound to.
 // owner     the CLAIMED identity (id and name). The server shows the name to the person at the server and records it as the owner. If the server was installed with --pair-to, the server also
 //           needs `proof` (an identity-list key's signature, see core/wink/pairing.js proveIdentity); pass it as `proof: { eid, sig }`.
 // onWords   called once with the three words this device derived. Show them: the person at the server picks the same words from three sets, and only then is anything paired.
@@ -31,8 +30,8 @@ export function parseServerPayload(s) {
 }
 
 /**
- * @param {{ payload: string, device?: "phone" | "computer", owner: { id: string, name?: string, kind?: "identity" | "space" }, name?: string, proof?: { eid: string, sig: string },
- *   signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string }> | { eid: string, sig: string }, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: { kind?: "app" | "web", release?: string, manifest?: string }, presenceKey?: any, passkey?: any,
+ * @param {{ payload: string, owner: { id: string, name?: string, kind?: "identity" | "space" }, name?: string, proof?: { eid: string, sig: string },
+ *   deviceKind?: "phone" | "computer" | "web", keyStorage?: "hardware" | "software", signIdentity?: (message: Uint8Array) => Promise<{ eid: string, sig: string }> | { eid: string, sig: string }, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: { kind?: "app" | "web", release?: string, manifest?: string }, presenceKey?: any, passkey?: any,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
 export async function pairServer(o) {
@@ -59,13 +58,11 @@ export async function pairServer(o) {
     return { status: /** @type {any} */ (r).status, body };
   };
   const owner = { kind: o.owner.kind || "identity", id: o.owner.id, ...(o.owner.name ? { name: String(o.owner.name).slice(0, 64) } : {}) };
-  // the server records this device as the owner's with its real kind (a browser is `web`; otherwise what the app says, a phone by default) once the person at the server picks the words
-  const kind = o.about && o.about.kind === "web" ? "web" : o.device === "computer" ? "computer" : "phone";
   // The proof that the identity's own key stands behind this pairing: its signature over this pairing's box and relay device (the same message a --pair-to server checks). Given ready-made
   // (`proof`) or made here from the device's identity key (`signIdentity`); a device with neither is checked by the three words alone.
   /** @type {{ eid: string, sig: string } | undefined} */ let proof = o.proof;
   if (!proof && o.signIdentity) proof = await o.signIdentity(new TextEncoder().encode(`vyre-wink-pair-to-v1\n${paired.box}\n${paired.device}`));
-  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, device: { kind, name: deviceName }, ...(proof ? { proof } : {}) };
+  const base = { owner, identity: owner.kind === "identity" ? owner.id : undefined, ...(proof ? { proof } : {}), ...(o.deviceKind ? { deviceKind: o.deviceKind, deviceName: deviceName } : {}), ...(o.keyStorage ? { keyStorage: o.keyStorage } : {}) };
   const refuse = (/** @type {any} */ r) => {
     const e = r.body && r.body.error;
     const code = e && e.code;

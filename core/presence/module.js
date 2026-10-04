@@ -32,9 +32,9 @@ export default {
 
     ctx.tool("presence.enroll", {
       effect: "write",
-      // Listed, not defaulted: the relay enrolls a paired device's key from its listener, where no person is the original caller, so the registry's origin check on a defaulted tool would hide it.
-      // The presence floor still needs a proof from every caller but a first-party module, and a device's passkey is enrolled by module:relay only (checked in the body).
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module"],
+      // The person's surfaces and modules, stated rather than defaulted: the relay enrols a device's presence key at pairing from its own listener, where no running call exists to name an origin, so the
+      // default's "original caller of a module hop" check refused it (no_such_tool) and no paired device had a presence key. The presence floor still needs a proof for anyone but the relay's own hop.
+      callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
       description: "Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 with alg -7, or RSA of 2048 bits or more with alg -257, as Windows Hello makes) or a passkey, by its public key as base64url SPKI DER, a JWK or a Windows BCRYPT RSA blob. Needs presence.",
       presence: { summary: async input => `Enroll a ${input.kind === "passkey" ? "passkey" : input.kind === "device" ? "device key" : "Capsule key"} named "${String(input.name || input.kind)}"` },
       input: obj({ kind: { type: "string", enum: ["capsule", "passkey", "device"] }, name: str, public_key: str, alg: { type: "integer" }, rp_id: str, credential_id: str,
@@ -195,22 +195,6 @@ export default {
       },
     });
 
-    // A device-first pairing (the pick of the three words at the server is the owner's confirmation) enrols the device's own key with no proof to carry. Only the relay, inside the confirm the Wink module
-    // made after the pick, and only for a gated server ticket (the relay checks that); the key proves for that device alone and goes when the device is removed.
-    ctx.tool("presence.device.enroll-paired", {
-      internal: true,
-      effect: "write",
-      description: "Enroll a paired device's own presence key (P-256, alg -7) at the pick of the three words at the server. Only the relay asks, in the Wink module's confirm.",
-      input: obj({ name: str, public_key: str, alg: { type: "integer" } }, ["public_key"]),
-      run: async (input, meta = {}) => {
-        if (String((meta && meta.caller) || "") !== "module:relay") throw Object.assign(new Error("only the relay enrolls a paired device's key"), { code: "denied" });
-        if (input.alg !== undefined && input.alg !== -7) throw Object.assign(new Error("a paired device's key is P-256 (alg -7)"), { code: "bad_input" });
-        const k = presence.enroll({ kind: "device", name: String(input.name || "a paired device").slice(0, 80), public_key: String(input.public_key), alg: -7 });
-        ctx.events.emit("presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
-        return k;
-      },
-    });
-
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
     // The pairing, once the owner confirmed it with a presence proof, asks for one grant. This tool
     // trusts none of its arguments: it names the device, and the pair record (wink's, read here)
@@ -224,7 +208,7 @@ export default {
         const r = await ctx.call("wink.device.record", { id: String(input.device) }).catch(() => null);
         const rec = r && r.data;
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
-        if (!["phone", "computer"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone or a computer paired to its owner gets a person session"), { code: "denied" });
+        if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
         const software = rec.hardware !== true;
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
