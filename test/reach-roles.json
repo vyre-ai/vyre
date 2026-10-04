@@ -1,4 +1,12 @@
 {
  "_comment": "Tools a box and a local registry both define with different callers or internal flags. The wider counts for reach-registry. Each needs a reason; the test fails on a new one.",
- "tools": {}
+ "tools": {
+  "files.drive.status": "box and local define it with different limits: the box one is open or wider (a read of counts or its own scoped shares), the Mac one forwards to the box with a callers list; the wider is counted",
+  "link.status": "box and local define it with different limits: the box one is open or wider (a read of counts or its own scoped shares), the Mac one forwards to the box with a callers list; the wider is counted",
+  "chrome.snapshot": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
+  "chrome.open": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
+  "chrome.click": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
+  "chrome.type": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
+  "chrome.screenshot": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted"
+ }
 }
