@@ -3528,7 +3528,8 @@ export default {
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); });
+      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); },
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
@@ -3890,6 +3891,19 @@ export default {
         const dir = i.cwd || (i.thread ? sb.must(String(i.thread)).cwd : null);
         if (!dir) throw Object.assign(new Error("give a folder or a thread"), { code: "bad_input" });
         return sb.busyIn(String(dir));
+      },
+    });
+    // For the runner's own-server sealing (core/runner ports.ownServer.resolve): which transcript file a finished turn belongs to, and the provider's projects folder it sits under (`root`,
+    // which the seal pins the file to). Only the thread's own provider session, only Claude's layout (<root>/<project>/<session>.jsonl), and nothing for a session this Switchboard has no record of.
+    ctx.tool("threads.own-transcript", {
+      description: "The transcript file of a session this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. A session it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["session"], properties: { session: str } },
+      run: async i => {
+        const rec = sb.record(String(i.session));
+        if (!rec || (rec.provider || "claude") !== "claude") return null;
+        const t = findSession(sb.deps.transcripts || [], String(i.session));
+        if (!t) return null;
+        return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
     });
     ctx.tool("threads.origin", {
