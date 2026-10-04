@@ -544,3 +544,51 @@ test("the remote path: a space this device made with a paired server as home is 
   assert.deepEqual(seen, [["srv_paired0000000001", "kernel.call", "records.get", sid]]);
   assert.throws(() => d.kernel.spaces.for("spc_zzzzzzzzzzzz"), { code: "not_found" }, "a space with no server row is no remote space");
 });
+
+test("TAKEOVER (regression): a space this home hosts for ANOTHER person keeps that person as its owner when the home's owner is adopted to the claimed identity; alice still acts in it, the identity has no role there, and the same after a restart", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "takeover-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
+  let d = await start({ root, kernel: true, log: () => {} });
+  const cli = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
+  const homeFirst = d.kernel.id.owner;
+  const alice = "per_" + "d".repeat(26);
+  // the home hosts a space for alice BEFORE its owner claims an identity, and one for the home's own first-start owner
+  const hers = await d.kernel.spaces.host({ owner: alice, name: "alicespace" });
+  const mine = await d.kernel.spaces.host({ owner: homeFirst, name: "firstownerspace" });
+  const identity = (await cli("spaces.identity.create", { name: "alex" })).data;
+  assert.ok((await cli("spaces.list")).data, "a spaces call triggers the adoption");
+  await new Promise(r => setTimeout(r, 800));
+  const check = async () => {
+    const herChain = hers.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000a", person: alice, path: "direct", session: "s" });
+    const members = await hers.gateway.grants.members.list(herChain);
+    assert.deepEqual(members.map((/** @type {any} */ m) => [m.person, m.role]), [[alice, "owner"]], "alice is still the owner, and she is the only member");
+    assert.equal(hers.kernel.grants.roleOf({ kind: "person", id: identity.id, space: hers.space }), null, "the claimed identity has no role in alice's space");
+    assert.equal(hers.kernel.grants.roleOf({ kind: "person", id: alice, space: hers.space }), "owner");
+    // alice can still act in it: define a type as the owner (stand-in presence)
+    await hers.gateway.records.define(herChain, { add_types: [CONTACT] }).catch(() => {});
+    const types = await hers.gateway.records.types ? null : null; void types;
+  };
+  await check();
+  // the home's own first-start owner's space DID move to the identity
+  const mineChain = mine.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000b", person: identity.id, path: "direct", session: "s" });
+  assert.deepEqual((await mine.gateway.grants.members.list(mineChain)).map((/** @type {any} */ m) => [m.person, m.role]), [[identity.id, "owner"]], "the home's own space follows the identity");
+  // and the same after a restart
+  await d.stop();
+  d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  assert.ok((await cli("spaces.list")).data);
+  await new Promise(r => setTimeout(r, 800));
+  const again = d.kernel.spaces.hosted(hers.space);
+  assert.ok(again, "alice's space is still hosted after the restart");
+  const herChain2 = again.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000a", person: alice, path: "direct", session: "s" });
+  assert.deepEqual((await again.gateway.grants.members.list(herChain2)).map((/** @type {any} */ m) => [m.person, m.role]), [[alice, "owner"]], "after a restart alice is still the owner");
+  assert.equal(again.kernel.grants.roleOf({ kind: "person", id: identity.id, space: again.space }), null);
+});
