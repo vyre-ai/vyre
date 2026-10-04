@@ -28,7 +28,7 @@ jobs:
         timeout-minutes: 15
         env:
           VYRE_NO_WATCHDOG: ""
-        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js core/runner/checkpoint-io.test.js 2>&1 | tee sandbox-tests.txt
+        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js core/runner/checkpoint-io.test.js core/runner/checkpoint-store.test.js 2>&1 | tee sandbox-tests.txt
       - name: real commands through the sandbox network (git clone, npm ci, pip install, git over ssh, refusals)
         if: always()
         run: |

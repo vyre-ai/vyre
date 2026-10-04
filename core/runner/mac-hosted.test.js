@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { planHome } from "./homesandbox.js";
-import { launch } from "./sandbox.js";
+import { launch, seatbeltProfile } from "./sandbox.js";
 
 const HOSTED = process.platform === "darwin" && process.env.VYRE_TEST_HOSTED === "1";
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "mh-"));
@@ -62,4 +62,16 @@ test("macOS Mach denies: Apple events to Finder are refused and do not hang", { 
   assert.notEqual(r.code, "timeout", "osascript hung");
   assert.notEqual(r.code, 0, `the Finder answered: ${JSON.stringify(r)}`);
   assert.ok(r.err.length > 0, "a refusal says something on stderr (a silent failure is not a denial)");
+});
+
+// A profile seatbelt cannot load fails closed, so every probe "passes" and nothing starts. These load the real generated profiles and fail the job when seatbelt rejects one.
+test("macOS profiles load: the home profile and the lent profile are accepted by sandbox-exec and run a command", { skip: !HOSTED, timeout: 30_000 }, async t => {
+  const home = await inside(t, "/usr/bin/true", []);
+  assert.ok(!/sandbox-exec:/.test(home.err), `seatbelt rejected the HOME profile: ${home.err}`);
+  assert.equal(home.code, 0, `a command did not run in the home sandbox: ${JSON.stringify(home)}`);
+  const ws = tmp(); t.after(() => fs.rmSync(ws, { recursive: true, force: true }));
+  const prof = seatbeltProfile({ platform: "darwin", workspace: ws, command: "/usr/bin/true", readOnly: [], proxy: { port: 4567 } });
+  const r = spawnSync("/usr/bin/sandbox-exec", ["-p", prof, "/usr/bin/true"], { encoding: "utf8", timeout: 10000 });
+  assert.ok(!/sandbox-exec:/.test(r.stderr), `seatbelt rejected the LENT profile: ${r.stderr}`);
+  assert.equal(r.status, 0, `a command did not run in the lent sandbox: ${r.stderr}`);
 });
