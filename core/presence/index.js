@@ -417,6 +417,12 @@ export const MIGRATIONS = [`
   -- column existed proved nothing about its key's custody (its flag defaulted to 0), so it is marked software and reads as software: such a device opens a fresh session (startPaired) to prove its key.
   ALTER TABLE presence_people ADD COLUMN strength TEXT;
   UPDATE presence_people SET strength = 'software', software = 1 WHERE paired = 1;
+`, `
+  -- The strength a pairing grant carries into the session it opens (written from what the server verified at pairing or at the owner's approval, never from an app's claim).
+  ALTER TABLE presence_pair_grants ADD COLUMN strength TEXT;
+`, `
+  -- A sign-in a phone approved lasts at most this many ms (12 hours): the browser's session then ends and the next sign-in asks again.
+  ALTER TABLE presence_pair_grants ADD COLUMN cap_ms INTEGER;
 `];
 
 const CHALLENGE_TTL = 120_000;
