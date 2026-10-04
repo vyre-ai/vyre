@@ -394,3 +394,11 @@ test("home sandbox: an abort signal ends the probe and the agent check at once",
   await selfTest({ platform: process.platform, command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, probes: r.probes, signal: ac.signal, agent: { ...r.agent, versionArgs: ["-e", "setTimeout(()=>{},60000)"] } });
   assert.ok(Date.now() - t0 < 15_000, "ended well before the agent's own 60 s");
 });
+
+test("home sandbox (Linux plan): with the egress proxy, the folder of the node that runs the shim is bound read-only (a node under a person's folder is found inside)", { skip: process.platform !== "linux" || unavailable() !== "" }, async t => {
+  const r = await rig(t);
+  const p = planHome({ platform: "linux", command: process.execPath, args: ["-v"], home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent, proxy: { socket: path.join(r.home, "egress.sock"), token: "t" } });
+  const dir = fs.realpathSync(path.dirname(process.execPath));
+  const i = p.argv.findIndex((a, k) => a === "--ro-bind" && p.argv[k + 1] === dir && p.argv[k + 2] === dir);
+  assert.ok(i >= 0, `node's folder ${dir} is bound: ${p.argv.join(" ").slice(0, 400)}`);
+});
