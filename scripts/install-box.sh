@@ -739,7 +739,15 @@ pair_server() {
             *) ans=$(tool wink.server.pair.answer '{"yes":false}' || true); say "  Refused. Nothing was paired."; return 0 ;;
           esac
           case "$ans" in
-            *'"yes": true'*|*'"yes":true'*) PAIRED=1; PAIRED_NAME=${nm:-your space}; return 0 ;;
+            *'"yes": true'*|*'"yes":true'*)
+               PAIRED=1; PAIRED_NAME=${nm:-your space}
+               # The device finishes the pairing a moment after the yes; the server then names whose it is (the space), and the closing line says it.
+               w=0; while [ "$w" -lt 10 ]; do
+                 pd=$(tool wink.server.pairing '{}' || true)
+                 case "$pd" in *'"paired": true'*|*'"paired":true'*) o=$(json_str "$pd" owner); [ -z "$o" ] || PAIRED_NAME=$o; break ;; esac
+                 w=$((w + 1)); sleep 1
+               done
+               return 0 ;;
             *) say "  Those were not the words the app shows, so nothing was paired."
                if (: </dev/tty) 2>/dev/null && ask "Try again?"; then continue 2; fi
                return 0 ;;
