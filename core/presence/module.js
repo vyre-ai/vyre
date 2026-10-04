@@ -250,8 +250,14 @@ export default {
     // itself, from the pairing record wink keeps (confirmed by the owner, key on it, device not removed). No owner step. Three wrong answers lock the device for fifteen minutes; the owner lifts that
     // from their own device with `presence.person.renew-allow` (their presence). A removed device has no key on its record, so there is nothing to renew: re-pairing is for a removed device only.
     const LOCK_MS = 15 * 60_000;
-    /** @type {Map<string, number>} device -> locked until (ms) */
-    const locked = new Map();
+    // The lock lives in the store, so a restart does not give a locked device fresh guesses.
+    const locked = {
+      get: (/** @type {string} */ d) => { const r = /** @type {any} */ (ctx.store.db.prepare("SELECT until FROM presence_renew_lock WHERE device = ?").get(String(d))); return r ? Number(r.until) : undefined; },
+      set: (/** @type {string} */ d, /** @type {number} */ until) => { ctx.store.db.prepare("INSERT OR REPLACE INTO presence_renew_lock (device, until) VALUES (?, ?)").run(String(d), until); },
+      delete: (/** @type {string} */ d) => { ctx.store.db.prepare("DELETE FROM presence_renew_lock WHERE device = ?").run(String(d)); },
+      /** The locks still in the future, for the owner's Devices list. */
+      live: () => /** @type {any[]} */ (ctx.store.db.prepare("SELECT device, until FROM presence_renew_lock WHERE until > ? ORDER BY until").all(Date.now())).map(r => ({ device: String(r.device), until: Number(r.until) })),
+    };
     const renewGrant = async (/** @type {string} */ device) => {
       if (people.holds(device)) return;
       const until = locked.get(device);
@@ -261,6 +267,17 @@ export default {
       if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
       try { people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: rec.hardware !== true }); } catch { /* no grant: the device gets the random challenge */ }
     };
+    ctx.tool("presence.person.locked", {
+      effect: "read",
+      description: "The paired devices that are locked after wrong sign-in answers, each with the time the lock ends by itself (ms): { locked: [{ device, until }] }. For the owner's Devices list; a removed device is never listed.",
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({}),
+      run: async () => {
+        const out = [];
+        for (const l of locked.live()) { const r = await ctx.call("wink.device.record", { id: l.device }).catch(() => null); if (r && r.data && r.data.id === l.device) out.push(l); }
+        return { locked: out };
+      },
+    });
     ctx.tool("presence.person.renew-allow", {
       effect: "write",
       description: "Lift the lock on a paired device that answered its sign-in challenge wrongly three times, from the owner's own device. The device then renews itself with its key.",
