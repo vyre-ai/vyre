@@ -69,3 +69,12 @@ test("an invite card reads the space, the role and the sender", () => {
   const c = inviteFrom({ id: "inv_1", role: "member", status: "pending", space: { id: "spc_1", label: "harlow" } }, "harlow.vyre.run/join/x");
   assert.deepEqual([c.space, c.address, c.role, c.status], ["harlow", "harlow.vyre.run", "Member", "pending"]);
 });
+
+test("the real invite card: the display name, the address, the role label, what is seen and the check words", () => {
+  const real = { space: "harlowdev.vyre.run", label: "Harlow Legal", role: "member", role_label: "Member", sees: { scope: [], expires: null }, valid_until: 1791678820968, fingerprint: "5d57", button: "Join Harlow Legal", fingerprint_words: "front ribbon army more" };
+  const c = inviteFrom(real, "https://harlowdev.vyre.run/join/t");
+  assert.deepEqual([c.space, c.address, c.role, c.words, c.from], ["Harlow Legal", "harlowdev.vyre.run", "Member", "front ribbon army more", ""]);
+  assert.match(c.sees, /Member role/);
+  const t = inviteFrom({ ...real, role: "temp", role_label: "Temp", sees: { scope: ["Doe estate plan"], expires: Date.UTC(2026, 9, 14) } }, "l");
+  assert.equal(t.sees, "Doe estate plan, until 2026-10-14");
+});
