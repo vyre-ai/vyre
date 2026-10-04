@@ -87,6 +87,8 @@ export default {
     const idops = createIdentityOps({ store: identity, dir, seen, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
     const files = spaceFiles(root);
     const kv = kvStore(db);
+    // SHIM(legacy labels): the module-local membership store and every kernel-off path that reads it (mstore, membersFor, authorize/gate below the kernel branch, membershipOf, isMember)
+    // are deleted in the kernel default-on commit, with their tests rewritten onto a fake kernel handle. A Space the kernel hosts never reads it.
     const mstore = membershipStore(db);
     const rnames = roleNames(db);
     const spaces = spaceTable(db);
@@ -183,6 +185,7 @@ export default {
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
     /** @type {Map<string, any>} */ const memberSvc = new Map();
+    // SHIM(legacy labels): the local-table members service, for a Space with no kernel.
     const membersFor = (/** @type {string} */ id) => {
       let m = memberSvc.get(id);
       if (!m) {
