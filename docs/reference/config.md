@@ -116,6 +116,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_EGRESS_PROXY` | Not described yet. | `core/computers/egress.js` |
 | `VYRE_EGRESS_SOCKET` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
+| `VYRE_FINISH_MS` | Not described yet. | `core/daemon/index.js` |
+| `VYRE_FINISH_POLL_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_FREEZE_FD` | Not described yet. | `core/computers/image/computerd/index.js` |
 | `VYRE_GEMINI_HOME` | Not described yet. | `core/import/formats/index.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
