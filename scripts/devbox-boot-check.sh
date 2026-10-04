@@ -1,6 +1,6 @@
 #!/bin/bash
 # The boot gate: run BEFORE a trunk push. Syncs the merged tree (or `git archive <commit>` with BOOTCOMMIT=<sha>) to a test box and
-#  1. runs test/daemon-smoke.test.js (a real vyred, kernel on, system.info over the socket) and kernel/boot.test.js (createKernel) one file at a time with a hard timeout (process group killed),
+#  1. runs test/daemon-smoke.test.js (a real vyred, kernel on, system.info over the socket), kernel/boot.test.js (createKernel), kernel/adopt.test.js and kernel/rv2-hosted-takeover.test.js one file at a time with a hard timeout (process group killed),
 #  2. boots a throwaway vyred in a fresh temp home (kernel on, the presence stand-in file, machine server), waits for "up ... N modules", calls system.echo and records.me, stops it.
 # Exit 1 on any failure and prints the last 20 daemon log lines (send them to the branch's owner). Usage: scripts/devbox-boot-check.sh [testbox2]
 cd "$(dirname "$0")/.." || exit 2
@@ -11,7 +11,7 @@ ssh "$BOX" 'bash -s' <<'REMOTE'
 cd ~/boot-check || exit 2
 export PATH=$HOME/node24/bin:$PATH
 bad=0
-for f in test/daemon-smoke.test.js kernel/boot.test.js; do
+for f in test/daemon-smoke.test.js kernel/boot.test.js kernel/adopt.test.js kernel/rv2-hosted-takeover.test.js; do
   setsid nice -n 10 node --test --test-timeout=80000 "$f" > /tmp/bc.out 2>&1 &
   pid=$!; w=0
   while kill -0 $pid 2>/dev/null && [ $w -lt 100 ]; do sleep 1; w=$((w+1)); done
@@ -29,6 +29,8 @@ if [ -z "$up" ]; then echo "BOOT-CHECK FAIL: the daemon did not come up in 60 s"
 fi
 kill -TERM -- -$(cat $H/pid) 2>/dev/null; sleep 2; kill -KILL -- -$(cat $H/pid) 2>/dev/null
 [ $bad -ne 0 ] && { echo "--- last 20 daemon log lines:"; { cat $H/d.log; cat $H/.vyre/logs/*.log 2>/dev/null; } | tail -20 | cut -c1-240; }
+# stop everything this check started: the daemon's own process group and its sealing/sandbox children (they run from ~/boot-check)
+pkill -TERM -f "$HOME/boot-check/" 2>/dev/null; sleep 2; pkill -KILL -f "$HOME/boot-check/" 2>/dev/null
 rm -rf $H
 exit $bad
 REMOTE
