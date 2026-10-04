@@ -96,10 +96,10 @@ export function SpacesScreen() {
             <Button kind="primary" size="lg" className={phone ? undefined : "self-start"} icon="plus" label="Invite someone" onPress={() => router.push("/u/wink/invite" as never)} />
             <Button kind="ghost" label="Add a temp member" onPress={() => setSheet({ kind: "temp", name: "", scope: projectNames[0] ?? "", days: "7" })} />
           </View>
-        ) : <Footnote>{`Your role in ${spaceName} is ${roleLabel(MY_ROLE)}. An owner or admin invites people and changes roles.`}</Footnote>}
+        ) : cur ? <Footnote>{`Your role in ${spaceName} is ${roleLabel(MY_ROLE)}. An owner or admin invites people and changes roles.`}</Footnote> : null}
       </Sec>
       {warnings.map((w) => <Footnote key={w}>{w}</Footnote>)}
-      <Footnote>Temp access ends on its date. An owner or admin can extend it with one tap.</Footnote>
+      {cur ? <Footnote>Temp access ends on its date. An owner or admin can extend it with one tap.</Footnote> : null}
 
       <Sheet open={sheet?.kind === "role"} onClose={() => setSheet(null)} title={sheet?.kind === "role" ? member(sheet.id)?.name : undefined}>
         {sheet?.kind === "role" ? (
