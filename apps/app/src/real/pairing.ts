@@ -118,6 +118,8 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     // the identity's proof is sent in the first adopt call, made from this pairing's own box and device (reviewer-3 PD-B)
     signIdentity: async (m: Uint8Array) => ({ eid: mine.key.eid, sig: toB64u(await mine.key.sign(m)) }), name: deviceName(),
     crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), signal: abort.signal,
+    // what this device is, honestly: the server records it as the owner's device of this kind and makes its paired session grant at the person's pick (tailnet, wink-rc1)
+    deviceKind: "web", keyStorage: "software",
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
   run.catch((e: Error) => { failed = e; wake(); });
