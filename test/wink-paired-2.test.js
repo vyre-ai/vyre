@@ -643,6 +643,36 @@ test("add this device from another device, real daemon: a box-less device redeem
   const list = after.entries || after;
   assert.ok(list.some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(list));
 });
+test("add this device by a typed code, real daemon: a box-less device types the WINK code, the person types its ack back on the computer, and the identity's list takes the device's key with no words to pick", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  await standinIdentity(t);
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE; // the release default: the typed code is on
+  t.after(() => { if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; });
+  const w = await world(t);
+  assert.match(String((await w.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data?.id), /^per_/);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.match(open.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  /** @type {string} */ let ack = "";
+  const joining = addThisDevice({ code: open.code.toLowerCase(), relay: w.status.url, key: { publicKey, label: "Kit's phone" }, name: "Kit's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onAck: a => { ack = a; } });
+  joining.catch(() => {});
+  await until(async () => ack);
+  assert.match(ack, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, "the phone shows a code to type back");
+  assert.equal((await w.call("wink.phone.pairing")).data.asking, false, "nothing is asked before the ack");
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.code_offer, typed: ack })).data.ok, true);
+  const done = await joining;
+  assert.equal(done.paired, true);
+  assert.equal(done.enrolled, true, JSON.stringify(done));
+  const after = (await w.call("spaces.identity.entries")).data;
+  assert.ok((after.entries || after).some(e => e.kind === "device" && e.label === "Kit's phone"), JSON.stringify(after));
+  // a wrong code does not pair anything
+  await assert.rejects(() => addThisDevice({ code: "WINK-ZZZZ-ZZZZ", relay: w.status.url, key: { publicKey }, name: "x", crypto: nodeCrypto(), keyStore: keystore(t), timeoutMs: 800, pollMs: 50 }), e => ["taken", "unreachable", "bad_code"].includes(e.code));
+});
 
 test("add this device from another device: a no, a wrong pick, a used code and a server's code each add nothing", async t => {
   const { addThisDevice } = await import("../relay/client/phonepair.js");
