@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- gateway door: records, tasks, rules and files tools now reach a Space hosted on a paired server through the remote kernel. `lib/gateway-door.js` no longer asks the local kernel for a chain in a Space it does not host (that answered "no such space"); for a remote handle it checks the call is from this home's signed-in person and lets the server mint the chain from the device it proved.
+
 - spaces: `spaces.host-here` on a server too small for the larger store no longer fails with the kernel's invite wording ("The person who invited you has not confirmed...", the store's `needs_confirmation` code run through the invite word table). It refuses with code `needs_store_confirmation` and the kernel's own text, hosts nothing, and hosts when asked again with `acceptBuiltinStore: true`. `spaces.create` for a server home returns the same `needs_confirmation` step a local creation does, answered by `storeChoice`.
 
 - app, spaces: `claimServerSpace` (apps/app/src/identity/claim-space.js), the creator's half of making a space on a paired server from a device with no box (phone, web): ask the server to host (`spaces.host-here` over the peer session), make the root key, sign the space's chain and the sealed record (id, label, root key, owner name, home route) with the device key through the identity's list, claim it in the directory; a failed claim takes the hosted space back. `spaces.person.learn` (the door records an invitee's Vyre name after the directory confirms it), `spaces.owner.adopt` takes the owner's name, space records carry `ownerName`, and the identity op time check no longer rejects an op made a moment before it is applied.
