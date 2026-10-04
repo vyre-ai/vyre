@@ -724,8 +724,11 @@ export function createGrantsStore(cfg) {
      * claiming is the first person there is, and boot adoption has none to ask); a different identity later is never adopted, with or without a proof.
      * @param {string} to @returns {Promise<{ owner: string, previous: string, changed: boolean }>}
      */
-    async adoptOwner(to) {
+    async adoptOwner(to, expectedFrom) {
       if (typeof to !== "string" || !/^per_[a-z2-7]{26}$/.test(to)) throw new KernelError("bad_input", "an owner is a person id");
+      // HA-1 (reviewer-2): the call names the owner it replaces, and the Space refuses unless that is exactly its owner now: a Space someone else owns is never taken, whoever asks. A finished or
+      // half-finished adoption (the `owner.adopted` marker, which is sealed in the log) is resumed by the same `to` alone.
+      if (!adopted && (typeof expectedFrom !== "string" || !/^per_[a-z2-7]{26}$|^per_[a-z0-9]{1,40}$/.test(expectedFrom))) throw new KernelError("bad_input", "name the owner being replaced");
       if (adopted && adopted.to !== to) throw new KernelError("already_adopted", "this Space's owner already took the claimed identity");
       const owners = [...memberships.values()].filter(m => m.role === "owner").map(m => m.person);
       const from = adopted ? adopted.from : owners.length === 1 ? owners[0] : null;
@@ -734,6 +737,7 @@ export function createGrantsStore(cfg) {
       if (adopted && memberships.get(to)?.role === "owner" && !memberships.has(from) && [...grants.values()].every(g => !(g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from))) return { owner: to, previous: from, changed: false };
       const prior = memberships.get(from);
       if (!adopted && (!prior || prior.role !== "owner")) throw new KernelError("not_allowed", "only the Space's owner can be replaced this way");
+      if (!adopted && from !== expectedFrom) throw new KernelError("not_allowed", "that is not this Space's owner: it is not taken over");
       const k = kernelChain();
       if (!adopted) { await note(k, "owner.adopted", urn("member", to), { from, to }); adopted = freeze({ from, to }); }
       for (const g of [...grants.values()]) if (g.status === "active" && g.subject.kind === "actor" && g.subject.actor.kind === "person" && g.subject.actor.id === from) {

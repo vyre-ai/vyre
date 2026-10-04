@@ -186,8 +186,7 @@ export class Presence {
     const k = this.keys.get(proof.key_id);
     if (!k || k.person !== ctx.person || k.signer !== proof.signer) return "unknown_key";
     // The ONE strength rule (strength.js, shared with the registry): a software key satisfies presence only where a dev switch is on, and is marked method software.
-    const why = strengthRefusal(strengthOf(k.attested), this.allowSoftware || this.allowUnattested); if (why) return why;
-    if (k.signer === SOFTWARE && !this.allowSoftware) return "software_refused";
+    const why = strengthRefusal(strengthOf(k.attested), k.signer === SOFTWARE ? this.allowSoftware : this.allowUnattested); if (why) return why; // each dev switch admits only its own kind of key
     // V-3: a key from before the chain was pinned and never bound has a day after the first pin to be bound by a sync; after that it proves nothing.
     const pin = this.pins.get(ctx.person);
     if (!k.device && pin?.first !== undefined && this.now() - pin.first > UNBOUND_GRACE_MS) return "needs_bind";

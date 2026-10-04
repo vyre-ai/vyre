@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { startSealer } from "./client.js";
-import { strengthOf, strengthRefusal, methodOf, SOFTWARE_KEY } from "./strength.js";
+import { strengthOf, strengthRefusal, methodOf, strengthOfMethod, SOFTWARE_KEY } from "./strength.js";
 import { person, signer, tmp, enrolDevice } from "./testing.js";
 
 const code = (/** @type {Promise<any>} */ p) => p.then(() => null, e => e.code);
@@ -50,4 +50,39 @@ test("dev: a software key satisfies an invite and a role change and the use is m
   await rel.health(); await new Promise(r => setTimeout(r, 50));
   for (const [op, fields] of acts) assert.equal((await rel.presenceProve({ chain: ch, op, fields, proof: alex.proof(ch, op, fields) })).code, SOFTWARE_KEY, op);
   assert.equal(await code(rel.anchor.reset({ chain: ch, proof: alex.proof(ch, "anchor.reset", {}) })), SOFTWARE_KEY, "anchor.reset too: every presence-required act uses the same check");
+});
+
+test("each dev switch admits only its own kind of key: VYRE_SEAL_SOFTWARE a software-class key and nothing else, VYRE_SEAL_UNATTESTED an unattested hardware-class key and nothing else", async t => {
+  const dir = tmp("str3"), both = startSealer({ dir, timeoutMs: 8000, dev: true, software: true, unattested: true });
+  const soft = signer("per_alex", undefined, "software"), hw = signer("per_alex", undefined, "secure_enclave"), ch = person("per_alex");
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  await enrolDevice(both, soft);
+  await enrolDevice(both, hw, { existing: soft });
+  await both.close();
+  const fields = { k: "v" }, op = "task.decide";
+  const ask = async (/** @type {any} */ o, /** @type {any} */ sg) => { const s = startSealer({ dir, timeoutMs: 8000, dev: true, ...o }); try { await s.health(); await new Promise(r => setTimeout(r, 50)); return await s.presenceProve({ chain: ch, op, fields, proof: sg.proof(ch, op, fields) }); } finally { await s.close(); } };
+  assert.equal((await ask({ software: true }, soft)).ok, true, "software switch: the software key");
+  assert.equal((await ask({ software: true }, hw)).code, SOFTWARE_KEY, "software switch: an unattested hardware-class key is refused");
+  assert.equal((await ask({ unattested: true }, hw)).ok, true, "unattested switch: the unattested hardware-class key");
+  assert.equal((await ask({ unattested: true }, soft)).code, SOFTWARE_KEY, "unattested switch: a software-class key is refused");
+  assert.equal((await ask({}, soft)).code, SOFTWARE_KEY); assert.equal((await ask({}, hw)).code, SOFTWARE_KEY, "no switch: neither");
+});
+
+test("by method (the registry's presence): the methods that need a person's gesture count as hardware, a device-method file key and anything unknown are software", () => {
+  for (const m of ["touchid", "capsule", "passkey", "tty", "code"]) { assert.equal(strengthOfMethod(m), "hardware", m); assert.equal(strengthRefusal(strengthOfMethod(m), false), null, m); }
+  for (const m of ["device", "grant", "stand-in", "", "whatever", "a-new-method"]) { assert.equal(strengthOfMethod(m), "software", m); assert.equal(strengthRefusal(strengthOfMethod(m), false), SOFTWARE_KEY, m); assert.equal(strengthRefusal(strengthOfMethod(m), true), null, `${m} on dev`); }
+});
+
+test("a presence session inherits the method that opened it: touchid or the terminal code keep satisfying presence; a device-opened session is software (refused on release, accepted on dev); an old session with no opener is software", () => {
+  for (const opener of ["touchid", "capsule", "passkey", "tty", "code"]) { assert.equal(strengthOfMethod("session", opener), "hardware", opener); assert.equal(strengthRefusal(strengthOfMethod("session", opener), false), null, `session opened by ${opener}`); }
+  assert.equal(strengthOfMethod("session", "device"), "software"); assert.equal(strengthRefusal(strengthOfMethod("session", "device"), false), SOFTWARE_KEY, "release"); assert.equal(strengthRefusal(strengthOfMethod("session", "device"), true), null, "dev");
+  for (const none of [undefined, null, "", "session", "unknown"]) { assert.equal(strengthOfMethod("session", /** @type {any} */ (none)), "software", `opener ${String(none)}`); assert.equal(strengthRefusal(strengthOfMethod("session", /** @type {any} */ (none)), false), SOFTWARE_KEY); }
+});
+
+test("the terminal window inherits its opener like a session: opened by tty or touchid it stays hardware, opened by a device proof it is software (software_key on release), with no opener it is software; a window is never a gesture of its own", () => {
+  for (const opener of ["tty", "touchid", "capsule", "passkey", "code"]) assert.equal(strengthRefusal(strengthOfMethod("window", opener), false), null, `window opened by ${opener}`);
+  assert.equal(strengthRefusal(strengthOfMethod("window", "device"), false), SOFTWARE_KEY, "device-opened window on release");
+  assert.equal(strengthRefusal(strengthOfMethod("window", "device"), true), null, "and on dev");
+  for (const none of [undefined, null, "", "window", "session"]) assert.equal(strengthOfMethod("window", /** @type {any} */ (none)), "software", `opener ${String(none)}`);
+  assert.equal(strengthOfMethod("window"), "software", "no opener argument at all");
 });
