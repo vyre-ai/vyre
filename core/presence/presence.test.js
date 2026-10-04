@@ -627,6 +627,36 @@ test("presence: a passkey a relayed browser enrolled proves only for that device
   assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
 });
 
+test("presence: a passkey with no device binding proves for no relayed device, and a bound one stops proving once it is removed", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const p = new Presence({ db, platform: "linux", touchid: null, who: async () => [],
+    webauthn: { verifyAssertion: async () => ({ ok: true, signCount: 0 }) } });
+  const spki = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spki(), alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: "boxcredential1" });
+  // the same rp as a browser's, but enrolled with no device: nothing ties it to a relayed device
+  p.enroll({ kind: "passkey", name: "loose", public_key: spki(), alg: -7, rp_id: "app.vyre.run", credential_id: "loosecredential1" });
+  p.enroll({ kind: "passkey", name: "alex-phone web", public_key: spki(), alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1", device: "abcdefghijklmnop", origin: "https://app.vyre.run" });
+  const PHONE = { kind: "device", stableId: "abcdefghijklmnop" };
+  const tool = "vault.reveal", input = { name: "northwind-mail" };
+  const proveWith = async (peer, cred) => {
+    const c = await p.challenge({ tool, input, method: "passkey", peer });
+    if (c.error) return c;
+    const v = await p.verify({ tool, input, caller: "deck", peer, proof: { method: "passkey", id: c.challenge, cred, ad: "x", cd: "x", sig: "x" }, def: {} });
+    return { offered: c.webauthn.allowCredentials.map(x => x.id), ok: v.ok };
+  };
+  const loose = await proveWith(PHONE, "loosecredential1");
+  assert.deepEqual(loose.offered, ["webcredential1"], "the unbound passkey is not even offered to the device");
+  assert.equal(loose.ok, false, "the unbound passkey does not prove from the device");
+  assert.equal((await proveWith(null, "loosecredential1")).ok, false, "nor from the box's own screen, whose rp is another");
+  assert.equal((await proveWith(PHONE, "webcredential1")).ok, true);
+  assert.equal(p.remove("webcredential1"), true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0, "its binding goes with it");
+  assert.match((await proveWith(PHONE, "webcredential1")).error.message, /no passkey is enrolled for this device/);
+  assert.ok(!(await proveWith(PHONE, "loosecredential1")).ok, "still nothing for the device");
+});
+
 test("presence: a grant enrolls the first passkey and nothing else, once, for five minutes, from the node it was made for", async t => {
   const { p, tick } = setup(t);
   p.role = "box";
@@ -871,4 +901,42 @@ test("paired: a software-key device is recorded as one, and a standing rule give
     const max = db.prepare("SELECT max FROM presence_people WHERE id = ?").get(s.id).max;
     assert.equal(max > clock + 91 * 86_400_000, !cap, cap ? "the standing rule restores the cap" : "the default has none");
   }
+});
+
+test("stand-in (development walks only): taken only when the daemon says so, recorded as method stand-in, and a build that takes none ignores it with one log line", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const events = new Events(db);
+  const logs = [];
+  let on = false;
+  const p = new Presence({ db, events, log: m => logs.push(m), standIn: () => on, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  const ask = () => p.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "stand-in" } });
+  const off1 = await ask();
+  assert.equal(off1.ok, false, "off: refused");
+  await ask();
+  assert.equal(logs.filter(l => /stand-in proof was offered and ignored/.test(l)).length, 1, "said once");
+  on = true;
+  const r = await ask();
+  assert.deepEqual([r.ok, r.method], [true, "stand-in"]);
+  assert.ok(events.since(0).some(e => e.type === "presence.proved" && e.payload.method === "stand-in"), "the event names the method");
+  // a real method is untouched by the switch
+  on = false;
+  assert.equal((await p.verify({ tool: "vault.reveal", input: { id: 1 }, caller: "cli", proof: { method: "tty" } })).ok, false);
+});
+
+test("PS-4: removing a presence key also deletes the pending pair grants it confirmed, and leaves another key's grants alone", async t => {
+  const home = tempHome(t), db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const { PersonSessions } = await import("./person.js");
+  const people = new PersonSessions({ db, now: () => Date.now() });
+  const jwk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+  const ins = db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, sign_count, created) VALUES (?,?,?,?,?,0,?)");
+  ins.run("pkA", "device", "Mac A", "x", -7, Date.now()); ins.run("pkB", "device", "Mac B", "y", -7, Date.now());
+  const p = new Presence({ db, platform: "linux", touchid: null, webauthn: null, who: async () => [] });
+  people.grant({ device: "devA", keyId: "pkA", deviceKey: jwk }); people.grant({ device: "devB", keyId: "pkB", deviceKey: jwk });
+  const grants = () => db.prepare("SELECT device FROM presence_pair_grants ORDER BY device").all().map(r => r.device);
+  assert.deepEqual(grants(), ["devA", "devB"]);
+  assert.equal(p.remove("pkA"), true);
+  assert.deepEqual(grants(), ["devB"], "the removed key's grant is gone at once, the other's stays");
 });

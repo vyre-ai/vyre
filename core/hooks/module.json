@@ -4,7 +4,7 @@
   "description": "Inbound webhooks from the public internet through Tailscale Funnel: one route at a time, each checked by the sender's signature, stored and announced to watchers.",
   "roles": ["box"],
   "requires": [],
-  "does": { "tools": [{ "name": "hooks.enable", "reach": "person" }, { "name": "hooks.list", "reach": "anyone" }, { "name": "hooks.open", "reach": "person" }, { "name": "hooks.close", "reach": "person" }, { "name": "hooks.status", "reach": "anyone" }, { "name": "hooks.delivery", "reach": "anyone" }] },
+  "does": { "reads": ["hooks.list", "hooks.status"], "tools": [{ "name": "hooks.enable", "reach": "person" }, { "name": "hooks.list", "reach": "anyone" }, { "name": "hooks.open", "reach": "person" }, { "name": "hooks.close", "reach": "person" }, { "name": "hooks.status", "reach": "anyone" }, { "name": "hooks.delivery", "reach": "anyone" }] },
   "watches": { "emits": ["hook.received", "hook.opened", "hook.closed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["hooks"] },
   "needs": { "vault": ["per-route"] },

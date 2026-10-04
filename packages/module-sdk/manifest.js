@@ -202,6 +202,7 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
     ...Object.entries(TYPES.object(does.apps) ? does.apps : {}).flatMap(([app, a]) =>
       Object.entries(TYPES.object(a) && TYPES.object(a.actions) ? a.actions : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.apps.${app}.actions.${k}`, t]))),
   ];
+  for (const r of Array.isArray(does.reads) ? does.reads : []) if (typeof r !== "string" || !tools.includes(r)) out.push(`does.reads names ${String(r)}, which is not under does.tools`);
   for (const [where, t] of mapped) if (typeof t === "string" && !tools.includes(t)) out.push(`${where} names ${t}, which is not under does.tools`);
   // The same rules as the loader's settings check (core/config/settings.js validateDecls).
   const seen = new Set();
@@ -298,6 +299,7 @@ export function toolEntries(m) {
     if (typeof t.target === "string") extra.target = t.target;
     if (typeof t.projectArg === "string" || Array.isArray(t.projectArg)) extra.projectArg = t.projectArg;
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
+    if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     return [{ name: t.name, summary: typeof t.summary === "string" ? t.summary : "", reach: t.reach || "anyone", outward: t.outward || null, cost: t.cost || null, ...extra }];
   });
 }

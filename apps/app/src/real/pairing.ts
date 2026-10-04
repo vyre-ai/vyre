@@ -51,7 +51,10 @@ export function serverSession(code: Extract<WinkCode, { ok: true }>, target?: Ta
         if (!first) throw new BoxError("no_target", "There is no identity here to pair to.");
         t = { id: first.id, kind: first.kind, label: first.label };
       }
-      const r = await tool<{ pairing: string }>("wink.pair.server", { payload: payloadOf(code), target: { id: t.id, kind: t.kind }, kind: "server" });
+      // The claimed Vyre name goes with the pairing so a server that has never seen the person can show it once the directory confirms it (windows, 5 Oct). Only a label, never a key.
+      const me = await tool<{ exists?: boolean; label?: string }>("spaces.identity.status").catch(() => null);
+      const vyre = me?.exists && typeof me.label === "string" && me.label ? me.label : "";
+      const r = await tool<{ pairing: string }>("wink.pair.server", { payload: payloadOf(code), target: { id: t.id, kind: t.kind }, kind: "server", ...(vyre ? { owner: { vyre } } : {}) });
       pairing = r.pairing;
       await until("words");
     },

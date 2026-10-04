@@ -367,7 +367,8 @@ test("artifacts: the # picker finds titles within the caller's reach and resolve
   assert.ok(!JSON.stringify(hit).includes("secret body"), "names and hints only");
   assert.equal((await ok("artifacts.mention.search", {})).length, 2, "an empty query lists the latest");
   const r = await asVyre("artifacts.mention.resolve", { id: a.id, thread: "t1" });
-  assert.equal((await call("artifacts.mention.search", { q: "x" }, "mcp:agent:juno", { thread: "t1" })).error !== undefined, true, "a model never searches");
+  // An agent's search is a read-only name lookup the reach table lists as open (core/modules/agent-reach.js OPEN); a bare model session and a hook never search.
+  for (const who of ["mcp", "hook"]) assert.equal((await call("artifacts.mention.search", { q: "x" }, who, { thread: "t1" })).error !== undefined, true, `${who} never searches`);
   assert.deepEqual([r.name, r.grant], ["Referral tracker", { read: a.id, access: "read" }]);
   assert.ok(!JSON.stringify(r).includes("secret body"), "a tag carries no content");
   assert.equal((await call("artifacts.mention.resolve", { id: a.id })).error.code, "no_such_tool", "the person never calls it");

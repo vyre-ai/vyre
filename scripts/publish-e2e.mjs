@@ -8,13 +8,14 @@ import path from "node:path";
 import os from "node:os";
 import { spawnSync } from "node:child_process";
 import assert from "node:assert/strict";
+import { writeSiteFiles, volumeFill } from "../lib/publish/site-write.js";
 import { joinPageHtml } from "../lib/publish/join.js";
 import { edgeCompose, composeText, caddyfile, caddyDockerfile, IMAGES, serviceName, projectName } from "../lib/publish/edge.js";
 
 const arg = (/** @type {string} */ n, /** @type {string} */ d) => { const i = process.argv.indexOf(`--${n}`); return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : d; };
 const dir = path.resolve(arg("dir", fs.mkdtempSync(path.join(os.homedir(), "publish-e2e-"))));
 const keep = process.argv.includes("--keep");
-const SPACE = { id: "spc_pube2e000001", name: "harlow.vyre.run" };
+const SPACE = { id: "spc_pubeedgeabcd", name: "harlow.vyre.run" };
 const DEP = "dep_0123456789abcdef";
 const work = [{ id: DEP, kind: "static", name: "northwind", stage: "Production" }];
 const run = (/** @type {string} */ cmd, /** @type {string[]} */ args, o = {}) => { const r = spawnSync(cmd, args, { cwd: dir, encoding: "utf8", ...o }); return { code: r.status, out: String(r.stdout || "") + String(r.stderr || "") }; };
@@ -37,7 +38,22 @@ try {
   assert.equal(built.code, 0, built.out);
   log(`built ${IMAGES.caddy}`);
   assert.equal(run("docker", ["volume", "create", vol]).code, 0);
-  const put = (/** @type {string} */ html) => run("docker", ["run", "--rm", "-v", `${vol}:/srv`, "alpine:3", "sh", "-c", `mkdir -p /srv && printf '%s' '${html}' > /srv/index.html && printf secret > /srv/.hidden`]);
+  // The site is filled the way Publish fills it: the checked file list is written into a fresh folder (regular files only, O_NOFOLLOW|O_EXCL), then copied into the volume by a
+  // throwaway container with no network (lib/publish/site-write.js).
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "publish-fill-"));
+  const put = (/** @type {string} */ html) => {
+    run("docker", ["run", "--rm", "-v", `${vol}:/srv`, "alpine:3", "sh", "-c", "chmod -R u+w /srv; rm -rf /srv/* /srv/.[!.]*"]);
+    const dirIn = writeSiteFiles(scratch, [{ path: "index.html", content: html }, { path: ".hidden", content: "secret" }, { path: "sub/page.html", content: "<p>page</p>" }]);
+    const r = run("docker", volumeFill(dirIn, vol, scratch));
+    fs.rmSync(dirIn, { recursive: true, force: true });
+    return r;
+  };
+  // links never get that far: each one is refused before an archive exists
+  for (const evil of [{ path: "p", type: "symlink", target: "/etc/passwd", content: "" }, { path: "e", symlink: ".env", content: "" }, { path: "g", symlink: "sub/.git/config", content: "" }, { path: "pe", symlink: "/proc/self/environ", content: "" }, { path: "sec", symlink: "/run/secrets/NAME", content: "" }]) {
+    assert.throws(() => writeSiteFiles(scratch, [{ path: "index.html", content: "x" }, evil]), /link|only regular files/, evil.path);
+    assert.deepEqual(fs.readdirSync(scratch), [], "nothing written for " + evil.path);
+  }
+  log("links to .env, .git/config, /etc/passwd, /proc/self/environ and /run/secrets/NAME refused before anything is written");
   assert.equal(put("<h1>Northwind v1</h1>").code, 0);
   const up = run("docker", ["compose", "-p", project, "up", "-d", "--no-deps", "caddy", svc]);
   log(up.out.trim().split("\n").slice(-6).join("\n"));
@@ -71,7 +87,9 @@ try {
   const notJoin = run("curl", ["-sk", "-o", "/dev/null", "-w", "%{http_code}", "--resolve", `${J}:443:127.0.0.1`, `https://${J}/other`]);
   const badTok = run("curl", ["-sk", "-o", "/dev/null", "-w", "%{http_code}", "--resolve", `${J}:443:127.0.0.1`, `https://${J}/join/nodot`]);
   assert.deepEqual([notJoin.out, badTok.out], ["404", "404"]);
-  log("join page served on the space's name, other paths 404");
+  const logs = run("docker", ["logs", `${project}-caddy-1`]).out;
+  assert.ok(logs.includes("/join/redacted") && !logs.includes(tok), "the access log keeps the join token");
+  log("join page served on the space's name, other paths 404, token not in the access log");
   // a new version replaces the old: what rollback does is put the previous bytes back
   assert.equal(put("<h1>Northwind v2</h1>").code, 0);
   const v2 = run("curl", ["-sk", "--resolve", "northwind.harlow.vyre.run:443:127.0.0.1", "https://northwind.harlow.vyre.run/"]);

@@ -224,7 +224,7 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
 await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
 await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
-await step("settings: account, make a new recovery code", { needs: "presence", expect: [/I wrote it down/] }, async () => {
+await step("settings: account, make a new recovery code", { skip: "not walkable on a headless box: the recovery code replace needs a real person presence (lead ruling 4 Oct)", expect: [/I wrote it down/] }, async () => {
   await go("u/settings/account");
   await press("Make a new recovery code");
   await settle(1500);
@@ -319,7 +319,11 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await click("Continue");
   await page.screenshot({ path: path.join(OUT, "setup-5-members.png") });
   const members = (await text()).replace(/\s+/g, " ").slice(0, 200);
-  for (const later of ["Later", "Later", "Start empty"]) { await click(later, { settle: 1500 }).catch(() => {}); }
+  // Members has only Continue when nobody is waiting, else Later; Connectors has Later; Kit has Start empty (or Finish setup).
+  const clickAny = async (labels) => { for (const l of labels) { const b = page.getByText(l, { exact: true }).first(); if (await b.count()) { await b.click(); await settle(1500); return l; } } return null; };
+  await clickAny(["Later", "Continue"]);
+  await clickAny(["Later", "Continue"]);
+  await clickAny(["Start empty", "Finish setup"]);
   await page.screenshot({ path: path.join(OUT, "setup-6-done.png") });
   const t6 = await text();
   if (!/is ready/.test(t6)) throw new Error(`setup did not reach its done page (members step said: ${members}): ${t6.replace(/\s+/g, " ").slice(0, 300)}`);

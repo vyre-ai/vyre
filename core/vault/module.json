@@ -7,6 +7,7 @@
   ],
   "requires": [],
   "does": {
+    "reads": ["vault.account.status", "vault.device.list", "vault.emergency.list", "vault.health", "vault.history", "vault.list", "vault.pass.list", "vault.search", "vault.vaults.list"],
     "tools": [
       { "name": "vault.put", "reach": "anyone" },
       { "name": "vault.list", "reach": "anyone" },
@@ -30,6 +31,7 @@
       { "name": "vault.audit", "reach": "anyone" },
       { "name": "vault.match", "reach": "anyone" },
       { "name": "vault.unlock", "reach": "anyone" },
+      { "name": "vault.state", "reach": "anyone" },
       { "name": "vault.lock", "reach": "person" },
       { "name": "vault.identity", "reach": "anyone" },
       { "name": "vault.pass.create", "reach": "anyone" },
@@ -133,6 +135,8 @@
       { "name": "vault.credential.tokens", "reach": "modules" },
       { "name": "vault.forward", "reach": "modules" },
       { "name": "vault.forward.file", "reach": "modules" },
+      { "name": "vault.service.forward", "reach": "modules" },
+      { "name": "vault.service.catalog", "reach": "modules" },
       { "name": "vault.provider.set", "reach": "person" },
       { "name": "vault.provider.remove", "reach": "person" },
       { "name": "vault.provider.status", "reach": "person" }

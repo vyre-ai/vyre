@@ -2,9 +2,10 @@
 name: capsule-mac
 on:
   push:
-    paths: ["local/**", "!local/capsule/native-win/**", "docs/design/brand/export/lumen/macos/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", ".github/workflows/capsule-mac.yml"]
+    branches: ["main", "work/capsule*", "work/mac-*", "work/lumen*"]
+    paths: ["local/capsule/**", "!local/capsule/native-win/**", ".github/workflows/capsule-mac.yml"]
   pull_request:
-    paths: ["local/**", "!local/capsule/native-win/**", "docs/design/brand/export/lumen/macos/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/capsule/**", "!local/capsule/native-win/**"]
   workflow_dispatch:
 permissions:
   contents: read

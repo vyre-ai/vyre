@@ -90,7 +90,7 @@ test("person: a script on the owner's Mac is the owner's device, never the perso
   // A proof alone is not enough over the tailnet: human-only still wants the person's session.
   const proved = await call(MAC_IP, "vault.reveal", { name: "northwind-mail" }, { "x-vyre-presence": "passkey id=x" });
   assert.equal(proved.error.code, "person_session_required");
-  // Reads stay the device's: the Deck loads before anyone signs in.
+  // Reads stay the device's: the Deck loads before anyone signs in (a tool that declares reach person is the exception, and presence.person.status is exempt: it is how a surface learns that nobody is).
   assert.equal((await call(MAC_IP, "agents.list")).status, 200);
   assert.deepEqual((await call(MAC_IP, "presence.person.status")).data, { signed: false });
 });
