@@ -10,8 +10,7 @@
  "does": {
   "tools": [
    {
-    "name": "spaces.identity.status",
-    "effect": "read",
+    "name": "spaces.identity.status", "effect": "read",
     "reach": "person"
    },
    {
@@ -19,128 +18,103 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.identity.create",
-    "effect": "write",
+    "name": "spaces.identity.create", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.resolve",
-    "effect": "read",
+    "name": "spaces.identity.resolve", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.alias",
-    "effect": "read",
+    "name": "spaces.identity.alias", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.alias.add",
-    "effect": "write",
+    "name": "spaces.identity.alias.add", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.entries",
-    "effect": "read",
+    "name": "spaces.identity.entries", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.entry.add",
-    "effect": "write",
+    "name": "spaces.identity.entry.add", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.entry.remove",
-    "effect": "write",
+    "name": "spaces.identity.entry.remove", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.code.replace",
-    "effect": "write",
+    "name": "spaces.identity.code.replace", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.sync",
-    "effect": "write",
+    "name": "spaces.identity.sync", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.code",
-    "effect": "write",
+    "name": "spaces.identity.recover.code", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.contact.key",
-    "effect": "write",
+    "name": "spaces.identity.contact.key", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.begin",
-    "effect": "write",
+    "name": "spaces.identity.recover.begin", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.approve",
-    "effect": "write",
+    "name": "spaces.identity.recover.approve", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.finish",
-    "effect": "write",
+    "name": "spaces.identity.recover.finish", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.create",
-    "effect": "write",
+    "name": "spaces.create", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.list",
-    "effect": "read",
+    "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.get",
-    "effect": "read",
+    "name": "spaces.get", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.status",
-    "effect": "read",
+    "name": "spaces.status", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.presence.begin",
-    "effect": "write",
+    "name": "spaces.presence.begin", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.presence.recover",
-    "effect": "write",
+    "name": "spaces.presence.recover", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.presence.sync",
-    "effect": "write",
+    "name": "spaces.presence.sync", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.spaces",
-    "effect": "read",
+    "name": "spaces.devices.spaces", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.list",
-    "effect": "read",
+    "name": "spaces.devices.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.lend",
-    "effect": "write",
+    "name": "spaces.devices.lend", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.lend.status",
-    "effect": "read",
+    "name": "spaces.devices.lend.status", "effect": "read",
     "reach": "person"
    },
    {
@@ -174,23 +148,19 @@
     "effect": "write"
    },
    {
-    "name": "spaces.devices.remove",
-    "effect": "write",
+    "name": "spaces.devices.remove", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.restore",
-    "effect": "write",
+    "name": "spaces.devices.restore", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.enrol",
-    "effect": "write",
+    "name": "spaces.devices.enrol", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.set",
-    "effect": "write",
+    "name": "spaces.devices.set", "effect": "write",
     "reach": "person"
    },
    {
@@ -198,78 +168,63 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.setup.save",
-    "effect": "write",
+    "name": "spaces.setup.save", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.setup.claim",
-    "effect": "write",
+    "name": "spaces.setup.claim", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.resume",
-    "effect": "write",
+    "name": "spaces.resume", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.cancel",
-    "effect": "write",
+    "name": "spaces.cancel", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.code.submit",
-    "effect": "write",
+    "name": "spaces.code.submit", "effect": "write",
     "reach": "anyone", "callers": ["device", "module"]
    },
    {
-    "name": "spaces.server.install",
-    "effect": "write",
+    "name": "spaces.server.install", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.move.plan",
-    "effect": "read",
+    "name": "spaces.move.plan", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.assess-computer",
-    "effect": "read",
+    "name": "spaces.assess-computer", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.members.list",
-    "effect": "read",
+    "name": "spaces.members.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.members.add",
-    "effect": "write",
+    "name": "spaces.members.add", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.set-role",
-    "effect": "write",
+    "name": "spaces.members.set-role", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.remove",
-    "effect": "write",
+    "name": "spaces.members.remove", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.extend",
-    "effect": "write",
+    "name": "spaces.members.extend", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.transfer",
-    "effect": "write",
+    "name": "spaces.members.transfer", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.roles.names",
-    "effect": "write",
+    "name": "spaces.roles.names", "effect": "write",
     "reach": "person"
    },
    {
@@ -281,48 +236,39 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.invites.create",
-    "effect": "write",
+    "name": "spaces.invites.create", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.confirm",
-    "effect": "write",
+    "name": "spaces.invites.confirm", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.revoke",
-    "effect": "write",
+    "name": "spaces.invites.revoke", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.list",
-    "effect": "read",
+    "name": "spaces.invites.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.preview",
-    "effect": "read",
+    "name": "spaces.invites.preview", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.accept",
-    "effect": "write",
+    "name": "spaces.invites.accept", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.redeem",
-    "effect": "write",
+    "name": "spaces.invites.redeem", "effect": "write",
     "reach": "anyone", "callers": ["device", "module"]
    },
    {
-    "name": "spaces.compute.allow",
-    "effect": "write",
+    "name": "spaces.compute.allow", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.compute.accept",
-    "effect": "write",
+    "name": "spaces.compute.accept", "effect": "write",
     "reach": "person"
    },
    {
@@ -362,8 +308,7 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.compute.status",
-    "effect": "read",
+    "name": "spaces.compute.status", "effect": "read",
     "reach": "person"
    },
    {
