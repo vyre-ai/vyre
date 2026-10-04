@@ -7,13 +7,13 @@
 /**
  * The state to show for Claude, from onboard.status's `claude` and what this screen is doing.
  * @param {{ state?: string, why?: string | null, signedIn?: boolean, via?: string | null, installed?: boolean } | null | undefined} claude
- * @param {{ waiting?: boolean, failed?: string, pairFirst?: boolean, onPhone?: boolean }} [local]
+ * @param {{ waiting?: boolean, failed?: string, pairFirst?: boolean, onPhone?: boolean, ownerFirst?: string | null }} [local]
  * @returns {{ state: AiState, line: string }}
  */
 export function claudeState(claude, local = {}) {
   const connected = Boolean(claude?.signedIn || claude?.state === "done");
   // Not connected yet: a server with no owner says to pair first (no sign-in button, no error after a tap); a browser cannot give the owner's presence, so it says to do it on the phone.
-  if (!connected && local.pairFirst) return { state: "pair_first", line: "Pair this server to your Vyre app first. Then connect an AI account." };
+  if (!connected && local.pairFirst) return { state: "pair_first", line: local.ownerFirst === "name" ? "Make your Vyre name on this computer first. Then connect an AI account." : "Pair this server to your Vyre app first. Then connect an AI account." };
   if (!connected && local.onPhone) return { state: "on_phone", line: "Connect it in Vyre on your phone." };
   if (local.failed) return { state: "failed", line: local.failed };
   if (claude?.signedIn || claude?.state === "done") return { state: "connected", line: claude?.via === "api-key" ? "Connected with your API key. Your assistants use it, up to the budget you set." : "Connected with your Claude subscription. Your assistants use it, up to the budget you set." };

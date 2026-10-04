@@ -19,10 +19,11 @@ export function ConnectClaude({ onConnected }: { onConnected?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState("");
   const [pairFirst, setPairFirst] = useState(false);
+  const [ownerFirst, setOwnerFirst] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const load = useCallback(() => { ask("onboard.status").then((s) => { setClaude(claudeOf(s)); if (s?.owned === false) setPairFirst(true); setLoaded(true); }).catch((e) => { (e as { code?: string }).code === "pair_first" ? setPairFirst(true) : setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message)); setLoaded(true); }); }, []);
+  const load = useCallback(() => { ask("onboard.status").then((s) => { setClaude(claudeOf(s)); if (s?.owned === false) setPairFirst(true); setOwnerFirst(typeof s?.ownerFirst === "string" ? s.ownerFirst : null); setLoaded(true); }).catch((e) => { (e as { code?: string }).code === "pair_first" ? setPairFirst(true) : setFailed(aiRefusal((e as { code?: string }).code, (e as Error).message)); setLoaded(true); }); }, []);
   useEffect(load, [load]);
-  const st = claudeState(claude, { waiting: !!link, failed, pairFirst, onPhone: claimBlocked() });
+  const st = claudeState(claude, { waiting: !!link, failed, pairFirst, ownerFirst, onPhone: claimBlocked() });
   useEffect(() => { if (st.state === "connected") onConnected?.(); }, [st.state]);
 
   const run = async (input: Record<string, unknown>, then?: (d: any) => void) => {

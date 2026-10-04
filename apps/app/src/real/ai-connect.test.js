@@ -49,3 +49,9 @@ test("disconnect is one onboard.claude input with the consequence line", () => {
   assert.deepEqual(disconnectInput(), { mode: "disconnect" });
   assert.match(DISCONNECT_NOTE, /Your Claude account itself is not touched/);
 });
+
+test("the first step on an unowned home depends on what it is: pair a server, or make the name on a computer", () => {
+  assert.match(claudeState({ state: "todo" }, { pairFirst: true, ownerFirst: "pair" }).line, /Pair this server to your Vyre app first/);
+  assert.match(claudeState({ state: "todo" }, { pairFirst: true, ownerFirst: "name" }).line, /Make your Vyre name on this computer first/);
+  assert.match(claudeState({ state: "todo" }, { pairFirst: true }).line, /Pair this server/);
+});
