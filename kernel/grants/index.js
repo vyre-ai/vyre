@@ -32,6 +32,10 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "rules.dismiss", resource_type: "rule", risk: "grant", label: "turn down a proposed rule", gloss: "Dismiss a proposed rule." },
   { action: "rules.propose", resource_type: "rule", risk: "write", label: "propose a standing rule", gloss: "Suggest a rule. It does nothing until an owner accepts it." },
   { action: "rules.list", resource_type: "rule", risk: "read", label: "see the standing rules", gloss: "List the rules of the Space and the proposals." },
+  // Kits (kernel/flows/kits.js): an owner or admin may ask for a Kit (an assistant acting for them too, which is how the Engineer proposes); installing and removing one are admin acts of a person.
+  { action: "kits.propose", resource_type: "kit", risk: "write", label: "ask to install a Kit", gloss: "Put a Kit's install card in front of an owner or admin. Nothing changes until they say yes." },
+  { action: "kits.install", resource_type: "kit", risk: "admin", label: "install a Kit", gloss: "Add the types, fields, stages and Flows of a Kit." },
+  { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Take a Kit's parts out. Records stay." },
   { action: "rules.get", resource_type: "rule", risk: "read", label: "see one standing rule", gloss: "Read one rule or proposal in plain words." },
   { action: "rules.test", resource_type: "rule", risk: "read", label: "try a standing rule", gloss: "See what the rules would do to an act, without doing it." },
   { action: "rules.enable", resource_type: "rule", risk: "grant", label: "turn a standing rule on", gloss: "Make a rule you switched off bind again." },
