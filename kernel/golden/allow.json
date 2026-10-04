@@ -268,6 +268,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the guests from other tailnets the box serves and their tools"
  },
  {
+  "tool": "network.wink.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads how the person's network looks from this machine: signed in, link, path, storage devices, clock; read-only and secret-free; callers are the person's surfaces, devices and modules, and a guest or anonymous caller is refused in the tool"
+ },
+ {
+  "tool": "network.wink.whois",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads who the connected device at an address or with a device id is, from the identity list; read-only and secret-free; same callers as the status read"
+ },
+ {
   "tool": "planner.settings",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads and sets the planner's zone and escalation timing, the person's own preferences"
  },

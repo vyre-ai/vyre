@@ -61,7 +61,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 12 | 4 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 14 | 0 | cli |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 15 | 0 | cli |
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local` | 6 | 5 | capsule, cli, deck |
@@ -590,9 +590,10 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#records)
+- Tools: [15](tools.md#records)
 - Emits: no events
 - Shows on: cli
+- Needs daemon: `devStandIn`
 - Needs kernel: `{"actions":[]}`
 
 ## relay
@@ -700,7 +701,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Tools: [66](tools.md#spaces), 14 of them only for other modules
 - Emits: [33 events](events.md#spaces)
 - Shows on: capsule, cli, deck
-- Needs kernel: `{"membership":true}`
+- Needs kernel: `{"membership":true,"spaces":true}`
 
 ## spend
 
