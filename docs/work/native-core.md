@@ -1,5 +1,13 @@
 # native-core
 
+## 2026-10-04 (resume after the team restart)
+Done: capsule-mac 37165857904 failed only on VyreAppTests.swift lines 29 to 32 (main-actor helpers called from a nonisolated test); fixed in 7a602f25e on work/mac-shell and pushed, rerun queued as 37166964873 (read it before calling it fixed). work/ui merged work/chat-ui and work/app-wire (clean, join-link.js from chat), and viewDefOf now marks a type as work only when `def.kind === "project"` (ac235d518, test screens/projects/work.test.js; not run, hosted app run queued). android-app-capture 37166610302 (success): primary text and the Fix button are visible on Now; the square band behind the rounded corners of hero cards is still there, fixed by dropping the outline shadow on Android swipe cards (43a9ed087), to be confirmed on the next capture. The iOS capture 37164502912 was still running when written.
+Parity with iPhone, what each still lacks to feel native (work down in this order):
+- Android: tab-bar indicator pill 64 x 32, first row 8 pt under the status bar, predictive back animation, edge-to-edge insets check, haptics not device-checked, share sheet and notification channels, Material-style text selection and ripple on rows.
+- Mac (Lumen window): terminal and binary streams not relayed, no drag out of the app, cookies not forwarded, window never seen running (hosted capture only), no Services menu or Quick Look, no Handoff, no state restoration of the last route.
+- Both: swipe, Sheet drag, pull to refresh and keyboard avoidance never run on a real device.
+
+
 ## Chrome control status (4 Oct, for the user)
 Read from the code, CI runs and the extension logs (read only); I drove no browser.
 1. Works today: on the person's own Chrome, Vyre for Chrome (local/hands-chrome-mac, standalone package) reads and acts through its extension: tabs, snapshot, click, fill, eval, network, API-first reads, parallel tabs, held sends that wait for the person's approval. The real-Chrome job (real extension, real package over MCP) was green on runners at run 36971024945 (2 Oct, work/022-parallel-tabs). On the server, an agent's Chrome inside its computer (core/computers, hands-chrome over a pipe, Glass to watch and take over) ran end to end on a throwaway stack on 27 Sep.
