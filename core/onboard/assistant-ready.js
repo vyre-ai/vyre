@@ -7,7 +7,7 @@ export const WAITING = "Connect an AI account to start your assistant";
 
 /**
  * @param {{ tryCall: (tool: string, input?: any) => Promise<any>, call: (tool: string, input?: any) => Promise<any>, signedInOutside?: () => boolean,
- *   ensure: (o: { fallbackName: boolean }) => Promise<{ made: boolean }>, state: () => any, setState: (s: any) => void, hasOwner?: () => boolean }} p
+ *   ensure: (o: { fallbackName: boolean }) => Promise<{ made: boolean }>, state: () => any, setState: (s: any) => void, hasOwner?: () => boolean | Promise<boolean> }} p
  * @returns {Promise<"exists"|"no_owner"|"waiting"|"made"|"failed">}
  */
 export async function assistantWhenReady({ tryCall, call, signedInOutside = () => false, ensure, state, setState, hasOwner = () => false }) {
@@ -15,7 +15,8 @@ export async function assistantWhenReady({ tryCall, call, signedInOutside = () =
   const rows = Array.isArray(list) ? list : list && Array.isArray(list.agents) ? list.agents : [];
   if (rows.some((/** @type {any} */ a) => a && a.kind === "assistant")) return "exists";
   const id = await tryCall("spaces.identity.id");
-  const owner = Boolean(hasOwner() || (id && !id.__error && id.id));
+  const owned = await tryCall("wink.server.owned");
+  const owner = Boolean(await hasOwner() || (owned && !owned.__error && owned.owned === true) || (id && !id.__error && id.id));
   if (!owner) return "no_owner";
   const providers = await tryCall("providers.list");
   const connected = signedInOutside() || (Array.isArray(providers) && providers.some((/** @type {any} */ p) => Array.isArray(p.accounts) && p.accounts.some((/** @type {any} */ a) => a && a.signed_in === true)));

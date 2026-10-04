@@ -11,7 +11,7 @@ function world(o = {}) {
     calls, get state() { return st; },
     run: () => assistantWhenReady({
       call: async tool => { if (tool === "agents.list") return agents; throw new Error("no " + tool); },
-      tryCall: async tool => (tool === "spaces.identity.id" ? (o.id === undefined ? { id: "per_x" } : o.id) : tool === "providers.list" ? (o.providers === undefined ? [] : o.providers) : { __error: "no" }),
+      tryCall: async tool => (tool === "spaces.identity.id" ? (o.id === undefined ? { id: "per_x" } : o.id) : tool === "wink.server.owned" ? (o.owned === undefined ? { __error: "no" } : o.owned) : tool === "providers.list" ? (o.providers === undefined ? [] : o.providers) : { __error: "no" }),
       signedInOutside: () => Boolean(o.outside),
       ensure: async x => { calls.push(["ensure", x]); return { made: o.made !== false }; },
       state: () => st, setState: s => { st = s; },
@@ -31,6 +31,10 @@ test("no owner yet: nothing is made and nothing is said", async () => {
   assert.equal(await w.run(), "no_owner");
   assert.deepEqual(w.calls, []);
   assert.equal(w.state, null);
+});
+test("launch's owner signal counts: wink.server.owned answers owned, with no identity id", async () => {
+  const w = world({ id: { id: null }, owned: { owned: true }, providers: signed });
+  assert.equal(await w.run(), "made");
 });
 test("an owner and no signed-in AI account: Now says to connect one, once, and the assistant is not made", async () => {
   const w = world({ providers: unsigned });
