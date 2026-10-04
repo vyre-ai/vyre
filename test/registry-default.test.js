@@ -79,6 +79,16 @@ test("RG-1: an action tool with a read-looking name (onboard.history) is a write
   for (const [name, def] of d.registry.tools) if (def.defaulted) assert.ok(def.callers && !def.callers.includes("mcp") && !def.callers.includes("harness"), `${name} is open to a model with no declared effect`);
 });
 
+test("HD-2 at the registry: threads.start from a model with resume, agent and agent_kind (keys its schema does not list) is refused before the handler sees them", { timeout: 60_000 }, async t => {
+  const d = await world(t);
+  assert.ok(d.registry.tools.has("threads.start"), "the sessions module is loaded");
+  for (const caller of ["mcp", "mcp:thread:t", "cli"]) {
+    const r = await d.registry.call("threads.start", { prompt: "INJECTED", resume: "some-live-thread", agent: "juno", agent_kind: "assistant" }, caller, {});
+    assert.ok(r.error && ["bad_input", "denied"].includes(r.error.code), `${caller}: ${JSON.stringify(r).slice(0, 200)}`);
+    if (r.error.code === "bad_input") assert.match(r.error.message, /resume/);
+  }
+});
+
 test("undeclared input keys are refused for a client and accepted from a module; a schema with no properties list is taken as written", { timeout: 60_000 }, async t => {
   const d = await world(t);
   const extra = await d.registry.call("zdef.make", { name: "x", resume: "other-thread" }, "cli", {});
