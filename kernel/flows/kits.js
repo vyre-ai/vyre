@@ -338,7 +338,10 @@ export class KitManager {
       const change = types.filter(t => old.has(t.name) || cat.types[t.name]);
       // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask
       // for, once. A resumed install whose types are already defined (the ledger says so) asks for nothing, so a spent approval never blocks the rest.
-      const need = types.some(t => !row.added.includes(`type:${t.name}`));
+      // Whether the types still need defining comes from the LIVE catalog, never from the ledger row alone (a row is a record some chains can write): a type that does not exist is defined under a fresh waiver.
+      const live = (await this.catalogFn()).types || {};
+      // An install that is not a resume (a first install or an update) always defines; a resumed one defines only what is still missing.
+      const need = !(prior && prior.status === "installing") || types.some(t => !live[t.name]);
       const waiver = need && this.k.kits && p.task ? await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) }) : undefined;
       if (need) await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
       if (waiver && this.k.kits) await this.k.kits.end(waiver);
