@@ -5390,7 +5390,7 @@ Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 
   - `device` string
   - `name` string
   - `rp_id` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `space`, `tailnet`
 - Needs a person present.
 
 ### `presence.grant.mint`
@@ -7741,6 +7741,15 @@ Take a device or contact off your list in one tap. Any older device can remove a
 This device's permanent identity id, or null when none is claimed yet. The one place the id is kept is this module; pairing and install read it here, never keep their own. For modules.
 
 - Input: none
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
+
+### `spaces.identity.lookup`
+
+A claimed Vyre name's identity list from the directory, verified, and only if it is the given id's: { entries }. Nothing is kept. For the pairing module.
+
+- Input:
+  - `id` string, required
+  - `name` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `spaces.identity.name-of`
@@ -11565,6 +11574,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
   - `handover` object
@@ -11680,6 +11690,7 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
   - `handover` object
