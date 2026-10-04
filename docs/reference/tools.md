@@ -5686,8 +5686,10 @@ Which projects (and their folders) a caller may reach: the one door core/memory,
 - Input:
   - `agent` string
   - `caller` string
+  - `claim` string or null
   - `kind` "facts" or "content"
   - `person` boolean
+  - `thread` string
 - Callers: `module`
 
 ### `projects.remove-threads`

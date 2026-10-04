@@ -62,7 +62,7 @@ export async function personOf(ctx, meta) {
 export async function reach(ctx, caller, meta) {
   const who = agentOf(caller);
   const person = await personOf(ctx, meta);
-  const r = await ctx.call("projects.reach", { ...(who ? { agent: who } : {}), caller, kind: "content", ...(person === undefined ? {} : { person }) });
+  const r = await ctx.call("projects.reach", { ...(who ? { agent: who } : {}), caller, kind: "content", ...(person === undefined ? {} : { person }), ...(meta && (meta.thread || meta.agent) ? { thread: meta.thread || "", claim: meta.agent || null } : {}) });
   if (r.error) {
     // An unnamed non-owner caller (a tailnet guest, a hook, an unrecognised kind) reads with no
     // projects at all, the same as an agent granted nothing, rather than as a throw: only a named
