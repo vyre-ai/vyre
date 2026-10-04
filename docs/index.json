@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1182,"event":452,"config":254,"env":237,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1182,"event":453,"config":254,"env":237,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -895,6 +895,7 @@
     {"kind":"event","name":"pairing-window.closed","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing-window.opened","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing-window.renewed","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
+    {"kind":"event","name":"pairing.abandoned","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing.pending","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing.rejected","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},
     {"kind":"event","name":"pairing.requested","definedIn":"core/relay/index.js","page":"reference/events.md#relay","module":"relay","mentions":[]},

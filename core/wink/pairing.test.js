@@ -37,7 +37,7 @@ function world(o = {}) {
     openCode: async flow => ({ offer: `wo_${flow}`, code: "WINK-ZZZZ-ZZZZ", expires: 1 }), ack: async () => ({ ok: true }),
     owner: (m, what) => { if (m && (m.agent || String(m.caller).startsWith("agent:"))) throw Object.assign(new Error(what), { code: "denied" }); }, dropMs: 0, relayUrl: async () => "ws://relay.test", keyFile: o.keyFile,
     // existing tests adopt in one step and type codes; the Q-1 tests below turn the confirmation on and the typed code off, as a release build has them
-    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
+    confirmAdopt: o.confirm === true, typedCode: o.typedCode ?? true, askHoldMs: o.askHoldMs ?? 0, askMs: o.askMs, askPollMs: 1, releaseMaxMs: o.releaseMaxMs, identityEntry: o.identityEntry, signIdentity: o.signIdentity, vyreName: o.vyreName, mintMs: o.mintMs, looseOwnerIds: o.exactIds ? false : true, pairWordsFor: o.pairWordsFor === null ? undefined : (o.pairWordsFor || (async d => `amber coral ${d}`)), spaceNow: () => HARLOW,
   });
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
@@ -1393,4 +1393,15 @@ test("SP-1 and SP-2: an owner id must have an id's shape; a proof offered with n
   assert.equal(stored, "Alex2J0pwnedgnp.exe");
   assert.doesNotMatch(stored, /[\u0000-\u001f\u007f-\u009f\u202a-\u202e]/);
   assert.equal((await atServer(w3, "wink.server.status")).space, "Alex2J0pwnedgnp.exe");
+});
+
+test("SP-1 exact ids: in production an owner id is per_ plus 26 base32 or spc_ plus 12 or 26; per_a and a 25 character id are refused", async () => {
+  const w = world({ exactIds: true });
+  const bad = id => assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "identity", id, name: "Alex" } }), e => e.code === "bad_input");
+  await bad("per_a"); await bad("per_" + "a".repeat(25)); await bad("per_" + "a".repeat(27)); await bad("PER_" + "a".repeat(26));
+  await assert.rejects(() => adoptAs(w, "device:app1", { owner: { kind: "space", id: "spc_" + "a".repeat(11), name: "H" } }), e => e.code === "bad_input");
+  assert.equal(w.p.meta.get("owner"), null);
+  assert.equal((await adoptAs(w, "device:app1", { owner: { kind: "identity", id: "per_" + "a".repeat(26), name: "Alex" } })).owner.kind, "identity");
+  const w2 = world({ exactIds: true });
+  assert.equal((await adoptAs(w2, "device:app1", { owner: { kind: "space", id: "spc_" + "a".repeat(12), name: "H" } })).owner.kind, "space");
 });

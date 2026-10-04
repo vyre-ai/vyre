@@ -5385,7 +5385,7 @@ Enroll a Capsule key (P-256 in the Secure Enclave, alg -7), a device key (P-256 
   - `device` string
   - `name` string
   - `rp_id` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`
+- Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `space`, `tailnet`
 - Needs a person present.
 
 ### `presence.grant.mint`
