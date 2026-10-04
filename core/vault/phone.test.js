@@ -7,12 +7,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, absent } from "../../test/helpers.js";
 
-async function daemon(/** @type {any} */ t, /** @type {any} */ vault = { keystore: "file" }) {
+async function daemon(/** @type {any} */ t, /** @type {any} */ vault = { keystore: "file" }, /** @type {any} */ presence = present) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault }));
-  const d = await start({ root, presence: present, log: () => {} });
+  const d = await start({ root, presence, log: () => {} });
   t.after(() => d.stop());
   return (/** @type {string} */ tool, input = {}, caller = "cli", meta = {}) => d.registry.call(tool, input, caller, meta);
 }
@@ -39,4 +39,31 @@ test("a passphrase vault: the phone sees `locked`, unlocks with the passphrase, 
   const after = (await reg("vault.state", {}, "mobile")).data;
   assert.deepEqual([after.locked, after.items], [false, 0]);
   assert.ok((await reg("vault.unlock", { passphrase: "x" }, "mcp")).error, "a model cannot unlock");
+});
+
+test("the personal vault from the phone: password plus presence unlocks it; a wrong password, a model, a module, a guest and a call with no presence do not", async t => {
+  const reg = await daemon(t);
+  const pw = "a long sample password for the phone test";
+  assert.ok((await reg("vault.account.create", { password: pw }, "cli")).data, "account made at the desk");
+  await reg("vault.account.lock", {}, "cli");
+  assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked");
+  assert.ok((await reg("vault.account.unlock-phone", { password: "not the password at all" }, "mobile")).error, "a wrong password is refused");
+  assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked", "and nothing opened");
+  for (const [who, caller, meta] of /** @type {[string, string, any][]} */ ([["a model", "mcp", {}], ["a named agent", "mcp:agent:juno", { agent: "juno" }], ["a module", "module:probe", {}], ["a guest", "tailnet-guest:x@y.test", {}], ["a hook", "hook", {}]])) {
+    assert.ok((await reg("vault.account.unlock-phone", { password: pw }, caller, meta)).error, `${who} is refused`);
+  }
+  assert.equal((await reg("vault.list", {}, "cli")).data.personal, "locked", "no refused caller opened it");
+  assert.ok((await reg("vault.account.unlock-phone", { password: pw }, "mobile")).data, "the right password with presence unlocks it");
+  assert.equal((await reg("vault.list", {}, "cli")).data.personal, "unlocked");
+});
+
+test("the personal vault from the phone with no presence (a browser session, a device key with nobody there): presence_required, still locked", async t => {
+  const home = await daemon(t);
+  const pw = "a long sample password for the phone test";
+  await home("vault.account.create", { password: pw }, "cli");
+  await home("vault.account.lock", {}, "cli");
+  // the same daemon cannot be restarted with another verifier here, so ask a daemon whose verifier finds nobody: it has no account, but the refusal comes before the tool runs
+  const none = await daemon(t, { keystore: "file" }, absent);
+  const r = await none("vault.account.unlock-phone", { password: pw }, "mobile");
+  assert.equal(r.error && r.error.code, "presence_required");
 });
