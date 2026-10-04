@@ -9,6 +9,7 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["spaces.identity.republish", "republishes the person's identity list: the person's own act"],
   ["recall.sealscan", "the person's own audit of where sensitive-looking values sit in memory: counts only, but it is the person's to ask"],
   ["recall.sealscrub", "scrubs sensitive-looking values out of memory: the person's own act"],
   ["files.drive.restore", "restores a Drive version: admin and owner, with the person's own act"],
@@ -226,6 +227,12 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "files.drive.space.list",
+  "files.drive.space.read",
+  "records.linked",
+  "records.kits.library",
+  "records.kits.get",
+  "system.build",
   "files.drive.upload",
   "files.drive.versions",
   "records.me",

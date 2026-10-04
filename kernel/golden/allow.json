@@ -100,6 +100,14 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: shares a file)"
  },
  {
+  "tool": "files.drive.space.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a Space drive folder the caller may read; the kernel decides"
+ },
+ {
+  "tool": "files.drive.space.read",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads a Space drive file the caller may read; the kernel decides"
+ },
+ {
   "tool": "files.drive.unmount",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): unmounts a box share from the person's Mac"
  },
@@ -324,6 +332,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain; the kernel decides"
  },
  {
+  "tool": "records.kits.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one Kit's description from the library: public text, no data"
+ },
+ {
+  "tool": "records.kits.library",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the Kits the library offers: public text, no data"
+ },
+ {
+  "tool": "records.linked",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the records linked to one, under the caller's own chain; the kernel decides each"
+ },
+ {
   "tool": "records.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists records under the caller's own chain; the kernel decides every row"
  },
@@ -462,6 +482,10 @@
  {
   "tool": "stream.send",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says something in a group chat as the caller; the stream (core/stream/access.js) builds the chain and adds no people by a send"
+ },
+ {
+  "tool": "system.build",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the build this box runs: version and commit, no data"
  },
  {
   "tool": "system.rename",
