@@ -114,6 +114,7 @@ export default {
     const off = ctx.events.on("*", e => { if (e.source !== "about" && WATCH.test(e.type)) schedule(); });
 
     ctx.tool("about.text", {
+      effect: "write",
       description: "What every Claude Code session is told about the user at its start, recomputed now. Empty when nothing is known.",
       input: { type: "object", properties: {} },
       callers: ["cli", "local", "module", "deck", "capsule"],

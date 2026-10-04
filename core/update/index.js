@@ -131,11 +131,13 @@ export default {
     };
 
     ctx.tool("update.status", {
+      effect: "read",
       description: "Whether a newer Vyre is out: the running version, the newest one on this channel (null when up to date), what changed, when it was last looked up, and how to update (the one command a box person runs, or 'app' when the Mac app updates itself). Read only: nothing is downloaded or changed. Every surface's Update card draws from this.",
       input: { type: "object", properties: {} },
       run: async () => status(),
     });
     ctx.tool("update.apply", {
+      effect: "write",
       description: "Ask for the update now: drops the one-line request the box's own update unit acts on, which installs the newest release only if its signature matches Vyre's release key, and puts the old version back if the new one does not start. Answers at once; update.status shows the progress and the result. Where this server has no such unit (a Mac, or no systemd) it says so and the command `vyre update` is the way. The person's own action.",
       input: { type: "object", properties: {} },
       callers: PEOPLE,
@@ -147,6 +149,8 @@ export default {
       },
     });
     ctx.tool("update.check", {
+      effect: "write",
+      callers: [...PEOPLE, "module"], // a release lookup is network and a saved answer; a model reads update.status instead
       description: "Look at the releases now instead of waiting for the daily look (at most once a minute), then answer like update.status. Off when update.auto is off.",
       input: { type: "object", properties: {} },
       run: async () => { await check(true); return status(); },
