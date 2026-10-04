@@ -5,14 +5,14 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": [
-    {"name": "assistant.brief", "reach": "anyone"},
-    {"name": "assistant.patterns", "reach": "anyone"},
-    {"name": "assistant.glance", "reach": "anyone"},
-    {"name": "assistant.capabilities", "reach": "anyone"},
-    {"name": "assistant.log", "reach": "anyone"},
-    {"name": "assistant.prompt.diff", "reach": "anyone"},
-    {"name": "assistant.daily", "reach": "anyone"},
-    {"name": "assistant.welcome", "reach": "anyone"}
+    {"name": "assistant.brief", "reach": "anyone", "effect": "read"},
+    {"name": "assistant.patterns", "reach": "anyone", "effect": "read"},
+    {"name": "assistant.glance", "reach": "anyone", "effect": "read"},
+    {"name": "assistant.capabilities", "reach": "anyone", "effect": "read"},
+    {"name": "assistant.log", "reach": "anyone", "effect": "read"},
+    {"name": "assistant.prompt.diff", "reach": "anyone", "effect": "read"},
+    {"name": "assistant.daily", "reach": "anyone", "effect": "write"},
+    {"name": "assistant.welcome", "reach": "anyone", "effect": "read"}
   ] },
   "watches": { "emits": ["assistant.briefed", "assistant.glanced", "assistant.rolled", "push.proactive"] },
   "shows": { "cli": [] },
