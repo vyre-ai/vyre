@@ -86,7 +86,7 @@ export async function bootHomeKernel(cfg) {
   // rolled back, rewritten or broken does not start: the owner's own `anchor.reset` (a presence-gated act on the sealing process) is the way out after a restore from backup. A development
   // build says so and goes on.
   if (k.boot && !k.boot.ok) {
-    const way = k.boot.why && String(k.boot.why).startsWith("anchor_") ? "; after a restore from a backup the owner's anchor.reset (with their presence) lets it start" : "";
+    const way = k.boot.why && String(k.boot.why).startsWith("anchor_") ? "; after a restore from a backup the owner's anchor.reset (with their presence) lets it start: run `sudo vyre admin anchor-reset` on this server" : "";
     const msg = `the kernel's log does not match what was signed or anchored (${k.boot.why || "broken"})${way}`;
     if (isPackaged(cfg.packageRoot)) { if (ownSealer && sealer) await sealer.close().catch(() => {}); throw new KernelError("log_rolled_back", `the kernel will not start: ${msg}`); }
     log(`kernel: DEVELOPMENT build, starting anyway: ${msg}`);
