@@ -32,6 +32,8 @@ vyre capsule install
 
 `vyre capsule install` builds Vyre Lumen on your Mac from the package; nothing is downloaded for it.
 
+Or take the app as a disk image: `Vyre.dmg` (from the capsule-mac run's artifacts until releases carry it), open it and drag Vyre to Applications. It is self-signed: Vyre has no Apple Developer ID and the app is not notarized, so the first time macOS refuses a plain double-click. Right-click Vyre in Applications, choose Open, then Open again; after that it opens normally. Or build the image yourself on a Mac with `sh local/capsule/native/build.sh app && sh scripts/make-dmg.sh`.
+
 The line the setup page shows is `curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh`, where the code is the one on the page. (`curl -fsSL https://vyre.run/install.sh | sh` is the same install without a code, for the terminal only.) Step by step: [Install](docs/get-started/install.md).
 
 ## On your Mac: Vyre Lumen

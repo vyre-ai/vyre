@@ -41,7 +41,12 @@ PURGE=0
 SYSTEM=1
 TMP=""
 CODE=${VYRE_CODE:-}
-BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
+# The release files come from VYRE_BOX_URL, else from `box-url` beside this script (a prerelease app names its own tag's release assets there, the
+# rc channel; the files are verified against the pinned release key either way, so the URL chooses a source and never a trust), else vyre.run/box.
+_here=""; [ -f "$0" ] && _here=$(cd "$(dirname "$0")" 2>/dev/null && pwd)
+_boxurl=""; [ -n "$_here" ] && [ -f "$_here/box-url" ] && _boxurl=$(sed -n '1p' "$_here/box-url" | tr -d '\r')
+case "$_boxurl" in https://*/) ;; *) _boxurl="" ;; esac
+BASE=${VYRE_BOX_URL:-${_boxurl:-https://vyre.run/box/}}
 # Overridable for tests only.
 UNAME_S=${VYRE_UNAME_S:-$(uname -s)}
 UNAME_M=${VYRE_UNAME_M:-$(uname -m)}
