@@ -1284,7 +1284,7 @@ export class Registry {
       const refuse = { error: { code: "not_found", message: "no such project" } };
       const named = fields(def.projectArg).flatMap(valuesOf);
       const folders = fields(def.cwdArg).flatMap(valuesOf);
-      const r = await within(this.call("projects.reach", { caller: String(caller), kind: "content" }, "module:vyred", { door: true }), TARGET_MS);
+      const r = await within(this.call("projects.reach", { caller: String(caller), kind: "content", ...(meta && (meta.thread || meta.agent) ? { thread: meta.thread || "", claim: meta.agent || null } : {}) }, "module:vyred", { door: true }), TARGET_MS);
       const reach = r && r.data && typeof r.data === "object" ? r.data : null;
       if (!reach) {
         if (named.length || folders.length) return refuse;
