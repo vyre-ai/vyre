@@ -163,6 +163,8 @@ Server (core/term): `term.open` takes `session` (cwd optional: with a session an
 - platform: `roomFor` is `unsupported` until the daemon declares `needs.room` for the kernel handle it gives createKernelSessions (not used by the stream).
 
 ### Doing
+Task X (4 Oct): dev vyred `vyre-dev` on testbox (details in team/0.2/CHAT.md); /u screens wired to the real box on branch work/chat-ui (Spaces 157ca013d, Devices and pairing 14fc9fdea, Install 4309eb0d4, box door); app npm test 406 of 406 and tsc clean but for chat's ChatAvatar (fixed by merging work/chat-03). Not yet walked in a browser against the dev vyred. Gaps: relay.devices.list lacks `storage` (software-key line), wink identity differs from the spaces identity on the dev box, members have no display names, no per-device space membership call.
+
 Item 5 of the 4 Oct resume list: `VYRE_E2E=1 node --test --test-concurrency=1 core/stream/*.test.js core/switchboard/chat-steer.test.js core/switchboard/kernel-turn.test.js` on testbox3 from ~/chat-run (slow, shared box; rerun on testbox if it stalls). Branch work/chat-03 at 19d177985, pushed; kernel 90bbaa725 and flows 33cb2a62b merged.
 
 ### Next
