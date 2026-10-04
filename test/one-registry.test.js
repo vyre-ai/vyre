@@ -417,3 +417,37 @@ test("spaces.host-here: this home's owner has its OWN kernel host a space (kerne
   assert.equal((await deck("spaces.host-here", { name: "x" })).error?.code, "bad_name");
   assert.equal((await deck("spaces.host-here", { name: "fine", id: "spc_nope" })).error?.code, "bad_input");
 });
+
+test("a MEMBER's device (another person's) is enrolled in a space this home hosts only while that person is an active member and the device is on their own identity list", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const mk = (/** @type {string} */ name) => { const root = tempHome(t); fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name, transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } })); return root; };
+  const aliceRoot = mk("alice-home"), bobRoot = mk("bob-home");
+  const alice = await start({ root: aliceRoot, kernel: true, log: () => {} });
+  t.after(() => alice.stop());
+  const bob = await start({ root: bobRoot, kernel: true, log: () => {} });
+  t.after(() => bob.stop());
+  const A = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root: aliceRoot, caller: "cli" });
+  const B = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root: bobRoot, caller: "cli" });
+  const a = (await A("spaces.identity.create", { name: "alice" })).data;
+  const b = (await B("spaces.identity.create", { name: "bobby" })).data;
+  fs.writeFileSync(path.join(aliceRoot, "dev-presence-stand-in"), "");
+  // alice's home hosts a space; bobby is made a member of it by alice (the kernel's own role call)
+  const sp = await alice.kernel.spaces.host({ owner: a.id, name: "sharedroom" });
+  const aliceChain = sp.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000a", person: a.id, path: "direct", session: "s" });
+  await sp.gateway.grants.setRole(aliceChain, { person: b.id, role: "member" }, { presence: { method: "stand-in" } });
+  // alice's home has verified bobby's name (this is written when an invite is redeemed)
+  alice.registry.deps.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${b.id}`, JSON.stringify("bobby"));
+  const enrolled = async (/** @type {string} */ device, /** @type {string} */ space) => (await alice.registry.call("spaces.devices.enrolled", { device, space }, "module:vyred", { door: true })).data.enrolled;
+  assert.equal(await enrolled(b.eid, sp.space), true, "bobby's own device, bobby an active member");
+  assert.equal(await enrolled("devnotbobbysxxxxx1", sp.space), false, "a device on nobody's list");
+  assert.equal(await enrolled(b.eid, alice.kernel.id.space), false, "bobby is not a member of alice's home space");
+  // removed: no longer enrolled (the kernel says so at call time; the cache holds only who the device belongs to)
+  await sp.gateway.grants.removeMember(aliceChain, { person: b.id }, { presence: { method: "stand-in" } });
+  assert.equal(await enrolled(b.eid, sp.space), false, "a removed member's device");
+});

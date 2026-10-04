@@ -974,6 +974,27 @@ export default {
       }
       return [...new Set(ids)];
     };
+    /** A MEMBER's device (another person's, invited to a space this home hosts): the person whose own identity list carries this device as a device entry, among the people this home has verified by name
+     * (person-name/<id>, written when they joined). Read from the directory, cached a minute. Null when no known person's list has it. @type {Map<string, { at: number, person: string | null }>} */
+    const memberDeviceCache = new Map();
+    const memberDevicePerson = async (/** @type {string} */ device) => {
+      const hit = memberDeviceCache.get(device);
+      if (hit && Date.now() - hit.at < 60_000) return hit.person;
+      let person = null;
+      try {
+        for (const r of /** @type {any[]} */ (db.prepare("SELECT key, value FROM spaces_kv WHERE key LIKE 'person-name/%' LIMIT 200").all())) {
+          const id = String(r.key).slice("person-name/".length);
+          let label = null; try { label = JSON.parse(r.value); } catch { continue; }
+          if (typeof label !== "string" || !label) continue;
+          try {
+            const v = await dir.resolve(label, { resolve: ownerLookup });
+            if (v && v.ok && v.id === id && v.kind === "person" && Array.isArray(v.state && v.state.entries) && v.state.entries.some((/** @type {any} */ e) => e.kind === "device" && e.eid === device)) { person = id; break; }
+          } catch { /* that person's list could not be read: not them */ }
+        }
+      } catch { person = null; }
+      memberDeviceCache.set(device, { at: Date.now(), person });
+      return person;
+    };
     const homePerson = () => { let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; } return who || (K && typeof K.owner === "string" ? K.owner : null); };
     // The SERVER's half of "a space whose home is this server": the creating device asks over the paired session and THIS home's kernel hosts the Space (kernel, store, key, log live here), for this
     // home's owner (the identity that paired it). Idempotent for a given id. Only the owner person acts: a chain that is not exactly the home's owner is refused.
@@ -1008,7 +1029,14 @@ export default {
         // The device argument comes from other modules and the kernel (internal is reach, not trust): only the shapes a device id has are looked up (a relay device id or an enrolment entry id).
         if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(i.device))) return { enrolled: false };
         // Only a device the box knows as this person's paired device is ever enrolled anywhere, with a list or without; an id in none of the tables answers false and writes nothing.
-        if (K && !(await isPairedDevice(String(i.device), homePerson()))) return { enrolled: false };
+        let memberPerson = null;
+        if (K && !(await isPairedDevice(String(i.device), homePerson()))) {
+          // not the home person's device: a MEMBER's device is enrolled in a space only when it is a device on that member's own identity list AND the member is an active member of that space NOW
+          memberPerson = await memberDevicePerson(String(i.device));
+          let ok = false;
+          if (memberPerson && typeof K.membership === "function") { try { ok = (await K.membership(memberPerson, String(i.space))).member === true; } catch { ok = false; } }
+          return { enrolled: ok };
+        }
         let id = String(i.space);
         let known = true;
         let rowStatus = "done";
