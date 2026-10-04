@@ -204,7 +204,9 @@ export class PersonSessions {
       return { ok: false, why: "no such session; sign in again" };
     }
     if (!same(hash(c.secret), row.hash)) return { ok: false, why: "no such session; sign in again" };
-    if (row.kind !== c.kind) return { ok: false, why: "that session is not carried that way" };
+    // A command-line session (`vyre signin`) travels as the bearer header but is signed by no key: it is pinned to the terminal login it was made for (node `cli:<login key>`, which the daemon measures
+    // from the kernel's own view of the peer and never reads from the call), so a program that is not in that login cannot present it.
+    if (row.kind !== c.kind && !(row.kind === "cli" && c.kind === "bearer")) return { ok: false, why: "that session is not carried that way" };
     if (row.max <= now || row.last_used + IDLE <= now) return { ok: false, why: "the session has lapsed; sign in again" };
     if (!node || row.node !== node) return { ok: false, why: "that session was made on another device" };
     if (row.kind === "bearer") {
@@ -344,6 +346,11 @@ export class PersonSessions {
     this.prune();
     return /** @type {any[]} */ (this.db.prepare("SELECT id, kind, node, label, created, last_used, max, paired, software FROM presence_people ORDER BY last_used DESC").all())
       .map(r => ({ id: r.id, kind: r.kind, node: r.node, label: r.label, created: r.created, last_used: r.last_used, expires: Math.min(r.last_used + IDLE, r.max), ...(r.paired ? { paired: true, ...(r.software ? { software: true } : {}) } : {}) }));
+  }
+
+  /** End every command-line session made for this terminal login (`vyre signout`). @param {string} node `cli:<login key>` @returns {number} */
+  revokeNode(node) {
+    return Number(this.db.prepare("DELETE FROM presence_people WHERE node = ? AND kind = 'cli'").run(String(node)).changes);
   }
 
   /** @param {string} id */

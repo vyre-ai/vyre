@@ -70,7 +70,9 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
   // `above`): from under a Claude or a thread it is a model's (the builder then makes an agent chain, never a person), and with no measurement, or one that could not read the ancestry, there are none.
-  if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) {
+  // Only `cli` and `local` are what a person at a terminal sends. `deck` and `mobile` reach a daemon through their own listeners (which set policy.caller), so on the socket they are claims nobody legitimate
+  // makes: they get no person facts whatever the ancestry says (team-lead, 4 Oct: a bare deck label with no person session is refused every time, not only when the walk says outside).
+  if (!policy.caller && ["cli", "local"].includes(caller)) {
     // Inside a model: facts that make an agent chain. Anything but a DEFINITE outside (an unreadable table, a named server above such as tmux or ssh, a `docker exec`, no peer read) gives none: that call is a person only with a person session (LB-2).
     if (!ancestry || typeof ancestry.inside !== "boolean") return null;
     if (!ancestry.inside && ancestry.outside !== true && !(via && via.person)) return null;
@@ -246,6 +248,14 @@ async function startLocked(opts, root, p, release) {
     registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
     registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask) => kernel.resetModulesList(chain, proof, ask);
     registry.deps.modulesListResetPayload = (/** @type {string} */ ask) => kernel.modulesListReset(ask);
+    // The command line's sign-in (core/signin): the kernel's op for the phone to sign, and the person sessions the daemon holds, so the module can make and end one for a terminal login.
+    registry.deps.cliSigninPayload = (/** @type {string} */ ask, /** @type {string} */ terminal) => kernel.cliSigninPayload(ask, terminal);
+    registry.deps.cliSigninCheck = (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask, /** @type {string} */ terminal) => kernel.cliSigninCheck(chain, proof, ask, terminal);
+    registry.deps.cliSessions = Object.freeze({ start: (/** @type {string} */ terminal) => people.start({ node: `cli:${terminal}`, kind: "cli", label: "command line" }), end: (/** @type {string} */ terminal) => people.revokeNode(`cli:${terminal}`),
+      // Is this node already held by a session that is not a stand-in's? (signin.dev never makes one beside a real session.)
+      nodeInUse: (/** @type {string} */ node) => people.list().some((/** @type {any} */ r) => r.node === node && r.label !== "stand-in"),
+      // DEVELOPMENT ONLY (the module asks devStandIn first): an ordinary cookie person session for the walk's browser, on the node the harness names, marked as the stand-in's.
+      startStandIn: (/** @type {string} */ node) => people.start({ node, kind: "cookie", label: "stand-in" }) });
     closeFlowsHost = () => flowsHost.stop();
     // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
     const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
@@ -396,7 +406,7 @@ async function startLocked(opts, root, p, release) {
   }
 
   const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel, people }).catch(e => fail(res, e)));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
     catch { socket.destroy(); }
@@ -696,16 +706,42 @@ export async function asTaken(caller, socket, registry, thread, deps) {
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
       outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
+      server: !w.inside && w.server ? w.server : null,
     }));
     v = mine;
     taken.set(socket, mine);
-    mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+    // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": it is logged, never a person, and asked again on the next call.
+    mine.then(a => { if (!a.definite) { try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside, server: a.server };
 }
-/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean }>>} */
+/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean, server: any }>>} */
 const taken = new WeakMap();
+
+/** The tools that need the calling terminal's login, never a model's shell: the command line's sign-in. */
+const SIGNIN_TOOLS = new Set(["signin.ask", "signin.status", "signin.end"]);
+
+/**
+ * The ancestry callerFacts takes for a socket call, from asTaken's answer. `outside` is the daemon's own measurement. DEVELOPMENT ONLY: with the hand-made stand-in file (`standIn`, which is false in a
+ * release-kind build, see devStandIn) a call that is not inside a model counts as outside too, so a CLI at a terminal over ssh is the signed-in owner on a dev box and can seed and walk it. A caller
+ * inside a model has already been relabelled `mcp` and never gets person facts, stand-in or not. `cliSession` is a live command-line session (`vyre signin`) carried by this call and pinned to the
+ * terminal login the daemon measured for it: the same person facts, on a release build too.
+ * @param {{ model: boolean, outside?: boolean, server?: any }} shell @param {boolean} standIn @param {boolean} [cliSession] @returns {{ inside: boolean, outside: boolean }}
+ */
+export function surfaceAncestry(shell, standIn, cliSession = false) {
+  const named = standIn === true && shell.model !== true && isLoginServer(shell.server);
+  return { inside: shell.model === true, outside: shell.outside === true || (shell.model !== true && (cliSession === true || named)) };
+}
+
+/** What the development stand-in is for: a login over ssh. A named server at the top of the chain that is ROOT-owned (uid 0) and a login program, run from a system folder. A server any user process can start (tmux, screen, a terminal app, a daemonized sh) is as easy for a model to start as a setsid'd shell, so those use the real `vyre signin` (SI-1, SI-1b). */
+const LOGIN_SERVERS = new Set(["sshd", "login"]);
+const SYSTEM_DIRS = ["/usr/", "/bin/", "/sbin/", "/Applications/", "/System/", "/Library/"];
+/** @param {any} server */
+export function isLoginServer(server) {
+  const exe = server && typeof server.exe === "string" ? server.exe : "";
+  return Boolean(exe) && server.uid === 0 && LOGIN_SERVERS.has(path.basename(exe)) && SYSTEM_DIRS.some(d => exe.startsWith(d));
+}
 
 /**
  * The login the person on the socket is typing in, as a key ("ttys003#812@<start>"), or null. Null
@@ -786,17 +822,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // (pinned to its tailnet node or relay device id). A signed session covers its body, so the
   // body is read here once and kept for body().
   const device = Boolean(policy.caller && ownerDevice(policy.caller));
-  let nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
-  // A person's command line signed in with `vyre signin` (approved on the phone) carries its session cookie over the socket: it counts only for the terminal login it was made for (`cli:<login key>`),
-  // so a model's shell, which has no login key (atTerminal is null under a claude), cannot use a token it read from the CLI's file.
-  let cliSession = false;
-  if (socket && !policy.caller && people && terminalOf && carried(req.headers)) {
-    try { const t = await terminalOf(req.socket); const key = t && typeof t === "object" ? t.key : typeof t === "string" ? t : null; if (key) { nodeId = `cli:${key}`; cliSession = true; } } catch { /* no terminal, no session */ }
-  }
+  const nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
   const crossOrigin = Boolean(policy.peer && /** @type {any} */ (policy.peer).origin);
   /** @type {{ id: string, kind: string } | null} */
   let person = null;
-  if ((device || cliSession) && people && carried(req.headers)) {
+  if (device && people && carried(req.headers)) {
     let raw = "";
     if (req.method !== "GET" && req.method !== "HEAD") {
       try { raw = await rawBody(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
@@ -870,6 +900,15 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
+  // A command-line session (`vyre signin`): the credential rides as the bearer header, and counts only for a cli or local label that is not inside a model, from the terminal login it was made for. The login
+  // is what the daemon measures (terminalOf: the kernel's own view of the peer, a model's shell gets none), never anything the call says. A credential that does not fit is simply no session.
+  let cliSession = false;
+  if (socket && people && !policy.caller && !shell.model && /^(cli|local)$/.test(caller) && carried(req.headers)) {
+    const t = terminalOf ? await terminalOf(req.socket).catch(() => null) : null;
+    const key = t && typeof t === "object" ? t.key : t;
+    const c = key ? people.check({ headers: req.headers, node: `cli:${key}`, method: req.method, path: url.pathname + url.search, raw: "" }) : null;
+    if (c && c.ok && c.kind === "cli") { cliSession = true; via.person = { id: c.id, kind: "cli" }; }
+  }
   caller = shell.caller;
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
@@ -980,7 +1019,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     done.then(() => inflight.delete(done));
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
-    const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    const terminal = socket && terminalOf && (SESSIONABLE.has(name) || SIGNIN_TOOLS.has(name)) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
     // Only a caller vyred bound to a thread above says which chat tool call this is.
     const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
     // presence.capsule.pin judges the calling binary's own signature, read here from the socket's
@@ -1028,9 +1067,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
     // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.
-    /** @type {{ inside: boolean, outside: boolean } | undefined} */
-    const measured = socket && !policy.caller ? { inside: shell.model === true, outside: shell.outside === true } : undefined; // not `ancestry`: that is the imported function used earlier in this handler (a const here put it in its dead zone)
-    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
+    /** @type {{ inside: boolean, outside?: boolean } | undefined} */
+    const ancestry = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined;
+    const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, ancestry);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
