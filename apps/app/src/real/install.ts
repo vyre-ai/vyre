@@ -1,12 +1,19 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
-import { BoxError, tool } from "./box";
+import { tool } from "./box";
+import { claimIdentity } from "../identity/claim.js";
+import { loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
 
 type Created = { state: "done" | "running" | "asking" | "failed"; id: string; address: string; say: string };
 
 /** This device's claimed name, or null. */
-export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => identityFrom(await tool("spaces.identity.status"));
+export const readIdentity = async (): Promise<{ id: string; label: string; address: string } | null> => {
+  // The identity this device made comes first (it needs no box); a paired box's own answer is the fallback, and no box is not an error here.
+  const mine = await loadIdentity();
+  if (mine) return { id: mine.id, label: mine.name, address: `${mine.name}.vyre.run` };
+  try { return identityFrom(await tool("spaces.identity.status")); } catch { return null; }
+};
 
 /**
  * Where the names directory is: the public service, never a box. The identity comes first (a name, then a space, then a server), so
@@ -26,8 +33,15 @@ export async function checkName(name: string): Promise<"free" | "taken" | "unkno
   }
 }
 
-/** Claim the person's name. The recovery code is in this answer only: the caller shows it once and drops it. */
-export const createIdentity = (name: string, deviceLabel: string) => tool<{ name: string; id: string; recoveryCode: string }>("spaces.identity.create", { name, deviceLabel });
+/**
+ * Claim the person's name from this device, with no box: the key is made here, the claim goes to the names directory, and the identity is kept
+ * here. The recovery code is in this answer only: the caller shows it once and drops it.
+ */
+export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
+  const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
+  await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
+  return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
+}
 
 export async function createSpace(input: Record<string, unknown>): Promise<Created> {
   return createdFrom(await tool("spaces.create", input));
