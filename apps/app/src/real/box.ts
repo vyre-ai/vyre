@@ -12,6 +12,8 @@ import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader 
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
 import { passkeyProof, PresenceError } from "./presence";
+import { withSpace } from "./with-space.js";
+import { useSpaces } from "../../screens/shell/state";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
 export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
@@ -27,7 +29,9 @@ export class BoxError extends Error {
 /** One tool call; resolves the data, throws BoxError with the box's own code and words. */
 /** The words a screen shows while the phone is asked. */
 export const WAITING_TITLE = APPROVE_ON_PHONE;
-export async function tool<T = unknown>(name: string, input: Record<string, unknown> = {}): Promise<T> {
+export async function tool<T = unknown>(name: string, given: Record<string, unknown> = {}): Promise<T> {
+  // Every call that acts in a space names it: the one the screen gave, else the one showing (nothing under All spaces).
+  const input = withSpace(name, given, useSpaces.getState().space);
   // A device paired to its server over the relay (device-first install) calls it over the peer wire: the server runs the call as this device with its paired session.
   if (peerWanted()) {
     try { return await peerCall<T>(name, input); }
