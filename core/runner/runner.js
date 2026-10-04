@@ -209,6 +209,7 @@ export function createRunner(o) {
     const p = plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,
       proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
     const child = launch(p, { detached: true });
+    child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
     const h = { session: s.session, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };

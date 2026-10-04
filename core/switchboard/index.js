@@ -3187,7 +3187,9 @@ export default {
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
       threadSocket: cfg.thread_socket === "off" ? null
-        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
+        // A session that runs in the sandbox reaches Vyre only through its own socket (sandboxFor refuses one that has none), so whenever the sandbox is in force the socket is made, whatever
+        // "auto" would say: on a home that is not a spawner box (a checkout, a Mac) "auto" alone left EVERY session, a person's included, refused with "no socket of its own".
+        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner() || Boolean(ctx.sandbox && !ctx.sandbox.off && !ctx.sandbox.unavailable)
           ? openThreadSocket({ handler: ctx.handler, log: ctx.log, ...o,
             dir: usesSpawner() ? THREAD_SOCKETS : path.join(privateSocketDir(), `t-${crypto.createHash("sha256").update(String(root)).digest("hex").slice(0, 12)}`) })
           : null,
