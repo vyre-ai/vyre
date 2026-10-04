@@ -847,6 +847,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const g = await registry.call("agents.scope", { name: via.agent }, "module:vyred");
     /** @type {any} */ (via).granted = g && g.data ? g.data.projects : [];
     /** @type {any} */ (via).agentKind = g && g.data ? g.data.kind : null;
+    if (g && g.data && Array.isArray(g.data.only)) /** @type {any} */ (via).agentOnly = g.data.only;
   }
   // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
   const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };

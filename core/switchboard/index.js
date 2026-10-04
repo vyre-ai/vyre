@@ -28,6 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
+import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
 import { isPerson } from "../../lib/caller.js";
@@ -3005,6 +3006,11 @@ function imagesOf(list) {
  * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
  * @param {string} [caller]
  */
+/** The one person hop of a kernel chain (a person's own call, no agent or service behind it), or null. @param {any} kc */
+export function personHop(kc) {
+  return kc && Array.isArray(kc.hops) && kc.hops.length === 1 && kc.hops[0].actor && kc.hops[0].actor.kind === "person" ? kc.hops[0] : null;
+}
+
 /**
  * Who is typing, as the keyboard lease sees it. Identity comes from the caller vyred verified, never from what the call says about itself:
  *  - the owner (a tailnet:<login> whose login is the recorded network.owner, or a relay-paired device:<id>) is the person's own surface: "deck" or
@@ -3015,16 +3021,28 @@ function imagesOf(list) {
  *    replaced by "via:<label>", which contests like any other holder.
  * The link's words are always the box's surface: a box:<name> it names stands, any other name becomes box:via:<label>.
  * @param {{ surface?: any }} input @param {any} caller @param {any} owner the recorded owner's login (network.owner)
+ * @param {any} [kc] the call's kernel chain (`ctx.kernel.chain(meta)`), or null when the kernel refused it; undefined only when this build has no kernel
+ * @param {string} [kernelOwner] the kernel's owner person, to compare a chain's person with
  */
-export function surfaceFor(input, caller, owner) {
+export function surfaceFor(input, caller, owner, kc, kernelOwner) {
   const c = String(caller || "");
   const asked = String((input && input.surface) || "");
-  const o = String(owner || "").trim().toLowerCase();
-  const login = /^tailnet:(?!agent:)(.+)$/.exec(c);
-  const verifiedOwner = Boolean(login && o && login[1].trim().toLowerCase() === o) || /^device:[a-z2-7]{16}$/.test(c);
+  let verifiedOwner = false, device = false, ownSocket = false;
+  if (kc !== undefined) {
+    // The kernel decides who this is: one person hop, from the daemon's proven facts or a verified token, never from the label.
+    const h = personHop(kc);
+    if (h && h.via && (h.via.device || h.via.node) && h.actor.id === kernelOwner) { verifiedOwner = true; device = Boolean(h.via.device); }
+    else if (h && h.via && h.via.surface) ownSocket = true;
+  } else {
+    // SHIM(legacy labels): only a build with no kernel reads the label, and it goes with the cut-over that makes the kernel mandatory.
+    const o = String(owner || "").trim().toLowerCase();
+    verifiedOwner = Boolean(ownerOverTailnet(c) && o && c.slice("tailnet:".length).trim().toLowerCase() === o) || (ownerDevice(c) && !ownerOverTailnet(c));
+    device = verifiedOwner && !ownerOverTailnet(c);
+    ownSocket = !verifiedOwner && isPerson(c) && !ownerDevice(c);
+  }
   let s;
-  if (verifiedOwner) s = ownSurface(asked) ? asked : (c.startsWith("device:") ? "phone" : "deck");
-  else if (isPerson(c) && !/^(?:tailnet|device):/.test(c)) s = asked || c || "vyre";
+  if (verifiedOwner) s = ownSurface(asked) ? asked : (device ? "phone" : "deck");
+  else if (ownSocket) s = asked || c || "vyre";
   // The link's words are the box's person (core/link/mac.js marks its surface "box:<name>" and a write needs as:"person"): a box: name stands, any other is via:<label>.
   else if (fromLink(c) && asked.startsWith("box:")) s = asked;
   // The computers module takes and gives back the keyboard for a person's screen it has already checked is a person's (computers.takeover is a person-only tool,
@@ -3209,7 +3227,10 @@ export default {
       if (v && v.agent === agent && v.agentKind === "assistant") return;
       throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner);
+    const kernelOwner = () => (ctx.kernel ? String(ctx.kernel.owner || "") : undefined);
+    /** The kernel chain of the call being run (set by tool()): undefined when this build has no kernel, null when the kernel refused the call. */
+    const kchainNow = () => { const v = /** @type {any} */ (calls.getStore()); return v && "kchain" in v ? v.kchain : (ctx.kernel ? null : undefined); };
+    const surfaceOf = (input, caller) => surfaceFor(input, caller, ((ctx.config && ctx.config.network) || {}).owner, kchainNow(), kernelOwner());
     /**
      * Who a model's call is, from what vyred verified (meta.agent, meta.agentKind, meta.thread), never from the label:
      *  - the verified assistant, the person's surfaces, modules and the link: no narrowing here;
@@ -3258,7 +3279,7 @@ export default {
         return run(i, meta, ...rest);
       }
       : run;
-    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: (i, m, ...r) => calls.run(m, () => inner(i, m, ...r)), callers, ...extra }); };
+    const tool = (name, description, input, run, callers, extra = {}) => { const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
@@ -3372,12 +3393,17 @@ export default {
      */
     const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine) || hasPairedMacs());
     /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
-    const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
+    const onOwnerDevice = caller => {
+      const kc = kchainNow();
+      if (kc === undefined) return ownerDevice(caller); // SHIM(legacy labels): a build with no kernel
+      const h = personHop(kc);
+      return Boolean(h && h.via && (h.via.device || h.via.node));
+    };
 
     const answerOnMac = async (i, caller, peer, meta = {}) => {
       // Defence in depth until the registry's person-session rule (ADR 0032) is on this branch: an
       // owner device answers a Mac's ask only inside a person session. Nothing is signed or sent.
-      if (ownerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
+      if (onOwnerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
       // An ask that approves a floor tool needs a fresh proof (the registry checked it; a presence session is not one).
       if (gatedOnMac(i) && (!meta.presence || meta.presence.method === "session")) throw Object.assign(new Error("this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it"), { code: "presence_required" });
       const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),
