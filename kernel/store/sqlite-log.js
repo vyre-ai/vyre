@@ -45,7 +45,7 @@ export function createSqliteEventLog(cfg) {
     CREATE INDEX IF NOT EXISTS kernel_events_corr ON kernel_events (space, corr, seq) WHERE corr IS NOT NULL;
   `);
   const win = cfg.window?.events ?? 2000;
-  const last = /** @type {any[]} */ (db.prepare("SELECT seq, event, salt FROM kernel_events WHERE space = ? ORDER BY seq DESC LIMIT ?").all(cfg.space, win)).reverse();
+  const last = /** @type {any[]} */ (db.prepare("SELECT seq, event, salt FROM kernel_events NOT INDEXED WHERE space = ? ORDER BY seq DESC LIMIT ?").all(cfg.space, win)).reverse();
   const window = last.map(r => JSON.parse(r.event));
   const salts = last.filter(r => r.salt !== null).map(r => /** @type {[number, string]} */ ([r.seq, r.salt]));
   const cursors = db.prepare("SELECT name, seq FROM kernel_cursors").all().map((/** @type {any} */ r) => /** @type {[string, number]} */ ([r.name, r.seq]));

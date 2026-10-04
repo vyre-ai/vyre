@@ -9,6 +9,7 @@
 
 /** @type {ReadonlyMap<string, string>} */
 export const PERSON_ONLY = new Map([
+  ["spaces.identity.republish", "republishes the person's identity list: the person's own act"],
   ["signin.ask", "needs the person's Face ID or presence: it asks the phone to sign the command line in, from a terminal login only"],
   ["signin.pending", "needs the person's Face ID or presence: the card the phone signs"],
   ["signin.answer", "needs the person's Face ID or presence: the person's approval of a sign-in"],
@@ -41,6 +42,7 @@ export const PERSON_ONLY = new Map([
   ["spaces.setup.save", "the person's own setup"],
   ["spaces.setup.claim", "the person's own setup"],
   ["tasks.decide", "approves or rejects a task with the person's proof"],
+  ["approvals.request", "builds the proof request for an act the person will sign: the person's own surfaces"],
   ["approvals.ask", "asks the person's phone to approve an act the asking session cannot prove: the person's own surfaces only"],
   ["approvals.pending", "what is waiting for the person's approval, shown on their phone"],
   ["approvals.answer", "the person's own answer, with their proof"],
@@ -226,6 +228,12 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "files.drive.space.list",
+  "files.drive.space.read",
+  "records.linked",
+  "records.kits.library",
+  "records.kits.get",
+  "system.build",
   "files.drive.upload",
   "files.drive.versions",
   "records.me",

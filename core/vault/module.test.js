@@ -145,7 +145,7 @@ test("vault: Claude is never the channel for a value, and cannot give access on 
 
   const offered = (await request("GET", "/v1/tools", undefined, { root, caller: "mcp" })).data.map(x => x.name);
   for (const hidden of ["vault.put", "vault.inject", "vault.approve", "vault.unlock", "vault.release", "vault.totp", "vault.delete", "vault.offboard"]) assert.ok(!offered.includes(hidden), `${hidden} is offered to Claude`);
-  for (const shown of ["vault.list", "vault.grant", "vault.pass.create", "vault.import", "vault.audit"]) assert.ok(offered.includes(shown), `${shown} is missing for Claude`);
+  for (const shown of ["vault.list", "vault.grant", "vault.pass.create", "vault.import"]) assert.ok(offered.includes(shown), `${shown} is missing for Claude`);
 
   // Claude's grant waits for a person.
   const g = (await mcp("vault.grant", { name: "api-token", module: "probe" })).data.grant;

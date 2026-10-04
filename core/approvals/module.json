@@ -15,19 +15,23 @@
   "does": {
     "tools": [
       {
-        "name": "approvals.ask",
+        "name": "approvals.request", "effect": "write",
         "reach": "person"
       },
       {
-        "name": "approvals.pending",
+        "name": "approvals.ask", "effect": "write",
         "reach": "person"
       },
       {
-        "name": "approvals.answer",
+        "name": "approvals.pending", "effect": "read",
         "reach": "person"
       },
       {
-        "name": "approvals.status",
+        "name": "approvals.answer", "effect": "write",
+        "reach": "person"
+      },
+      {
+        "name": "approvals.status", "effect": "read",
         "reach": "person"
       }
     ]
