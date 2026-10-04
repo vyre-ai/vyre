@@ -1,6 +1,7 @@
 // @ts-check
 // Frames across net, console, sources, api and the egress guard: a top page, a cross-origin child session and one nested
 // inside it. Fakes only (devtools-kit + the real lib/frames.js over the fake debugger layer).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import net from "./extension/caps/net.js";

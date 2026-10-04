@@ -4,6 +4,7 @@
 // Every test names its rule. Timings are shortened (a 300 ms heartbeat, a 50 ms backoff) so the
 // file runs in seconds; the behaviour is the same at 15 s and 2 s.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

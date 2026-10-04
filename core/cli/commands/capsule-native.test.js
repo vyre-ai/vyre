@@ -3,6 +3,7 @@
 // and says in one line how to get swiftc when it is missing. swiftc, codesign and security are
 // fakes here: nothing is compiled, signed or read from the keychain.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

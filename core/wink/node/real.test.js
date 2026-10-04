@@ -8,6 +8,7 @@
 // VYRE_WINK_SPIKE holds bin/{headscale,tailscale,tailscaled} and hs/config.yaml (a working headscale config
 // whose paths point into that folder); this test copies the config, moves every path and port to its own
 // folder, and starts its own headscale, so nothing already running is touched.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // policy of the same interface as core/computers/driver/policy.js. What is checked is what the
 // Engine receives: only the allowed endpoints, only checked bodies, and only ever re-serialised.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

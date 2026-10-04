@@ -3,6 +3,7 @@
 // with a fake vyred behind fetch: what each shows, what each calls with what input, the keyboard,
 // and where a success goes. Only the sample world appears here.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../test/fake-dom.js";

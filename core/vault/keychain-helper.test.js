@@ -5,6 +5,7 @@
 // (testing.js); user interaction is off in the helper, so nothing here can show a dialog. The
 // access list is read with `security dump-keychain -a`, which shows it without the secret.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

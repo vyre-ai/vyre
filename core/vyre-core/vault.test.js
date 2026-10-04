@@ -3,6 +3,7 @@
 // anyone puts is unverified until the person says so; grants and releases are core's; a plain
 // value leaves only for the Capsule core signed, with a proof or a session bound to that process.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

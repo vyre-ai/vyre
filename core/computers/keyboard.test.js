@@ -2,6 +2,7 @@
 // Take-over on its own: a stub switchboard whose lease emits lease.changed synchronously, the
 // way the real one does inside threads.lease, and a clock the test moves past the 90 s TTL.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

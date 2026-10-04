@@ -4,6 +4,7 @@
 // and when that timer fired after a test had removed its home, it put vault/ back: a leaked temp
 // home holding only vault/key, vault/state.json, vault/vaults/agents.json and items/identity.json.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

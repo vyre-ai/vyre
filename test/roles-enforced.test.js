@@ -2,6 +2,7 @@
 // The five roles are enforced by the REAL kernel's grants, not by a label: each role's bundle (kernel/contracts ROLE_BUNDLES, what the role is FOR) is checked against what
 // the kernel's authorize answers for a person holding it (kernel/grants/roles.js ROLE_ACTIONS, what carries it). A temp member reaches only its scope and loses everything on
 // time, with no sweep needed. Runs on the real kernel through test/kernel-rig.js; no network, no clock but the one injected here.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "./kernel-rig.js";

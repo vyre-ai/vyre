@@ -1,6 +1,7 @@
 // @ts-check
 // The one thread row (js/thread-row.js): emblem, title, last line, a stack of at most three participants, and the state as a word.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

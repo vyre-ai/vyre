@@ -5,6 +5,7 @@
 // writes to the person's login terminal, typed back) they go through. `vyre memory` corrections
 // are the user's own and ask nothing (the no-nag rule).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

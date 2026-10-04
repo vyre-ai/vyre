@@ -8,6 +8,7 @@
 // redirect is re-checked and none leaves the host; a service account signs a real RS256 assertion
 // for its fixed subject; and no audit row carries a value, a body or a query. Every value is a sample.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

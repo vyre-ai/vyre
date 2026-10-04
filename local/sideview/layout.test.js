@@ -1,6 +1,7 @@
 // @ts-check
 // The side view's layout rules, without a Mac.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_RATIO, leftFrame, pickBrowser, pickSession, ratioOf, rightFrame, screenOf } from "./layout.js";

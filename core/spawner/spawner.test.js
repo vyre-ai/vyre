@@ -3,6 +3,7 @@
 // environment it passes, and kill. The uid change itself (setpriv) is checked in the box image by
 // scripts/e2e-headscale.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

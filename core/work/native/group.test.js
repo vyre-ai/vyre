@@ -1,6 +1,7 @@
 // An assistant in a group writes for the whole room (DESIGN-chat): with more than one person in the chat the model SEES a field as a value only when every person in
 // the chat may read it, and any other field only as a token it can cite. On the REAL kernel (test/kernel-rig.js): real roles, a real field allow-list on a grant, real
 // chats and sessions, and the kernel's own room handle from `audienceFor` (no chains, no size, sealed always a token). Only the model provider is a stand-in.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

@@ -29,7 +29,7 @@ import { trustKeyIn } from "./extension/shared/trust.js";
 import { ACTING } from "./extension/shared/proto.js";
 import * as nativeHost from "./native-host/install.js";
 import { extensionIdFromKey, extensionIdFromPath } from "./native-host/install.js";
-import { callerKind, agentClaim } from "./caller.js";
+import { callerKind, agentClaim, modelKey } from "./caller.js";
 
 /** True when a folder is under the OS temp directory (resolved): a test profile, never a person's real one. @param {string|undefined} dir */
 const inTempDir = dir => { if (!dir) return false; try { const real = (/** @type {string} */ p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } }; const d = real(dir), t = real(os.tmpdir()); return d === t || d.startsWith(t + path.sep); } catch { return false; } };
@@ -38,10 +38,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /** An mcp caller inside a named agent's own thread: the same rule as hands. */
 /** Who must hold the grant: null for the person (their own surfaces or unnamed MCP session); a named claim from any route by that name; every other caller by a key that can never be granted, so it is refused (reviewer-2 H1, same rule as hands). */
-const agentOf = (/** @type {any} */ caller) => {
-  const claim = agentClaim(caller);
-  if (claim) return claim;
-  return [...PEOPLE, "mcp"].includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+const agentOf = (/** @type {any} */ caller, /** @type {any} */ meta) => {
+  // lib/caller.js decides: the person's surfaces are null, a named agent is its name, every other caller (an unnamed mcp is every model's shell) is a key that holds no grant (MH-1). The one exception is the
+  // standalone runtime, which has no daemon and no other model and says so with meta.standalone (set only in standalone/runtime.js, stripped by the registry).
+  if (meta && meta.standalone === true && callerKind(caller) === "mcp" && !agentClaim(caller)) return null;
+  return modelKey(caller);
 };
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 
@@ -194,7 +195,7 @@ export default {
       if (!agent) return;
       const r = await ctx.call("hands.grant.list", {});
       const ok = r && !r.error && Array.isArray(r.data) && r.data.some((/** @type {any} */ g) => g.agent === agent);
-      if (!ok) throw denied("denied", `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
+      if (!ok) throw denied("denied", String(agent).startsWith("caller:") ? "This assistant has no permission to use this computer yet. Add it in Access. (not granted)" : `${agent} is not granted to drive this Mac. Grant it once with hands.grant.add or ask the person to.`);
     };
 
     /** Refuse when a page is one Vyre may not touch for this op. @param {string|null|undefined} url @param {string|undefined} op */
@@ -266,7 +267,7 @@ export default {
      */
     async function dispatch(op, input, meta, o = {}) {
       return via.run(meta || {}, async () => {
-        const agent = agentOf(meta.caller);
+        const agent = agentOf(meta.caller, meta);
         const args = { ...input };
         delete args.agent; delete args.release; delete args.asked; delete args.action; delete args.writeOk; delete args.writeBudget; delete args.pointBudget;
         // Approvals never ride in args, at any depth (a batch step, a recipe, a flow): they are the host's, set below from the real caller.
@@ -459,7 +460,7 @@ export default {
       const { asked, release, ...replay } = args;
       // What to replay stays HERE keyed by the Gate's id; the card carries only what the person
       // reads, so an agent's own gate.request cannot make release run anything (reviewer-2 H2/HIGH).
-      const record = { op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature, key: agentOf(meta.caller), ...(res.plan ? { plan: res.plan } : {}) };
+      const record = { op, args: Number.isInteger(tabId) && replay.tab === undefined ? { ...replay, tab: tabId } : replay, signature, key: agentOf(meta.caller, meta), ...(res.plan ? { plan: res.plan } : {}) };
       const content = { app: "Chrome", window: scrub(res.title || ""), origin, control: scrub(control || res.why || summary), fields: clipFields(res.fields), ...(res.plan ? { kind: "plan" } : {}) };
       // The Gate sends at once what the person's own words or a standing permission covered, and it
       // calls release before gate.request has returned an id. So the record is filed under a fresh
@@ -470,7 +471,7 @@ export default {
       // The Gate may have started after this module; offer again before the first card needs it.
       if (!offered) await offer();
       const r = await ctx.call("gate.request", { kind: "act", via: "chrome:mac", to: origin, content: { ...content, ref }, ...(meta && meta.thread ? { thread: String(meta.thread) } : {}) });
-      const agent = agentOf(meta.caller);
+      const agent = agentOf(meta.caller, meta);
       // Covered by what the person said (asked, or a standing permission): the Gate already released it.
       if (r && !r.error && r.data && r.data.state === "sent") {
         heldActs.delete(ref);
@@ -494,7 +495,8 @@ export default {
     }
 
     /** @param {string} name @param {string} description @param {any} input @param {(i: any, m: any) => Promise<any>} run @param {any} [extra] */
-    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run: async (/** @type {any} */ i, /** @type {any} */ m) => run(i || {}, m || {}), ...extra });
+    // The agent-facing tools admit a model (its grant and plan are checked in the body: "not granted" is refused before Chrome); the person-only ones pass `callers: PEOPLE`.
+    const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, callers: [...PEOPLE, "module", "mcp", "harness"], run: async (/** @type {any} */ i, /** @type {any} */ m) => run(i || {}, m || {}), ...extra });
 
     const pass = (/** @type {string} */ name, /** @type {string} */ op, /** @type {string} */ description, /** @type {any} */ props) =>
       tool(name, description, obj({ tab, timeoutMs: timeout, ...props }), (i, m) => dispatch(op, i, m));
@@ -561,7 +563,7 @@ export default {
     tool("chrome.approve", "Ask the person to approve a plan ONCE before a job with many changes, for example \"create these 8 workflows as drafts\". items is what you will do: {kind: create | edit | delete | publish | send, what, count}. You get an id back; the person approves it by your calling chrome_send with that id. Once approved, that many creates, edits and deletes made with the page's login (chrome_api call writes) go through without asking again, and the page shows step N of M. A delete, a message to a contact and a payment are never covered: each asks one at a time. A publish is covered only when you set asked: true because the person's own words asked for it (\"build and publish these\"); the card then says \"and publish\" plainly. A plan ends after an hour, when the person stops Vyre, or when you approve another. Without a plan, every write asks.",
       obj({ title: str, items: { type: "array", items: obj({ kind: { type: "string", enum: PLAN_KINDS }, what: str, count: { type: "number" }, drawn: { type: "string", enum: ["click", "type", "drag"], description: "A create or edit done by POINTING at a drawn surface (chrome_point on a canvas), not by an API write. The card says plainly that the person cannot be shown what such a click does." }, origin: { ...str, description: "With drawn: the origin of the frame the pointing happens in, when it is not the tab's own." }, asked: { type: "boolean", description: "For publish: true only when the person's own words asked for it (\"build and publish these\"). Without it a publish asks one at a time." } }, ["kind", "what"]) }, tab }, ["title", "items"]),
       async (i, meta) => {
-        const agent = agentOf(meta.caller);
+        const agent = agentOf(meta.caller, meta);
         await requireGrant(agent);
         const raw = Array.isArray(i.items) ? i.items : [];
         if (!raw.length || raw.length > 40) throw denied("bad_request", "a plan needs between 1 and 40 items");
@@ -609,7 +611,7 @@ export default {
     tool("chrome.plan", "Post what you are about to do in the person's Chrome, as a short list of steps ({id, text, risk?}), before your first action: they see it and can interject or stop. Then report each step with step and status (running, done, failed), and finish when the run is over.",
       obj({ title: str, steps: { type: "array", items: obj({ id: str, text: str, risk: str }, ["text"]) }, step: str, status: { type: "string", enum: ["running", "done", "failed"] }, why: str, finish: bool, ok: { ...bool, description: "With finish: false when the run ended in failure. Default true." }, agent: str }),
       async (i, meta) => {
-        const agent = agentOf(meta.caller);
+        const agent = agentOf(meta.caller, meta);
         await requireGrant(agent);
         const name = agent || (i.agent ? String(i.agent) : "you");
         return via.run(meta, async () => {

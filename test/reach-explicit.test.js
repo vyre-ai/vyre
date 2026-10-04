@@ -4,6 +4,7 @@
 // not in test/reach-allowlist.json, and on an allowlist line that is stale (the tool now declares a
 // reach, or no longer exists). Each owner shrinks the allowlist by writing { "name": ..., "reach": ... }.
 // It reads files only; it boots nothing.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

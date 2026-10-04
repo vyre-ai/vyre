@@ -2,6 +2,7 @@
 // Inline pictures (cohesion item 18), the DOM-free half: what counts as a picture, when it is too
 // big to inline, and the data: URL / sight.frame shaping. No DOM here on purpose.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { dataUrl, frameToPicture, humanSize, inlineable, INLINE_LIMIT_BYTES, isPicture, tooLarge } from "./images.js";

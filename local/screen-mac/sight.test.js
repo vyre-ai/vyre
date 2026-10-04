@@ -4,6 +4,7 @@
 // testwin is changed only through its own stdin, so the person's focus and keyboard stay put.
 // Skipped cleanly off macOS, when the helpers are not built, or without the Accessibility grant.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

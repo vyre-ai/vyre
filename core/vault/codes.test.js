@@ -3,6 +3,7 @@
 // current and next codes, and no seed in anything returned, audited or emitted.
 // Every seed here is made at run time.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

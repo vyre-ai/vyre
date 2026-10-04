@@ -1,6 +1,7 @@
 // @ts-check
 // R-8: the way back for presence keys, matched to the Wink identity design (DESIGN-wink section 2). The process verifies the person's identity chain
 // itself, pins its head, drops keys whose device left the list, and gives a person with no key left a new first key only from chain evidence.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

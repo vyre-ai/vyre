@@ -4,6 +4,7 @@
 // writes, and for `file get --loop` drops one file in the inbox, prints the --verbose line, and
 // waits until it is killed, like the real one blocking in tailscaled.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

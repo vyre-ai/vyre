@@ -1,5 +1,6 @@
 // @ts-check
 // Appearance's theme on the real box against a fake box shaped like settings.get and settings.set.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

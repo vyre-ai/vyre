@@ -2,6 +2,7 @@
 // The dialog gate: under node --test (or VYRE_NO_DIALOGS=1) a real helper that could raise a
 // system dialog refuses before it is built or spawned. Nothing here builds or runs a helper.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

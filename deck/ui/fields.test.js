@@ -1,6 +1,7 @@
 // @ts-check
 // ui/fields.js: one display and one edit renderer per kernel field kind (values are the kernel's FieldValue), the sealed rules (a fixed mask for the person, Reveal calls
 // the screen's bound reveal and masks again after 30 seconds, a placeholder never reveals), filter ops and sort keys. Sample names only from the made-up world.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

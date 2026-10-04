@@ -3,6 +3,7 @@
 // at a fake computerd on loopback that answers the three tailnet routes, a stubbed vault, and the
 // real DockerDriver + policy.js for the create body the restricted proxy would check.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

@@ -7,6 +7,7 @@
 // (testing/boot.js). The tests marked "sdk" need the pinned SDK installed somewhere
 // (VYRE_SESSIONS_SDK_DIR, as on testbox) and are skipped without it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

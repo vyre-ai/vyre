@@ -1,6 +1,7 @@
 // @ts-check
 // The concurrency ledger alone: limits per project and for the box, a fair line, timeouts.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Slots } from "./slots.js";

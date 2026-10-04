@@ -3,6 +3,7 @@
 // surface runs it. Nothing here talks, reads a key or opens a terminal: under --view a key is
 // asked for as a prompt frame, and push-to-talk is refused because it needs a terminal.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

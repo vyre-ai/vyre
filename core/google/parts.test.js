@@ -2,6 +2,7 @@
 // The google module's small parts, without a vyred: what the Capsule's words mean, how a message
 // is built, how HTML becomes text, and which accounts a call goes to.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, parseRowId, rowId } from "./find.js";
