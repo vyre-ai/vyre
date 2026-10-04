@@ -180,7 +180,7 @@ test("agents cli: --view draws the agents as a table and a computer as a card, w
   const f = frames(l.stdout);
   assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.title], ["agents list", "table", "Agents"]);
   assert.deepEqual(f[0].view.columns.map(c => c.key), ["name", "kind", "status", "doing", "projects"]);
-  assert.deepEqual(f[0].view.rows.map(r => r.id), ["juno", "kit"]);
+  assert.deepEqual(f[0].view.rows.map(r => r.id).sort(), ["engineer", "juno", "kit"]); // the built-in Engineer is listed beside the two the world makes
   assert.deepEqual(f[0].data, JSON.parse((await vyre("agents", "--json")).stdout));
   assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
 

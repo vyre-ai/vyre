@@ -99,8 +99,11 @@ const withFixtures = url => {
   return base + (base.includes("?") ? "&" : "?") + "fixtures=1" + frag;
 };
 
+// A server has no first-run page since b3ef6ad78 (onboard.link refuses on a box). These four walk that page on a role "box" home, so they wait for the Solo Deck loopback design (docs/design/anywhere.md), which reuses the link.
+const PAGE_GONE = "a server has no setup page (b3ef6ad78); these return with the Solo Deck loopback link";
+
 test("onboard page: step 1 takes a name on a box with no vyre.run token, and says it goes on the tailnet",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -162,7 +165,7 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
   });
 
 test("onboard page: Device, already on the same Tailscale network, verifies the server's name before proceeding (reviewer-2's caught bug)",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     // Regression for a real bug: the Device branch checked only the call's error, never
     // whether onboard.join actually said the server was reachable (link.health's real shape
     // is `online`, not `ok`/`reachable`), so a wrong node proceeded to Claude sign-in exactly
@@ -251,7 +254,7 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
   });
 
 test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address, landing on Claude sign-in",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -289,7 +292,7 @@ test("onboard page: \"How will Vyre run?\" Solo skips Tailscale and the address,
   });
 
 test("onboard page: \"How will Vyre run?\" Device shows \"Pair with a code\" as the default once anywhere ships can.relayJoin (every non-darwin platform, including this one)",
-  { skip: !HAVE_CHROME && "no Chrome binary at " + CHROME_BIN }, async t => {
+  { skip: PAGE_GONE }, async t => {
     // Was written when the real onboard.status returned no `can` field at all, so "Pair with a
     // code" stayed unconditionally hidden. can.relayJoin is real now (core/onboard/index.js's
     // canRelayJoin: false only on darwin, true everywhere else, including testbox/CI's Linux),

@@ -9,6 +9,7 @@
 // refuses a browser Origin it was not told ("not for browsers"); the real directory's CORS is the devbox team's. Build with `npx expo export -p web --clear`: a cached bundle keeps the old flag.
 // Steps: install page shows the name step; the typed name is "yours to take"; Face ID sheet; Create; the recovery code shows; the directory now resolves the name. Exit 0 when all hold.
 import fs from "node:fs";
+import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -52,7 +53,7 @@ const server = http.createServer((q, r) => {
 await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}`;
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: [...CHROME_SAFE] });
 const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
 const results = [];
 if (args.includes("--debug")) { page.on("console", (m) => console.log("  console:", m.type(), m.text().slice(0, 240))); page.on("pageerror", (e) => console.log("  pageerror:", String(e).slice(0, 240))); page.on("websocket", (w) => console.log("  ws:", w.url())); }

@@ -67,8 +67,8 @@ test("screen (live): a thread streams in, the keyboard is taken, an ask is allow
   assert.equal(term.input.raw, true);
   capture("01-home-with-inbox", home);
 
-  // The headless thread is the last item: its reply is already there from the backlog.
-  term.type(END);
+  // The headless thread is the last thread; the built-in Engineer agent lists after it, so one step up from the end. Its reply is already there from the backlog.
+  term.type(END, UP);
   capture("02-streaming-thread", await term.waitFor(/echo: hello from alex/));
 
   // Tab to type; the phone holds the keyboard, so the send waits and says how to take it.
@@ -105,7 +105,7 @@ test("screen (live): a thread streams in, the keyboard is taken, an ask is allow
   term.type(" ");
   await term.waitFor(/type to filter · \? keys/);
 
-  term.type(END);
+  term.type(END, UP);
   term.resize(60, 20);
   capture("05-narrow-60x20", await term.waitFor(/Wrote it\./));
   for (const l of term.screen().split("\n")) assert.ok(l.length <= 60, "a line is wider than the terminal: " + l);

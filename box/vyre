@@ -344,7 +344,9 @@ cli() {
   if [ -t 0 ] && [ -t 1 ]; then tty=""; fi
   # The container's account is not the person's, so the ssh line needs the host's.
   # Through compose(): a root run (sudo) uses root's own copies, never the stack folder's files.
-  compose exec $tty \
+  # As the vyre user (uid 1000), the account vyred runs as: a call made as root inside the container carries an ancestry the daemon cannot read as a person's terminal (host `vyre call`
+  # answered caller_unknown on a packaged box), and root there cannot read the vyre-owned home anyway. A terminal is passed through when there is one.
+  compose exec $tty -u vyre \
     -e SSH_CONNECTION="${SSH_CONNECTION:-}" -e VYRE_HOST_USER="${SUDO_USER:-$(id -un)}" vyre vyre "$@"
   exit $?
 }
@@ -1090,6 +1092,7 @@ vol_says() {
     *vyre-work) echo "your projects and files (/work)" ;;
     *vyre-agent-home) echo "your agents' own sign-in state and transcripts" ;;
     *vyre-accounts) echo "each AI account's sign-in" ;;
+    *vyre-sessions) echo "the temp folders of running sessions" ;;
     *docker-api-bearer) echo "internal, nothing of yours" ;;
     *) echo "Vyre data" ;;
   esac
