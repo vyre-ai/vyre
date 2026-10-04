@@ -6,6 +6,8 @@ import http from "node:http";
 import { tempHome } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 
+process.env.VYRE_SEAL_DEV = "1";
+process.env.VYRE_KERNEL_PATH_RULE = "1";
 const over = (/** @type {string} */ socket, /** @type {string} */ method, /** @type {string} */ path, /** @type {any} */ body) => new Promise(resolve => {
   const raw = body === undefined ? "" : JSON.stringify(body);
   const req = http.request({ socketPath: socket, path, method, headers: { "content-type": "application/json", "content-length": Buffer.byteLength(raw), "x-vyre-caller": "cli" } }, res => { let t = ""; res.on("data", c => { t += c; }); res.on("end", () => resolve({ status: res.statusCode, body: t ? JSON.parse(t) : null })); });
