@@ -15,7 +15,7 @@ import { dirBackend } from "./storage/backends.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
 import { isExactlyPerson } from "./core/chain.js";
-import { sealerPresence } from "./core/presence.js";
+import { sealerPresence, payloadHash } from "./core/presence.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
@@ -89,7 +89,9 @@ export async function bootHomeKernel(cfg) {
   // party is refused, never loaded as an added module).
   const ALWAYS_RESERVED = new Set(["vault", "leases"]);
   /** @type {(name: string) => boolean} */ let reservedName = n => ALWAYS_RESERVED.has(n);
-  /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async () => ({ ok: false, why: "no_signed_list" });
+  /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async (/** @type {any} */ _c, /** @type {any} */ _p, /** @type {string} */ _a) => ({ ok: false, why: "no_signed_list" });
+  /** What the owner's phone shows and signs to drop the accepted counter (a rollback): the op, the Space and the counter it forgets, with the hash the signer signs. Null when this build has no signed list. @type {() => { op: string, space: string, fields: { counter: number }, payload_hash: string } | null} */
+  let modulesListReset = () => null;
   if (!firstPartyCheck) {
     if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
     if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
@@ -160,9 +162,12 @@ export async function bootHomeKernel(cfg) {
       reservedName = reserved;
       firstPartyCheck = listCheck ? (/** @type {string} */ dir) => (reserved(nameOf(dir)) ? listCheck(dir) : perModule(dir)) : perModule;
       /** The owner's reset of the counter, for a build older than the one accepted (a deliberate downgrade): presence-gated, one event, and the next boot reads the build's own list. */
-      resetModulesList = async (/** @type {any} */ chain, /** @type {any} */ proof) => {
+      /** The payload to sign: the counter forgotten, and, for the phone route, the id of the ask it answers (so a proof made for one ask never satisfies another, whatever the sealing process remembers). */
+      const resetFields = (/** @type {string} */ ask) => ({ counter: accepted ? accepted.counter : 0, ...(ask ? { ask: String(ask) } : {}) });
+      modulesListReset = (/** @type {string} */ ask) => { const fields = resetFields(ask); return { op: "grant.modules_list_reset", space: id.space, fields, payload_hash: payloadHash("grant.modules_list_reset", id.space, fields) }; };
+      resetModulesList = async (/** @type {any} */ chain, /** @type {any} */ proof, /** @type {string} */ ask) => {
         if (!isExactlyPerson(chain) || chain.hops[0].actor.id !== id.owner) return { ok: false, why: "owner_only" };
-        const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.modules_list_reset", fields: { counter: accepted ? accepted.counter : 0 }, proof });
+        const why = !sealer ? "no_presence_verifier" : await sealerPresence(sealer).check({ chain, op: "grant.modules_list_reset", fields: resetFields(ask), proof });
         if (why) return { ok: false, why };
         await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list-reset", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { from: accepted ? accepted.counter : 0 }, vis: "owner", red: "internal" });
         return { ok: true };
@@ -181,7 +186,7 @@ export async function bootHomeKernel(cfg) {
   // The Spaces this home hosts (kernel/spaces): the personal one is this kernel; every other has its own store, log and sealing namespace, opened once here. Each takes the
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
-  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}) });
   await spaces.start();
-  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }
