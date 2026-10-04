@@ -412,6 +412,10 @@ export const MIGRATIONS = [`
 `, `
   -- A paired device locked after three wrong sign-in answers (core/presence/module.js, presence.person.renew-allow lifts it): the lock lives here so a restart keeps it.
   CREATE TABLE presence_renew_lock (device TEXT PRIMARY KEY, until INTEGER NOT NULL);
+`, `
+  -- The strength of the proof that opened a paired session ("software", "enclave", "enclave, unattested" or "passkey"), written at sign-in from the key the device registered; old rows have none and read as software.
+  ALTER TABLE presence_pair_grants ADD COLUMN strength TEXT;
+  ALTER TABLE presence_people ADD COLUMN strength TEXT;
 `];
 
 const CHALLENGE_TTL = 120_000;

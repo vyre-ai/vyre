@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1210,"event":462,"config":255,"env":245,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1211,"event":462,"config":255,"env":245,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -966,6 +966,7 @@
     {"kind":"tool","name":"presence.person.rotate","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonrotate","module":"presence","mentions":[{"page":"adr/0032-person-and-device.md","line":128,"anchor":"2d-a-device-its-owner-paired-opens-its-person-session-at-pairing"}]},
     {"kind":"tool","name":"presence.person.session-answer","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-answer","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.session-ask","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-ask","module":"presence","mentions":[]},
+    {"kind":"tool","name":"presence.person.session-pending","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-pending","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.session-status","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsession-status","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.sessions","definedIn":"core/presence/module.js","page":"reference/tools.md#presencepersonsessions","module":"presence","mentions":[]},
     {"kind":"tool","name":"presence.person.start","definedIn":"core/presence/index.js","page":"reference/tools.md#presencepersonstart","module":"presence","mentions":[{"page":"concepts/presence.md","line":33,"anchor":"which-tools-need-it"}]},

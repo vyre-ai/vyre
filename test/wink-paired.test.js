@@ -731,10 +731,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const standInFile = path.join(server.paths.root, "dev-presence-stand-in");
   fs.rmSync(standInFile); // the development stand-in off: only a real proof counts at the home
   const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
-  assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
+  // the device's paired session (an enclave-key one) is the person's presence for the act, carried by the home's door (SW-1): no proof header is needed
+  assert.ok(!noProof.error, `a change of types from a device with a live enclave-key paired session passes: ${JSON.stringify(noProof.error)}`);
   fs.writeFileSync(standInFile, "");
   const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
-  const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
+  const MEMO = { name: "memo", label: "Memo", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  const defined = await dcall("records.define", { space: id, diff: { add_types: [MEMO] } }, withProofHdr);
   assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
   assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
   const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
@@ -1403,17 +1405,22 @@ test("SW-1 on a release-kind build (software switch off): a software paired sess
   // an enclave key (the app reported hardware storage; unattested is accepted, ruling 6410c6a): not software, passes
   { const f = await pairFreshServer(t, { presenceStorage: "hardware" }); const links = linksFor(t, f); await links.startPaired("srv");
     const mine = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok(!(mine.sessions || mine).some(s => s.software === true), "an enclave-key session is not software-marked");
+    assert.ok((mine.sessions || mine).some(s => s.strength === "enclave, unattested"), "and says its strength");
     assert.equal(await defineOn(f, links), "ok", "an enclave-key session passes"); }
   // a software-key browser: refused, until the owner's phone approves its sign-in
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     assert.match(await defineOn(f, links), /needs_presence|presence/, "a software session is refused");
     const ask = await links.askSignIn("srv", "Alex's browser");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "waiting");
+    const pending = (await f.w.d.registry.call("presence.person.session-pending", {}, "cli", PROOF)).data.asks;
+    assert.deepEqual(pending.map(a => [a.id, a.label]), [[ask.id, "Alex's browser"]], "the owner's phone can list the waiting ask");
     assert.match(await defineOn(f, links), /needs_presence|presence/, "asking is not approval");
     assert.equal((await f.w.d.registry.call("presence.person.session-answer", { id: ask.id, yes: true }, "cli", PROOF)).data.state, "approved");
+    assert.deepEqual((await f.w.d.registry.call("presence.person.session-pending", {}, "cli", PROOF)).data.asks, [], "an answered ask is no longer pending");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "approved");
     await links.startPaired("srv");
-    assert.equal(await defineOn(f, links), "ok", "the phone-approved session passes"); }
+    assert.equal(await defineOn(f, links), "ok", "the phone-approved session passes");
+    const all = (await f.w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data; assert.ok((all.sessions || all).some(s => s.strength === "passkey"), "it carries the approving proof's strength"); }
   // a refused ask grants nothing
   { const f = await pairFreshServer(t, { kind: "web", about: { kind: "web" }, presenceStorage: "software" }); const links = linksFor(t, f); await links.startPaired("srv");
     const ask = await links.askSignIn("srv");

@@ -206,15 +206,18 @@ export default {
     // unattested for now: ruling 6410c6a) opens a session that is NOT software; a software key opens a software one, which the peer door counts as presence only where software proofs are taken
     // (a development build behind its switch). A session a phone approved takes the approving proof's strength instead (below).
     const strongKey = (/** @type {any} */ rec) => rec.hardware === true || rec.keyStorage === "hardware";
+    /** The strength written on a paired session: from the key the device registered ("enclave, unattested": the app says Secure Enclave or keystore, no attestation verified), or the approving proof's when the owner's phone approved this sign-in. */
+    const strengthOf = (/** @type {string} */ device, /** @type {any} */ rec, peek = false) => approvedStrength(device, peek) || (strongKey(rec) ? "enclave, unattested" : "software");
     // ---- sign in approved on the owner's phone ---------------------------------------------------------------------------------------------------------------
     // A browser (software key, no passkey on the peer path) asks; the owner's phone shows "Let <device> sign in" and answers with its own proof; the browser then signs in as usual (pair-challenge, start-paired)
     // and that one session carries the strength of the approving proof (enclave, or unattested enclave), not the browser's key.
     const ASK_MS = 5 * 60_000;
-    /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", strong: boolean, expires: number }>} */
+    /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", strong: boolean, method?: string, asked?: number, expires: number }>} */
     const asks = new Map();
     const liveAsk = (/** @type {string} */ device) => { const a = asks.get(device); if (a && a.expires <= Date.now()) { asks.delete(device); return null; } return a || null; };
     /** An approved, unexpired ask of this device with a strong approving proof; `peek` leaves it (the grant uses it once). */
-    const approvedStrong = (/** @type {string} */ device, peek = false) => { const a = liveAsk(device); if (!a || a.state !== "approved" || !a.strong) return false; if (!peek) asks.delete(device); return true; };
+    const approvedStrength = (/** @type {string} */ device, peek = false) => { const a = liveAsk(device); if (!a || a.state !== "approved" || !a.strong) return null; if (!peek) asks.delete(device); return a.method === "passkey" ? "passkey" : "enclave, unattested"; };
+    const approvedStrong = (/** @type {string} */ device, peek = false) => approvedStrength(device, peek) !== null;
 
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
     // The pairing, once the owner confirmed it with a presence proof, asks for one grant. This tool
@@ -231,11 +234,11 @@ export default {
         if (!rec || rec.id !== input.device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("that device was not confirmed by its owner"), { code: "denied" });
         if (!["phone", "computer", "web"].includes(String(rec.kind))) throw Object.assign(new Error("only a phone, a computer or a browser paired to its owner gets a person session"), { code: "denied" });
         // Believed in hardware only when the pair record says so (platform attestation, wink's side); anything else is recorded as a software key, with no prompt (the sessions list shows it).
-        const software = !strongKey(rec);
+        const strength = strengthOf(String(input.device), rec), software = strength === "software";
         // The confirming key is the one the presence layer verified in the pairing's own call; the record is the fallback only for a pairing confirmed before this call.
         const keyId = (meta.presence && meta.presence.keyId) || rec.confirmKeyId || null;
         if (!keyId) throw Object.assign(new Error("the pairing carries no presence proof"), { code: "denied" });
-        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software });
+        const g = people.grant({ device: rec.id, keyId: String(keyId), deviceKey: rec.key, software, strength });
         // The challenge goes back to the pairing, which hands it to the device; the device can also ask for it (presence.person.pair-challenge).
         return { granted: true, expires: g.expires, challenge: g.challenge, ...(software ? { software: true } : {}) };
       },
@@ -282,7 +285,7 @@ export default {
       const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
       const rec = r && r.data;
       if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner || !rec.key || !["phone", "computer", "web"].includes(String(rec.kind))) return;
-      try { people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: !(strongKey(rec) || approvedStrong(device)) }); } catch { /* no grant: the device gets the random challenge */ }
+      try { const strength = strengthOf(device, rec); people.grant({ device, keyId: String(rec.confirmKeyId || `pairing:${device}`), deviceKey: rec.key, software: strength === "software", strength }); } catch { /* no grant: the device gets the random challenge */ }
     };
     ctx.tool("presence.person.locked", {
       effect: "read",
@@ -318,7 +321,7 @@ export default {
         if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("this device is not paired to an owner"), { code: "denied" });
         const open = liveAsk(device);
         if (open && open.state === "waiting") return { id: open.id, expires_in_s: Math.max(1, Math.round((open.expires - Date.now()) / 1000)) };
-        const a = { id: `ask_${crypto.randomBytes(9).toString("base64url")}`, device, label: String(input.label || "a device").slice(0, 64), state: /** @type {const} */ ("waiting"), strong: false, expires: Date.now() + ASK_MS };
+        const a = { id: `ask_${crypto.randomBytes(9).toString("base64url")}`, device, label: String(input.label || "a device").slice(0, 64), state: /** @type {const} */ ("waiting"), strong: false, asked: Date.now(), expires: Date.now() + ASK_MS };
         asks.set(device, a);
         ctx.events.emit("presence.session-asked", { id: a.id, device, label: a.label });
         return { id: a.id, expires_in_s: ASK_MS / 1000 };
@@ -338,6 +341,18 @@ export default {
         return { state: a.state };
       },
     });
+    ctx.tool("presence.person.session-pending", {
+      effect: "read",
+      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
+      callers: ["cli", "local", "deck", "capsule", "mobile"],
+      input: obj({}),
+      run: async () => {
+        const out = [];
+        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, label: a.label, asked_at: a.asked || 0 }); }
+        out.sort((x, y) => y.asked_at - x.asked_at);
+        return { asks: out };
+      },
+    });
     ctx.tool("presence.person.session-answer", {
       effect: "write",
       description: "The owner answers a device's sign-in ask from their own device, with their presence: yes lets that device sign in once, with the strength of this proof.",
@@ -351,7 +366,7 @@ export default {
         if (input.yes !== true) { a.state = "refused"; return { state: "refused" }; }
         const p = /** @type {any} */ (meta.presence);
         // the approving proof's strength: a software key (method device) approves a software session; anything a person had to touch is strong
-        a.strong = Boolean(p && p.method && p.method !== "device");
+        a.strong = Boolean(p && p.method && p.method !== "device"); a.method = p && p.method ? String(p.method) : "";
         a.state = "approved";
         a.expires = Date.now() + ASK_MS;
         ctx.events.emit("presence.session-approved", { id: a.id, device: a.device, strong: a.strong });
