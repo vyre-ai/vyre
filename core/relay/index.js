@@ -295,6 +295,8 @@ export default {
       link = relayLink({
         url: settings().url, route: route(), routeKey: k().route, boxKey: k().box, admit, onchannel,
         WebSocket: seam.WebSocket, log: m => ctx.log(m),
+        // A Publish tunnel stream the relay hands the box (relay/node/tunnel.js): the box end of the tunnel (`ctx.tunnelEnd`, the daemon's, from lib/publish/tunnel.js) takes it, or it is closed.
+        ontunnel: (stream, visitor) => { const end = /** @type {any} */ (ctx).tunnelEnd; if (end && typeof end.accept === "function") end.accept(stream, visitor); else stream.destroy(); },
         // A typed Wink code's PAKE message from a typing device (spec 6.5): handed to the wink module as an internal event, never to a surface.
         oncode: m => { try { ctx.events.emit("relay.code-asked", m); } catch {} },
         onstate: (s, why) => {
@@ -385,7 +387,7 @@ export default {
       // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
       // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
       const pkey = hello.passkey;
-      if (pkey && typeof pkey === "object" && kind === "app") {
+      if (pkey && typeof pkey === "object" && hello.kind === "web" && kind === "app") {
         try {
           const r = /** @type {any} */ (await ctx.call("presence.enroll", { kind: "passkey", name, public_key: String(pkey.public_key || ""), alg: pkey.alg ?? -7, rp_id: String(pkey.rp_id || ""), credential_id: String(pkey.credential_id || ""), device: id }));
           if (r && r.error) ctx.log(`relay: this device's passkey was not enrolled: ${r.error.message || r.error.code}`);
@@ -1063,7 +1065,9 @@ export default {
         const c = String((meta && meta.caller) || "");
         const me = /^(device|web|setup):/.test(c) ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(c.indexOf(":") + 1))) : null;
         const withAsk = !(me && me.kind === "web" && !me.trusted);
-        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
+        // A legacy browser (kind web) reads its own row only: names, last seen and presence of the other devices are not its to see (reviewer-3 PA-4).
+        const mine = c.startsWith("web:") ? c.slice(4) : null;
+        return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)).filter(d => mine === null || d.id === mine) };
       },
     });
 

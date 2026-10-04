@@ -19,7 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, kernelWanted, kernelOffRefusal } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -108,10 +108,6 @@ export function moduleRoots(root) {
  *   kernel?: boolean, coreKeys?: any, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
-  // A packaged build starts only with the kernel on (MA-5): refused before the home, the lock or the store is touched. A development checkout starts as it always has.
-  const kernelOn = kernelWanted(opts);
-  const refused = kernelOffRefusal(kernelOn);
-  if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
@@ -154,7 +150,9 @@ async function startLocked(opts, root, p, release) {
     coreHolder.link = c ? coreLink(c) : null;
     if (c) log(`presence: keys and proofs are vyre-core's (${c.socket})`);
   }
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
+  // DEVELOPMENT ONLY: the automated walk's presence stand-in is on only for a development build whose home holds a file the owner made by hand (never config, never a tool).
+  const devStandIn = () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in"));
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: devStandIn, network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
@@ -202,7 +200,7 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
-  if (kernelWanted(opts)) {
+  if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
@@ -234,8 +232,10 @@ async function startLocked(opts, root, p, release) {
     const { createDataStores } = await import("../../lib/data-stores.js");
     /** @type {any} */ let vaultHolds;
     try { vaultHolds = (await import(/* @vite-ignore */ "../../lib/vault-wipe.js")).vaultHolds; } catch { vaultHolds = undefined; }
+    registry.deps.devStandIn = devStandIn;
     registry.deps.dataStores = createDataStores({ home: root, db, kernelEvents: () => kernel.log.read(), ...(vaultHolds ? { vaultHolds } : {}) });
     registry.deps.modulesListReset = (/** @type {any} */ chain, /** @type {any} */ proof) => kernel.resetModulesList(chain, proof);
+    registry.deps.modulesListResetPayload = () => kernel.modulesListReset();
     closeFlowsHost = () => flowsHost.stop();
     // Devices enrol per Space (the user's ruling): the spaces module keeps the list and answers `spaces.devices.enrolled`; a build without that module has no list, so every device is enrolled.
     const deviceEnrolled = async (/** @type {string} */ space, /** @type {string} */ device) => {
@@ -243,7 +243,7 @@ async function startLocked(opts, root, p, release) {
       if (r && r.error) { if (r.error.code === "no_such_tool" || r.error.code === "not_available") return true; return false; }
       return !r || !r.data || r.data.enrolled !== false;
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         if (!q.route) throw Object.assign(new Error("that connector's route table is the vault's and is not exposed to the kernel yet"), { code: "unavailable" });
@@ -259,7 +259,7 @@ async function startLocked(opts, root, p, release) {
       },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
-    stages = (await flowsHost.attach(kernel.id.space, kernel, kernel.id.owner)).stages;
+    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
@@ -368,7 +368,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence, devStandIn()));
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf, kernelOf: () => kernel }).catch(e => fail(res, e)));
   server.on("upgrade", async (req, socket, head) => {
     try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
@@ -470,7 +470,9 @@ export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.te
 
 // "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
 // core/modules): threads.answer takes it only with the box's signed assertion checked.
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|onboard$|hook$)/;
+// "web:", "setup:" and "space:" are labels the relay and the spaces listener make (a waiting or browser pairing, the setup page, a visiting person); a socket client never gets them, nor the bare
+// class words that only a tool's callers list uses (reviewer-3 LB-1b).
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|setup:|space:|onboard$|hook$|web$|setup$|space$|device$|tailnet$|agent$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -687,8 +689,9 @@ const taken = new WeakMap();
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
-async function atTerminal(socket, registry, presence) {
-  if (await fromClaude(socket, registry)) return null;
+async function atTerminal(socket, registry, presence, standIn = false) {
+  // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
+  if (!standIn && await fromClaude(socket, registry)) return null;
   const pid = await peerPid(socket);
   if (!pid || !presence || typeof presence.who !== "function") return null;
   const logins = await presence.who();

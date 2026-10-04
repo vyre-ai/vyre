@@ -76,7 +76,7 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });
   assert.ok(made.data && made.data.id, JSON.stringify(made));
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
-  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "chain", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "presence", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "sessions", "space", "tasks"]);
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "chain", "chainIn", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "owner", "presence", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "sessions", "space", "tasks"]);
 });
 
 test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {

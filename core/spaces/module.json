@@ -323,7 +323,8 @@
  },
  "needs": {
   "kernel": {
-   "membership": true
+   "membership": true,
+   "spaces": true
   }
  },
  "teaches": {}
