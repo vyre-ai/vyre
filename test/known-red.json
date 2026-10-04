@@ -1,15 +1,6 @@
 {
- "apps/app/screens/settings/appearance.test.js": {
-  "owner": "app-wire"
- },
- "apps/app/screens/sites/real.test.js": {
-  "owner": "app-wire"
- },
  "apps/app/src/identity/identity.test.js": {
   "owner": "chat"
- },
- "apps/test/world.test.js": {
-  "owner": "app-wire"
  },
  "core/artifacts/artifacts.test.js": {
   "owner": "vault"
@@ -187,9 +178,6 @@
  },
  "test/threadsock.test.js": {
   "owner": "platform"
- },
- "test/tokens.test.js": {
-  "owner": "app-wire"
  },
  "test/walk-identity-space.test.js": {
   "owner": "windows"
