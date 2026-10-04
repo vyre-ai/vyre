@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
+
 - test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.
 - test(walk): the walk's paired-device helper builds its device row the way the daemon does (the relay's row plus the person Wink's record names), so a signed-in paired app device reaches bridges.merge.links as the person. Not a bridges bug: the check reads the call's kernel chain, and a paired device's chain is one person (core/daemon callerFacts); the test's row had no person, so no chain was built. publish.whoIs uses the same chain check and needs no change.
 
