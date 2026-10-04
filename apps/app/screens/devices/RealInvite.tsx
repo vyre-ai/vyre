@@ -70,7 +70,7 @@ export function RealInvite() {
         <Card className="max-w-read gap-s3">
           <Text strong>The invitation is ready</Text>
           <Card className="flex-row items-center gap-s3"><Text mono size="caption" className="flex-1">{made.link}</Text><Button size="sm" label="Copy link" onPress={() => { Clipboard.setStringAsync(made.link).catch(() => {}); showToast("Copied"); }} /></Card>
-          <WinkCode text={made.link} kind="join" space={card.name} />
+          <WinkCode text={made.link} kind="join" space={card.name} typed={made.code} />
           <Text tone="muted">{made.line}</Text>
           <View className="flex-row flex-wrap gap-s2">
             <Button size="sm" label="Email it" onPress={() => {

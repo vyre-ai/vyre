@@ -16,7 +16,7 @@ import { Button, focusData } from "./Button";
  * pushed place carries Back instead, named for `backTo` (the page it came from) when the caller
  * knows it, else for the page under it in the stack.
  */
-export function Screen({ title, back, backTo, children }: { title: string; back?: boolean; backTo?: string; children?: ReactNode }) {
+export function Screen({ title, back, backTo, action, children }: { title: string; back?: boolean; backTo?: string; action?: { label: string; onPress: () => void; testID?: string }; children?: ReactNode }) {
   const { color } = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -28,6 +28,7 @@ export function Screen({ title, back, backTo, children }: { title: string; back?
         <Text accessibilityRole="header" numberOfLines={1} style={[type.title, styles.title, { color: color.text }]}>
           {title}
         </Text>
+        {action ? <Button kind="secondary" size="sm" label={action.label} onPress={action.onPress} testID={action.testID} /> : null}
         {back ? null : <PlacesButton name={me} onPress={() => router.push("/places")} />}
       </View>
       <View style={styles.body}>{children}</View>

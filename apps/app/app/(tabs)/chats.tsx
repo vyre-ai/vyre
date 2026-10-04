@@ -31,7 +31,7 @@ export default function Chats() {
   useTabDrawn();
   const now = Date.now();
   return (
-    <Screen title="Chats">
+    <Screen title="Chats" action={{ label: "New chat", onPress: () => router.push("/new-chat" as never), testID: "new-chat" }}>
       {threads.length === 0 ? (
         <EmptyHere kind="chats" loading={from === "none"} />
       ) : (

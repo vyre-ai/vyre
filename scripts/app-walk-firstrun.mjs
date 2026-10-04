@@ -135,6 +135,13 @@ await step("Chats empty state says one thing and gives one action", { route: "/c
   const t = await text();
   if (!/Chats/.test(t)) throw new Error(`no chats page: ${t.slice(0, 200)}`);
 });
+await step("New chat: Chats offers it and the screen lists your assistant", { route: "/chats" }, async (pg, text) => {
+  await pg.getByText("New chat", { exact: true }).first().click();
+  await pg.waitForTimeout(2500);
+  const t = await text();
+  need(t, /Chat with/, "no agent list");
+  need(t, /Start chat/, "no Start chat button");
+});
 await browser.close(); a.close(); b.close();
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify(results, null, 2));
 const failed = results.filter((r) => !r.ok);
