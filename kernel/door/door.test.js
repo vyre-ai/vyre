@@ -1,6 +1,7 @@
 // @ts-check
 // The inference door against invariants 5 and 6: models see placeholders, a prompt holding a value the session resolved is refused (every
 // disguise in the canary corpus), a reply or tool result that echoes one is refused, and only declared sinks reach the door.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

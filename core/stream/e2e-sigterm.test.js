@@ -1,6 +1,7 @@
 // @ts-check
 // A graceful stop on a REAL vyred process: SIGTERM (what a restart for an update sends) mid-turn keeps the open turn in the home's database, and the next start reopens it or says it could not.
 // Skipped unless VYRE_E2E=1 on the test box (see e2e-step7.test.js). Borrows that test's harness process (e2e-step7-vyred.js).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

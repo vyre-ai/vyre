@@ -1,5 +1,6 @@
 // @ts-check
 // scripts/patch-release.mjs: a fix commit becomes a hotfix branch off the last stable tag, version bumped, notes written (the patch fast lane).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

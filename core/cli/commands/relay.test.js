@@ -2,6 +2,7 @@
 // `vyre relay` as a person runs it: the real bin/vyre in a child process, against a vyred started
 // in this process in a temp home, with the Node relay on 127.0.0.1. No Tailscale, no Cloudflare.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

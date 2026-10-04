@@ -1,5 +1,6 @@
 // @ts-check
 // personal/trust: whose words may teach memory about the user's life (ADR 0034, source trust).
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

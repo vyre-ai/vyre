@@ -33,9 +33,7 @@ const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
 // The token is handed to the session launcher through the vault's credentials port (vault.launcherOnly), never through a module grant.
 
-// Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
-const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 // relay.join is not shippable on a Mac yet: vyre.db is a same-uid store, so a Mac chosen as
 // Solo/Server has nowhere safe to hold a paired device's keys until vyre-core (ADR 0040) owns
 // its own root-only store -- reviewer/team-lead, 28 Sep ("gated on vyre-core, same as Mac GA").
@@ -715,29 +713,12 @@ export default {
       },
     });
 
-    /**
-     * The first passkey is made at the box's own address (a passkey made on the loopback page
-     * would belong to 127.0.0.1). While none exists, presence mints a one-time code, which rides
-     * in the fragment to the page that enrolls it; the code proves presence.enroll and nothing else.
-     */
-    async function passkeyUrl(address) {
-      const keys = await tryCall("presence.keys");
-      if (keys.__error) return null;
-      const list = Array.isArray(keys) ? keys : keys.keys || [];
-      if (list.some(k => k.kind === "passkey")) return null;
-      const c = await tryCall("presence.code");
-      return c.__error || !c.code ? null : `${String(address).replace(/\/$/, "")}/onboard/passkey#e=${encodeURIComponent(c.code)}`;
-    }
-
+    // The first-passkey path is gone (0.3): a server's owner arrives by pairing with a verified identity proof, and browser passkeys come back with RC2, behind an owner's presence.
     ctx.tool("onboard.passkey", {
       effect: "write", callers: ONBOARD_CALLERS,
-      description: "A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.",
+      description: "Not available: a server is paired to your Vyre app first. Always answers that.",
       input: obj(),
-      run: async (_, { caller }) => {
-        boxOnly();
-        const address = (await status(caller)).address || net().address || null;
-        return { address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null };
-      },
+      run: async () => { boxOnly(); throw Object.assign(new Error("Pair this server to your Vyre app first."), { code: "pair_first" }); },
     });
 
     ctx.tool("onboard.finish", {
@@ -757,7 +738,7 @@ export default {
         await tryCall("relay.setup.end", { reason: "finished" });
         if (net().ownerSeen) await lb.close();
         const s = await status(caller);
-        return { ...s, url: s.address, passkeyUrl: HANDS_CODE.has(String(caller)) && (s.address || net().address) ? await passkeyUrl(s.address || net().address) : null, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
+        return { ...s, url: s.address, assistant, thread: assistant && assistant.thread, ready: "Vyre is ready." };
       },
     });
 
@@ -824,13 +805,11 @@ export default {
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
         if (net().ownerSeen || (ob().finished && address)) {
-          // A passkey link is a one-time code too: mint false makes none.
-          const mint = !(input && input.mint === false);
-          return { url: null, address, passkeyUrl: mint && address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+          return { url: null, address, port: null, expires: null, user: os.userInfo().username };
         }
         if (input && input.mint === false) {
           const p = lb.pending();
-          return { url: null, address, passkeyUrl: null, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
+          return { url: null, address, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
         }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },

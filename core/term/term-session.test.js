@@ -3,6 +3,7 @@
 // (never a password, never output), and a dropped connection resumes from its offset with no byte lost
 // or repeated. A real pty, so these run on the box or testbox (util-linux script), not on a Mac.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

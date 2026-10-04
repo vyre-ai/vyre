@@ -7,6 +7,7 @@
 // under the narrowest scope; "Sign in with Google" ends in an account that works, and only a
 // person can start it; nothing secret reaches a result, an event, a log line or the table.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

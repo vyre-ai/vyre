@@ -8,6 +8,7 @@
 // Saved/Reset/Undo slot, the restart banner, the Level switch, search, advanced keys, J and K,
 // and settings.changed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "./fake-dom.js";

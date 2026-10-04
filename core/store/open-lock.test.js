@@ -1,6 +1,7 @@
 // @ts-check
 // Two processes opening the same new database at once (vyre-core's daemon starting while the installer's
 // `code` command mints a code): the second must wait for the first, not fail with "database is locked".
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

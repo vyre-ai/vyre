@@ -2,6 +2,7 @@
 // The OpenRouter driver against a local OpenAI-compatible server: conform() (no process, no tools),
 // the key, history across a resume, and a limit said as one.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

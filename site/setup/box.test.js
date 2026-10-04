@@ -1,6 +1,7 @@
 // @ts-check
 // The page's own connection to a real vyred over the real Node relay: admitted only with the page's key, able to
 // call the setup allowlist and nothing else. (core/relay/setup.test.js is the box's half; this is the page's.)
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

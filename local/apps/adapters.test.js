@@ -2,6 +2,7 @@
 // Clock, Notes and Reminders over a fake exec: the right shortcut with the right input, the exact
 // osascript argv, user text only ever in argv, locale-free dates, and the one line each says.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

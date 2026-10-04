@@ -5,6 +5,7 @@
 // literal sits in the source and none is a real credential. Parity with core/vault/detect.js is
 // checked for every shape, so the page and the box agree on what a key is.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -4,6 +4,7 @@
 // every string literal in the Deck's own code. A literal that must carry one of them (a module id compared in code,
 // never drawn) ends its line with `// internal-word: <why>`; nothing else is exempt.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

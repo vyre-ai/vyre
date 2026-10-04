@@ -1,6 +1,7 @@
 // @ts-check
 // The fake driver keeps Docker's rules, so a pool bug that would fail on the box fails here.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { FakeDriver } from "./fake.js";

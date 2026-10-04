@@ -6,6 +6,7 @@
 // Cloudflare or Let's Encrypt. `vyre uninstall --system` only ever runs as a dry run or as a
 // refusal: nothing here touches /etc or systemctl.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

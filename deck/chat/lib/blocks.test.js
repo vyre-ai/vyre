@@ -1,6 +1,7 @@
 // @ts-check
 // The session view's pure rules: labels, headers per assistant run, grouping, merging a re-read,
 // footers, and the raw view printed the way Claude Code's terminal prints it. Sample world only.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -21,7 +21,9 @@
 // The web-key rule (lead ruling on reviewer-3's KP-1): an entry with `held: "web"` is a key a script on a web origin can reach (a WebCrypto key in a browser). It may sign its own genesis
 // and nothing else about the list: no add, remove, replace-code or space-owner change, whatever its age. Who speaks for an identity changes only by a passkey entry (alg
 // "webauthn-es256": a P-256 key and the rp it was made for) whose assertion carries user presence AND verification for each op, by a device key held by a phone or computer, or by the
-// recovery code, which can add a device. The directory Worker and every home run this same file, so all of them refuse.
+// recovery code, which can add a device. A device entry may also carry `enclave`, the P-256 key a phone keeps in its Secure Enclave behind Face ID (NK-2): every list change it signs must carry `esig`, that
+// key's ECDSA signature over the same op message, or it is refused (`needs_enclave`). Face ID itself is the OS's key policy and is not visible here; enrolment should carry an App Attest assertion (`attest`)
+// that its own verifier checks. The directory Worker and every home run this same file, so all of them refuse.
 //
 // This file uses only WebCrypto, so the same code runs in the Worker, in Node and in a browser.
 
@@ -70,7 +72,7 @@ export function canonical(v) {
 
 /** The bytes a signer signs for an op: everything but the signature and the approvals. @param {any} op */
 export function messageOf(op) {
-  const { sig: _s, approvals: _a, ...body } = op;
+  const { sig: _s, esig: _e, approvals: _a, ...body } = op;
   return enc.encode(`${CHAIN_TAG}\n${canonical(body)}`);
 }
 /** The hash a next op names as `prev`. @param {any} op */
@@ -130,11 +132,24 @@ function derToRaw(d) {
   const raw = new Uint8Array(64); raw.set(r, 0); raw.set(q, 32);
   return raw;
 }
+/**
+ * The second signature of NK-2: ECDSA P-256 (SHA-256) by the entry's Secure Enclave key over the same op message, 64 bytes r||s or DER, base64url. @param {Entry} e @param {Uint8Array} message @param {unknown} esig
+ */
+async function verifyEsig(e, message, esig) {
+  try {
+    const pt = unb64(e.enclave), sg = unb64(esig);
+    if (!pt || !sg) return false;
+    const raw = sg.length === 64 ? sg : derToRaw(sg);
+    if (!raw) return false;
+    const key = await crypto.subtle.importKey("raw", /** @type {BufferSource} */ (pt), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    return await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key, /** @type {BufferSource} */ (raw), /** @type {BufferSource} */ (message));
+  } catch { return false; }
+}
 /** Does `sig` over `message` check out for this entry's key, whatever kind of key it is? @param {Entry} e @param {Uint8Array} message @param {string} sig */
 const verifyEntry = (e, message, sig) => (e.alg === "webauthn-es256" ? verifyWebAuthn(/** @type {string} */ (e.pub), String(e.rp || ""), message, sig) : verifySig(/** @type {string} */ (e.pub), message, sig));
 
 /**
- * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, held?: "web" }} Entry
+ * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, held?: "web", enclave?: string, attest?: string }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
  * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, seenAt?: (seq: number) => number|undefined, now?: number, skewMs?: number }} Ctx
  * `ownerOps(id)` gives a person's whole chain (the verifier checks it itself). `live` says every op here is being ACCEPTED now, so its device must be on the owner's
@@ -159,7 +174,14 @@ async function shapeOfEntry(e, kind) {
   if (e.held !== undefined && e.held !== "web") throw chainError("bad_entry", "an entry is held on the web or says nothing");
   if (passkey ? (!pub || pub.length !== 65 || pub[0] !== 4 || typeof e.rp !== "string" || !/^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$/.test(e.rp) || e.held !== undefined || e.kind !== "device") : (!pub || pub.length !== 32 || e.rp !== undefined)) throw chainError("bad_entry", passkey ? "a passkey entry is a device with a P-256 key and the rp it was made for" : "an entry's key is not an Ed25519 key");
   if (e.eid !== await idOfBytes(/** @type {Uint8Array} */ (pub))) throw chainError("bad_entry", "an entry's id is not its key's hash");
-  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held === "web" ? { held: "web" } : {}) };
+  // `enclave` (NK-2): the raw uncompressed P-256 point of a key the phone keeps in its Secure Enclave behind Face ID. It is part of the signed entry, so it is immutable once on the list. Any list
+  // change this entry signs must also carry `esig` from that key. `attest` is the opaque App Attest assertion the verifier of enrolment checks (it is not read here: this file cannot see the OS's policy).
+  if (e.enclave !== undefined) {
+    const pt = unb64(e.enclave);
+    if (passkey || e.kind !== "device" || !pt || pt.length !== 65 || pt[0] !== 4) throw chainError("bad_entry", "an enclave key is a raw uncompressed P-256 point on a device entry");
+  }
+  if (e.attest !== undefined && (typeof e.attest !== "string" || e.attest.length > 8192)) throw chainError("bad_entry", "an attestation is a string");
+  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held === "web" ? { held: "web" } : {}), ...(e.enclave !== undefined ? { enclave: e.enclave } : {}), ...(e.attest !== undefined ? { attest: e.attest } : {}) };
 }
 const cleanLabel = (/** @type {unknown} */ l) => (typeof l === "string" ? l.replace(/[\u0000-\u001f]/g, " ").slice(0, 60) : undefined) || undefined;
 
@@ -230,6 +252,9 @@ export async function applyOp(state, op, ctx = {}) {
       // A key a web origin can reach has no authority over who speaks for the identity: not to add, remove or replace anything. A passkey signs each op with user verification, the recovery
       // code can add a device, and a phone or computer key joins the list that way (KP-1).
       if (signer.held === "web") throw chainError("web_key", "a key kept by a web page cannot change who speaks for this identity; use your passkey or your recovery code");
+      // A phone's Ed25519 identity seed is a software key; its Secure Enclave key stands behind Face ID. A list change signed by an entry that has an enclave key must carry that key's signature too,
+      // so reading the seed alone changes nothing about who speaks for the identity (NK-2). An entry with neither `held` nor `enclave` (a Mac or a server key) still signs alone.
+      if (signer.enclave && !await verifyEsig(signer, msg, op.esig)) throw chainError("needs_enclave", "a change to who speaks for this identity from a phone also needs its Face ID signature");
       young = youngAt(signer, eff);
       // The recovery code is a way BACK IN, not a way to take over: it can only add a device. That device is a newcomer, and the owner's own devices stay and can remove it.
       if (signer.kind === "code" && !(op.type === "add" && op.entry && op.entry.kind === "device")) throw chainError("code_limited", "the recovery code can only add a device; sign in with a device to change the list");
@@ -322,6 +347,7 @@ async function verifyOwnerSig(op, subject, owner, msg, ts, ctx) {
   const dev = find(at, op.via);
   if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
   if (dev.held === "web") throw chainError("web_key", "a key kept by a web page cannot change who owns a space; use your passkey");
+  if (dev.enclave && !await verifyEsig(dev, msg, op.esig)) throw chainError("needs_enclave", "a change to who owns a space from a phone also needs its Face ID signature");
   if (!await verifyEntry(dev, msg, op.sig)) throw chainError("bad_signature", "the signature does not check out");
   if (ctx.live || (ctx.liveFrom !== undefined && op.seq >= ctx.liveFrom)) await stillOnList(ctx, ops, dev);
   return youngAt(dev, ts);
@@ -381,9 +407,11 @@ export async function makeGenesis({ kind, entry, code, nonce, ts, via, viaPos, s
 }
 
 /** Build and sign the next op on a state. `body` is {type, entry|target, ...}; contacts' approvals come in `approvals` already signed. @param {State} state @param {any} body @param {{ by?: string, via?: string, viaPos?: { via_seq: number, via_head: string }, ts: number, sign?: (m: Uint8Array) => Promise<Uint8Array>|Uint8Array }} o */
-export async function makeOp(state, body, { by, via, viaPos, ts, sign }) {
+export async function makeOp(state, body, { by, via, viaPos, ts, sign, esign }) {
   const op = { v: 1, id: state.id, seq: state.seq + 1, prev: state.head, ts, ...body, ...(by ? { by } : {}), ...(via ? { via } : {}), ...(viaPos || {}) };
   if (sign) /** @type {any} */ (op).sig = b64u(await sign(messageOf(op)));
+  // the Secure Enclave key's own signature over the same message (NK-2): `esign` returns 64 bytes r||s or DER
+  if (esign) /** @type {any} */ (op).esig = b64u(await esign(messageOf(op)));
   return op;
 }
 

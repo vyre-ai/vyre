@@ -3,6 +3,7 @@
 // holds link.serve open, the box's modules ask with link.macs.call, and only the read tools in
 // core/link/allow.js cross, checked at both ends. Nothing the Mac answers is stored on the box.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

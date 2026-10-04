@@ -6,6 +6,7 @@
 // ("send it", "new line", "scratch that") is stripped and acted on. Fakes the browser audio/WS
 // APIs fake-dom doesn't have - this never touches a real mic or socket. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, text } from "../test/fake-dom.js";

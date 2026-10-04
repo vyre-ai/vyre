@@ -2,6 +2,7 @@
 // computerd's /fs routes on a temp home: the handler on a local server for the contract, and
 // computerd itself, spawned with a fake token, for the bearer check, the wiring and the shield.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

@@ -1,5 +1,6 @@
 // BR-2: the caller classes that are not the person's (a browser `web:<id>`, a setup page `setup:<id>`) reach only their own short lists, and a label nobody recognises reaches nothing.
 // The lists live in core/modules/agent-reach.js; this checks them against the tools and the setup gate they describe, so a new tool cannot join a class by accident.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

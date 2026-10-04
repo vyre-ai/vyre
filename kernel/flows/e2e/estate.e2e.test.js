@@ -1,6 +1,7 @@
 // Estate planning, end to end on the real gateway and tasks: a payment arrives, the Kit's Flow opens the contact and the matter at Intake,
 // entering the stage makes its tasks, Research fills the fields, the welcome draft waits for the attorney, the attorney's approval (a real
 // presence proof) releases it, and the matter moves to Engagement by itself.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, install, settle, ALEX } from "../testing/world.js";

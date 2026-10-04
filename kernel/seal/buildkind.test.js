@@ -1,5 +1,6 @@
 // @ts-check
 // The sealing process reads the build stamp itself (it imports nothing outside kernel/seal), and its answer must equal kernel/devbuild.js for every kind of tree.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

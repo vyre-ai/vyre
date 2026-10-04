@@ -1,5 +1,6 @@
 // The box image carries the provider CLIs the sign-in and the sessions spawn as an account's uid, and the spawner is told where they are.
 // A real install failed with "grok is not a program the spawner starts": the image had no Grok and the spawner's list had no entry. This reads files only.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

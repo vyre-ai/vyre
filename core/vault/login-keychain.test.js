@@ -5,6 +5,7 @@
 // Mac. Here a vyred runs the same way (NODE_TEST_CONTEXT removed) with a fake `security` first
 // on PATH that records every call, and the vault must use the file keystore and never call it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";

@@ -2,6 +2,7 @@
 // An agent's folder is judged on its real path, and the tool runs on that path: a `..` or a symlink into another project
 // is refused, and what gets through is the canonical folder (cwdArg, core/modules/index.js + projects.of).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,5 +1,6 @@
 // @ts-check
 // HD-3 (reviewer-2): link.call forwards a tool to the box as the owner's device, so a model or an agent must never reach it.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

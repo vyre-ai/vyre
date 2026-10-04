@@ -1,6 +1,7 @@
 // @ts-check
 // The shell (background.js): hello, dispatch, redaction, stop/resume, reconnect backoff; the
 // chrome.debugger wrapper (idempotent attach, detach rejects in-flight); the registry.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start, redactResult, MIN_RETRY_MS, MAX_RETRY_MS, FAST_RETRY_MS, FAST_WINDOW_MS, BADGE_AFTER_MS } from "./extension/background.js";

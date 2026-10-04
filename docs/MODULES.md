@@ -164,6 +164,10 @@ Every member that reaches outside the module returns a promise. Types are in
 
 A call without its declaration throws `undeclared`.
 
+## Relaying a call: who you act for
+
+When your tool calls another tool with `ctx.call`, Vyre records who the call you are handling came from and passes it on as the call's `origin`. You never set it and you cannot forget it: a client cannot send one, and a module cannot overwrite it. So a module that relays a model's call is judged as acting for that model on every tool that cares (`originClass(meta)`, `wantsMacs`, a person-only tool a module reaches only on a person's behalf). The one thing to know is that the origin lives only while your call is running. Work you start for later (a timer, an event you store, a job queue) has no running call and is your own, as if you had made the call yourself. If it should act for the caller, keep `ctx.origin()` next to the stored work and replay it with `ctx.withOrigin(origin, fn)`. `test/module-origin.test.js` shows both.
+
 ## House rules
 
 - `start` returns within 2 seconds and returns `{ stop() }`. `stop` finishes within 5 seconds.

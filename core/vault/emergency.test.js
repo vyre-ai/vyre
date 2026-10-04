@@ -3,6 +3,7 @@
 // one process, each with a relay listener on 127.0.0.1, and one clock both share so the wait can
 // pass. Every vault lives in a temp home with a file keystore.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

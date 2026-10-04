@@ -2,6 +2,7 @@
 // These tests never show a dialog. They build with a stub swiftc, except one real compile on a Mac
 // that only runs the helper's --check mode. A stub shows nothing, so the tests that drive it pass
 // build() an env with dialogs on; with the test's own env, the helper must not run at all.
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
