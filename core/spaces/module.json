@@ -118,6 +118,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.identity.republish",
+    "reach": "person"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules"
    },

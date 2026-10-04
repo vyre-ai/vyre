@@ -895,6 +895,16 @@ export default {
       let st = null; try { st = identity.status(); } catch { st = null; }
       return { spaces: out2, identity: st && st.exists && st.id === person ? { id: st.id, name: st.name || null } : null };
     }, { internal: true });
+    tool("spaces.identity.republish", "Put your identity's chain and each finished space's name in the directory again, for a directory that lost its claims (a test server that restarted). Says what it put back and what it could not.", obj(), async () => {
+      const done = { identity: false, spaces: /** @type {string[]} */ ([]), failed: /** @type {Array<{ name: string, why: string }>} */ ([]) };
+      try { await idops.republish(); done.identity = true; } catch (e) { done.failed.push({ name: "identity", why: String(/** @type {any} */ (e).message || e).slice(0, 120) }); return done; }
+      for (const row of spaces.all()) {
+        if (row.status !== "done" || !row.rootPublic) continue;
+        const r = await deps.names.claimSpace({ name: row.label, rootPublic: row.rootPublic, record: { spaceId: row.id, displayName: row.displayName } });
+        if (r && r.ok) done.spaces.push(row.name); else done.failed.push({ name: row.name, why: String((r && r.message) || "refused").slice(0, 120) });
+      }
+      return done;
+    });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
