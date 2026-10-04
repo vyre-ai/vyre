@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1185,"event":453,"config":254,"env":242,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1186,"event":453,"config":254,"env":242,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2506,6 +2506,7 @@
     {"kind":"tool","name":"wink.server.confirm","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverconfirm","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.handover","definedIn":"core/wink/compose.js","page":"reference/tools.md#winkserverhandover","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.owned","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverowned","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.server.owner","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverowner","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.pair.answer","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpairanswer","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.paired","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpaired","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.pairing","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpairing","module":"wink","mentions":[]},

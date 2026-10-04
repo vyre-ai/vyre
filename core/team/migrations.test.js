@@ -1,6 +1,7 @@
 // @ts-check
 // The team module's migration chain on an UPGRADED box: running it twice changes nothing, and a database that already holds any later column or table (put there by an earlier build whose
 // list was numbered differently) still migrates to the full schema instead of failing with "duplicate column name" and taking the whole module (30 tools) away.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
