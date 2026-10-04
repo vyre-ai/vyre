@@ -100,3 +100,18 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   }
   assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, 3, "nothing else was written");
 });
+
+test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad paging input", async () => {
+  const { run } = rig();
+  await run("files.drive.upload", { path: "a/b.txt", base64: b64("1") });
+  for (let n = 2; n <= 5; n++) await run("files.drive.upload", { path: "a/b.txt", base64: b64(String(n)), base: n - 1 });
+  const p1 = await run("files.drive.versions", { path: "a/b.txt", limit: 2 });
+  assert.deepEqual(p1.versions.map((/** @type {any} */ v) => v.ver), [1, 2]);
+  assert.equal(p1.next, 2);
+  const p2 = await run("files.drive.versions", { path: "a/b.txt", limit: 2, after: p1.next });
+  assert.deepEqual([p2.versions.map((/** @type {any} */ v) => v.ver), p2.next], [[3, 4], 4]);
+  const p3 = await run("files.drive.versions", { path: "a/b.txt", limit: 2, after: p2.next });
+  assert.deepEqual([p3.versions.map((/** @type {any} */ v) => v.ver), p3.next], [[5], null]);
+  assert.equal(await code(run("files.drive.versions", { path: "a/b.txt", limit: 0 })), "bad_input");
+  assert.equal(await code(run("files.drive.space.list", { limit: -1 })), "bad_input");
+});
