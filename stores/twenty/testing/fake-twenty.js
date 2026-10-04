@@ -60,12 +60,13 @@ export class FakeTwenty {
   #metadata(op, v, query = "") {
     if (op.startsWith("Boot_") || op.startsWith("Rot_")) return this.#boot(op, query);
     switch (op) {
+      case "AuditProbe": return { __type: { inputFields: [{ name: "nameSingular" }, { name: "isAuditLogged" }] } };
       case "Health": return { objects: { totalCount: this.objects.size } };
-      case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
+      case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, isAuditLogged: o.isAuditLogged, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
       case "CreateObj": {
         const o = v.i.object;
         if (this.objects.has(o.nameSingular)) throw new GqlError("An object with that name already exists");
-        const obj = { id: crypto.randomUUID(), nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, fields: new Map([["name", { id: crypto.randomUUID(), name: "name", type: "TEXT", options: null, isActive: true }]]) };
+        const obj = { id: crypto.randomUUID(), nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, isAuditLogged: o.isAuditLogged !== false, fields: new Map([["name", { id: crypto.randomUUID(), name: "name", type: "TEXT", options: null, isActive: true }]]) };
         this.objects.set(o.nameSingular, obj); this.rows.set(o.nameSingular, new Map());
         return { createOneObject: { id: obj.id, nameSingular: obj.nameSingular } };
       }

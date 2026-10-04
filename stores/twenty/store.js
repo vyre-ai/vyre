@@ -52,6 +52,7 @@ export class TwentyStore {
   constructor(o) {
     this.client = o.client; this.space = o.space; this.dir = o.dir; this.secret = o.webhookSecret;
     this.graceMs = o.graceMs ?? 250; this.now = o.now ?? Date.now;
+    /** @type {boolean | undefined} */ this.auditSwitch = undefined;
     /** @type {Map<string, import("./plan.js").TypePlan>} */ this.plans = new Map();
     this.snaps = new SnapshotStore(o.dir ? path.join(o.dir, "snapshots.jsonl") : null);
     /** @type {any[]} */ this.log = [];
@@ -149,11 +150,27 @@ export class TwentyStore {
     return { store: "twenty", version: String(v), conformance: CONFORMANCE_REVISION };
   }
 
+  /**
+   * Whether this Twenty can switch an object's timeline off (`isAuditLogged`). It is switched off on every Vyre object, so the values of a field that is
+   * sealed later were never copied into Twenty's history; `scrub` still destroys what an older Space already holds. A Twenty that does not offer the switch
+   * answers false and nothing changes. Asked once.
+   * @returns {Promise<boolean>}
+   */
+  async #auditSwitch() {
+    if (this.auditSwitch !== undefined) return this.auditSwitch;
+    try {
+      const r = await this.client.gql("metadata", "query AuditProbe { __type(name: \"CreateObjectInput\") { inputFields { name } } }");
+      this.auditSwitch = Boolean(r && r.__type && r.__type.inputFields.some((/** @type {any} */ f) => f.name === "isAuditLogged"));
+    } catch { this.auditSwitch = false; }
+    return this.auditSwitch;
+  }
+
   // ---- definitions -----------------------------------------------------------------------------
   /** @param {{ add_types?: any[], change_types?: any[], remove_types?: string[] }} diff */
   async define(diff) {
     const changes = [];
-    const cur = await this.#t(() => this.client.gql("metadata", "query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }"));
+    const audit = await this.#auditSwitch();
+    const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique } } } } } } }`));
     /** @type {Map<string, any>} */ const objs = new Map(cur.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
     /** @param {any} def @param {boolean} mustExist */
     const apply = async (def, mustExist) => {
@@ -163,10 +180,11 @@ export class TwentyStore {
       let obj = objs.get(p.singular);
       if (known && canonical(known.def) === canonical(def) && obj) return;
       if (!obj) {
-        const r = await this.client.gql("metadata", "mutation CreateObj($i: CreateOneObjectInput!) { createOneObject(input: $i) { id nameSingular } }", { i: { object: { nameSingular: p.singular, namePlural: p.plural, labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon } } });
+        const r = await this.client.gql("metadata", "mutation CreateObj($i: CreateOneObjectInput!) { createOneObject(input: $i) { id nameSingular } }", { i: { object: { nameSingular: p.singular, namePlural: p.plural, labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon, ...(audit ? { isAuditLogged: false } : {}) } } });
         obj = { id: r.createOneObject.id, nameSingular: p.singular, labelSingular: p.label, icon: p.icon, fields: { edges: [] } }; objs.set(p.singular, obj);
         changes.push(`added type ${def.name}`);
       } else {
+        if (audit && obj.isAuditLogged !== false) { await this.client.gql("metadata", "mutation UpdObj($i: UpdateOneObjectInput!) { updateOneObject(input: $i) { id } }", { i: { id: obj.id, update: { isAuditLogged: false } } }); obj.isAuditLogged = false; changes.push(`stopped the timeline on ${def.name}`); }
         if (known) for (const old of known.fields) if (!p.byVyre.has(old.vyre)) throw new StoreError("unsupported", `Field ${old.vyre} of ${def.name} was removed: removing a field is a migration, not a define`);
         if (obj.labelSingular !== p.label || (obj.icon ?? p.icon) !== p.icon) { await this.client.gql("metadata", "mutation UpdObj($i: UpdateOneObjectInput!) { updateOneObject(input: $i) { id } }", { i: { id: obj.id, update: { labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon } } }); obj.labelSingular = p.label; obj.icon = p.icon; changes.push(`changed type ${def.name}`); }
       }

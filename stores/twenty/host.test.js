@@ -203,6 +203,7 @@ test("seal a field in place over Twenty: no plaintext in Twenty's rows, the stor
   await R.update(c, "person", p.id, { ssn: "123-45-6790" }, 1);
   const out = await host.kernel.migrate.sealField(c, { type: "person", field: "ssn", class: "us-ssn" });
   assert.equal(out.moved, 1);
+  assert.equal([...fake.objects.values()].every((o) => o.isAuditLogged === false) && fake.objects.size > 0, true, "Twenty's timeline is off for every Vyre object, so a later seal leaves nothing behind");
   assert.equal(fake.timelinePurges, 1, "Twenty's own history was destroyed");
   const rows = JSON.stringify([...fake.rows.values()].flatMap((m) => [...m.values()]));
   assert.equal(rows.includes("123-45-67"), false, "not in Twenty's row");
