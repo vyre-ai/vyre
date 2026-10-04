@@ -19,23 +19,23 @@
   "does": {
     "tools": [
       {
-        "name": "signin.ask",
+        "name": "signin.ask", "effect": "write",
         "reach": "person"
       },
       {
-        "name": "signin.pending",
+        "name": "signin.pending", "effect": "read",
         "reach": "person"
       },
       {
-        "name": "signin.answer",
+        "name": "signin.answer", "effect": "write",
         "reach": "person"
       },
       {
-        "name": "signin.status",
+        "name": "signin.status", "effect": "read",
         "reach": "person"
       },
       {
-        "name": "signin.out",
+        "name": "signin.out", "effect": "write",
         "reach": "person"
       }
     ]

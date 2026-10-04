@@ -336,7 +336,7 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `memory.profile-changed` | `facts` |
 | `memory.remembered` | `facts`, `id` |
 | `memory.site-learned` | `counts`, `key` |
-| `memory.split` | none; sometimes `id`, `scope` |
+| `memory.split` | none; sometimes `callers`, `effect`, `id`, `scope` |
 | `memory.suggested` | `id`; sometimes `state` |
 | `memory.thinking` | `id`, `stage` |
 | `memory.updated` | `by`, `thread`; sometimes `correction`, `fix` |

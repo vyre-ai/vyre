@@ -144,7 +144,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.identity.republish",
+    "name": "spaces.identity.republish", "effect": "write",
     "reach": "person"
    },
    {
