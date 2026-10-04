@@ -1089,7 +1089,15 @@ export default {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);
       if (kernelHandle(row.id)) return { invites: out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.list(await kctxOf(meta, row.id))) };
-      return { invites: out(await invitesFor(row).listInvites({ actor: s.id })) };
+      const rows = out(await invitesFor(row).listInvites({ actor: s.id }));
+      // who joined by it, for "Joined by <name> from <device>": the person ids (accepted_by), their names where this home knows them (joined_by_label, same order), and the device they joined from
+      // (joined_device: null until the redeeming call carries one). `to` is the person the invite was made for, if any.
+      for (const r of rows) {
+        const ids = Array.isArray(r.accepted_by) ? r.accepted_by : [];
+        r.joined_by_label = await Promise.all(ids.map(async (/** @type {string} */ id) => { const n = await kv.get(`person-name/${id}`); return typeof n === "string" ? n : null; }));
+        r.joined_device = null;
+      }
+      return { invites: rows };
     });
 
     /** This person's own list answers for themselves; everyone else is looked up by name inside the client. */
