@@ -56,7 +56,8 @@ export default {
         const a = open.get(String(input.id));
         if (!a || a.state !== "waiting") throw refuse("there is nothing waiting for you with that id", "not_found");
         if (input.approve !== true) { if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" }; a.state = "refused"; return { answered: "refused" }; }
-        const proof = ctx.kernel && typeof ctx.kernel.proofFrom === "function" ? ctx.kernel.proofFrom(meta) : null;
+        const given = ctx.kernel && typeof ctx.kernel.proofFrom === "function" ? ctx.kernel.proofFrom(meta) : null;
+        const proof = given && given.presence ? given.presence : null; // proofFrom answers `{ presence }`, the option a kernel call takes
         if (!proof || typeof proof !== "object" || JSON.stringify(proof).length > MAX_PROOF) throw refuse("this needs your presence: approve it on your device", "needs_presence");
         if (proof.payload_hash !== a.payload_hash) throw refuse("that approval was not for this", "needs_presence");
         a.state = "approved"; a.proof = proof;
@@ -76,6 +77,7 @@ export default {
         return a.state === "approved" ? { state: "approved", proof: a.proof } : { state: "refused" };
       },
     });
+
     return { async stop() { open.clear(); } };
   },
 };

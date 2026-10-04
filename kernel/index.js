@@ -201,6 +201,10 @@ export async function createKernel(cfg) {
     };
     // Only the spaces module (`needs.kernel.spaces: true`) may make or list Spaces: `spaces.create` makes the Space HERE, in the kernel's registry, and the kernel's id (`spc_` and 12 base32
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
+    if (needs.presence === true) {
+      /** Check a presence proof for an act the module asks about (`needs.kernel.presence`): the kernel's one verifier, once (the proof is used up). Resolves null when it stands, else a short reason. */
+      handle.verifyProof = async (/** @type {{ chain: any, op: string, fields: Record<string, unknown>, proof: any }} */ i) => { if (!presence) return "no_presence_verifier"; try { return await presence.check(i); } catch { return "unavailable"; } };
+    }
     if (needs.attrs === true) {
       /** Say whose a resource of this type is (`{ owner, project }` by its URN): the kernel then lets only the owner read a type it scopes by owner (`session`). Fail-safe: a throw is no attributes. */
       handle.registerAttrs = (/** @type {string} */ type, /** @type {(urn: string) => any} */ fn) => { if (typeof type !== "string" || !/^[a-z][a-z0-9_-]{0,40}$/.test(type) || typeof fn !== "function") throw new KernelError("bad_input", "name a type and give a function"); attrProviders.set(type, fn); };

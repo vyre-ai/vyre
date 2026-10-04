@@ -72,6 +72,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
+| [`signin`](#signin) | `core/signin` | `box`, `local` | 5 | 0 | cli |
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 69 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -716,6 +717,19 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Tools: [5](tools.md#sight)
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
+
+## signin
+
+`vyre signin`, the daemon half: the command line asks, the paired phone approves with Face ID, and the terminal gets a person session made for exactly that terminal.
+
+- Folder: `core/signin`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [5](tools.md#signin)
+- Emits: no events
+- Shows on: cli
+- Needs daemon: `personSessions`
+- Needs kernel: `{"actions":[],"presence":true}`
 
 ## spaces
 
