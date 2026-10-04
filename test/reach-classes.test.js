@@ -5,8 +5,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { WEB_REACH, SETUP_REACH, KNOWN_LABELS } from "../core/modules/agent-reach.js";
-import { classReach, callerAllowed, callerKind } from "../core/modules/index.js";
+import { WEB_REACH, SETUP_REACH } from "../core/modules/agent-reach.js";
+import { classReach, callerAllowed, callerKind, KNOWN_LABELS, SURFACE_LABELS } from "../core/modules/index.js";
 import { SETUP_TOOLS, SETUP_TOOL_FAMILIES } from "../core/relay/setup.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -59,4 +59,16 @@ test("a label nobody recognises reaches nothing, a known one goes on to the tool
   for (const l of ["cli", "deck", "capsule", "mobile", "mcp:agent:kit", "module:notes", "device:abc", "tailnet:alex@example.com", "tailnet-guest:x", "unknown", "anonymous"]) assert.equal(classReach(l, "memory.search"), null, l);
   assert.equal(callerKind(WEB), "web");
   assert.ok(KNOWN_LABELS.has("web") && KNOWN_LABELS.has("setup"));
+});
+
+test("every surface label is known, and so is the first word of every label the code builds", () => {
+  for (const l of SURFACE_LABELS) assert.ok(KNOWN_LABELS.has(l), l);
+  /** @type {string[]} */ const files = [];
+  for (const d of ["core", "lib", "relay", "local", "modules", "names", "records", "stores", "kernel"]) if (fs.existsSync(path.join(REPO, d))) walk(path.join(REPO, d), files);
+  /** @type {string[]} */ const unknown = [];
+  for (const f of files) {
+    const src = fs.readFileSync(f, "utf8");
+    for (const m of src.matchAll(/\bcaller(?::|\s*=)\s*[`"']([a-z][a-z0-9-]*)(?=[:`"'\s])/g)) if (!KNOWN_LABELS.has(m[1])) unknown.push(`${path.relative(REPO, f)}: ${m[1]}`);
+  }
+  assert.deepEqual([...new Set(unknown)].sort(), [], "a label the code builds has a first word the registry would refuse; add it to KNOWN_LABELS in core/modules/index.js");
 });

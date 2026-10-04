@@ -344,6 +344,3 @@ export const SETUP_REACH = new Map([
   ["sessions.accounts.signin", "signs in to the person's AI (a module's setupTools)"],
   ["sessions.accounts.key", "saves the person's AI key (a module's setupTools)"],
 ]);
-
-/** The first word of every caller label the registry recognises. A label whose first word is none of these is refused on every tool, including one open to any caller. */
-export const KNOWN_LABELS = new Set(["cli", "local", "deck", "capsule", "mobile", "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);
