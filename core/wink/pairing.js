@@ -102,7 +102,7 @@ export const POLL_MS = 1500;
  *   vyreName?: (identity: string, claimed?: string) => Promise<string | null> | string | null,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
- *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
+ *   confirmPending?: (device: string, trusted?: boolean, pick?: boolean) => Promise<any>,
  *   typedCode?: boolean | (() => boolean), confirmAdopt?: boolean, askMs?: number, askHoldMs?: number, askPollMs?: number, pairWordsFor?: (device: string) => Promise<string>,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
@@ -542,10 +542,10 @@ export function createPairing(o) {
    * The yes, to the relay: the waiting pairing of this device becomes a paired device now. `not_found` is fine (a pairing the relay never held, a typed code or an ungated ring); any
    * other refusal is an error the caller must not turn into a yes. @param {string} device
    */
-  const confirmPending = async (device, trusted = false) => {
-    if (o.confirmPending) return o.confirmPending(device, trusted);
+  const confirmPending = async (device, trusted = false, pick = false) => {
+    if (o.confirmPending) return o.confirmPending(device, trusted, pick);
     if (typeof ctx.call !== "function") return null;
-    const r = /** @type {any} */ (await ctx.call("relay.pair.pending.confirm", { id: String(device), ...(trusted ? { trusted: true } : {}) }));
+    const r = /** @type {any} */ (await ctx.call("relay.pair.pending.confirm", { id: String(device), ...(trusted ? { trusted: true } : {}), ...(pick ? { pick: true } : {}) }));
     if (r && r.error && r.error.code !== "not_found") throw fail("unavailable", String(r.error.message || "the relay would not pair this device"));
     return r && r.data;
   };
@@ -848,7 +848,7 @@ export function createPairing(o) {
         const mine = a; ask = null;
         if (mine.state === "no") throw fail("denied", words("pairRefused"));
         // the relay makes the app's device only now, after the person's check (X-1); the answer to this call still reaches the app over the waiting channel
-        const confirmed = await confirmPending(caller.slice(7), !(mine.input.device && mine.input.device.kind === "web"));
+        const confirmed = await confirmPending(caller.slice(7), !(mine.input.device && mine.input.device.kind === "web"), true);
         // a proven identity is the owner's identity; what the caller said about itself is not
         const out = await applyAdopt(mine.proven ? { ...mine.input, identity: mine.proven } : mine.input, caller);
         // Ruling 1 (4 Oct): picking the words here IS the owner's confirmation of this device. In the same act the server records it as the owner's device, makes its paired-session

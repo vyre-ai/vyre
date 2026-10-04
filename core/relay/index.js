@@ -361,7 +361,7 @@ export default {
      * windowed ticket makes nothing before it is confirmed. `match` names how the ticket was made (via: start, ring, module, window, gated).
      * @param {Buffer} pub @param {string} id @param {string} name @param {any} hello @param {any} match
      */
-    async function enrol(pub, id, name, hello, match) {
+    async function enrol(pub, id, name, hello, match, byPick = false) {
       // One pairing path (lead ruling, 4 Oct 2026): a browser that completed it, three words confirmed, is one of the person's devices like any other: a row of kind app, whose key is
       // software (WebCrypto). Only the older one-step pairings (the classic QR, no gate) still make a limited `web` row.
       const kind = hello.kind === "web" && !(match && match.gate) ? "web" : "app";
@@ -374,7 +374,10 @@ export default {
       let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
       const pk = hello.presenceKey;
       if (pk && typeof pk.public_key === "string") {
-        const r = await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
+        // A device-first pairing has no owner proof to carry (the person at the server picked the three words, which IS the confirmation): that key is enrolled by the pick itself, for a gated server ticket only.
+        const r = byPick && match && match.gate === "server"
+          ? await ctx.call("presence.device.enroll-paired", { name, public_key: pk.public_key, alg: pk.alg ?? -7 })
+          : await ctx.call("presence.enroll", { kind: "device", name, public_key: pk.public_key, alg: pk.alg ?? -7 });
         if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
@@ -461,11 +464,11 @@ export default {
       return { v: 1, box: { name: boxName() }, pending: id };
     }
     /** The yes: enrol the device now (row, presence key, notice). The waiting channels stay a moment so an answer still in flight reaches the app, then close. */
-    const pendingConfirm = async (id, { trusted = false } = {}) => {
+    const pendingConfirm = async (id, { trusted = false, pick = false } = {}) => {
       const p = pendingPairs.get(id);
       if (!p) throw fail("not_found", "no pairing is waiting for that device");
       pendingPairs.delete(id); clearTimeout(p.timer);
-      try { await enrol(p.pub, id, p.name, p.hello, p.match); }
+      try { await enrol(p.pub, id, p.name, p.hello, p.match, pick); }
       catch (e) { for (const ch of p.channels) { try { ch.close(4401, "could not pair"); } catch { /* closed */ } } throw e; }
       // An owner-confirmed phone or computer is trusted from the same moment its row exists (the paired session, ADR 0032 2d): one write, no second step.
       if (trusted) db.prepare("UPDATE relay_devices SET trusted = 1 WHERE id = ? AND removed_at IS NULL").run(id);
@@ -857,10 +860,10 @@ export default {
     ctx.tool("relay.pair.pending.confirm", {
       internal: true,
       description: "The yes for a waiting pairing (a gated ticket, X-1): enrols the device that redeemed it, now. Only the Wink module, which has had the person pick the right three words. With `trusted` the device is marked trusted at the same moment (an owner-confirmed phone or computer). Answers { paired, id, key?, alg? }: the public key the device offered in its hello, so the pairing can bind its session to it.",
-      input: obj({ id: str, trusted: { type: "boolean" } }, ["id"]),
+      input: obj({ id: str, trusted: { type: "boolean" }, pick: { type: "boolean" } }, ["id"]),
       run: async (input, meta = {}) => {
         if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module confirms a waiting pairing");
-        const k = await pendingConfirm(String(input.id), { trusted: input.trusted === true });
+        const k = await pendingConfirm(String(input.id), { trusted: input.trusted === true, pick: input.pick === true });
         return { paired: true, id: String(input.id), ...(k || {}) };
       },
     });

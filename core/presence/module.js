@@ -192,6 +192,22 @@ export default {
       },
     });
 
+    // A device-first pairing (the pick of the three words at the server is the owner's confirmation) enrols the device's own key with no proof to carry. Only the relay, inside the confirm the Wink module
+    // made after the pick, and only for a gated server ticket (the relay checks that); the key proves for that device alone and goes when the device is removed.
+    ctx.tool("presence.device.enroll-paired", {
+      internal: true,
+      effect: "write",
+      description: "Enroll a paired device's own presence key (P-256, alg -7) at the pick of the three words at the server. Only the relay asks, in the Wink module's confirm.",
+      input: obj({ name: str, public_key: str, alg: { type: "integer" } }, ["public_key"]),
+      run: async (input, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:relay") throw Object.assign(new Error("only the relay enrolls a paired device's key"), { code: "denied" });
+        if (input.alg !== undefined && input.alg !== -7) throw Object.assign(new Error("a paired device's key is P-256 (alg -7)"), { code: "bad_input" });
+        const k = presence.enroll({ kind: "device", name: String(input.name || "a paired device").slice(0, 80), public_key: String(input.public_key), alg: -7 });
+        ctx.events.emit("presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
+        return k;
+      },
+    });
+
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
     // The pairing, once the owner confirmed it with a presence proof, asks for one grant. This tool
     // trusts none of its arguments: it names the device, and the pair record (wink's, read here)
