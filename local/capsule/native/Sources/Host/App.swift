@@ -72,6 +72,9 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: p.panel.firstResponder, from: nil) }
         }
         NSApp.mainMenu = MainMenu.make(menuActions)
+        // The Vyre app window (VyreAppWindow.swift) reaches vyred over the same socket and answers presence with Touch ID.
+        VyreAppWindow.shared.socket = vyredSocketPath(ProcessInfo.processInfo.environment)
+        VyreAppWindow.shared.presence = presence
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
         let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"
