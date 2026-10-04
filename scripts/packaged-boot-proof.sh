@@ -174,11 +174,14 @@ docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in
 rs=$(vyre call runner.status 2>&1) || { echo "$rs"; echo "runner.status did not answer on the box"; exit 1; }
 printf '%s\n' "$rs" | grep -Eq '"?ownServer"?[: ]+true' || { echo "$rs"; echo "the runner on a box does not say it seals its own sessions"; exit 1; }
 # The box's root has no capability to read or change files in uid 1000's home (cap_drop ALL): stage through /tmp, finish as uid 1000, and only /usr/local/bin as root.
+# The session runs as the ACCOUNT's uid (2000 and up), which cannot enter uid 1000's home: the stand-in lives under /usr/local/lib (root-owned) and writes its transcripts in the account's own HOME.
 docker cp "$HERE/core/switchboard/testing/fake-claude.js" vyre-vyre-1:/tmp/fake-claude-src.mjs
-docker exec -u 1000 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /home/vyre/fake-claude.mjs && chmod 755 /home/vyre/fake-claude.mjs && mkdir -p /home/vyre/.claude/projects && (umask 002; mkdir -p /work/sealwork) && chmod g+rwx /work/sealwork'
-docker exec -u 0 vyre-vyre-1 sh -c 'printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=/home/vyre/.claude/projects\nexec node /home/vyre/fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
+docker exec -u 0 vyre-vyre-1 sh -c 'cp /tmp/fake-claude-src.mjs /usr/local/lib/vyre-fake-claude.mjs && chmod 755 /usr/local/lib/vyre-fake-claude.mjs && printf "#!/bin/sh\nexport FAKE_CLAUDE_TRANSCRIPTS=\"\$HOME/.claude/projects\"\nexec node /usr/local/lib/vyre-fake-claude.mjs \"\$@\"\n" > /usr/local/bin/claude && chmod 755 /usr/local/bin/claude'
+docker exec -u 1000 vyre-vyre-1 sh -c '(umask 002; mkdir -p /work/sealwork) && chmod g+rwx /work/sealwork'
 # The fake claude is the account's provider: a login account, no credential of anyone's in CI. A box session needs an account (no account is refused at once, no_account).
 acct=$(vyre call sessions.accounts.add '{"provider":"claude","label":"proof","kind":"login","is_default":true}' 2>&1) || { echo "$acct"; echo "an account could not be added to the box"; exit 1; }
+AU=$(printf '%s' "$acct" | sed -n 's/.*"uid": *\([0-9][0-9]*\).*/\1/p' | head -n 1); [ -n "$AU" ] || { echo "$acct"; echo "the account has no uid"; exit 1; }
+AH=/home/acct/$AU
 tid=$(vyre call threads.start '{"cwd":"/work/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
 [ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; vyre call threads.start '{"cwd":"/work/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; exit 1; }
 sealed() { docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/checkpoints/*/CURRENT 2>/dev/null' | grep -o '"turn":[0-9]*' | grep -o '[0-9]*' | sort -n | tail -n 1; }
@@ -191,19 +194,19 @@ echo "ok: a session on the server is sealed at every turn (turn 1 and turn 2 are
 # A session on the server SURVIVES A CRASH (sessions): kill the whole container with SIGKILL after turn 2 is sealed, leave a torn line and an unfinished turn in the transcript (what a kill leaves),
 # start it again: the thread is stopped for the restart, the next message puts the transcript back to exactly the last sealed turn (runner.recover, called by the Switchboard before it resumes) and the
 # session answers, and the third turn is sealed after it.
-tfile=$(docker exec -u 1000 vyre-vyre-1 sh -c "ls /home/vyre/.claude/projects/*/$tid.jsonl" 2>/dev/null | head -n 1)
+tfile=$(docker exec -u $AU vyre-vyre-1 sh -c "ls $AH/.claude/projects/*/$tid.jsonl" 2>/dev/null | head -n 1)
 [ -n "$tfile" ] || { echo "the session's transcript was not found on the box"; exit 1; }
-docker exec -u 1000 vyre-vyre-1 sh -c "cp $tfile /tmp/sealed-copy.jsonl"
+docker exec -u $AU vyre-vyre-1 sh -c "cp $tfile /tmp/sealed-copy.jsonl"
 docker kill vyre-vyre-1 >/dev/null
 docker exec -u 0 vyre-vyre-1 true 2>/dev/null && { echo "the container is still running after docker kill"; exit 1; }
 docker start vyre-vyre-1 >/dev/null
 ready || { echo "vyred did not come back after the kill"; exit 1; }
-docker exec -u 1000 vyre-vyre-1 sh -c "printf '%s\n%s' '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"UNFINISHED\"}}' '{\"type\":\"assistant\",\"mess' >> $tfile"
-docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" || { echo "could not leave the kill's leftovers in the transcript"; exit 1; }
+docker exec -u $AU vyre-vyre-1 sh -c "printf '%s\n%s' '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"UNFINISHED\"}}' '{\"type\":\"assistant\",\"mess' >> $tfile"
+docker exec -u $AU vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" || { echo "could not leave the kill's leftovers in the transcript"; exit 1; }
 vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"back after the crash\",\"surface\":\"deck\"}" >/dev/null 2>&1
 i=0; until [ "$(sealed)" = 3 ]; do i=$((i + 1)); [ $i -lt 60 ] || { echo "the resumed turn was not sealed (sealed: $(sealed)); status:"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -5; exit 1; }; sleep 1; done
-docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
-docker exec -u 1000 vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
+docker exec -u $AU vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
+docker exec -u $AU vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
 echo "ok: a session on the server survives a crash (killed, restarted, put back to its last sealed turn, resumed, and the next turn sealed)"
 # Confinement in the box (ruling b): the session ran as its own uid, and the box says so on its record. The self-test itself, run as that uid through the real spawner: it passes for the protected
 # set the daemon uses, and it FAILS (naming the check) when told a folder the agent can reach is protected (the shared /work group folder), so a hole cannot pass.
@@ -223,7 +226,7 @@ EOF
 docker cp "$WORK/confine-proof.mjs" vyre-vyre-1:/tmp/confine-proof.mjs
 cp_out=$(docker exec -u 1000 vyre-vyre-1 node /tmp/confine-proof.mjs 2>&1) || { echo "$cp_out"; echo "the box's confinement self-test did not hold"; exit 1; }
 echo "ok: $cp_out"
-docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude; docker exec -u 1000 vyre-vyre-1 rm -f /home/vyre/fake-claude.mjs
+docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude /usr/local/lib/vyre-fake-claude.mjs
 fi
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.
