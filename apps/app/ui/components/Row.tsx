@@ -60,7 +60,7 @@ export function Row({ lead, title, sub, end, onPress, selected, className, acces
       {lead ? <View style={st.lead}>{lead}</View> : null}
       <View style={st.main}>
         {typeof title === "string" ? (dense ? <Text medium size="body" numberOfLines={1}>{title}</Text> : <Text strong size="headline" numberOfLines={1}>{title}</Text>) : title}
-        {sub ? (typeof sub === "string" ? <Text size="secondary" tone="label" numberOfLines={1} style={dense ? DENSE_SUB : undefined}>{sub}</Text> : sub) : null}
+        {sub ? (typeof sub === "string" ? <Text size="secondary" tone="label" numberOfLines={state ? 2 : 1} style={dense ? DENSE_SUB : undefined}>{sub}</Text> : sub) : null}
       </View>
       {end || state || chevron ? (
         <View style={st.end}>

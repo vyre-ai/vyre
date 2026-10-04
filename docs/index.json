@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1174,"event":453,"config":254,"env":231,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1174,"event":453,"config":254,"env":233,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2226,6 +2226,7 @@
     {"kind":"env","name":"VYRE_DAEMON_UID","definedIn":"box/vyre","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_DEBUG","definedIn":"core/cli/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_DECK_FIXTURES","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_DEV_SIGN","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_DIR","definedIn":"box/vyre","page":null,"mentions":[{"page":"get-started/troubleshooting.md","line":166,"anchor":"vyre-no-box-in-srvvyre-set-vyre_dir"},{"page":"get-started/troubleshooting.md","line":168,"anchor":"vyre-no-box-in-srvvyre-set-vyre_dir"},{"page":"using/cli.md","line":34,"anchor":"where-to-run-it"},{"page":"using/box-care.md","line":265,"anchor":"run-the-installer-by-hand"},{"page":"concepts/box-and-mac.md","line":66,"anchor":"folders-and-volumes"}]},
     {"kind":"env","name":"VYRE_DOCKER_PROXY_PORT","definedIn":"core/dockerproxy/main.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_DOCKER_SHA256","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
@@ -2278,6 +2279,7 @@
     {"kind":"env","name":"VYRE_LIMA_URL","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_LINK_ONLY","definedIn":"box/vyre","page":null,"mentions":[{"page":"using/box-care.md","line":269,"anchor":"run-the-installer-by-hand"}]},
     {"kind":"env","name":"VYRE_MODULE_SDK","definedIn":"core/cli/commands/module.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_MODULES_TRIES","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_NAMES_DEV_CLOUDFLARE","definedIn":"core/names/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_NAMES_DIRECTORY","definedIn":"core/names/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_NO_DIALOGS","definedIn":"core/config/dialogs.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"contributing/testing.md","line":98,"anchor":"dialogs"},{"page":"contributing/testing.md","line":102,"anchor":"dialogs"}]},
