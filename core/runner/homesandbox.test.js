@@ -11,6 +11,7 @@ import { planHome, selfTest, homeSeatbelt, seedConfig, discardConfig, checkEntri
 import { launch } from "./sandbox.js";
 import { spawn } from "node:child_process";
 import { unavailable } from "./sandbox.js";
+import { programDirs } from "../../lib/agent-sandbox.js";
 
 const tmp = () => fs.mkdtempSync(path.join(SCRATCH, "hs-"));
 const rm = d => fs.rmSync(d, { recursive: true, force: true });
@@ -348,4 +349,47 @@ test("home sandbox: a computer with no bubblewrap fails the self-test with a rea
   assert.equal(uncaught, null, uncaught && String(uncaught.stack));
   assert.equal(res.ok, false);
   assert.ok(res.failures.length >= 1, JSON.stringify(res));
+});
+
+/** An npm-style script agent: bin/agent is a link to pkg/cli.js, whose shebang is `env node` (node's folder is not a system one). */
+function npmAgent(t, shebang) {
+  const dir = tmp(); t.after(() => rm(dir));
+  const pkg = path.join(dir, "lib", "node_modules", "fake-agent"); fs.mkdirSync(pkg, { recursive: true });
+  fs.writeFileSync(path.join(pkg, "package.json"), '{"name":"fake-agent"}');
+  fs.writeFileSync(path.join(pkg, "cli.js"), `${shebang}\nconsole.log("fake-agent 1.0.0");\n`, { mode: 0o755 });
+  fs.mkdirSync(path.join(dir, "bin")); fs.symlinkSync("../lib/node_modules/fake-agent/cli.js", path.join(dir, "bin", "agent"));
+  return { command: path.join(dir, "bin", "agent"), pkg: fs.realpathSync(pkg), dir: fs.realpathSync(dir) };
+}
+
+test("programDirs: a script agent's own folder, its link target and package, and its interpreter's folder, and nothing wider", t => {
+  const a = npmAgent(t, "#!/usr/bin/env node");
+  const nodeDir = path.dirname(process.execPath);
+  const dirs = programDirs(a.command, `${nodeDir}${path.delimiter}/usr/bin`);
+  assert.ok(dirs.includes(path.dirname(a.command)) && dirs.includes(a.pkg) && dirs.includes(fs.realpathSync(nodeDir)), dirs.join(" "));
+  assert.ok(!dirs.includes(os.homedir()) && !dirs.includes("/"), "never a home or a root");
+  // an absolute shebang, and `env -S` flags
+  assert.ok(programDirs(npmAgent(t, `#!${process.execPath}`).command).includes(path.dirname(process.execPath)));
+  assert.ok(programDirs(npmAgent(t, "#!/usr/bin/env -S node --no-warnings").command, nodeDir).includes(fs.realpathSync(nodeDir)));
+  // a native binary has no interpreter to add
+  const native = new Set([path.dirname(process.execPath), path.dirname(fs.realpathSync(process.execPath))]);
+  assert.ok(programDirs(process.execPath).every(d => native.has(d)), "a binary adds only its own folder and its link target's");
+});
+
+test("home sandbox: an npm-installed script agent (env node) starts inside the sandbox, and so does a native binary (control)", { skip: SKIP, timeout: 90_000 }, async t => {
+  const r = await rig(t);
+  const a = npmAgent(t, "#!/usr/bin/env node");
+  const base = { platform: process.platform, command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, probes: r.probes };
+  const prev = process.env.PATH; process.env.PATH = `${path.dirname(process.execPath)}${path.delimiter}${prev}`; t.after(() => { process.env.PATH = prev; });
+  const script = await selfTest({ ...base, agent: { ...r.agent, command: a.command, versionArgs: [] } });
+  assert.deepEqual(script.failures, [], JSON.stringify(script.results));
+  const native = await selfTest({ ...base, agent: r.agent });
+  assert.deepEqual(native.failures, [], JSON.stringify(native.results));
+});
+
+test("home sandbox: an abort signal ends the probe and the agent check at once", { skip: SKIP, timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  const ac = new AbortController(); setTimeout(() => ac.abort(), 500);
+  const t0 = Date.now();
+  await selfTest({ platform: process.platform, command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, probes: r.probes, signal: ac.signal, agent: { ...r.agent, versionArgs: ["-e", "setTimeout(()=>{},60000)"] } });
+  assert.ok(Date.now() - t0 < 15_000, "ended well before the agent's own 60 s");
 });

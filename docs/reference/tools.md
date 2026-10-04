@@ -9432,6 +9432,9 @@ Claude Code's ! mode: run a shell line in the thread's folder, as you, under the
 Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.
 
 - Input:
+  - `account` string: A person's own surface only: the AI account the session runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input.
+  - `agent` string: A person's own surface only: start the session as this agent (its credentials and project grants). A model's call naming one is bad_input.
+  - `agent_kind` string: A person's own surface only: the kind of the agent named in `agent`. A model's call naming one is bad_input.
   - `append` string
   - `asker` string: First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored.
   - `chat` string: First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored.
