@@ -71,7 +71,7 @@ test("a held act names its moment and request, nothing else counts", () => {
 
 test("asking for the yes: ask, poll, and return the approval id for one retry, with no proof carried", async () => {
   const calls = [];
-  const states = [{ state: "waiting" }, { state: "approved" }];
+  const states = [{ state: "waiting" }, { state: "approved", approval: "ap_1" }];
   let i = 0;
   const call = async (t, input) => { calls.push([t, input]); return t === "approvals.ask" ? { id: "ap_1", line: "Vyre on browser wants to reveal a secret" } : states[Math.min(i++, 1)]; };
   let said = "";

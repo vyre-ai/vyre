@@ -96,7 +96,7 @@ export const heldAsk = (error) => {
 
 /**
  * Ask the owner's phone for the yes (approvals.ask { moment, request } -> { id, expires_in_s, line }), then wait while the phone answers: approvals.status gives { state } and NO proof (the server verifies and spends
- * the phone's proof itself). Resolves { approval, line } when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
+ * the phone's proof itself). Resolves { approval } (the id approvals.status names) when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
  * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
  * @param {{ moment: string, request: any, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
  * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" }>}
@@ -111,7 +111,7 @@ export async function askYes(call, o) {
   for (;;) {
     if (o.signal?.stopped) return { ended: "none" };
     const s = await call("approvals.status", { id: ask.id });
-    if (s.state === "approved") return { approval: ask.id };
+    if (s.state === "approved") return { approval: typeof s.approval === "string" ? s.approval : ask.id };
     if (s.state === "refused" || s.state === "none" || s.state === "timeout") return { ended: s.state };
     if (now() - start > (o.limitMs ?? 300_000)) return { ended: "timeout" };
     await sleep(o.pollMs ?? 2000);
