@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1175,"event":453,"config":254,"env":233,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1178,"event":453,"config":254,"env":233,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1315,6 +1315,7 @@
     {"kind":"tool","name":"spaces.devices.set","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesdevicesset","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.devices.spaces","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesdevicesspaces","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.get","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesget","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.host-here","definedIn":"core/spaces/index.js","page":"reference/tools.md#spaceshost-here","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.alias","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityalias","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.alias.add","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentityaliasadd","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.identity.code.replace","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesidentitycodereplace","module":"spaces","mentions":[]},
@@ -1362,6 +1363,7 @@
     {"kind":"tool","name":"spaces.presence.recover","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespresencerecover","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.presence.sync","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacespresencesync","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.resume","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesresume","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.retire-here","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesretire-here","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.roles.names","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesrolesnames","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.self","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesself","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.server.install","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesserverinstall","module":"spaces","mentions":[]},
@@ -1550,6 +1552,7 @@
     {"kind":"tool","name":"threads.model","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsmodel","module":"threads","mentions":[{"page":"design/system/capsule.md","line":125,"anchor":"vyre-memory-answers-on-pause"},{"page":"design/system/capsule.md","line":277,"anchor":"gaps"}]},
     {"kind":"tool","name":"threads.notice","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsnotice","module":"threads","mentions":[]},
     {"kind":"tool","name":"threads.origin","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsorigin","module":"threads","mentions":[]},
+    {"kind":"tool","name":"threads.own-transcript","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsown-transcript","module":"threads","mentions":[]},
     {"kind":"tool","name":"threads.pids","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadspids","module":"threads","mentions":[{"page":"adr/0030-sessions.md","line":39,"anchor":"context"},{"page":"adr/0030-sessions.md","line":317,"anchor":"8-security"},{"page":"adr/0030-sessions.md","line":449,"anchor":"migration"},{"page":"adr/0032-person-and-device.md","line":144,"anchor":"3-on-the-box-a-model-cannot-reach-the-persons-socket"}]},
     {"kind":"tool","name":"threads.post","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadspost","module":"threads","mentions":[{"page":"adr/0031-teammates.md","line":519,"anchor":"15-modules-and-contracts"}]},
     {"kind":"tool","name":"threads.providers.learn","definedIn":"core/switchboard/index.js","page":"reference/tools.md#threadsproviderslearn","module":"threads","mentions":[]},
