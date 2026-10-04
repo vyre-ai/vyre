@@ -28,7 +28,7 @@ import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
 import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { prepareSandbox } from "../../lib/agent-sandbox.js";
 import { keyUuid } from "../modules/idempotency.js";
-import { sessionTempDir } from "../../lib/session-temp.js";
+import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
@@ -472,6 +472,9 @@ export class Switchboard {
 
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
+    // The temp folders of sessions a killed daemon left behind (`<home>.sessions/tmp/<session>`): nothing runs yet, so every one is dead. Only the folder's children go, never the folder itself
+    // (it may be a mounted volume).
+    try { const tmp = path.join(sessionsRoot(String(this.deps.root || "")), "tmp"); for (const n of fs.readdirSync(tmp)) fs.rmSync(path.join(tmp, n), { recursive: true, force: true }); } catch { /* none yet */ }
     const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
       // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
@@ -718,12 +721,15 @@ export class Switchboard {
     try { return await Promise.race([this.launchInner(o, person, box), stuck]); }
     catch (e) {
       box.cancelled = true; // the steps still running stop at their next step instead of spawning an agent for a thread that has already failed
-      if (e && /** @type {any} */ (e).code === "start_timeout" && box.id) {
-        const id = box.id;
-        this.deps.log(`threads: ${id.slice(0, 8)} start failed at step "${box.step}" after ${Math.round(limit / 1000)} s`);
-        try { const st = this.live.get(id); if (st) { st.haltReason = `exited without starting: stuck at "${box.step}"`; st.stopping = true; await st.proc.stop().catch(() => {}); } } catch { /* nothing live */ }
+      // Any throw after the thread's row exists ends it, not only the start limit: a thread never stays "starting" for a start that has already answered its caller with an error. A row the start
+      // itself removed (no_account) or a thread that was already stopped (a refused resume) is left as it is.
+      if (box.id && this.record(box.id) && (this.live.has(box.id) || /** @type {any} */ (this.record(box.id)).status === "starting")) {
+        const id = box.id, timedOut = Boolean(e && /** @type {any} */ (e).code === "start_timeout");
+        const why = timedOut ? `stuck at "${box.step}"` : `${cut(String(e && /** @type {any} */ (e).message || e), 200)} (at "${box.step}")`;
+        this.deps.log(timedOut ? `threads: ${id.slice(0, 8)} start failed at step "${box.step}" after ${Math.round(limit / 1000)} s` : `threads: ${id.slice(0, 8)} start failed at step "${box.step}": ${cut(String(e && /** @type {any} */ (e).message || e), 300)}`);
+        try { const st = this.live.get(id); if (st) { st.haltReason = `exited without starting: ${why}`; st.stopping = true; await st.proc.stop().catch(() => {}); } } catch { /* nothing live */ }
         this.closeSocket(id);
-        if (!this.live.has(id)) { this.set(id, { status: "stopped", pid: null, stopped_reason: `exited without starting: stuck at "${box.step}"` }); this.states.set(id, "stopped"); this.emit("thread.stopped", { code: null, reason: `exited without starting: stuck at "${box.step}"` }, id, null); }
+        if (!this.live.has(id)) { this.set(id, { status: "stopped", pid: null, stopped_reason: `exited without starting: ${why}` }); this.states.set(id, "stopped"); this.emit("thread.stopped", { code: null, reason: `exited without starting: ${why}` }, id, null); }
       }
       throw e;
     } finally { clearTimeout(timer); }
@@ -3439,7 +3445,7 @@ export default {
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
         // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
-        // (meta.agent, from the daemon's own record of the session), and a first-party module acts for its own purpose.
+        // (the agent the daemon bound, from its own record of the session), and a first-party module acts for its own purpose.
         if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
         // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
         // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.
