@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(mac): capsule-mac also uploads Vyre.dmg (artifact Vyre-dmg-<sha>): `scripts/make-dmg.sh` puts Vyre.app beside an Applications shortcut with hdiutil, the same script a Mac runs locally. Self-signed only (no Developer ID, no notarization); the README install line says to right-click, then Open, the first time.
+
 - fix(runner): after a kill a session in the packaged box did not resume ("No conversation found with session ID"): `recover` replaced the account's transcript with a renamed file owned by vyred, which the session's uid could neither read nor append to. A transcript owned by another uid is now rewritten IN PLACE (same file, truncated to the checkpoint); the spawner's `share` makes it group-readable AND group-writable (g+rw, that one file) so vyred can. Test: core/runner/ownserver.test.js (same inode, same content, no temp left). Hosted dev-owned run: turns 1 and 2 are sealed as the account uid; resume was the failing block.
 
 - feat(box): own-server sealing reads an account's transcript. Claude writes it 0600 in the account uid's HOME, so vyred (in the account's group) could not read it and no turn was sealed (hosted packaged-boot). New spawner op `share` (core/spawner/server.js, client `shareTranscript`): as that uid, `chmod g+r` on ONE file that is a .jsonl under the account's own <HOME>/.claude/projects, not a link, owned by the uid; never the folder, never world-readable, any other path or account refused. The daemon's ownserver-host asks for it before each seal; if it cannot, that turn is not sealed and the log says why. Test: core/spawner/spawner.test.js.

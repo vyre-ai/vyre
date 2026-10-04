@@ -142,11 +142,23 @@ jobs:
           if [ -d local/capsule/native/.build/Vyre.app ]; then
             ditto -c -k --keepParent local/capsule/native/.build/Vyre.app dist/Vyre-capsule.app.zip
           fi
+      - name: Vyre.dmg
+        # The same app in a disk image, an Applications shortcut beside it. Self-signed only: no Developer ID, no notarization.
+        if: success() || failure()
+        run: |
+          if [ -d local/capsule/native/.build/Vyre.app ]; then sh scripts/make-dmg.sh local/capsule/native/.build/Vyre.app dist/Vyre.dmg; fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success() || failure()
         with:
           name: capsule-mac-${{ github.sha }}
           path: dist/*.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: success() || failure()
+        with:
+          name: Vyre-dmg-${{ github.sha }}
+          path: dist/Vyre.dmg
+          if-no-files-found: ignore
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: success() || failure()
