@@ -1040,9 +1040,14 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     // the request must fit the moment and be plain data
     await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "email.send", fields: {} } }), e => /bad_input/.test(String(e.code)), "a vault card asks for a vault op");
     await assert.rejects(() => links.askApproval("srv", { moment: "outward", request: { op: "vault.reveal", fields: { name: "x" } } }), e => /bad_input/.test(String(e.code)));
+    // MO-1: each moment covers an explicit list of tools; a destructive tool whose name merely begins the same way is refused at ask
+    for (const [moment, op] of [["pair", "wink.remove"], ["pair", "wink.server.reset"], ["vault", "vault.delete"], ["vault", "vault.export"], ["vault", "vault.put"], ["vault", "vault.backup"]]) await assert.rejects(() => links.askApproval("srv", { moment, request: { op, fields: {} } }), e => /bad_input/.test(String(e.code)), `${moment}: ${op} is not a card`);
+    // and at the floor: an approval never counts for such a tool
+    const del = await links.sessionFor("srv").call("vault.delete", { name: "northwind-mail", approval: "ap_notacardatall1" }).then(() => null, e => e);
+    assert.ok(del && /presence|denied/.test(`${del.code} ${del.message}`) && del.code !== "held", "vault.delete is not a moment: the old floor, no held answer");
     await assert.rejects(() => links.askApproval("srv", { moment: "vault", request: { op: "vault.reveal", fields: { name: { nested: true } } } }), e => /bad_input/.test(String(e.code)), "plain field values only");
     const ask = await links.askApproval("srv", { moment: "vault", request });
-    assert.equal(ask.line, "Alexs iPhone wants to reveal or use \"northwind-mail\" in your vault", "a line the server wrote, with its own name for the device");
+    assert.equal(ask.line, "Alexs iPhone wants to show \"northwind-mail\" from your vault", "a line the server wrote, with its own name for the device");
     assert.equal((await links.approvalStatus("srv", ask.id)).state, "waiting");
     // the same card again is the same card; a different one while it waits is refused naming the open one
     assert.equal((await links.askApproval("srv", { moment: "vault", request })).id, ask.id);
@@ -1128,7 +1133,7 @@ test("the daemon wires yes() to the kernel's own verifier: a real-key yes stands
   assert.deepEqual(await yes("vault", { chain, ...req }, stranger.proof(chain, sg.op, sg.fields)), { ok: false, reason: "unknown_key" }, "a key the server never enrolled");
   assert.deepEqual(await yes("admin", { chain, ...req }, proof), { ok: false, reason: "wrong_request" }, "only the three moments");
   // each moment end to end on the real sealer (CS-3): the act words the sealing process takes, the card's op and fields inside
-  for (const [moment, r] of [["pair", { op: "wink.server.adopt", fields: { name: "Alex's phone" } }], ["outward", { op: "email.send", fields: { to: "jane@example.com" } }]]) {
+  for (const [moment, r] of [["pair", { op: "wink.phone.pair.answer", fields: { name: "Alex's phone" } }], ["outward", { op: "email.send", fields: { to: "jane@example.com" } }]]) {
     const g = signOf(moment, r), p = owner.proof(chain, g.op, g.fields);
     assert.deepEqual(await yes(moment, { chain, ...r }, p), { ok: true }, `${moment}: the real key says yes`);
     assert.deepEqual(await yes(moment, { chain, ...r }, p), { ok: false, reason: "replayed" }, `${moment}: once`);

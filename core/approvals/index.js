@@ -6,7 +6,7 @@
 import { randomBytes } from "node:crypto";
 import { payloadHash } from "../../kernel/seal/wire.js";
 import { proofRequest, PROOF_CALLS } from "../../kernel/remote/proof.js";
-import { yes, signOf, setCardRedeemer } from "../../lib/one-yes.js";
+import { yes, signOf, setCardRedeemer, opFitsMoment, lineOfOp } from "../../lib/one-yes.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
@@ -29,20 +29,15 @@ export default {
     // A device that cannot sign the yes itself (a browser) asks with `{ moment, request: { op, fields } }`: the card is validated against the moment, written by THIS server (the asker's words are never shown) and shown
     // on the owner's phone with `sign` (exactly what its key signs). The phone's answer is verified by yes() and spent right then, so no proof ever travels to the asker; the asker's act spends the approved card
     // ONCE (`yes(moment, request, { card: id })`). A device cannot answer its own card, and a "no" counts only from a signed-in person session.
-    const CARD_OPS = { pair: /^(wink|presence)\.[a-z0-9.-]{1,60}$/, vault: /^vault\.[a-z0-9.-]{1,60}$/, outward: /^[a-z][a-z0-9]*\.(send|post|pay|publish|reply|forward)[a-z0-9.-]{0,40}$/ };
     /** @param {string} moment @param {any} request @returns {{ op: string, fields: Record<string, string | number | boolean> } | null} */
     const cardRequest = (moment, request) => {
-      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string" || !CARD_OPS[/** @type {"pair"} */ (moment)] || !CARD_OPS[/** @type {"pair"} */ (moment)].test(request.op)) return null;
+      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string" || !opFitsMoment(moment, request.op)) return null;
       const f = request.fields && typeof request.fields === "object" && !Array.isArray(request.fields) ? request.fields : {};
       const keys = Object.keys(f);
       if (keys.length > 12) return null;
       /** @type {Record<string, string | number | boolean>} */ const fields = {};
       for (const k of keys) { const v = f[k]; if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return null; fields[k] = v; }
       return { op: request.op, fields };
-    };
-    const cardLine = (/** @type {string} */ moment, /** @type {{ op: string, fields: Record<string, any> }} */ r, /** @type {string} */ who) => {
-      const what = moment === "vault" ? `reveal or use ${r.fields.name ? `"${String(r.fields.name).slice(0, 80)}"` : "a secret"} in your vault` : moment === "pair" ? "pair a new device" : `${r.op.split(".").pop()} ${Object.entries(r.fields).slice(0, 4).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(", ")}`.trim();
-      return `${who} wants to ${what}`;
     };
     const canon = (/** @type {any} */ o) => JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
     /** A device the owner declined cannot ask again for ten minutes. @type {Map<string, number>} */
@@ -93,7 +88,7 @@ export default {
           const id = `ap_${randomBytes(9).toString("base64url")}`;
           let who = "A device";
           try { const d = from.startsWith("device:") ? await ctx.call("wink.device.record", { id: from.slice(7) }) : null; if (d && d.data && d.data.name) who = String(d.data.name); } catch { /* the generic name */ }
-          const line = cardLine(moment, request, who);
+          const line = lineOfOp(request.op, request.fields, who);
           open.set(id, { id, op: sg.op, space, fields: sg.fields, payload_hash, from, at: now(), state: "waiting", moment, request, line });
           return { id, expires_in_s: ASK_MS / 1000, line };
         }
