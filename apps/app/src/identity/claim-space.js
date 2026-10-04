@@ -2,7 +2,9 @@
 // Make a space from a device with no box (the phone, the browser) when its home is a server: the device does the creator's half itself, as core/spaces/index.js
 // claimSpace does on a daemon, in WebCrypto, with kernel/identity/chain.js and names/worker/id-messages.js themselves. Order:
 //   1. `host({ name })` asks the paired server to host the space (spaces.host-here over the owner's paired peer session, with the owner's presence); it answers THE id.
-//   2. The space's root key is made here (the invite key the record carries); the app keeps it.
+//   2. The space's root PUBLIC key is made here (the record carries it and invites are fingerprinted with it). The private half is dropped when this call returns: nothing signs
+//      with it for a space on a server (the record is signed by the owner's identity through any of the owner's devices, and the space's kernel holds the space's own key), so there is
+//      nothing to lose with a device and nothing to keep in a browser's storage.
 //   3. The space's chain (genesis, this person the first owner, acting through this device's entry) is signed with the device key and sent to the names directory
 //      with the sealed record { id, name, label, rootPublic, ownerName, route, home }, signed by this device through the identity's list. Every signature is the
 //      person's device key; the server signs nothing for the person.
@@ -65,7 +67,7 @@ export async function claimServerSpace(o) {
     /** @type {any} */ let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }
     if (!res.ok || !json || json.error || !json.data) { const e = (json && json.error) || {}; throw refuse(plain(e), String(e.code || "directory")); }
-    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootKey, claimed: json.data };
+    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic: rootKey.publicKey, claimed: json.data };
   } catch (e) {
     if (o.retire) { try { await o.retire(space); } catch { /* the server keeps an empty space; the person can retire it later */ } }
     throw e;

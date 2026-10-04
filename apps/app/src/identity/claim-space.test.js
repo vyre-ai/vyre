@@ -37,7 +37,8 @@ test("a device with no box makes a space on a server: the server hosts it, the d
   assert.equal(r.kind, "space");
   assert.deepEqual([r.payload.id, r.payload.label, r.payload.ownerName, r.payload.home.kind], ["spc_abcdefghijkl", "Harlow Legal", "boxless", "server"]);
   assert.deepEqual(r.payload.route, ROUTE, "the record carries the home's route");
-  assert.equal(r.payload.rootPublic, made.rootKey.publicKey);
+  assert.equal(r.payload.rootPublic, made.rootPublic);
+  assert.equal(made.rootKey, undefined, "the private half is not returned: nothing keeps it");
   assert.deepEqual(r.state.entries.map(e => [e.kind, e.subject]), [["owner", me.id]], "this person is the space's first owner");
   // a name that is taken: nothing is claimed and the hosted space is taken back
   const again = [];

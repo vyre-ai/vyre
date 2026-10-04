@@ -912,6 +912,19 @@ test("a second person joins a space that lives on a server: the record carries t
   assert.equal(joined.data.membership.role, "member");
 });
 
+test("an op made a moment before it is applied is accepted when the clock keeps moving (adding a device entry on a real clock)", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t);
+  await d.ok("spaces.identity.create", { name: "tickalex" });
+  // every read of the clock is a millisecond later than the last, as a real clock is between building an op and applying it
+  let n = 0;
+  hooks.now = () => w.clock.t + n++;
+  const key = fileIdentityStore(d2.space).newDeviceKey();
+  const added = await d.call("spaces.identity.enrol", { publicKey: key.publicKey, label: "alex's phone" }, "module:wink");
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  assert.equal(added.data.eid, key.eid);
+});
+
 test("the transport's ports: a paired device is an entry, the entry port answers live and a removed device answers null at its next call, and the device signs only the transport's proof", async t => {
   const w = world(t);
   const d = await device(t), d2 = await device(t);
