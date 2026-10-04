@@ -244,8 +244,8 @@ export function ChatScreen(p: ChatScreenProps) {
           onCancelEdit={() => setEditing(null)}
           people={people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
           records={allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
-          models={allowsMock() ? [{ id: "sonnet", label: "Sonnet", fit: 92 }, { id: "opus", label: "Opus", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
-          model="sonnet"
+          models={allowsMock() ? [{ id: "fast", label: "Fast model", fit: 92 }, { id: "deep", label: "Deep model", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
+          model="fast"
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}

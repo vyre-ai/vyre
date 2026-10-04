@@ -27,6 +27,7 @@ async function core(t) {
   const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, testKdf: TEST_KDF,
     peerCred: async () => ({ pid: process.pid, uid }), capsuleFrom: async () => at.capsule, peerKey: () => at.key });
   t.after(() => c.close());
+  c.presence.softwareOk = () => true; // these tests prove with a device key: a development-kind core takes it, a release-kind one never does (PW-1, 1ad4691e6; the release rule is in test/presence-strength.test.js)
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const keyId = c.presence.enroll({ kind: "device", name: "alex-phone", public_key: publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 }).id;
   /** A device proof over one call. */

@@ -1343,7 +1343,7 @@ export class Vault {
   async grant({ name, module, watcher = "", project = "" }, caller) {
     await this.key();
     const item = this.mustRow(name);
-    if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by vyred itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
+    if (launcherItem(String(name)) && this.launcherOnly) { const why = `${name} is a provider sign-in token; no module is granted it, the session launcher is handed it by the box itself`; this.refuse("grant", name, caller, `${why} (module ${String(module).slice(0, 40)})`); throw new Error(why); }
     // A module grants only items it put itself (index.js lets it do so only through vault.put).
     if (kindOf(caller) === "module" && item.origin !== caller) throw new Error(`${moduleOf(caller)} may grant only items it put`);
     if (!MODULE.test(String(module))) throw new Error(`"${module}" is not a module name`);
