@@ -20,7 +20,7 @@ export function RealAccount() {
   const [busy, setBusy] = useState(false);
   const load = useCallback(() => { setErr(""); loadIdentity().then(setId).catch((e) => setErr(say(e, "Account did not answer."))); loadEntries().then(setEs).catch(() => setEs([])); }, []);
   useEffect(load, [load]);
-  const newCode = () => { setBusy(true); replaceCode().then((r) => { const c = codeOf(r); if (c) setFresh(c); else showToast("A new code was made, but the box did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
+  const newCode = () => { setBusy(true); replaceCode().then((r) => { const c = codeOf(r); if (c) setFresh(c); else showToast("A new code was made, but Vyre did not return it."); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const remove = (e: Entry) => removeEntry(e.eid).then(() => { showToast(`${entryTitle(e)} is off your list.`); load(); }).catch((x) => showToast(say(x)));
   const ways = es ? devices(es) : [];
   const cons = es ? contacts(es) : [];
@@ -28,7 +28,7 @@ export function RealAccount() {
     <Page title="Account and recovery" back="/u/settings">
       {err ? <Card flush><EmptyState title="Account did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0" /></Card> : null}
-      {id && !id.exists ? <Card><EmptyState title="No identity on this box yet" body="Make your identity during setup." /></Card> : null}
+      {id && !id.exists ? <Card><EmptyState title="No Vyre name on this device yet" body="Choose your Vyre name during setup." /></Card> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">

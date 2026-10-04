@@ -40,7 +40,7 @@ export default function RealDrive() {
   const files = (
     <>
       {!status && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
-      {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="This box has not offered a folder to the app yet." /></Card> : null}
+      {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="Your home has not offered a folder to the app yet." /></Card> : null}
       {status && status.shares.length > 1 ? (
         <View className="flex-row flex-wrap gap-s2">
           {status.shares.map((s) => <Chip key={s.name} selected={share === s.name} onPress={() => { setShare(s.name); setPath(""); }}>{s.name}</Chip>)}
@@ -83,7 +83,7 @@ export default function RealDrive() {
   ) : <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card>;
 
   return (
-    <Frame title="Drive" sub="The box's folders, as the box allows them.">
+    <Frame title="Drive" sub="Folders your home shares, as it allows them.">
       <Tabs<Tab> value={tab} onChange={setTab} items={[["files", "Files"], ["sharing", "On your computer"]]} />
       {tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>

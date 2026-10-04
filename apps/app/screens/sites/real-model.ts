@@ -87,7 +87,7 @@ const REFUSALS: Record<string, string> = {
   approval_mismatch: "What would change is different from what you saw. Ask again.",
   model_cannot_approve: "A person decides this, not an assistant.",
   already_decided: "That request was already decided.",
-  presence_required: "That needs you. Approve with Face ID or your fingerprint, then try again.",
+  presence_required: "That needs you. Approve on this device, then try again.",
   no_previous: "There is no earlier version to go back to.",
 };
 export const publishRefusal = (code: string | undefined, message: string): string => (code && REFUSALS[code]) || message || "Publish did not answer.";

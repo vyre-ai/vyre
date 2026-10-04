@@ -146,7 +146,7 @@ export function RealSite() {
       <Secrets dep={cur} st={st} run={run} reload={() => statusOf(cur.id).then(setSt).catch(() => {})} setHeld={setHeld} />
     ) : (
       <View className="gap-s3">
-        <Block label={`Build log, version ${cur.version}`}>{logs || "The build log is shown here right after you build a preview. The box does not keep it."}</Block>
+        <Block label={`Build log, version ${cur.version}`}>{logs || "The build log is shown here right after you build a preview. Vyre does not keep it."}</Block>
       </View>
     );
 
