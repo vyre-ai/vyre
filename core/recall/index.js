@@ -622,9 +622,10 @@ export default {
         await chain;
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
-        if (vec.loading) await within(vec.loading.catch(() => null), 5000);
-        const e = /** @type {any} */ (vec.embedder);
-        if (e && typeof e.close === "function") e.close();
+        // (This used to call `within`, the folder helper above, with a promise: it threw a TypeError, stop() ended there, the embedder's process was never closed and the daemon, and any
+        // test that started one, never exited.) The embedder is closed whatever the wait does.
+        try { if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]); }
+        finally { const e = /** @type {any} */ (vec.embedder); if (e && typeof e.close === "function") e.close(); }
       },
     };
   },
