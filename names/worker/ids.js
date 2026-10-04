@@ -105,7 +105,20 @@ export const idOps = {
     // Not stored: whether the signing device was a newcomer, for the caller's rule (a record update by a young device).
     Object.defineProperty(out, "young", { value: key.young === true, enumerable: false });
     // When the signing key was last put on its list: a key that was removed and put back starts again from now (a removal resets its age).
-    Object.defineProperty(out, "since", { value: Number(key.since), enumerable: false });
+    let since = NaN;
+    try {
+      if (state.kind === "space") {
+        // the signing device is on the OWNER's list: its age is that entry's, on the owner's chain as it stands now
+        const ops = await ownerOps.call(this, String(r.by));
+        const owner = ops ? await C.verifyChain(ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS }) : null;
+        const dev = owner && r.via ? owner.entries.find((/** @type {any} */ e) => e.eid === String(r.via)) : null;
+        if (dev) since = Number(dev.since);
+      } else {
+        const e = state.entries.find((/** @type {any} */ x) => x.eid === String(r.by));
+        if (e) since = Number(e.since);
+      }
+    } catch { since = NaN; }
+    Object.defineProperty(out, "since", { value: since, enumerable: false });
     return out;
   },
 
