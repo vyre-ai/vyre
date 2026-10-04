@@ -938,3 +938,26 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   const invs = await server.kernel.spaces.hosted(id).gateway.grants.invites.list(server.kernel.spaces.hosted(id).kernel.chains.fromFacts({ kind: "device", device_key_id: "x", person: ident.id, path: "direct", session: "s" }), {}).catch(() => null);
   if (invs) assert.ok(JSON.stringify(invs).includes(made1.data.id), "the home holds the invite");
 });
+
+test("a link to a server that was removed and paired again is made afresh: forget lets go of the old connection and the next call connects to where the pairing now says the server is", async () => {
+  const closed = [], opened = [];
+  let where = { relay: "r1", route: "a", box: "b" };
+  const links = createServerLinks({ connect: ch => { opened.push(ch.route); return { ready: () => Promise.reject(new Error("no relay here")), close: () => closed.push(ch.route) }; }, options: {}, name: "m", openMs: 20, channelOf: () => where });
+  await links.sessionFor("srv").call("x").catch(() => {});
+  assert.deepEqual(opened, ["a"]);
+  where = { relay: "r1", route: "c", box: "d" };
+  links.forget("srv");
+  assert.deepEqual(closed, ["a"], "the old connection was closed");
+  await links.sessionFor("srv").call("x").catch(() => {});
+  assert.deepEqual(opened, ["a", "c"], "the next call connects to the new route");
+});
+
+test("a pairing refused twice in a minute says its reason both times in the server's log", async t => {
+  const f = await pairFreshServer(t);
+  const crypt = nodeCrypto();
+  for (let i = 0; i < 2; i++) {
+    const k = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+    await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys: k, hello: { v: 1, pair: "y".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }));
+  }
+  await until(async () => f.w.logs.filter(l => /relay: refused (a hello|again) \(this pairing code has expired/.test(l)).length >= 2);
+});

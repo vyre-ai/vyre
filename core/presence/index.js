@@ -196,7 +196,7 @@ export function personOnly(name, def) {
   return Boolean(def) && Array.isArray(def.callers) && def.callers.length > 0 && def.callers.every(c => PERSON_SURFACES.has(c));
 }
 
-export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session"];
+export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "grant", "session", "yes"];
 
 /**
  * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
