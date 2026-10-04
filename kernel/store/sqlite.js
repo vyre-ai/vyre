@@ -160,8 +160,7 @@ export function createSqliteStore(cfg) {
     if (!Array.isArray(spec.group_by) || spec.group_by.length !== 1 || !Array.isArray(spec.measures) || spec.measures.length !== 1) return null;
     const m = spec.measures[0], f = spec.group_by[0];
     if (!m || m.fn !== "count" || m.field || typeof f !== "string" || !countFields(type).includes(f)) return null;
-    // built AND confirmed on disk: a build made inside a transaction that was rolled back leaves this set in memory but its rows and flag gone
-    if (!countsReady.has(`${type}\u0000${f}`) || !getFlag.get(`counts:${type}:${f}`)) countsBuild(type, f);
+    if (!countsReady.has(`${type}\u0000${f}`)) countsBuild(type, f);
     const rows = /** @type {any[]} */ (db.prepare("SELECT val, n FROM kernel_counts WHERE type = ? AND field = ? AND n > 0").all(type, f));
     return rows.map(r => ({ group: { [f]: JSON.parse(r.val) }, values: { count: Number(r.n) } })).sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1));
   };

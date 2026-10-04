@@ -55,9 +55,15 @@ export function usesLine(rows: UseRow[], now: number): { key: string; who: strin
 export function useCount(rows: UseRow[], now: number): number { return rows.filter((u) => now - u.at <= DAY && u.ok).length; }
 
 /** The words a refused reveal gets, from the box's error code, never from a value. */
-export function revealRefusal(code: string | undefined, message: string): string {
+export function revealRefusal(code: string | undefined, message: string, how: "phone" | "touchid" | "browser" = "browser"): string {
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
-  if (code === "locked") return "The vault is locked. Unlock it, then try again.";
+  if (code === "locked") return "The vault is locked. Enter its passphrase to open it, then try again.";
+  // A release server takes an approval only from a phone key it can verify (vault, 5 Oct): until that check exists no phone can give it, and "approve on your phone" would send the person in a circle.
+  // By method (lead, 4 Oct): the file key a browser or daemon holds is not a presence method on a release server. Say the method the person has.
+  if (code === "software_key") {
+    if (how === "phone") return "This server cannot accept an approval from this phone yet. Nothing was revealed or changed.";
+    return how === "touchid" ? "Approve this with Touch ID. This key cannot approve it by itself." : "Approve this in Vyre on your phone. This browser cannot approve it by itself.";
+  }
   return message || "The vault did not answer.";
 }
 

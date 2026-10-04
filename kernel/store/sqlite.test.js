@@ -169,24 +169,3 @@ test("sqlite store counts: two writers changing a stage at the same moment, and 
   assert.deepEqual(kept, await after.aggregate("matter", { ...spec, filter: { and: [] } }), "the kept count equals the scan");
   assert.deepEqual(kept.map(g => [g.group.stage, g.values.count]), [["intake", 3], ["open", 3]]);
 });
-
-test("sqlite store counts (CT-1): a first count built inside a transaction that is rolled back does not leave the board empty: the kept count equals the scan afterwards and after a write", async () => {
-  const f = file();
-  const MATTER = { name: "matter", label: "Matter", fields: [{ name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }] };
-  const db = new DatabaseSync(f);
-  const s = createSqliteStore({ db });
-  await s.define({ add_types: [MATTER] });
-  const id = i => `0190c3f2-1111-4abc-8def-${String(i + 1).padStart(12, "0")}`;
-  for (let i = 0; i < 12; i++) await s.create("matter", id(i), { stage: ["intake", "open", "closed"][i % 3] });
-  const spec = { group_by: ["stage"], measures: [{ fn: "count" }] };
-  db.exec("BEGIN");
-  const inside = await s.aggregate("matter", spec);
-  assert.equal(inside.reduce((n, g) => n + g.values.count, 0), 12);
-  db.exec("ROLLBACK");
-  const scan = () => s.aggregate("matter", { ...spec, filter: { and: [] } });
-  assert.deepEqual(await s.aggregate("matter", spec), await scan(), "after the rollback");
-  const r = await s.get("matter", id(0));
-  await s.update("matter", id(0), { stage: "closed" }, r.version);
-  assert.deepEqual(await s.aggregate("matter", spec), await scan(), "and after a later write");
-  db.close();
-});

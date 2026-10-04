@@ -22,7 +22,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -1510,4 +1510,28 @@ test("PI-2: the app's pin goes to the directory lookup, and a refused refusal le
   assert.equal(w.p.meta.get("owner"), null);
   assert.equal((await w.tools.get("wink.server.pairing").run({}, { caller: "cli" })).asking, false, "no ask is left");
   assert.ok(w.drops.some(d => d[0] === "relay.devices.drop" && d[1].id === "app1"), "the refused device's relay row is dropped");
+});
+
+test("the owner record is written BEFORE spaces.owner.adopt asks for it (windows' check reads wink.server.owner): adoption never refuses for an order bug", async () => {
+  const kp = crypto.generateKeyPairSync("ed25519");
+  const pub = kp.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const BOX = "Qm94S2V5", TAG = "t".repeat(43);
+  let ownerAtAdopt = "unset";
+  let wref;
+  const w = world({ confirm: true, requireProof: true, releaseProof: false, identityEntry: async (_i, eid) => (eid === "e1" ? { eid: "e1", kind: "device", pub, identity: ME } : null),
+    call: async (tool, input) => {
+      if (tool === "relay.pair.pending.confirm") return { data: { key: crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7 } };
+      if (tool === "relay.device.presence") return { data: { key: "pk1" } };
+      if (tool === "spaces.owner.adopt") { ownerAtAdopt = wref.p.meta.get("owner"); return { data: { owner: input.person } }; }
+      return undefined;
+    } });
+  wref = w;
+  const proof = { eid: "e1", sig: crypto.sign(null, pairToMessage(BOX, "app1", TAG), kp.privateKey).toString("base64url") };
+  const input = { owner: { kind: "identity", id: ME, name: "Alex", vyre: "alex" }, identity: ME, deviceKind: "phone", proof, pairing: { commit: "0".repeat(64), tag: TAG } };
+  const run = () => w.tools.get("wink.server.adopt").run(input, { caller: "device:app1" });
+  assert.equal((await run()).pending, true);
+  await atServer(w, "wink.server.pair.answer", await rightYes(w, "amber coral app1").catch(() => ({ yes: true, pick: 1 })));
+  const done = await run().catch(e => e);
+  if (process.env.NEVER) console.log("DBG", JSON.stringify(done), JSON.stringify(w.p.meta.get("owner")), JSON.stringify(w.p.devices.get("app1")), JSON.stringify(w.events.map(e => e[0])), "PROOF", w.p.meta.get("owner_proof"), JSON.stringify(w.drops.map(d => d[0])));
+  assert.ok(ownerAtAdopt && ownerAtAdopt.identity === ME, `the owner record named the identity when adopt asked: ${JSON.stringify(ownerAtAdopt)}`);
 });
