@@ -92,7 +92,7 @@ function boxCall(tool, input = {}) {
 
 // ---- what the box has, so each step knows its target ----
 const world = {};
-for (const [k, tool, input] of [["spaces", "spaces.list"], ["types", "records.types"], ["flows", "flows.list"], ["kits", "flows.kit.list"], ["agents", "agents.list"], ["publish", "publish.list"], ["vault", "vault.list"], ["drive", "files.drive.status"], ["identity", "spaces.identity.status"]]) world[k] = await boxCall(tool, input);
+for (const [k, tool, input] of [["spaces", "spaces.list"], ["types", "records.types"], ["flows", "flows.list"], ["kits", "flows.kit.list"], ["agents", "agents.list"], ["publish", "publish.list"], ["vault", "vault.list"], ["drive", "files.drive.status"], ["spaceDrive", "files.drive.space.list"], ["identity", "spaces.identity.status"]]) world[k] = await boxCall(tool, input);
 // What the box itself holds is never sample: a dev box seeded with a "Jane Doe" contact shows it for real. Read every type's rows and the tasks once, and drop any sample word the box holds.
 const boxHeld = JSON.stringify([world.spaces, world.agents, world.vault, world.flows, world.kits, await boxCall("tasks.list"), ...(await Promise.all(((world.types.data?.types ?? []).map((t) => t.name)).filter((n) => !/^(def-|flow-|kit-)/.test(n)).map((n) => boxCall("records.list", { type: n, limit: 200 }))))]);
 for (let i = SAMPLE.length - 1; i >= 0; i--) if (boxHeld.includes(SAMPLE[i])) SAMPLE.splice(i, 1);
@@ -178,7 +178,7 @@ await step("drive: browse a folder and open a text file", { skip: has("drive") &
   await click("checklist.txt", { exact: false });
   await settle(1000);
 });
-await step("drive: the space's own Drive opens (Space tab)", { expect: [/Drive is empty|Nothing here|did not open|no Drive yet/i] }, async () => { await go("u/drive"); await settle(1200); });
+await step("drive: the space's own Drive opens (Space tab)", { honest: !has("spaceDrive"), expect: [/Drive is empty|Nothing here|did not open|no Drive yet/i] }, async () => { await go("u/drive"); await settle(1200); });
 await step("calendar: week, month, day", {}, async () => { await go("u/calendar"); await click("Month"); await click("Day"); await click("Week"); });
 await step("sites: list", { honest: !has("publish") }, async () => { await go("u/sites"); });
 await step("sites: publish a draft", { skip: has("publish") ? undefined : "the dev box has no publish module (windows is bringing Publish up on testbox3)" }, async () => {});
