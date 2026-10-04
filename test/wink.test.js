@@ -1425,6 +1425,10 @@ test("sessionFor signs the device in by itself when a call needs the person (no 
 
 
 test("a computer's own device key makes the owner's proof for an act that needs presence over the peer wire: REAL presence on the server checks the key it enrolled at pairing", async t => {
+  // the server takes a software key as presence only on a development build behind this switch; this test sets it itself (and puts it back) so it does not depend on the shell or on test order
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
+  process.env.VYRE_SEAL_SOFTWARE = "1";
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
   const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
   assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
