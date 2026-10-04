@@ -184,6 +184,11 @@ test("once, audience and the selector's own predicates are carried from the pare
   assert.equal((await add({})).grants.at(-1).conditions.audience.join(), "memory,flows");
 });
 
+test("an unknown key in the WANTED conditions is refused, not dropped", () => {
+  assert.throws(() => tighten({ conditions: {} }, { conditions: { zzz: true } }), { code: "bad_input", message: /unknown condition zzz/ });
+  assert.throws(() => tighten({ conditions: {} }, { conditions: { audiance: ["x"] } }), { code: "bad_input" }, "a typo of audience");
+});
+
 test("tighten on its own: unknown parent condition refused, the parent's predicates kept, schedule by value, rate the kernel's way", () => {
   assert.throws(() => tighten({ conditions: { shiny: true } }, {}), { code: "loosens" });
   const parent = { resource: { where: [{ attr: "project", op: "eq", value: "p1" }] }, conditions: { when: { expires: 9, schedule: "0 9 * * 1" }, rate: { n: 10, per_seconds: 60 } } };

@@ -138,6 +138,8 @@ export const MIGRATIONS = [
   // each turn says who spoke (the events carry the same two fields).
   `ALTER TABLE threads_turns ADD COLUMN provider TEXT;
    ALTER TABLE threads_turns ADD COLUMN model TEXT;`,
+  // A chat message queued behind another person's running turn keeps who asked and in which chat, so the next turn opens its kernel session for them (never the running turn's).
+  `ALTER TABLE threads_inbox ADD COLUMN kturn TEXT;`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
@@ -439,7 +441,8 @@ export class Switchboard {
     this.shellContext = new Map();
     /** A thread running one turn on another provider (threads.send {provider}): where it goes back to, and what was said meanwhile. @type {Map<string, any>} */
     this.once = new Map();
-    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
+    /** @type {Map<string, { token: () => any, end: () => Promise<any>, turn: boolean, asker: string | null }>} each thread's current kernel session (its own, or the current chat turn's) */ this.ksCur = new Map();
+    /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
     /** provider:account -> when its limit was last hit here (ms), so a one-turn ask to it is refused at the door. @type {Map<string, number>} */
@@ -898,7 +901,8 @@ export class Switchboard {
    * when the thread stops. Only the thread's own processes get in (threadsock.js).
    */
   async openSocket(id, rec, turn = null) {
-    if (!this.deps.threadSocket) return;
+    // No socket on this machine (or it is off): the kernel session is still opened, because the stream's own calls on the thread (forThread) need it; there is just no socket to stamp it on.
+    if (!this.deps.threadSocket) { await this.renewKernelSession(id, rec, turn); return; }
     if (this.socks.has(id)) { if (turn) await this.renewKernelSession(id, rec, turn); return; }
     try {
       // The session's kernel credential (lib/kernel-session.js): vyred opens it and holds it; the socket stamps it on every call. The session never gets the token.
@@ -917,6 +921,16 @@ export class Switchboard {
   }
 
   /**
+   * Is this asker in this chat? The kernel's own answer, asked BEFORE a chat turn is queued, run or has a session opened: a person who is not in the chat is refused, whatever the timing.
+   * @param {string} id @param {any} rec @param {{ chat: string, asker: string }} turn
+   */
+  async assertAsker(id, rec, turn) {
+    if (!this.deps.kernelSession) return;
+    try { await this.deps.kernelSession({ thread: id, agent: (rec && rec.agent) || null, rec, chat: turn.chat, asker: turn.asker, probe: true }); }
+    catch { throw Object.assign(new Error("that person is not in this chat, so their message was not sent"), { code: "not_found" }); }
+  }
+
+  /**
    * Open the kernel session for this thread's current turn and make it the one the socket stamps. `turn` is `{ chat, asker }` from a first-party caller (core/stream): the person who
    * asked and the chat the reply belongs to; the kernel checks that person is in that chat. With none, the thread's own session as before. The previous one is ended.
    * @param {string} id @param {any} rec @param {{ chat?: string, asker?: string } | null} turn
@@ -924,13 +938,19 @@ export class Switchboard {
   async renewKernelSession(id, rec, turn) {
     if (!this.deps.kernelSession) return;
     const ks = await this.deps.kernelSession({ thread: id, agent: rec.agent || null, rec, ...(turn && turn.chat ? { chat: turn.chat } : {}), ...(turn && turn.asker ? { asker: turn.asker } : {}) }).catch(() => null);
+    if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id);
     const old = this.ksCur.get(id);
-    if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat) }); else this.ksCur.delete(id);
+    if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
     if (old) await old.end().catch(() => {});
   }
 
   /** @param {string} id */
-  async endKernelSession(id) { const k = this.ksCur.get(id); this.ksCur.delete(id); if (k) await k.end().catch(() => {}); }
+  async endKernelSession(id) {
+    const k = this.ksCur.get(id);
+    this.ksCur.delete(id);
+    // vyred is stopping (a restart for an update is graceful): the open turn is NOT forgotten, so the next start reopens it for its person or says it could not. The daemon revokes the tokens at its own stop.
+    if (k && !this.closing) await k.end().catch(() => {});
+  }
 
   /** The confined spawner for this session (deps.sandbox: { sandbox, platform, home, vyreHome, probes, temp, binFor }), or null when sandboxing is not on. Throws one plain reason when the check fails. */
   async sandboxFor(id, rec, o) {
@@ -989,7 +1009,7 @@ export class Switchboard {
 
   closeSocket(id) {
     const sock = this.socks.get(id);
-    if (!sock) return;
+    if (!sock) { void this.endKernelSession(id); return; }
     this.socks.delete(id);
     const dir = path.join(String(this.deps.root || ""), "run", "session-tmp", String(id).replace(/[^\w-]/g, ""));
     sock.close().catch(() => {}).finally(() => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* already gone */ } });
@@ -1583,6 +1603,7 @@ export class Switchboard {
    */
   turnEnded(id, st, project) {
     st.turn = null;
+    this.turnAsker.delete(id);
     // A chat turn's kernel session ends shortly after the turn (a grace for the stream to close its reply) or when the next send opens its own, whichever is first: it cannot carry on to another turn.
     { const k = this.ksCur.get(id); if (k && k.turn) { const t = setTimeout(() => { if (this.ksCur.get(id) === k) void this.endKernelSession(id); }, 30_000); t.unref?.(); } }
     this.releaseSlots(id, st);
@@ -1599,8 +1620,11 @@ export class Switchboard {
       for (const u of [...st.steers.keys()]) this.steered(id, st, u, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
-    if (!rows.length) return;
+    const all = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images, request, note, at, kturn FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    if (!all.length) return;
+    // One turn belongs to one asker: the queued messages that run together are the leading ones with the SAME asker and chat (a person's surface has none). The rest wait for the next turn's end.
+    const lead = all[0].kturn || null;
+    const rows = all.filter((r, i) => (r.kturn || null) === lead && all.slice(0, i).every(p => (p.kturn || null) === lead));
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
@@ -1608,7 +1632,10 @@ export class Switchboard {
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", queued_at: Number(r.at), step: 0, ...(r.kind ? { kind: r.kind } : {}), ...(r.request ? { request: r.request } : {}) }, id, project);
     const images = taken.flatMap(r => imagesFrom(r.images) || []);
     const note = taken.map(r => r.note).filter(Boolean).join("\n");
-    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null, ...(note ? { note } : {}) });
+    const deliver = () => this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null, ...(note ? { note } : {}) });
+    // A queued chat message opens ITS asker's kernel session before its words reach the session (this turn is theirs); a person's own queued words keep the session the thread has.
+    if (lead) { let kt = null; try { kt = JSON.parse(lead); } catch { /* no turn facts */ } const rec0 = this.record(id); if (kt && kt.chat && rec0) { void this.renewKernelSession(id, rec0, kt).catch(() => {}).finally(deliver); return; } }
+    deliver();
   }
 
   /**
@@ -1743,9 +1770,35 @@ export class Switchboard {
     }
   }
 
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
+  async send(id, text, surface, opts = {}) {
+    // A chat turn's check (whose turn is running), its kernel-session swap and its write must not interleave with another chat send to the same thread: two askers sending at once to an idle thread
+    // would both pass the check and the second would end the first's session. One promise chain per thread, for chat sends only; everything else goes straight through as before.
+    if (!opts || !opts.kernelTurn) return this.sendNow(id, text, surface, opts);
+    const prev = this.sendChain.get(id) || Promise.resolve();
+    const run = prev.then(() => this.sendNow(id, text, surface, opts), () => this.sendNow(id, text, surface, opts));
+    const tail = run.catch(() => {});
+    this.sendChain.set(id, tail);
+    tail.then(() => { if (this.sendChain.get(id) === tail) this.sendChain.delete(id); });
+    return run;
+  }
+
+  async sendNow(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session.
-    if (kernelTurn && this.record(id) && this.socks.has(id)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+    if (kernelTurn && this.record(id)) {
+      // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
+      // admin's turn is open): it is refused as busy and the stream delivers it again when the turn has ended. The same asker steering their own turn keeps the session they have.
+      await this.assertAsker(id, this.record(id), kernelTurn);
+      const st = this.live.get(id), askedBy = this.turnAsker.get(id);
+      if (st && st.turn && askedBy !== kernelTurn.asker) {
+        // Another person's message mid-turn waits as the NEXT turn, under its own asker: it never steers the running one, and the running turn's kernel session is never replaced. A chat turn that
+        // arrives while a turn with no chat is running (someone typing on their own surface) waits the same way.
+        return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind, note, author, kernelTurn });
+      }
+      // (A dormant thread is opened by the launch below, with this turn: begun once, not twice.)
+      // Claim the thread for this asker NOW, before any await, so nothing that arrives while the session opens can slip in as the running turn's asker.
+      if (!(st && st.turn)) this.turnAsker.set(id, kernelTurn.asker);
+      if (this.live.has(id) && !(st && st.turn)) await this.renewKernelSession(id, this.record(id), kernelTurn);
+    }
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -1770,7 +1823,7 @@ export class Switchboard {
       if (rec.agent) {
         const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
         if (r.error) return { sent: false, note: `could not resume ${rec.agent}'s thread: ${r.error.message}` };
-      } else await this.launch({ resume: id, ...(kernelTurn ? { kernelTurn } : {}) }); // a dormant thread comes back under the asker's session in the chat, not the owner's
+      } else await this.launch({ resume: id, ...(kernelTurn ? { kernelTurn } : {}) }); // a dormant thread comes back with THIS turn's chat and asker, never the thread's default session
     }
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
@@ -2032,11 +2085,11 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, request = undefined, images = /** @type {any} */ (null), note = "", author = undefined, kernelTurn = null } = {}) {
     const rec = this.must(id);
     // A session open elsewhere takes queued words through its hooks, which carry text only.
     if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note) VALUES (?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images, request, note, kturn) VALUES (?,?,?,?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images), request || null, note || null, kernelTurn ? JSON.stringify({ chat: kernelTurn.chat, asker: kernelTurn.asker }) : null);
     const queued = Number(r.lastInsertRowid);
     const live = this.live.get(id);
     this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, queued_at: Date.now(), step: (live && live.steps) || 0, ...(kind ? { kind } : {}), ...(request ? { request } : {}), ...(images && images.length ? { images: images.length } : {}), ...(author ? { author } : {}) }, id, rec.project);
@@ -3202,7 +3255,7 @@ export default {
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
-        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
+        chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
@@ -3218,6 +3271,7 @@ export default {
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
+        if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
@@ -3227,7 +3281,13 @@ export default {
      * labelled { source: "mac", machine }, or null when no Mac has it, so the box answers as usual.
      */
     /** The chat and asker a turn carries, honoured only from the stream module (first party): never from a model's or a surface's input. @param {any} i @param {any} caller @param {boolean} firstParty */
-    const kernelTurnOf = (i, caller, firstParty) => (firstParty && String(caller || "") === "module:stream" && typeof i.chat === "string" && i.chat && typeof i.asker === "string" && i.asker ? { chat: i.chat, asker: i.asker } : null);
+    const kernelTurnOf = (i, caller, firstParty) => {
+      if (!(firstParty && String(caller || "") === "module:stream" && typeof i.chat === "string" && i.chat)) return null;
+      // ONE form at this boundary: the kernel's own person id (per_...). An actor string (person:per_x), a bare name or anything else is refused, never quietly rewritten: a mismatch between the stream
+      // and the Switchboard must show, because this id decides whose authority a turn runs under.
+      if (typeof i.asker !== "string" || !/^per_[a-z0-9]{3,64}$/.test(i.asker)) throw Object.assign(new Error("asker must be a person id (per_...), as the kernel names one"), { code: "bad_input" });
+      return { chat: i.chat, asker: i.asker };
+    };
     const sendToMac = async (i, caller) => {
       const r = await ctx.call("link.macs.call", { tool: "threads.send", as: "person", ...(i.machine ? { mac: i.machine } : {}),
         input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
@@ -3456,7 +3516,7 @@ export default {
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
       // "link:box" is the person at the paired box, on a Mac: core/link runs it only after checking
       // the box's signed assertion for this ask and this answer (docs/adr/0021, "v2").
-      ["cli", "local", "module", "deck", "capsule", "tailnet", "link:box"],
+      ["cli", "local", "module", "deck", "capsule", "tailnet", "device", "link:box"],
       // On a box, an answer that goes to a Mac and approves a floor tool there needs a fresh proof
       // (gatedOnMac). Every other answer asks nothing (the no-nag rule). A Mac declares no rule.
       ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});

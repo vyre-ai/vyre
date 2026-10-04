@@ -18,7 +18,7 @@ import { createModuleHost } from "./modules/host.js";
 import { createEgress } from "./modules/egress.js";
 import { createFirstPartyCheck, acceptMinimums, verifyMinimums } from "./modules/firstparty.js";
 import { RELEASE_KEY } from "../lib/release-sig.js";
-import { devSwitch, PKG_ROOT } from "./devbuild.js";
+import { devSwitch, PKG_ROOT, isPackaged } from "./devbuild.js";
 import { readReleaseList, verifyRawList, createListCheck, verifyTrees } from "./modules/release-list.js";
 
 const B32 = "abcdefghijklmnopqrstuvwxyz234567";
@@ -67,7 +67,10 @@ export async function bootHomeKernel(cfg) {
   // (`<home>/kernel/minimums.json`, written by the updater; never taken from a file that decides the key). There is no fallback to a path rule: a checkout whose modules are
   // not signed (development) must say so with VYRE_KERNEL_PATH_RULE=1, which is loud and never the default. A production kernel without a signature check does not start.
   /** @type {((dir: string) => boolean) | null} */ let firstPartyCheck = cfg.firstPartyCheck || null;
-  /** @type {(name: string) => boolean} */ let reservedName = () => false;
+  // Names no added module may ever take, whatever list is in force (even none): the vault, and `leases`, the only caller the vault's service forward accepts (a folder under either name that is not first
+  // party is refused, never loaded as an added module).
+  const ALWAYS_RESERVED = new Set(["vault", "leases"]);
+  /** @type {(name: string) => boolean} */ let reservedName = n => ALWAYS_RESERVED.has(n);
   /** @type {(chain: any, proof: any) => Promise<{ ok: boolean, why?: string }>} */ let resetModulesList = async () => ({ ok: false, why: "no_signed_list" });
   if (!firstPartyCheck) {
     if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
@@ -111,26 +114,31 @@ export async function bootHomeKernel(cfg) {
       const cur = readReleaseList(root, relKey);
       let active = accepted;
       if (cur.ok) {
-        if (!accepted || cur.counter >= accepted.counter) {
+        // SG-5: at EVERY boot (not only when the counter advances), this build's kernel and lib trees are checked against the hashes the release signed. When either differs, the kernel's own
+        // code is not the release's, so NO first-party list is in force (not even the last accepted one): only a module carrying its own signature is first party, and the build says why.
+        const t = verifyTrees(root, cur);
+        const codeChanged = !t.ok && t.bad.some((/** @type {string} */ n) => n === "kernel" || n === "lib");
+        if (codeChanged) { log(`kernel: the kernel or lib tree differs from the release's signed hashes (${t.bad.join(", ")}); no first-party module list is in force`); active = null; }
+        else if (!accepted || cur.counter >= accepted.counter) {
           active = { counter: cur.counter, modules: cur.modules };
           // SG-3: the counter moves up only after this build's own listed modules verify against the list; a build whose folders were changed never raises it.
           if (!accepted || cur.counter > accepted.counter) {
-            const t = verifyTrees(root, cur);
             if (t.ok) await k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type: "kernel.modules-list", sv: 1, subject: `vyre://${id.space}/kernel/modules-list`, data: { counter: cur.counter, raw: cur.raw }, vis: "owner", red: "internal" });
-            else {
-              log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
-              // SG-5: when the kernel's own code or the shared libraries differ from what the release signed, the list this build carries cannot be trusted to name first party: only the last accepted list (if any) stays.
-              if (t.bad.some((/** @type {string} */ n) => n === "kernel" || n === "lib")) { log(`kernel: the kernel or lib tree differs from the release's signed hashes; this build's module list is not used`); active = accepted; }
-            }
+            else log(`kernel: this build's modules do not all match its signed list (${t.bad.join(", ")}); the list counter is not advanced`);
           }
         } else log(`kernel: this build's module list (counter ${cur.counter}) is older than one already accepted (${accepted.counter}); the accepted one stays in force`);
-      } else if (accepted) log(`kernel: ${cur.why}; the last accepted module list stays in force`);
-      else log(`kernel: no first-party module list (${cur.why}); only a module carrying its own signature is first party`);
+      } else if (accepted && !isPackaged(root)) log(`kernel: ${cur.why}; the last accepted module list stays in force (a development build)`);
+      else if (accepted) {
+        // SG-5-3: a packaged build whose signed release files are missing, unreadable or badly signed has NO first-party list, the same as a changed tree: the last accepted list is never a fallback
+        // (the kernel's own code could have been changed beside them). The daemon still starts so the owner can see it; the accepted names stay reserved.
+        active = null;
+        log(`kernel: ${cur.why}; no first-party module list is in force (the last accepted list is not used when this build's own signed files cannot be read)`);
+      } else log(`kernel: no first-party module list (${cur.why}); only a module carrying its own signature is first party`);
       const listCheck = active ? createListCheck(active, log) : null;
       // SG-1: the signed list decides for every name it contains. A listed name passes by the list alone (an old per-module signature is not an OR with it); a name it does not
       // contain is decided by the per-module signature as before. SG-2: a listed name stays reserved (`reservedName`), so a folder that fails the list is refused, never loaded as an added module.
       const nameOf = (/** @type {string} */ dir) => { try { return String(JSON.parse(fs.readFileSync(path.join(dir, "module.json"), "utf8")).name); } catch { return ""; } };
-      const reserved = (/** @type {string} */ n) => Boolean(active && Object.hasOwn(active.modules, n));
+      const reserved = (/** @type {string} */ n) => ALWAYS_RESERVED.has(n) || Boolean(active && Object.hasOwn(active.modules, n)) || Boolean(accepted && Object.hasOwn(accepted.modules, n));
       reservedName = reserved;
       firstPartyCheck = listCheck ? (/** @type {string} */ dir) => (reserved(nameOf(dir)) ? listCheck(dir) : perModule(dir)) : perModule;
       /** The owner's reset of the counter, for a build older than the one accepted (a deliberate downgrade): presence-gated, one event, and the next boot reads the build's own list. */

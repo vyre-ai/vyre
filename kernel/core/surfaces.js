@@ -59,12 +59,16 @@ export function createSurfaces(cfg) {
     },
     /** The session a presented token is for (checked like `chainFor`): what a chat binding and a room are keyed by, never a name a caller says. @param {string} token */
     async sessionOf(token) { return (await api.verify(token)).session; },
-    /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
-    async chainFor(token) {
+    /**
+     * The chain for a presented token, or a refusal that says nothing about why. `noChat` leaves the session's chat out of the chain: the same agent, session and grants, read as the
+     * person's own and not as the room's common view (what `{{field:...}}` resolution wants), and never wider than the session itself. @param {string} token @param {{ noChat?: boolean }} [o]
+     */
+    async chainFor(token, o = {}) {
       const t = await api.verify(token);
+      const chat = o.noChat === true ? undefined : t.chat || undefined;
       return t.agent
-        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, chat: t.chat || undefined, from_token: true, vouched: true })
-        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, chat: t.chat || undefined, from_token: true, vouched: true });
+        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, chat, from_token: true, vouched: true })
+        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, chat, from_token: true, vouched: true });
     },
     /** The model door for a session: `call(token, input)` and, when the door has one, `stream(token, input)`. The chain is the session's, never the caller's. */
     model: Object.freeze({

@@ -216,3 +216,4 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_TEST_HOST` | Not described yet. | `core/daemon/host-guard.js` |
 | `VYRE_TEST_HOSTED` | `1`: for a vyred a test starts over a temp home, count its parent test process as the person's side. Never read for `~/.vyre`. | `core/daemon/host-guard.js`, `core/daemon/peer.js` |
 | `VYRE_TEST_REAL_TAILSCALE` | `1`: let a test use the real tailscale binary. | `core/link/transport.js`, `core/relay/tailnet.js` |
+| `VYRE_TEST_UNGATED_RING` | Not described yet. | `core/relay/index.js` |

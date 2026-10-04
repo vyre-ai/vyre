@@ -21,7 +21,6 @@ import {
 } from "../../lib/spaces/bridges.js";
 import { createRoleAuthorize, personChain } from "../../lib/spaces/authz.js";
 import { isExpired } from "../../lib/spaces/members.js";
-import { isPerson, agentName } from "../../lib/caller.js";
 import { PRESENCE_SIGNERS } from "../../kernel/contracts/index.js";
 
 export const MIGRATIONS = [
@@ -181,9 +180,9 @@ export default {
     /** Both Spaces' logs: one event, the Space it belongs to named in the payload. Ids, counts and field names only. */
     const emit = async (space, type, payload) => { ctx.events.emit(type, { ...payload, space }); };
 
-    /** @param {string} caller */
-    const extrasOf = caller => isPerson(caller) ? [] : [{ kind: String(caller).startsWith("module:") ? "service" : "agent", id: agentName(caller) || String(caller).replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 64) || "caller" }];
-    const chainFor = (space, person, meta) => personChain({ space, person, extra: extrasOf(meta && meta.caller) });
+    /** The hops after the person in the call's own chain (an assistant's session adds its agent hop), set by personOf for the call's meta object. @type {WeakMap<object, {kind: string, id: string}[]>} */
+    const extras = new WeakMap();
+    const chainFor = (space, person, meta) => personChain({ space, person, extra: (meta && typeof meta === "object" && extras.get(meta)) || [] });
 
     const deps = {
       authorize, emit, now, bridges: store, records, schema, task,
@@ -198,15 +197,21 @@ export default {
     };
 
     /**
-     * The person a call is for is the VERIFIED caller's, from the spaces module (spaces.self maps the registry's caller to this device's person, or to nobody: a plain
-     * model session, a guest, a hook or an anonymous caller is not the person). An `input.person` is accepted only when it is that same person: naming another is a
-     * refusal, never silently replaced and never believed (BR-1). authorize then checks the Space's own membership for that person.
+     * The person a call is for comes from the call's own kernel chain and from nothing else (BR-1, BR-2): `ctx.kernel.chain(meta)` is a session token's chain (the person and
+     * their assistant) or the person's own chain built from the facts the daemon proved about the connection (a person's surface on the socket, a paired app device). A label never
+     * counts. No chain, a module's own service chain, a viewer chain or a chain whose first hop is not a person is a refusal. The kernel's person is mapped to this device's
+     * identity by the spaces module (spaces.self), only for the home's own person. An `input.person` is accepted only when it is that same person: naming another is a refusal.
      */
     const personOf = async (i, meta) => {
-      const r = await call("spaces.self", { caller: String((meta && meta.caller) || "") });
+      let chain = null;
+      try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta || {}) : null; } catch { chain = null; }
+      const first = chain && Array.isArray(chain.hops) && chain.hops[0] ? chain.hops[0] : null;
+      if (!first || !first.actor || first.actor.kind !== "person" || chain.viewer === true) throw new BridgeError("forbidden", "only a person, or their own assistant, can do that");
+      const r = await call("spaces.self", { person: String(first.actor.id) });
       const who = value(r) && value(r).person;
       if (typeof who !== "string" || !who) throw new BridgeError("forbidden", "only a person, or their own assistant, can do that");
       if (i && i.person !== undefined && String(i.person) !== who) throw new BridgeError("bad_input", "that is not you");
+      if (meta && typeof meta === "object") extras.set(meta, chain.hops.slice(1).map((/** @type {any} */ h) => ({ kind: String(h.actor.kind), id: String(h.actor.id) })));
       return who;
     };
     const guard = fn => async (i, meta = {}) => { try { return await fn(i, meta); } catch (e) { throw asToolError(e); } };

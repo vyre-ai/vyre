@@ -86,6 +86,14 @@
     "reach": "person"
    },
    {
+    "name": "spaces.setup.save",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.setup.claim",
+    "reach": "person"
+   },
+   {
     "name": "spaces.resume",
     "reach": "person"
    },
@@ -95,7 +103,7 @@
    },
    {
     "name": "spaces.code.submit",
-    "reach": "anyone"
+    "reach": "anyone", "callers": ["device", "module"]
    },
    {
     "name": "spaces.server.install",
@@ -171,7 +179,7 @@
    },
    {
     "name": "spaces.invites.redeem",
-    "reach": "anyone"
+    "reach": "anyone", "callers": ["device", "module"]
    },
    {
     "name": "spaces.compute.allow",
@@ -244,6 +252,7 @@
    "space.vps-created",
    "space.vps-destroyed",
    "space.warning",
+   "space.setup-moved",
    "member.added",
    "member.role-changed",
    "member.removed",

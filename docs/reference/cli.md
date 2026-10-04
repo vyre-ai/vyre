@@ -23,7 +23,7 @@ In the order `vyre help` lists them.
 | [`vyre up`](#vyre-up) | start vyred and print the onboarding link, or this box's address |
 | [`vyre down`](#vyre-down) | stop it |
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
-| [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
+| [`vyre doctor`](#vyre-doctor) | check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
 | [`vyre config`](#vyre-config) | every setting, at account or project level (the Deck's Settings, in the terminal) |
 | [`vyre projects`](#vyre-projects) | every project; on a server, move moves the homes to /work/projects |
@@ -129,7 +129,7 @@ vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <us
 
 ### vyre doctor
 
-Check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix.
+Check Vyre, your link, the relay, your devices, passkey, pairing, Claude and the Capsule, and say what to fix.
 
 ```
 vyre doctor [--json]
@@ -664,10 +664,10 @@ vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <wo
 Free a server that still belongs to an app you no longer have.
 
 ```
-vyre wink reset [<fingerprint>] [--json]
+vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]
 ```
 
-vyre wink reset: run on the server. It shows the server's short fingerprint and asks you to type it back; then the server forgets its owner and can be paired again. Its keys stay.
+vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.
 
 ### vyre team
 

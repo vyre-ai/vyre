@@ -1,16 +1,14 @@
 import { useState } from "react";
 import { Pressable, type PressableProps, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
-import { cssInterop } from "nativewind";
 import { SPRING } from "./tokens";
 import { pressScale } from "./logic.js";
 import { useReducedMotion } from "./useReducedMotion";
 
 const APressable = Animated.createAnimatedComponent(Pressable);
-cssInterop(APressable, { className: "style" });
+// No cssInterop here: it made NativeWind own `style` and drop the caller's style objects on a phone (rows stacked, buttons lost their fill). Callers pass `style`.
 
 export type PressableScaleProps = Omit<PressableProps, "style"> & {
-  className?: string;
   /** How far it shrinks while pressed (default 0.97). Rows use a lighter 0.985. */
   depth?: number;
   /** Extra style while pressed (a background) and while hovered (web). */

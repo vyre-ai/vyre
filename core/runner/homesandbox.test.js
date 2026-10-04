@@ -21,14 +21,15 @@ async function rig(t) {
   fs.mkdirSync(path.join(home, ".vyre", "keys"), { recursive: true }); fs.writeFileSync(path.join(home, ".vyre", "keys", "device.key"), "SECRET-DEVICE-KEY");
   const own = path.join(run, "s1.sock"), other = path.join(run, "s2.sock"), person = path.join(home, ".vyre", "vyred.sock");
   const daemon = spawn(process.execPath, ["-e", "setInterval(()=>{},1000)"], { env: { ...process.env, DAEMON_TOKEN: "SECRET-DAEMON-TOKEN" }, stdio: "ignore" }); t.after(() => daemon.kill("SIGKILL"));
-  const servers = await Promise.all([listen(own), listen(other), listen(person), listen({ port: 0, host: "127.0.0.1" })]);
+  const servers = await Promise.all([listen(own), listen(other), listen(person), listen({ port: 0, host: "127.0.0.1" }), listen({ port: 0, host: "::" })]);
+  const outside = path.join(path.dirname(home), "outside-" + path.basename(home)); fs.mkdirSync(outside, { recursive: true }); t.after(() => rm(outside));
   t.after(() => servers.forEach(s => { s.close(); }));
-  const port = servers[3].address().port;
+  const port = servers[3].address().port, portAll = servers[4].address().port;
   fs.mkdirSync(path.join(home, "Documents"), { recursive: true }); fs.writeFileSync(path.join(home, "Documents", "private.txt"), "PERSONAL");
   const proj = path.join(home, "proj"), settings = path.join(home, ".agentcfg"), temp = path.join(home, "tmp-session"); for (const d of [proj, settings, temp]) fs.mkdirSync(d, { recursive: true });
   const real = path.join(home, ".agentreal"); fs.mkdirSync(real, { recursive: true }); fs.writeFileSync(path.join(real, ".credentials.json"), "{}");
   const agent = { command: process.execPath, versionArgs: ["-v"], hosts: [], private: { from: real, env: "AGENT_CONFIG_DIR", credentialFiles: [".credentials.json"] } };
-  return { home, own, other, person, port, proj, settings, temp, agent, probes: { personSocket: person, otherSocket: other, daemonPorts: [port], keyFile: path.join(home, ".vyre", "keys", "device.key"), homeFile: path.join(home, "Documents", "private.txt"), daemonPid: daemon.pid } };
+  return { home, own, other, person, port, proj, settings, temp, agent, probes: { personSocket: person, otherSocket: other, daemonPorts: [port, portAll], mustNotWrite: [outside], keyFile: path.join(home, ".vyre", "keys", "device.key"), homeFile: path.join(home, "Documents", "private.txt"), daemonPid: daemon.pid } };
 }
 
 test("home sandbox: the person's socket, another session's socket, the daemon's loopback port and the Vyre home are all out of reach; the session's own socket works", { skip: SKIP, timeout: 60_000 }, async t => {
@@ -58,6 +59,17 @@ test("home sandbox: the self-test fails when a hole is left (the person's socket
   assert.ok(res.failures.some(f => /person's own socket is reachable/.test(f)), res.failures.join("; "));
 });
 
+test("ES-1: the seatbelt profile denies all writes first and allows them back only to the project and the temp folder; read-only folders are read-only", () => {
+  const home = tmp(); try {
+    const proj = path.join(home, "proj"), tools = path.join(home, "tools"), temp = path.join(home, "t"); for (const d of [proj, tools, temp]) fs.mkdirSync(d, { recursive: true });
+    const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), workdirs: [proj], temp, readOnly: [tools] });
+    assert.ok(p.indexOf("(deny file-write*)") > 0 && p.indexOf("(deny file-write*)") < p.indexOf("(allow file* (subpath"), "all writes are denied before anything is allowed");
+    assert.match(p, /\(allow file-write\* \(subpath "\/dev"\)\)/);
+    assert.ok(p.includes(`(allow file* (subpath "${fs.realpathSync(proj)}"))`) && p.includes(`(allow file* (subpath "${fs.realpathSync(temp)}"))`));
+    assert.ok(p.includes(`(allow file-read* (subpath "${fs.realpathSync(tools)}"))`) && !p.includes(`(allow file* (subpath "${fs.realpathSync(tools)}"))`), "a read-only folder is not writable");
+  } finally { rm(home); }
+});
+
 test("home sandbox: the seatbelt profile denies every unix socket and loopback connection, and the Vyre home, before the one allow", () => {
   const home = tmp(); try {
     const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock") });
@@ -80,8 +92,8 @@ test("egress CONNECT: only the listed hosts are tunnelled, and only with the ses
   const { port } = await eg.listen(); t.after(() => eg.close());
   const ask = (host, auth) => new Promise(res => { const s = net.connect(port, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\n${auth ? "Proxy-Authorization: Basic " + Buffer.from("vyre:" + auth).toString("base64") + "\r\n" : ""}\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 3000); });
   assert.match(await ask(`127.0.0.1:${tp}`, "tok"), / 200 /);
-  assert.match(await ask(`127.0.0.1:${tp}`, "wrong"), / 403 /);
-  assert.match(await ask(`127.0.0.1:${tp}`, ""), / 403 /);
+  assert.match(await ask(`127.0.0.1:${tp}`, "wrong"), / 407 /);
+  assert.match(await ask(`127.0.0.1:${tp}`, ""), / 407 /);
   assert.match(await ask("example.com:443", "tok"), / 403 /);
 });
 
@@ -215,4 +227,38 @@ test("HS-8: an entry that contains a Vyre home outside the person's home is refu
   const vyre = path.join(outer, "var", "lib", "vyre"); fs.mkdirSync(vyre, { recursive: true });
   assert.throws(() => planHome({ ...base(r), command: process.execPath, vyreHome: vyre, workdirs: [path.join(outer, "var")] }), /contains/);
   assert.throws(() => planHome({ ...base(r), command: process.execPath, vyreHome: vyre, workdirs: [vyre] }), /inside|contains/);
+});
+
+import { isPublicAddress, resolvePublic } from "./netguard.js";
+test("internet mode: only public addresses; loopback, private, link-local, CGNAT, the machine's own and mapped forms are refused", () => {
+  for (const ip of ["8.8.8.8", "93.184.216.34", "2606:4700:4700::1111"]) assert.equal(isPublicAddress(ip, []), true, ip);
+  for (const ip of ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1", "100.100.100.100", "0.0.0.0", "224.0.0.1", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1"]) assert.equal(isPublicAddress(ip, []), false, ip);
+  assert.equal(isPublicAddress("203.0.113.9", ["203.0.113.9"]), false, "this machine's own public address");
+});
+
+test("internet mode: a name with any private answer is refused whole, and CONNECT dials the checked address", async t => {
+  await assert.rejects(() => resolvePublic("evil.example", { lookup: async () => [{ address: "93.184.216.34" }, { address: "10.0.0.5" }], own: [] }), /not a public/);
+  const held = new Set(); const target = net.createServer(c => { held.add(c); c.on("error", () => {}); c.end("pong"); }); await new Promise(r => target.listen({ port: 0, host: "127.0.0.1" }, r)); t.after(() => { held.forEach(c => c.destroy()); target.close(); });
+  const tp = target.address().port; const dialed = [];
+  const mk = lookup => createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true, lookup, dial: (ip, port) => { dialed.push(ip + ":" + port); return net.connect(tp, "127.0.0.1"); } });
+  const ask = (egPort, host) => new Promise(res => { const s = net.connect(egPort, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\nProxy-Authorization: Basic ${Buffer.from("vyre:tok").toString("base64")}\r\n\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 3000); });
+  const egPublic = mk(async () => [{ address: "93.184.216.34" }]); const a = await egPublic.listen(); t.after(() => egPublic.close());
+  assert.match(await ask(a.port, "files.example:443"), / 200 /);
+  assert.deepEqual(dialed, ["93.184.216.34:443"], "it dialled the address it had checked");
+  assert.match(await ask(a.port, "files.example:25"), / 403 /, "no mail relay");
+  const egPriv = mk(async () => [{ address: "127.0.0.1" }]); const b = await egPriv.listen(); t.after(() => egPriv.close());
+  assert.match(await ask(b.port, "rebind.example:443"), / 403 /, "a name that resolves to loopback is refused");
+  assert.match(await ask(b.port, "127.0.0.1:22"), / 403 /, "a literal loopback address is refused");
+});
+
+import http from "node:http";
+test("internet mode: plain HTTP through the proxy goes only to public addresses", async t => {
+  const up = http.createServer((q, r) => r.end("hello-from-upstream")); await new Promise(r => up.listen(0, "127.0.0.1", r)); t.after(() => up.close());
+  const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true, lookup: async h => [{ address: h === "private.example" ? "10.0.0.9" : "127.0.0.1" }] });
+  const { port } = await eg.listen(); t.after(() => eg.close());
+  const get = (url, auth = "tok") => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port, path: url, method: "GET", headers: { host: new URL(url).host, ...(auth ? { "proxy-authorization": "Basic " + Buffer.from("vyre:" + auth).toString("base64") } : {}) } }, m => { let b = ""; m.on("data", d => b += d); m.on("end", () => res({ s: m.statusCode, b })); }); q.on("error", () => res({ s: 0 })); q.end(); });
+  // the stand-in "public" resolver answers loopback, which the guard refuses: the test proves the refusal, and the unit above proves the allow path
+  assert.equal((await get(`http://pypi.example:${up.address().port}/simple/`)).s, 403);
+  assert.equal((await get("http://private.example/x")).s, 403);
+  assert.equal((await get("http://pypi.example/x", "")).s, 407);
 });

@@ -1,35 +1,42 @@
+/** @jsxImportSource react */
+// The one Text. This file opts out of NativeWind's JSX transform (the pragma above) on purpose: a list of thousands of rows mounts a Text per line,
+// and resolving class names at runtime cost about 2 ms per row on the web (chat's scroll.hard profile). Here the whole look is a plain style
+// object, built once per theme and cached, so a mount is one RN Text with one style. A `className` (rare) goes through TextClass.
 import { Platform, Text as RNText, type TextProps } from "react-native";
-import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "../lib/cn";
 import { facesFor } from "../../src/theme/fonts";
-import { useUiTheme } from "../theme";
+import { useUiTheme, type UiCtx } from "../theme";
+import { TextClass, type TextStyleProps } from "./TextClass";
 
-const text = cva("", {
-  variants: {
-    size: { caption: "text-caption", secondary: "text-secondary", body: "text-body", headline: "text-headline", read: "text-read", title: "text-title", page: "text-page", display: "text-display" },
-    tone: { default: "text-text", muted: "text-text-2", label: "text-label", faint: "text-faint", accent: "text-accent", ok: "text-ok", warn: "text-warn", err: "text-err", inverse: "text-primary-ink" },
-  },
-  defaultVariants: { size: "body", tone: "default" },
-});
-
-export type TextStyleProps = VariantProps<typeof text> & { strong?: boolean; medium?: boolean; mono?: boolean };
+export type { TextStyleProps };
 
 /** Letter spacing in em (tokens.v2.type.tracking): the big roles pull in a little. */
 const TRACKING = { display: -0.025, page: -0.02, title: -0.012, headline: -0.012 } as const;
+/** The tone names and the colour roles they read (tokens v2.color). */
+const TONE: Record<string, string> = { default: "text", muted: "text-2", label: "label", faint: "faint", accent: "accent", ok: "ok", warn: "warn", err: "err", inverse: "primary-ink" };
 
-/**
- * The one Text: type roles (caption, secondary, body, headline, read, title, page, display) and tones are token names; the sizes follow the platform
- * (ui-system.md section 2). Weights are 400, `medium` 500 (buttons) and `strong` 600 (titles), set as the face. The face follows the font setting:
- * the platform's own by default (SF, Roboto, bundled Inter on the web), Instrument Sans or the serif when a space or person chooses it.
- */
-export function Text({ size, tone, mono, strong, medium, className, style, ...rest }: TextProps & TextStyleProps & { className?: string }) {
-  const { resolved, map } = useUiTheme();
-  const faces = facesFor(resolved.font);
-  const face = mono ? faces.mono : strong ? faces.strong : medium ? faces.medium : faces.regular;
-  const em = size ? TRACKING[size as keyof typeof TRACKING] : undefined;
-  const fs = em ? Number.parseFloat(String(map[`--fs-${size}`])) : 0;
+const cache = new WeakMap<UiCtx, Map<string, object>>();
+
+function styleFor(ctx: UiCtx, size: string, tone: string, weight: "regular" | "medium" | "strong" | "mono") {
+  let m = cache.get(ctx);
+  if (!m) cache.set(ctx, (m = new Map()));
+  const key = `${size}|${tone}|${weight}`;
+  let st = m.get(key);
+  if (st) return st;
+  const faces = facesFor(ctx.resolved.font);
+  const fs = Number.parseFloat(String(ctx.map[`--fs-${size}`]));
+  const lh = Number.parseFloat(String(ctx.map[`--lh-${size}`]));
+  const em = TRACKING[size as keyof typeof TRACKING];
   // Instrument Sans SemiBold's space is 0.17em (regular's is 0.22em), which glues words together in titles on the web; give it back the difference.
   // (The native builds embed the ttf, which does not have the problem; React Native has no wordSpacing.)
-  const gap = Platform.OS === "web" && resolved.font === "sans" && !mono && (strong || medium) ? { wordSpacing: `${Math.max(1, Math.round(Number.parseFloat(String(map[`--fs-${size ?? "body"}`])) * 0.06 * 10) / 10)}px` } : null;
-  return <RNText {...rest} style={[face, gap as object | null, em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null, style]} className={cn(text({ size, tone }), className)} />;
+  const gap = Platform.OS === "web" && ctx.resolved.font === "sans" && (weight === "strong" || weight === "medium") ? { wordSpacing: `${Math.max(1, Math.round(fs * 0.06 * 10) / 10)}px` } : null;
+  st = { ...faces[weight], color: ctx.color[TONE[tone] ?? "text"], fontSize: fs, lineHeight: lh, ...(em ? { letterSpacing: Math.round(fs * em * 100) / 100 } : null), ...gap };
+  m.set(key, st);
+  return st;
+}
+
+export function Text({ size = "body", tone = "default", mono, strong, medium, className, style, ...rest }: TextProps & TextStyleProps & { className?: string }) {
+  const ctx = useUiTheme();
+  if (className) return <TextClass size={size} tone={tone} mono={mono} strong={strong} medium={medium} className={className} style={style} {...rest} />;
+  const weight = mono ? "mono" : strong ? "strong" : medium ? "medium" : "regular";
+  return <RNText {...rest} style={style ? [styleFor(ctx, size as string, tone as string, weight), style] : styleFor(ctx, size as string, tone as string, weight)} />;
 }
