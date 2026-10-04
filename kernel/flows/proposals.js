@@ -64,6 +64,8 @@ export class Proposals {
       idem = `proposal:types:${await sha(json)}`;
     } else throw bad("propose a flow or types (a Kit goes through flows.kit.propose)");
     if (spec.note) form.note = String(spec.note).slice(0, 500);
+    // The hash of the whole card, written into the form once (a task's form is immutable): what the approver's decision is to be bound to (PR-2), and what onEvent checks again.
+    form.proposal_hash = await sha(JSON.stringify(form));
     // The way Kits ask: the Flows service is the doer and puts it in front of the approver with a yes, and the approver CHECKS: their approve or reject (with presence) is the answer.
     const key = idem.slice(-16).replace(/[^a-z0-9]/gi, "");
     const doerChain = this.chains.forDoer ? this.chains.forDoer({ proposal: key, space: approver.space, approver }) : null;
@@ -120,6 +122,8 @@ export class Proposals {
       if (row.outcome !== "approved") return { declined: form.what };
       const checker = row.checker;
       if (!checker || checker.kind !== "person" || (row.doer && row.doer.kind === "person" && row.doer.id === checker.id) || (this.isAdmin && !(await this.isAdmin(checker)))) { this.log(`proposal ${id} ignored: its checker is not an owner or an admin`); return { ignored: "not_admin_checked" }; }
+      const { proposal_hash: claimed, ...bare } = form;
+      if (claimed !== await sha(JSON.stringify(bare))) { this.log(`proposal ${id} ignored: its form does not match its hash`); return { ignored: "form_hash" }; }
       const want = await this.titleOf(form);
       if (want === null || want !== row.title) { this.log(`proposal ${id} ignored: its card does not match the stored draft`); return { ignored: "card_mismatch" }; }
       try {
