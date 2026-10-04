@@ -12,9 +12,18 @@ export function identityPorts(o) {
   };
   return {
     /** @param {string} identity @param {string} eid */
-    identityEntry: async (identity, eid) => {
-      const st = await ask("spaces.identity.state", { person: identity });
-      const e = st && Array.isArray(st.entries) ? st.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null;
+    identityEntry: async (identity, eid, claimedName) => {
+      let st = await ask("spaces.identity.state", { person: identity });
+      let entries = st && Array.isArray(st.entries) ? st.entries : [];
+      // a server that has never seen this identity: its chain by the claimed Vyre name, read from the directory and kept only when the chain is this id's; an unreachable directory is thrown, not "no such entry"
+      if (!entries.length && claimedName) {
+        let r;
+        try { r = await o.call("spaces.identity.lookup", { name: claimedName, id: identity }); } catch (e) { throw Object.assign(new Error("the directory could not be reached"), { code: /** @type {any} */ (e).code === "unreachable" ? "unreachable" : "failed" }); }
+        if (r && r.error) throw Object.assign(new Error(String(r.error.message || "lookup failed")), { code: r.error.code === "unreachable" ? "unreachable" : "failed" });
+        st = r && r.data !== undefined ? r.data : r;
+        entries = st && Array.isArray(st.entries) ? st.entries : [];
+      }
+      const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
       return e && typeof e.pub === "string" ? { eid: String(e.eid), kind: "device", pub: e.pub, identity } : null;
     },
     /** @param {Uint8Array} message */

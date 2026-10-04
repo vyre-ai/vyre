@@ -63,7 +63,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
 | [`records`](#records) | `core/records-tools` | `box`, `local` | 18 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 22 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 41 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
 | [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
@@ -73,7 +73,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 78 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 79 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 6 | 0 | none |
@@ -620,7 +620,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [41](tools.md#relay), 14 of them only for other modules
-- Emits: [22 events](events.md#relay)
+- Emits: [23 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs daemon: `tunnelEnd`
 - Needs vault: `tailscale-mint-oauth`
@@ -740,7 +740,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [78](tools.md#spaces), 20 of them only for other modules
+- Tools: [79](tools.md#spaces), 21 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true}`

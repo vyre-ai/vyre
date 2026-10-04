@@ -128,7 +128,7 @@ export default {
         if (!/^[A-Za-z0-9_.:@-]{1,128}$/.test(node)) throw refuse("node must name the device the browser connects from", "bad_input");
         if (typeof ctx.cliSessions.nodeInUse === "function" && ctx.cliSessions.nodeInUse(node)) throw refuse("that device already holds a signed-in session", "denied");
         const s = ctx.cliSessions.startStandIn(node);
-        ctx.events.emit("presence.signed-in", { id: s.id, node: String(input.label || node), method: "stand-in" });
+        // presence.signed-in is presence's event: the daemon says it when it starts the stand-in session (core/daemon cliSessions.startStandIn), not this module.
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires, method: "stand-in" };
       },
     });
