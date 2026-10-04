@@ -2,8 +2,8 @@
 // kernel/seal/strength.js: the strength of a presence key and the ONE rule for what a strength may do (lead's ruling on PW-1). The server decides the strength at enrolment, from what it verified itself:
 // `hardware` only for a key an attestation verifier accepted (Apple App Attest for the iPhone; Mac and Windows hardware keys join in RC2), `software` for every other key, whatever the client says about its own storage.
 // On a release-kind server a presence-required act takes a proof only from a `hardware` key (a `software` key gets a session and nothing that needs presence: the app says "Approve this in Vyre on your phone.");
-// on a development-kind server a software key satisfies presence behind the dev switch and every use is marked method "software". The sealing process (refuse in proof.js) calls strengthRefusal today; the registry's presence option (core/presence verify) is to call the same function, keyed on the METHOD of the proof (strengthOfMethod
-// below), once platform wires it: until it does, the registry does NOT call it, and "a software key gets a session and nothing that needs presence" is proven for kernel acts only. Built-ins only, like the rest of kernel/seal.
+// on a development-kind server a software key satisfies presence behind the dev switch and every use is marked method "software". The sealing process (refuse in proof.js) and the registry's presence option (core/presence verify, session open and window; platform, work/kernel-reg 0c447c396) both call strengthRefusal, keyed on the METHOD of the proof
+// (strengthOfMethod below), so a tool checked by the registry and an op checked by the kernel cannot differ.
 
 /** The stable refusal code for a software key on a release-kind server; the app turns it into "Approve this in Vyre on your phone." */
 export const SOFTWARE_KEY = "software_key";
@@ -28,5 +28,5 @@ export const methodOf = strength => (strength === "hardware" ? "attested" : "sof
 export const strengthOfMethod = (method, opener = null) => (INHERITS.has(String(method)) ? strengthOfMethod(String(opener || ""), null) : GESTURE_METHODS.has(String(method)) ? "hardware" : "software");
 /** A presence session and the terminal's reuse window are not gestures: each is opened by a proof and inherits that proof's method (record the opener on the row and on the window). */
 const INHERITS = new Set(["session", "window"]);
-/** The methods that needed a person's gesture when the proof was made. Everything else is software by default; named here so a new method is a decision: `grant` enrols the first passkey only, `stand-in` is development only. */
+/** The methods that needed a person's gesture when the proof was made. Everything else is software by default; named here so a new method is a decision: `grant` enrols the first passkey only (it is not an act: the registry exempts it explicitly, so it is software here only because nothing may satisfy an act with it), `stand-in` is development only. */
 const GESTURE_METHODS = new Set(["touchid", "capsule", "passkey", "tty", "code"]);
