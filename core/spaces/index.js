@@ -1023,6 +1023,8 @@ export default {
       }
       try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
     }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
+    // Which paired server hosts a space this device made with a server as its home (null for a space hosted here): for the module that opens the remote path to that Space.
+    tool("spaces.server-of", "The paired server's device id that hosts a space this device made, or null. For modules.", obj({ space: str }, ["space"]), async i => ({ device: await serverOf(String(i.space)) }), { internal: true });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.

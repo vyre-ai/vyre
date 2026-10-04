@@ -478,3 +478,46 @@ test("server side of a server-homed space: host-here and retire-here with no pro
   assert.equal(noProofRetire.error?.code, "presence_required", JSON.stringify(noProofRetire));
   assert.ok(d.kernel.spaces.hosts(hosted.space), "still hosted");
 });
+
+test("pre-0.3 boot (reviewer-3): a paired app device with no list at start gets one explicit list of the spaces its person belongs to, and a second start does not rewrite it", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "boot-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  let d = await start({ root, kernel: true, log: () => {} });
+  const ids = async () => (await call("spaces.identity.create", { name: "alex" }, { root, caller: "cli" })).data;
+  const made = await ids();
+  const sp = (await call("spaces.create", { name: "bootspace", home: { kind: "this-computer", confirmed: true } }, { root, caller: "cli" })).data;
+  const home = d.kernel.id.space;
+  await d.stop();
+  // a pre-0.3 style home: a paired phone row and a removed one, and no per-space lists at all
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(path.join(root, "vyre.db"));
+  const ins = db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, ?, ?, ?)");
+  ins.run("oldphonexxxxxxx01", "old phone", "app", 0, null); ins.run("goneoldphonexxx02", "gone phone", "app", 0, 5);
+  db.prepare("DELETE FROM spaces_kv WHERE key LIKE 'device-spaces/%'").run();
+  db.close();
+  d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 2000));
+  const read = (/** @type {string} */ k) => { const x = new DatabaseSync(path.join(root, "vyre.db")); try { const r = /** @type {any} */ (x.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(k)); return r ? JSON.parse(r.value) : undefined; } finally { x.close(); } };
+  const list = read("device-spaces/oldphonexxxxxxx01");
+  assert.ok(Array.isArray(list), "the live phone got an explicit list at boot");
+  assert.deepEqual(new Set(list), new Set([home, sp.space]), "the spaces its person belongs to, the home first");
+  assert.equal(read("device-spaces/goneoldphonexxx02"), undefined, "a removed phone got none");
+  // a second start leaves the list as it is (even after the person's spaces changed)
+  await d.stop();
+  const db2 = new DatabaseSync(path.join(root, "vyre.db"));
+  db2.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify([sp.space]), "device-spaces/oldphonexxxxxxx01");
+  db2.close();
+  d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 2000));
+  assert.deepEqual(read("device-spaces/oldphonexxxxxxx01"), [home, sp.space].includes(home) ? [home, sp.space] : [sp.space], "an existing list is topped up with the home only, never rewritten from scratch");
+  void made;
+});
