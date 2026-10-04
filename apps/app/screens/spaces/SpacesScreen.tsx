@@ -63,7 +63,7 @@ export function SpacesScreen() {
         {SPACES.map((s) => (
           <Card flush key={s.id} className="min-w-menu flex-1">
             <Row lead={<Avatar of={spaceRef(s.name)} size={56} />} title={s.name} chevron className="py-s3"
-              sub={<View className="gap-s1"><Text mono tone="label" numberOfLines={1} style={{ fontSize: 13, lineHeight: 18 }}>{s.address}</Text><Text size="secondary" tone="label" numberOfLines={1}>{`${roleLabel(s.role as Role)}, lives on ${s.home}`}</Text></View>}
+              sub={<View className="gap-s1"><Text mono size="secondary" tone="label" numberOfLines={1}>{s.address}</Text><Text size="secondary" tone="label" numberOfLines={1}>{`${roleLabel(s.role as Role)}, lives on ${s.home}`}</Text></View>}
               onPress={() => { setShowing(s.id); router.push("/u/now" as never); }} />
           </Card>
         ))}
@@ -81,7 +81,7 @@ export function SpacesScreen() {
                   end={temp && can ? <Button kind="ghost" size="sm" label="Extend" onPress={() => setSheet({ kind: "extend", id: m.id })} /> : undefined}
                   sub={temp ? (
                     <View className="gap-s1 pt-s1">
-                      <Text size="secondary" tone="label" numberOfLines={1} style={{ fontSize: 14, lineHeight: 18 }}>{`Only ${m.scope}`}</Text>
+                      <Text size="secondary" tone="label" numberOfLines={1}>{`Only ${m.scope}`}</Text>
                       <View className="flex-row items-center gap-s2"><Chip tone="warn">{`Temp, ends ${m.end}`}</Chip></View>
                     </View>
                   ) : roleLabel(m.role)}

@@ -36,7 +36,7 @@ export function SettingsHome() {
           </Card>
         </Sec>
       ))}
-      <View className="items-center pt-s6"><Text size="secondary" tone="faint" style={{ fontSize: 13, lineHeight: 18 }}>{`Vyre ${VERSION}`}</Text></View>
+      <View className="items-center pt-s6"><Text size="secondary" tone="faint">{`Vyre ${VERSION}`}</Text></View>
     </Frame>
   );
 }
