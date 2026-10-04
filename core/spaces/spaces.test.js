@@ -1009,3 +1009,26 @@ test("device enrolment: no list means every space, pairing sets the list, a new 
   assert.deepEqual((await d.ok("spaces.devices.set", { device: eid, spaces: [a.space, "spc_nope"].slice(0, 1) })).spaces, [a.space]);
   void w;
 });
+
+test("presence recovery is carried: begin and recover reach the sealing process with the person's chain, the identity ops and a bind signed by this device; every change to the list is synced", async t => {
+  const w = world(t);
+  const calls = [];
+  const presence = { begin: async i => { calls.push(["begin", i]); return { token: "tok1" }; }, recover: async i => { calls.push(["recover", i]); return { ok: true }; }, sync: async i => { calls.push(["sync", i]); return { ok: true }; } };
+  const kernel = { space: "spc_bbbbbbbbbbbb", presence, for: () => null, chain: async () => ({ hops: [{ actor: { kind: "person", id: "per_k" } }] }), proofFrom: () => ({}), serviceChain: () => ({}) };
+  const d = await device(t, { kernelFor: () => kernel });
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const b = await d.ok("spaces.presence.begin", { key_id: "k1", spki: "SPKI" });
+  assert.equal(b.token, "tok1");
+  assert.deepEqual([calls[0][1].person, calls[0][1].key_id], [me.id, "k1"]);
+  const r = await d.ok("spaces.presence.recover", { key_id: "k1", spki: "SPKI", signer: "chip", token: "tok1" });
+  assert.equal(r.ok, true);
+  const rec = calls.find(c => c[0] === "recover")[1];
+  assert.deepEqual([rec.person, rec.bind.eid, rec.ops.length > 0, typeof rec.bind.sig], [me.id, me.eid, true, "string"]);
+  const other = (await import("node:crypto")).generateKeyPairSync("ed25519");
+  await d.ok("spaces.identity.entry.remove", { eid: "nope" }).catch(() => null);
+  const before = calls.filter(c => c[0] === "sync").length;
+  await d.ok("spaces.presence.sync", {});
+  assert.equal(calls.filter(c => c[0] === "sync").length, before + 1);
+  assert.equal(calls.filter(c => c[0] === "sync").at(-1)[1].person, me.id);
+  void w; void other;
+});
