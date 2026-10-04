@@ -774,9 +774,6 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // body is read here once and kept for body().
   const device = Boolean(policy.caller && ownerDevice(policy.caller));
   const nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
-  const crossOrigin = Boolean(policy.peer && /** @type {any} */ (policy.peer).origin);
-  /** @type {{ id: string, kind: string } | null} */
-  let person = null;
   if (device && people && carried(req.headers)) {
     let raw = "";
     if (req.method !== "GET" && req.method !== "HEAD") {

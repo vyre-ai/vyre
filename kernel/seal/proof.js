@@ -62,7 +62,7 @@ export class Presence {
    * @returns {{ attested: boolean } | { refused: string }}
    */
   enrol({ person, key_id, spki, signer, token, attestation, proof, bind, ctx }) {
-    if (!SIGNERS.has(signer)) return { refused: "bad_signer" };
+    if (!SIGNERS.has(signer) && !(signer === "software" && this.allowUnattested)) return { refused: "bad_signer" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };
@@ -143,7 +143,7 @@ export class Presence {
    * chain key vouches for this presence key. The new key is a newcomer for 24 hours. Whoever holds the code (and PIN) can do this: the design's stated limit.
    */
   async recover({ person, ops, bind, key_id, spki, signer, token, attestation, ctx }) {
-    if (!SIGNERS.has(signer)) return { refused: "bad_signer" };
+    if (!SIGNERS.has(signer) && !(signer === "software" && this.allowUnattested)) return { refused: "bad_signer" };
     if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
     const t = this.tokens.get(token); this.tokens.delete(token);
     if (!t || t.exp < this.now() || t.person !== person || t.key_id !== key_id || t.spki !== sha256b64(spki)) return { refused: "no_ceremony" };

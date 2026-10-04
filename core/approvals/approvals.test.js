@@ -6,7 +6,7 @@ import { payloadHash } from "../../kernel/seal/wire.js";
 const SPACE = "spc_aaaaaaaaaaaa";
 async function world() {
   const tools = new Map(), clock = { t: 1_000_000 };
-  await mod.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, kernel: { proofFrom: m => m.proof } });
+  await mod.start({ tool: (n, d) => tools.set(n, d), now: () => clock.t, kernel: { proofFrom: m => (m.proof ? { presence: m.proof } : undefined) } });
   return { tools, clock, run: (n, i, m = {}) => tools.get(n).run(i, m) };
 }
 const FIELDS = { resource: `vyre://${SPACE}/invite/new`, input_hash: "h1" };
@@ -44,4 +44,18 @@ test("approve on your phone: a no needs the person's session, a timeout and bad 
   for (const bad of [{ op: "seal.reveal", space: SPACE, fields: FIELDS }, { op: "grant.role", space: "nope", fields: FIELDS }, { op: "grant.role", space: SPACE, fields: [] }]) await assert.rejects(() => w.run("approvals.ask", bad, { caller: "deck" }), { code: "bad_input" });
   for (let i = 0; i < 5; i++) await ask({ ...FIELDS, input_hash: `x${i}` });
   await assert.rejects(() => ask({ ...FIELDS, input_hash: "x9" }), { code: "rate_limited" });
+});
+
+import { proofRequest } from "../../kernel/remote/proof.js";
+test("approvals.request returns exactly the kernel's proof request for an act, and refuses a name it does not know", async () => {
+  const w = await world();
+  const args = [{ person: "per_alexalexalexalexalexalex", role: "admin" }];
+  const r = await w.run("approvals.request", { space: SPACE, call: "setRole", args }, { caller: "deck" });
+  const want = proofRequest(SPACE, "setRole", ...args);
+  assert.deepEqual(r, { op: want.op, space: want.space, fields: want.fields, payload_hash: want.payload_hash });
+  // what the phone signs is what approvals.ask would hold for the same op and fields
+  const asked = await w.run("approvals.ask", { op: r.op, space: r.space, fields: r.fields }, { caller: "device:web" });
+  assert.equal(asked.payload_hash, r.payload_hash);
+  await assert.rejects(() => w.run("approvals.request", { space: SPACE, call: "nope", args: [] }, { caller: "deck" }), { code: "bad_input" });
+  await assert.rejects(() => w.run("approvals.request", { space: "x", call: "setRole", args }, { caller: "deck" }), { code: "bad_input" });
 });

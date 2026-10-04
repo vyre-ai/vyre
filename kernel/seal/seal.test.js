@@ -530,3 +530,15 @@ test("BL-2 anchor: the log's latest (seq, head) moves only forward, a split is r
   assert.deepEqual(await s.anchor.read(A), { seq: 25, head: h("d") });
   assert.equal(diskHolds(dir, h("d")), null, "the head is not on disk in the clear");
 });
+
+test("a software signer enrols and proves only in a process started to allow unattested keys (a development build); a process that does not refuses it", async t => {
+  const dev = tmp("sw1"), prod = tmp("sw2");
+  const s = startSealer({ dir: dev, timeoutMs: 8000, dev: true, unattested: true }), p = startSealer({ dir: prod, timeoutMs: 8000, dev: true });
+  t.after(async () => { await s.close(); await p.close(); fs.rmSync(dev, { recursive: true, force: true }); fs.rmSync(prod, { recursive: true, force: true }); });
+  const sw = signer("per_alex", "dk_sw1", "software");
+  assert.equal((await enrolDevice(s, sw)).enrolled, true, "a development process takes a software signer");
+  const ch = person("per_alex"), fields = { task: "t1", payload_hash: "ph", decision: "dec_1" };
+  assert.equal(await s.presenceCheck({ chain: ch, op: "task.decide", fields, proof: sw.proof(ch, "task.decide", fields) }), null, "and its proof, recorded under its own signer name");
+  const refused = await enrolDevice(p, signer("per_alex", "dk_sw2", "software")).then(r => r, e => e);
+  assert.ok(!(refused && refused.enrolled === true), "a process that does not allow unattested keys refuses a software signer: " + JSON.stringify(refused && (refused.refused || refused.code || refused.message)));
+});

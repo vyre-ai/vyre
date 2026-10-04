@@ -14,6 +14,7 @@ import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
 import { sealerPresence } from "./core/presence.js";
+import { OWNER_SCOPED_TYPES } from "./core/authorize.js";
 import { expr as defaultExpr } from "./expr/index.js";
 import { KernelError } from "./core/errors.js";
 import { createSurfaces } from "./core/surfaces.js";
@@ -59,7 +60,9 @@ export async function createKernel(cfg) {
     const m = /^vyre:\/\/[^/]+\/([^/]+)\//.exec(String(urn));
     const fn = m && attrProviders.get(m[1]);
     let extra = {}; if (fn) { try { extra = fn(urn) || {}; } catch { extra = {}; } }
-    return { ...base, ...extra };
+    // A provider says WHOSE a resource is (`owner`, `project`) and nothing else: the kernel's own keys (space, sensitivity, created_by ...) always win (reviewer-2's AT-1).
+    const own = {}; for (const k of ["owner", "project"]) if (typeof /** @type {any} */ (extra)[k] === "string") /** @type {any} */ (own)[k] = /** @type {any} */ (extra)[k];
+    return { ...own, ...base };
   };
   const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, label: () => (label ? label() : {}) });
   const limits = createLimits({ space: cfg.space, log, clock });
@@ -262,7 +265,8 @@ export async function createKernel(cfg) {
     // characters) is the Space's id everywhere. One registry, one id; the store is attached at that moment (the kernel opens the built-in store for every hosted Space).
     if (needs.attrs === true) {
       /** Say whose a resource of this type is (`{ owner, project }` by its URN): the kernel then lets only the owner read a type it scopes by owner (`session`). Fail-safe: a throw is no attributes. */
-      handle.registerAttrs = (/** @type {string} */ type, /** @type {(urn: string) => any} */ fn) => { if (typeof type !== "string" || !/^[a-z][a-z0-9_-]{0,40}$/.test(type) || typeof fn !== "function") throw new KernelError("bad_input", "name a type and give a function"); attrProviders.set(type, fn); };
+      const mayType = new Set([...OWNER_SCOPED_TYPES, ...(Array.isArray(needs.attrTypes) ? needs.attrTypes.map(String) : [])]);
+      handle.registerAttrs = (/** @type {string} */ type, /** @type {(urn: string) => any} */ fn) => { if (!mayType.has(String(type))) throw new KernelError("not_allowed", "a module gives attributes only for a type it declared (needs.kernel.attrTypes) or an owner-scoped one"); if (typeof type !== "string" || !/^[a-z][a-z0-9_-]{0,40}$/.test(type) || typeof fn !== "function") throw new KernelError("bad_input", "name a type and give a function"); attrProviders.set(type, fn); };
     }
     if (needs.spaces === true) {
       /** The claimed identity's id becomes the owner's id here (once, logged): the one person of this Space. */
