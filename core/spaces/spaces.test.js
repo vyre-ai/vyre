@@ -228,6 +228,7 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const members = await d.ok("spaces.members.list", { space: done.space });
   assert.equal(members.members[0].person, alex.id);
   assert.equal(members.members[0].role, "owner");
+  assert.equal(members.members[0].name, "alex.vyre.run", "a member shows the name they chose");
   assert.equal(d.of("space.create-done").length, 1);
   assert.ok(d.of("member.added").some(e => e.person === alex.id && e.role === "owner"));
 
@@ -398,6 +399,7 @@ test("members through the tools: admins cannot touch owners, the last owner stay
   const asOwner = await add({ person: bo.id, role: "owner" }, { proof: "touch" });
   assert.ok(!asOwner.error, JSON.stringify(asOwner.error));
   assert.equal(asOwner.data.membership.role, "owner");
+  assert.equal(asOwner.data.membership.name, null, "a person this device has no verified name for shows no name, never a guess");
 
   // Act as the admin: the same home, another person.
   await actAs(d, "juno-device");
