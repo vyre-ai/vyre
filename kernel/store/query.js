@@ -52,27 +52,39 @@ export function sorted(/** @type {any[]} */ rows, /** @type {any[] | undefined} 
 const keyOf = (/** @type {any} */ r, /** @type {any[] | undefined} */ sort) => [...(sort || []).map(k => fieldOf(r, k.field)), r.id];
 export const encodeCursor = (/** @type {any} */ r, /** @type {any} */ sort) => Buffer.from(JSON.stringify(keyOf(r, sort))).toString("base64url");
 
-/** Keyset page: rows strictly after the cursor's position in the total order. Inserts and removals between pages never repeat or skip a row. */
-export function page(/** @type {any[]} */ all, /** @type {any} */ spec) {
+/**
+ * Keyset page: rows strictly after the cursor's position in the total order. Inserts and removals between pages never repeat or skip a row. It takes any iterable of rows and
+ * keeps only the page it is building (at most `limit` rows, found by insertion into a small sorted list), so a type of any size is paged in constant memory.
+ */
+export function page(/** @type {Iterable<any>} */ all, /** @type {any} */ spec) {
   const sort = spec.sort;
-  const rows = sorted(all.filter(r => matches(spec.filter, r)), sort);
-  let start = 0;
+  const keys = [...(sort || []), { field: "id", dir: "asc" }];
+  /** @type {any[] | null} */ let key = null;
   if (spec.page.cursor) {
-    let key;
     try { key = JSON.parse(Buffer.from(spec.page.cursor, "base64url").toString()); } catch { key = null; }
-    if (!Array.isArray(key) || key.length !== (sort || []).length + 1) return { error: "invalid cursor" };
-    const keys = [...(sort || []), { field: "id", dir: "asc" }];
-    start = rows.findIndex(r => {
-      const rk = keyOf(r, sort);
-      for (let i = 0; i < keys.length; i++) { const c = cmp(rk[i], key[i]); if (c) return keys[i].dir === "desc" ? c < 0 : c > 0; }
-      return false;
-    });
-    if (start === -1) start = rows.length;
+    if (!Array.isArray(key) || key.length !== keys.length) return { error: "invalid cursor" };
   }
+  const order = (/** @type {any} */ a, /** @type {any} */ b) => { for (const k of keys) { const c = cmp(fieldOf(a, k.field), fieldOf(b, k.field)); if (c) return k.dir === "desc" ? -c : c; } return 0; };
+  const after = (/** @type {any} */ r) => {
+    if (!key) return true;
+    const rk = keyOf(r, sort);
+    for (let i = 0; i < keys.length; i++) { const c = cmp(rk[i], key[i]); if (c) return keys[i].dir === "desc" ? c < 0 : c > 0; }
+    return false;
+  };
   const limit = Math.max(1, Math.min(spec.page.limit, 500));
-  const slice = rows.slice(start, start + limit);
-  const more = start + limit < rows.length;
-  return { rows: slice, ...(more && slice.length ? { next_cursor: encodeCursor(slice[slice.length - 1], sort) } : {}) };
+  /** @type {any[]} */ const best = [];
+  let counted = 0;
+  for (const r of all) {
+    if (!matches(spec.filter, r) || !after(r)) continue;
+    counted++;
+    if (best.length === limit && order(r, best[limit - 1]) >= 0) continue;
+    let lo = 0, hi = best.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (order(best[mid], r) <= 0) lo = mid + 1; else hi = mid; }
+    best.splice(lo, 0, r);
+    if (best.length > limit) best.pop();
+  }
+  const more = counted > limit;
+  return { rows: best, ...(more && best.length ? { next_cursor: encodeCursor(best[best.length - 1], sort) } : {}) };
 }
 
 /**
@@ -127,7 +139,7 @@ export function createAggregator(spec) {
 }
 
 /** Group and measure. Group keys keep their JSON shape; `avg` and `sum` skip nulls; an empty measure is null. */
-export function aggregate(/** @type {any[]} */ all, /** @type {any} */ spec) {
+export function aggregate(/** @type {Iterable<any>} */ all, /** @type {any} */ spec) {
   const a = createAggregator(spec);
   for (const r of all) a.add(r);
   return a.result();

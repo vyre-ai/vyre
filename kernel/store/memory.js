@@ -13,8 +13,21 @@ const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
+ * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
+ * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
+ * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ */
+/** @returns {Table} */
+function mapTable() {
+  /** @type {Map<string, any>} */ const m = new Map();
+  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
+}
+
+/**
  * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void,
  *   initial?: { types: any[], records: any[], changes: any[] },
+ *   backing?: { table(type: string): Table, changes: { readonly length: number, push(e: any): void, slice(from: number, to: number): any[] } },
  *   persist?: { type(name: string, def: any | null): void, record(r: any): void, change(e: any): void } }} [cfg]
  *   hook: tests throw from it to simulate a crash or an outage. initial and persist make the store durable (kernel/store/sqlite.js): the state it starts from, and a
  *   write-through for every change, called after the in-memory change is made.
@@ -22,12 +35,14 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
-  /** @type {Map<string, Map<string, any>>} */ const rows = new Map();
-  /** @type {any[]} */ const changes = [];
+  /** @type {Map<string, Table>} */ const rows = new Map();
+  const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
+  /** @type {{ readonly length: number, push(e: any): void, slice(from: number, to: number): any[] }} */
+  const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   if (cfg.initial) {
-    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, new Map()); }
+    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
-    changes.push(...cfg.initial.changes);
+    if (!cfg.backing) for (const e of cfg.initial.changes) changes.push(e);
   }
   // (the unique indexes for a loaded store are rebuilt below, once the helpers exist)
   const touch = (/** @type {string} */ op, /** @type {any[]} */ args) => cfg.hook && cfg.hook(op, args);
@@ -96,7 +111,7 @@ export function createMemoryStore(cfg = {}) {
         if (had && canonical(had) === canonical(t)) continue;
         types.set(t.name, clone(t));
         if (cfg.persist) cfg.persist.type(t.name, clone(t));
-        if (!rows.has(t.name)) rows.set(t.name, new Map());
+        if (!rows.has(t.name)) rows.set(t.name, makeTable(t.name));
         rebuildUnique(t.name);
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
       }
@@ -111,7 +126,7 @@ export function createMemoryStore(cfg = {}) {
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
-        if ([...rows.get(name).values()].some(r => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
+        if ([.../** @type {Table} */ (rows.get(name)).values()].some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
         types.delete(name); rows.delete(name);
         if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
@@ -133,14 +148,14 @@ export function createMemoryStore(cfg = {}) {
     },
     async query(type, spec) {
       touch("query", [type, spec]);
-      const all = [...table(type).values()].filter(r => spec.include_deleted || !r.deleted_at);
+      const all = (function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (spec.include_deleted || !r.deleted_at) yield r; })(table(type).candidates(spec));
       const p = page(all, spec);
       if (p.error) throw fail("invalid", p.error);
       return clone(p);
     },
     async aggregate(type, spec) {
       touch("aggregate", [type, spec]);
-      return clone(agg([...table(type).values()].filter(r => !r.deleted_at), spec));
+      return clone(agg((function* (/** @type {Iterable<any>} */ it) { for (const r of it) if (!r.deleted_at) yield r; })(table(type).candidates(spec)), spec));
     },
     async create(type, id, data) {
       touch("create", [type, id, data]);
@@ -191,11 +206,24 @@ export function createMemoryStore(cfg = {}) {
     async search(spec) {
       touch("search", [spec]);
       const words = spec.text.toLowerCase().split(/\s+/).filter(Boolean);
-      const hits = [];
+      // The first page keeps only the best `limit` hits as it goes (a small sorted list); a later page (a cursor is a position in the whole ranking) needs the whole list.
+      const top = !spec.page.cursor;
+      const better = (/** @type {any} */ a, /** @type {any} */ b) => a.score - b.score ? b.score - a.score : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      /** @type {any[]} */ const hits = [];
+      let counted = 0;
+      const add = (/** @type {any} */ h) => {
+        if (!top) { hits.push(h); return; }
+        counted++;
+        if (hits.length === spec.page.limit && better(h, hits[hits.length - 1]) >= 0) return;
+        let lo = 0, hi = hits.length;
+        while (lo < hi) { const mid = (lo + hi) >> 1; if (better(hits[mid], h) <= 0) lo = mid + 1; else hi = mid; }
+        hits.splice(lo, 0, h);
+        if (hits.length > spec.page.limit) hits.pop();
+      };
       for (const [type, t] of rows) {
         if (spec.types && !spec.types.includes(type)) continue;
         const def = types.get(type);
-        for (const r of t.values()) {
+        for (const r of t.searchCandidates(words)) {
           if (r.deleted_at) continue;
           let score = 0, snippet;
           for (const f of def.fields) {
@@ -205,9 +233,10 @@ export function createMemoryStore(cfg = {}) {
             const low = text.toLowerCase();
             for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet || text.slice(0, 80); }
           }
-          if (score) hits.push({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
+          if (score) add({ type, id: r.id, score, ...(snippet ? { snippet } : {}) });
         }
       }
+      if (top) return { rows: hits, ...(counted > spec.page.limit && hits.length ? { next_cursor: hits[hits.length - 1].id } : {}) };
       hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
       let start = 0;
       if (spec.page.cursor) { const i = hits.findIndex(h => h.id === spec.page.cursor); start = i === -1 ? hits.length : i + 1; }
