@@ -49,6 +49,13 @@ async function directory(f: typeof fetch, base: string, method: "GET" | "POST", 
   return { status: res.status, data: json.data };
 }
 
+/** Does the directory's own (verified) list for this name hold the entry? null when it cannot be read or does not check out: callers treat that as "not known", never as "there". */
+async function listed(f: typeof fetch, base: string, name: string, eid: string, now: number): Promise<boolean | null> {
+  const there = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`).catch(() => null);
+  if (!there || !Array.isArray(there.data.ops)) return null;
+  try { const st = await C.verifyChain(there.data.ops, { now: now + C.SKEW_MS }); return st.entries.some((e: any) => e.eid === eid); } catch { return null; }
+}
+
 export async function recoverIdentity(o: Opts): Promise<{ name: string; id: string }> {
   const name = String(o.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
   if (!codeLooksRight(o.code)) throw fail("wrong_code", "That is not a recovery code.");
@@ -59,11 +66,15 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
   const mine = await loadIdentity().catch(() => null);
   if (mine) {
     if (mine.name !== name) throw fail("exists", "This device already holds a different name.");
-    // Kept here: make sure the directory has this device's entry too (an earlier publish whose answer was lost may not have landed); if not, send the same op again.
+    // Kept here: make sure the directory has this device's entry too (an earlier publish whose answer was lost may not have landed); if not, send the same op again. A directory that
+    // cannot be read, or does not take the op, is not "already there": the retry fails with unreachable and the key stays (RX-2a).
     const last = mine.ops[mine.ops.length - 1] as any;
-    const there = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`).catch(() => null);
-    const listed = there && Array.isArray(there.data.ops) && there.data.ops.some((x: any) => x && x.entry && x.entry.eid === mine.eid);
-    if (there && !listed && last && last.entry && last.entry.eid === mine.eid) await directory(f, base, "POST", "/v1/ids/append", { name, ops: [last] });
+    const there = await listed(f, base, name, mine.eid, now());
+    if (there === null) throw fail("unreachable", "The names directory did not answer. Try again.");
+    if (!there) {
+      if (!(last && last.entry && last.entry.eid === mine.eid)) throw fail("unreachable", "This device's entry is not on the list yet. Try again.");
+      await directory(f, base, "POST", "/v1/ids/append", { name, ops: [last] });
+    }
     return { name: mine.name, id: mine.id };
   }
   const r = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`);
@@ -90,9 +101,8 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
     // A clear refusal (the directory said no) means nothing landed: forget the key. A lost answer (the directory may have applied the op) is checked: read the chain again, and if it holds this
     // device the recovery succeeded; if it cannot be read the key STAYS (a retry sends the same op again), because forgetting it would leave an entry on the list that nobody holds (RX-2).
     if ((e as { code?: string }).code !== "unreachable") { await forgetIdentity().catch(() => {}); throw e; }
-    const again = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(name)}`).catch(() => null);
-    const landed = again && Array.isArray(again.data.ops) && again.data.ops.some((x: any) => x && x.entry && x.entry.eid === key.eid);
-    if (!landed) { if (again) await forgetIdentity().catch(() => {}); throw e; }
+    const landed = await listed(f, base, name, key.eid, now());
+    if (!landed) { if (landed === false) await forgetIdentity().catch(() => {}); throw e; }
   }
   return { name, id: state.id };
 }
@@ -117,14 +127,14 @@ export async function replaceRecoveryCode(o: { base?: string; password?: string;
     op = await C.makeOp(state, { type: "replace-code", entry: { eid: ck.eid, kind: "code", pub: ck.publicKey } }, { by: mine.eid, ts: Math.max(now(), state.ts), sign: (m: Uint8Array) => mine.key.sign(m) });
     await C.applyOp(state, op, { now: now() + C.SKEW_MS });
   } catch (e) { throw fail(/new|young/i.test(String((e as { code?: string }).code ?? "")) ? "newcomer" : "unreachable", String((e as Error).message)); }
+  // Save first, then publish, and show the code only after both (RC-1): a failed save publishes nothing, so the old code still works; a refused or unknown publish puts the old list back.
+  const before = { name: mine.name, id: mine.id, eid: mine.eid, ops: mine.ops as any[], pin: mine.pin, key: mine.key };
+  await saveIdentity({ ...before, ops: [...before.ops, op], pin: C.pinOf(await C.applyOp(state, op, { now: now() + C.SKEW_MS })) });
   try { await directory(f, base, "POST", "/v1/ids/append", { name: mine.name, ops: [op] }); }
   catch (e) {
-    if ((e as { code?: string }).code !== "unreachable") throw e;
-    const again = await directory(f, base, "GET", `/v1/ids/resolve?name=${encodeURIComponent(mine.name)}`).catch(() => null);
-    const landed = again && Array.isArray(again.data.ops) && again.data.ops.some((x: any) => x && x.entry && x.entry.eid === ck.eid);
-    if (!landed) throw e;
+    const landed = (e as { code?: string }).code === "unreachable" ? await listed(f, base, mine.name, ck.eid, now()) : false;
+    if (!landed) { await saveIdentity(before).catch(() => {}); throw e; }
   }
-  await saveIdentity({ name: mine.name, id: mine.id, eid: mine.eid, ops: [...(mine.ops as any[]), op], pin: C.pinOf(await C.applyOp(state, op, { now: now() + C.SKEW_MS })), key: mine.key });
   return { recoveryCode: code };
 }
 

@@ -122,3 +122,48 @@ test("replaceRecoveryCode: a device under 24 hours old is refused (newcomer) and
   assert.equal((await loadIdentity()).ops.length, 3, "kept");
   await forgetIdentity();
 });
+
+test("RX-2a: a retry while the directory is down does not say success; with the directory back it sends the op and succeeds", { timeout: 90_000 }, async t => {
+  await forgetIdentity();
+  const base = await standIn(t);
+  const made = await claimIdentity({ name: "ola", base, params: PARAMS });
+  // the first publish is lost: the append is refused as unreachable and the re-read cannot be read either
+  const down = async () => { throw new Error("down"); };
+  let gets = 0;
+  const lost = async (u, i) => ((i && i.method) === "POST" || ++gets > 1 ? down() : fetch(u, i));
+  await assert.rejects(recoverIdentity({ name: "ola", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: lost }), { code: "unreachable" });
+  assert.equal((await resolve(base, "ola")).ops.length, 1, "nothing was published");
+  assert.ok(await loadIdentity(), "the key stays");
+  await assert.rejects(recoverIdentity({ name: "ola", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: down }), { code: "unreachable" });
+  assert.equal((await resolve(base, "ola")).ops.length, 1);
+  const got = await recoverIdentity({ name: "ola", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS });
+  assert.equal(got.name, "ola");
+  assert.equal((await resolve(base, "ola")).ops.length, 2, "the retry sent the op");
+  await forgetIdentity();
+});
+
+test("RX-2b: a directory that lies (a list without the key) after a lost answer does not make the phone keep it; one that cannot be verified is not 'there'", { timeout: 90_000 }, async t => {
+  await forgetIdentity();
+  const base = await standIn(t);
+  const made = await claimIdentity({ name: "pia", base, params: PARAMS });
+  let reads = 0;
+  const liar = async (u, i) => {
+    if (i && i.method === "POST") throw new Error("lost");
+    if (++reads > 1) return { ok: true, status: 200, json: async () => ({ data: { kind: "person", id: made.id, ops: [{ junk: true, entry: { eid: "anything" } }] } }) };
+    return fetch(u, i);
+  };
+  await assert.rejects(recoverIdentity({ name: "pia", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS, fetch: liar }), { code: "unreachable" });
+  await forgetIdentity();
+});
+
+test("RC-1: the new code is saved before it is published and is not returned when the publish is refused (the old list is put back)", { timeout: 90_000 }, async t => {
+  await forgetIdentity();
+  const base = await standIn(t);
+  const made = await claimIdentity({ name: "ida", base, params: PARAMS });
+  await recoverIdentity({ name: "ida", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS });
+  const later = () => Date.now() + 25 * 3600_000;
+  const refuse = async () => ({ ok: false, status: 409, json: async () => ({ error: { code: "conflict", message: "no" } }) });
+  await assert.rejects(replaceRecoveryCode({ base, params: PARAMS, now: later, fetch: refuse }));
+  assert.equal((await loadIdentity()).ops.length, 2, "the old list is back");
+  await forgetIdentity();
+});
