@@ -2,6 +2,8 @@
 // "Approve on your phone" for a kernel act a person signs (platform's core/approvals): the web session cannot prove it, so it asks the box for the act's exact proof request
 // (approvals.request, so nothing here hashes anything), opens an ask (approvals.ask), waits for the paired phone to sign it (approvals.status), then sends the act again with the proof.
 
+import { hashMatches } from "./payload-hash.js";
+
 /** How each tool the app calls maps to the act the kernel verifies: the call's name and its arguments after the space. Only acts the kernel's proof table covers. @type {Record<string, (i: any) => { call: string, args: any[] } | null>} */
 export const ACTS = {
   "rules.define": (i) => ({ call: "ruleSet", args: [i.rule] }),
@@ -59,7 +61,9 @@ export async function askPhone(call, o) {
   const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
   const req = await call("approvals.request", { space: o.space, call: act.call, args: act.args });
+  if (!hashMatches(req)) throw Object.assign(new Error("the box's proof request does not match its own fields"), { code: "hash_mismatch" });
   const ask = await call("approvals.ask", { op: req.op, space: req.space, fields: req.fields });
+  if (ask.payload_hash !== req.payload_hash) throw Object.assign(new Error("the ask is for a different act"), { code: "hash_mismatch" });
   o.onWaiting?.();
   const start = now();
   for (;;) {

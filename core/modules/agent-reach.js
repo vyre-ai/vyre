@@ -34,6 +34,8 @@ export const PERSON_ONLY = new Map([
   ["spaces.devices.spaces", "the person's own devices"],
   ["spaces.devices.list", "the person's own devices"],
   ["spaces.devices.lend", "the person's own devices"],
+  ["spaces.host-here", "hosts a space on this server: the owner's own act"],
+  ["spaces.retire-here", "takes back a space on this server: the owner's own act"],
   ["spaces.devices.lend.status", "the person's own devices"],
   ["spaces.devices.remove", "the person's own devices"],
   ["spaces.devices.restore", "the person's own devices"],
