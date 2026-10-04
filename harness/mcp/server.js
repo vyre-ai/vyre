@@ -13,6 +13,9 @@
 // and the call carry the session, so the hub scopes them by this session's project.
 
 import readline from "node:readline";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { request, call } from "../../core/daemon/client.js";
 import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
@@ -38,6 +41,28 @@ const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 // is held inside the folders of the agent's projects.
 const AGENT = process.env.VYRE_AGENT || "";
 const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
+/**
+ * Claude Code on this computer (core/pluginagent): once the person has granted it, the home holds plugin-agent.json ({ agent, key }, mode 0600) and this server calls as that agent with the key, so vyred
+ * binds every call to the agent's own kernel token. Read on each call (the grant can come while a session runs), and never inside a session Vyre started (its own socket binds it). No file: a plain "mcp".
+ * @returns {{ caller: string, headers?: Record<string, string> }}
+ */
+function ident() {
+  if (AGENT) return { caller: CALLER };
+  if (!process.env.VYRE_SOCKET) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(home(), "plugin-agent.json"), "utf8"));
+      if (j && /^[A-Za-z0-9_-]+$/.test(String(j.agent)) && typeof j.key === "string" && j.key) return { caller: `mcp:agent:${j.agent}`, headers: { "x-vyre-agent-key": j.key } };
+    } catch { /* not granted (yet) */ }
+  }
+  return { caller: CALLER };
+}
+let asked = false;
+/** Not granted yet: ask the person once for this process, in the background; the answer is read from the key file on a later call. */
+function askOnce() {
+  if (asked || AGENT || process.env.VYRE_SOCKET || ident().headers) return;
+  asked = true;
+  call("pluginagent.ask", { computer: os.hostname() }, { caller: CALLER }).catch(() => null);
+}
 const DRIVES = /^(threads|agents)\./;
 // Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses
 // them from any session, so listing them only spends the model's context.
@@ -60,10 +85,11 @@ function scoped(tool, input) {
 const sessionKey = () => (AGENT ? null : readKey(paths(home()).sessions, process.ppid));
 
 async function tools() {
-  let r = await request("GET", "/v1/tools", undefined, { caller: CALLER });
+  let r = await request("GET", "/v1/tools", undefined, ident());
   // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
-  if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
+  if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, ident()); }
   if (r.error) return [];
+  askOnce();
   const all = r.data.filter(offered);
   // The five memory tools go by their own names; their raw twins are not offered beside them.
   const has = new Set(all.map(t => t.name));
@@ -73,7 +99,7 @@ async function tools() {
   const next = new Map(list.map(t => [mcpName(t.name), { tool: t.name }]));
   for (const [name, a] of aliased) { own.push({ name, description: a.description, inputSchema: a.input }); next.set(name, { tool: a.tool, alias: name }); }
   // No mcp module (no_such_tool) or any other refusal: the module tools alone, as before.
-  const hub = await call("mcp.tools", {}, { caller: CALLER, session: sessionKey() });
+  const hub = await call("mcp.tools", {}, { ...ident(), session: sessionKey() });
   const extra = [];
   if (!hub.error && Array.isArray(hub.data)) {
     for (const t of hub.data) {
@@ -89,7 +115,7 @@ async function tools() {
 
 /** A hub call: the server's own MCP result as it is, or a held call said plainly. @param {string} name @param {any} args */
 async function hubCall(name, args) {
-  const r = await call("mcp.call", { name, arguments: args }, { caller: CALLER, session: sessionKey(), timeout: 120_000 });
+  const r = await call("mcp.call", { name, arguments: args }, { ...ident(), session: sessionKey(), timeout: 120_000 });
   if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
   const d = r.data;
   if (d && d.held) return { content: [{ type: "text", text: `${d.message || "Held at the Gate until the user approves it in Vyre."} (Gate item ${d.held}; nothing reached the server yet.)` }], structuredContent: { held: d.held } };
@@ -126,7 +152,7 @@ async function handle(msg) {
       const args = params?.arguments || {};
       const via = alias && alias.route && alias.route.when(args, process.env) ? alias.route : null;
       const sent = via ? via.tool : tool;
-      const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
+      const r = await call(sent, scoped(sent, via ? via.map(args, process.env) : alias ? alias.map(args, process.env) : args), { ...ident(), session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
         ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
       return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
