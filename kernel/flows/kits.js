@@ -296,7 +296,12 @@ export class KitManager {
     const row = await this.k.ask.get(this.#chain(cat, p.kit.id, p.approver), id);
     if (!row || row.state !== "done") return null;
     if (row.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
-    return this.apply(p.id);
+    try { return await this.apply(p.id); }
+    catch (e) {
+      // A Kit that is not the one that was approved is dropped, said plainly, and never retried.
+      if (e && /** @type {any} */ (e).code === "hash_mismatch") { await this.store.delProposal(p.id); return { refused: p.kit.id, reason: /** @type {Error} */ (e).message }; }
+      throw e;
+    }
   }
 
   /** Apply an approved proposal. Idempotent per step: a crash mid-way resumes from the ledger. @param {string} proposalId */
@@ -307,6 +312,14 @@ export class KitManager {
     const kit = p.kit;
     if (kitHash(kit) !== p.hash) throw Object.assign(new Error("the Kit changed after it was approved"), { code: "hash_mismatch" });
     const chain = this.#chain(cat, kit.id, p.approver);
+    // The stored Kit and its stored hash sit in one proposal record, so they prove nothing against each other. What the owner approved is the task's FORM (the kernel's proof covers its hash), and
+    // that form names the Kit by kit_hash: every Kit, with types or without, is checked against it before anything changes (the kernel's waiver repeats the check for the types).
+    if (p.task) {
+      const row = await this.k.ask.get(chain, p.task).catch(() => null);
+      const f = row && row.form;
+      if (!row || row.state !== "done" || row.outcome !== "approved" || !f || f.kind !== "kit_install" || f.kit_hash !== waiverHash(kit)) throw Object.assign(new Error("this Kit is not the one that was approved"), { code: "hash_mismatch" });
+      if (row.payload && row.payload.form_hash && ksha(kcanonical(f)) !== row.payload.form_hash) throw Object.assign(new Error("the approval does not cover this card"), { code: "hash_mismatch" });
+    }
     // The install is the approver's act: the kernel decides `kits.install` for their chain before anything changes (a person who is no longer an admin installs nothing). The ledger row below, a
     // record write the kernel logs, comes before any definition, so an install that stops half way is on the record and resumes from it.
     const may = await this.k.authorize({ chain, action: "kits.install", resource: `vyre://${cat.space}/kit/${kit.id}` });
@@ -325,7 +338,10 @@ export class KitManager {
       const change = types.filter(t => old.has(t.name) || cat.types[t.name]);
       // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask
       // for, once. A resumed install whose types are already defined (the ledger says so) asks for nothing, so a spent approval never blocks the rest.
-      const need = types.some(t => !row.added.includes(`type:${t.name}`));
+      // Whether the types still need defining comes from the LIVE catalog, never from the ledger row alone (a row is a record some chains can write): a type that does not exist is defined under a fresh waiver.
+      const live = (await this.catalogFn()).types || {};
+      // An install that is not a resume (a first install or an update) always defines; a resumed one defines only what is still missing.
+      const need = !(prior && prior.status === "installing") || types.some(t => !live[t.name]);
       const waiver = need && this.k.kits && p.task ? await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) }) : undefined;
       if (need) await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
       if (waiver && this.k.kits) await this.k.kits.end(waiver);

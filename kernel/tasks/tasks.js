@@ -87,7 +87,7 @@ export function createTasks(cfg) {
   /** @type {Map<string, any>} */ const tasks = new Map();
   /** @type {Map<string, any>} */ const bodies = new Map();
   /** The task store for free text: durable when the kernel gives one (`cfg.texts`), else memory (a test rig). */
-  const texts = cfg.texts || (() => { /** @type {Map<string, any>} */ const m = new Map(); return { get: (/** @type {string} */ id) => m.get(id), set: (/** @type {string} */ id, /** @type {any} */ v) => { if (v === undefined) m.delete(id); else m.set(id, v); }, drop: (/** @type {string} */ id) => { m.delete(id); } }; })();
+  const texts = cfg.texts || (() => { /** @type {Map<string, any>} */ const m = new Map(); return { get: (/** @type {string} */ id) => m.get(id), set: (/** @type {string} */ id, /** @type {any} */ v) => { if (v === undefined) m.delete(id); else m.set(id, v); }, drop: (/** @type {string} */ id) => { m.delete(id); }, all: () => [...m.entries()] }; })();
   /** A standing always-ask rule names who must approve: that person, or someone who holds that role now. No rule: any approval stands. @param {{ approver?: { person?: string, role?: string } } | undefined} rule @param {{ approver_chain: any } | undefined} by */
   const approverOk = (rule, by) => {
     if (!rule || !rule.approver) return true;
@@ -551,6 +551,33 @@ export function createTasks(cfg) {
       return true;
     },
 
+    /**
+     * Take free text out of the task store (the lead's TR-1 ruling: the log holds only hashes, the store can forget). Called by the paths that forget a record or seal a field late, never by a surface.
+     * `values`: plain values (strings) that moved into a sealed field: every task whose stored text contains one, as a substring, loses its whole text. `record`: every task about that record loses its text.
+     * The task keeps its structure with a plain title, a task waiting for its check goes back to ready, and the log's `text_hash` no longer resolves to anything. @param {{ values?: string[], record?: string }} o @returns {{ cleared: number }}
+     */
+    scrubTexts(o = {}) {
+      const values = (Array.isArray(o.values) ? o.values : []).filter((/** @type {any} */ v) => typeof v === "string" && v.length >= 3);
+      let cleared = 0;
+      /** @type {Set<string>} */ const hit = new Set();
+      if (typeof o.record === "string" && o.record) for (const t of tasks.values()) if (t.record === o.record) hit.add(t.id);
+      if (values.length) {
+        const rows = typeof texts.all === "function" ? texts.all() : [...tasks.keys()].map(id => [id, texts.get(id)]);
+        for (const [id, x] of rows) { let j = ""; try { j = JSON.stringify(x) || ""; } catch { j = ""; } if (values.some(v => j.includes(v) || j.includes(JSON.stringify(v).slice(1, -1)))) hit.add(String(id)); }
+      }
+      for (const id of hit) {
+        const t = tasks.get(id);
+        try { texts.drop(id); } catch { texts.set(id, undefined); }
+        bodies.delete(id);
+        if (t) {
+          const { payload, ...rest } = /** @type {any} */ (t);
+          const plain = withoutText(rest);
+          tasks.set(id, deepFreeze({ ...plain, title: "(the text of this task was removed)", ...(t.state === "needs_check" ? { state: "ready" } : {}) }));
+        }
+        cleared++;
+      }
+      return { cleared };
+    },
     /** Did a checker approve exactly this payload? Also true for a sealed use the approved payload listed by its hash. */
     approved(/** @type {string} */ id, /** @type {string} */ payload_hash) {
       const t = tasks.get(id);
