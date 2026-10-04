@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Animated, Easing, View } from "react-native";
+import { Animated, Easing, Platform, View } from "react-native";
 import { Text } from "./Text";
 import { Icon, type IconName } from "./Icon";
 import { useUiTheme, type UiCtx } from "../theme";
@@ -11,6 +11,8 @@ import { tokens } from "../../src/theme/tokens";
 /** The button box as plain style objects from the theme's colours and numbers: NativeWind class names on the animated Pressable are dropped on a phone
  *  (Mark done and Fix had no fill, their inverse ink vanished on the card), so nothing that must be right on native is a class. */
 const px = (ctx: UiCtx, name: string) => Number.parseFloat(String(ctx.map[name]));
+/** The room a control needs around it to reach a 44 point touch target (48 dp on Android): hitSlop is the difference, split over both sides. */
+const slop = (height: number) => { const want = Platform.OS === "android" ? 48 : 44; return height < want ? Math.ceil((want - height) / 2) : undefined; };
 function boxFor(ctx: UiCtx, kind: string, size: string, phone: boolean) {
   const c = ctx.color;
   const fill = kind === "primary" ? c.primary : kind === "danger" || kind === "hold" ? c["err-wash"] : kind === "secondary" && phone ? c["surface-3"] : "transparent";
@@ -71,7 +73,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     setHolding(false);
-    Animated.timing(fill, { toValue: 0, duration: 120, useNativeDriver: false }).start();
+    Animated.timing(fill, { toValue: 0, duration: 160, useNativeDriver: false }).start();
   };
   const start = () => {
     if (disabled || loading || timer.current) return;
@@ -88,7 +90,7 @@ export function Button({ label, kind = "secondary", size = "md", icon, onPress, 
       accessibilityState={{ disabled: !!(disabled || loading), busy: !!loading }}
       disabled={disabled || loading}
       // A small button is 36 tall on a phone; the target stays 44.
-      hitSlop={size === "sm" && phone ? 4 : undefined}
+      hitSlop={phone ? slop(px(ctx, size === "lg" ? "--s-12" : size === "md" ? "--control" : "--control-sm")) : undefined}
       onPress={hold ? undefined : onPress}
       onPressIn={hold ? start : undefined}
       onPressOut={hold ? stop : undefined}
@@ -117,7 +119,7 @@ export function IconButton({ icon, label, onPress, kind = "ghost", touch }: { ic
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={label}
-      hitSlop={side < 44 ? (44 - side) / 2 : undefined}
+      hitSlop={slop(side)}
       onPress={onPress}
       // @ts-expect-error web-only prop: the tooltip
       title={label}

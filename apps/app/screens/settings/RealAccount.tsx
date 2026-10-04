@@ -2,8 +2,9 @@
 // in this screen's state only); Seeing is agents.list; Privacy lists the sealed fields from records.types; About reads the running version from update.status.
 // The sample's PIN switch, defaults and retention have no tool on the box, so they are not here.
 import { useCallback, useEffect, useState } from "react";
+import { HIDDEN, claimBlocked } from "../shell/rc";
 import { View } from "react-native";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { contacts, codeOf, devices, entryLine, entryTitle, hasCode, identityLine, removable, sealedFields, type Entry, type Identity, type TypeDef } from "./account-model";
 import { worksLine, type Agent } from "./agents-model";
@@ -26,9 +27,9 @@ export function RealAccount() {
   const cons = es ? contacts(es) : [];
   return (
     <Page title="Account and recovery" back="/u/settings">
-      {err ? <Card flush><EmptyState title="Account did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Account did not load" reason={err} retry={load} /></Card> : null}
       {id?.exists ? <Card><Row lead={<Avatar of={markRef("person", id.label || id.name || "you")} size={40} />} title={id.label || id.name || "You"} sub={identityLine(id)} className="px-0" /></Card> : null}
-      {id && !id.exists ? <Card><EmptyState title="No Vyre name on this device yet" body="Choose your Vyre name during setup." /></Card> : null}
+      {id && !id.exists ? <Card><EmptyState title={claimBlocked() ? HIDDEN.claimTitle : "No Vyre name on this device yet"} body={claimBlocked() ? HIDDEN.claimBody : "Choose your Vyre name during setup."} /></Card> : null}
       {es ? (
         <>
           <Group title="Ways in" note="Any one signs you in. Any one can add or remove the others.">
@@ -59,7 +60,7 @@ export function RealAccount() {
             </Card>
           </Group>
         </>
-      ) : !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      ) : !err ? <LoadingState rows={3} /> : null}
     </Page>
   );
 }
@@ -70,7 +71,7 @@ export function RealSeeing() {
   useEffect(() => { agentsList().then(setList).catch((e) => setErr(say(e, "Assistants did not answer."))); }, []);
   return (
     <Page title="What my assistants can see" back="/u/settings">
-      {err ? <Card flush><EmptyState title="Assistants did not answer" body={err} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Assistants did not load" reason={err} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No assistants yet" body="Your assistant and any agents you make appear here, with the projects each works in." /></Card> : null}
       {list && list.length ? <Card flush>{list.map((a, i) => <View key={a.name}>{i ? <Divider /> : null}<Row lead={<Avatar of={markRef(a.kind === "assistant" ? "assistant" : "teammate", a.name)} />} title={a.name} sub={`Works in: ${worksLine(a.projects)}`} /></View>)}</Card> : null}
       <Banner>Sealed fields stay hidden from every assistant. That includes yours and anyone acting for you. A space's admins decide what is sealed.</Banner>
@@ -85,14 +86,14 @@ export function RealPrivacy() {
   const sealed = ts ? sealedFields(ts) : [];
   return (
     <Page title="Privacy and sealing" back="/u/settings">
-      {err ? <Card flush><EmptyState title="Types did not answer" body={err} /></Card> : null}
+      {err ? <Card flush><ErrorState title="Types did not load" reason={err} /></Card> : null}
       {ts ? (
         <Group title="Sealed fields">
           <Card flush>
             {sealed.length ? sealed.map((s, i) => <View key={s.type + s.field}>{i ? <Divider /> : null}<Row lead={<Chip tone="sealed" icon="vault">Sealed</Chip>} title={`${s.typeLabel}, ${s.label}`} sub="Hidden from every assistant. They see it as on file, sealed." /></View>) : <EmptyState title="Nothing sealed yet" body="Seal a field in Customize." />}
           </Card>
         </Group>
-      ) : !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      ) : !err ? <LoadingState rows={3} /> : null}
       <Card className="gap-s1"><Text size="caption" strong tone="label">What an assistant always sees for a sealed field</Text><Text tone="muted">{'"SSN on file, sealed". The label and the fact that it exists, never the value.'}</Text></Card>
     </Page>
   );

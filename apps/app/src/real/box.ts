@@ -8,7 +8,7 @@ import { wantsPasskey } from "./presence-model.js";
 import { passkeyProof, PresenceError } from "./presence";
 
 /** True only in a development build started with EXPO_PUBLIC_VYRE_MOCK=1. */
-export const MOCK: boolean = typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_MOCK === "1";
+export const MOCK: boolean = typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1";
 
 export class BoxError extends Error {
   code: string;

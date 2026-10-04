@@ -56,7 +56,7 @@ export function mockPairingSession(code: Extract<WinkCode, { ok: true }>): Pairi
 
 /** The one place a session is opened: the box's own wink tools (src/real/pairing.ts), or the mock in a development build with EXPO_PUBLIC_VYRE_MOCK=1. */
 export function openPairing(code: Extract<WinkCode, { ok: true }>): PairingSession {
-  if (typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_MOCK === "1") return mockPairingSession(code);
+  if (typeof process !== "undefined" && process.env.EXPO_PUBLIC_VYRE_MOCK === "1") return mockPairingSession(code);
   return realSession(code);
 }
 

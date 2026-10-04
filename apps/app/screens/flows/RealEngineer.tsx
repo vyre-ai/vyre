@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Banner, Button, Card, Chip, EmptyState, Field, Row, Text } from "@vyre/ui";
+import { Banner, Button, Card, Chip, EmptyState, Field, Row, Text, LoadingState } from "@vyre/ui";
 import { ChatScreen } from "../../src/chat/ChatScreen";
 import { Frame } from "../places/Frame";
 import { ENGINEER, engineerRefusal, findEngineer, mayTalk, proposals, stateOf, type Agent } from "./assistant-model";
@@ -62,7 +62,7 @@ export function RealEngineer() {
     <Frame back="/u/flows" title="@Engineer" sub="Describe a process in plain words.">
       {head}
       {err ? <Banner tone="warn"><Text>{err}</Text></Banner> : null}
-      {state === null ? <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {state === null ? <LoadingState rows={3} /> : null}
       {state === "none" && !err ? <Card><EmptyState title="@Engineer is not on this box yet" body="Every space gets @Engineer built in. This box does not list it, so there is nobody to talk to. Update your Vyre, then open this page again." action={{ label: "Check again", onPress: load }} /></Card> : null}
       {state === "new" ? (
         <Card>

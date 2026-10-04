@@ -158,6 +158,8 @@ export function whenLabel(at, now) {
 /** "Thursday, 1 October". @param {number} at */
 export const dateLine = (at) => { const d = new Date(at); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 /** @param {number} at */
+/** The first word of a name for a greeting; an id that has no name behind it (per_...) is "there", never shown. @param {string | undefined} n */
+export const firstName = (n) => (!n || /^[a-z]{2,4}_[a-z0-9]{8,}$/.test(n) ? "there" : n.split(" ")[0]);
 export const greeting = (at) => { const h = new Date(at).getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 /** @param {number} at */
 const startOfDay = (at) => { const d = new Date(at); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -181,7 +183,7 @@ export function nowModel(w, scope = "all") {
   const calendar = w.calendar.filter((c) => !c.record || inScope(spaceOfUrnLoose(c.record)));
   const me = who(w, w.me);
   return {
-    greeting: `${greeting(w.now)}, ${(me?.name && !isRawId(me.name) ? me.name : "there").split(" ")[0]}`,
+    greeting: `${greeting(w.now)}, ${firstName(me?.name)}`,
     meta: `${dateLine(w.now)} · ${needsLine(needs.length)}`,
     needs, needIds, working, doneToday, recent, calendar,
     stuck: tasks.filter((t) => t.state === "stuck"),

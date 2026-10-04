@@ -1,8 +1,7 @@
 // The install flow's calls to the box (screens/install/real.js maps the answers). Each is one tool through src/real/box.ts.
 
-import { Platform } from "react-native";
 import { said, tool } from "./box";
-import { NO_BROWSER_CLAIM, claimHere } from "./flags.js";
+import { claimBlocked } from "../../screens/shell/rc";
 import { claimIdentity } from "../identity/claim.js";
 import { loadIdentity, saveIdentity } from "../identity/store";
 import { createdFrom, directoryAnswer, identityFrom, nameAnswer } from "../../screens/install/real.js";
@@ -41,7 +40,7 @@ export async function checkName(name: string): Promise<"free" | "taken" | "unkno
  */
 export async function createIdentity(name: string, deviceLabel: string, password = ""): Promise<{ name: string; id: string; recoveryCode: string; software: boolean }> {
   // RC1: a browser never makes a name (KP-1): refused before any key is made, any storage is opened or the directory is asked.
-  if (!claimHere(Platform.OS)) throw new Error(NO_BROWSER_CLAIM);
+  if (claimBlocked()) throw new Error("Create your name on the phone or computer app, then pair this browser to it.");
   const made = await claimIdentity({ name, password, deviceLabel, base: DIRECTORY });
   await saveIdentity({ name: made.name, id: made.id, eid: made.eid, ops: made.ops, pin: made.pin, key: made.key });
   return { name: made.name, id: made.id, recoveryCode: made.recoveryCode, software: made.software };
@@ -63,7 +62,7 @@ export const acceptInvite = (link: string) => tool<any>("spaces.invites.accept",
 /** The Kits the box offers a new space (flows.kit.library). null when the box has no such tool: the step then offers none. */
 export async function kitChoices(): Promise<{ id: string; label: string; sub: string }[] | null> {
   try {
-    const r = await tool<any>("flows.kit.library");
+    const r = await tool<any>("records.kits.library").catch(() => tool<any>("flows.kit.library"));
     const rows: any[] = Array.isArray(r) ? r : Array.isArray(r?.kits) ? r.kits : [];
     return rows.map((k) => ({ id: String(k.id), label: String(k.name ?? k.id), sub: String(k.description ?? "") }));
   } catch { return null; }
@@ -72,7 +71,7 @@ export async function kitChoices(): Promise<{ id: string; label: string; sub: st
 /** Ask to install the picked Kit in the new space. It lands as a card in Now for a person to approve; nothing installs until then. */
 export async function proposeKitFor(space: string, id: string): Promise<{ ok: boolean; text: string }> {
   try {
-    const got = await tool<any>("flows.kit.library.get", { id });
+    const got = await tool<any>("records.kits.get", { id }).catch(() => tool<any>("flows.kit.library.get", { id }));
     const kit = got && typeof got === "object" && got.kit ? got.kit : got;
     const r = await tool<any>("flows.kit.propose", { space, kit });
     return r?.ok === false ? { ok: false, text: r.errors?.[0]?.message ?? "The Kit cannot be installed." } : { ok: true, text: "waiting" };

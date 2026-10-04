@@ -5,16 +5,17 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
-import { AFTER_HOME, CONTINUE_HERE, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
-import { NO_BROWSER_CLAIM, claimHere } from "../../src/real/flags.js";
+import { clearJoin } from "../../src/shell/join-hold.js";
 import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
 import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
+import { HIDDEN, claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
 
 type Made = { name: string; look: string; addr: string; line: string };
@@ -130,6 +131,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
+  // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
+  useEffect(() => { if (step !== "join" && step !== "invite") clearJoin(); }, [step]);
   const advance = (from: string) => {
     if (from === "kit" && !MOCK && spaceId && pickKit) {
       setBusy(true);
@@ -207,12 +210,11 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name" && !MOCK && !claimHere(Platform.OS)) {
-    // A browser pairs to a name made on the phone or computer app; it never makes one (RC1).
+  if (step === "name" && !MOCK && claimBlocked()) {
+    // RC1: the key is made on the phone, so a browser cannot claim a name (screens/shell/rc.ts).
     body = (
-      <Page title="Pair this browser to your name" sub={NO_BROWSER_CLAIM}>
-        <Banner>Open Vyre on your phone or computer, then scan or paste the code here.</Banner>
-        <Button kind="primary" label="Pair with a code" onPress={() => setStep("scan")} />
+      <Page title={HIDDEN.claimTitle} sub={HIDDEN.claimBody}>
+        <Button kind="primary" label={HIDDEN.claimAction} onPress={() => setStep("scan")} />
       </Page>
     );
   } else if (step === "name") {
@@ -326,7 +328,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
           {two ? (
-            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("srv1"); }} />
+            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(SERVER_FAILED.rejected); setStep("srv1"); }} />
           ) : (
             <Card className="gap-s3">
               <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View>
@@ -348,7 +350,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "look") {
     body = (
       <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
-        {where === "here" ? null : <Terminal lines={[connectedLine(sn, device)]} />}
+        {where === "here" ? null : MOCK ? <Terminal lines={[connectedLine(sn, device)]} /> : <Chip tone="ok" icon="check">{`${sn} is paired. Setup carries on here.`}</Chip>}
         <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
         <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
         <Button kind="primary" label="Continue" onPress={() => advance("look")} />

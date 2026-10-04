@@ -40,7 +40,7 @@ const SAMPLE = [
   "Doe estate plan", "Trail map.pdf", "Wink page copy", "Passport portal", "Firm Visa", "Claude Sonnet 5.5", "On payment", "Mt7!hQ2-sail", "Chris Park", "Mei Tanaka",
 ];
 /** Words that make a state an error state. */
-const ERROR_WORDS = /(did not answer|did not open|could not be|could not load|could not open|cannot reach|went wrong|not available on this box|is not available\.)/i;
+const ERROR_WORDS = /(did not answer|did not open|did not load|could not be|could not load|could not open|cannot reach|went wrong|not available on this box|not available on your home|is not available\.)/i;
 
 // ---- the server: the web export, and /v1 forwarded to the box ----
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".json": "application/json", ".ico": "image/x-icon", ".svg": "image/svg+xml", ".map": "application/json" };
@@ -255,6 +255,20 @@ await step("join: /app/join?link= is taken out of the address and held, not left
   await page.screenshot({ path: path.join(OUT, "join-link-held.png") });
   const href = await page.evaluate(() => window.location.href);
   if (/link=|eyJ2/.test(href)) throw new Error(`the token is still in the address: ${href.slice(0, 80)}`);
+});
+await step("join: /app/join#link= (fragment) is taken out of the address and held", {}, async () => {
+  const tok = "https://harlow.vyre.run/join/eyJ2IjoxfQ.c2lnLWFiYw";
+  await page.goto(`${BASE}/join#link=${encodeURIComponent(tok)}`, { waitUntil: "domcontentloaded" }).catch(() => {});
+  await settle(3500);
+  await page.screenshot({ path: path.join(OUT, "join-fragment-held.png") });
+  const where = await page.evaluate(() => ({ path: window.location.pathname, hash: window.location.hash, search: window.location.search }));
+  if (where.hash || where.search) throw new Error(`the address still carries ${where.hash || where.search}`);
+  if (!/\/u\/install\/join$/.test(where.path)) throw new Error(`did not end at the join route: ${where.path}`);
+  // The held link was used: it filled the Invite link field (the box then refuses this made-up token in its own words, or opens the card).
+  const field = page.getByLabel("Invite link").first();
+  const v = (await field.count()) ? await field.inputValue() : "";
+  const t = (await text()).replace(/\s+/g, " ");
+  if (!/harlow\.vyre\.run\/join\//.test(v) && !/harlow/i.test(t.replace(/harlow\.vyre\.run\/join\/\.\.\./, ""))) throw new Error(`the held link was not used: field="${v.slice(0, 40)}" page="${t.slice(0, 160)}"`);
 });
 await step("setup: create a space on this computer, close partway, resume", { skip: SETUP ? undefined : "starts a real space on the dev box: pass --setup" }, async () => {
   await go("u/install/create");
