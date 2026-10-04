@@ -41,6 +41,7 @@ import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 import { ownerDevice } from "../modules/index.js";
 import { within } from "../../lib/within.js";
+import { isPerson, isDevice, modelKey } from "../../lib/caller.js";
 
 /** @type {import("./embed.js").Embedder | null} */
 let injected = null;
@@ -237,11 +238,9 @@ export default {
     const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
-    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => OWNER.has(String(caller)) || String(caller).startsWith("module:");
-    /** A model's own session: a bare "mcp", or "mcp:thread:<id>" (a session Vyre runs for the
-     * user, ADR 0030). Neither names an agent, so it reads as the user's own surfaces do. */
-    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller || ""));
+    const owner = caller => (isPerson(caller) && !isDevice(caller)) || modelKey(caller) === "caller:module";
+    /** A model's session that names no agent: a bare "mcp", or "mcp:thread:<id>". It is NOT the person (reviewer-2's recall verdict, MS-1/KW-1): reach() holds it to its own thread's project. */
+    const unnamedModel = caller => modelKey(caller) === "caller:mcp";
     /** Every tool a caller kind may reach, checked before run() at all (core/modules/index.js's
      * callerAllowed): the person's surfaces, first-party modules, and "mcp" (a model's own
      * session, or a named agent — reach() below tells those apart and scopes the latter). Not
