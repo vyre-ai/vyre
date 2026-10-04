@@ -8,12 +8,12 @@ export function Page({ title, sub, back, actions, children }: { title: string; s
   return (
     <ScrollView className="flex-1" contentContainerClassName="w-full max-w-page gap-s4 self-center p-s4 pb-s12">
       {back ? <View className="flex-row"><Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => router.push(back as never)} /></View> : null}
-      <View className="flex-row flex-wrap items-end gap-s3">
-        <View className="min-w-menu flex-1 gap-s1">
+      <View className="flex-row items-end gap-s3">
+        <View className="min-w-0 flex-1 gap-s1">
           <Text size="page" strong>{title}</Text>
           {sub ? <Text tone="muted">{sub}</Text> : null}
         </View>
-        {actions ? <View className="flex-row flex-wrap gap-s2">{actions}</View> : null}
+        {actions ? <View className="flex-none flex-row flex-wrap justify-end gap-s2">{actions}</View> : null}
       </View>
       {children}
     </ScrollView>
