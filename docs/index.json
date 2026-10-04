@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":340,"tool":1132,"event":449,"config":254,"env":222,"screen":20,"concept":43},
+  "counts": {"command":340,"tool":1133,"event":449,"config":254,"env":224,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1371,6 +1371,7 @@
     {"kind":"tool","name":"sync.upload.finish","definedIn":"core/sync/index.js","page":"reference/tools.md#syncuploadfinish","module":"sync","mentions":[]},
     {"kind":"tool","name":"sync.upload.plan","definedIn":"core/sync/index.js","page":"reference/tools.md#syncuploadplan","module":"sync","mentions":[]},
     {"kind":"tool","name":"sync.upload.start","definedIn":"core/sync/index.js","page":"reference/tools.md#syncuploadstart","module":"sync","mentions":[]},
+    {"kind":"tool","name":"system.build","definedIn":"core/system/index.js","page":"reference/tools.md#systembuild","module":"system","mentions":[]},
     {"kind":"tool","name":"system.echo","definedIn":"core/system/index.js","page":"reference/tools.md#systemecho","module":"system","mentions":[{"page":"using/cli.md","line":211,"anchor":"script-anything"},{"page":"contributing/index.md","line":26,"anchor":"get-the-code-running"}]},
     {"kind":"tool","name":"system.info","definedIn":"core/system/index.js","page":"reference/tools.md#systeminfo","module":"system","mentions":[{"page":"adr/0045-wink.md","line":48,"anchor":"decision"}]},
     {"kind":"tool","name":"system.rename","definedIn":"core/system/index.js","page":"reference/tools.md#systemrename","module":"system","mentions":[]},
@@ -2220,6 +2221,7 @@
     {"kind":"env","name":"VYRE_INSTALL_MAIN","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_INSTALLER","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_KERNEL","definedIn":"core/daemon/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_KERNEL_PROOF","definedIn":"core/cli/commands/daemon.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_LAUNCHAGENTS","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_LAUNCHCTL","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_LEGACY_DIRECT_MODEL","definedIn":"core/sessions/index.js","page":"reference/config.md#environment-variables","mentions":[]},
@@ -2245,6 +2247,7 @@
     {"kind":"env","name":"VYRE_OPENROUTER_URL","definedIn":"core/sessions/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_OVERLAY_BIN","definedIn":"local/hands-mac/index.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_PACKAGE","definedIn":"harness/lib/vyre.js","page":"reference/config.md#environment-variables","mentions":[{"page":"adr/0020-claude-code-plugin.md","line":48,"anchor":"decision"}]},
+    {"kind":"env","name":"VYRE_PAIR_TO","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_PROJECT","definedIn":"harness/hooks/hook.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_PROJECTS","definedIn":"core/switchboard/index.js","page":"reference/config.md#set-by-vyre","mentions":[{"page":"build/mcp-hub.md","line":40,"anchor":"inside-an-agents-thread"}]},
     {"kind":"env","name":"VYRE_PROJECTS_MOVE","definedIn":"core/projects/index.js","page":"reference/config.md#environment-variables","mentions":[{"page":"using/projects-and-threads.md","line":50,"anchor":"where-a-project-lives"}]},

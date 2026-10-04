@@ -63,6 +63,7 @@ ready || { docker logs vyre-vyre-1 2>&1 | tail -30; echo "vyred did not come up"
 sleep 5
 st=$(vyre status)
 echo "$st"
+check_modules() {
 # By name, not by count: the running set must be exactly the listed modules minus the ones that are off by default (scripts/packaged-boot-expected.txt), and none may be failed.
 vyre modules >"$WORK/modules.txt" 2>&1 || true
 node -e '
@@ -82,6 +83,28 @@ if (unlisted.length) problems.push("running but not in the signed list: " + unli
 if (problems.length) { console.error("packaged-boot-proof: " + problems.join("; ")); process.exit(1); }
 console.log("ok: " + running.length + " modules run, " + offNow.length + " are off by default, none failed (the list names " + listed.length + ")");
 ' "$SRC/site/box/modules.json" "$HERE/scripts/packaged-boot-expected.txt" "$WORK/modules.txt" || { cat "$WORK/modules.txt"; exit 1; }
+
+}
+st=$(vyre status)
+echo "$st"
+check_modules
+# A root-run update passes the daemon only the settings it checks (box/vyre prepare_run). Run one as root (`sudo vyre up` recreates the container from root's own env file), then the
+# kernel must still be on and the same modules must run: a box must not fall back to kernel off after its first update.
+sudo -n vyre up >"$WORK/rootrun.log" 2>&1 || { tail -20 "$WORK/rootrun.log"; echo "the root-run up failed"; exit 1; }
+ready || { docker logs vyre-vyre-1 2>&1 | tail -30; echo "vyred did not come back after a root-run update"; exit 1; }
+sleep 5
+docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || { echo "after a root-run update the daemon lost VYRE_KERNEL=1"; exit 1; }
+docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || { echo "after a root-run update the daemon lost VYRE_STORE=auto"; exit 1; }
+check_modules
+
+# MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
+sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')
+appcode() { docker exec -u 1000 vyre-vyre-1 node -e 'require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{console.log(r.statusCode);r.resume()}).on("error",()=>console.log("err"))' "$sock"; }
+appwhy() { docker exec -u 1000 vyre-vyre-1 node -e 'let b="";require("http").get({socketPath:process.argv[1],path:"/app/",headers:{"x-vyre-caller":"anonymous"}},r=>{r.on("data",d=>b+=d);r.on("end",()=>console.log(b.slice(0,300)))})' "$sock"; }
+[ "$(appcode)" = 200 ] || { echo "the signed web app is not served (/app/ answered $(appcode)): $(appwhy)"; docker exec vyre-vyre-1 ls -l /opt/vyre/appbuild.json /opt/vyre/SHA256SUMS 2>&1 | head -3; exit 1; }
+docker exec -u 0 vyre-vyre-1 sh -c 'echo "<!-- tampered -->" >> /opt/vyre/apps/app/dist/index.html'
+[ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; exit 1; }
+docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.html'
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "// tampered" >> /opt/vyre/core/work/index.js'

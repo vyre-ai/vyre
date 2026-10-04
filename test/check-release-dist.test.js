@@ -134,6 +134,8 @@ test("release dist --modules: modules.json must be in the release, listed in SHA
     const dir = dist(t, { sign: false });
     const body = JSON.stringify({ v: 1, counter: releaseCounter("0.2.0"), release: "0.2.0", modules: { work: { version: "0.1.0", tree: "a".repeat(64) } }, ...over });
     if (body !== "null") fs.writeFileSync(path.join(dir, "modules.json"), body);
+    // The web app's signed file list (MW-5): present beside the module list in a release.
+    if (body !== "null") fs.writeFileSync(path.join(dir, "appbuild.json"), JSON.stringify({ v: 1, release: "0.2.0", version: "0.2.0", counter: releaseCounter("0.2.0"), tree: "c".repeat(64), base: "/app/", files: { "index.html": "b".repeat(64) } }));
     if (listed) {
       const names = fs.readdirSync(dir).filter(f => !/^SHA256SUMS/.test(f) && f !== "notes.md").sort();
       fs.writeFileSync(path.join(dir, "SHA256SUMS"), names.map(f => `${crypto.createHash("sha256").update(fs.readFileSync(path.join(dir, f))).digest("hex")}  ${f}\n`).join(""));
@@ -145,6 +147,8 @@ test("release dist --modules: modules.json must be in the release, listed in SHA
   assert.match(check(make({ release: "0.2.1" }), { pulled: true, modules: true }).join("\n"), /says release 0.2.1, VERSION says 0.2.0/);
   assert.match(check(make({ modules: {} }), { pulled: true, modules: true }).join("\n"), /with modules/);
   assert.match(check(dist(t, { sign: false }), { pulled: true, modules: true }).join("\n"), /modules\.json is not in the release/);
+  const noApp = make(); fs.rmSync(path.join(noApp, "appbuild.json"));
+  assert.match(check(noApp, { pulled: true, modules: true }).join("\n"), /appbuild\.json is not in the release/);
   const unlisted = make({}, false);
   fs.appendFileSync(path.join(unlisted, "modules.json"), " ");
   assert.ok(check(unlisted, { pulled: true, modules: true }).length > 0, "a list SHA256SUMS does not carry is refused");
