@@ -5,7 +5,7 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
-import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairWatch, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { serverSession } from "../../src/real/pairing";
 import { COPY } from "../devices/wink.js";
@@ -137,7 +137,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     if (MOCK) { setSession(openPairing(c)); setStep("srv2"); return; }
     setBusy(true);
     const s = serverSession(c);
-    s.ready!().then(() => { setSession(s); setStep("srv2"); }).catch((e: Error) => setWrong(e.message || SERVER_FAILED.ended)).finally(() => setBusy(false));
+    s.ready!().then(() => { setSession(s); setStep("srv2"); }).catch((e: Error) => setWrong(serverSay(e))).finally(() => setBusy(false));
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
   // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
@@ -338,7 +338,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
           {two && session.kind === "watch" ? (
-            <PairWatch session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={(say) => { setSession(null); setWrong(say || SERVER_FAILED.rejected); setStep("srv1"); }} />
+            <PairWatch session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={(say) => { setSession(null); setWrong(serverSay(say)); setStep("srv1"); }} />
           ) : two ? (
             <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(SERVER_FAILED.rejected); setStep("srv1"); }} />
           ) : (
