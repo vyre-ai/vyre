@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): no fixed "5 minutes" about a code: the Mac's type-the-code help says the server shows how long it has left, and "Add your device" counts down from the box's own `code_expires`. The line to run on a server (Install, Add a device) is the release candidate's own `install-box.sh` line when the bridge gives this app's version (`window.__vyreShell.version`), else the stable `curl -fsSL vyre.run/i | sh` (first-run.js installLine, a version that is not a plain semver falls back).
+
 - feat(app): the Mac window's boxless "On a server" (rows 4e and 4f of the prototype). When the bridge says `boxless` (`window.__vyreShell.boxless`, native-core), setup goes name > "Type the code your server shows" > "Type this on your server" (the ack, typing it there is the yes) > "Connected to your server" > "Add your phone". Three wrong tries end the code; an expired code and an unreachable server have their own sentences (screens/install/MacServer.tsx, copy and rules in first-run.js, over `joinWithCode`).
 
 - feat(app): the browser's start screen has "Type the code" again, over `joinWithCode` (relay/client/join.js): the browser types the code the phone's Devices, Add a device screen shows, shows the ack to type on the phone, and keeps the pairing it gets. Adding this device to a name reads the identity's own Vyre name from the pairing (`identity.vyre`), not the box's name; the rules of it are tested with stubs (src/identity/add-device-core.js: the name is kept only when the list holds the key; a wrong ack, a timeout and an enrolment failure keep nothing).

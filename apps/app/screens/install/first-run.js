@@ -38,7 +38,7 @@ export const MAC_WHERE = {
 export const MAC_SERVER = {
   title: "Type the code your server shows",
   line: "Your server shows an avatar and a code that starts with WINK.",
-  help: "The code works once and runs out after 5 minutes.",
+  help: "The code works once. Your server shows how long it has left.",
   connect: "Connect",
   back: "Back",
   ackTitle: "Type this on your server",
@@ -61,6 +61,17 @@ export function macServerSay(reason, left) {
   return { title: "That code is not right", line: `Check the code on your server and type it again. ${left} ${left === 1 ? "try" : "tries"} left.`, over: false };
 }
 
+/**
+ * The line to run on a server. A release candidate's own install script when the bridge says which version this app is (the Mac app exposes it), else the stable line.
+ * @param {string | null | undefined} version e.g. "0.3.0-rc1"
+ */
+export function installLine(version) {
+  const v = String(version ?? "").trim();
+  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(v)) return "curl -fsSL vyre.run/i | sh";
+  const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
+  return `curl -fsSL ${base}install-box.sh | VYRE_BOX_URL=${base} sh`;
+}
+
 /** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
 export const isBoxlessMac = (shell) => Boolean(shell && shell.boxless === true);
 
@@ -72,7 +83,6 @@ export const ADD_PHONE = {
   words: "Check that the phone shows the same three words.",
   skip: "Skip",
   waiting: "Waiting for your phone.",
-  expires: "Good for 5 minutes.",
 };
 
 /** A browser holds no key: it connects from a phone, or says Vyre is not set up. */

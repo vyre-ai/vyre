@@ -12,7 +12,7 @@ import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, whoLine } from "./first-run.js";
+import { installLine, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -443,7 +443,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "cmd") {
     body = (
       <Page title="Run this on your server" sub="Open its terminal and paste the line.">
-        <CopyLine text={DATA.installCommand} />
+        <CopyLine text={installLine(shell()?.version)} />
         <Button kind="primary" label="I ran it" onPress={() => setStep("srv1")} />
       </Page>
     );

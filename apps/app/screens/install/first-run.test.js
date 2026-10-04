@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -119,4 +119,11 @@ test("the Mac's boxless window types the server's code: the words follow the pro
   assert.equal(macServerSay("wrong", 0).over, true);
   assert.deepEqual(macServerSay("expired", 3), { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true });
   assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
+});
+
+test("the install line is the release candidate's own when the version is known, else the stable one", () => {
+  assert.equal(installLine("0.3.0-rc1"), "curl -fsSL https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc1/install-box.sh | VYRE_BOX_URL=https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc1/ sh");
+  for (const v of [undefined, null, "", "latest", "0.3", "1.0.0; rm -rf /"]) assert.equal(installLine(v), "curl -fsSL vyre.run/i | sh", String(v));
+  assert.equal(installLine("0.3.0"), installLine(" 0.3.0 "));
+  assert.doesNotMatch(MAC_SERVER.help, /\d+ minutes/);
 });
