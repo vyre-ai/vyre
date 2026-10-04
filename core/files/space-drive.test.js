@@ -70,16 +70,29 @@ test("a call that proved no person is refused, and a Space with no Drive says so
   assert.equal(await code(nodrive.run("files.drive.upload", { path: "a/b", base64: b64("x") })), "unavailable");
 });
 
-test("on a real kernel-on daemon the three tools are registered, reach the owner's own surface, and say so plainly while the home kernel has no Drive wired", async t => {
+test("on a real kernel-on daemon the home Space's Drive works through the real tools under the owner's chain: upload, a second version, versions, a conflict, restore needs presence; a model, a guest and anonymous get nothing", async t => {
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
   const { start } = await import("../daemon/index.js"), { call } = await import("../daemon/client.js"), { tempHome } = await import("../../test/helpers.js");
   const root = tempHome(t), d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
-  for (const [tool, input] of [["files.drive.upload", { path: "a/b.txt", base64: b64("hi") }], ["files.drive.versions", { path: "a/b.txt" }], ["files.drive.restore", { path: "a/b.txt", version: 1 }]]) {
-    const r = await call(tool, input, { root, caller: "cli" });
-    assert.ok(r.error && ["unavailable", "presence_required"].includes(r.error.code), `${tool}: ${JSON.stringify(r)}`);
+  const ok = async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await call(tool, input, { root, caller: "cli" }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
+  const first = await ok("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("version one") });
+  assert.deepEqual([first.path, first.version, first.conflict, first.size], ["Clients/A/retainer.txt", 1, false, 11]);
+  const second = await ok("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("version two!"), base: 1 });
+  assert.deepEqual([second.version, second.conflict], [2, false]);
+  const stale = await ok("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("from an old copy"), base: 1 });
+  assert.equal(stale.conflict, true, "a write from an old base is kept beside the head, flagged, never merged");
+  const v = await ok("files.drive.versions", { path: "Clients/A/retainer.txt" });
+  assert.deepEqual(v.versions.map((/** @type {any} */ x) => x.ver), [1, 2, 3]);
+  assert.ok(v.versions.every((/** @type {any} */ x) => typeof x.by === "string" && x.by.startsWith("person:")), "the actor is the chain's, not a name the caller supplied");
+  const nothing = await call("files.drive.versions", { path: "Clients/A/never.txt" }, { root, caller: "cli" });
+  assert.equal(nothing.error && nothing.error.code, "not_found");
+  const restored = await call("files.drive.restore", { path: "Clients/A/retainer.txt", version: 1 }, { root, caller: "cli" });
+  assert.ok(restored.error ? ["needs_presence", "presence_required", "denied"].includes(restored.error.code) : restored.data.from === 1, `restore: ${JSON.stringify(restored)}`);
+  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
+    for (const [tool, input] of [["files.drive.versions", { path: "Clients/A/retainer.txt" }], ["files.drive.upload", { path: "x/y.txt", base64: b64("no") }]]) assert.ok((await call(tool, input, { root, caller })).error, `${caller} ${tool}`);
   }
-  for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x"]) assert.ok((await call("files.drive.versions", { path: "a/b.txt" }, { root, caller })).error, caller);
+  assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, 3, "nothing else was written");
 });

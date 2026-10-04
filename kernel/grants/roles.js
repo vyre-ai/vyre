@@ -6,7 +6,7 @@
 // field only through the placeholder path.
 const MEMBER = ["records.read", "records.create", "records.update", "records.remove", "records.restore", "seal.put", "events.read", "tasks.request", "tasks.read", "tasks.work", "tasks.decide", "grants.offer"];
 const MANAGER = [...MEMBER, "records.define", "grants.list", "rules.list", "rules.propose"];
-const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.restore", "rules.set", "rules.remove", "rules.accept", "rules.dismiss"];
+const ADMIN = [...MANAGER, "grants.create", "grants.revoke", "grants.narrow", "grants.role", "grants.invite", "drive.read", "drive.write", "drive.restore", "rules.set", "rules.remove", "rules.accept", "rules.dismiss"];
 export const ROLE_ACTIONS = Object.freeze({
   owner: Object.freeze([...ADMIN]),
   admin: Object.freeze([...ADMIN]),
