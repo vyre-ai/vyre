@@ -315,6 +315,8 @@ export async function selfTest(o) {
   const child = launch(p);
   let out = "", err = "";
   child.stdout.on("data", d => out += d); child.stderr.on("data", d => err += d);
+  // A program that cannot be started (no bwrap in the image) is an "error" event: unhandled, it ends the daemon for every session. It is this start's failure, with its reason.
+  child.on("error", e => { err += String(e && e.message || e); });
   // Bounded: a probe that never ends must fail the start with a reason, not leave the session "starting" for ever.
   await new Promise(r => { const t = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} r(undefined); }, 45_000); child.on("close", () => { clearTimeout(t); r(undefined); }); });
   const agent = await agentCheck;

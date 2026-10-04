@@ -338,3 +338,14 @@ test("HS-10: a session's temp lives outside the Vyre home, beside it, and the se
   assert.notEqual(o.sibling, "SIBLING-SECRET", "a sibling session's temp is not readable");
   assert.ok(!String(o.list).includes("s-theirs"), "a sibling session's folder is not even listed: " + o.list);
 });
+
+test("home sandbox: a computer with no bubblewrap fails the self-test with a reason and does not end the process (spawn ENOENT is handled)", { skip: process.platform !== "linux" || unavailable() !== "", timeout: 60_000 }, async t => {
+  const r = await rig(t);
+  const saved = process.env.PATH; process.env.PATH = path.join(r.home, "no-such-bin"); t.after(() => { process.env.PATH = saved; });
+  let uncaught = null; const on = e => { uncaught = e; }; process.on("uncaughtException", on); t.after(() => process.off("uncaughtException", on));
+  const res = await selfTest({ platform: "linux", command: process.execPath, home: r.home, vyreHome: path.join(r.home, ".vyre"), sessionSocket: r.own, workdirs: [r.proj], temp: r.temp, agent: r.agent, probes: r.probes });
+  await new Promise(r2 => setTimeout(r2, 200));
+  assert.equal(uncaught, null, uncaught && String(uncaught.stack));
+  assert.equal(res.ok, false);
+  assert.ok(res.failures.length >= 1, JSON.stringify(res));
+});
