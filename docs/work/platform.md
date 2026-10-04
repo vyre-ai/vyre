@@ -123,3 +123,11 @@ The last three reds are closed (5 Oct):
 - settings test 20: the `local` label was right. The test's second start trusted the oven by path, so it was first party and its declared setter hears the person. The test now says so and checks that an untrusted home module is no setting tool.
 - federation-reads: test/link-harness.js boxCall/macCall now carry the facts a daemon proves (terminal on the socket; the owner's paired phone as a relay_devices app row), so the person is a kernel chain. 8 of 8. federation-answer and federation-send were red before this and are not worse (2/7 -> 2/7, 2/6 -> 6/2 passing).
 Weakened or pinned for the kernel path: core/stream/group-live pins VYRE_KERNEL=0 (group-ks-live covers the kernel); two switchboard label tests pin the kernel off; core/mcp/module checks on_behalf by caller label only.
+
+### Kernel-on rerun, final (5 Oct): 28 of 28 green
+Fresh archive of work/kernel-on-rc1, kernel on, one process per file on a test box: all 28 pass first run. Added since the first pass:
+- The daemon wires the inference door (kernel/home.js builds createDoor over the home's sealing process with the kernel's own isChain; the daemon hands it the API-key chat drivers as providers). The owner now holds `seal.reveal` (no role had it, so a reveal was refused as no_grant even with a door). Every reveal is logged as `field.revealed` before it is shown. core/records-tools/reveal-door.test.js: a signed proof from a paired app reveals a sealed field; the terminal is refused.
+- Harness yes: only the person's own hook (bare `harness`, no agent, no thread, plus the transcript line) can make a plain yes count; test pins every other surface and the stop event.
+- membership.read is one row per membership() call (spaces.list: 1, agents.history: 0 on a repeat); I could not reproduce 8 per read, and kernel/membership.test.js pins "each answered call is an event", so I left it. reads-are-reads still ignores kernel_events.
+- Weakened for the kernel path (reviewer-3): core/mcp/module.test.js checks on_behalf by caller label only; group-live and two switchboard label tests pin VYRE_KERNEL=0.
+- Not mine, red before this work: core/records-tools/records-tools.test.js test 1 (records.define without a stand-in answers something other than needs_presence).
