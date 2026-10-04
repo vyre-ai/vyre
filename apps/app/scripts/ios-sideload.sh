@@ -59,7 +59,8 @@ unset EXPO_PUBLIC_VYRE_MOCK
 say "identity  $IDENTITY"; say "team      $TEAM"; say "bundle id $BUNDLE"
 
 [ -d node_modules ] || nice -n 10 npm ci --no-audit --no-fund
-nice -n 10 npx expo prebuild -p ios --clean
+# VYRE_SKIP_PREBUILD=1 reuses the ios/ folder of the last run (a retry after a signing problem).
+if [ "${VYRE_SKIP_PREBUILD:-}" != 1 ] || [ ! -d ios ]; then nice -n 10 npx expo prebuild -p ios --clean; fi
 
 # Entitlements a personal team cannot hold. The prebuild writes only what app.config.js leaves, but be sure.
 for f in ios/*/*.entitlements; do
@@ -74,7 +75,7 @@ ws=$(ls -d ios/*.xcworkspace | head -1); scheme=$(basename "$ws" .xcworkspace)
 say "building $scheme (Release, embedded bundle)"
 set -o pipefail
 nice -n 10 xcodebuild -workspace "$ws" -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS' -derivedDataPath ios/dd \
-  -allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_IDENTITY="$IDENTITY" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" build 2>&1 | tee ios/xcodebuild.log | tail -25
+  -allowProvisioningUpdates CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_IDENTITY="Apple Development" PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE" build 2>&1 | tee ios/xcodebuild.log | tail -25
 
 app=$(find "$OUT" -maxdepth 1 -name '*.app' | head -1)
 [ -n "$app" ] || die "the build made no .app; see ios/xcodebuild.log"
