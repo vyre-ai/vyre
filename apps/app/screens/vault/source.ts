@@ -23,6 +23,16 @@ export function vaultSource(call: Call) {
       const r = await ask<{ value?: string }>("vault.reveal", { name, field });
       return String(r.value ?? "");
     },
+    /** Whether the vault is open and how it unlocks (vault.state). A box without the tool answers null and the screen falls back to vault.list's own `locked`. */
+    async stateReal(): Promise<{ locked: boolean; unlock: "passphrase" | "none" } | null> {
+      const r = await call<{ locked?: boolean; unlock?: string }>("vault.state");
+      if (r.error) return null;
+      return { locked: Boolean(r.data?.locked), unlock: r.data?.unlock === "passphrase" ? "passphrase" : "none" };
+    },
+    /** Unlock a passphrase vault (the first unlock sets the passphrase). */
+    unlockReal: (passphrase: string) => ask<unknown>("vault.unlock", { passphrase }),
+    /** Add an item: a person's own call, the box asks for presence on this exact save. The value goes to the box and is not kept here. */
+    putReal: (input: Record<string, unknown>) => ask<unknown>("vault.put", input),
     /** Taking access away is always allowed: no proof asked. */
     async revokeReal(name: string, module: string): Promise<void> {
       const [mod, watcher] = module.split("/");

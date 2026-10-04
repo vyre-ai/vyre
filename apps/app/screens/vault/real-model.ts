@@ -60,3 +60,31 @@ export function revealRefusal(code: string | undefined, message: string): string
   if (code === "locked") return "The vault is locked. Unlock it, then try again.";
   return message || "The vault did not answer.";
 }
+
+export type NewItem = { kind: "login" | "api-key" | "secret"; name: string; username: string; secret: string; url: string };
+export const NEW_KINDS: [NewItem["kind"], string][] = [["login", "Login"], ["api-key", "API key"], ["secret", "Secret"]];
+
+/** The host of a link the person typed, lower case, or "" when it is not one. */
+export const hostOf = (url: string): string => { const m = /^(?:https?:\/\/)?([a-z0-9.-]+\.[a-z]{2,})(?::\d+)?(?:[/?#]|$)/i.exec(url.trim()); return m ? m[1].toLowerCase() : ""; };
+
+/** The input of vault.put for what the person typed, or the first thing wrong in words. A login needs the password and a name for it; a key or secret its value. */
+export function putInput(n: NewItem): { input: Record<string, unknown> } | { error: string } {
+  const name = n.name.trim();
+  if (!name) return { error: "Give it a name." };
+  if (!n.secret) return { error: n.kind === "login" ? "Type the password." : "Type the value." };
+  if (n.kind === "login") {
+    const host = hostOf(n.url);
+    if (n.url.trim() && !host) return { error: "That is not a web address." };
+    return { input: { name, kind: "login", fields: { ...(n.username.trim() ? { username: n.username.trim() } : {}), password: n.secret }, ...(host ? { url: n.url.trim(), hosts: [host] } : {}) } };
+  }
+  return { input: { name, kind: n.kind, fields: { value: n.secret } } };
+}
+
+/** The words for a refused add or unlock. */
+export function putRefusal(code: string | undefined, message: string): string {
+  if (code === "presence_required") return "That needs you. Approve with Face ID or your fingerprint, then try again.";
+  if (code === "denied" || code === "forbidden") return "This device may not add to the vault.";
+  if (code === "locked" || code === "vault_locked") return "Unlock the vault first.";
+  if (code === "bad_passphrase" || code === "wrong_passphrase") return "That passphrase is not right.";
+  return message || "The vault did not answer.";
+}
