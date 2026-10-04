@@ -143,6 +143,19 @@ export async function createKernel(cfg) {
         return gateway.serviceChain(m.name);
       },
     };
+    /**
+     * The chain of the call itself, in ANY Space this home hosts (the app's one call names a Space): this Space's is `chain(meta)`; another hosted Space builds the chain from the same proved
+     * facts (or its own session token) under THAT Space's own key, so the call is a member of that Space or nothing. A Space this home does not host has no chain here.
+     * @param {string} space @param {any} meta
+     */
+    handle.chainIn = async (space, meta) => {
+      if (space === cfg.space) return handle.chain(meta);
+      const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
+      if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
+      if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
+      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+      throw new KernelError("not_a_member", "no chain for this connection");
+    };
     /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
     handle.offersPort = () => createOffersPort(handle);
     return Object.freeze(handle);

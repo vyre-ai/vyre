@@ -664,10 +664,10 @@ vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <wo
 Free a server that still belongs to an app you no longer have.
 
 ```
-vyre wink reset [<fingerprint>] [--json]
+vyre wink reset --begin | --confirm <code> | vyre wink confirm [--no] [--json]
 ```
 
-vyre wink reset: run on the server. It shows the server's short fingerprint and asks you to type it back; then the server forgets its owner and can be paired again. Its keys stay.
+vyre wink reset --begin: run on the server, in a terminal. It shows a one-time code (5 minutes, once) on that terminal only. Then vyre wink reset --confirm <code> frees the server: it forgets its owner and can be paired again. Its keys stay. Five wrong codes lock it for an hour.
 
 ### vyre team
 

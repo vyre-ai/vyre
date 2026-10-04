@@ -60,6 +60,15 @@ export const PEER_MIGRATIONS = [
   `CREATE TABLE wink_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
   // The owner's signing key for a device (SPKI, base64url), for signed instructions to a headless box (wink.relay.apply).
   `ALTER TABLE wink_devices ADD COLUMN sign_key TEXT`,
+  // The owner's confirmation of a phone or computer (the paired session, ADR 0032 2d): who confirmed, with which presence key, the device's own request-signing key (a P-256 JWK),
+  // whether the platform attested that it lives in hardware (nothing attests yet, so 0), and whether the device keeps it in software (shown on its row).
+  `ALTER TABLE wink_devices ADD COLUMN confirmed_by TEXT`,
+  `ALTER TABLE wink_devices ADD COLUMN confirm_key TEXT`,
+  `ALTER TABLE wink_devices ADD COLUMN device_key TEXT`,
+  `ALTER TABLE wink_devices ADD COLUMN hardware INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE wink_devices ADD COLUMN software INTEGER NOT NULL DEFAULT 0`,
+  // Where the app SAYS it made the device key: hardware | software | unknown. Self-reported, display only; real attestation is 0.3.1.
+  `ALTER TABLE wink_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown'`,
 ];
 /** What a device offers to the pairing keys: polling slower than the relay's rate limit, and Node's own crypto and key file (0600). */
 export const POLL_MS = 1500;
@@ -89,7 +98,7 @@ export const POLL_MS = 1500;
  *   handover?: Handover, releaseMs?: number, dropMs?: number, releaseRetryMs?: number, releaseMaxMs?: number,
  *   signIdentity?: (message: Buffer) => Promise<{ eid: string, sig: string } | null> | { eid: string, sig: string } | null,
  *   identityEntry?: (identity: string, eid: string) => Promise<{ eid: string, kind?: string, pub: string, identity?: string } | null | undefined> | { eid: string, kind?: string, pub: string, identity?: string } | null | undefined,
- *   confirmPending?: (device: string) => Promise<any>,
+ *   confirmPending?: (device: string, trusted?: boolean) => Promise<any>,
  *   typedCode?: boolean | (() => boolean), confirmAdopt?: boolean, askMs?: number, askHoldMs?: number, askPollMs?: number, pairWordsFor?: (device: string) => Promise<string>,
  *   offers?: { get(space: string, device: string): { space_allows: number | boolean, member_accepts: number | boolean } | Promise<any>, set(space: string, device: string, side: "space" | "member", on: boolean): void | Promise<void> } }} o
  */
@@ -111,7 +120,9 @@ export function createPairing(o) {
   let clearOwnerHook = () => { throw fail("not_ready", "the pairing tools are not registered"); };
   const phone = { hold: async () => false, holdRing: async () => false, boxTicketLive: () => false };
 
-  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null } : null;
+  const rowOf = (/** @type {any} */ r) => r ? { id: r.id, identity: r.identity, kind: r.kind, name: r.name, fingerprint: r.fingerprint, owner: { kind: r.owner_kind, id: r.owner_id }, offers: JSON.parse(r.offers || "{}"), created: r.created, removed: r.removed_at != null, nodeKey: r.node_key || null, stableId: r.stable_id || null, signKey: r.sign_key || null, keyStorage: r.key_storage || "unknown", ...(r.key_storage === "software" ? { software: true } : {}) } : null;
+  /** Ends a device's paired person session and grant (presence.person.end-paired, module:wink only). Late-bound: set once the context can call. A failure is logged, never a reason to keep the device. @type {(device?: string) => void} */
+  let endPaired = () => {};
   const devices = {
     /** @param {string} identity */
     list: identity => /** @type {any[]} */ (db.prepare("SELECT * FROM wink_devices WHERE identity = ? AND removed_at IS NULL ORDER BY created, id").all(identity)).map(rowOf),
@@ -138,6 +149,19 @@ export function createPairing(o) {
         .run(name, fingerprint, d.target.kind, d.target.id, JSON.stringify(at.removed ? offers : at.offers), at.removed ? null : at.nodeKey, at.removed ? null : at.stableId, at.removed ? null : at.signKey, String(d.id));
       return devices.get(d.id);
     },
+    /**
+     * The owner confirmed this device (three words, a presence proof): who, with which presence key, and the device's own request-signing key (a P-256 JWK or null).
+     * @param {string} id @param {{ by: string, keyId: string | null, key: any }} c
+     */
+    setConfirmed(id, c) { db.prepare("UPDATE wink_devices SET confirmed_by = ?, confirm_key = ?, device_key = ?, hardware = 0, software = 0 WHERE id = ? AND removed_at IS NULL").run(c.by, c.keyId, c.key ? JSON.stringify(c.key) : null, String(id)); },
+    /** The app's own report of where its key lives. @param {string} id @param {unknown} storage */
+    setKeyStorage(id, storage) { db.prepare("UPDATE wink_devices SET key_storage = ? WHERE id = ? AND removed_at IS NULL").run(storage === "hardware" || storage === "software" ? storage : "unknown", String(id)); },
+    /** What the presence module reads to decide on a paired session: only what this module itself recorded at the owner's confirm. Null for a device never confirmed, or removed. @param {string} id */
+    record(id) {
+      const r = /** @type {any} */ (db.prepare("SELECT * FROM wink_devices WHERE id = ? AND removed_at IS NULL").get(String(id)));
+      if (!r || !r.confirmed_by) return null;
+      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1 };
+    },
     /** The owner's signing key for one of their devices (SPKI, base64url), used by wink.relay.apply. @param {string} id @param {string} key */
     setSignKey(id, key) { db.prepare("UPDATE wink_devices SET sign_key = ? WHERE id = ? AND removed_at IS NULL").run(key, String(id)); },
     /** The row for this box itself, written by adopt only (its own path: adopting replaces the row, add never does). @param {{ identity: string, name: string, target: { kind: string, id: string } }} d */
@@ -148,8 +172,9 @@ export function createPairing(o) {
     },
     /** @param {string} id */
     remove(id) {
+      endPaired(String(id));
       // S-1: a removed device's signing key goes with it (it could drive wink.relay.apply), and a re-added row never inherits one
-      db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
+      db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL, confirmed_by = NULL, confirm_key = NULL, device_key = NULL, software = 0, key_storage = 'unknown' WHERE id = ? AND removed_at IS NULL").run(now(), String(id));
       if (!o.offers) db.prepare("DELETE FROM wink_compute WHERE device = ?").run(String(id));
     },
   };
@@ -158,18 +183,21 @@ export function createPairing(o) {
   const normWords = (/** @type {unknown} */ x) => String(x ?? "").trim().toLowerCase().replace(/\s+/g, " ");
   /**
    * The right words hidden among two decoys from the same list, in an order made fresh for this pairing from the system's random source (never from the words, so the right
-   * place cannot be guessed). No decoy shares a first word with the right set or with the other decoy, so typing a first word cannot match two of them.
+   * place cannot be guessed). A decoy never shares its first three letters with the right word in the same position (WP-1: 952 words of the list share a prefix with an earlier
+   * one, and a glance cannot tell "abandon" from "abandoned"), and no set shares a first word with another.
    * @param {string} right @returns {string[]}
    */
   const makeChoices = right => {
+    const rw = right.split(" ");
     const first = (/** @type {string} */ x) => x.split(" ")[0];
     const used = new Set([first(right)]);
     /** @type {string[]} */
     const decoys = [];
     while (decoys.length < 2) {
-      const d = [0, 1, 2].map(() => WORDLIST[crypto.randomInt(WORDLIST.length)]).join(" ");
-      if (used.has(first(d))) continue;
-      used.add(first(d)); decoys.push(d);
+      const d = [0, 1, 2].map(() => WORDLIST[crypto.randomInt(WORDLIST.length)]);
+      if (d.some((w, i) => w.slice(0, 3) === (rw[i] || "").slice(0, 3))) continue;
+      if (used.has(d[0])) continue;
+      used.add(d[0]); decoys.push(d.join(" "));
     }
     decoys.splice(crypto.randomInt(3), 0, right);
     return decoys;
@@ -177,14 +205,13 @@ export function createPairing(o) {
   /** Sets the right words on a question and shuffles its choices. @param {any} a @param {string} w */
   const setWords = (a, w) => { a.words = w; a.choices = makeChoices(w); };
   /**
-   * What the person said about the words: `right` (a pick of the right choice, its first word, or all three words typed), `wrong`, or `bare` (a yes with nothing to check).
+   * What the person said about the words: `right` (a pick of the right choice, or all three words typed; nothing shorter, WP-1), `wrong`, or `bare` (a yes with nothing to check).
    * @param {{ words: string, choices?: string[] }} a @param {any} input @returns {"right" | "wrong" | "bare"}
    */
   const judgeWords = (a, input) => {
     const i = input || {};
     if (i.words !== undefined) return normWords(i.words) === normWords(a.words) ? "right" : "wrong";
     if (i.pick !== undefined) { const n = Number(i.pick); return Number.isInteger(n) && n >= 1 && n <= 3 && (a.choices || [])[n - 1] === a.words ? "right" : "wrong"; }
-    if (i.first !== undefined) return normWords(i.first) === a.words.split(" ")[0] ? "right" : "wrong";
     return "bare";
   };
 
@@ -500,24 +527,49 @@ export function createPairing(o) {
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
 
-  /** Tells the relay this module gates pairings (set by the module, retried until the relay answers). @type {() => Promise<void>} */
-  let ensureGate = async () => {};
   /**
    * Puts a ticket from a seed at the relay (relay.ticket.mint, modules only). A `gate` (phone or server) makes its redemption a waiting pairing: nothing is paired, no device or
    * presence key made, until this module confirms (confirmPending) after the person has picked the right words (X-1).
    * @param {Buffer} seed @param {"phone" | "server"} [gate]
    */
-  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { await ensureGate(); return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
+  const mint = ports.mint || (async (/** @type {Buffer} */ seed, /** @type {string | undefined} */ gate) => { return ctx.call("relay.ticket.mint", { seed: seed.toString("base64url"), ...(gate ? { gate } : {}) }); });
   /**
    * The yes, to the relay: the waiting pairing of this device becomes a paired device now. `not_found` is fine (a pairing the relay never held, a typed code or an ungated ring); any
    * other refusal is an error the caller must not turn into a yes. @param {string} device
    */
-  const confirmPending = async device => {
-    if (o.confirmPending) return o.confirmPending(device);
+  const confirmPending = async (device, trusted = false) => {
+    if (o.confirmPending) return o.confirmPending(device, trusted);
     if (typeof ctx.call !== "function") return null;
-    const r = /** @type {any} */ (await ctx.call("relay.pair.pending.confirm", { id: String(device) }));
+    const r = /** @type {any} */ (await ctx.call("relay.pair.pending.confirm", { id: String(device), ...(trusted ? { trusted: true } : {}) }));
     if (r && r.error && r.error.code !== "not_found") throw fail("unavailable", String(r.error.message || "the relay would not pair this device"));
     return r && r.data;
+  };
+
+  endPaired = device => {
+    if (typeof ctx.call !== "function") return;
+    Promise.resolve(ctx.call("presence.person.end-paired", device ? { device } : {})).catch(() => null);
+  };
+  /** A P-256 public key as base64url SPKI DER to the JWK the paired session binds to; null for anything else. @param {unknown} spki */
+  const jwkOf = spki => {
+    try {
+      const k = crypto.createPublicKey({ key: Buffer.from(String(spki), "base64url"), format: "der", type: "spki" }).export({ format: "jwk" });
+      return k.kty === "EC" && k.crv === "P-256" ? { kty: "EC", crv: "P-256", x: k.x, y: k.y } : null;
+    } catch { return null; }
+  };
+  /**
+   * The owner confirmed a phone or computer with a presence proof: record who, with which key and which device key, then ask presence for the one-use grant of its paired session
+   * (presence.person.pair-grant). Presence reads the record back through wink.device.record, so it trusts nothing passed here. A refusal or a failure leaves the device paired with no
+   * session: the pairing never fails for it. The device fetches the grant's challenge itself (presence.person.pair-challenge) over its own channel.
+   * @param {string} device @param {string} identity @param {any} presence the confirm's own presence facts (meta.presence) @param {any} confirmed the relay's answer to the confirm (its offered key)
+   */
+  const openPairedSession = async (device, identity, presence, confirmed) => {
+    try {
+      devices.setKeyStorage(device, confirmed && confirmed.storage);
+      devices.setConfirmed(device, { by: identity, keyId: presence && presence.keyId ? String(presence.keyId) : null, key: confirmed && confirmed.key && (confirmed.alg === undefined || confirmed.alg === -7) ? jwkOf(confirmed.key) : null });
+      if (typeof ctx.call !== "function") return;
+      const g = /** @type {any} */ (await ctx.call("presence.person.pair-grant", { device }));
+      if (!(g && g.data && g.data.granted)) ctx.log(`wink: no paired session for ${device}: ${g && g.error ? g.error.message : "refused"}`);
+    } catch (e) { ctx.log(`wink: no paired session for ${device}: ${/** @type {Error} */ (e).message}`); }
   };
 
   /** Registers this box's own tools. */
@@ -615,8 +667,8 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.server.pair.answer", {
-      description: "At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `first` (the first of those words, typed); a bare yes is refused and adds nothing, and a wrong pick or first word is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).",
-      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, first: str }, ["yes"]),
+      description: "At the server: answer the pairing question. { yes: false } refuses it. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the app shows) or `words` (all three, typed); a bare yes is refused and adds nothing, and a wrong pick or words is a no. Only this server's own screen or terminal may answer (cli, local, deck, capsule): never a paired device, the tailnet, the relay, a module, a session, a hook, a model client or an agent. Answers { answered, yes, name } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, words: str }, ["yes"]),
       run: async (input, meta0 = {}) => {
         owner(meta0, "the pairing answer");
         atServer(meta0);
@@ -720,11 +772,14 @@ export function createPairing(o) {
           let proven = "";
           if (to) { try { proven = await proveIdentity(to, input, caller); } catch (e) { dropLater(caller); throw e; } }
           const fresh = !to && !o.pairWordsFor;
+          // WP-1: a ticket's memory is single use and goes at the first ask, whatever follows (a failed ask, a cancel, a bad commit): a stale tag cannot start a second ask
+          const liveTicket = pr.tag ? liveTickets.get(String(pr.tag)) : undefined;
+          if (pr.tag) liveTickets.delete(String(pr.tag));
           if (pr.cancel === true) throw fail("denied", words("pairCancelled"));
           if (fresh && !/^[0-9a-f]{64}$/.test(String(pr.commit || ""))) throw fail("bad_input", words("pairNeedsFresh"));
           let ticket = "";
           if (fresh && pr.tag) {
-            const t = liveTickets.get(String(pr.tag));
+            const t = liveTicket;
             if (!t || t.until <= now()) throw fail("denied", words("ticketTaken"));
             ticket = t.seed;
           }
@@ -835,6 +890,15 @@ export function createPairing(o) {
         if (!caller.startsWith("device:") || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
         clearOwner();
         return { released: true };
+      },
+    });
+    ctx.tool("wink.device.record", {
+      internal: true,
+      description: "What this module recorded when the owner confirmed a device: { id, kind, owner, confirmed, confirmedBy, confirmKeyId, key, hardware }, for the presence module to decide on a paired session. Only the presence module asks; null for a device the owner never confirmed.",
+      input: obj({ id: str }, ["id"]),
+      run: async (input, meta0 = {}) => {
+        if (String((meta0 && meta0.caller) || "") !== "module:presence") throw fail("denied", "the device record is for the presence module");
+        return devices.record(String(input.id));
       },
     });
     ctx.tool("wink.server.handover", {
@@ -955,8 +1019,8 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.phone.pair.answer", {
-      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows), `first` (the first of those words, typed) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
-      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, first: str, words: str }, ["yes"]),
+      description: "On the computer: answer the phone question. { yes: false } sends it away and adds nothing. { yes: true } needs the words check: give `pick` (1, 2 or 3, the choice that matches the three words the phone shows) or `words` (all three, typed). A bare yes is refused and adds nothing; a wrong pick or words is a no. Answers { answered, yes, name, device? } or { answered: false } when nobody is asking (or the time ran out).",
+      input: obj({ yes: { type: "boolean" }, pick: { type: "integer" }, words: str }, ["yes"]),
       presence: { summary: async () => "Add a phone to you" },
       run: async (input, meta = {}) => {
         owner(meta, "the phone answer");
@@ -977,9 +1041,11 @@ export function createPairing(o) {
         const identity = await o.identity();
         const dev = devices.add({ id: a.device, identity, kind: "phone", name: a.name, fingerprint: a.fingerprint, target: { kind: "identity", id: identity } });
         // the relay makes the device only now (X-1); if it will not, nothing stays here either
-        try { await confirmPending(a.device); }
+        /** @type {any} */ let confirmed = null;
+        try { confirmed = await confirmPending(a.device, true); }
         catch (e) { devices.remove(a.device); a.state = "no"; dropLater(`device:${a.device}`); throw e; }
         a.state = "yes";
+        await openPairedSession(a.device, identity, meta.presence, confirmed);
         ctx.events.emit("wink.pair-answered", { yes: true, kind: "phone" });
         ctx.events.emit("wink.joined", { device: dev.id, flow: "W1", kind: "phone" });
         return { answered: true, yes: true, name: a.name, device: dev.id };
@@ -1039,7 +1105,7 @@ export function createPairing(o) {
 
   /** Lets a waiting pairing go: the relay closes its channels and forgets it (relay.devices.drop answers for a device that never existed). @param {string} device */
   const dropPending = async device => { if (typeof ctx.call === "function") await ctx.call("relay.devices.drop", { id: String(device) }); };
-  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, setGate: (/** @type {() => Promise<void>} */ f) => { ensureGate = f; }, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
+  return { devices, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
 /** The QR a computer shows for a phone: the code and where to meet. @param {string} code @param {string} relay */

@@ -15,6 +15,7 @@
 // this box knows and shown with every pairing notice.
 
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 import * as config from "../config/index.js";
 import { within } from "../../lib/within.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
@@ -409,9 +410,8 @@ export default {
     const PENDING_TOOLS = Object.freeze({ phone: ["wink.phone.wait"], ring: ["wink.phone.wait"], server: ["wink.server.adopt"] });
     /** @type {Map<string, { pub: Buffer, name: string, hello: any, gate: string, match: any, channels: Set<any>, timer: any }>} */
     const pendingPairs = new Map();
-    /** Set by the module that confirms pairings with its own words (relay.pair.gate): from then on a ring ticket is gated too. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module. */
-    let gateOn = false;
-    const ringGated = () => gateOn && process.env.VYRE_TEST_UNGATED_RING !== "1";
+    /** A ring ticket (relay.pair.ticket) is always a gated ticket (R-2, 4 Oct 2026): its redeemer is a waiting pairing, and no row, key or session exists for it until the Wink module has had the three words confirmed. It does not depend on that module having registered: with the module down nothing confirms, so nothing pairs. `VYRE_TEST_UNGATED_RING=1` is a test-only switch for relay tests that pair with no module; a packaged daemon ignores it. */
+    const ringGated = () => !devSwitch(process.env.VYRE_TEST_UNGATED_RING);
     /** @type {Map<string, any>} */
     const pendingHandlers = new Map();
     const pendingHandler = gate => {
@@ -442,14 +442,20 @@ export default {
       return { v: 1, box: { name: boxName() }, pending: id };
     }
     /** The yes: enrol the device now (row, presence key, notice). The waiting channels stay a moment so an answer still in flight reaches the app, then close. */
-    const pendingConfirm = async id => {
+    const pendingConfirm = async (id, { trusted = false } = {}) => {
       const p = pendingPairs.get(id);
       if (!p) throw fail("not_found", "no pairing is waiting for that device");
       pendingPairs.delete(id); clearTimeout(p.timer);
       try { await enrol(p.pub, id, p.name, p.hello, p.match); }
       catch (e) { for (const ch of p.channels) { try { ch.close(4401, "could not pair"); } catch { /* closed */ } } throw e; }
+      // An owner-confirmed phone or computer is trusted from the same moment its row exists (the paired session, ADR 0032 2d): one write, no second step.
+      if (trusted) db.prepare("UPDATE relay_devices SET trusted = 1 WHERE id = ? AND removed_at IS NULL").run(id);
       const t = setTimeout(() => { for (const ch of p.channels) { try { ch.close(1000, "paired"); } catch { /* closed */ } } }, PENDING_GRACE_MS);
       if (t.unref) t.unref();
+      // The device's own request-signing key, as it offered it in its hello (a public key, SPKI base64url, P-256 alg -7), so the pairing can bind its paired session to it.
+      const pk = p.hello && p.hello.presenceKey;
+      // `storage` is the app's own report of where it made the key (the platform's key API); it is for display only and no security decision reads it.
+      return pk && typeof pk.public_key === "string" ? { key: pk.public_key, alg: pk.alg ?? -7, storage: ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown" } : {};
     };
 
     // ---- the setup session (tailnet plan 3.5, 3.6, 3.6b) ----
@@ -823,22 +829,12 @@ export default {
     });
     ctx.tool("relay.pair.pending.confirm", {
       internal: true,
-      description: "The yes for a waiting pairing (a gated ticket, X-1): enrols the device that redeemed it, now. Only the Wink module, which has had the person pick the right three words. Answers { paired, id }.",
-      input: obj({ id: str }, ["id"]),
+      description: "The yes for a waiting pairing (a gated ticket, X-1): enrols the device that redeemed it, now. Only the Wink module, which has had the person pick the right three words. With `trusted` the device is marked trusted at the same moment (an owner-confirmed phone or computer). Answers { paired, id, key?, alg? }: the public key the device offered in its hello, so the pairing can bind its session to it.",
+      input: obj({ id: str, trusted: { type: "boolean" } }, ["id"]),
       run: async (input, meta = {}) => {
         if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module confirms a waiting pairing");
-        await pendingConfirm(String(input.id));
-        return { paired: true, id: String(input.id) };
-      },
-    });
-    ctx.tool("relay.pair.gate", {
-      internal: true,
-      description: "The Wink module says it confirms pairings with three words: from then on a ring ticket (relay.pair.ticket) is a gated ticket too, so nothing is paired before the confirm. Answers { gate }.",
-      input: obj({ on: { type: "boolean" } }),
-      run: async (input, meta = {}) => {
-        if (meta.caller !== "module:wink") throw fail("denied", "only the Wink module sets the pairing gate");
-        gateOn = !input || input.on !== false;
-        return { gate: gateOn };
+        const k = await pendingConfirm(String(input.id), { trusted: input.trusted === true });
+        return { paired: true, id: String(input.id), ...(k || {}) };
       },
     });
 

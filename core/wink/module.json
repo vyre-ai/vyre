@@ -115,11 +115,11 @@
         "reach": "person"
       },
       {
-        "name": "wink.server.fingerprint",
+        "name": "wink.server.reset.begin",
         "reach": "person"
       },
       {
-        "name": "wink.server.reset",
+        "name": "wink.server.reset.confirm",
         "reach": "person"
       },
       {
@@ -201,6 +201,10 @@
       {
         "name": "wink.peer.allow",
         "reach": "modules"
+      },
+      {
+        "name": "wink.device.record",
+        "reach": "modules"
       }
     ]
   },
@@ -231,6 +235,7 @@
       "wink.pair-failed",
       "wink.server-adopted",
       "wink.server-released",
+      "wink.server-reset",
       "wink.server-release",
       "wink.offer-changed",
       "storage.paired",
@@ -254,6 +259,7 @@
   "needs": {
     "vault": [
       "per-storage"
-    ]
+    ],
+    "daemon": ["dataStores"]
   }
 }

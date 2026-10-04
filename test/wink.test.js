@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { start } from "../core/daemon/index.js";
+import { start, callerFacts } from "../core/daemon/index.js";
 import { seams } from "../core/relay/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { createRelay } from "../relay/node/server.js";
@@ -51,7 +51,7 @@ async function world(t, opt = {}) {
   const root = tempHome(t);
   if (opt.pendingMs) { seams.set(root, { pendingMs: opt.pendingMs }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ presence: lenient, root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore() });
+  const d = await start({ presence: lenient, root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
@@ -602,7 +602,7 @@ async function redeem(t, w, seed, name = "Redeemer") {
 const deviceRow = async (w, id) => (await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.find(d => d.id === id);
 /** Every tool the review probed, plus the ones a waiting pairing must never see, whatever kind of ticket it came from. */
 const PROBED = ["relay.devices.list", "wink.access", "relay.status", "system.info", "wink.pair.targets", "threads.list", "term.list", "vault.list", "presence.person.start", "presence.enroll", "relay.devices.remove", "relay.devices.drop", "relay.pair.pending.confirm",
-  "relay.pair.gate", "relay.pair.ticket", "relay.pair.window.open", "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.open", "wink.server.pair.answer", "wink.server.pairing", "wink.server.code", "wink.server.reset", "wink.server.release", "wink.server.retarget", "wink.remove",
+  "relay.pair.ticket", "relay.pair.window.open", "wink.phone.pair.answer", "wink.phone.pairing", "wink.phone.open", "wink.server.pair.answer", "wink.server.pairing", "wink.server.code", "wink.server.reset", "wink.server.release", "wink.server.retarget", "wink.remove",
   "wink.offer.set", "wink.pair.server", "wink.storage.remove", "wink.device.key", "wink.relay.apply", "about.text", "identity.sign"];
 
 test("X-1, real daemon and relay: a phone that redeems the QR is a waiting pairing: no device, no presence key, no tool at all but its own wink.phone.wait; a no or a timeout leaves nothing and the ticket is spent", async t => {
@@ -641,6 +641,123 @@ test("X-1, real daemon and relay: a phone that redeems the QR is a waiting pairi
   assert.equal(await relayHas(w, r2.paired.device), false);
   await until(async () => (await over(r2.open(), "wink.phone.wait", {})).status !== 200, 8000);
   assert.equal(await deviceRow(w, r2.paired.device), undefined, "no row, so no presence key either");
+});
+
+/** What the home itself says about a device that redeemed a ticket: its own relay row (the PH-1 input) and the person facts the daemon would build for a call that device makes. */
+async function homeSaysAbout(w, id) {
+  const row = (await w.d.registry.call("relay.device.info", { id }, "module:vyred")).data || null;
+  const facts = callerFacts(`device:${id}`, { caller: `device:${id}` }, null, { id: { owner: "per_owner" } }, false, row);
+  return { row, facts };
+}
+
+for (const withQr of [false, true]) {
+  test(`R-2, real daemon and relay: a plain ring ticket (relay.pair.ticket) is a waiting pairing ${withQr ? "while a QR is open" : "on its own"}: no row of any kind, no presence key, no person chain, one tool; the pick makes the row`, async t => {
+    const w = await world(t, { pendingMs: 3000 });
+    const enrolled = lenient.enrolled.length;
+    const qr = withQr ? (await w.call("wink.phone.open", {})).data : null;
+    const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+    assert.ok(minted.data?.ticket, JSON.stringify(minted.error));
+    assert.equal((await w.d.registry.call("relay.pair.gate", {}, "module:wink")).error?.code, "no_such_tool", "no module has to tell the relay to gate: the gate is not a switch");
+    const r = await redeem(t, w, fromBase64url(minted.data.ticket), "Ring interloper");
+    assert.equal(r.paired.pending, true, "the redemption made a waiting pairing, not a device");
+    assert.equal(await relayHas(w, r.paired.device), false, "no relay device row");
+    assert.equal(await deviceRow(w, r.paired.device), undefined);
+    const home = await homeSaysAbout(w, r.paired.device);
+    assert.equal(home.row, null, "the home holds no row, so no kind app for it");
+    assert.equal(home.facts, null, "callerFacts gives the redeemer no person chain");
+    assert.equal(lenient.enrolled.length, enrolled, "no presence key was enrolled");
+    const c = r.open();
+    assert.equal((await over(c, "wink.phone.wait", { name: "Ring interloper" })).status, 200, "its own pairing wait is the one thing it reaches");
+    for (const tool of PROBED) { const o = await over(c, tool, {}); assert.ok(o.status === 404 || o.status === 403 || o.status === 0, `${tool} is not reachable by a waiting ring pairing (got ${o.status})`); }
+    assert.equal((await over(c, "wink.server.adopt", {})).status, 404);
+    assert.equal(lenient.enrolled.length, enrolled, "still no presence key after the probes");
+    assert.equal((await w.call("wink.access")).data.devices.length, 0);
+    // the person at the computer picks the right words: only then is there a row, of kind app, and only then does the home treat it as the owner's
+    const mine = await askPhone(w, r.paired.device, new Uint8Array(0), "Ring interloper");
+    const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+    assert.equal((await w.call("wink.phone.pair.answer", { yes: true })).error?.code, "words_needed", "a bare yes confirms nothing");
+    assert.equal(await relayHas(w, r.paired.device), false);
+    assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+    await until(async () => relayHas(w, r.paired.device));
+    assert.equal((await homeSaysAbout(w, r.paired.device)).row?.kind, "app");
+    if (qr) assert.ok(qr.qr, "the QR was open the whole time");
+  });
+}
+
+test("paired session, real daemon, relay and presence module: the owner's pick records the device and its key, grants a session, the relay trusts it at once, and the device opens its session with no prompt; removal ends it", async t => {
+  const w = await world(t);
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ks = keystore(t);
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
+  assert.equal(paired.pending, true);
+  assert.equal(await w.d.registry.call("wink.device.record", { id: paired.device }, "module:presence").then(r => r.data ?? null), null, "nothing recorded before the confirm");
+  const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's iPhone");
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  await until(async () => relayHas(w, paired.device));
+  // what presence reads back: confirmed by the owner, with the key the device offered; and only presence may ask
+  const rec = (await w.d.registry.call("wink.device.record", { id: paired.device }, "module:presence")).data;
+  assert.deepEqual([rec.kind, rec.confirmed, rec.confirmedBy === rec.owner, rec.confirmKeyId, rec.hardware], ["phone", true, true, "k1", false]);
+  assert.deepEqual([rec.key.x, rec.key.y], [dk.publicKey.export({ format: "jwk" }).x, dk.publicKey.export({ format: "jwk" }).y]);
+  assert.ok((await w.d.registry.call("wink.device.record", { id: paired.device }, "module:relay")).error, "only presence asks");
+  assert.ok((await w.d.registry.call("wink.device.record", { id: paired.device }, "cli", PROOF)).error);
+  // the relay trusts it from the same moment
+  assert.equal((await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred")).data.trusted, true);
+  // the line shows only when the app reports a software key (self-reported, display only; the grant still treats the key as unattested)
+  await until(async () => (await w.call("wink.access")).data.devices.find(d => d.id === paired.device)?.software === true);
+  // the device gets its challenge over its own channel, signs it, and has a person session with no prompt and no passkey
+  const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = (await over(c, "presence.person.pair-challenge", {})).body.data.challenge;
+  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${paired.device}\n${ch}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const started = await over(c, "presence.person.start-paired", { sig });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  assert.ok(started.body.data.token, "a session token");
+  const live = () => w.d.registry.call("presence.person.sessions", {}, "cli", PROOF).then(r => (r.data?.sessions || r.data || []).filter(x => x.paired));
+  assert.equal((await live()).length, 1);
+  // removing the device ends its paired session
+  assert.equal((await w.call("wink.remove", { device: paired.device })).data.removed, paired.device);
+  await until(async () => (await live()).length === 0);
+});
+
+test("paired session on the real kernel: pair, pick, start-paired, then memory.graph answers as the owner with no prompt; the same device without its session gets the sign-in hint; removal ends it", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const w = await world(t, { kernel: true });
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const ks = keystore(t);
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "hardware" };
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks, presenceKey });
+  const mine = await askPhone(w, paired.device, new Uint8Array(0), "Alex's iPhone");
+  const q = await until(async () => { const x = (await w.call("wink.phone.pairing")).data; return x && x.asking ? x : null; });
+  assert.equal((await w.call("wink.phone.pair.answer", { yes: true, pick: q.choices.indexOf(mine.words) + 1 })).data.yes, true);
+  await until(async () => relayHas(w, paired.device));
+  const c = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => c.close());
+  const ch = (await over(c, "presence.person.pair-challenge", {})).body.data.challenge;
+  const sig = crypto.sign("sha256", Buffer.from(`paired-start\n${paired.device}\n${ch}`), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const started = await over(c, "presence.person.start-paired", { sig });
+  assert.equal(started.status, 200, JSON.stringify(started));
+  const sessionId = started.body.data.id;
+  const sessions = (await w.d.registry.call("presence.person.sessions", {}, "cli", PROOF)).data;
+  assert.ok((sessions.sessions || sessions).some(x => x.id === sessionId && x.paired), "the session exists in presence");
+  // the call as the daemon makes it for this device: facts from callerFacts and the home's own relay row, the session id that start-paired gave
+  const label = `device:${paired.device}`;
+  const read = async via => {
+    const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
+  };
+  const ok = await read({ person: { id: sessionId } });
+  assert.ok(!ok.error, `memory.graph with the paired session: ${JSON.stringify(ok.error)}`);
+  assert.equal((await read({})).error?.code, "person_session_required", "without its session the same device gets the sign-in hint");
+  await w.call("wink.remove", { device: paired.device });
+  await until(async () => !(await relayHas(w, paired.device)));
+  assert.equal((await read({ person: { id: sessionId } })).error?.code, "denied", "a removed device reads nothing");
 });
 
 test("X-1, real daemon and relay: the yes makes the device (row, presence key, bridge session) and only the yes; a wrong pick makes nothing", async t => {

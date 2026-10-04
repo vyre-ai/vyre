@@ -44,7 +44,7 @@ function world(o = {}) {
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
   return { p, call, drops, events, typed, finishes, minted, db, tools, fails };
 }
-const settle = () => new Promise(r => setTimeout(r, 40));
+const settle = () => new Promise(r => setTimeout(r, 200)); // 40 ms flaked on a loaded box (4 Oct)
 
 test("targets: you, then only the spaces you administer", async () => {
   const w = world();
@@ -357,7 +357,7 @@ test("a server that already has an owner says so plainly and names the tool to u
   const w = world({ callServer: async () => { throw Object.assign(new Error("This server already belongs to Personal. Remove it first: run wink.remove for it in the app, or change its owner on the server itself with wink.server.retarget."), { code: "unavailable" }); } });
   const { st } = await pairOnce(w, { kind: "space", id: HARLOW });
   assert.equal(st.state, "failed");
-  assert.equal(st.reason, "This server still belongs to Personal. Remove it from Personal first, or reset it on the server itself (wink.server.reset).");
+  assert.equal(st.reason, "This server still belongs to Personal. Remove it from Personal first, or reset it on the server itself (run vyre wink reset --begin in a terminal there).");
   assert.equal(w.p.devices.list(ME).length, 0);
 });
 
@@ -556,7 +556,7 @@ test("without the release, a second adopt over the paired channel still refuses,
   app.p.devices.remove(d.id);            // removed in the app, the server never told
   const again = await pairOnce(app, { kind: "space", id: HARLOW });
   assert.equal(again.st.state, "failed");
-  assert.equal(again.st.reason, "This server still belongs to Harlow Legal. Remove it from Harlow Legal first, or reset it on the server itself (wink.server.reset).");
+  assert.equal(again.st.reason, "This server still belongs to Harlow Legal. Remove it from Harlow Legal first, or reset it on the server itself (run vyre wink reset --begin in a terminal there).");
   assert.ok(!/de\)/.test(again.st.reason), "never the raw tool error cut short");
   assert.equal(b.p.meta.get("owner").id, HARLOW, "the owner did not move");
   // the real card when the box's own refusal names the owner
@@ -784,16 +784,16 @@ test("Q-2: the server's pairing question is seen and answered only on an allow l
   }
 });
 
-test("words check (ruling, 4 Oct 2026): a bare yes is refused, a wrong pick or first word is a no, the right pick or first word is a yes; choices are the right set and two decoys in a fresh random order", async () => {
+test("words check (ruling, 4 Oct 2026): a bare yes is refused, a wrong pick or words is a no, the right pick or all three words typed is a yes, a typed first word alone is nothing (WP-1); choices are the right set and two decoys in a fresh random order", async () => {
   // the server console
   const bare = world({ confirm: true });
   await adoptAs(bare, "device:app1");
   await assert.rejects(() => atServer(bare, "wink.server.pair.answer", { yes: true }), e => e.code === "words_needed" && /bare yes/.test(e.message));
   assert.equal((await atServer(bare, "wink.server.pairing")).asking, true, "a bare yes leaves the question open and adds nothing");
   assert.equal(bare.p.meta.get("owner"), null);
-  // a wrong pick (a decoy), a pick out of range or of the wrong kind, and a wrong first word (a decoy's) are all a no
+  // a wrong pick (a decoy), a pick out of range or of the wrong kind, and a wrong or short typed set are all a no
   const decoy = c => c.findIndex(x => x !== "amber coral app1");
-  for (const wrong of [c => ({ pick: decoy(c) + 1 }), () => ({ pick: 0 }), () => ({ pick: 4 }), () => ({ pick: "x" }), () => ({ pick: 1.5 }), () => ({ first: "zzz" }), c => ({ first: c[decoy(c)].split(" ")[0] })]) {
+  for (const wrong of [c => ({ pick: decoy(c) + 1 }), () => ({ pick: 0 }), () => ({ pick: 4 }), () => ({ pick: "x" }), () => ({ pick: 1.5 }), () => ({ words: "zzz" }), c => ({ words: c[decoy(c)] }), c => ({ words: "amber coral" })]) {
     const w = world({ confirm: true });
     await adoptAs(w, "device:app1");
     const choices = (await atServer(w, "wink.server.pairing")).choices;
@@ -804,13 +804,21 @@ test("words check (ruling, 4 Oct 2026): a bare yes is refused, a wrong pick or f
     await assert.rejects(() => adoptAs(w, "device:app1"), e => e.code === "denied" && /said no/.test(e.message));
     assert.equal(w.p.meta.get("owner"), null, "a wrong pick adds nothing");
   }
-  // the right pick, the right first word (any case, with spaces)
-  for (const right of [c => ({ pick: c.indexOf("amber coral app1") + 1 }), () => ({ first: "  AMBER " })]) {
+  // the right pick, or all three words typed (any case, with spaces)
+  for (const right of [c => ({ pick: c.indexOf("amber coral app1") + 1 }), () => ({ words: "  AMBER  coral APP1 " })]) {
     const w = world({ confirm: true });
     await adoptAs(w, "device:app1");
     const choices = (await atServer(w, "wink.server.pairing")).choices;
     assert.equal((await atServer(w, "wink.server.pair.answer", { yes: true, ...right(choices) })).yes, true);
     assert.deepEqual((await adoptAs(w, "device:app1")).owner, { kind: "identity", id: ME });
+  }
+  // WP-1: a typed first word alone, right or wrong, is not an answer: the question stays open and nothing is added
+  for (const first of ["amber", "zzz"]) {
+    const w = world({ confirm: true });
+    await adoptAs(w, "device:app1");
+    await assert.rejects(() => atServer(w, "wink.server.pair.answer", { yes: true, first }), e => e.code === "words_needed" || e.code === "bad_input");
+    assert.equal((await atServer(w, "wink.server.pairing")).asking, true);
+    assert.equal(w.p.meta.get("owner"), null);
   }
   // a no needs no words
   { const w = world({ confirm: true }); await adoptAs(w, "device:app1"); assert.equal((await atServer(w, "wink.server.pair.answer", { yes: false })).yes, false); }
@@ -824,6 +832,8 @@ test("words check (ruling, 4 Oct 2026): a bare yes is refused, a wrong pick or f
     assert.equal(new Set(c).size, 3);
     assert.equal(new Set(c.map(x => x.split(" ")[0])).size, 3, "no two choices start with the same word");
     for (const x of c) assert.match(x, /^[a-z0-9]+ [a-z0-9]+ [a-z0-9]+$/);
+    // WP-1: a decoy never shares its first three letters with the right word in the same place
+    for (const x of c.filter(y => y !== "amber coral app1")) x.split(" ").forEach((word, k) => assert.notEqual(word.slice(0, 3), ["amb", "cor", "app"][k], `${x}: position ${k}`));
     spots.add(c.indexOf("amber coral app1"));
   }
   assert.ok(spots.size >= 2, "the right set moves around: its place cannot be guessed");
@@ -836,7 +846,7 @@ test("words check (ruling, 4 Oct 2026): a bare yes is refused, a wrong pick or f
   assert.equal((await pw.call("wink.phone.pairing")).asking, true, "a bare yes adds nothing and leaves the question");
   assert.equal(pw.p.devices.list(ME).length, 0);
   assert.equal((await pw.call("wink.phone.pair.answer", { yes: true, pick: pq.choices.findIndex(c => c !== "amber coral phoneabcdef") + 1 })).yes, false, "a wrong pick is a no");
-  for (const right of [() => ({ first: "amber" }), c => ({ pick: c.indexOf("amber coral phoneabcdef") + 1 })]) {
+  for (const right of [() => ({ words: "Amber coral phoneabcdef" }), c => ({ pick: c.indexOf("amber coral phoneabcdef") + 1 })]) {
     const v = world(OFF);
     await phoneOpen(v);
     await v.p.phone.hold(PHONE);
@@ -987,10 +997,12 @@ const REAL = { typedCode: false, confirm: true, pairWordsFor: null, box: "Qm94S2
 
 test("pair words on the server (break 3): the question shows words only after the reveal, they equal the app's, a different attempt gives different words, a bad reveal ends the ask", async () => {
   const w = world(REAL);
-  const made = await atServer(w, "wink.server.code", {});
-  const seed = parseServerQr(made.qr).seed, ticket = Buffer.from(seed).toString("base64url");
+  const mintSeed = async () => parseServerQr((await atServer(w, "wink.server.code", {})).qr).seed;
+  let seed = await mintSeed(), ticket = Buffer.from(seed).toString("base64url");
   const got = [];
   for (let i = 0; i < 3; i++) {
+    // WP-1: a ticket's memory goes at its first ask, so each attempt uses a fresh code
+    if (i) { seed = await mintSeed(); ticket = Buffer.from(seed).toString("base64url"); }
     const r = await freshAsk(w, "device:app1", seed);
     assert.equal(r.first.words, undefined, "no words before the reveal");
     assert.equal(r.words, await pairWords("Qm94S2V5", "app1", { ticket, nonceA: r.na, nonceB: r.nb }), "the server's words are the app's");
@@ -1000,6 +1012,13 @@ test("pair words on the server (break 3): the question shows words only after th
     await assert.rejects(() => adoptAs(w, "device:app1", { ...ASKED, pairing: r.pairing }), e => e.code === "denied");
   }
   assert.equal(new Set(got).size, 3, "the same app and the same box three times: three different word sets");
+  // WP-1: the first ask spent the ticket's memory: the same tag again, after a finished ask, is refused, and so is the tag after an ask that failed on its own commit
+  await assert.rejects(() => freshAsk(w, "device:app1", seed), e => e.code === "denied" && /already used|ran out/.test(e.message));
+  seed = await mintSeed(); ticket = Buffer.from(seed).toString("base64url");
+  const badTag = await ticketTag(ticket);
+  await assert.rejects(() => adoptAs(w, "device:app1", { ...ASKED, pairing: { commit: "nope", tag: badTag } }), e => e.code === "bad_input");
+  await assert.rejects(() => freshAsk(w, "device:app1", seed), e => e.code === "denied" && /already used|ran out/.test(e.message), "a failed ask spends the ticket's memory too");
+  seed = await mintSeed(); ticket = Buffer.from(seed).toString("base64url");
   // no yes before the words are on screen
   const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
   await adoptAs(w, "device:app1", { ...ASKED, pairing: { commit, tag } });
@@ -1111,7 +1130,7 @@ test("reviewer-3 LOW: an unowned server answers `already` to a paired device onl
   const gave = app.events.find(e => e[0] === "wink.server-release" && e[1].state === "gaveup");
   assert.ok(gave, "the person is told");
   assert.match(gave[1].message, /never confirmed/);
-  assert.match(gave[1].message, /wink\.server\.reset/);
+  assert.match(gave[1].message, /vyre wink reset --begin/);
   assert.match(removed({ what: "device", name: "juno", release: "gaveup" }), /Removed juno\. The server never confirmed/);
   assert.ok(!FORBIDDEN.test(gave[1].message));
 });

@@ -119,7 +119,7 @@
    },
    {
     "name": "spaces.code.submit",
-    "reach": "anyone"
+    "reach": "anyone", "callers": ["device", "module"]
    },
    {
     "name": "spaces.server.install",
@@ -195,7 +195,7 @@
    },
    {
     "name": "spaces.invites.redeem",
-    "reach": "anyone"
+    "reach": "anyone", "callers": ["device", "module"]
    },
    {
     "name": "spaces.compute.allow",

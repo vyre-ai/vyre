@@ -90,13 +90,14 @@ test("release list at boot: the signed list makes modules first party, a rollbac
   k = await boot(logs);
   assert.equal(k.firstPartyCheck(r.dir("alpha")), false, "alpha was edited: not first party by either list");
   assert.ok(logs.some(m => /older than one already accepted/.test(m)), logs.join(" | "));
-  // the files go away entirely: the last accepted list stays in force (alpha beta untouched stays first party)
+  // the signed files go away on a packaged build: NO first-party list (SG-5-3), not the last accepted one; the accepted names stay reserved
   fs.rmSync(path.join(r.root, "SHA256SUMS.sig"));
   const logs2 = [];
   await k.stop();
   k = await boot(logs2);
-  assert.equal(k.firstPartyCheck(r.dir("beta")), true, "beta still first party: nothing relaxed and nothing taken away");
-  assert.ok(logs2.some(m => /last accepted module list stays in force/.test(m)));
+  assert.equal(k.firstPartyCheck(r.dir("beta")), false, "beta is not first party: the accepted list is not a fallback");
+  assert.equal(k.reservedName("beta"), true, "but its name stays reserved");
+  assert.ok(logs2.some(m => /no first-party module list is in force/.test(m)), logs2.join(" | "));
   // a forged event: a high counter with no signature behind it
   const writer = k.chains.fromFacts({ kind: "module", module: "home", first_party: true });
   await k.log.append(writer, { type: "kernel.modules-list", sv: 1, subject: `vyre://${k.id.space}/kernel/modules-list`, data: { counter: 9999, raw: { list: "{}", sums: "", sig: "" } }, vis: "owner", red: "internal" });
@@ -104,7 +105,7 @@ test("release list at boot: the signed list makes modules first party, a rollbac
   const logs3 = [];
   k = await boot(logs3);
   assert.ok(logs3.some(m => /does not carry a list the release key signed/.test(m)));
-  assert.equal(k.firstPartyCheck(r.dir("beta")), true);
+  assert.equal(k.firstPartyCheck(r.dir("beta")), false, "the signed files are still gone");
   await k.stop();
 });
 
@@ -131,7 +132,10 @@ test("SG-1 and SG-2: the signed list decides for every name it holds (an old mod
   const db = open(path.join(root, "vyre.db"));
   t.after(() => db.close());
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyCheck: k.firstPartyCheck, reservedName: k.reservedName });
+  mod(r.root, "core", "leases", "1.0.0"); // the vault's service forward trusts the name `leases`: an unlisted folder under it is refused
   await reg.start(discover([path.join(r.root, "core")]), { role: "local" });
+  const lea = [...reg.modules.entries()].filter(([n]) => n === "leases" || n.startsWith("leases@"));
+  assert.ok(lea.length >= 1 && lea.every(([, v]) => v.state === "invalid" && /belongs to a module shipped with Vyre/.test(v.error)), "an added module named leases is refused: " + JSON.stringify(lea.map(([n, v]) => [n, v.state])));
   const alpha = [...reg.modules.entries()].filter(([n]) => n === "alpha" || n.startsWith("alpha@"));
   assert.ok(alpha.length >= 1 && alpha.every(([, v]) => v.state === "invalid"), "the failing alpha is refused, never loaded: " + JSON.stringify(alpha.map(([n, v]) => [n, v.state])));
   assert.match(alpha[0][1].error, /belongs to a module shipped with Vyre/);
@@ -239,6 +243,31 @@ test("SG-5-1 and SG-5-2: on a home that already accepted this list, a changed ke
   k = await boot();
   assert.equal(k.firstPartyCheck(r.dir("alpha")), true);
   await k.stop();
+});
+
+test("SG-5-3: on a home that accepted a list, a packaged build whose signed files are missing or corrupt (each of the three, in turn) has no first-party list, over a changed kernel tree too; the names stay reserved; leases is always reserved", { timeout: 180_000 }, async t => {
+  const r = release(t, { counter: 5 });
+  for (const n of ["kernel", "lib"]) { fs.mkdirSync(path.join(r.root, n), { recursive: true }); fs.writeFileSync(path.join(r.root, n, "x.js"), `export const n = "${n}";`); }
+  r.write(r.key, 5);
+  const root = tempHome(t), dbFile = path.join(root, "k.db");
+  const boot = async (logs = []) => bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: r.pub, packageRoot: r.root });
+  let k = await boot();
+  assert.equal(k.firstPartyCheck(r.dir("alpha")), true);
+  assert.equal(k.reservedName("leases"), true, "reserved with or without a list");
+  await k.stop();
+  fs.writeFileSync(path.join(r.root, "kernel", "x.js"), "export const n = 'evil';");
+  const files = ["modules.json", "SHA256SUMS", "SHA256SUMS.sig"];
+  for (const f of files) for (const how of ["delete", "corrupt"]) {
+    const p = path.join(r.root, f), keep = fs.readFileSync(p);
+    if (how === "delete") fs.rmSync(p); else fs.writeFileSync(p, Buffer.concat([keep.subarray(0, Math.max(0, keep.length - 4)), Buffer.from("XXXX")]));
+    const logs = [];
+    k = await boot(logs);
+    assert.equal(k.firstPartyCheck(r.dir("alpha")), false, `${how} ${f}: no first-party list`);
+    assert.equal(k.reservedName("alpha"), true, `${how} ${f}: the name stays reserved`);
+    assert.ok(logs.some(m => /no first-party module list is in force/.test(m)), `${how} ${f}: ${logs.join(" | ")}`);
+    await k.stop();
+    fs.writeFileSync(p, keep);
+  }
 });
 
 test("build time: the repo's own modules make an unambiguous list; a name shared by two folders must be for different machines, and both folders pass the check", t => {

@@ -865,6 +865,10 @@ test("the transport's ports: a paired device is an entry, the entry port answers
   const ok = await d.ok("spaces.identity.sign", { message: Buffer.from("vyre-wink-peer-v2\nnonce\nnode\nbox\n" + alex.eid).toString("base64url") }, "module:wink");
   assert.equal(ok.eid, alex.eid);
   assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("anything else").toString("base64url") }, "module:wink")).error?.code, "forbidden");
+  // and Wink's proof of who is asking for a server installed with --pair-to (the box and the relay device), nothing else near it
+  const pairTo = await d.ok("spaces.identity.sign", { message: Buffer.from("vyre-wink-pair-to-v1\nBOX\ndev1").toString("base64url") }, "module:wink");
+  assert.equal(pairTo.eid, alex.eid);
+  assert.equal((await d.call("spaces.identity.sign", { message: Buffer.from("vyre-wink-pair-to-v2\nBOX\ndev1").toString("base64url") }, "module:wink")).error?.code, "forbidden");
 });
 
 
