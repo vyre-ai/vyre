@@ -5,7 +5,7 @@
 import { hashMatches } from "./payload-hash.js";
 
 /** @typedef {{ id: string, title: string, body: string, op: string, space: string, fields: Record<string, any>, payload_hash: string, asked_from?: string, expires_in_s?: number }} Pending */
-/** @typedef {{ signPresence(req: { op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string }): Promise<any> }} Signer */
+/** @typedef {{ signPresence(req: { op: string, space: string, fields: Record<string, any>, payload_hash: string, prompt: string, person: string }): Promise<any> }} Signer */
 
 /** The cards from approvals.pending, newest asks last as the box lists them. @param {any} answer @returns {Pending[]} */
 export const cardsFrom = (answer) => (Array.isArray(answer?.approvals) ? answer.approvals.filter((/** @type {any} */ a) => a && typeof a.id === "string" && typeof a.payload_hash === "string") : []);
@@ -27,6 +27,8 @@ export function answerRefusal(code) {
   if (code === "ERR_KEY_INVALIDATED") return "Your Face ID changed, so this phone's key must be set up again. Sign in to Vyre again.";
   if (code === "no_signer") return "This phone cannot approve yet. Update Vyre.";
   if (code === "not_found") return "That request ended before you answered.";
+  if (code === "no_person" || code === "ERR_NO_PERSON") return "This phone does not know who you are yet. Open Vyre and sign in, then try again.";
+  if (code === "ERR_PAYLOAD_MISMATCH") return "This request does not match what it says. Nothing was approved. Ask again from the other device.";
   if (code === "hash_mismatch") return "This request does not match what it says. Nothing was approved. Ask again from the other device.";
   if (code === "needs_presence") return "That approval did not match what was asked. Nothing was approved.";
   return "The approval did not go through.";
@@ -37,12 +39,14 @@ export function answerRefusal(code) {
  * @param {Pending} card @param {Signer | null} signer
  * @param {(tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => Promise<any>} call
  * @param {(proof: unknown) => string} header base64url JSON for x-vyre-kernel-proof
+ * @param {string} person this phone's person id: the key module builds the proof's chain hash from it
  */
-export async function approveCard(card, signer, call, header) {
+export async function approveCard(card, signer, call, header, person = "") {
+  if (!person) throw Object.assign(new Error("no person id"), { code: "no_person" });
   if (!signer) throw Object.assign(new Error("no signer"), { code: "no_signer" });
   // Never sign a hash the box gave without recomputing it from the fields this card shows (AP-1): a mismatch is refused before Face ID is asked.
   if (!hashMatches(card)) throw Object.assign(new Error("the hash does not match what the card shows"), { code: "hash_mismatch" });
-  const proof = await signer.signPresence({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, prompt: card.title });
+  const proof = await signer.signPresence({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, prompt: card.title, person });
   if (!proof || proof.payload_hash !== card.payload_hash) throw Object.assign(new Error("the signed proof is not for this card"), { code: "needs_presence" });
   return call("approvals.answer", { id: card.id, approve: true }, { kernelProof: header(proof) });
 }
