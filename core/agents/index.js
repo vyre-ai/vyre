@@ -102,7 +102,7 @@ export default {
 
     const shape = r => r && ({ name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread), builtin: Boolean(r.builtin), personal: Boolean(r.personal), id: String(r.created_at) });
     // The Engineer is made once and kept: a home that has none gets it, a home that has it keeps what an admin wrote in its instructions.
     // The name is reserved (ENG-2): a user agent already called `engineer` becomes the built-in, losing its projects, credentials, skills and computer, so it can never shadow the held one.
     if (db.prepare("SELECT 1 FROM agents_agents WHERE name = ? AND builtin = 0").get(ENGINEER.name)) {
@@ -319,7 +319,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, ...(a.personal ? { personal: true } : {}),
+        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer, id: a.id, ...(a.personal ? { personal: true } : {}),
           // A built-in agent (the Engineer) says so, and says it only proposes: the app opens its chat and shows what it proposed as tasks in Now.
           ...(a.builtin ? { builtin: true, role: a.name, proposes_only: true, tools: a.name === ENGINEER.name ? [...ENGINEER.tools] : [] } : {}),
           // The Deck's agent page shows and edits the job from this list.
@@ -546,10 +546,11 @@ export default {
     // Deleting is a person's decision: no model, not even the assistant, removes an agent.
     ctx.tool("agents.delete", {
       description: "Remove an agent's record and its spend. Refused while one of its threads is running (agents.stop first), and for the assistant. Its threads' transcripts and events stay.",
-      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" } } },
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, id: { type: "string", description: "The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted" } } },
       callers: ["cli", "local", "deck", "capsule"],
-      run: async ({ agent }) => {
+      run: async ({ agent, id }) => {
         const a = must(agent);
+        if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id`), { code: "not_found" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays`), { code: "denied" });
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");

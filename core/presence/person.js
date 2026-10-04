@@ -117,16 +117,16 @@ export class PersonSessions {
    * A new session on this node. `cookie` for the Deck at the box's address; `bearer` only
    * through exchange(), which binds the app's key.
    * `keyId` is the presence key whose proof opened it, so removing that key ends the session.
-   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean, software?: boolean }} o
+   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean, software?: boolean, strength?: string|null, capMs?: number|null }} o
    */
-  start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false, software = false }) {
+  start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false, software = false, strength = null, capMs = null }) {
     if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
     const now = this.now();
     this.prune();
     const id = b64url(12), secret = b64url(32);
-    this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, paired && !(software && this.softwareCap) ? NEVER : now + MAX, keyId ? String(keyId) : null, paired ? 1 : 0, paired ? now : null, software ? 1 : 0);
-    return { id, secret, token: `${id}.${secret}`, expires: paired && !(software && this.softwareCap) ? now + IDLE : Math.min(now + IDLE, now + MAX) };
+    this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software, strength) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, capMs ? now + capMs : paired && !(software && this.softwareCap) ? NEVER : now + MAX, keyId ? String(keyId) : null, paired ? 1 : 0, paired ? now : null, software ? 1 : 0, strength ? String(strength).slice(0, 40) : null);
+    return { id, secret, token: `${id}.${secret}`, expires: capMs ? Math.min(now + IDLE, now + capMs) : paired && !(software && this.softwareCap) ? now + IDLE : Math.min(now + IDLE, now + MAX) };
   }
 
   /**
@@ -236,20 +236,32 @@ export class PersonSessions {
   }
 
   /**
+   * The strength of a live session, for a module that relays a paired device's act: one of STRENGTHS (core/presence/strengths.js: software, enclave, "enclave, unattested", passkey), or null when there is no such session. A row records its opening proof's strength (the `strength` column, startPaired's) and answers with that; an older paired row records none and reads as software (fail closed, so that device proves its key again), any other
+   * older row keeps its `software` flag. @param {string} id @returns {string|null}
+   */
+  strength(id) {
+    const row = /** @type {any} */ (this.db.prepare("SELECT software, strength, paired FROM presence_people WHERE id = ?").get(String(id)));
+    if (!row) return null;
+    if (typeof row.strength === "string" && row.strength) return row.strength;
+    // No recorded strength: a paired device's session proved nothing about its key (fail closed); any other row keeps its flag.
+    return row.paired || row.software ? "software" : "enclave";
+  }
+
+  /**
    * The pairing's one-use grant for a device. Written only by the pairing's owner-confirmed path
    * (the tool checks the caller and reads the pair record); a device with a live grant or a live
    * paired session is replaced, never stacked.
-   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean }} o
+   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean, strength?: string|null, capMs?: number|null }} o
    */
-  grant({ device, keyId, deviceKey, software = false }) {
+  grant({ device, keyId, deviceKey, software = false, strength = null, capMs = null }) {
     if (!device || !keyId || !jwkOk(deviceKey)) throw Object.assign(new Error("a grant needs the device, the confirming key and the device's public key"), { code: "bad_input" });
     const now = this.now();
     this.prune();
     // Replace, never stack: whatever this device held before ends now.
     this.endDevice(device);
     const challenge = b64url(24);
-    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, software, created, expires, tries) VALUES (?,?,?,?,?,?,?,0)")
-      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, software ? 1 : 0, now, now + GRANT_TTL);
+    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, software, created, expires, tries, strength, cap_ms) VALUES (?,?,?,?,?,?,?,0,?,?)")
+      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, software ? 1 : 0, now, now + GRANT_TTL, strength ? String(strength).slice(0, 40) : null, capMs ? Number(capMs) : null);
     return { expires: now + GRANT_TTL, challenge };
   }
 
@@ -278,10 +290,10 @@ export class PersonSessions {
    * id and the challenge this box made for the grant), and the grant becomes a session bound to
    * that key. A signed start from an earlier grant for the same device is worth nothing. One refusal
    * for no grant, an expired one, a used one and a wrong key; three wrong attempts delete it.
-   * @param {{ device: string, sig: string, label?: string|null }} o
+   * @param {{ device: string, sig: string, label?: string|null, esig?: string|null, enclaveKey?: string|null }} o  `esig`: the same message signed by the identity entry's enclave key (`enclaveKey`, the uncompressed P-256 point the server verified at pairing): when it verifies, this session is `enclave, unattested`; otherwise the grant's strength (software unless the owner's phone approved this sign-in) stands
    * @returns {{ id: string, token: string, expires: number } | { refused: true, deleted?: boolean }}
    */
-  startPaired({ device, sig, label = null }) {
+  startPaired({ device, sig, label = null, esig = null, enclaveKey = null }) {
     const now = this.now();
     this.prune();
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_pair_grants WHERE device = ?").get(String(device || "")));
@@ -297,13 +309,25 @@ export class PersonSessions {
       this.db.prepare("UPDATE presence_pair_grants SET tries = ? WHERE device = ?").run(tries, row.device);
       return { refused: true };
     }
+    // The strength is proven at EACH sign-in: a signature by the identity entry's enclave key over this challenge (a key copied off a phone cannot make one) makes the session `enclave, unattested`;
+    // the device key alone gives what the grant says (software, or the strength the owner's phone approved this sign-in with).
+    let strength = typeof row.strength === "string" && row.strength ? row.strength : "software";
+    if (strength === "software" && esig && enclaveKey) {
+      try {
+        const pt = Buffer.from(String(enclaveKey), "base64url");
+        if (pt.length === 65 && pt[0] === 4) {
+          const pub = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: pt.subarray(1, 33).toString("base64url"), y: pt.subarray(33).toString("base64url") }, format: "jwk" });
+          if (crypto.verify("sha256", Buffer.from(pairedStart({ device: row.device, challenge: row.challenge })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(String(esig), "base64url"))) strength = "enclave, unattested";
+        }
+      } catch { /* not an enclave signature: software */ }
+    }
     // One use: the row goes and the session exists together, or neither.
     let s;
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
-      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: Boolean(row.software) });
+      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: strength === "software", strength, capMs: row.cap_ms ? Number(row.cap_ms) : null });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
     return { id: s.id, token: s.token, expires: s.expires };
@@ -353,8 +377,8 @@ export class PersonSessions {
   /** Every live session, never a secret or a key. */
   list() {
     this.prune();
-    return /** @type {any[]} */ (this.db.prepare("SELECT id, kind, node, label, created, last_used, max, paired, software FROM presence_people ORDER BY last_used DESC").all())
-      .map(r => ({ id: r.id, kind: r.kind, node: r.node, label: r.label, created: r.created, last_used: r.last_used, expires: Math.min(r.last_used + IDLE, r.max), ...(r.paired ? { paired: true, ...(r.software ? { software: true } : {}) } : {}) }));
+    return /** @type {any[]} */ (this.db.prepare("SELECT id, kind, node, label, created, last_used, max, paired, software, strength FROM presence_people ORDER BY last_used DESC").all())
+      .map(r => ({ id: r.id, kind: r.kind, node: r.node, label: r.label, created: r.created, last_used: r.last_used, expires: Math.min(r.last_used + IDLE, r.max), ...(r.paired ? { paired: true, strength: r.strength || "software", ...(r.software ? { software: true } : {}) } : {}) }));
   }
 
   /** End every command-line session made for this terminal login (`vyre signout`). @param {string} node `cli:<login key>` @returns {number} */

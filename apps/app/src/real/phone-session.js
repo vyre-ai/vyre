@@ -13,13 +13,13 @@ const refused = (r) => Object.assign(new Error(r.error?.code === "no_such_tool" 
 
 /**
  * @param {(tool: string, input: Record<string, unknown>) => Promise<{ data?: any, error?: { code?: string, message?: string } }>} call
- * @param {{ onWaiting?: () => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} [o]
+ * @param {{ label?: string, onWaiting?: () => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} [o]
  * @returns {Promise<{ approved: true } | { ended: "refused" | "none" | "timeout" }>}
  */
 export async function askPhoneForSession(call, o = {}) {
   const sleep = o.sleep ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)));
   const now = o.now ?? Date.now;
-  const ask = await call(SESSION_ASK, {});
+  const ask = await call(SESSION_ASK, o.label ? { label: String(o.label).slice(0, 64) } : {});
   if (ask.error || !ask.data || !ask.data.id) throw refused(ask);
   o.onWaiting?.();
   const start = now();

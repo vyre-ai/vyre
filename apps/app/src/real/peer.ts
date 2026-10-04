@@ -92,7 +92,7 @@ export async function renewSessionOnPhone(): Promise<boolean> {
   const st = useApproval.getState();
   try {
     st.show("Sign this browser in");
-    const out = await askPhoneForSession(ch.call, { signal: st.signal });
+    const out = await askPhoneForSession(ch.call, { signal: st.signal, label: deviceName() });
     if ("ended" in out) throw Object.assign(new Error(sessionEndLine(out.ended)), { code: "not_approved" });
     const k = await pairedKey();
     await startPaired({ device: String(pairing.device), call: ch.call, sign: k.sign, signEnclave: k.signEnclave, label: deviceName() });

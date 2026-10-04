@@ -86,6 +86,14 @@ export const PEER_MIGRATIONS = [
   `ALTER TABLE wink_devices ADD COLUMN software INTEGER NOT NULL DEFAULT 0`,
   // Where the app SAYS it made the device key: hardware | software | unknown. Self-reported, display only; real attestation is 0.3.1.
   `ALTER TABLE wink_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown'`,
+  // what the server VERIFIED about the owner proof that paired this device ("enclave, unattested", "software"): the strength of the sessions it opens, never the app's own claim about its key storage
+  `ALTER TABLE wink_devices ADD COLUMN proof_strength TEXT`,
+  // the identity entry's enclave key (uncompressed P-256 point, base64url) the server verified at pairing: a sign-in signed by it proves the session's enclave strength
+  `ALTER TABLE wink_devices ADD COLUMN enclave_key TEXT`,
+  // which entry on the identity's list held that enclave key and under which Vyre name the list is read, and whether a check found the entry gone or revoked (the device must be paired again)
+  `ALTER TABLE wink_devices ADD COLUMN enclave_eid TEXT`,
+  `ALTER TABLE wink_devices ADD COLUMN vyre_name TEXT`,
+  `ALTER TABLE wink_devices ADD COLUMN needs_repair INTEGER NOT NULL DEFAULT 0`,
 ];
 /** What a device offers to the pairing keys: polling slower than the relay's rate limit, and Node's own crypto and key file (0600). */
 export const POLL_MS = 1500;
@@ -180,12 +188,15 @@ export function createPairing(o) {
      */
     setConfirmed(id, c) { db.prepare("UPDATE wink_devices SET confirmed_by = ?, confirm_key = ?, device_key = ?, hardware = 0, software = 0 WHERE id = ? AND removed_at IS NULL").run(c.by, c.keyId, c.key ? JSON.stringify(c.key) : null, String(id)); },
     /** The app's own report of where its key lives. @param {string} id @param {unknown} storage */
+    setProofStrength(id, strength) { db.prepare("UPDATE wink_devices SET proof_strength = ? WHERE id = ? AND removed_at IS NULL").run(strength ? String(strength).slice(0, 40) : null, String(id)); },
+    setEnclaveKey(id, key, eid = null, name = null) { db.prepare("UPDATE wink_devices SET enclave_key = ?, enclave_eid = ?, vyre_name = ?, needs_repair = 0 WHERE id = ? AND removed_at IS NULL").run(key ? String(key).slice(0, 200) : null, eid ? String(eid).slice(0, 64) : null, name ? String(name).slice(0, 253) : null, String(id)); },
+    setNeedsRepair(id) { db.prepare("UPDATE wink_devices SET needs_repair = 1 WHERE id = ? AND removed_at IS NULL").run(String(id)); },
     setKeyStorage(id, storage) { db.prepare("UPDATE wink_devices SET key_storage = ? WHERE id = ? AND removed_at IS NULL").run(storage === "hardware" || storage === "software" ? storage : "unknown", String(id)); },
     /** What the presence module reads to decide on a paired session: only what this module itself recorded at the owner's confirm. Null for a device never confirmed, or removed. @param {string} id */
     record(id) {
       const r = /** @type {any} */ (db.prepare("SELECT * FROM wink_devices WHERE id = ? AND removed_at IS NULL").get(String(id)));
       if (!r || !r.confirmed_by) return null;
-      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1 };
+      return { id: r.id, kind: r.kind, owner: r.identity, confirmed: true, confirmedBy: r.confirmed_by, confirmKeyId: r.confirm_key || null, key: r.device_key ? JSON.parse(r.device_key) : null, hardware: r.hardware === 1, keyStorage: r.key_storage || "unknown", proofStrength: r.proof_strength || null, enclaveKey: r.enclave_key || null, enclaveEid: r.enclave_eid || null, vyreName: r.vyre_name || null, identity: r.identity };
     },
     /** The owner's signing key for one of their devices (SPKI, base64url), used by wink.relay.apply. @param {string} id @param {string} key */
     setSignKey(id, key) { db.prepare("UPDATE wink_devices SET sign_key = ? WHERE id = ? AND removed_at IS NULL").run(key, String(id)); },
@@ -812,6 +823,8 @@ export function createPairing(o) {
      */
     /** How each pairing's owner proof was held, by caller, until adoption records it: an enclave key whose attestation the server did not verify says so (never "hardware"), or a software key (development builds only). @type {Map<string, "enclave, unattested" | "software">} */
     const proofKinds = new Map();
+    /** The enclave key (uncompressed point), the entry id and the Vyre name of the identity entry whose Face ID signature checked out, by caller, until adoption records it on the device. @type {Map<string, { key: string, eid: string, name: string | null }>} */
+    const enclaveKeys = new Map();
     /** @type {Map<string, "given" | "none">} */
     const pinKinds = new Map();
     const proveIdentity = async (to, input, caller, open = false) => {
@@ -843,7 +856,7 @@ export function createPairing(o) {
         const hardware = Boolean(e.enclave) && e.held !== "web" && e.alg === undefined;
         if (hardware && !(typeof pr.esig === "string" && verifyEnclave(e.enclave, message, pr.esig))) { ctx.log("wink: the identity proof lacks its Face ID signature"); throw notThem(); }
         if (!hardware && release) { ctx.log("wink: the identity proof came from a key that is not hardware-held"); throw fail("not_hardware", words("pairNotHardware")); }
-        proofKinds.set(caller, hardware ? "enclave, unattested" : "software"); pinKinds.set(caller, pin ? "given" : "none");
+        proofKinds.set(caller, hardware ? "enclave, unattested" : "software"); pinKinds.set(caller, pin ? "given" : "none"); if (hardware) enclaveKeys.set(caller, { key: String(e.enclave), eid: String(e.eid), name: input.owner && typeof input.owner.vyre === "string" ? input.owner.vyre : null }); else enclaveKeys.delete(caller);
       }
       return String(e.identity || to);
     };
@@ -879,7 +892,7 @@ export function createPairing(o) {
      * straight to pair-challenge and start-paired. A web device gets the session and nothing more. A failure here leaves the device paired with no session, never a failed pairing.
      * @param {string} device @param {any} input @param {string} identity @param {{ kind: string, id: string }} target @param {any} confirmed
      */
-    const recordOwnerDevice = async (device, input, identity, target, confirmed, proven) => {
+    const recordOwnerDevice = async (device, input, identity, target, confirmed, proven, proofKind = null, /** @type {{ key: string, eid: string, name: string | null } | null} */ enclaveKey = null) => {
       const kind = String(input.deviceKind || "");
       if (!["phone", "computer", "web"].includes(kind)) return false;
       let session = false;
@@ -901,6 +914,9 @@ export function createPairing(o) {
       } else ctx.log(`wink: ${device} paired without a verified identity proof: the home's owner is unchanged`);
       try {
         if (input.keyStorage) devices.setKeyStorage(device, input.keyStorage);
+        // the strength of this device's sessions is what the server verified (the owner proof's key), never the storage the app says it uses
+        devices.setProofStrength(device, proofKind === "enclave, unattested" ? proofKind : "software");
+        if (enclaveKey) devices.setEnclaveKey(device, enclaveKey.key, enclaveKey.eid, enclaveKey.name);
         // The first pairing of a server with no owner: nobody can give presence yet, so the grant needs none. What stands for the confirmation is the three-word pick at this server's own terminal
         // (this code runs only after it) and the verified identity proof. The key the paired session is bound to is the device's own presence key when it offered one, else this pairing itself.
         const pk = /** @type {any} */ (await ctx.call("relay.device.presence", { id: device }).catch(() => null));
@@ -980,11 +996,14 @@ export function createPairing(o) {
         // the relay makes the app's device only now, after the person's check (X-1); the answer to this call still reaches the app over the waiting channel
         const confirmed = await confirmPending(caller.slice(7));
         // a proven identity is the owner's identity; what the caller said about itself is not
+        // what the server verified about this pairing's owner proof (set when the proof checked out, before adoption consumes it)
+        const ownerProofKind = proofKinds.get(caller) || null;
+        const ownerEnclave = enclaveKeys.get(caller) || null; enclaveKeys.delete(caller);
         const adopted = await applyAdopt(mine.proven ? { ...mine.input, identity: mine.proven } : mine.input, caller, Boolean(meta.get("owner")));
         // `session` says whether the device now has its paired session, so an app does not wait for one that is not coming (G-3)
         /** @type {boolean} */ let session;
         // The kernel refusing the owner fails the whole pairing and takes back what applyAdopt wrote (the owner record, the adopter and its relay device)
-        try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven)); } catch (e) { clearOwner(); throw e; }
+        try { session = await recordOwnerDevice(caller.slice(7), mine.input, mine.proven || String(mine.input.identity || mine.input.owner.id), adopted.owner, confirmed, Boolean(mine.proven), ownerProofKind, ownerEnclave); } catch (e) { clearOwner(); throw e; }
         return { ...adopted, session };
       } catch (e) {
         // an error, a refusal or a no: nothing stays behind (a pending return above never gets here)
@@ -1085,6 +1104,33 @@ export function createPairing(o) {
         if (!(deviceIdOf(caller) !== null) || meta.get("adopter") !== caller) throw fail("denied", words("releaseDenied", { owner: await ownerWords(meta.get("owner")) }));
         clearOwner();
         return { released: true };
+      },
+    });
+    // Is the enclave key this device was paired with still on its identity's list? Read from the DIRECTORY (the list the person edits: a lost phone's entry is revoked there), cached for 10 minutes so a sign-in costs
+    // one lookup per window. An entry that is gone, revoked or carries another key makes the device software and marks it as needing to be paired again; a directory that cannot be reached is software for this sign-in only
+    // (nothing is remembered). Only the presence module asks.
+    const LIVE_MS = 10 * 60_000;
+    /** @type {Map<string, { ok: boolean, at: number }>} */ const liveCache = new Map();
+    ctx.tool("wink.device.enclave-live", {
+      internal: true,
+      description: "For the presence module at a paired device's sign-in: does the enclave key this device was paired with still stand on its identity's list in the directory? { ok }. Cached for 10 minutes. When the entry is gone or revoked the device is marked as needing to be paired again.",
+      input: obj({ device: str }, ["device"]),
+      run: async (input, meta0 = {}) => {
+        if (String((meta0 && meta0.caller) || "") !== "module:presence") throw fail("denied", "the enclave check is for the presence module");
+        const id = String(input.device);
+        const rec = devices.record(id);
+        if (!rec || !rec.enclaveKey || !rec.enclaveEid || !rec.vyreName || !rec.owner) return { ok: false };
+        const t = now();
+        const hit = liveCache.get(id);
+        if (hit && t - hit.at < LIVE_MS) return { ok: hit.ok };
+        /** @type {any} */ let r;
+        try { r = await ctx.call("spaces.identity.lookup", { name: rec.vyreName, id: rec.owner }); } catch { return { ok: false }; }
+        if (!r || r.error) return { ok: false };
+        const entries = r.data && Array.isArray(r.data.entries) ? r.data.entries : [];
+        const ok = entries.some((/** @type {any} */ x) => x && x.eid === rec.enclaveEid && x.kind === "device" && x.enclave === rec.enclaveKey);
+        liveCache.set(id, { ok, at: t });
+        if (!ok) { devices.setNeedsRepair(id); ctx.events.emit("wink.device-needs-repair", { device: id }); }
+        return { ok };
       },
     });
     ctx.tool("wink.device.record", {
