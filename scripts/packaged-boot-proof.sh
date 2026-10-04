@@ -120,6 +120,10 @@ docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { ec
 docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; soft; }
 docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; soft; }
 
+# The host's `vyre call` is a person at the server's terminal (the wrapper execs as the vyre user, with a terminal when there is one): not caller_unknown, not "no kernel chain".
+hc=$(vyre call memory.me '{}' 2>&1 || true)
+printf '%s' "$hc" | grep -Eq 'caller_unknown|carries no kernel chain|could not tell who is calling' && { echo "host vyre call is not read as the person at the terminal: $hc"; soft; }
+
 # The admin steps refuse for the RIGHT reason on the packaged image (not "no such step" or "no Vyre home"): a wrong typed word, and a bad proof for the anchor reset (the daemon is stopped for it
 # and started again either way). VYRE_ADMIN_NO_TTY stands in for the terminal the real command needs.
 # (the real command needs a terminal: the checks give it one with script(1); the test override for "no terminal" is refused in a root run, as it should be)

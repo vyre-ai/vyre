@@ -306,7 +306,7 @@ export async function selfTest(o) {
       if (!path.isAbsolute(o.agent.command)) return { code: -1, e2: "the agent's program is not an absolute path" };
       const a = planHome({ ...o, command: o.agent.command, args: o.agent.versionArgs || ["--version"], readOnly: [...(o.readOnly || []), path.dirname(o.agent.command)] });
       const c = launch(a); agentChild = c; let e2 = ""; c.stderr.on("data", d => e2 += d); c.stdout.resume();
-      try { c.stdin && c.stdin.end(); } catch { /* the check reads no input: a program that waits on stdin must see the end of it, not hang the start */ }
+      try { if (c.stdin) { c.stdin.on("error", () => {}); c.stdin.end(); } } catch { /* the check reads no input: a program that waits on stdin must see the end of it, not hang the start */ }
       c.on("error", e => { e2 += String(e && e.message); });
       const code = await new Promise(r => { const t = setTimeout(() => { c.kill("SIGKILL"); r(-1); }, 20000); c.on("close", x => { clearTimeout(t); r(x); }); c.on("error", () => { clearTimeout(t); r(-1); }); });
       return { code, e2 };
