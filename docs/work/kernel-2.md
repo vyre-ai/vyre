@@ -33,3 +33,22 @@ windows does the wiring and the store removal; the compat file carries no state.
 
 ## Needs from others
 - windows: go/no-go on the adapter. tailnet: the dispatcher hook and a Wink (tsnet) run of real.mjs. platform: merge work/kernel-spaces (reviewer-2 passed e9c5b7212; later commits wink.js and run/real.mjs are new, not yet gated).
+
+
+# 0.3 kernel store performance (work/kernel-bounded, work/kernel-query)
+
+## Query bar and how it is met
+Target: search, list by stage and find by email under 100 ms at p95 at 20,000 records and under 300 ms at 100,000, with 20 people writing. Records' load script on testbox4 (tables in team/0.2/CHAT.md).
+- Planner (kernel/store/sqlite-query.js): filter, sort and keyset cursor as one indexed statement, proven equal to the reference by randomized comparison. Equality and range comparisons are bare in a position where NULL and false agree (the first version wrapped them in COALESCE, which no index can serve).
+- Aggregates: one GROUP BY when the caller sees every row of the type (`authorizer.rowUniform`), with a covering index per unfiltered grouping.
+- Search: FTS5 trigram index per field row (sealed never indexed), ranked in SQL by the reference score (number of fields holding each word, summed), so only the winners are read. A word under 3 characters, a type with more than 1,024 fields, or an index still being built takes the scan. One common word beside rare ones is ranked by `searchTopFast` (see its comment): exact, and tested against the reference on every page.
+- Unique-field lookups use the field's expression index, made on first use (one scan, about 0.7 s at 500,000 records, once).
+
+## Hidden rows (the rule)
+A restricted member's count by stage and search exclude rows they cannot read. Decision: the visibility predicate is NOT pushed into SQL (a row's answer also depends on owner, project, created_by, rules by resource and presence; a second copy of that logic would be a second authorizer). The GROUP BY runs only when `rowUniform` proves every row of the type gets the caller's same answer; any row-level restriction takes the filtered path, totalled row by row. Search narrows candidates in SQL and every hit passes the gateway's visibility check before it counts toward a page or a total. Test: kernel/gateway/aggregate-visibility.test.js on both stores.
+
+## Non-ASCII cost
+SQLite compares bytes; the reference compares UTF-16 code units. Text sort, compare and `contains` over a field that holds any character outside printable ASCII (accented names are normal) are left to the reference code: the rows stream through it, O(rows) per page, correct but not indexed. Equality and the full-text search are unaffected. The fix is a collation in UTF-16 order; not done.
+
+## Known slow paths (exact, not fast)
+Search with two or more common words, or a word under 3 characters, ranks by the general SQL (about 0.5 s at 500,000 records). A restricted caller's count by stage is row by row.
