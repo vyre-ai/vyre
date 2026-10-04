@@ -543,7 +543,7 @@ export function createRecords(cfg) {
         let p;
         try { p = await store.query(type, { ...spec, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
-        return { rows: p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => shape(chain, r, lim)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+        return { rows: await withComputed(chain, type, p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => ({ rec: shape(chain, r, lim), lim }))), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
       }
       let cursor = spec.page.cursor, out = [], next;
       /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
