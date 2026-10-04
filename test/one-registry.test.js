@@ -277,3 +277,40 @@ test("a directory that lost its claims gets the identity and the spaces' names b
   assert.equal(await resolves("alex"), 200);
   assert.equal(await resolves("harlowrep"), 200);
 });
+
+test("the kernel's home space is a space in the device lists: pairing's list includes it, a device with an old explicit list is enrolled once at boot, and the daemon's enrolment answer for the home is yes", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "home-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  let d = await start({ root, kernel: true, log: () => {} });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const made = (await deck("spaces.identity.create", { name: "alex" })).data;
+  const home = d.kernel.space;
+  assert.match(home, /^spc_/);
+  assert.ok((await deck("spaces.list")).data.every((/** @type {any} */ x) => x.id !== home), "the home is not listed as a space the person made");
+  const sp = (await deck("spaces.create", { name: "homelist", home: { kind: "this-computer", confirmed: true } })).data;
+  // pairing's list: every space the person is in, the home space included
+  const set = await deck("spaces.devices.set", { device: made.eid, spaces: [sp.space, home] });
+  assert.ok(!set.error, JSON.stringify(set.error));
+  assert.deepEqual(new Set(set.data.spaces), new Set([home, sp.space]));
+  const rows = (await deck("spaces.devices.list", { device: made.eid })).data.spaces;
+  assert.ok(rows.some((/** @type {any} */ r) => r.space === home && r.enrolled === true && r.home === true), JSON.stringify(rows));
+  const enrolled = (/** @type {string} */ space) => d.registry.call("spaces.devices.enrolled", { device: made.eid, space }, "module:vyred", { door: true });
+  assert.equal((await enrolled(home)).data.enrolled, true);
+  // an old explicit list that lacks the home (a device paired before the home was a row): put back at boot, once
+  await d.stop();
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(path.join(root, "vyre.db"));
+  db.prepare("UPDATE spaces_kv SET value = ? WHERE key = ?").run(JSON.stringify([sp.space]), `device-spaces/${made.eid}`);
+  db.close();
+  d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  await new Promise(r => setTimeout(r, 1500));
+  assert.equal((await d.registry.call("spaces.devices.enrolled", { device: made.eid, space: d.kernel.space }, "module:vyred", { door: true })).data.enrolled, true, "enrolled in the home after the boot migration");
+});
