@@ -16,7 +16,11 @@
       { "name": "records.list", "reach": "person" },
       { "name": "records.get", "reach": "person" },
       { "name": "records.create", "reach": "person" },
-      { "name": "records.update", "reach": "person" }
+      { "name": "records.update", "reach": "person" },
+      { "name": "records.seal-put", "reach": "person" },
+      { "name": "records.reveal", "reach": "person" },
+      { "name": "records.sees-as", "reach": "person" },
+      { "name": "records.events", "reach": "person" }
     ]
   },
   "watches": { "emits": [] },
