@@ -1,6 +1,7 @@
 // The child of test/stop-quiet.test.js: start the full registry in the given home, wait, stop, then run two more seconds
 // with the store closed and print what any module did after the stop as JSON (module named by the path in the stack).
 // A child process, so an uncaught error is ours to record and not the test runner's to fail on.
+import path from "node:path";
 import { start } from "../core/daemon/index.js";
 
 const [root, afterMs] = [process.argv[2], Number(process.argv[3] || 0)];
