@@ -352,8 +352,8 @@ export default {
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
     const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
-    /** The person at one of their own surfaces, as the kernel's Who or (SHIM(legacy labels), kernel off) the surface labels: never a module and never a model label. */
-    const mayRebuild = caller => { const w = whoNow(); return w ? w.ownerSurface : OWNER.has(String(caller)); };
+    /** The person at one of their own surfaces or on their own device signed in, as the kernel's Who or (SHIM(legacy labels), kernel off) the surface labels: never a module and never a model label. */
+    const mayRebuild = caller => { const w = whoNow(); return w ? (w.ownerSurface || (w.device && w.signedIn)) : OWNER.has(String(caller)); };
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel

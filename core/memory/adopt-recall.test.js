@@ -38,7 +38,7 @@ test("seed, adopt, still recalled: told facts, Recall's index and a pre-adoption
   const pre = await d.registry.call("memory.relevant", { text: "Harlow Legal", room: "unfiled" }, "deck", { token }); assert.ok(!pre.error, JSON.stringify(pre.error));
 
   const h = d.kernel.kernelFor({ name: "spaces", needs: { kernel: { actions: [], spaces: true } } });
-  assert.equal((await h.adoptOwner(NEW)).changed, true);
+  assert.equal((await h.adoptOwner(NEW, old)).changed, true);
   assert.equal(d.kernel.id.owner, NEW);
 
   // The same data, from the owner's surfaces (now built under the new id).
