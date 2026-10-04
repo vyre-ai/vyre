@@ -182,11 +182,11 @@ export default {
       if (typeof hooks.sessionFor === "function") {
         let session; try { session = await hooks.sessionFor(device); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
         if (!session || typeof session.call !== "function") throw refuse("The server could not be reached. Nothing was made.", "server_unreachable");
-        let pr; try { pr = await session.call(tool, { ...input, ...(meta && (meta.proof || meta.kernel_proof) ? { proof: meta.proof || meta.kernel_proof } : {}) }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "The server did not do that. Nothing was made.").slice(0, 160), String(/** @type {any} */ (e).code || "server_refused")); }
+        let pr; try { pr = await session.call(tool, { ...input, ...(meta && meta.kernel_proof ? { proof: meta.kernel_proof } : {}) }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "The server did not do that. Nothing was made.").slice(0, 160), String(/** @type {any} */ (e).code || "server_refused")); }
         if (!pr || pr.ok === false) throw refuse(pr && pr.error && pr.error.message ? String(pr.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (pr && pr.error && pr.error.code) || "server_refused");
         return pr.data !== undefined ? pr.data : pr;
       }
-      let r; try { r = await ctx.call("wink.server.call", { device, tool, input, ...(meta && (meta.proof || meta.kernel_proof) ? { proof: meta.proof || meta.kernel_proof } : {}) }); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
+      let r; try { r = await ctx.call("wink.server.call", { device, tool, input, ...(meta && meta.kernel_proof ? { proof: meta.kernel_proof } : {}) }); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
       if (!r || r.error) throw refuse(r && r.error && r.error.message ? String(r.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (r && r.error && r.error.code) || "server_refused");
       return r.data;
     };
@@ -674,7 +674,7 @@ export default {
         // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
-      }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on your server`, when: (/** @type {any} */ i) => Boolean(i && i.home && i.home.kind === "server" && i.home.device) } });
+            });
 
     // A Space made before the kernel hosted them has a module-local id (spc_ plus 16 hex) that the kernel's registry does not know. This build makes none (spaces.create hosts in the kernel first) and
     // 0.3 is the first release with Spaces, so there is nothing to move; if one is found anyway it is said once, never mapped or deleted in silence.
@@ -968,7 +968,9 @@ export default {
       const ids = [];
       if (K && typeof K.membership === "function") {
         if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
-        for (const row of spaces.all()) if (row.status === "done" && kernelHandle(row.id) && (await K.membership(person, row.id).catch(() => ({ member: false }))).member === true) ids.push(row.id);
+        // every space this home's kernel hosts (made here, or hosted for the person by spaces.host-here), plus the module's finished rows that have a kernel
+        const all = new Set([...(K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : []), ...spaces.all().filter(r => r.status === "done").map(r => r.id)]);
+        for (const id of all) if (id !== K.space && kernelHandle(id) && (await K.membership(person, id).catch(() => ({ member: false }))).member === true) ids.push(id);
       }
       return [...new Set(ids)];
     };

@@ -1174,21 +1174,21 @@ test("a space whose home is a PAIRED server is hosted by the server: the device 
   await d.ok("spaces.identity.create", { name: "alex" });
   const calls = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__winkCalls);
   const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
-  const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { proof: "touch" });
+  const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.equal(made.data.status, "done", JSON.stringify(made.data));
   assert.equal(made.data.space, "spc_abcdefghjklm", "THE id is the server's");
-  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", "touch"]], "one call to the server, the owner's proof beside it");
+  assert.deepEqual(calls().map(c => [c.device, c.tool, c.input.name, c.proof]), [["srv_paired0000000001", "spaces.host-here", "servedspace", { op: "t" }]], "one call to the server, the owner's proof beside it");
   assert.ok((await d.ok("spaces.list")).some(x => x.id === "spc_abcdefghjklm" && x.hostedHere === undefined), "listed as a normal space, not as a local copy");
   // giving it back: cancel asks the server to retire it
   calls().length = 0;
-  const w2 = await d.call("spaces.create", { name: "secondone", home: { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true } } }, "cli", { proof: "touch" });
+  const w2 = await d.call("spaces.create", { name: "secondone", home: { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!w2.error, JSON.stringify(w2.error));
   // a server that refuses: nothing is made on this device either
   /** @type {any} */ (globalThis).__winkRefuse = true;
   t.after(() => { /** @type {any} */ (globalThis).__winkRefuse = false; });
   calls().length = 0;
-  const refused = await d.call("spaces.create", { name: "refusedone", home }, "cli", { proof: "touch" });
+  const refused = await d.call("spaces.create", { name: "refusedone", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(refused.error, "the server's refusal is the answer");
   assert.ok(!(await d.ok("spaces.list")).some(x => x.name === "refusedone.vyre.run"), "nothing was made here as a fallback");
   void w;
@@ -1202,12 +1202,12 @@ test("the device reaches the paired server over the Wink peer session when the d
   hooks.sessionFor = async dev => ({ call: async (tool, input) => { seen.push([dev, tool, input]); return { ok: true, data: { space: "spc_" + "mnpqrstuvwxy", existed: false } }; } });
   t.after(() => { hooks.sessionFor = null; });
   await d.ok("spaces.identity.create", { name: "alex" });
-  const made = await d.call("spaces.create", { name: "overwire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true }, confirmed: true } }, "cli", { proof: "touch" });
+  const made = await d.call("spaces.create", { name: "overwire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true }, confirmed: true } }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));
   assert.equal(made.data.space, "spc_mnpqrstuvwxy");
-  assert.deepEqual(seen.map(x => [x[0], x[1], x[2].name, x[2].proof]), [["srv_paired0000000001", "spaces.host-here", "overwire", "touch"]]);
+  assert.deepEqual(seen.map(x => [x[0], x[1], x[2].name, x[2].proof]), [["srv_paired0000000001", "spaces.host-here", "overwire", { op: "t" }]]);
   hooks.sessionFor = async () => { throw new Error("closed"); };
-  const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { proof: "touch" });
+  const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
   assert.equal(down.error?.code, "server_unreachable");
   void w;
 });
