@@ -68,7 +68,7 @@ const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 /** Callers of vyred's own socket that are the owner: the terminal and the Capsule. */
 const OWNER_SOCKET = new Set(["cli", "local", "capsule"]);
 /** The person's own surfaces and Vyre's modules: for a tool that reports on the tailnet or the box without the asker's identity surviving the hop, so no model is meant to call it. */
-const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
+const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
 
 /** Does this caller name an agent ("mcp:agent:kit", "harness:agent:kit")? The same test as glass's. */
 const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
@@ -751,7 +751,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     ctx.tool("files.mentions.search", {
       description: "Files on the box's VyreDrive shares whose name matches what you typed after #, for tagging one in a chat. Runs as the person asking.",
       input: { type: "object", properties: { q: { type: "string" }, limit: { type: "integer" } } },
-      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent"],
+      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent"],
       run: input => forward("files.mentions.search", input),
     });
     ctx.tool("files.mentions.resolve", {

@@ -54,7 +54,7 @@ const PEOPLE = ["cli", "local"];
 // floor (ADR 0004) is what proves a person is there, whichever surface asks.
 const SURFACES = [...PEOPLE, "deck", "capsule"];
 // The phone app adds and unlocks from the app itself (UX-33): the paired phone calls as `mobile` (or its device label), and the presence floor, a Face ID on the phone, is what proves the person is there.
-const PHONE = ["mobile", "device"];
+const PHONE = ["device"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });

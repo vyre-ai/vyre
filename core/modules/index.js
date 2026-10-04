@@ -23,6 +23,7 @@ import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
 import { isPerson } from "../../lib/caller.js";
 import { CONTRACT, supports, moduleContract, adapterFor } from "../../packages/module-sdk/contract.js";
+import { PERSON_SURFACES } from "../../lib/person-surfaces.js";
 import { within } from "../../lib/within.js";
 
 /** Features ctx.api.has() answers true for in this loader, inside the running contract. */
@@ -415,7 +416,7 @@ const runInTurn = async (/** @type {any} */ meta, /** @type {() => Promise<any>}
   try { return await callStore.run(box, f); } finally { box.live = false; }
 };
 
-export const SURFACE_LABELS = Object.freeze(["cli", "local", "deck", "capsule", "mobile"]);
+export const SURFACE_LABELS = PERSON_SURFACES;
 
 /** The first word of every caller label the registry recognises: the person's surfaces, plus the other classes a listener, the loader or the daemon builds. A first word that is none of these is refused on every tool, one open to any caller included. test/reach-classes.test.js checks it against the labels the code builds. */
 export const KNOWN_LABELS = new Set([...SURFACE_LABELS, "mcp", "harness", "hook", "onboard", "anonymous", "module", "tailnet", "tailnet-guest", "device", "space", "agent", "web", "setup", "assistant", "runner", "link", "relay", "unknown", "core", "vault"]);

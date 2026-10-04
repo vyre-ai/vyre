@@ -31,7 +31,7 @@ let cachedWall = null;
 const str = { type: "string" };
 
 /** The person's own surfaces. A model reaches only what a tool lists beside them; a module hop is checked against the original caller by the registry. */
-const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device"];
 /** A model session (mcp) and the harness: the project-scoped tools below name them, since mustSee already limits a model to its granted projects. */
 const MODEL = ["mcp", "harness"];
 
