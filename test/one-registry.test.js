@@ -355,4 +355,20 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   // a finished space of the person's: enrolled, and not once the kernel says the person is no longer a member of it
   const fin = (await deck("spaces.create", { name: "finishedone", home: { kind: "this-computer", confirmed: true } })).data;
   assert.equal(await enrolled(dev, fin.space), true);
+  // migration by contact: the first answer wrote this device an explicit list; a space joined LATER is not added to it by itself
+  const afterContact = (await deck("spaces.devices.list", { device: dev })).error;
+  void afterContact;
+  const late = await d.kernel.spaces.host({ owner: d.kernel.id.owner, name: "joinedlater" });
+  assert.equal(await enrolled(dev, late.space), false, "a space made after the device's first contact is not enrolled until the person adds it");
+  // a removed member is not enrolled: a hosted space where the person was a member and then was removed
+  const theirOwner = "per_" + "c".repeat(26);
+  const shared = await d.kernel.spaces.host({ owner: theirOwner, name: "sharedwith" });
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
+  const them = shared.kernel.chains.fromFacts({ kind: "device", device_key_id: "dev0000000000000x", person: theirOwner, path: "direct", session: "s" });
+  const me2 = d.kernel.id.owner;
+  await shared.gateway.grants.setRole(them, { person: me2, role: "member" }, { presence: { method: "stand-in" } });
+  const dev2 = "devicexxxxxxxxxx2";
+  assert.equal(await enrolled(dev2, shared.space), true, "a member of a hosted space");
+  await shared.gateway.grants.removeMember(them, { person: me2 }, { presence: { method: "stand-in" } });
+  assert.equal(await enrolled(dev2, shared.space), false, "removed: the kernel says so at call time");
 });

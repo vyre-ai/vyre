@@ -954,7 +954,23 @@ export default {
           if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
           if (!member) return { enrolled: false };
         }
-        return { enrolled: await isEnrolled(String(i.device), id) };
+        const deviceId = String(i.device);
+        // Migration by contact: a device that is asked about and has no explicit list yet gets one written NOW (the spaces its person belongs to at this moment), logged once. From then on a space the
+        // person joins later is not added to it by itself: "Add to this device" is the person's own tap.
+        if (known && (await enrolledList(deviceId)) === null && K && typeof K.membership === "function") {
+          try {
+            let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
+            const person = who || (typeof K.owner === "string" ? K.owner : null);
+            if (person) {
+              const ids = [];
+              if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
+              for (const row of spaces.all()) if (row.status === "done" && kernelHandle(row.id) && (await K.membership(person, row.id).catch(() => ({ member: false }))).member === true) ids.push(row.id);
+              await kv.put(`device-spaces/${deviceId}`, [...new Set(ids)]);
+              ctx.log.warn(`device ${deviceId} had no space list: now enrolled in ${ids.length} space(s) it belonged to at first contact`);
+            }
+          } catch { /* the answer below stands without a list */ }
+        }
+        return { enrolled: await isEnrolled(deviceId, id) };
       }, { internal: true });
 
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), async (_i, meta) => {
