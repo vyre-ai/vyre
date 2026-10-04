@@ -1002,7 +1002,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
       // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
-      modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
+      modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
+      // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
+      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller, via).filter(t => !policy.tool || policy.tool(t.name)) });

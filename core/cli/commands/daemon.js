@@ -54,6 +54,7 @@ export default [
       }
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
+      if (d.records_store) { const rs = d.records_store; out(`  records: ${rs.store === "twenty" ? "Twenty" : rs.store === "builtin" ? "built-in store" : rs.store} ${dim(`· ${rs.from === "VYRE_STORE" ? "VYRE_STORE" : "default"}${rs.records === null || rs.records === undefined ? "" : ` · ${rs.records} records`}`)}${rs.note ? beacon(`  ${rs.note}`) : ""}`); }
       if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));
       return 0;

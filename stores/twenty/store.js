@@ -142,6 +142,7 @@ export class TwentyStore {
   }
 
   // ---- features and health ---------------------------------------------------------------------
+  get kind() { return "twenty"; }
   features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; }
   async health() {
     const h = await twentyGet(this.client, "/healthz");
