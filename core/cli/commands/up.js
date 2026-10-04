@@ -283,6 +283,12 @@ async function run(args, deps) {
     await (deps.sleep || ((/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms))))(2000);
     link = await callTool("onboard.link", keep ? { mint: false } : {});
   }
+  // A server with its kernel on has no first-run page to open: pairing is the way in (the installer shows the code, `vyre call wink.server.code`). A refusal of the old link is not a failed start.
+  if (link.error && link.error.code !== "no_such_tool") {
+    if (json) return done({ url: null, pending: false, paired: false, note: "pair from your device" });
+    say(dim("  Pair this server from your Vyre app: the installer shows the code, or run vyre call wink.server.code '{\"qr\":true}'"));
+    return 0;
+  }
   if (link.error) return fail("onboarding_unavailable", "onboarding is not available: " + link.error.message);
   const d = link.data;
   const ssh = d.url ? sshLine(d.port, d.user) : null;
