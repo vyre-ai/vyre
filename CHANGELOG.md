@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(work): Space memory runs on a real daemon with the kernel on (the work port from work/kernel-work-handle, Recall's capture from work/flows). A call whose chain names no chat is one to one (no audience lookup). Real-daemon test core/work/know-daemon.test.js: a session is indexed, a teammate recalls its decision in a later session with the line address, another project's teammate gets nothing, the SSN is nowhere.
 - fix(memory): the gate asks the kernel's `canonicalPerson` before the membership check, so a session token minted before owner adoption is still the owner's. Memory and Recall key nothing by person id, so their data survives adoption unchanged. Seed, adopt, still-recalled test in core/memory/adopt-recall.test.js.
 - fix(harness): HD-4, `harness.enrich` takes `interactive` only from the hook's own `harness` label with no Vyre thread behind the call and a session that is not headless, so a session can no longer accept its own lesson with `interactive:true, prompt:"yes"`. Attack test in core/harness/enrich-interactive.test.js.
 - fix(memory): HD-8, `memory.remember` from a session or agent is an untrusted, attributed write in the `you` room (pending), never a told claim at 0.95, so it stays out of the profile, brief and prompt lines. Attack test in core/memory/remember-poison.test.js.
