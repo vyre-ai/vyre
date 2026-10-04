@@ -273,7 +273,7 @@
   },
   "memory.correct": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.corrections": {
    "module": "memory",
@@ -342,7 +342,7 @@
   },
   "memory.remember": {
    "module": "memory",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "memory.retrieve": {
    "module": "memory",
@@ -467,7 +467,7 @@
   },
   "onboard.setup": {
    "module": "onboard",
-   "default": "limited by callers in code"
+   "default": "callers admit a model"
   },
   "onboard.skip": {
    "module": "onboard",
@@ -475,7 +475,7 @@
   },
   "onboard.status": {
    "module": "onboard",
-   "default": "limited by callers in code"
+   "default": "open to any caller"
   },
   "onboard.tailscale": {
    "module": "onboard",

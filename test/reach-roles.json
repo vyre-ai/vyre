@@ -7,6 +7,7 @@
   "chrome.open": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
   "chrome.click": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
   "chrome.type": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
-  "chrome.screenshot": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted"
+  "chrome.screenshot": "the box module admits a model caller whose claim hands-chrome checks (agentClaim, a named agent only); the Mac's own module lists the owner's agent label; the wider is counted",
+  "files.drive.audit": "box and local define it with different limits: the box one admits a bare session and refuses a named agent in its body, the Mac one forwards over the link (the asker's identity is lost) with a person-only list; the wider is counted"
  }
 }
