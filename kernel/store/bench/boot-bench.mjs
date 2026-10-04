@@ -49,7 +49,7 @@ for (const N of sizes) {
   const t1 = performance.now();
   k = await open();
   const boot = performance.now() - t1;
-  const t2 = performance.now(); const full = k.log.verify(); const verify = performance.now() - t2;
+  const t2 = performance.now(); const full = process.env.NOVERIFY ? { ok: null } : k.log.verify(); const verify = performance.now() - t2;
   console.log(JSON.stringify({ events, db_mb: Number(size), built_s: Number(written), boot_ms: Math.round(boot), boot_check: k.boot, rss_after_boot_mb: Number(mb(process.memoryUsage().rss)), heap_mb: Number(mb(process.memoryUsage().heapUsed)), in_memory_events: k.log.stats().in_memory, full_verify_s: Number((verify / 1000).toFixed(1)), full_verify_ok: full.ok }));
   if (!process.env.KEEP) fs.rmSync(dir, { recursive: true, force: true });
 }
