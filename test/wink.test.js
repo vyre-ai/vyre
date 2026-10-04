@@ -1462,3 +1462,23 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
   assert.ok(!again.error && again.data.changed === false, `adopting the same identity again changes nothing: ${JSON.stringify(again)}`);
   assert.equal(w.d.kernel.id.owner, owner.id, "still the identity");
 });
+
+test("an invitee's session opens the stream with the signed hello in its head and only for that route; a new hello replaces the old link", async t => {
+  const heads = [], closed = [];
+  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
+  const links = createServerLinks({ connect, options: {}, name: "Kit's phone", channelOf: () => null });
+  t.after(() => links.close());
+  const ch = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
+  const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
+  await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  // a second hello for the same invite closes the first link and opens a new one with the new hello
+  await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.equal(heads[1].head.invitee.nonce, "n2");
+  assert.deepEqual(closed, ["rt-harlow"]);
+  // no route, or no signed hello: nothing is opened
+  assert.throws(() => links.inviteeSessionFor(null, hello), e => e.code === "bad_input");
+  assert.throws(() => links.inviteeSessionFor(ch, {}), e => e.code === "bad_input");
+  // a paired-server id never reaches an invitee link
+  assert.throws(() => links.sessionFor("srv"), e => e.code === "not_found");
+});

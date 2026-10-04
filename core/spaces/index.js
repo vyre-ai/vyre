@@ -29,6 +29,8 @@ import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
 import { kernelMembers, plainKernelError } from "./kernel-members.js";
+import { createRemoteKernel } from "../../kernel/remote/client.js";
+import { winkTransport } from "../../kernel/remote/wink.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
 import {
   MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
@@ -46,6 +48,8 @@ export const hooks = {
   /** @type {number | null} */ syncMs: null,
   /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
+  /** @type {((channel: { relay: string, route: string, box: string }, hello: any) => Promise<{ call(tool: string, input: any): Promise<any> }> | { call(tool: string, input: any): Promise<any> }) | null} an invitee's peer session to the home a space's record names (the daemon wires it); a test sets it */ inviteeSessionFor: null,
+  /** @type {((spaceId: string) => { relay: string, route: string, box: string } | null) | null} the home's route for a space's directory record (read at call time) */ route: null,
   /** @type {boolean | null} when set, answers "does this space live on this computer" for every space (read at call time) */ livesHere: null,
   /** @type {((device: string) => Promise<{ call(tool: string, input: any): Promise<any> }>) | null} the open Wink peer session to a paired server (the daemon wires it); a test sets it */ sessionFor: null,
 };
@@ -192,6 +196,14 @@ export default {
       throw refuse("This device has no way to reach a paired server. Nothing was made.", "server_unreachable");
     };
     /** The device of a space whose home is a server and which the SERVER hosts (set when it was made there). */
+    /** Where a server-hosted space's home is reached (relay, route, box), from Wink's paired record of that server: it goes into the space's directory record so an invitee's device can find the home from the link alone. @param {string} spaceId */
+    const routeOf = async spaceId => {
+      if (typeof hooks.route === "function") return hooks.route(spaceId);
+      const dev = await serverOf(spaceId);
+      let who = null; try { who = identity.status(); } catch { who = null; }
+      if (!dev || !who || !who.exists || !who.id) return null;
+      try { const r = await ctx.call("wink.server.channel", { device: dev, identity: who.id }); const c = r && r.data && !r.error ? r.data.channel : null; return c && c.route ? { relay: String(c.relay || ""), route: String(c.route), box: String(c.box || "") } : null; } catch { return null; }
+    };
     /** True when this daemon is a person's own computer (it has an identity) and the space is not hosted on a paired server. */
     const livesOnThisComputer = async (/** @type {string} */ spaceId) => {
       if (typeof hooks.livesHere === "boolean") return hooks.livesHere;
@@ -387,7 +399,8 @@ export default {
           const k = files.keys.load(a.spaceId);
           const home = { kind: a.home && a.home.kind, ...(a.home && a.home.address ? { address: a.home.address } : {}) };
           const { state } = await stateOfSpace(a.spaceId);
-          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined });
+          const route = await routeOf(a.spaceId);
+          await dir.update(a.name, state, await ownerSigner(), { v: 1, id: a.spaceId, name: a.name, label: (row && (row.displayName || row.label)) || a.name, home, rootPublic: k ? k.publicKey : undefined, ...(route ? { route } : {}) });
           return { ok: true };
         },
       },
@@ -673,6 +686,8 @@ export default {
         /** @type {any} */ let view;
         try { view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token }); } catch (e) { if (KS || remoteServer) await retireHosted(spaceId, meta); throw e; }
         if ((KS || remoteServer) && view && view.status === "failed") await retireHosted(spaceId, meta);
+        // The home's route goes into the space's directory record so another person's device can find the home from an invite link (the flow's own pointHome ran before the server-hosted record existed on every path).
+        if (remoteServer && view && view.status !== "failed") { try { await deps.names.pointHome({ name: `${label}.vyre.run`.replace(/\.vyre\.run$/, ""), spaceId, home: { kind: "server" } }); } catch { /* the record is republished by spaces.identity.republish */ } }
         // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
@@ -918,7 +933,7 @@ export default {
     });
     // A server paired to a person's identity (Wink pairing, once the pairing proved the identity's own key over this pairing) has the person's id as its owner too, not its first-start id (walker, step 4).
     // For the pairing module only: the kernel makes the change once, logged, and refuses a second one.
-    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str }, ["person"]), async (i, meta) => {
+    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str, name: str }, ["person"]), async (i, meta) => {
       // Second layer (the registry's reach is the first): only the Wink module, and only for the identity ITS OWN pairing record names (never a value a caller chose), on a home that has no adopted owner yet.
       onlyModules(meta, ["wink"]);
       const id = String(i.person);
@@ -926,7 +941,13 @@ export default {
       if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to.", "forbidden");
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
       if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
-      try { const r = await K.adoptOwner(id, { from: K.owner }); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
+      let r;
+      try { r = await K.adoptOwner(id, { from: K.owner }); } catch (e) { throw plainKernelError(e); }
+      // The owner's Vyre name, checked against the directory (the name is the pairing's word, the directory's answer is the proof), so this home can read the owner's own identity list later:
+      // a recovered or new phone of the owner is on that list and reaches the owner's spaces here without being paired again (member-device enrolment).
+      const label = typeof i.name === "string" ? i.name.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
+      if (label) { try { const v = await dir.resolve(label); if (v.ok && v.kind === "person" && v.id === id) await kv.put(`person-name/${id}`, label); } catch { /* the name is learned later, when the owner is next verified */ } }
+      return { owner: r.owner, previous: r.previous, changed: r.changed };
     }, { internal: true });
     // The spaces a person owns or administers, for the pairing module's "Pair to:" choices (one id: the kernel's space id, the name the person gave it, the person's role there).
     tool("spaces.admin-list", "The finished spaces a person owns or administers here: { spaces: [{ space, name, role }] }, and the identity's own name when it is this device's. For modules (pairing targets).", obj({ person: str }, ["person"]), async (i, meta) => {
@@ -1373,6 +1394,14 @@ export default {
       return { p, res, local };
     };
     const isKernelToken = (/** @type {string} */ t) => /^inv_[0-9a-f]{32}\.[A-Za-z0-9_-]+$/.test(String(t));
+    /** @type {Map<string, any>} */ const remoteHandles = new Map();
+    /** The invitee's signed hello for the home's door: their identity key over the box, the space and the invite (core/wink/serverlink.js carries it in the stream head). @param {{ box: string }} channel @param {string} space @param {string} invite */
+    const inviteeHello = async (channel, space, invite) => {
+      const who = me();
+      const ts = now(), nonce = crypto.randomBytes(12).toString("base64url");
+      const sig = b64u(await identity.sign(`vyre-invitee-hello-v1\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}`));
+      return { space, invite, identity: who.id, entry: who.eid, ts, nonce, sig };
+    };
     /** The card for a kernel invite, from the Space's own kernel, after the link's pin and fingerprint are checked against the identity list. @param {any} i @param {any} p @param {any} meta */
     const kernelCard = async (i, p, meta) => {
       const [invId, blob] = String(p.token).split(".");
@@ -1385,13 +1414,30 @@ export default {
       try { r = await dir.resolve(label, { pin, resolve: ownerLookup }); } catch (e) { throw refuse(plainDirectory(e), "not_found"); }
       if (!r.ok || r.kind !== "space" || !r.payload) throw refuse("That space could not be verified. Ask for a new invite.", "wrong_space");
       if (carried.rk && spaceFingerprint(r.id, r.payload.rootPublic) !== carried.rk) throw refuse("This invite could not be verified. Ask for a new one.", "forged");
-      const h = kernelHandle(r.payload.id);
-      if (!h) {
-        const owner = r.payload.ownerName || r.payload.owner_name || null;
-        throw refuse(`This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to move it to their server.`, "unreachable");
+      let h = kernelHandle(r.payload.id);
+      // Not hosted here: the space's record says where its home is (relay route and box). This device opens the invitee stream to it, signed by the invitee's own identity, and asks the home's kernel for the card
+      // over the same remote client a paired device uses. The row is kept from the first preview until the invite is accepted.
+      if (!h && r.payload.route && typeof r.payload.route.route === "string") {
+        const channel = { relay: String(r.payload.route.relay || ""), route: r.payload.route.route, box: String(r.payload.route.box || "") };
+        const have = remoteHandles.get(`${r.payload.id}/${invId}`);
+        const sf = typeof hooks.inviteeSessionFor === "function" ? hooks.inviteeSessionFor : typeof ctx.inviteeSessionFor === "function" ? ctx.inviteeSessionFor : null;
+        if (have && now() - have.at < 60_000) h = have.h; // the open stream is reused inside the hello's two-minute life
+        else if (sf) {
+          const hello = await inviteeHello(channel, r.payload.id, invId);
+          h = createRemoteKernel({ space: r.payload.id, transport: winkTransport({ sessionFor: async () => sf(channel, hello) }) });
+        }
+        if (h) {
+          await kv.put(`invitee-route/${r.payload.id}`, { channel, invite: invId, name: `${label}.vyre.run`, at: now() });
+        }
       }
-      const k = await kctxOf(meta, r.payload.id);
-      const card = await kernelMembers({ handle: h, now }).invites.get(k, invId);
+      const gone = () => {
+        const owner = r.payload.ownerName || r.payload.owner_name || null;
+        return refuse(`This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to move it to their server.`, "unreachable");
+      };
+      if (!h) throw gone();
+      const k = h.hosted === false ? { chain: null, proof: K.proofFrom(meta) } : await kctxOf(meta, r.payload.id);
+      let card;
+      try { card = await kernelMembers({ handle: h, now }).invites.get(k, invId); if (h.hosted === false && !remoteHandles.has(`${r.payload.id}/${invId}`)) remoteHandles.set(`${r.payload.id}/${invId}`, { h, at: now() }); } catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); if (h.hosted === false && /^(unavailable|unreachable|failed)$/.test(String(/** @type {any} */ (e).code || ""))) throw gone(); throw e; }
       return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
     };
     tool("spaces.invites.preview", "What a join link offers, before joining: the space, the role, what you will see and the button. Checks the link's signature against the space's pinned key. Shows nothing else.",
@@ -1409,9 +1455,11 @@ export default {
           if (isKernelToken(p0.token)) {
             const c = await kernelCard(i, p0, meta);
             // What the invitee signs on their own device: the kernel's accept request over exactly this card. The surface sends the signed proof beside the next call.
-            const req = acceptProofRequest(c.handle.space || c.card.space.id, c.card, /** @type {string} */ (s.id));
+            const req = acceptProofRequest((c.card.space && c.card.space.id) || c.handle.space, c.card, /** @type {string} */ (s.id));
             if (!meta || !meta.kernel_proof) return { joined: false, needs_proof: true, request: req, card: c.card, fingerprint_words: fingerprintWords(c.fingerprint) };
             const got = await kernelMembers({ handle: c.handle, now }).invites.accept(c.k, c.invId, req.seen);
+            // the invitee stream has done its one job; a member session starts next, by the member-device path
+            if (c.handle.hosted === false) { remoteHandles.delete(`${c.spaceId}/${c.invId}`); await kv.delete(`invitee-route/${c.spaceId}`); }
             return { joined: true, space: c.spaceId, membership: out(got.membership) };
           }
         }

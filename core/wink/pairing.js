@@ -832,7 +832,7 @@ export function createPairing(o) {
         session = await openPairedSession(device, identity, { keyId }, { ...(confirmed || {}), ...(input.keyStorage && !(confirmed && confirmed.storage) ? { storage: input.keyStorage } : {}) });
         // The identity becomes this home's owner ONLY with a verified proof (G-2); without one the kernel's owner stays as it was. The device is enrolled in the home space by an explicit list (written at first ask).
         if (proven) {
-          const adopted = /** @type {any} */ (await ctx.call("spaces.owner.adopt", { person: identity }).catch(() => null));
+          const adopted = /** @type {any} */ (await ctx.call("spaces.owner.adopt", { person: identity, ...(input.owner && typeof input.owner.vyre === "string" ? { name: input.owner.vyre } : {}) }).catch(() => null));
           if (adopted && adopted.error && adopted.error.code !== "no_such_tool") ctx.log(`wink: the home's owner stays as it was: ${adopted.error.message || adopted.error.code}`);
         } else ctx.log(`wink: ${device} paired without a verified identity proof: the home's owner is unchanged`);
         const space = await Promise.resolve(o.space()).catch(() => "");
@@ -1026,6 +1026,17 @@ export function createPairing(o) {
         if (!String((meta0 && meta0.caller) || "").startsWith("module:")) throw fail("denied", "this is for modules");
         const d = devices.list(String(input.identity)).find((/** @type {any} */ x) => x.id === String(input.device) && x.kind === "server");
         return d ? { paired: true, name: d.name } : { paired: false };
+      },
+    });
+    ctx.tool("wink.server.channel", {
+      internal: true,
+      description: "For the spaces module: where a paired server is reached (relay, route and box id), so a space it hosts can say where its home is. Modules only, read only; it names no secret.",
+      input: obj({ device: str, identity: str }, ["device", "identity"]),
+      run: async (input, meta0 = {}) => {
+        if (!String((meta0 && meta0.caller) || "").startsWith("module:")) throw fail("denied", "this is for modules");
+        const d = devices.list(String(input.identity)).find((/** @type {any} */ x) => x.id === String(input.device) && x.kind === "server");
+        const c = d ? meta.get(`channel:${d.id}`) : null;
+        return c && c.route ? { channel: { relay: String(c.relay || ""), route: String(c.route), box: String(c.box || "") } } : { channel: null };
       },
     });
     ctx.tool("wink.server.owned", {

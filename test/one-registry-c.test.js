@@ -229,3 +229,35 @@ test("hosting and retiring a Space are events in the home's log: the first befor
   assert.deepEqual(await d.kernel.spaces.retire(h.space), { retired: true });
   assert.deepEqual(types(), [`space.hosting:${h.space}`, `space.hosted:${h.space}`, `space.retired:${h.space}`]);
 });
+
+test("a recovered phone (a new device entry on the owner's identity list) reaches the owner's space on a server by itself, with no approval from another device; and a removed entry does not", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const mk = (/** @type {string} */ name) => { const root = tempHome(t); fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name, transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } })); return root; };
+  const homeRoot = mk("alex-laptop"), srvRoot = mk("alex-server");
+  const home = await start({ root: homeRoot, kernel: true, log: () => {} });
+  t.after(() => home.stop());
+  const srv = await start({ root: srvRoot, kernel: true, log: () => {} }); // a server: no identity of its own
+  t.after(() => srv.stop());
+  const H = (/** @type {string} */ tool, /** @type {any} */ input = {}, caller = "cli") => call(tool, input, { root: homeRoot, caller });
+  const alex = (await H("spaces.identity.create", { name: "alexr" })).data;
+  // the server hosts a space for alex (what spaces.host-here does), and alex's own phone is already on his list
+  const sp = await srv.kernel.spaces.host({ owner: alex.id, name: "alexroom" });
+  const { fileIdentityStore } = await import("../core/spaces/identity.js");
+  const phone = fileIdentityStore(path.join(tempHome(t), "phone")).newDeviceKey();
+  const added = await home.registry.call("spaces.identity.enrol", { publicKey: phone.publicKey, label: "alex phone" }, "module:wink");
+  assert.equal(added.error, undefined, JSON.stringify(added.error));
+  const enrolled = async (/** @type {string} */ device) => (await srv.registry.call("spaces.devices.enrolled", { device, space: sp.space }, "module:vyred", { door: true })).data.enrolled;
+  // the server knows alex's name once its owner is verified (pairing) or a person joins; record it as they do
+  srv.registry.deps.db.prepare("INSERT OR REPLACE INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${alex.id}`, JSON.stringify("alexr"));
+  assert.equal(await enrolled("devnotalexsxxxxx1"), false, "a device on nobody's list");
+  assert.equal(await enrolled(phone.eid), true, "the recovered phone is on alex's own list and alex owns the space: no approval from another device");
+  // the same rule for a space on the server alex does NOT belong to: not enrolled
+  const other = await srv.kernel.spaces.host({ owner: srv.kernel.id.owner, name: "notalexs" });
+  assert.equal((await srv.registry.call("spaces.devices.enrolled", { device: phone.eid, space: other.space }, "module:vyred", { door: true })).data.enrolled, false, "a space alex is not a member of");
+});
