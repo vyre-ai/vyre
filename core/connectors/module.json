@@ -10,6 +10,7 @@
     "mcp"
   ],
   "does": {
+    "reads": ["connectors.list"],
     "tools": [
       "connectors.catalog",
       "connectors.list",

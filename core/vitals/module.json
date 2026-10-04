@@ -4,7 +4,7 @@
   "description": "How the server and this device are doing: CPU, RAM, GPU, disk, network and battery, plus a breakdown per running computer on the server. Person-level only; an agent gets a summary with no process or window detail.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["vitals.watch", "vitals.status", "vitals.summary", "vitals.explain", "vitals.advice"] },
+  "does": { "reads": ["vitals.explain", "vitals.status", "vitals.summary"], "tools": ["vitals.watch", "vitals.status", "vitals.summary", "vitals.explain", "vitals.advice"] },
   "watches": { "emits": ["vitals.sample", "vitals.trouble"] },
   "shows": { "deck": [], "capsule": [], "cli": ["vitals"] },
   "needs": {},
