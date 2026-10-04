@@ -15,7 +15,7 @@ export function RecordsScreen({ type }: { type: string }) {
   const [view, setView] = useState<ViewKind>("list");
   const open = useCallback((urn: string) => router.push(`/u/record/${urn.split("/").pop()}` as never), [router]);
   const env = useFieldEnv(world, open);
-  if (error && !world) return <ErrorState title="Could not load the records" reason={error.message} retry={reload} />;
+  if (error && !world) return <ErrorState title="Records did not load" reason={error.message} retry={reload} />;
   if (loading && !world) return <LargeTitleScreen title="Records"><LoadingState rows={5} /></LargeTitleScreen>;
   const def = world?.types.find((t) => t.name === type);
   if (!world || !def) return <EmptyState title="No such record type" body={`This space has no type called "${type}".`} action={{ label: "Go to Contacts", onPress: () => router.replace("/u/records/contact" as never) }} />;

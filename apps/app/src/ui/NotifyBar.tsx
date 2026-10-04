@@ -37,7 +37,7 @@ export function NotifyBar() {
   };
   return (
     <Banner
-      fact="Hear from your box when something needs you"
+      fact="Hear from your home when something needs you"
       detail={error}
       live={!!error}
       action={status === "off" ? <Button kind="outline" label="Turn on notifications" busy={busy} busyLabel="Turning on" onPress={turnOn} /> : null}

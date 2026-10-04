@@ -69,7 +69,7 @@ export function Footnote({ icon, children }: { icon?: "shield" | "sealed" | "inf
   return (
     <View className="flex-row items-start gap-s2 px-s1 pt-s2">
       {icon ? <View className="pt-px"><Icon name={icon} size={16} tone="label" /></View> : null}
-      <Text tone="label" style={{ fontSize: 13, lineHeight: 18 }} className="min-w-0 flex-1">{children}</Text>
+      <Text size="secondary" tone="label" className="min-w-0 flex-1">{children}</Text>
     </View>
   );
 }

@@ -2,9 +2,10 @@
 // pipeline, History, Domain, Secrets and the last build's log. Going live, approving and going back are held acts: the box answers with the plan, the person reads it,
 // and publish.decide carries their presence. Nothing here is sample.
 import { useCallback, useEffect, useState } from "react";
+import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast } from "@vyre/ui";
+import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Block } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { act, create, decide, domainAdd, domainRemove, domainVerify, list, preview, retire, secretGrant, secretRevoke, status as statusOf, vaultItems } from "./real";
@@ -31,8 +32,8 @@ export function RealSites() {
   const rows = deps ? sites(deps) : [];
   return (
     <Frame title="Sites" sub="Sites and apps you publish, each one on its own." actions={<Button kind="primary" icon="plus" label="Publish" onPress={() => { setProblem(""); setDraft({ ...BLANK }); }} />}>
-      {err ? <Card flush><EmptyState title="Publish did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
-      {deps === null && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {err ? <Card flush><ErrorState title="Publish did not load" reason={err} retry={load} /></Card> : null}
+      {deps === null && !err ? <LoadingState rows={3} /> : null}
       {deps && !rows.length ? <Card flush><EmptyState title="Nothing published in this space" body="Publish a site from a repo or a Drive folder. Nothing goes live until you say so." action={{ label: "Publish", onPress: () => setDraft({ ...BLANK }) }} /></Card> : null}
       {rows.length ? (
         <Card flush>
@@ -54,7 +55,7 @@ export function RealSites() {
             <Segmented label="Builds with" value={draft.image} onChange={(image) => setDraft({ ...draft, image })} options={[["static", "Static pages"], ["node-20", "Node 20"], ["node-22", "Node 22"]]} />
             {draft.image !== "static" ? <Field label="Build command" placeholder="npm run build" value={draft.command} onChangeText={(command) => setDraft({ ...draft, command })} /> : null}
             {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-            <Button kind="primary" label={busy ? "Starting" : "Start as a draft"} onPress={busy ? () => {} : save} />
+            <Button kind="primary" label={busy ? "Starting" : "Start as a draft"} disabled={busy} onPress={save} />
             <Text size="caption" tone="label">Nothing goes live until you say so.</Text>
           </View>
         ) : null}
@@ -95,8 +96,8 @@ export function RealSite() {
     decide(decision(held, approve)).then((r) => { showToast(approve ? "Done." : "Declined."); setHeld(null); load(); void r; }).catch((e) => showToast(say(e))).finally(() => setBusy(false));
   };
 
-  if (err) return <Frame title="Sites" back="/u/sites"><EmptyState title="Publish did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Frame>;
-  if (deps === null) return <Frame title="Sites" back="/u/sites"><EmptyState title="Loading" body="Asking your Vyre." /></Frame>;
+  if (err) return <Frame title="Sites" back="/u/sites"><ErrorState title="Publish did not load" reason={err} retry={load} /></Frame>;
+  if (deps === null) return <Frame title="Sites" back="/u/sites"><LoadingState rows={3} /></Frame>;
   if (!site || !cur) return <Frame title="Sites" back="/u/sites"><EmptyState title="That site is not here" body="It may have been retired. Open Sites to see what is published." action={{ label: "Open Sites", onPress: () => router.push("/u/sites" as never) }} /></Frame>;
   const next = nextStep(st && st.id === cur.id ? st : cur);
   const hold = held ? planLines(held.plan) : null;
@@ -109,9 +110,9 @@ export function RealSite() {
         {st?.sealed_check ? <Text size="caption" tone="label">{`Sealed-value check: ${st.sealed_check}.`}</Text> : null}
         {hold && held ? (
           <AskCard title={hold.title} why={hold.lines.join(" ")}
-            actions={[{ label: busy ? "Deciding" : "Approve with Face ID", kind: "primary", icon: "faceid", onPress: busy ? () => {} : () => decideHeld(true) }, { label: "Not now", kind: "ghost", onPress: () => decideHeld(false) }]} />
+            actions={[{ label: busy ? "Deciding" : presenceText("Approve with Face ID"), kind: "primary", icon: "faceid", onPress: busy ? () => {} : () => decideHeld(true) }, { label: "Not now", kind: "ghost", onPress: () => decideHeld(false) }]} />
         ) : next ? (
-          <View className="self-start"><Button kind="primary" label={busy ? "Working" : next.label} onPress={busy ? () => {} : () => step(next.tool, cur)} /></View>
+          <View className="self-start"><Button kind="primary" label={busy ? "Working" : next.label} disabled={busy} onPress={() => step(next.tool, cur)} /></View>
         ) : <Banner>{cur.stage === "Production" ? `Version ${cur.version} is live.` : `Nothing to do for version ${cur.version}.`}</Banner>}
         {site.live && cur.id !== site.live.id ? <Text size="caption" tone="label">{`Version ${site.live.version} stays live until this one goes live.`}</Text> : null}
       </View>
@@ -125,7 +126,7 @@ export function RealSite() {
             </View>
           ))}
         </Card>
-        {site.live ? <View className="flex-row gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" onPress={busy ? () => {} : () => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" onPress={busy ? () => {} : () => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
+        {site.live ? <View className="flex-row gap-s2 pt-s2"><Button kind="ghost" size="sm" label="Go back one version" disabled={busy} onPress={() => step("rollback", site.live!)} /><Button kind="holdText" size="sm" label="Take the live version down" disabled={busy} onPress={() => run(() => retire(site.live!.id), "Taken down. Its record stays.")} /></View> : null}
         <Text size="caption" tone="label">Going back needs you, and takes effect at once. The version you leave stays in the history.</Text>
       </View>
     ) : tab === "domain" ? (
@@ -145,7 +146,7 @@ export function RealSite() {
       <Secrets dep={cur} st={st} run={run} reload={() => statusOf(cur.id).then(setSt).catch(() => {})} setHeld={setHeld} />
     ) : (
       <View className="gap-s3">
-        <Block label={`Build log, version ${cur.version}`}>{logs || "The build log is shown here right after you build a preview. The box does not keep it."}</Block>
+        <Block label={`Build log, version ${cur.version}`}>{logs || "The build log is shown here right after you build a preview. Vyre does not keep it."}</Block>
       </View>
     );
 

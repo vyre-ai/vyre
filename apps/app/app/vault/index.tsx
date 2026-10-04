@@ -30,7 +30,7 @@ export default function Vault() {
 
   let body;
   if (!items) body = <Empty text={error ? `The vault did not answer: ${error}` : " "} />;
-  else if (items.length === 0) body = <Empty text={locked ? "The vault is locked on the box" : "Nothing in the vault yet"} />;
+  else if (items.length === 0) body = <Empty text={locked ? "The vault is locked on your home" : "Nothing in the vault yet"} />;
   else body = <VaultList items={items} onOpen={open} />;
 
   const item = split && picked ? items?.find((i) => i.name === picked) ?? null : null;

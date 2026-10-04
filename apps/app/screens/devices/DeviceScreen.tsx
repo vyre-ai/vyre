@@ -7,8 +7,12 @@ import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { lendInfo, useDevices } from "./state";
 import { lendState, removeText } from "./wink.js";
 import { MOCK, said } from "../../src/real/box";
+import { RealDeviceSpaces } from "./RealDeviceSpaces";
 
 /** One device: what it is, which spaces it is in, share it with a space, remove it. */
+/** Computers already lent once this session: the first grant is a pairing (Face ID), later ones are not asked again (lead ruling 4 Oct). */
+const lentBefore = new Set<string>();
+
 export function DeviceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -29,7 +33,7 @@ export function DeviceScreen() {
           {cur.map((k, i) => (
             <View key={k}>{i ? <Divider /> : null}
               <Row lead={<Avatar of={spaceRef(SPACE_NAMES[k])} size={40} />} title={SPACE_NAMES[k]} sub={`Joined ${d.since}`}
-                end={<Button kind="ghost" size="sm" label={`Remove from ${SPACE_NAMES[k]}`} onPress={() => setFace({ title: `Remove from ${SPACE_NAMES[k]}`, body: `${d.name} stops reaching ${SPACE_NAMES[k]} now. Its other spaces are untouched.`, onApprove: () => { removeFromSpace(d.id, k); showToast(`Removed from ${SPACE_NAMES[k]}.`); } })} />} />
+                end={<Button kind="hold" size="sm" label={`Remove from ${SPACE_NAMES[k]}`} onPress={() => { removeFromSpace(d.id, k); showToast(`${d.name} no longer reaches ${SPACE_NAMES[k]}. Its other spaces are untouched.`); }} />} />
             </View>
           ))}
           {missing.map((k, i) => (
@@ -39,11 +43,7 @@ export function DeviceScreen() {
             </View>
           ))}
         </Card>
-      </Group> : (
-        <Group title="Spaces">
-          <Card flush>{Object.entries(SPACE_NAMES).map(([k, n], i) => <View key={k}>{i ? <Divider /> : null}<Row lead={<Avatar of={spaceRef(n)} size={40} />} title={n} sub="Reaches it through your identity" /></View>)}</Card>
-        </Group>
-      )}
+      </Group> : <RealDeviceSpaces device={d.id} name={d.name} computer={d.device === "computer"} />}
       {MOCK && d.device === "computer" ? (
         <Group title="Share this computer">
           <Card className="gap-s3">
@@ -57,7 +57,7 @@ export function DeviceScreen() {
             <View className="flex-row flex-wrap items-center gap-s2">
               {lend === "sharing"
                 ? <><Chip tone="ok">Sharing</Chip><Button kind="ghost" size="sm" label="Stop sharing" onPress={() => { setLend(false); showToast("Stopped sharing."); }} /></>
-                : <Button kind="primary" size="sm" icon="faceid" label="Allow with Face ID" onPress={() => setFace({ title: "Share this computer", body: `${spaceName} runs its own work on ${d.name}. Only when it is idle, and nothing of yours.`, label: "Allow with Face ID", onApprove: () => setLend(true) })} />}
+                : <Button kind="primary" size="sm" icon="faceid" label="Allow with Face ID" onPress={() => { const grant = () => { lentBefore.add(d.id); setLend(true); }; if (lentBefore.has(d.id)) grant(); else setFace({ title: "Share this computer", body: `${spaceName} runs its own work on ${d.name}. Only when it is idle, and nothing of yours.`, label: "Allow with Face ID", onApprove: grant }); }} />}
             </View>
           </Card>
         </Group>

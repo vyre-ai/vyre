@@ -1,5 +1,5 @@
 // Rules' calls on the real box, over an injected `call` (the app's box connection, or a fake box in a test). Names follow the kernel's rule actions
-// (kernel/grants): rules.list, rules.set, rules.propose, rules.accept, rules.dismiss, rules.remove. set, accept, dismiss and remove are an owner's own act:
+// (kernel/grants): rules.list, rules.define, rules.enable, rules.disable, rules.propose, rules.accept, rules.dismiss, rules.remove (kernel-2's rules tools). define, enable, disable, accept, dismiss and remove are an owner's own act:
 // the box asks for presence and the app's person session answers it.
 import type { Listing, Rule } from "./model";
 
@@ -18,8 +18,10 @@ export function rulesSource(call: Call) {
     },
     /** The person's role in the first space (spaces.list), which decides whether the form sets a rule (owner) or proposes one. */
     roleReal: async (): Promise<string> => (await ask<{ role?: string }[]>("spaces.list"))?.[0]?.role ?? "member",
-    setReal: (rule: unknown, space?: string) => ask<Rule>("rules.set", { ...(space ? { space } : {}), rule }),
+    setReal: (rule: unknown, space?: string) => ask<{ rule: Rule }>("rules.define", { ...(space ? { space } : {}), rule }),
     proposeReal: (rule: unknown, space?: string) => ask<Rule>("rules.propose", { ...(space ? { space } : {}), rule }),
+    enableReal: (id: string) => ask<{ rule: Rule }>("rules.enable", { id }),
+    disableReal: (id: string) => ask<{ rule: Rule }>("rules.disable", { id }),
     acceptReal: (id: string) => ask<Rule>("rules.accept", { id }),
     dismissReal: (id: string) => ask<{ dismissed: string }>("rules.dismiss", { id }),
     removeReal: (id: string) => ask<{ removed: string }>("rules.remove", { id }),

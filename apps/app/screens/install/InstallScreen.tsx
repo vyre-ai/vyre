@@ -5,15 +5,17 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
-import { AFTER_HOME, CONTINUE_HERE, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
-import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, listSpaces, previewInvite, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
-import { applyClaim, createInput, inviteFrom, nameNoteReal, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
+import { clearJoin } from "../../src/shell/join-hold.js";
+import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
+import { HIDDEN, claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
 
 type Made = { name: string; look: string; addr: string; line: string };
@@ -51,23 +53,19 @@ function CopyLine({ text, big }: { text: string; big?: boolean }) {
   );
 }
 
-function NameField({ value, onChange, label, also, space, real }: { value: string; onChange: (v: string) => void; label: string; also?: string[]; space?: boolean; real?: ReturnType<typeof nameStatusReal> }) {
+function NameField({ value, onChange, label, also, space, real, onRetry }: { value: string; onChange: (v: string) => void; label: string; also?: string[]; space?: boolean; real?: ReturnType<typeof nameStatusReal>; onRetry?: () => void }) {
   const st = real ?? nameStatus(value, also);
   const note = real ? nameNoteReal(real, !!space) : nameNote(st as ReturnType<typeof nameStatus>, !!space);
   return (
     <View className="gap-s2">
       <Field label={label} value={value} onChangeText={onChange} placeholder="name" help=".vyre.run goes after it" />
-      <View className="min-h-s6">{st.state === "empty" ? null : <Chip tone={st.state === "ok" ? "ok" : st.state === "taken" || st.state === "unknown" ? "warn" : "plain"} icon={st.state === "ok" ? "check" : undefined}>{note}</Chip>}</View>
+      <View className="min-h-s6">{st.state === "empty" ? null : <View className="flex-row flex-wrap items-center gap-s2"><Chip tone={st.state === "ok" ? "ok" : st.state === "taken" || st.state === "unknown" ? "warn" : "plain"} icon={st.state === "ok" ? "check" : undefined}>{note}</Chip>{st.state === "unknown" && onRetry ? <Button kind="ghost" size="sm" label="Check again" onPress={onRetry} /> : null}</View>}</View>
     </View>
   );
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
-/** TEST builds only: the browser claim path is on (EXPO_PUBLIC_VYRE_WEB_CLAIM=1). RC1 builds leave it off. */
-// Written as a plain `process.env.EXPO_PUBLIC_...` so the bundler inlines it (an optional-chained read is left for runtime, where a browser has no `process`).
-const WEB_CLAIM: boolean = process.env.EXPO_PUBLIC_VYRE_WEB_CLAIM === "1";
-
-export function InstallScreen({ start, link: linkIn }: { start?: "create" | "join"; link?: string }) {
+export function InstallScreen({ start, link: linkIn, external }: { start?: "create" | "join"; link?: string; external?: boolean }) {
   const router = useRouter();
   const first = !start;
   const [step, setStep] = useState(startStep(start));
@@ -83,6 +81,9 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const [pairTo, setPairTo] = useState("me");
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
   const [pickKit, setPickKit] = useState<string | null>(null);
+  // Real box: the Kits it offers (null: it offers none) and what asking for the picked one came to, for the done page.
+  const [kitList, setKitList] = useState<{ id: string; label: string; sub: string }[] | null | undefined>(undefined);
+  const [kitResult, setKitResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [inviteLine, setInviteLine] = useState("");
   const [loaded, setLoaded] = useState(false);
   // Real box only: what the directory said about each name, the space being made, the recovery code (shown once, never kept), another device's setup, the invite.
@@ -90,6 +91,9 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const [spaceId, setSpaceId] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [owned, setOwned] = useState(0);
+  const noId = useRef(false);
+  const [recheck, setRecheck] = useState(0);
   const [elsewhere, setElsewhere] = useState<ReturnType<typeof setupElsewhere>>([]);
   const [link, setLink] = useState(linkIn ?? "");
   // A link that opened the app (vyre://join?link=... or /join?link=...): read the card at once, no paste.
@@ -98,7 +102,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     if (MOCK || !linkIn || opened.current === linkIn) return;
     opened.current = linkIn;
     setLink(linkIn); setBusy(true); setWrong("");
-    previewInvite(linkIn.trim()).then((p) => { setInvite(inviteFrom(p, linkIn.trim())); setStep("invite"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
+    previewInvite(linkIn.trim()).then((p) => { setInvite(inviteFrom(p, linkIn.trim())); setStep((s) => (noId.current ? s : "invite")); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false));
   }, [linkIn]);
   const [invite, setInvite] = useState<ReturnType<typeof inviteFrom> | null>(null);
   const device = Platform.OS === "ios" ? "iPhone" : Platform.OS === "android" ? "phone" : "computer";
@@ -107,7 +111,8 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const spaceSt = MOCK ? nameStatus(spaceSlug, [name]) : nameStatusReal(spaceSlug, taken[slug(spaceSlug)] ?? null, [name]);
   const sn = spaceName.trim() || DATA.defaultSpaceName;
   const vps = where === "vps";
-  const back = backOf(step, { vps });
+  // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
+  const back = !first && step === startStep(start) ? null : backOf(step, { vps });
   const finish = () => router.replace((first ? "/u/now" : "/u/spaces") as never);
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
@@ -126,7 +131,17 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
-  const advance = (from: string) => setStep(nextSetup(from));
+  // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
+  useEffect(() => { if (step !== "join" && step !== "invite") clearJoin(); }, [step]);
+  const advance = (from: string) => {
+    if (from === "kit" && !MOCK && spaceId && pickKit) {
+      setBusy(true);
+      void proposeKitFor(spaceId, pickKit).then((r) => { setKitResult(r); setStep(nextSetup(from)); }).finally(() => setBusy(false));
+      return;
+    }
+    setStep(nextSetup(from));
+  };
+  useEffect(() => { if (!MOCK && step === "kit" && kitList === undefined) void kitChoices().then(setKitList); }, [step]);
 
   // Closing and reopening resumes at the same step: read what was kept once, then keep every resumable step.
   useEffect(() => {
@@ -147,10 +162,13 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     void (async () => {
       try {
         const who = await readIdentity();
-        if (who) { setName(who.label); if (first && step === "name") setStep("spaces"); }
+        if (who) { setName(who.label); setStep((s) => (first && s === "name" ? "spaces" : s)); }
+        // Identity first: a device with no name cannot create or join a space, so any other way in starts at the name. A kept invite waits for it.
+        else { noId.current = true; setStep((s) => (["scan", "scanwords", "recovery"].includes(s) ? s : "name")); }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.
         const kept = unpackProgress(await readProgress());
         const all = await listSpaces();
+        setOwned(all.length);
         const mine = kept ? all.find((r) => r.setup && (r.displayName || r.label) === kept.spaceName)?.id ?? null : null;
         if (mine) setSpaceId(mine);
         setElsewhere(setupElsewhere(all, mine));
@@ -167,9 +185,9 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     if (MOCK) return;
     const want = [step === "name" ? slug(name) : "", step === "create" ? slug(spaceSlug) : ""].filter((n) => n.length >= 3 && !asked.current.has(n));
     if (!want.length) return;
-    const t = setTimeout(() => want.forEach((n) => { asked.current.add(n); void checkName(n).then((a) => setTaken((m) => ({ ...m, [n]: a }))); }), 400);
+    const t = setTimeout(() => want.forEach((n) => { asked.current.add(n); void checkName(n).then((a) => { if (a === "unknown") asked.current.delete(n); setTaken((m) => ({ ...m, [n]: a })); }); }), 400);
     return () => clearTimeout(t);
-  }, [step, name, spaceSlug]);
+  }, [step, name, spaceSlug, recheck]);
   // Every setup step is kept on the box so another device can carry on; the last one clears it.
   useEffect(() => {
     if (MOCK || !spaceId) return;
@@ -186,22 +204,24 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     // A step that is not resumable (done, spaces, join) means setup is over or not begun: forget it.
     if (raw !== null || step === "done" || step === "spaces") writeProgress(raw);
   }, [loaded, step, name, spaceName, addr, look, where, pairTo, device, pickConnectors, pickKit]);
+  const retryName = (n: string) => () => { asked.current.delete(slug(n)); setTaken((m) => { const { [slug(n)]: _gone, ...rest } = m; return rest; }); setRecheck((x) => x + 1); };
+  const canClose = !first || made.length > 0 || owned > 0;
   const last = made[made.length - 1];
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name" && Platform.OS === "web" && !MOCK && !WEB_CLAIM) {
-    // RC1: a name is not claimed from a browser (the user's ruling, 4 Oct); the phone or Mac app does it, and a browser signs in to a name that exists. A TEST build (EXPO_PUBLIC_VYRE_WEB_CLAIM=1, pointed at the stand-in names directory) turns the claim on for the walk.
+  if (step === "name" && !MOCK && claimBlocked()) {
+    // RC1: the key is made on the phone, so a browser cannot claim a name (screens/shell/rc.ts).
     body = (
-      <Page title="Claim your Vyre name on the phone or Mac app" sub="Open Vyre on your phone or Mac to choose the name. Then come back here and pair this browser with it.">
-        <Button kind="primary" label="I already have a name, pair this browser" onPress={() => setStep("scan")} />
+      <Page title={HIDDEN.claimTitle} sub={HIDDEN.claimBody}>
+        <Button kind="primary" label={HIDDEN.claimAction} onPress={() => setStep("scan")} />
       </Page>
     );
   } else if (step === "name") {
     body = (
       <Page title="Choose your Vyre name" sub="It is how people find you. You can add your own domain later.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <NameField label="Your Vyre name" value={name} onChange={setName} real={MOCK ? undefined : (me as ReturnType<typeof nameStatusReal>)} />
+        <NameField label="Your Vyre name" value={name} onChange={setName} onRetry={retryName(name)} real={MOCK ? undefined : (me as ReturnType<typeof nameStatusReal>)} />
         <Button kind="primary" icon="faceid" label="Continue with Face ID" disabled={me.state !== "ok"}
           onPress={() => setFace({ title: "Create your identity", body: "Face ID creates it on this device. It stays here.", label: "Create with Face ID", onApprove: () => { if (MOCK) return setStep("recovery"); void createIdentity(me.slug, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))); } })} />
         <Button kind="ghost" label="I already have a name, scan instead" onPress={() => setStep("scan")} />
@@ -217,15 +237,15 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   } else if (step === "scanwords") {
     body = session ? (
       <Page title="Check the three words" sub="Your other device shows the same three words.">
-        <PairWords session={session} who="Your other device" onConfirmed={() => { if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep("spaces"); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("scan"); }} />
+        <PairWords session={session} who="Your other device" onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("scan"); }} />
       </Page>
     ) : null;
   } else if (step === "recovery") {
     body = (
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
-        <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner>
-        <Button kind="primary" label="I saved it" onPress={() => { setRecovery(null); setStep("spaces"); }} />
+        {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
+        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); setStep(invite ? "invite" : "spaces"); }} />
       </Page>
     );
   } else if (step === "spaces") {
@@ -261,7 +281,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Create a space">
         <Field label="Name" value={spaceName} onChangeText={(v) => { setSpaceName(v); }} />
-        <NameField label="Claim its name" value={spaceSlug} onChange={(v) => setAddr(v)} also={[name]} space real={MOCK ? undefined : (spaceSt as ReturnType<typeof nameStatusReal>)} />
+        <NameField label="Claim its name" value={spaceSlug} onChange={(v) => setAddr(v)} onRetry={retryName(spaceSlug)} also={[name]} space real={MOCK ? undefined : (spaceSt as ReturnType<typeof nameStatusReal>)} />
         <Button kind="primary" label="Continue" disabled={spaceSt.state !== "ok"} onPress={() => setStep("where")} />
       </Page>
     );
@@ -272,8 +292,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         <Card flush>
           <Choice icon="server" title="On a server you have" sub="One command, about two minutes." onPress={go("server")} />
           <Divider />
-          <Choice icon="cable" title="On a new server" sub="We set one up for you, about $12 a month." onPress={go("vps")} />
-          <Divider />
+          {MOCK ? <><Choice icon="cable" title="On a new server" sub="We set one up for you, about $12 a month." onPress={go("vps")} /><Divider /></> : null}
           <Choice icon="laptop" title="On this computer" sub="Only while it stays on." onPress={go("here")} />
         </Card>
       </Page>
@@ -302,18 +321,18 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Pair your server" sub={two ? "The server shows who is asking and the same three words. Confirm only if they match." : "The server printed a QR code and a long code. Scan the QR, or paste the long code."}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <View className="gap-s2">
+        {MOCK ? <View className="gap-s2">
           <Text size="caption" strong tone="label">Your server</Text>
           <Terminal lines={serverLines(vps, sn, two ? "words" : "code", { to, who: "Your phone", words: two ? wordsLine(session.words()) : "" })} />
-        </View>
+        </View> : <Text tone="muted">{two ? "Your server prints three words. Confirm only if they match the ones below." : "Your server printed a QR code and a long code. Scan it or paste it here."}</Text>}
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
           {two ? (
-            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("srv1"); }} />
+            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(SERVER_FAILED.rejected); setStep("srv1"); }} />
           ) : (
             <Card className="gap-s3">
               <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View>
-              <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("srv2"); }} sample={SERVER_LONG_CODE} />
+              <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("srv2"); }} sample={MOCK ? SERVER_LONG_CODE : undefined} />
             </Card>
           )}
         </View>
@@ -331,7 +350,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   } else if (step === "look") {
     body = (
       <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
-        <Terminal lines={[connectedLine(sn, device)]} />
+        {where === "here" ? null : MOCK ? <Terminal lines={[connectedLine(sn, device)]} /> : <Chip tone="ok" icon="check">{`${sn} is paired. Setup carries on here.`}</Chip>}
         <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
         <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
         <Button kind="primary" label="Continue" onPress={() => advance("look")} />
@@ -341,17 +360,19 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Who is in it?" sub="Invite people now, or later from Spaces and members. You are the owner.">
         <Row lead={<Avatar of={{ kind: "person", id: "me", name: name || "alex" }} size={40} />} title={name || "alex"} sub="Owner, this device" />
-        <Field label="Invite someone" value={inviteLine} onChangeText={setInviteLine} placeholder="Their email" />
+        {MOCK ? <Field label="Invite someone" value={inviteLine} onChangeText={setInviteLine} placeholder="Their email" /> : <Text tone="muted">Invites are made in Spaces and members, where you choose each person's role.</Text>}
         <View className="flex-row gap-s2">
-          <Button kind="primary" label={inviteLine.trim() ? "Send the invite and continue" : "Continue"} onPress={() => { if (inviteLine.trim()) showToast(`Invite sent to ${inviteLine.trim()}.`); setInviteLine(""); advance("members"); }} />
-          <Button kind="ghost" label="Later" onPress={() => advance("members")} />
+          {MOCK ? <>
+            <Button kind="primary" label={inviteLine.trim() ? "Send the invite and continue" : "Continue"} onPress={() => { if (inviteLine.trim()) showToast(`Invite sent to ${inviteLine.trim()}.`); setInviteLine(""); advance("members"); }} />
+            <Button kind="ghost" label="Later" onPress={() => advance("members")} />
+          </> : <Button kind="primary" label="Continue" onPress={() => advance("members")} />}
         </View>
       </Page>
     );
   } else if (step === "connectors") {
     const on = (id: string) => pickConnectors.includes(id);
     body = (
-      <Page title="Connect your tools" sub="Each one asks for its own sign-in, and only what you pick is connected.">
+      <Page title="Connect your tools" sub={MOCK ? "Each one asks for its own sign-in, and only what you pick is connected." : "Pick the ones you will use. Nothing connects yet: each asks for its own sign-in when you set it up."}>
         <Card flush>
           {DATA.connectors.map((c, i) => (
             <View key={c.id}>{i ? <Divider /> : null}<Row dense title={c.label} sub={c.sub} end={<Chip tone={on(c.id) ? "ok" : "plain"} icon={on(c.id) ? "check" : undefined}>{on(c.id) ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickConnectors((l) => (on(c.id) ? l.filter((x) => x !== c.id) : [...l, c.id]))} /></View>
@@ -367,12 +388,14 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Start with a Kit" sub="A Kit adds record types, Flows and views in one step. Pick one, or start empty.">
         <Card flush>
-          {DATA.kits.map((k) => (
+          {(MOCK ? DATA.kits : kitList ?? []).map((k) => (
             <Row key={k.id} dense lead={<IconTile name="box" />} title={k.label} sub={k.sub} end={<Chip tone={pickKit === k.id ? "ok" : "plain"} icon={pickKit === k.id ? "check" : undefined}>{pickKit === k.id ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickKit(pickKit === k.id ? null : k.id)} />
           ))}
+          {!MOCK && kitList === undefined ? <Row dense title="Looking for Kits" /> : null}
+          {!MOCK && kitList !== undefined && !(kitList ?? []).length ? <Row dense title="No Kits to pick here yet" sub="You can add one later from Kits." /> : null}
         </Card>
         <View className="flex-row gap-s2">
-          <Button kind="primary" label="Finish setup" onPress={() => advance("kit")} />
+          <Button kind="primary" label={busy ? "Asking" : "Finish setup"} onPress={busy ? () => {} : () => advance("kit")} />
           <Button kind="ghost" label="Start empty" onPress={() => { setPickKit(null); advance("kit"); }} />
         </View>
       </Page>
@@ -384,6 +407,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         <Text size="page" strong className="text-center">{`${last?.name ?? sn} is ready`}</Text>
         <Text tone="muted" className="text-center">{last?.line}</Text>
         <Text mono size="caption" tone="label">{last?.addr}</Text>
+        {MOCK ? null : pendingLines({ kit: pickKit ? { id: pickKit, label: kitList?.find((k) => k.id === pickKit)?.label ?? pickKit } : null, kitResult, connectors: pickConnectors.map((id) => DATA.connectors.find((c) => c.id === id)?.label ?? id) }).map((l) => <Text key={l} tone="muted" className="text-center">{l}</Text>)}
         <Button kind="primary" label="Continue" onPress={() => setStep("spaces")} />
       </View>
     );
@@ -409,7 +433,8 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Row lead={<Avatar of={spaceRef(inv.space)} size={56} />} title={inv.space} sub={inv.address} />
         {inv.from ? <Text tone="muted">{`${inv.from} invited you.`}</Text> : null}
-        <Text mono size="caption" tone="label">{inv.link}</Text>
+        {external ? <Banner tone="warn">This invitation came from a link outside Vyre. Check that the space name is the one you expect before you join.</Banner> : null}
+        <Text mono size="caption" tone="label">{inv.link.replace(/\/join\/.*$/, "/join/…")}</Text>
         {"words" in inv && inv.words ? <View className="gap-s1"><Text size="caption" strong tone="label">Check these words with whoever invited you</Text><Text mono strong>{inv.words}</Text></View> : null}
         <View className="gap-s1"><Text size="caption" strong tone="label">You join as</Text><View className="flex-row"><Chip tone="accent">{inv.role}</Chip></View><Text size="caption" tone="muted">{inv.roleLine}</Text></View>
         <View className="gap-s1"><Text size="caption" strong tone="label">You will see</Text><Text size="caption" tone="muted">{inv.sees}</Text></View>
@@ -437,7 +462,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
       <View className="flex-row items-center gap-s2 px-s4 py-s3">
         {back ? <Button kind="ghost" size="sm" icon="chevron-left" label="Back" onPress={() => { setWrong(""); setSession(null); setStep(back); }} /> : null}
         <View className="flex-1" />
-        <Button kind="ghost" size="sm" label="Close" onPress={finish} />
+        {canClose ? <Button kind="ghost" size="sm" label="Close" onPress={finish} /> : null}
       </View>
       <ScrollView contentContainerClassName="p-s4 w-full max-w-read self-center grow justify-center">{body}</ScrollView>
       <FaceIdSheet ask={face} onClose={() => setFace(null)} />

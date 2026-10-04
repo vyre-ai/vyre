@@ -158,6 +158,8 @@ export function whenLabel(at, now) {
 /** "Thursday, 1 October". @param {number} at */
 export const dateLine = (at) => { const d = new Date(at); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
 /** @param {number} at */
+/** The first word of a name for a greeting; an id that has no name behind it (per_...) is "there", never shown. @param {string | undefined} n */
+export const firstName = (n) => (!n || /^[a-z]{2,4}_[a-z0-9]{8,}$/.test(n) ? "there" : n.split(" ")[0]);
 export const greeting = (at) => { const h = new Date(at).getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 /** @param {number} at */
 const startOfDay = (at) => { const d = new Date(at); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -177,17 +179,32 @@ export function nowModel(w, scope = "all") {
   const working = tasks.filter((t) => t.state === "working");
   const day = startOfDay(w.now);
   const doneToday = tasks.filter((t) => (t.state === "done" || t.state === "skipped") && t.updated_at >= day && t.updated_at < day + 86_400_000).sort((a, b) => b.updated_at - a.updated_at);
-  const recent = w.events.map(eventLine).filter((e) => e.record ? inScope(spaceOfUrnLoose(e.record)) : scope !== "mine").slice(0, 5);
+  const recent = w.events.map(eventLine).map((l) => plainLine(w, l)).filter((l) => l).filter((e) => e.record ? inScope(spaceOfUrnLoose(e.record)) : scope !== "mine").slice(0, 5);
   const calendar = w.calendar.filter((c) => !c.record || inScope(spaceOfUrnLoose(c.record)));
   const me = who(w, w.me);
   return {
-    greeting: `${greeting(w.now)}, ${(me?.name || "there").split(" ")[0]}`,
+    greeting: `${greeting(w.now)}, ${firstName(me?.name)}`,
     meta: `${dateLine(w.now)} · ${needsLine(needs.length)}`,
     needs, needIds, working, doneToday, recent, calendar,
     stuck: tasks.filter((t) => t.state === "stuck"),
     faces: [...new Set(w.tasks.filter((t) => t.state === "working").map((t) => aid(t.doer)))].slice(0, 3),
   };
 }
+/** An id the box uses for an actor (per_, agt_, spc_ ...): never shown to a person as a name. */
+export const isRawId = (/** @type {unknown} */ n) => typeof n === "string" && /^[a-z]{2,4}_[a-z0-9]{10,}$/.test(n);
+
+/** Kernel events a person reads as sentences. Anything else with only a raw event type is housekeeping and stays out of Recent. */
+const PLAIN = {
+  "owner.changed": (/** @type {any} */ w, /** @type {any} */ l) => ({ actor: "You", what: `became the owner of ${(l.record && spaceName(w, spaceOfUrnLoose(l.record))) || "this space"}` }),
+};
+/** Recent's line: a plain sentence with the real actor, or null for housekeeping (a raw event type with no sentence of its own). @param {World} w @param {any} l */
+export function plainLine(w, l) {
+  const raw = typeof l.what === "string" && /^[a-z_]+(\.[a-z_]+)+$/.test(l.what);
+  if (!raw) return l;
+  const f = /** @type {any} */ (PLAIN)[l.what];
+  return f ? { ...l, ...f(w, l) } : null;
+}
+
 /** How many tasks wait on the person across every space: the one badge the shell shows on Now. @param {World} w */
 export const nowCount = (w) => nowModel(w, "all").needs.length;
 

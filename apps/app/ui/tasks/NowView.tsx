@@ -4,7 +4,6 @@ import { Avatar, AvatarStack, type AvatarRef } from "../components/Avatar";
 import { Banner } from "../components/Banner";
 import { Button } from "../components/Button";
 import { Card, Divider } from "../components/Card";
-import { EmptyState } from "../components/States";
 import { Icon } from "../components/Icon";
 import { Row } from "../components/Row";
 import { Segmented } from "../components/Segmented";
@@ -110,7 +109,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
             ? <MoreRow label={`${hidden} more waiting`} onPress={() => onMore?.("needs")} />
             : <MoreRow label={moreNeeds ? "Show fewer" : `${hidden} more waiting`} up={moreNeeds} onPress={() => setMoreNeeds(!moreNeeds)} />) : null}
         </View>
-      ) : <Card><EmptyState title="Nothing needs you" body="Tasks that wait on you show up here." /></Card>}
+      ) : <Card><Row dense lead={<Icon name="check" size={20} tone="ok" />} title="Nothing needs you" sub="Tasks that wait on you show up here." /></Card>}
     </Section>
   );
 
