@@ -190,8 +190,8 @@ test("hooks: only POST /hooks/<open route>; everything else is a bare 404", asyn
 test("hooks: open and close need presence, refuse agents, guests and modules, and a route needs a scheme", async t => {
   const { ok, no, evts, p } = await registry(t);
   await no("hooks.open", NW, "cli", "presence_required", {});
-  await no("hooks.open", NW, "mcp:agent:kit", "denied");
-  await no("hooks.open", NW, "tailnet:agent:kit", "denied");
+  await no("hooks.open", NW, "mcp:agent:kit", "held_unavailable"); // an outward act by anyone but the person is held at the Gate, which is not wired yet: refused
+  await no("hooks.open", NW, "tailnet:agent:kit", "held_unavailable"); // an outward act by anyone but the person is held at the Gate, which is not wired yet: refused
   await no("hooks.open", NW, "tailnet-guest:sam@example.com", "denied");
   await no("hooks.open", NW, "module:watchers", "denied");
   await no("hooks.open", { name: "northwind-orders", verify: { secret: "northwind-orders-hook" } }, "cli", "bad_input");
@@ -214,7 +214,7 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   assert.deepEqual(evts("hook.opened").map(e => e.payload), [{ route: "northwind-orders", scheme: "hmac-sha256" }, { route: "harlow-forms", scheme: "github" }]);
 
   await no("hooks.close", { name: "northwind-orders" }, "cli", "presence_required", {});
-  await no("hooks.close", { name: "northwind-orders" }, "mcp:agent:kit", "denied");
+  await no("hooks.close", { name: "northwind-orders" }, "mcp:agent:kit", "held_unavailable");
   await no("hooks.close", { name: "northwind-orders" }, "tailnet-guest:sam@example.com", "denied");
   const closed = await ok("hooks.close", { name: "northwind-orders" });
   assert.equal(closed.funnel.close, "tailscale funnel --https=8443 --set-path=/hooks/northwind-orders off");
@@ -447,7 +447,7 @@ test("hooks: the secret appears in no log line, event, error, tool result, respo
   await push({ path: "/hooks/harlow-forms", headers: { "x-hub-signature-256": sign("github", SECRET, ORDER) } });
   for (const tool of ["hooks.list", "hooks.status"]) await r.ok(tool, {}, "cli", {});
   await r.no("hooks.open", { name: "northwind-orders", verify: NW.verify }, "cli", "conflict");
-  await r.no("hooks.open", NW, "mcp:agent:kit", "denied");
+  await r.no("hooks.open", NW, "mcp:agent:kit", "held_unavailable");
 
   const events = r.db.prepare("SELECT * FROM events").all().map(e => JSON.stringify(e)).join("\n");
   const cfgFile = fs.readFileSync(r.p.config, "utf8");
