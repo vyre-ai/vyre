@@ -245,6 +245,10 @@
         "reach": "modules"
       },
       {
+        "name": "wink.server.owned",
+        "reach": "modules"
+      },
+      {
         "name": "wink.peer.allow",
         "reach": "modules"
       },

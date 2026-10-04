@@ -29,7 +29,7 @@ export function request(method, path, payload, { root, caller = "cli", timeout =
     // A caller in a bound session says which one, with the key its SessionStart hook was given.
     const bound = session && session.id && session.key ? { "x-vyre-session": session.id, "x-vyre-session-key": session.key } : {};
     // The command line's sign-in (`vyre signin`): its credential rides on the CLI's own calls to its own home. The daemon honours it only from the terminal login it was made for.
-    const cliToken = caller === "cli" && !socket && !headers.authorization ? readSession(root) : null;
+    const cliToken = /^cli$/.test(caller) && !socket && !headers.authorization ? readSession(root) : null;
     const signedIn = cliToken ? { authorization: `Vyre ${cliToken}` } : {};
     const req = http.request({ socketPath, path, method, timeout, agent: false,
       headers: { ...headers, ...signedIn, "content-type": "application/json", "x-vyre-caller": caller, ...key, ...bound, ...(data ? { "content-length": Buffer.byteLength(data) } : {}) } }, res => {

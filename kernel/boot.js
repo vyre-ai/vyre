@@ -44,6 +44,10 @@ export async function bootKernel(cfg) {
   const log = createSqliteEventLog({ db, space: cfg.space, clock: cfg.clock });
   // The record store is the home's SQLite unless the caller brings the Space's own (the per-Space Twenty, records/space-store.js).
   const store = rest.store || createSqliteStore({ db, clock: cfg.clock });
+  // The task store for free text (kernel/tasks): the log carries only hashes of what a person or an assistant typed, the text lives here, and a scrub can empty it.
+  db.exec("CREATE TABLE IF NOT EXISTS kernel_task_texts (task TEXT PRIMARY KEY, text TEXT NOT NULL)");
+  const getT = db.prepare("SELECT text FROM kernel_task_texts WHERE task = ?"), putT = db.prepare("INSERT INTO kernel_task_texts (task, text) VALUES (?, ?) ON CONFLICT(task) DO UPDATE SET text = excluded.text"), delT = db.prepare("DELETE FROM kernel_task_texts WHERE task = ?");
+  const texts = { get: (/** @type {string} */ id) => { const r = /** @type {any} */ (getT.get(String(id))); try { return r ? JSON.parse(r.text) : undefined; } catch { return undefined; } }, set: (/** @type {string} */ id, /** @type {any} */ v) => { if (v === undefined) delT.run(String(id)); else putT.run(String(id), JSON.stringify(v)); }, drop: (/** @type {string} */ id) => { delT.run(String(id)); } };
   // The unit of work exists only where the record store and the log are the same database: the built-in store, not one the caller brought (Twenty).
-  return await createKernel({ ...rest, log, store, ...(rest.store ? {} : { unit: createUnit(db) }) });
+  return await createKernel({ ...rest, log, store, texts, ...(rest.store ? {} : { unit: createUnit(db) }) });
 }

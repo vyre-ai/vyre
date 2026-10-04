@@ -1018,6 +1018,16 @@ export function createPairing(o) {
         return d ? { paired: true, name: d.name } : { paired: false };
       },
     });
+    ctx.tool("wink.server.owned", {
+      internal: true,
+      description: "Does this server have an owner yet (a device paired and was confirmed)? Answers { owned: boolean }, nothing else. Asked by the onboarding module, which refuses every sign-in and name before it is true.",
+      input: obj(),
+      run: async (_, meta0 = {}) => {
+        const c = String((meta0 && meta0.caller) || "");
+        if (!c.startsWith("module:")) throw fail("denied", "this is for the server's own modules");
+        return { owned: Boolean(meta.get("owner") && meta.get("adopter")) };
+      },
+    });
     ctx.tool("wink.device.paired", {
       internal: true,
       description: "For the spaces module: is this device (of any kind) one of this identity's, still paired? Answers { paired, kind? }. Modules only, read only; it names no one else's devices.",
