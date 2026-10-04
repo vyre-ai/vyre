@@ -62,7 +62,7 @@ export function createSqliteStore(cfg) {
   const putAttrs = db.prepare("INSERT INTO kernel_attrs (urn, attrs) VALUES (?, ?) ON CONFLICT(urn) DO UPDATE SET attrs = excluded.attrs");
   const parse = (/** @type {any} */ r) => ({ type: r.type, id: r.id, version: r.version, data: JSON.parse(r.data), created_at: r.created_at, updated_at: r.updated_at, ...(r.deleted_at !== null && r.deleted_at !== undefined ? { deleted_at: r.deleted_at } : {}) });
   let changeCount = /** @type {any} */ (db.prepare("SELECT COALESCE(MAX(seq), 0) AS n FROM kernel_changes").get()).n;
-  const indexed = new Set(/** @type {any[]} */ (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'kidx_%'").all()).map(r => r.name));
+  const indexed = new Set(/** @type {any[]} */ (db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND (name LIKE 'kidx_%' OR name LIKE 'kg_%' OR name LIKE 'kq_%')").all()).map(r => r.name));
 
   /** @param {string} type @returns {import("./memory.js").Table} */
   /** @type {Map<string, any>[]} every type's hot rows, for `stats` */ const caches = [];
@@ -220,7 +220,10 @@ export function createSqliteStore(cfg) {
         const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
         if (!plan) { counts.fell++; return null; }
         counts.pushed++; counts.agg++;
-        const got = /** @type {any[]} */ (db.prepare(plan.sql).all(...plan.args));
+        if (plan.index && !indexed.has(plan.index.name) && indexed.size < MAX_INDEXES) { db.exec(plan.index.sql); indexed.add(plan.index.name); }
+        // Without table statistics SQLite prefers the primary key to the covering index; the index was made for exactly this grouping, so it is named.
+        const sql = plan.index && indexed.has(plan.index.name) ? plan.sql.replace("FROM kernel_records WHERE", `FROM kernel_records INDEXED BY ${plan.index.name} WHERE`) : plan.sql;
+        const got = /** @type {any[]} */ (db.prepare(sql).all(...plan.args));
         return got.map(row => ({
           group: Object.fromEntries(plan.groups.map((g, k) => [g.field, row[`g${k}`] === null || row[`g${k}`] === undefined ? null : g.bool ? row[`g${k}`] === 1 : row[`g${k}`]])),
           values: Object.fromEntries(plan.measures.map((m, k) => [m.name, row[`m${k}`] === undefined ? null : row[`m${k}`]])),

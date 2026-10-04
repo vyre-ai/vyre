@@ -51,36 +51,37 @@ function bindFor(info, v) {
 
 /**
  * @param {any} f the filter @param {any} def @param {(field: string) => boolean} ascii whether a text field is known to hold ASCII only
- * @param {any[]} args collects the bound values, in order @returns {string}
+ * @param {any[]} args collects the bound values, in order
+ * @param {boolean} [pos] the filter is in a position where NULL and false are the same (not under a NOT), so a comparison is left bare and an index on the field can serve it @returns {string}
  */
-function filterSql(f, def, ascii, args) {
+function filterSql(f, def, ascii, args, pos = false) {
   if (!f) return "1";
-  if (f.and) return f.and.length ? `(${f.and.map((/** @type {any} */ x) => filterSql(x, def, ascii, args)).join(" AND ")})` : "1";
-  if (f.or) return f.or.length ? `(${f.or.map((/** @type {any} */ x) => filterSql(x, def, ascii, args)).join(" OR ")})` : "0";
-  if (f.not) return `(NOT ${filterSql(f.not, def, ascii, args)})`;
+  if (f.and) return f.and.length ? `(${f.and.map((/** @type {any} */ x) => filterSql(x, def, ascii, args, pos)).join(" AND ")})` : "1";
+  if (f.or) return f.or.length ? `(${f.or.map((/** @type {any} */ x) => filterSql(x, def, ascii, args, pos)).join(" OR ")})` : "0";
+  if (f.not) return `(NOT ${filterSql(f.not, def, ascii, args, false)})`;
   const info = typeof f.field === "string" ? fieldInfo(def, f.field) : null;
   if (!info) no();
   const textOrd = info.cls === "string" && !info.col; // ordered comparison of text needs the ASCII guarantee
   const needAscii = () => { if (info.cls === "string" && !(info.col === "id" || ascii(info.name))) no(); };
-  const eqOf = (/** @type {any} */ v) => {
+  const eqOf = (/** @type {any} */ v, p = pos) => {
     if (v === null || v === undefined) { if (info.cls === "array") no(); return `(${info.expr} IS NULL)`; }
     if (info.cls === "object" || info.cls === "array") no();
     // a value of another kind is never equal to what the field holds
     const ok = (info.cls === "string" && typeof v === "string") || ((info.cls === "number" || info.cls === "int") && typeof v === "number") || (info.cls === "boolean" && typeof v === "boolean");
     if (!ok) { if (typeof v === "object") no(); return "0"; }
     args.push(bindFor(info, v));
-    return `COALESCE(${info.expr} = ?, 0)`;
+    return p ? `${info.expr} = ?` : `COALESCE(${info.expr} = ?, 0)`;
   };
   switch (f.op) {
     case "eq": return eqOf(f.value);
-    case "ne": return `(NOT ${eqOf(f.value)})`;
+    case "ne": return `(NOT ${eqOf(f.value, false)})`;
     case "is_null": if (info.cls === "array") no(); return `(${info.expr} IS NULL)`;
     case "lt": case "lte": case "gt": case "gte": {
       if (info.cls === "object" || info.cls === "array") no();
       if (f.value === null || f.value === undefined) return f.op === "gt" || f.op === "gte" ? `(${info.expr} IS NOT NULL)` : "0";
       needAscii();
       args.push(bindFor(info, f.value));
-      return `COALESCE(${info.expr} ${{ lt: "<", lte: "<=", gt: ">", gte: ">=" }[/** @type {"lt"} */ (f.op)]} ?, 0)`;
+      { const cmp = `${info.expr} ${{ lt: "<", lte: "<=", gt: ">", gte: ">=" }[/** @type {"lt"} */ (f.op)]} ?`; return pos ? cmp : `COALESCE(${cmp}, 0)`; }
     }
     case "in": {
       if (!Array.isArray(f.value)) return "0";
@@ -96,7 +97,7 @@ function filterSql(f, def, ascii, args) {
       const parts = [];
       if (vals.length) { parts.push(`${info.expr} IN (${vals.map(() => "?").join(", ")})`); args.push(...vals); }
       if (withNull) parts.push(`${info.expr} IS NULL`);
-      return parts.length ? `COALESCE(${parts.join(" OR ")}, 0)` : "0";
+      return parts.length ? (pos ? `(${parts.join(" OR ")})` : `COALESCE(${parts.join(" OR ")}, 0)`) : "0";
     }
     case "contains": {
       if (info.cls === "array") { if (typeof f.value !== "string") no(); args.push(f.value); return `EXISTS (SELECT 1 FROM json_each(data, '$.${info.name}') WHERE json_each.value = ?)`; }
@@ -122,7 +123,7 @@ export function planPage(q) {
     /** @type {any[]} */ const args = [];
     const where = [`type = '${type}'`];
     if (!spec.include_deleted) where.push("deleted_at IS NULL");
-    where.push(filterSql(spec.filter, def, q.ascii, args));
+    where.push(filterSql(spec.filter, def, q.ascii, args, true));
     // order: per key, how SQL reads it
     const order = keys.map((/** @type {any} */ k) => {
       const info = typeof k.field === "string" ? fieldInfo(def, k.field) : null;
@@ -187,7 +188,7 @@ export function planAggregate(q) {
   if (!TYPE_NAME.test(type) || !def || !Array.isArray(spec.measures)) return null;
   try {
     /** @type {any[]} */ const args = [];
-    const where = [`type = '${type}'`, "deleted_at IS NULL", filterSql(spec.filter, def, q.ascii, args)];
+    const where = [`type = '${type}'`, "deleted_at IS NULL", filterSql(spec.filter, def, q.ascii, args, true)];
     const gInfo = (spec.group_by || []).map((/** @type {any} */ f) => { const i = typeof f === "string" ? fieldInfo(def, f) : null; if (!i || i.cls === "object" || i.cls === "array") no(); return i; });
     const select = [], measures = [];
     gInfo.forEach((/** @type {any} */ i, /** @type {number} */ k) => select.push(`${i.expr} AS g${k}`));
@@ -206,7 +207,11 @@ export function planAggregate(q) {
     });
     if (!select.length) no();
     const sql = `SELECT ${select.join(", ")} FROM kernel_records WHERE ${where.join(" AND ")}${gInfo.length ? ` GROUP BY ${gInfo.map((/** @type {any} */ i) => i.expr).join(", ")}` : ""}`;
-    return { sql, args, groups: gInfo.map((/** @type {any} */ i, /** @type {number} */ k) => ({ field: spec.group_by[k], bool: i.cls === "boolean" })), measures };
+    // An unfiltered grouping reads only its group and measure fields, so an index holding exactly those (over the live rows of the type) answers it without touching a row.
+    const cols = [...new Set([...gInfo.map((/** @type {any} */ i) => i.expr), ...spec.measures.filter((/** @type {any} */ m) => m.field).map((/** @type {any} */ m) => { const i = fieldInfo(def, m.field); return i && !i.col ? i.expr : null; })])];
+    const index = !spec.filter && gInfo.length && !cols.includes(null) && cols.length <= 4 && gInfo.every((/** @type {any} */ i) => !i.col)
+      ? { name: `kg_${type}_${createHash("sha1").update(cols.join("|")).digest("hex").slice(0, 10)}`, sql: `CREATE INDEX IF NOT EXISTS kg_${type}_${createHash("sha1").update(cols.join("|")).digest("hex").slice(0, 10)} ON kernel_records (${cols.join(", ")}) WHERE type = '${type}' AND deleted_at IS NULL` } : null;
+    return { sql, args, index, groups: gInfo.map((/** @type {any} */ i, /** @type {number} */ k) => ({ field: spec.group_by[k], bool: i.cls === "boolean" })), measures };
   } catch (e) {
     if (e instanceof NotPushable) return null;
     throw e;
