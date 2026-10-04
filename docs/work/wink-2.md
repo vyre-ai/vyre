@@ -39,3 +39,14 @@ A paired session is renewed, not re-paired. (a) A device that lapsed and still h
 - host-here on a dev-kind pair: set `VYRE_SEAL_SOFTWARE=1` on the first machine's daemon; `spaces.create` with the server as home then signs host-here's tool proof (tool `spaces.host-here`, input `{ name, id? }`) with the computer's device key, which the server enrolled at pairing. RC1 accepts the registry's tool-proof for host-here (the kernel does not gate it); a kernel op for hosting a space, so the proof is kernel-checked with the nested hash like grants.*, is the right end state and is NOT DONE (platform, after HA-1 and the rehearsal).
 - The server rule (a release-kind server accepts a presence proof only from a key it enrolled as hardware) is vault's and platform's: the verifier and the registry's presence option. Not mine, not done here.
 - PW-2: the remote client checks a challenge (call, space, hash of the arguments it sent, home when known, and op/fields/payload_hash for a grants call) before signing. PW-3: 8 live challenges per device. PW-4: only a proof and its challenge travel as options, and the server appends the proof as its own trailing option. PW-5: sign-in is triggered by the code `person_session_required`, at most 3 a minute per server.
+
+
+## PS-A and pairing, 4 Oct (after the restart)
+- `stream.open-peer` re-asks access before every batch of frames (one ask serves every frame queued while it ran); a refusal ends the stream with `access_ended`; roles refresh from the re-check. A reset frame is flushed before the close. core/stream/peer-open.test.js (4), test/wink.test.js (web software session, ninth open).
+- A computer's pairing sends `owner.pin` (identityPin seam, from `spaces.identity.self`).
+- Open: walker's pairing hang. `wink.pair.server` steps are bounded at 20 s and named; the stuck step is not known until walker's fresh-homes rerun names it.
+
+## Next (paused by the lead, 4 Oct)
+- Full test/wink.test.js run on 59678f38e was still going on testbox4 (/tmp/w2-d.out); read its summary first. Everything else on 59678f38e passed: core/stream, daemon-smoke, kernel/boot, peer-door (203 pass, 0 fail), pairing.test.js 80/80.
+- Pairing hang: walker could not reproduce it on a fresh state (trunk 6368a11c0), so it was leftover state in the old first-machine home or specific to spaces 1f9b1945f. Nothing to fix until windows names a branch where it recurs.
+- Review the stream half of tailnet's merge of wink-rc1 with devbox 9f7e91594 in core/daemon/peer-door.js (dispatchFor(peerStream), openByDevice, watchers, events.on must survive next to the invitee block).
