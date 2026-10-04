@@ -104,7 +104,8 @@ export function roleBuckets(role, platform = process.platform) {
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 /** Who may call a tool (ADR 0047), and what an outward tool does as the person. */
 const REACHES = ["anyone", "asked", "person", "modules", "hook"];
-const OUTWARD = ["send", "post", "pay", "delete"];
+const OUTWARD = ["send", "post", "pay", "delete"]; // `outward: true` is the plain mark (one yes): leaves Vyre and reaches someone outside your spaces and devices; a word names the Gate kind
+
 
 /**
  * The SDK's added-module check, as a load reads it: the graces applied first, so only the 1.0
@@ -213,7 +214,7 @@ export function validate(m, { firstParty = false } = {}) {
     if (!TOOL.test(t)) out.push(`tool "${t}" must look like module.verb`);
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
-    if (typeof e === "object" && e.outward !== undefined && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")}`);
+    if (typeof e === "object" && e.outward !== undefined && e.outward !== true && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")} (or true)`);
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -1027,6 +1028,8 @@ export class Registry {
         // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+        // Is this tool marked `outward` in its module.json? The one place the outward moment is decided (internal tools included).
+        isOutward: name => Boolean((this.tools.get(String(name)) || {}).outward),
       },
       // The box's keys held by vyre-core (lib/vyre-core-keys.js), for the relay module alone: its dh
       // and signature would let any module that held them speak as the box. Null where core has none.
@@ -1074,6 +1077,8 @@ export class Registry {
         // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
         // what a surface can run (commands.list), never for deciding a call: the registry does that.
         tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+        // Is this tool marked `outward` in its module.json? The one place the outward moment is decided (internal tools included).
+        isOutward: name => Boolean((this.tools.get(String(name)) || {}).outward),
       },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
@@ -1224,7 +1229,9 @@ export class Registry {
       // (reviews/platform.md CR-H1): an outward tool runs only from the person's own surface or
       // device, and an asked tool never runs for a model, the harness or a module, since nothing
       // here can yet tell that the person's own words asked for it.
-      if ((def.outward || agentAskFirst(tool, caller)) && !isPerson(caller)) {
+      // The plain mark `outward: true` is what the one-yes moment reads (isOutward); a tool so marked keeps its own held flow for an agent (publish's requests, github's asked, apps.send's proof,
+      // vault's Gate sender), which this fail-closed stand-in would pre-empt. Only the older kind words (send, post, pay, delete) are held here.
+      if (((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, caller)) && !isPerson(caller)) {
         // What a held act will carry: any `{{field:...}}` the assistant put in its input is resolved NOW, for the person the turn is for, so a value they cannot read refuses the action
         // before anything is held, and the approver is shown which fields (names only here, never the values) will be filled in and which sealed ones the door will merge at the send.
         /** @type {any} */ let held = {};

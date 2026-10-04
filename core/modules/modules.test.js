@@ -664,6 +664,7 @@ const bakeryV1 = () => ({
     { name: "bakery.orders", summary: "list today's orders" },
     { name: "bakery.target", summary: "change the daily target", reach: "asked" },
     { name: "bakery.flour", summary: "order flour", outward: "pay" },
+    { name: "bakery.mailout", summary: "email the day's orders to the supplier", outward: true },
     { name: "bakery.sync", summary: "for other modules", reach: "modules" },
     { name: "bakery.hook", summary: "the till's webhook", reach: "hook" },
   ] },
@@ -673,7 +674,7 @@ const bakeryV1 = () => ({
 /** The same shape as one of Vyre's own, which alone may keep a person reach tool. */
 const bakeryBuiltIn = () => { const m = bakeryV1(); m.does.tools.push({ name: "bakery.own", summary: "the person's own", reach: "person" }); return m; };
 const bakerySrc = `export default { async start(ctx) {
-  for (const name of ctx.name === "bakery" ? ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", ...(globalThis.__bakeryOwn ? ["bakery.own"] : [])] : []) {
+  for (const name of ctx.name === "bakery" ? ["bakery.orders", "bakery.target", "bakery.flour", "bakery.mailout", "bakery.sync", "bakery.hook", ...(globalThis.__bakeryOwn ? ["bakery.own"] : [])] : []) {
     ctx.tool(name, { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
   }
   return { async stop() {} };
@@ -734,7 +735,9 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   t.after(() => { delete /** @type {any} */ (globalThis).__bakeryOwn; });
   const reg = await registry(t, [["bakery", bakeryBuiltIn(), bakerySrc], ["notes", good, notesSrc]], { builtIn: true });
   assert.equal(reg.modules.get("bakery").state, "running", reg.modules.get("bakery").error);
-  for (const n of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", "bakery.own"]) assert.ok(reg.tools.has(n), n);
+  for (const n of ["bakery.orders", "bakery.target", "bakery.flour", "bakery.mailout", "bakery.sync", "bakery.hook", "bakery.own"]) assert.ok(reg.tools.has(n), n);
+  // One yes: the outward moment is any tool marked `outward` in its module.json (true or a kind word), read from one place.
+  assert.deepEqual(["bakery.mailout", "bakery.flour", "bakery.orders", "bakery.nothing"].map(n => reg.tools.get(n) ? Boolean(reg.tools.get(n).outward) : false), [true, true, false, false]);
   assert.deepEqual(await reg.call("bakery.orders", {}, "mcp"), { data: { ran: "bakery.orders", caller: "mcp" } });
   // CR-H1: asked never runs for a model, the harness or a module until the P17 wiring lands.
   assert.equal((await reg.call("bakery.target", {}, "cli")).data.ran, "bakery.target");

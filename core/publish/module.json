@@ -15,7 +15,7 @@
         "projectArg": "project"
       },
       {
-        "name": "publish.preview",
+        "name": "publish.preview", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
@@ -31,35 +31,35 @@
         "reach": "anyone", "effect": "read"
       },
       {
-        "name": "publish.approve",
+        "name": "publish.approve", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.publish",
+        "name": "publish.publish", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.rollback",
+        "name": "publish.rollback", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.domain.add",
+        "name": "publish.domain.add", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.domain.verify",
+        "name": "publish.domain.verify", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.secret.grant",
+        "name": "publish.secret.grant", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.secret.revoke",
+        "name": "publish.secret.revoke", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
-        "name": "publish.edge",
+        "name": "publish.edge", "outward": true,
         "reach": "anyone", "effect": "write"
       },
       {
@@ -67,15 +67,15 @@
         "reach": "anyone", "effect": "read"
       },
       {
-        "name": "publish.decide",
+        "name": "publish.decide", "outward": true,
         "reach": "person", "effect": "write"
       },
       {
-        "name": "publish.retire",
+        "name": "publish.retire", "outward": true,
         "reach": "person", "effect": "write"
       },
       {
-        "name": "publish.domain.remove",
+        "name": "publish.domain.remove", "outward": true,
         "reach": "person", "effect": "write"
       }
     ]

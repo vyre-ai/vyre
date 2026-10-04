@@ -213,10 +213,12 @@ export default {
     /** A device the owner declined cannot ask again for 10 minutes. @type {Map<string, number>} */
     const refusedUntil = new Map();
     /** What a card may ask for, by moment (the phone shows exactly what yes() will be asked about): the op's shape and plain fields only. */
-    const CARD_OPS = { pair: /^(wink|presence)\.[a-z0-9.-]{1,60}$/, vault: /^vault\.[a-z0-9.-]{1,60}$/, outward: /^[a-z][a-z0-9]*\.(send|post|pay|publish|reply|forward)[a-z0-9.-]{0,40}$/ };
+    const CARD_OPS = { pair: /^(wink|presence)\.[a-z0-9.-]{1,60}$/, vault: /^vault\.[a-z0-9.-]{1,60}$/, outward: /^[a-z][a-z0-9]*\.[a-z0-9.-]{1,60}$/ };
+    /** The outward moment is any tool marked `outward: true` in its module.json (the registry's flag), not a verb pattern. */
+    const isOutwardOp = (/** @type {string} */ op) => { try { return Boolean(ctx.modules && typeof ctx.modules.isOutward === "function" && ctx.modules.isOutward(op)); } catch { return false; } };
     /** @param {string} moment @param {any} request @returns {{ op: string, fields: Record<string, string | number | boolean> } | null} */
     const cardRequest = (moment, request) => {
-      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string" || !CARD_OPS[/** @type {"pair"} */ (moment)] || !CARD_OPS[/** @type {"pair"} */ (moment)].test(request.op)) return null;
+      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string" || !CARD_OPS[/** @type {"pair"} */ (moment)] || !CARD_OPS[/** @type {"pair"} */ (moment)].test(request.op) || (moment === "outward" && !isOutwardOp(request.op))) return null;
       const f = request.fields && typeof request.fields === "object" && !Array.isArray(request.fields) ? request.fields : {};
       const keys = Object.keys(f);
       if (keys.length > 12) return null;

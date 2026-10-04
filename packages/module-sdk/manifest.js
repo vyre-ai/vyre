@@ -162,7 +162,7 @@ export function checkManifestFull(m, { firstParty = false, contract } = {}) {
   }
   // Every module, built in or added: only a person or an asking agent can start an outward tool.
   for (const t of entries) {
-    if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
+    if (TYPES.object(t) && typeof t.name === "string" && t.outward !== undefined && t.outward !== true && !OUTWARD_REACH.includes(t.reach || "anyone")) out.push(`tool "${t.name}": an outward tool must have reach "anyone" or "asked", not "${t.reach}"`);
   }
   // An added module (ADR 0047): everything the install card shows is declared, and nothing reaches
   // past what a sandboxed host can offer in 0.2.

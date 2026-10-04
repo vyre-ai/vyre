@@ -242,7 +242,7 @@
     "reach": "person"
    },
    {
-    "name": "spaces.members.transfer", "effect": "write",
+    "name": "spaces.members.transfer", "outward": true, "effect": "write",
     "reach": "person"
    },
    {
