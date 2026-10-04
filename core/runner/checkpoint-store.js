@@ -16,7 +16,7 @@
 //   - Capped. At most `sessionBytes` per session in all (files, versions, transcript, records) and `fileBytes` per file: over the cap the
 //     write is refused with code "quota" before anything is written. A full disk is "storage_full", also before anything is left behind.
 //   - Authorized per call, as the session's chain: the chain must be this Space's and `authorize` must allow
-//     checkpoint.write (put) or checkpoint.read (get) on vyre://<space>/session/<id>. Anything else is "not_found".
+//     checkpoint.write (put) or checkpoint.read (get) on vyre://<space>/checkpoint/<id> (its own resource type, not `session`: sessions are owner-scoped for reads). Anything else is "not_found".
 //   - A history cannot fork: lines already inside a committed checkpoint are never replaced; a second machine that resumed from checkpoint
 //     N replaces the uncommitted lines after N, and a machine that still believes in an older turn is refused ("stale").
 
@@ -67,7 +67,7 @@ export function createCheckpointStore(o) {
     if (!SESSION.test(String(session)) || !chain || chain.space !== o.space) throw err("not_found", "not found");
     // Only a session's own chain: an assistant acting for the person (an agent hop entered from a surface, with no session of its own) never reaches a session's history.
     for (const h of chain.hops || []) if (h.actor && h.actor.kind === "agent" && !(h.via && typeof h.via.session === "string" && h.via.session)) throw err("not_found", "not found");
-    const r = await o.authorize({ chain, action, resource: `vyre://${o.space}/session/${session}` });
+    const r = await o.authorize({ chain, action, resource: `vyre://${o.space}/checkpoint/${session}` });
     if (!r || r.effect !== "allow") throw err("not_found", "not found");
   };
 
