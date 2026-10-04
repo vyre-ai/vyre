@@ -3,6 +3,7 @@
 // person's hand edit applies, a bad one is named and kept out, one that widens what Claude may do
 // waits for the person, a broken file is kept aside, and a session can't touch it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -2,6 +2,7 @@
 // The stream module inside a real Registry: switchboard events in, frames out over the ticketed
 // WebSocket at /v1/streams/stream/session, with the same one-use ticket rules as term and Glass.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

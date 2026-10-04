@@ -1,6 +1,7 @@
 // @ts-check
 // The local stand-in for the names directory (scripts/standin-directory.mjs): started as a real process on a loopback port, a real identity is claimed over real HTTP with the
 // production client and identity code, resolves, and a second claim of the same name is refused. Nothing here touches vyre.run.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

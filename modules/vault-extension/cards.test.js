@@ -5,6 +5,7 @@
 // proof gets the reprompt answer; and inline.js over a fake DOM, acting only on trusted events.
 // No browser runs.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

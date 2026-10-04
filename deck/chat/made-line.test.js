@@ -1,6 +1,7 @@
 // @ts-check
 // "@design" made a teammate a moment ago: the handoff card says so and offers Undo until a reply lands.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $ } from "../test/fake-dom.js";

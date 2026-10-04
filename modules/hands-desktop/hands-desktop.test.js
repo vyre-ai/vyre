@@ -5,6 +5,7 @@
 // what is faked here is computerd, not the accessibility tree logic: snapshot.js, selector.js,
 // verify.js and act.js run for real against whatever computerd answers.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

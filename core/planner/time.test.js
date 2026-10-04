@@ -3,6 +3,7 @@
 // (08 Mar 02:00 skips to 03:00, 01 Nov 02:00 goes back to 01:00) and London across its own
 // (29 Mar, 25 Oct).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { toUTC, localParts, offset, nextOccurrence, checkRepeat, parseDate, parseWall } from "./time.js";

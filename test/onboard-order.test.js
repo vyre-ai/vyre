@@ -3,6 +3,7 @@
 // owner, the person's own session (with their presence) signs the AI account in and the status says connected; a model, another module or a second person (an agent) can do none of it.
 // Not covered here: the device pairing exchange itself (core/wink/pairing.test.js) and the owner's session from signin.dev on a dev-kind box (a stand-in): the owner is marked by the
 // tailnet owner flag the module also honours (network.ownerSeen), and the presence is the test stand-in (test/helpers present).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

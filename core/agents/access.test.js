@@ -5,6 +5,7 @@
 // agents.projects and projects.access never drift apart. Real daemon, real modules: this is an
 // integration point across two modules, not one to fake.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -106,6 +107,6 @@ test("HD-9: a session or an agent cannot use agents.ask to reach an agent that s
   for (const [agent, meta] of [["juno", { thread: "t-plain" }], ["juno", { thread: "t-kit", agent: "kit", agentKind: "agent", granted: ["harlow-legal"] }], ["wide", { thread: "t-kit", agent: "kit", agentKind: "agent", granted: ["harlow-legal"] }]]) {
     const r = await ask(agent, meta);
     assert.equal(r.error && r.error.code, "denied", `${agent} from ${JSON.stringify(meta)}: ${JSON.stringify(r)}`);
-    assert.match(String(r.error.message), /sees more|unidentified/);
+    assert.match(String(r.error.message), /sees more|unidentified|not available to mcp callers/);
   }
 });

@@ -6,6 +6,7 @@
 // how sure it is, or what a short word means there. Every test builds a world where the naive,
 // global answer is the wrong one for a room.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

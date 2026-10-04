@@ -1,5 +1,6 @@
 // The checkpoint store against the REAL kernel authorizer: the two actions are registered, no role reaches them, and a grant on one session's own urn
 // opens that session and no other (reviewer-2 RN-5).
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";
 import assert from "node:assert/strict";

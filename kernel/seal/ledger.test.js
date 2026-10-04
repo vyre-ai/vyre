@@ -1,6 +1,7 @@
 // @ts-check
 // Invariant 6: the seal ledger catches a value in every form a bug could carry it (a canary corpus of transformed values), refuses nothing
 // else, and holds no plaintext. Plus the class validators and the detectors, which are best effort and tested for what they must not flag.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Ledger, MAX_WINDOWS } from "./ledger.js";

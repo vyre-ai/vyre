@@ -2,6 +2,7 @@
 // The composer's rules, shared by the Deck and the phone: the draft's mode, mentions, history,
 // Enter, Esc, Shift+Tab, the key map and pasted images. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {

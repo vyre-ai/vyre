@@ -5,6 +5,7 @@
 // else; reads run, outward calls wait for the person; scope follows what vyred verified; servers
 // start lazily, stop when idle, and stop restarting when they keep crashing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

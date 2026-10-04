@@ -1,5 +1,6 @@
 // On Windows no session sandbox exists in 0.3, so an agent session gets no shell tool, or does not start (reviewer-2 ENG-1). Runs on every system with the platform
 // injected, and for real on a hosted Windows runner (a stand-in `claude.cmd` that prints the argv it was started with).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

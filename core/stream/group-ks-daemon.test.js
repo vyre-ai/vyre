@@ -1,6 +1,7 @@
 // @ts-check
 // A real vyred (kernel on): the stream is handed the sessions' kernel-session seam (calls on a thread's session and the restart's reopening), nobody else is, and it carries no way to
 // open a session or to read a token. Then the stream's own start asks the seam to reopen the open turns. Real daemon, no assistant (the end-to-end turn is group-ks-live.test.js).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";

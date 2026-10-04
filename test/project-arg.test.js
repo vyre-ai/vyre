@@ -3,6 +3,7 @@
 // checks the agent's grant once (core/modules/index.js). A new tool with a `project`, `projects` or `cwd` input and
 // no declaration is silently uncovered: this fails until it declares one, or is named below with the reason.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { harvest, manifests } from "../scripts/lib/docs/reference.js";

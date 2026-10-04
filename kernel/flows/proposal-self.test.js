@@ -1,4 +1,5 @@
 // reviewer-2 repro PR-3: a person with no checker writes a proposal task for themselves and completes it; onEvent applies it as the "approver" (the doer).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX, BOB } from "./testing/world.js";

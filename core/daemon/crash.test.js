@@ -1,6 +1,7 @@
 // @ts-check
 // An error nothing caught takes vyred down loudly: the stack is logged and the exit is non-zero,
 // so the supervisor restarts it. It is never swallowed.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

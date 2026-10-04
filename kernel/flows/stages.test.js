@@ -1,4 +1,5 @@
 // Stages made of tasks, on the real gateway and tasks.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";

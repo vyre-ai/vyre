@@ -1,4 +1,5 @@
 // A restricted caller whose grants are attribute equalities: the store counts and lists under the same predicate. (header from kq-fixes) (reviewer-2, 25f5ccb20), each with its attack: KQ-1 no grant on the type must not total it, KQ-2 the slow aggregate path is bounded, KQ-3 index slots cannot be squatted, KQ-4 a page limit is validated.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

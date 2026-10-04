@@ -4,6 +4,7 @@
 // block is plain text and is highlighted once it closes, and done renders the whole reply once.
 // The fake DOM; sample text only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $ } from "../test/fake-dom.js";

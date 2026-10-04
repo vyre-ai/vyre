@@ -2,6 +2,7 @@
 // The switchboard's CLI without a daemon: the SSE parser, the event formatter, and that
 // `vyre threads` resolves to the switchboard command while searches still reach the catalogue.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import threadsCmd, { parseSSE, formatEvent, catalogueCommand } from "./threads.js";

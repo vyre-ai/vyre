@@ -1,5 +1,6 @@
 // BL-2: the log anchor. The sealing process keeps the newest (seq, head) it was shown outside the database, forward only; each checkpoint advances it with a head just verified,
 // and a restart compares the log with it, which the checkpoints inside the log cannot do (they go back with the log).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -3,6 +3,7 @@
 // made-up GoHighLevel-style contacts/workflows API. The rule under test: the catalog holds shapes,
 // never a sample value.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { learn, templatePath, looksLikeId, shapeOf, mergeShape, authKind, mergeCatalog, buildCall, MAX_ENTRIES } from "./extension/shared/apilearn.js";

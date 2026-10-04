@@ -3,6 +3,7 @@
 // against core's keys, never its own presence_keys (which a model's shell can write on a Mac),
 // and refuses to enroll or remove a key itself.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -1,6 +1,7 @@
 // @ts-check
 // The emblem, the avatar card's content, which avatars nod, and the message details read from drawn rows.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

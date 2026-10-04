@@ -3,6 +3,7 @@
 // the relying party's own checks pass, a lookalike origin and a locked session are refused, two
 // accounts ask which, and no private key, challenge or user handle reaches an audit row.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

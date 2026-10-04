@@ -2,6 +2,7 @@
 // The session screen's reveal over chat's own pacer (deck/chat/core/pace.js), on plain numbers:
 // one frame clock for every streaming reply, seeded text not revealed again, the first token
 // named once, a finished reply drained at the pace, and even characters per frame.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";

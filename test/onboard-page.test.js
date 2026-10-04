@@ -4,6 +4,7 @@
 // driven over the DevTools protocol. test/onboard.test.js and test/journey.test.js call the tools
 // directly, which is how a Continue button that could never turn on went unnoticed.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

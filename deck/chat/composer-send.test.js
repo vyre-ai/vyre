@@ -2,6 +2,7 @@
 // Send gives feedback and never sends twice (#39): five fast presses are one message, the same words typed again while the first is
 // still being answered are held, and the row says "Sending…" until the box answers. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, text } from "../test/fake-dom.js";

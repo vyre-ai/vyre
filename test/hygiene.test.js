@@ -4,6 +4,7 @@
 // The forbidden words and the secret pattern live in scripts/lib/hygiene.js, shared with
 // scripts/docs-check, which holds the published docs to the same rules.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

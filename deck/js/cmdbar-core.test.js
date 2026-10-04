@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseQuery, score, choices, actionEntries, GROUP_ORDER } from "./cmdbar-core.js";
