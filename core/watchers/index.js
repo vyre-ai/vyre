@@ -30,6 +30,11 @@ let cachedWall = null;
 
 const str = { type: "string" };
 
+/** The person's own surfaces. A model reaches only what a tool lists beside them; a module hop is checked against the original caller by the registry. */
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+/** A model session (mcp) and the harness: the project-scoped tools below name them, since mustSee already limits a model to its granted projects. */
+const MODEL = ["mcp", "harness"];
+
 /** Deleting, running or resuming a watcher on demand is the person's (reach person); a duty is managed by the teammates module through watchers.duty.*, or by the person. */
 function owned(name, caller) {
   if (DUTY_NAME.test(String(name))) return dutyCaller(caller);
@@ -87,6 +92,8 @@ export default {
       run: async (i, meta = {}) => { const can = await scopeFor(meta, projectOfCwd, projectOfThread); const l = rt.list(); return { ...l, watchers: l.watchers.filter(w => can(w.project) && (!i.project || w.project === i.project)) }; },
     });
     ctx.tool("watchers.test", {
+      // A dry run executes the watcher's code in the sandbox (network, a granted credential, a model call) and records the run; a model dry-runs its own project's watchers before it asks to turn one on (the event input is the person's, checked below).
+      callers: [...PEOPLE, "module", ...MODEL],
       description: "Dry-run a watcher folder once, from since (default null), filing nothing. Returns the items it would emit and its logs, or what to fix. Required before watchers.create. For a watcher that runs on an event, event is a real event's payload to run it on (for hook.received, { route, id } from hooks.list); it must match the watcher's where.",
       input: { type: "object", required: ["name"], properties: { name: str, since: {}, event: { type: "object" } } },
       run: async ({ name, since = null, event = null }, meta = {}) => {
@@ -144,7 +151,7 @@ export default {
       // Reach "asked": for a model it runs only on the person's own words; it writes a draft and never turns it on.
       run: async (i, meta = {}) => { const c = await rt.createPreset(i); remember(meta, c); return c; },
     });
-    ctx.tool("watchers.pause", { description: "Stop a watcher running until it is resumed. The pause says who stopped it.", input: named,
+    ctx.tool("watchers.pause", { callers: [...PEOPLE, "module", ...MODEL], description: "Stop a watcher running until it is resumed. The pause says who stopped it.", input: named,
       run: async ({ name }, meta = {}) => { await mustSee(meta, name); const m = /** @type {any} */ (meta); return rt.pause(name, `paused by ${m.agent || m.caller || "someone"}`); } });
     ctx.tool("watchers.resume", { description: "Resume a paused watcher, clearing its failure count. The person's (or teammates' for a duty): an agent cannot undo a pause the person made.", input: { type: "object", required: ["name"], properties: { name: str, hash: str } }, run: async ({ name, hash }, { caller } = {}) => { owned(name, caller); return rt.resume(name, { hash: hash || null }); } });
     ctx.tool("watchers.logs", {

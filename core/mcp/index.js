@@ -92,6 +92,7 @@ export default {
     const who = (meta) => whoFrom(meta.caller, meta);
 
     ctx.tool("mcp.servers", {
+      effect: "read",
       description: "The MCP servers behind the hub that this caller may use: name, transport, state (stopped, starting, running, failed), how many tools, the last error, when last used, the auth type and vault item name, and the scope. Never a value.",
       input: obj({}),
       run: (_, meta) => hub.servers(who(meta)),
@@ -108,6 +109,7 @@ export default {
     };
 
     ctx.tool("mcp.add", {
+      effect: "write",
       description: "Add an MCP server: a name ([a-z][a-z0-9-], up to 32), a transport (stdio with command, args, cwd; http or sse with url), credentials as vault item names (auth { type: bearer | env | oauth | service-account, item }, env { VAR: item } for stdio), plain vars and headers that are not secret, a scope { projects, agents } (none means you and the assistant only; a named agent needs a scope that names it, or a #tag on its thread) and a tools policy { allow, deny, mode }. It then tries the server once to cache its tools; grant each vault item to mcp first, or run mcp.test after.",
       input: obj({ name: str, ...fields }, ["name", "transport"]),
       callers: PEOPLE,
@@ -115,6 +117,7 @@ export default {
     });
 
     ctx.tool("mcp.update", {
+      effect: "write",
       description: "Change an MCP server: any field of mcp.add. A new command, url or credential stops the running server and drops its cached tools.",
       input: obj({ name: str, ...fields }, ["name"]),
       callers: PEOPLE,
@@ -122,6 +125,7 @@ export default {
     });
 
     ctx.tool("mcp.remove", {
+      effect: "write",
       description: "Remove an MCP server. Its process stops; its vault items and grants are left as they are.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
@@ -129,6 +133,7 @@ export default {
     });
 
     ctx.tool("mcp.test", {
+      effect: "write",
       description: "Start an MCP server (or use the running one), list its tools and cache them. Says how long it took, and on failure the error and the last lines it wrote to stderr, scrubbed.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
@@ -136,6 +141,7 @@ export default {
     });
 
     ctx.tool("mcp.restart", {
+      effect: "write",
       description: "Stop an MCP server and start it again, clearing a failed state and its restart budget.",
       input: obj({ name: str }, ["name"]),
       callers: PEOPLE,
@@ -143,12 +149,15 @@ export default {
     });
 
     ctx.tool("mcp.tools", {
+      effect: "read",
       description: "The tools of every MCP server this caller may use, from the cache (nothing is started): name \"<server>__<tool>\", server, tool, description, input schema, and outward (true means a call is held at the Gate until the user approves it).",
       input: obj({}),
       run: (_, meta) => hub.tools(who(meta)),
     });
 
     ctx.tool("mcp.call", {
+      effect: "write",
+      callers: [...PEOPLE, "mcp", "harness"], // a model session may call; the hub scopes servers to the caller and holds anything outward at the Gate
       description: "Call a tool on an MCP server: { server, tool, arguments } or { name: \"<server>__<tool>\", arguments }. A read runs and returns the server's result. Anything else is held at the Gate and returns { held, message }: nothing reaches the server until the user approves it, so do not try it another way.",
       input: obj({ server: str, tool: str, name: str, arguments: { type: "object" },
         hold: { type: "boolean", description: "modules only: hold this call at the Gate even if the tool reads" },

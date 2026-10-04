@@ -923,15 +923,84 @@ export default {
       const known = await kv.get(`person-name/${id}`);
       return { name: typeof known === "string" && known ? `${known}.vyre.run` : null };
     }, { internal: true });
+    /** Is this id a device the box actually knows as the person's paired device? An ACTIVE relay_devices row of kind app (the table the relay trusts for `device:<id>` labels), or an active wink_devices row of that identity, or an entry on the identity's own list. Any other id (invented, removed, another person's) is not. */
+    const isPairedDevice = async (/** @type {string} */ device, /** @type {string | null} */ person) => {
+      try { if (db.prepare("SELECT 1 FROM relay_devices WHERE id = ? AND removed_at IS NULL AND kind = 'app'").get(device)) return true; } catch { /* no relay table */ }
+      try { if (person && db.prepare("SELECT 1 FROM wink_devices WHERE id = ? AND identity = ? AND removed_at IS NULL").get(device, person)) return true; } catch { /* no wink table */ }
+      try { const st = identity.status(); if (st && st.exists && (st.eid === device || (await idops.entries()).some((/** @type {any} */ e) => e.kind === "device" && e.eid === device))) return true; } catch { /* no identity */ }
+      return false;
+    };
+    /** The spaces a person belongs to right now, by the kernel (the home first). */
+    const kernelSpacesOf = async (/** @type {string} */ person) => {
+      const ids = [];
+      if (K && typeof K.membership === "function") {
+        if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
+        for (const row of spaces.all()) if (row.status === "done" && kernelHandle(row.id) && (await K.membership(person, row.id).catch(() => ({ member: false }))).member === true) ids.push(row.id);
+      }
+      return [...new Set(ids)];
+    };
+    const homePerson = () => { let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; } return who || (K && typeof K.owner === "string" ? K.owner : null); };
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
+        // The device argument comes from other modules and the kernel (internal is reach, not trust): only the shapes a device id has are looked up (a relay device id or an enrolment entry id).
+        if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(i.device))) return { enrolled: false };
+        // Only a device the box knows as this person's paired device is ever enrolled anywhere, with a list or without; an id in none of the tables answers false and writes nothing.
+        if (K && !(await isPairedDevice(String(i.device), homePerson()))) return { enrolled: false };
         let id = String(i.space);
-        try { id = spaceOf(i.space).id; } catch { /* not one of ours: the id as given */ }
-        return { enrolled: await isEnrolled(String(i.device), id) };
+        let known = true;
+        let rowStatus = "done";
+        try { const r0 = spaceOf(i.space); id = r0.id; rowStatus = r0.status; } catch { known = false; }
+        // A space this module has marked cancelled, or one still being made, is no space to be enrolled in.
+        if (known && rowStatus !== "done") return { enrolled: false };
+        // FAIL CLOSED: a space this module has no row for is enrolled only if the KERNEL hosts it (the home, or one it hosts) and the home's person belongs to it. "No list means every space" is
+        // every space the person BELONGS to, never an id nobody here has heard of.
+        if (!known) {
+          if (!K || typeof K.space !== "string") return { enrolled: false };
+          const hosted = id === K.space || (K.spaces && typeof K.spaces.hosts === "function" && K.spaces.hosts(id) === true);
+          if (!hosted) return { enrolled: false };
+          let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
+          const person = who || (typeof K.owner === "string" ? K.owner : null);
+          let member = false;
+          if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          if (!member) return { enrolled: false };
+        }
+        // Belonging is asked of the kernel NOW (a removed, expired, revoked member is not enrolled anywhere): for a space with a kernel, whoever this home's person is must be an active member.
+        if (known && K && kernelHandle(id)) {
+          let who = null; try { const st = identity.status(); who = st && st.exists ? st.id : null; } catch { who = null; }
+          const person = who || (typeof K.owner === "string" ? K.owner : null);
+          let member = false;
+          if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          if (!member) return { enrolled: false };
+        }
+        const deviceId = String(i.device);
+        // Migration by contact: a device that is asked about and has no explicit list yet gets one written NOW (the spaces its person belongs to at this moment), logged once. From then on a space the
+        // person joins later is not added to it by itself: "Add to this device" is the person's own tap.
+        if (known && (await enrolledList(deviceId)) === null && K && typeof K.membership === "function") {
+          try {
+            const person = homePerson();
+            if (person) {
+              const ids = await kernelSpacesOf(person);
+              await kv.put(`device-spaces/${deviceId}`, ids);
+              ctx.log.warn(`device ${deviceId} had no space list: now enrolled in ${ids.length} space(s) it belonged to at first contact`);
+            }
+          } catch { /* the answer below stands without a list */ }
+        }
+        return { enrolled: await isEnrolled(deviceId, id) };
       }, { internal: true });
 
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
+    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), async (_i, meta) => {
+      let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
+      if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
+        const mine = [];
+        for (const id of K.spaces.list()) {
+          const m = await membershipOf(id, K.owner, meta).catch(() => null);
+          if (!m) continue;
+          const d0 = typeof K.spaces.describe === "function" ? K.spaces.describe(id) : null;
+          mine.push({ id, name: d0 && d0.name ? `${String(d0.name).replace(/\.vyre\.run$/, "")}.vyre.run` : null, label: d0 && d0.name ? String(d0.name).replace(/\.vyre\.run$/, "") : null, displayName: null, status: "done", home: id === K.space ? { kind: "this-computer" } : null, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+        }
+        return mine;
+      }
       const s = me();
       const rows = [];
       for (const row of spaces.all()) rows.push({ row, m: await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null) });
@@ -1414,6 +1483,17 @@ export default {
           if (Array.isArray(list) && !list.includes(hid)) { await kv.put(String(r.key), [hid, ...list]); n++; }
         }
         if (n) (ctx.log.info || ctx.log.warn).call(ctx.log, `${n} device list(s) now include the home space (${hid})`);
+        // Paired devices with NO list (paired before per-space lists): an explicit list of the spaces the person belongs to now, once, logged with the count. After this no list means no device the box knows.
+        const person = homePerson();
+        if (person) {
+          let m = 0;
+          const ids = [];
+          try { for (const r of /** @type {any[]} */ (db.prepare("SELECT id FROM relay_devices WHERE removed_at IS NULL AND kind = 'app'").all())) ids.push(String(r.id)); } catch { /* no relay table */ }
+          try { for (const r of /** @type {any[]} */ (db.prepare("SELECT id FROM wink_devices WHERE identity = ? AND removed_at IS NULL").all(person))) ids.push(String(r.id)); } catch { /* no wink table */ }
+          const have = await kernelSpacesOf(person);
+          for (const dv of new Set(ids)) if ((await enrolledList(dv)) === null) { await kv.put(`device-spaces/${dv}`, have); m++; }
+          if (m) (ctx.log.info || ctx.log.warn).call(ctx.log, `${m} paired device(s) without a space list were given one at boot (${have.length} space(s) each)`);
+        }
       } catch (e) { ctx.log.warn(`the home space could not be added to the device lists: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     })();
     return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };

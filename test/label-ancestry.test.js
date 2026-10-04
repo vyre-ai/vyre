@@ -10,7 +10,8 @@ import { canReadPeers } from "../core/daemon/peer.js";
 
 const reg = { call: async () => ({ data: { pids: [], pgids: [], sids: [] } }), deps: {} };
 const k = { id: { owner: "per_" + "a".repeat(26) } };
-const LABELS = ["cli", "local", "deck", "mobile"];
+const LABELS = ["cli", "local"];
+const CLAIMS = ["deck", "mobile"];
 /** A fresh socket per measurement (asTaken caches per socket). */
 const measure = (/** @type {string} */ label, /** @type {any} */ result, /** @type {number | null} */ pid = 4242) => asTaken(label, /** @type {any} */ ({}), reg, undefined, { peerPid: async () => pid, processTable: () => new Map(), insideClaude: () => result, delayMs: 0 });
 const factsOf = (/** @type {string} */ label, /** @type {any} */ shell) => callerFacts(shell.caller, {}, null, k, false, null, { inside: shell.model === true, outside: shell.outside === true });
@@ -62,4 +63,20 @@ test("callerFacts needs outside: true as well as inside: false", () => {
     assert.equal(callerFacts(label, {}, null, k, false, null, { inside: false }), null);
     assert.equal(callerFacts(label, {}, null, k, false, null, { inside: false, outside: false }), null);
   }
+});
+
+test("a peer read that comes back empty is retried a few times and a late helper does not demote a real CLI; one that never answers says so, and logs once per connection (ND-1)", async () => {
+  if (!canReadPeers) return;
+  let n = 0; const lines = /** @type {string[]} */ ([]);
+  const logReg = { call: reg.call, deps: { log: (/** @type {string} */ m) => lines.push(m) } };
+  const sock = /** @type {any} */ ({});
+  // two empty reads, then the pid: the third attempt is definite and outside
+  const late = await asTaken("cli", sock, logReg, undefined, { peerPid: async () => (++n < 3 ? null : 4242), processTable: () => new Map(), insideClaude: () => ({ inside: false }), delayMs: 0, peerRetryMs: 0 });
+  assert.equal(late.model, false); assert.equal(late.outside, true); assert.equal(n, 3);
+  // a peer that never answers: demoted as before, flagged, and 1,000 calls on the one connection write one line
+  const dead = /** @type {any} */ ({});
+  let last;
+  for (let i = 0; i < 1000; i++) last = await asTaken("cli", dead, logReg, undefined, { peerPid: async () => null, processTable: () => new Map(), insideClaude: () => ({ inside: false }), delayMs: 0, peerRetryMs: 0 });
+  assert.equal(last.model, true); assert.equal(last.couldNotTell, true);
+  assert.equal(lines.filter(l => /ancestry: unknown/.test(l)).length, 1, "one line for the connection: " + lines.length);
 });
