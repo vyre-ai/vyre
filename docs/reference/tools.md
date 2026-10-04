@@ -10206,7 +10206,7 @@ With vault.relay.grants, whether the tailnet policy grants each pass holder vyre
 Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, missing a passkey the site offers, unprotected, expired or expiring. Names and reason codes only.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `tailnet`
 
 ### `vault.history`
 
@@ -10651,7 +10651,7 @@ Take an item away from a module, or from one of its watchers, in one project or 
   - `name` string, required
   - `project` string
   - `watcher` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `module`, `tailnet`
 
 ### `vault.rotate`
 
