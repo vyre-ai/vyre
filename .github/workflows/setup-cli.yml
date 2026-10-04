@@ -3,6 +3,7 @@ name: setup-cli
 on:
   workflow_dispatch:
   push:
+    branches: ["main", "work/v0.3", "work/launch-*", "work/spaces*"]
     paths: ["core/cli/commands/setup*", "core/cli/commands/up.js", "core/names/**", "names/worker/**", "test/setup-cli-names.test.js", ".github/workflows/setup-cli.yml"]
 permissions:
   contents: read
