@@ -404,8 +404,8 @@ Listens for: `floor.wrote`, `thread.deleted`
 | `presence.proved` | `caller`, `method`, `tool`; sometimes `strength` |
 | `presence.refused` | none; sometimes `caller`, `device`, `method`, `tool`, `why` |
 | `presence.removed` | `id` |
-| `presence.session-approved` | `device`, `id`, `strong` |
-| `presence.session-asked` | `device`, `id`, `label` |
+| `presence.session-approved` | `device`, `id` |
+| `presence.session-asked` | `device`, `id`, `line`, `moment` |
 | `presence.signed-in` | `id`, `node` |
 | `presence.signed-out` | none; sometimes `device`, `id` |
 

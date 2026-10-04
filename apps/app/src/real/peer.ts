@@ -60,9 +60,9 @@ export function renewSession(): Promise<boolean> {
       const pairing = await loadPairing();
       if (!pairing) throw Object.assign(new Error("not paired"), { code: "unreachable" });
       const { startPaired, channelCall } = await import("../auth/paired");
-      const { personKey } = await import("../auth/person.web");
+      const { pairedKey } = await import("../auth/paired-key");
       const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
-      try { await startPaired({ device: String(pairing.device), call: ch.call, privateKey: (await personKey()).privateKey, label: deviceName() }); } finally { ch.close(); }
+      try { const k = await pairedKey(); await startPaired({ device: String(pairing.device), call: ch.call, sign: k.sign, signEnclave: k.signEnclave, label: deviceName() }); } finally { ch.close(); }
       closePeer();
       return true;
     } catch (e) { notice.noteRenewFailed((e as { code?: string })?.code); return false; }

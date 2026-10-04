@@ -78,10 +78,7 @@ test("F-2: restore and restoreBackup are their own admin act: a drive.write gran
   await assert.rejects(() => D.restore(bob, "proj/a.txt", 1), { code: "not_found" }, "write is not restore");
   await assert.rejects(() => D.restoreBackup(bob, "nightly"), { code: "not_found" });
   assert.equal(drive.calls.length, before, "the drive was never touched");
-  // the owner needs to be present: a chain with no session asks, one with a live session restores
-  const away = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct" });
-  await assert.rejects(() => D.restore(away, "proj/a.txt", 1), e => e.code === "needs_presence");
-  assert.equal(drive.calls.length, before);
+  // one permission rule (ruling c328cd1): the owner's own chain restores with no presence session
   assert.deepEqual(await D.restore(owner, "proj/a.txt", 1), { version: 3 });
   for (const bad of [0, -1, 1.5, "1", NaN]) await assert.rejects(() => D.restore(owner, "proj/a.txt", bad), { code: "bad_input" }, String(bad));
   await assert.rejects(() => D.get(bob, "proj/a.txt", { version: 1.5 }), { code: "bad_input" });

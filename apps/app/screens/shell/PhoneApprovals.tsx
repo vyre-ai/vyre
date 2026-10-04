@@ -6,6 +6,7 @@ import { Button, Card, Divider, Row, Text, showToast } from "@vyre/ui";
 import { call } from "../../src/api/box";
 import { phoneSigner } from "../../src/real/phone-signer";
 import { proofHeader } from "../../src/real/approvals.js";
+import { howWord } from "../../src/real/on-phone.js";
 import { answerRefusal, approveCard, askedLine, cardsFrom, factLines, refuseCard, type Pending } from "../../src/real/phone-approve.js";
 
 const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => {
@@ -36,7 +37,7 @@ export function PhoneApprovals() {
       await approveCard(c, await phoneSigner(), ask, proofHeader, person);
       showToast("Approved.");
     }
-    catch (e) { showToast(answerRefusal((e as { code?: string }).code)); }
+    catch (e) { showToast(answerRefusal((e as { code?: string }).code, howWord(Platform.OS))); }
     finally { setBusy(""); load(); }
   };
   const no = async (c: Pending) => { setBusy(c.id); await refuseCard(c, ask).catch(() => {}); setBusy(""); load(); };

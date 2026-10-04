@@ -104,3 +104,14 @@ test("a device card is shown by the server's line and signs its `sign` exactly",
   await approveCard(c, { signPresence: async (r) => { signed.push(r); return { payload_hash: r.payload_hash }; } }, async () => ({}), () => "h", "per_1");
   assert.equal(signed[0].op, "task.vault_use"); assert.equal(signed[0].space, sign.space); assert.deepEqual(signed[0].fields, sign.fields);
 });
+
+test("the refusal lines name the method of this device: fingerprint on Android, never a hardcoded Face ID", async () => {
+  const { howWord } = await import("./on-phone.js");
+  assert.equal(howWord("android"), "fingerprint");
+  assert.equal(howWord("ios"), "Face ID or Touch ID");
+  assert.equal(howWord("web", false), "passkey");
+  assert.equal(howWord("web", true), "Touch ID");
+  assert.equal(answerRefusal("ERR_BIOMETRIC", howWord("android")), "Fingerprint did not work. Nothing was approved.");
+  assert.doesNotMatch(answerRefusal("ERR_KEY_INVALIDATED", howWord("android")), /Face ID/);
+  assert.match(answerRefusal("ERR_BIOMETRIC", howWord("ios")), /Face ID or Touch ID did not work/);
+});

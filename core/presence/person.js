@@ -20,6 +20,7 @@
 // session raises the bar from one curl to stealing a browser's store; presence proofs (a passkey
 // or Touch ID each time) stay the hard line for HUMAN_ONLY.
 
+import { normalizeStrength } from "./strengths.js";
 import crypto from "node:crypto";
 import { migrate } from "../store/index.js";
 import { MIGRATIONS } from "./index.js";
@@ -117,16 +118,16 @@ export class PersonSessions {
    * A new session on this node. `cookie` for the Deck at the box's address; `bearer` only
    * through exchange(), which binds the app's key.
    * `keyId` is the presence key whose proof opened it, so removing that key ends the session.
-   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean, software?: boolean, strength?: string|null, capMs?: number|null }} o
+   * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean, software?: boolean, strength?: string|null }} o
    */
-  start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false, software = false, strength = null, capMs = null }) {
+  start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false, software = false, strength = null }) {
     if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
     const now = this.now();
     this.prune();
     const id = b64url(12), secret = b64url(32);
     this.db.prepare("INSERT INTO presence_people (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software, strength) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, capMs ? now + capMs : paired && !(software && this.softwareCap) ? NEVER : now + MAX, keyId ? String(keyId) : null, paired ? 1 : 0, paired ? now : null, software ? 1 : 0, strength ? String(strength).slice(0, 40) : null);
-    return { id, secret, token: `${id}.${secret}`, expires: capMs ? Math.min(now + IDLE, now + capMs) : paired && !(software && this.softwareCap) ? now + IDLE : Math.min(now + IDLE, now + MAX) };
+      .run(id, hash(secret), kind, node, label ? String(label).slice(0, 80) : null, key ? JSON.stringify(key) : null, now, now, paired && !(software && this.softwareCap) ? NEVER : now + MAX, keyId ? String(keyId) : null, paired ? 1 : 0, paired ? now : null, software ? 1 : 0, strength ? String(strength).slice(0, 40) : null);
+    return { id, secret, token: `${id}.${secret}`, expires: paired && !(software && this.softwareCap) ? now + IDLE : Math.min(now + IDLE, now + MAX) };
   }
 
   /**
@@ -236,32 +237,32 @@ export class PersonSessions {
   }
 
   /**
-   * The strength of a live session, for a module that relays a paired device's act: one of STRENGTHS (core/presence/strengths.js: software, enclave, "enclave, unattested", passkey), or null when there is no such session. A row records its opening proof's strength (the `strength` column, startPaired's) and answers with that; an older paired row records none and reads as software (fail closed, so that device proves its key again), any other
+   * The strength of a live session, for a module that relays a paired device's act: one of STRENGTHS (core/presence/strengths.js: software or real), or null when there is no such session. A row records its opening proof's strength (the `strength` column, startPaired's) and answers with that; an older paired row records none and reads as software (fail closed, so that device proves its key again), any other
    * older row keeps its `software` flag. @param {string} id @returns {string|null}
    */
   strength(id) {
     const row = /** @type {any} */ (this.db.prepare("SELECT software, strength, paired FROM presence_people WHERE id = ?").get(String(id)));
     if (!row) return null;
-    if (typeof row.strength === "string" && row.strength) return row.strength;
+    if (typeof row.strength === "string" && row.strength) return normalizeStrength(row.strength);
     // No recorded strength: a paired device's session proved nothing about its key (fail closed); any other row keeps its flag.
-    return row.paired || row.software ? "software" : "enclave";
+    return row.paired || row.software ? "software" : "real";
   }
 
   /**
    * The pairing's one-use grant for a device. Written only by the pairing's owner-confirmed path
    * (the tool checks the caller and reads the pair record); a device with a live grant or a live
    * paired session is replaced, never stacked.
-   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean, strength?: string|null, capMs?: number|null }} o
+   * @param {{ device: string, keyId: string, deviceKey: any, software?: boolean, strength?: string|null }} o
    */
-  grant({ device, keyId, deviceKey, software = false, strength = null, capMs = null }) {
+  grant({ device, keyId, deviceKey, software = false, strength = null }) {
     if (!device || !keyId || !jwkOk(deviceKey)) throw Object.assign(new Error("a grant needs the device, the confirming key and the device's public key"), { code: "bad_input" });
     const now = this.now();
     this.prune();
     // Replace, never stack: whatever this device held before ends now.
     this.endDevice(device);
     const challenge = b64url(24);
-    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, software, created, expires, tries, strength, cap_ms) VALUES (?,?,?,?,?,?,?,0,?,?)")
-      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, software ? 1 : 0, now, now + GRANT_TTL, strength ? String(strength).slice(0, 40) : null, capMs ? Number(capMs) : null);
+    this.db.prepare("INSERT INTO presence_pair_grants (device, key_id, device_key, challenge, software, created, expires, tries, strength) VALUES (?,?,?,?,?,?,?,0,?)")
+      .run(String(device), String(keyId), JSON.stringify({ kty: "EC", crv: "P-256", x: deviceKey.x, y: deviceKey.y }), challenge, software ? 1 : 0, now, now + GRANT_TTL, strength ? String(strength).slice(0, 40) : null);
     return { expires: now + GRANT_TTL, challenge };
   }
 
@@ -317,7 +318,7 @@ export class PersonSessions {
         const pt = Buffer.from(String(enclaveKey), "base64url");
         if (pt.length === 65 && pt[0] === 4) {
           const pub = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: pt.subarray(1, 33).toString("base64url"), y: pt.subarray(33).toString("base64url") }, format: "jwk" });
-          if (crypto.verify("sha256", Buffer.from(pairedStart({ device: row.device, challenge: row.challenge })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(String(esig), "base64url"))) strength = "enclave, unattested";
+          if (crypto.verify("sha256", Buffer.from(pairedStart({ device: row.device, challenge: row.challenge })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(String(esig), "base64url"))) strength = "real";
         }
       } catch { /* not an enclave signature: software */ }
     }
@@ -327,7 +328,7 @@ export class PersonSessions {
     try {
       const gone = this.db.prepare("DELETE FROM presence_pair_grants WHERE device = ? AND tries = ?").run(row.device, row.tries);
       if (!Number(gone.changes)) { this.db.exec("ROLLBACK"); return { refused: true }; }
-      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: strength === "software", strength, capMs: row.cap_ms ? Number(row.cap_ms) : null });
+      s = this.start({ node: row.device, kind: "bearer", label, key: JSON.parse(row.device_key), keyId: row.key_id, paired: true, software: strength === "software", strength });
       this.db.exec("COMMIT");
     } catch (e) { try { this.db.exec("ROLLBACK"); } catch {} throw e; }
     return { id: s.id, token: s.token, expires: s.expires };

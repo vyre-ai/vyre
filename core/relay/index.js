@@ -310,7 +310,20 @@ export default {
     const stopLink = () => { link?.stop(); link = null; };
 
     /** Who may come in: a paired device, or a device holding the live pairing secret. */
+    /** @type {Map<string, { at: number, n: number }>} one line per reason per minute, with a count of the repeats (an outsider opening channels cannot flood the log) */
+    const refusals = new Map();
+    function refusedLog(/** @type {string} */ why) {
+      const t = now(), r = refusals.get(why);
+      if (r && t - r.at < 60_000) { r.n++; return; }
+      ctx.log(`relay: refused a hello (${why})${r && r.n ? `; ${r.n} more like it in the last minute` : ""}`);
+      refusals.set(why, { at: t, n: 0 });
+      if (refusals.size > 50) refusals.delete(refusals.keys().next().value);
+    }
     async function admit(pub, hello) {
+      try { return await admit0(pub, hello); }
+      catch (e) { refusedLog(String(/** @type {Error} */ (e).message || e).slice(0, 160)); throw e; }
+    }
+    async function admit0(pub, hello) {
       const id = deviceId(pub);
       // The setup page (tailnet plan 3.6b) is its own path: a hello that says "setup", or a device
       // the setup session already admitted, is checked against the setup code's key and nothing else.
@@ -1148,6 +1161,21 @@ export default {
         // a pairing still waiting for its confirm is let go the same way: its channels close and nothing was ever made
         const waited = pendingDrop(id, "removed");
         return { closed: forget(id, "removed") || waited, id };
+      },
+    });
+
+    ctx.tool("relay.devices.clear-leftover", {
+      description: "On a server nobody owns: let go of every paired device row left by a pairing that never completed ownership, so a new owner's pairing is not refused by them. Only the Wink module asks, and only while the server is unowned. Answers { cleared }.",
+      input: obj(),
+      run: async (_i, meta = {}) => {
+        if (meta.caller !== "module:wink") throw Object.assign(new Error("only the Wink module clears leftover devices"), { code: "denied" });
+        // the relay asks for itself: a server that is owned never lets go of anything here
+        const st = /** @type {any} */ (await ctx.call("wink.server.owned", {}).catch(() => null));
+        if (!st || st.error || !st.data || st.data.owned !== false) throw Object.assign(new Error("this server is owned (or its owner cannot be read): leftover devices stay"), { code: "owned" });
+        let n = 0;
+        for (const d of active()) if (d.kind === "app" || d.kind === "web") { if (forget(String(d.id), "removed")) n++; }
+        if (n) ctx.log(`relay: let go of ${n} leftover device(s) of a pairing that never completed ownership`);
+        return { cleared: n };
       },
     });
 

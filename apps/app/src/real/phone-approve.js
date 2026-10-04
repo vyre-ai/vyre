@@ -30,11 +30,11 @@ export function factLines(c) {
 /** The line under a card: where it was asked from and how long it lasts. @param {Pending} c */
 export const askedLine = (c) => [c.asked_from ? `Asked from ${c.asked_from}` : "", c.expires_in_s ? `ends in ${Math.max(1, Math.round(c.expires_in_s / 60))} min` : ""].filter(Boolean).join(", ");
 
-/** The words for how an answer went. @param {string | undefined} code */
-export function answerRefusal(code) {
+/** The words for how an answer went. @param {string | undefined} code @param {string} [how] the method on this device (on-phone.js howWord): "fingerprint", "Face ID or Touch ID", "passkey" */
+export function answerRefusal(code, how = "Face ID or Touch ID") {
   if (code === "ERR_CANCELED" || code === "cancelled") return "Cancelled. Nothing was approved.";
-  if (code === "ERR_BIOMETRIC" || code === "ERR_NO_BIOMETRICS") return "Face ID did not work. Nothing was approved.";
-  if (code === "ERR_KEY_INVALIDATED") return "Your Face ID changed, so this phone's key must be set up again. Sign in to Vyre again.";
+  if (code === "ERR_BIOMETRIC" || code === "ERR_NO_BIOMETRICS") return `${how.charAt(0).toUpperCase()}${how.slice(1)} did not work. Nothing was approved.`;
+  if (code === "ERR_KEY_INVALIDATED") return `Your ${how} changed, so this phone's key must be set up again. Sign in to Vyre again.`;
   if (code === "no_signer") return "This phone cannot approve yet. Update Vyre.";
   if (code === "not_found") return "That request ended before you answered.";
   if (code === "no_person" || code === "ERR_NO_PERSON") return "This phone does not know who you are yet. Open Vyre and sign in, then try again.";

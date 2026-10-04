@@ -8,7 +8,7 @@ import { KernelError } from "./errors.js";
 export { payloadHash, proofBytes } from "../seal/wire.js";
 
 /**
- * @typedef {{ check(i: { chain: any, op: string, fields: Record<string, unknown>, proof: any }): Promise<string | null> }} PresenceVerifier
+ * @typedef {{ check(i: { chain: any, op: string, fields: Record<string, unknown>, proof: any, dry?: boolean }): Promise<string | null> }} PresenceVerifier
  * `check` resolves null when the proof stands (and uses it up), otherwise a short reason. It never throws for a bad proof.
  */
 

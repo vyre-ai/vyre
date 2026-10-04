@@ -185,6 +185,13 @@ export function bindAttestation(/** @type {any} */ verifier, /** @type {Map<stri
 }
 
 /** B2 at proof time: the assertion over SHA256(proofBytes) with a counter strictly above the stored one; the new counter is persisted (write-ahead, `save`) before the proof is accepted, in one tick so two parallel proofs cannot both pass. @returns {string | null} the refusal */
+/** The same check as assertProof, writing nothing: a dry presence check must leave the app key's counter where it was, so the real call still passes. */
+export function assertProofDry(/** @type {any} */ verifier, /** @type {any} */ k, /** @type {any} */ proof, /** @type {Buffer} */ bytes) {
+  if (!verifier) return "bad_assertion";
+  const a = verifier.assert(proof.assertion, sha256(bytes), k.aa.spki, k.aa.counter);
+  return a ? null : proof.assertion === undefined ? "assertion_required" : "bad_assertion";
+}
+
 export function assertProof(/** @type {any} */ verifier, /** @type {any} */ k, /** @type {any} */ proof, /** @type {Buffer} */ bytes, /** @type {() => void} */ save) {
   if (!verifier) return "bad_assertion";
   const a = verifier.assert(proof.assertion, sha256(bytes), k.aa.spki, k.aa.counter);

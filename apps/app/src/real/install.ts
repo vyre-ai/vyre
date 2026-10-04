@@ -48,8 +48,9 @@ export async function createIdentity(name: string, deviceLabel: string, password
   let kept = false;
   // On an iPhone the device entry also names the Secure Enclave key (NK-2): every later change to who speaks for this name needs that key's Face ID signature too. No Face ID, no name.
   let enclave: string | undefined;
-  if (Platform.OS === "ios") {
-    try { enclave = await enclavePublic(); } catch { throw Object.assign(new Error("Set up Face ID or Touch ID on this iPhone, then create your name."), { code: "no_biometrics" }); }
+  // On Android the same field names the Keystore key (StrongBox or the TEE, fingerprint or face per use), unattested in RC1.
+  if (Platform.OS === "ios" || Platform.OS === "android") {
+    try { enclave = await enclavePublic(); } catch { throw Object.assign(new Error(Platform.OS === "ios" ? "Set up Face ID or Touch ID on this iPhone, then create your name." : "Set up a screen lock and a fingerprint or face on this phone, then create your name."), { code: "no_biometrics" }); }
   }
   try {
     const made = await claimIdentity({

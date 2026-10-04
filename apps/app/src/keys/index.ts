@@ -3,7 +3,7 @@
 
 import { createIdentityKey, hasIdentity, identityKey, forgetIdentity } from "../identity/store";
 
-export type KeyStorage = { identity: "webcrypto-indexeddb" | "software-indexeddb" | "none"; presence: "passkey" | "none" | "not-in-rc1" | "secure-enclave" | "software" };
+export type KeyStorage = { identity: "webcrypto-indexeddb" | "software-indexeddb" | "none"; presence: "passkey" | "none" | "not-in-rc1" | "secure-enclave" | "keystore" | "software" };
 export type { PresenceCard, PresenceProof } from "../../modules/vyre-signer/index";
 
 export { createIdentityKey };

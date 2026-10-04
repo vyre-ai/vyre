@@ -1,14 +1,15 @@
 // One interface for the keys of this phone, for app-wire and chat (PD-A). Where each lives, said honestly:
 //   identity key  Ed25519 software seed, Keychain item this device only (WHEN_UNLOCKED_THIS_DEVICE_ONLY), no biometric: it signs the device's own chain operations.
 //   presence key  P-256 in the Secure Enclave (vyre.human), Face ID on every signature; in the simulator a software key, and keyStorage() says "software".
-//   Android       the presence key is not in RC1 (signPresence rejects ERR_NOT_IN_RC1); the identity seed is in the Keystore-backed secure store like iOS's Keychain.
+//   Android       the same: the presence key is vyre.human in the Android Keystore (StrongBox where present, else the TEE), BiometricPrompt per use, reported as storage "keystore" and
+//                 signer class "strongbox", unattested in RC1; the identity seed is in the Keystore-backed secure store like iOS's Keychain.
 
 import { Platform } from "react-native";
 import { createIdentityKey, hasIdentity, identityKey, forgetIdentity } from "../identity/store.native";
 import * as Signer from "../../modules/vyre-signer";
 
 export type { PresenceCard, PresenceProof } from "../../modules/vyre-signer";
-export type KeyStorage = { identity: "keychain" | "none"; presence: "secure-enclave" | "software" | "none" | "not-in-rc1" };
+export type KeyStorage = { identity: "keychain" | "none"; presence: "secure-enclave" | "keystore" | "software" | "none" };
 
 export { createIdentityKey };
 export const { signPresence, presenceKey, enrolAttestation, setPersonProvider, enclavePublic } = Signer;
@@ -49,9 +50,9 @@ export function listChangeSigners(prompt: string): { sign: (m: Uint8Array) => Pr
  * rather than make a phone entry whose seed alone could change the list; no Face ID or no enrolled face means no enclave key, and the error says so); elsewhere nothing.
  */
 export async function recoveryKeyOptions(): Promise<{ enclave?: string; requireEnclave?: boolean }> {
-  if (Platform.OS !== "ios") return {};
+  if (Platform.OS !== "ios" && Platform.OS !== "android") return {};
   try { return { enclave: await Signer.enclavePublic(), requireEnclave: true }; } catch (e) {
-    throw Object.assign(new Error("Set up Face ID or Touch ID on this iPhone, then try again."), { code: "no_biometrics", cause: e });
+    throw Object.assign(new Error("Set up a screen lock and a fingerprint or face on this phone, then try again."), { code: "no_biometrics", cause: e });
   }
 }
 

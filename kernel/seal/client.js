@@ -75,8 +75,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
     /** Does this proof stand for this kernel act (a task op) by the one person in the chain? Uses the proof up. Resolves null when it stands, else the reason. */
     /** Like presenceCheck, and says how the proof was made: { ok: true, method: "attested" | "software", strength: "hardware" | "software" } or { ok: false, code }. */
-    presenceProve: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(r => ({ ok: true, method: r.method, strength: r.strength }), e => ({ ok: false, code: e instanceof SealError ? e.code : "failed" })),
-    presenceCheck: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof }).then(() => null, e => (e instanceof SealError ? e.code : "failed")),
+    presenceProve: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof, ...(i.dry === true ? { dry: true } : {}) }).then(r => ({ ok: true, method: r.method, strength: r.strength }), e => ({ ok: false, code: e instanceof SealError ? e.code : "failed" })),
+    presenceCheck: i => withCtx("presence.check", i, { act: i.op, fields: i.fields, proof: i.proof, ...(i.dry === true ? { dry: true } : {}) }).then(() => null, e => (e instanceof SealError ? e.code : "failed")),
     /** The Space's checkpoint key, held in the sealing process: its public half, and a signature over a checkpoint of this Space (nothing else is signed). */
     spaceKey: { pub: i => withCtx("spacekey.pub", i), sign: i => withCtx("spacekey.sign", i, { bytes: Buffer.from(i.bytes).toString("base64") }) },
     /** Key leases for a lent computer's workspace. `allowed` is the kernel's answer that both Offer grants hold. */
