@@ -39,7 +39,7 @@ test("a bad text says what is wrong in the kernel's words and a refusal stays pl
   assert.match(m.engineerRefusal("forbidden", ""), /may not write Flows/);
 });
 
-test("@Engineer: found by name, set up with instructions that only propose, first message through agents.ask", { skip: !strip }, async () => {
+test("@Engineer: found by name (built in, never created by the app), first message through agents.ask", { skip: !strip }, async () => {
   const { assistantSource } = await import("./assistant-source.ts");
   const m = await import("./assistant-model.ts");
   const AGENTS = [{ name: "juno", kind: "assistant", thread: "t1" }, { name: "Engineer", kind: "agent", thread: null }];
@@ -49,11 +49,9 @@ test("@Engineer: found by name, set up with instructions that only propose, firs
   assert.equal(eng?.name, "Engineer");
   assert.deepEqual([m.stateOf(null), m.stateOf(eng), m.stateOf({ ...AGENTS[1], thread: "t9" })], ["none", "new", "ready"]);
   assert.deepEqual([m.mayTalk(await s.role()), m.mayTalk("member"), m.mayTalk("owner")], [true, false, true]);
-  await s.create(m.ENGINEER, m.INSTRUCTIONS); await s.say("engineer", "Make me an intake Flow.");
-  const [, , create, say] = b.seen;
-  assert.equal(create.tool, "agents.create");
-  assert.deepEqual([create.input.name, create.input.kind, create.input.projects], ["engineer", "agent", []]);
-  assert.match(create.input.instructions, /only propose/);
+  await s.say("engineer", "Make me an intake Flow.");
+  const say = b.seen[b.seen.length - 1];
+  assert.ok(!b.seen.some((x) => x.tool === "agents.create"), "the Engineer is built in: the app never creates it");
   assert.deepEqual(say, { tool: "agents.ask", input: { agent: "engineer", text: "Make me an intake Flow." } });
 });
 
@@ -64,4 +62,15 @@ test("what is waiting for a person: Flow versions not approved and Kits pending,
   const s = assistantSource(b.call);
   const cards = m.proposals(await s.flows(), await s.kits());
   assert.deepEqual(cards.map((c) => [c.title, c.sub, c.href]), [["Estate leads", "A Flow waiting for your approval", "/u/flows/b"], ["estate planning", "A Kit waiting for your yes", null]]);
+});
+
+test("a proposal task in Now is a card that opens its approve page, and is not listed twice with its pending Kit", { skip: !strip }, async () => {
+  const { assistantSource } = await import("./assistant-source.ts");
+  const m = await import("./assistant-model.ts");
+  const rows = [{ id: "t1", kind: "proposal", title: "Add a Retainer type", state: "ready" }, { id: "t2", kind: "proposal", title: "Old", state: "done" }, { id: "t3", kind: "ask", title: "Not one", state: "ready" }, { id: "t4", title: "Install Estate planning", state: "ready", form: { kind: "kit_install" } }];
+  const b = box({ "tasks.list": { data: { tasks: rows } }, "flows.list": { data: [] }, "flows.kit.list": { data: [{ id: "estate-planning", version: 1, status: "pending" }] } });
+  const s = assistantSource(b.call);
+  const cards = m.proposals(await s.flows(), await s.kits(), await s.tasks());
+  assert.deepEqual(cards.map((c) => [c.title, c.href]), [["Add a Retainer type", "/u/task/t1"], ["Install Estate planning", "/u/task/t4"]]);
+  assert.deepEqual(m.proposals([], [], []), []);
 });
