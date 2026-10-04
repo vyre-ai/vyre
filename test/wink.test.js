@@ -1529,7 +1529,7 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
   assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
   fs.writeFileSync(standInFile, "");
-  const withProofHdr =  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
   const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
   assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
   assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
