@@ -198,7 +198,9 @@ export const idOps = {
     const sig = await this.idCheckRecord(rec, state, b.rec, b.sealed);
     // A space's record says where its home is (route, home, root key), sealed, so what changed cannot be told here: a device under 24 hours old (a stolen one, added with a recovery code) must not
     // repoint a space. It may continue what it itself signed (the same device as the record's current signer), so a phone that made the space this morning can finish setting it up.
-    if (rec.kind === "space" && sig.young && !(rec.rec && rec.rec.via && sig.via === rec.rec.via)) throw err(403, "newcomer", "a sign-in under 24 hours old cannot change where a space lives");
+    // The same for a person's record (where their home or box is). Continuing means the same signer: the same device through the owner's list for a space, the same entry for a person.
+    const same = !!(rec.rec && (rec.rec.via ? sig.via === rec.rec.via : !sig.via && sig.by === rec.rec.by));
+    if (sig.young && !same) throw err(403, "newcomer", rec.kind === "space" ? "a sign-in under 24 hours old cannot change where a space lives" : "a sign-in under 24 hours old cannot change where your name points");
     if (rec.rec && sig.ts <= rec.rec.ts) throw err(400, "stale", "the record must be newer than the one it replaces and match the clock");
     Object.assign(rec, { sealed: b.sealed, rec: sig });
     await this.idSave(rec);

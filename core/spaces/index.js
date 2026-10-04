@@ -7,6 +7,11 @@
 // change who can do what also ask for the person's presence where the lib demands it; the verified proof is the registry's
 // `meta.presence`, never anything a caller put in the input.
 //
+// A space's root key, two kinds. A space this device hosts ITSELF without a kernel record (the old module-local flow) signs its invite links with it. A space hosted by a SERVER's kernel
+// (spaces.host-here) has a key made and held on that server whose ONLY job is to attest the server to a joiner (spaces.attest signs a fixed-tag nonce); NO authority derives from a signature by
+// it: an invite is accepted only on the strength of the kernel's own invite record (id, pin, status, grants.invites.accept), never on a token signed by this key. A file read of it
+// therefore mints no invite and no membership; it could only let someone impersonate the server to a joiner, which the box key pinned in the record also has to match.
+//
 // Secrets: the person key and each space's root key stay in files (mode 0600) and are never logged, evented or returned. The only
 // secret ever returned is the recovery code of a new identity, once, in that one reply. The pairing code is shown to the person on
 // purpose (the device displays it) and is kept as a hash.
@@ -383,7 +388,7 @@ export default {
           const label = String(a.record.displayName || a.name).slice(0, 80);
           try {
             // A space is an identity whose list holds its owners. This person is the first owner, acting through this device's entry.
-            // The chain is kept on this device so a retried step reuses it instead of making a second identity. The invite key (the root key) is
+            // The chain is kept on this device so a retried step reuses it instead of making a second identity. The root key (a joiner fingerprints a link with its public half) is
             // carried in the sealed record, signed by an owner, which is how an invitee learns it.
             const who = me();
             let c = await chainOf(a.record.spaceId);

@@ -305,6 +305,27 @@ test("ids: a space's record (where its home is) cannot be repointed by a device 
   data(await space.post("/v1/ids/update", { name: "harlow", ...space.sealRecord("harlow", "bGF0ZXI", thief, thief.eid) }));
 });
 
+test("ids: the same newcomer rule holds for a person's record: a young device cannot repoint it, the founding phone can, and a young device may keep what it signed", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const thief = await key("thief");
+  w.clock.t += HOUR;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  w.clock.t += 1000;
+  assert.equal(code(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "ZXZpbA", thief) })), "newcomer", "a young device cannot repoint a person's record");
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "bW92ZWQ", phone) }));
+  w.clock.t += 25 * HOUR;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "bGF0ZXI", thief) }));
+  // a device added later is young and is not the record's signer: refused; the record's own signer keeps going
+  const laptop = await key("laptop");
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: laptop.entry("device") }, phone))] }));
+  w.clock.t += 1000;
+  assert.equal(code(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "b3duIQ", laptop) })), "newcomer");
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "c2FtZQ", thief) }));
+});
+
 test("ids: a young device may keep updating the space's record it signed itself (the phone that made the space this morning finishes setting it up)", async t => {
   const w = world(t), alex = await person(w), phone = alex.first;
   data(await alex.claim("alex"));
