@@ -86,8 +86,8 @@ export function createSpaceKernels(cfg) {
       }
       // every other table (records, tasks, rooms, drive...) must be empty; the log's own bookkeeping tables are not content
       for (const t of tables) {
-        if (BOOKKEEPING_TABLES.has(t) || t.startsWith("sqlite_")) continue;
-        if (db.prepare(`SELECT 1 FROM ${JSON.stringify(t)} LIMIT 1`).get()) throw no();
+        if (BOOKKEEPING_TABLES.has(t) || t.startsWith("sqlite_") || /^kernel_ftf/.test(t)) continue; // the search index mirrors kernel_records, which is checked
+        if (db.prepare(`SELECT 1 FROM ${JSON.stringify(t)} LIMIT 1`).get()) throw new KernelError("not_allowed", `that Space has content (${t}) and is not retired`);
       }
     } catch (e) { throw e instanceof KernelError ? e : no(); }
     void id;
