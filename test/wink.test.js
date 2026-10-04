@@ -1101,3 +1101,19 @@ test("a device with no box pairs a fresh server through pairServer: the claimed 
   // a second device scanning the used ticket is refused as taken
   await assert.rejects(pairServer({ payload: made.qr, owner, name: "Eve", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "taken" || e.code === "unreachable");
 });
+
+test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
+  const w = await world(t);
+  const saved = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const scan = parseServerQr(made.qr);
+  const r = await redeem(t, w, scan.seed, "Alex's iPhone");
+  const c = r.open();
+  const owner = { kind: "identity", id: "per_" + "q".repeat(26), name: "Alex" };
+  const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(Buffer.from(scan.seed).toString("base64url"));
+  const res = await over(c, "wink.server.adopt", { owner, identity: owner.id, proof: { eid: "x".repeat(26), sig: "y".repeat(86) }, pairing: { commit, tag } });
+  const text = JSON.stringify(res.body);
+  assert.doesNotMatch(text, /does not take|not take|unknown (field|input)|not declared/i, text);
+});
