@@ -9,6 +9,7 @@
 // Every touch point with the OS (who, the terminal device, the Touch ID helper, WebAuthn) is
 // injectable, so tests never open a dialog or write to a real terminal.
 
+import { PERSON_SURFACES as PERSON_SURFACE_LIST } from "../../lib/person-surfaces.js";
 import { strengthOfMethod, strengthRefusal } from "../../kernel/seal/strength.js";
 import crypto from "node:crypto";
 import { normalizePublicKey, checkRsa } from "./keys.js";
@@ -139,7 +140,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
  */
 /** The only tools a development build's stand-in satisfies without the caller offering it. */
 const STAND_IN_AUTO = new Set(["vault.put", "vault.reveal"]);
-export const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
+export const PERSON_SURFACES = new Set(PERSON_SURFACE_LIST);
 
 /**
  * A tool whose callers are person-only surfaces reads as person-only, but until now only
@@ -408,6 +409,9 @@ export const MIGRATIONS = [`
   INSERT INTO presence_people_v2 (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software) SELECT id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software FROM presence_people;
   DROP TABLE presence_people;
   ALTER TABLE presence_people_v2 RENAME TO presence_people;
+`, `
+  -- A paired device locked after three wrong sign-in answers (core/presence/module.js, presence.person.renew-allow lifts it): the lock lives here so a restart keeps it.
+  CREATE TABLE presence_renew_lock (device TEXT PRIMARY KEY, until INTEGER NOT NULL);
 `];
 
 const CHALLENGE_TTL = 120_000;

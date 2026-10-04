@@ -9,6 +9,7 @@ import crypto from "node:crypto";
 import { CALLS, INVITEE_CALLS, WIRE_VERSION, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, REPLAY_WINDOW_MS, MAX_PROOF_BYTES, CHALLENGE_TTL_MS, PRESENCE_CODES, pathOf } from "./wire.js";
 import { proofRequest, PROOF_CALLS } from "./proof.js";
 import { canonical, sha256 } from "../core/canonical.js";
+import { remoteBinding } from "../core/presence.js";
 
 const fail = (/** @type {any} */ id, /** @type {string} */ code, /** @type {string} */ message, /** @type {any} */ challenge = undefined) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message, ...(challenge ? { challenge } : {}) } });
 const MAX_STORED_BYTES = 8 * 1024 * 1024;
@@ -16,7 +17,7 @@ const INVITEE_RESPONSE_BYTES = 16 * 1024;
 const RATE = Object.freeze({ member: 300, invitee: 30, window_ms: 60_000, peers: 10_000 });
 
 /**
- * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
+ * @param {{ space: string, home?: string, kernel: any, clock?: () => number, rate?: { member?: number, invitee?: number }, services?: Record<string, any>, attest?: (nonce: string) => Promise<{ pub: string, sig: string } | null> }} cfg `kernel` is the home's kernel for this Space (createKernel / bootKernel's result)
  */
 export function createRemoteServer(cfg) {
   const clock = cfg.clock || Date.now;
@@ -53,6 +54,7 @@ export function createRemoteServer(cfg) {
   const tree = (/** @type {string} */ group) => (cfg.services && Object.hasOwn(cfg.services, group) ? cfg.services[group] : group === "lent" ? undefined : group === "tasks" ? k.gateway.ask : group === "surfaces" ? k.surfaces : k.gateway[group]);
   /** Calls whose local signature is not `(chain, ...args)` or that need the home's own check before they run. */
   const ADAPT = {
+    "records.definitions": () => (/** @type {any} */ chain) => k.gateway.definitions(chain),
     "surfaces.revoke": () => (/** @type {any} */ chain, /** @type {string} */ session) => k.surfaces.revoke(session, chain),
     "surfaces.open": () => async (/** @type {any} */ chain, /** @type {any} */ o = {}) => {
       // A session may name only an assistant this Space has; the chain it yields is [person, agent], so authority is still the intersection.
@@ -129,11 +131,27 @@ export function createRemoteServer(cfg) {
             if (hasProof) {
               let size = 0; try { size = Buffer.byteLength(JSON.stringify(request.proof)); } catch { size = Infinity; }
               if (typeof request.proof !== "object" || Array.isArray(request.proof) || size > MAX_PROOF_BYTES) return fail(id, "bad_input", "that proof is not usable");
+              // RP-1: the proof must name THIS home and THIS challenge in its signed fields (`home`, `challenge`): a proof for another home, another challenge, or a local proof with neither is refused
+              // before the kernel sees it, whatever its signature (the kernel's verifier checks the signature, the key, the op and its own single-use nonce).
+              const bind = remoteBinding(request.proof, { home: cfg.home || cfg.space, challenge: String(request.challenge || "") });
+              if (bind) { if (typeof request.challenge === "string") challenges.delete(request.challenge); return fail(id, "bad_binding", "that proof does not name this home and this challenge"); }
               if (!spend(request.challenge, peer.device_key_id, request.call, request.args, now)) return fail(id, "bad_challenge", "that proof was not made for a challenge this home issued for this call; ask again");
               // the proof is the trailing `{ presence }` option on its own, never merged into one of the caller's own arguments (PW-4)
               callArgs = [...callArgs, { presence: request.proof }];
             }
-            const result = await target.fn(who.chain, ...callArgs);
+            // A joiner asks the home to prove it holds the Space: the preview's trailing `{ attest: <nonce> }` is taken off before the kernel sees it and the home's own signature over that nonce rides
+            // back beside the card (never in the kernel's answer). Only on grants.invites.get, which is all an invitee may call.
+            let attestNonce = null;
+            if (request.call === "grants.invites.get" && callArgs.length === 2 && callArgs[1] && typeof callArgs[1] === "object" && !Array.isArray(callArgs[1]) && Object.keys(callArgs[1]).join() === "attest") {
+              if (typeof callArgs[1].attest !== "string" || !/^[A-Za-z0-9_-]{16,64}$/.test(callArgs[1].attest)) return fail(id, "bad_input", "that is not a nonce");
+              attestNonce = callArgs[1].attest;
+              callArgs = [callArgs[0]];
+            }
+            let result = await target.fn(who.chain, ...callArgs);
+            if (attestNonce && typeof cfg.attest === "function" && result && typeof result === "object") {
+              let a = null; try { a = await cfg.attest(attestNonce); } catch { a = null; }
+              if (a) result = { ...result, attest: a };
+            }
             const out = JSON.stringify(result === undefined ? null : result);
             return out.length > cap ? fail(id, "too_large", "that answer is too large") : { v: WIRE_VERSION, id, ok: true, result: JSON.parse(out) };
           } catch (e) {

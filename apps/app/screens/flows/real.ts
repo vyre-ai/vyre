@@ -1,6 +1,6 @@
 // Flows against the real vyred: flows.list, flows.graph, flows.get, flows.runs, flows.run, flows.card, flows.approve, flows.pause and flows.resume
 // (core/flows/index.js over kernel/flows). The Flow's own words (trigger, step labels) come from the kernel's canvas data, never composed here.
-import { call } from "../../src/api/box";
+import { callT as call } from "../../src/real/call-tool";
 
 async function ask<T>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
   const r = await call<T>(tool, input);

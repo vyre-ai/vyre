@@ -19,29 +19,32 @@ test("digest, HKDF into AES-GCM and AES-GCM equal node:crypto", async () => {
   await assert.rejects(methods.decrypt({ name: "AES-GCM", iv, additionalData: u("other"), tagLength: 128 }, key, ct));
 });
 
-test("Ed25519 verify is strict and gives node's answer, including a non-canonical S and a small-order key", async () => {
+// Fixed expectations, not whatever node returns: node 22 and node 24 (OpenSSL) differ on the small-order and non-canonical cases, and RFC 8032 strict (what the chain
+// needs: one signature, one meaning) refuses all of them on every platform.
+test("Ed25519 verify is strict: it accepts a good signature and refuses a flipped bit, a non-canonical S, a small-order key and a non-canonical point", async () => {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
   const pub = publicKey.export({ format: "der", type: "spki" }).subarray(12);
   const msg = u("m");
   const sig = crypto.sign(null, msg, privateKey);
-  const k = await methods.importKey("raw", pub, { name: "Ed25519" }, false, ["verify"]);
-  assert.equal(await methods.verify({ name: "Ed25519" }, k, sig, msg), true);
+  const verify = async (pubBytes, sigBytes) => methods.verify({ name: "Ed25519" }, await methods.importKey("raw", pubBytes, { name: "Ed25519" }, false, ["verify"]), sigBytes, msg);
+  assert.equal(await verify(pub, sig), true);
   const bad = Buffer.from(sig); bad[0] ^= 1;
-  assert.equal(await methods.verify({ name: "Ed25519" }, k, bad, msg), false);
-  // S + L (non-canonical): node refuses, so must we.
+  assert.equal(await verify(pub, bad), false);
+  // S + L is the same signature with a non-canonical S (RFC 8032 section 5.1.7 requires S < L).
   const L = 2n ** 252n + 27742317777372353535851937790883648493n;
   const s = BigInt("0x" + Buffer.from(sig.subarray(32)).reverse().toString("hex"));
-  const s2 = (s + L).toString(16).padStart(64, "0");
-  const nonCanon = Buffer.concat([sig.subarray(0, 32), Buffer.from(s2, "hex").reverse()]);
-  const nodeSays = (() => { try { return crypto.verify(null, msg, publicKey, nonCanon); } catch { return false; } })();
-  assert.equal(await methods.verify({ name: "Ed25519" }, k, nonCanon, msg), nodeSays);
-  assert.equal(nodeSays, false);
-  // A small-order key (the identity point) with the identity signature: node refuses.
-  const small = Buffer.from("0100000000000000000000000000000000000000000000000000000000000000", "hex");
-  const smallKey = await methods.importKey("raw", small, { name: "Ed25519" }, false, ["verify"]);
-  const smallSig = Buffer.concat([small, Buffer.alloc(32)]);
-  const nodeSmall = (() => { try { return crypto.verify(null, msg, crypto.createPublicKey({ key: Buffer.concat([Buffer.from("302a300506032b6570032100", "hex"), small]), format: "der", type: "spki" }), smallSig); } catch { return false; } })();
-  assert.equal(await methods.verify({ name: "Ed25519" }, smallKey, smallSig, msg), nodeSmall);
+  const nonCanon = Buffer.concat([sig.subarray(0, 32), Buffer.from((s + L).toString(16).padStart(64, "0"), "hex").reverse()]);
+  assert.equal(await verify(pub, nonCanon), false);
+  // The identity point as the key, with the identity signature (R = identity, S = 0): valid under the cofactored equation, small order, so refused.
+  const identity = Buffer.from("0100000000000000000000000000000000000000000000000000000000000000", "hex");
+  assert.equal(await verify(identity, Buffer.concat([identity, Buffer.alloc(32)])), false);
+  // A small-order point of order 2 (0, -1) as the key and as R.
+  const order2 = Buffer.from("ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", "hex");
+  assert.equal(await verify(order2, Buffer.concat([order2, Buffer.alloc(32)])), false);
+  // The identity point written non-canonically (y = p + 1, the same point as y = 1): a key and an R that a strict verifier refuses.
+  const nonCanonPoint = Buffer.from("eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f", "hex");
+  assert.equal(await verify(nonCanonPoint, Buffer.concat([nonCanonPoint, Buffer.alloc(32)])), false);
+  assert.equal(await verify(pub, Buffer.concat([nonCanonPoint, sig.subarray(32)])), false);
 });
 
 test("ECDSA P-256 verify takes r||s and equals node", async () => {

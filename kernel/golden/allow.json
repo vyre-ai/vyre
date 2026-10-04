@@ -328,6 +328,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads events the caller may see; the kernel decides"
  },
  {
+  "tool": "records.forget.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks the person to forget a record: it reads the record under the caller's own chain and makes a task for the person, who decides with their presence; nothing is forgotten here"
+ },
+ {
   "tool": "records.get",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain; the kernel decides"
  },

@@ -34,16 +34,83 @@ export async function openPeer(): Promise<Peer> {
 
 /** One tool call over the peer wire. Resolves the tool's data; rejects with { code, message } in the server's words. */
 export async function peerCall<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
+  const { withPairedSession } = await import("./paired-retry.js");
+  const { snapshot } = await import("../auth/notice.js");
+  const { howApprove } = await import("./on-phone.js");
+  // An admin act with no live paired session: start one with the device key and make the call once more (lead's ruling ea835cb).
+  return withPairedSession({ call: () => peerCallOnce<T>(tool, input), renew: () => renewSessionOnPhone(), failure: () => snapshot().renewFailed, how: howApprove() });
+}
+
+async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
   let p = await openPeer();
   try { return (await p.call(tool, input)) as T; }
   catch (e) {
+    const code = (e as { code?: string })?.code;
+    // a lapsed paired session renews once, with the same key and no owner step (pair-challenge, then start-paired), and the call is made again
+    if (code === "person_session_required" && (await renewSession())) { p = await openPeer(); return (await p.call(tool, input)) as T; }
     // a closed connection is reopened once; anything the server answered is the answer
-    if ((e as { code?: string })?.code !== "unreachable") throw e;
+    if (code !== "unreachable") throw e;
     peer = null;
     p = await openPeer();
     return (await p.call(tool, input)) as T;
   }
 }
 
+let renewing: Promise<boolean> | null = null;
+/** Renew the paired session over a fresh channel; tells the person (src/auth/notice.js) only when it FAILS. */
+export function renewSession(): Promise<boolean> {
+  return (renewing ??= (async () => {
+    const notice = await import("../auth/notice.js");
+    try {
+      const { loadPairing, relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+      const pairing = await loadPairing();
+      if (!pairing) throw Object.assign(new Error("not paired"), { code: "unreachable" });
+      const { startPaired, channelCall } = await import("../auth/paired");
+      const { personKey } = await import("../auth/person.web");
+      const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
+      try { await startPaired({ device: String(pairing.device), call: ch.call, privateKey: (await personKey()).privateKey, label: deviceName() }); } finally { ch.close(); }
+      closePeer();
+      return true;
+    } catch (e) { notice.noteRenewFailed((e as { code?: string })?.code); return false; }
+    finally { renewing = null; }
+  })());
+}
+
+/**
+ * An admin act needs the phone's strength: ask the owner's phone to approve this browser's session (the sheet says so, with a way to stop waiting), then start the session with the device key as usual.
+ * Resolves true when the session started; throws an Error in our words when the phone said no, nobody answered, or the server cannot ask yet. Routine renewals stay silent (renewSession).
+ */
+export async function renewSessionOnPhone(): Promise<boolean> {
+  const { loadPairing, relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
+  const pairing = await loadPairing();
+  if (!pairing) throw Object.assign(new Error("This device is not paired to a server."), { code: "unreachable" });
+  const { startPaired, channelCall } = await import("../auth/paired");
+  const { personKey } = await import("../auth/person.web");
+  const { askPhoneForSession, sessionEndLine } = await import("./phone-session.js");
+  const { useApproval } = await import("./approval-state");
+  const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
+  const st = useApproval.getState();
+  try {
+    st.show("Sign this browser in");
+    const out = await askPhoneForSession(ch.call, { signal: st.signal });
+    if ("ended" in out) throw Object.assign(new Error(sessionEndLine(out.ended)), { code: "not_approved" });
+    await startPaired({ device: String(pairing.device), call: ch.call, privateKey: (await personKey()).privateKey, label: deviceName() });
+    closePeer();
+    return true;
+  } finally { useApproval.getState().hide(); ch.close(); }
+}
+
 /** Drop the open peer (sign out, a removed device). */
 export function closePeer(): void { try { peer?.close(); } catch { /* closed */ } peer = null; }
+
+/** The duplex the resumable stream client (core/stream/client.js) opens: a chat stream followed over the peer wire (tool stream.follow). Frames come as server messages; a send is ignored (the subscription is the open call's `from`). */
+export async function peerDuplex(session: string, from: number): Promise<{ send(m: unknown): void; onMessage(cb: (m: unknown) => void): void; onClose(cb: () => void): void; close(): void; info: { viewer?: string; head?: number; floor?: number } }> {
+  const p = await openPeer();
+  const msg: Array<(m: unknown) => void> = [];
+  const shut: Array<() => void> = [];
+  let ended = false;
+  const end = () => { if (ended) return; ended = true; for (const cb of shut) cb(); };
+  const s = await p.openStream("stream.follow", { session, from }, { onframe: (data) => { for (const cb of msg) cb(data); }, onend: end });
+  const r = (s.result ?? {}) as { viewer?: string; head?: number; floor?: number };
+  return { send() {}, onMessage: (cb) => { msg.push(cb); }, onClose: (cb) => { shut.push(cb); if (ended) cb(); }, close: () => { try { s.close(); } catch { /* closed */ } end(); }, info: { viewer: r.viewer, head: r.head, floor: r.floor } };
+}

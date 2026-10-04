@@ -29,6 +29,7 @@ const CALLER = flag("--caller", "deck");
 const PRESENCE = bool("--presence");
 const SETUP = bool("--setup");
 // --signin <node>: open the owner's person session with the dev tool signin.dev (dev box with the stand-in file, run from an ssh shell) and send it as the __Host-vyre_person cookie.
+const CLAIM_DIST = flag("--claim-dist", ""); // a web export built with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1, for the recovery screens
 const SIGNIN_NODE = flag("--signin", "");
 let PERSON_TOKEN = "";
 if (!SOCKET && !BOX_URL) { console.error("app-walk: give --socket <path to the box's vyred.sock> or --box-url <http://host:port>"); process.exit(2); }
@@ -73,19 +74,27 @@ function forward(req, res) {
   up.on("error", (e) => { res.writeHead(502, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "unreachable", message: String(e.message) } })); });
   req.pipe(up);
 }
-const server = http.createServer((req, res) => {
-  if (req.url.startsWith("/v1")) return forward(req, res);
-  const p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
-  let f = path.join(DIST, p);
-  const missing = !f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
-  // A missing file with an extension is a 404 (the box's /app/sw.js has no copy here); only a route falls back to the page.
-  if (missing && path.extname(p)) { res.writeHead(404); return res.end(); }
-  if (missing) f = path.join(DIST, "index.html");
-  res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
-  fs.createReadStream(f).pipe(res);
-}).listen(0, "127.0.0.1");
+/** Serve a web export at /app and forward /v1 to the box. @param {string} dist */
+function serve(dist) {
+  const srv = http.createServer((req, res) => {
+    if (req.url.startsWith("/v1")) return forward(req, res);
+    const p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+    let f = path.join(dist, p);
+    const missing = !f.startsWith(dist) || !fs.existsSync(f) || fs.statSync(f).isDirectory();
+    // A missing file with an extension is a 404 (the box's /app/sw.js has no copy here); only a route falls back to the page.
+    if (missing && path.extname(p)) { res.writeHead(404); return res.end(); }
+    if (missing) f = path.join(dist, "index.html");
+    res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
+    fs.createReadStream(f).pipe(res);
+  }).listen(0, "127.0.0.1");
+  return srv;
+}
+const server = serve(DIST);
 await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}/app`;
+const claimServer = CLAIM_DIST ? serve(path.resolve(CLAIM_DIST)) : null;
+if (claimServer) await new Promise((r) => claimServer.once("listening", r));
+const CLAIM_BASE = claimServer ? `http://127.0.0.1:${claimServer.address().port}/app` : "";
 
 /** One tool call straight to the box, for finding what exists (the walk's own eyes, never the screen's). */
 function boxCall(tool, input = {}) {
@@ -108,7 +117,7 @@ if (SIGNIN_NODE) {
 
 // ---- what the box has, so each step knows its target ----
 const world = {};
-for (const [k, tool, input] of [["spaces", "spaces.list"], ["types", "records.types"], ["flows", "flows.list"], ["kits", "flows.kit.list"], ["agents", "agents.list"], ["publish", "publish.list"], ["vault", "vault.list"], ["drive", "files.drive.status"], ["spaceDrive", "files.drive.space.list"], ["identity", "spaces.identity.status"]]) world[k] = await boxCall(tool, input);
+for (const [k, tool, input] of [["spaces", "spaces.list"], ["types", "records.types"], ["flows", "flows.list"], ["kits", "flows.kit.list"], ["agents", "agents.list"], ["publish", "publish.list"], ["vault", "vault.list"], ["drive", "files.drive.status"], ["spaceDrive", "files.drive.space.list"], ["rules", "rules.list"], ["identity", "spaces.identity.status"]]) world[k] = await boxCall(tool, input);
 // What the box itself holds is never sample: a dev box seeded with a "Jane Doe" contact shows it for real. Read every type's rows and the tasks once, and drop any sample word the box holds.
 const boxHeld = JSON.stringify([world.spaces, world.agents, world.vault, world.flows, world.kits, await boxCall("tasks.list"), await boxCall("records.kits.library"), ...(await Promise.all(((world.types.data?.types ?? []).map((t) => t.name)).filter((n) => !/^(def-|flow-|kit-)/.test(n)).map((n) => boxCall("records.list", { type: n, limit: 200 }))))]);
 for (let i = SAMPLE.length - 1; i >= 0; i--) if (boxHeld.includes(SAMPLE[i])) SAMPLE.splice(i, 1);
@@ -254,7 +263,79 @@ await step("settings: appearance, pick a theme", { needs: "presence" }, async ()
   if (JSON.stringify(got).indexOf("paper") < 0) throw new Error(`the theme write did not reach the box: ${JSON.stringify(got).slice(0, 160)}`);
   await boxCall("settings.set", { key: "appearance.scheme", value: "system" });
 });
-await step("settings: rules", { skip: "BLOCKED: no rules.* tools on the box yet (kernel-2, platform)" }, async () => {});
+await step("settings: rules, add one and see it listed", { skip: has("rules") ? undefined : "the box has no rules.list" }, async () => {
+  await go("u/settings/rules");
+  const label = `Walk rule ${Date.now().toString(36).slice(-4)}`;
+  await click("Add a rule");
+  await page.getByLabel("Actions").first().fill("mail.send");
+  await page.getByLabel("Name").first().fill(label);
+  await click("Add the rule", { settle: 2500 });
+  let t = (await text()).replace(/\s+/g, " ");
+  if (/Approve on your phone/.test(t)) {
+    // A kernel act in the web app: the phone must approve it. The walk has no phone, so it proves the sheet and that stopping changes nothing.
+    await page.screenshot({ path: path.join(OUT, "rules-approve-on-phone.png") });
+    await click("Stop waiting", { settle: 1500 });
+    t = (await text()).replace(/\s+/g, " ");
+    if (t.includes(label)) throw new Error("the rule was added although nobody approved it");
+    return;
+  }
+  if (!t.includes(label)) throw new Error(`neither the rule nor the Approve on your phone sheet: ${t.slice(0, 240)}`);
+  await click("Turn off", { settle: 1500 }).catch(() => {});
+  await click("Remove", { settle: 1500 }).catch(() => {});
+});
+await step("recovery: a phone with no name says Welcome back, takes a code, and each refusal has its own sentence", { skip: CLAIM_DIST ? undefined : "needs --claim-dist, a web export built with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 (the screens are the phone's)" }, async () => {
+  const ctx2 = await browser.newContext({ viewport: { width: 420, height: 900 }, serviceWorkers: "block" });
+  const pg = await ctx2.newPage();
+  await pg.route("**/v1/tools/spaces.identity.status", (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { exists: false, name: null } }) }));
+  const text2 = async () => (await pg.locator("body").innerText()).replace(/\s+/g, " ");
+  try {
+    await pg.goto(`${CLAIM_BASE}/u/install`, { waitUntil: "domcontentloaded" });
+    await pg.waitForTimeout(3000);
+    await pg.getByText("I already have a name", { exact: true }).first().click();
+    await pg.waitForTimeout(800);
+    let t = await text2();
+    if (!/Welcome back/.test(t) || !/Add this phone from another device/.test(t) || !/Use my recovery code/.test(t)) throw new Error(`no Welcome back with both rows: ${t.slice(0, 200)}`);
+    await pg.screenshot({ path: path.join(OUT, "recovery-1-welcome.png") });
+    await pg.getByText("Use my recovery code", { exact: true }).first().click();
+    await pg.waitForTimeout(600);
+    t = await text2();
+    if (!/Use your recovery code/.test(t) || !/Bring my name here/.test(t)) throw new Error(`no recover step: ${t.slice(0, 200)}`);
+    await pg.getByLabel("Your Vyre name").first().fill("alex");
+    await pg.getByLabel("Recovery code").first().fill("not a code");
+    await pg.getByText("Bring my name here", { exact: true }).first().click();
+    await pg.waitForTimeout(600);
+    t = await text2();
+    if (!/That does not look like a recovery code\. It has 26 letters and numbers\./.test(t)) throw new Error(`no format refusal: ${t.slice(0, 200)}`);
+    await pg.getByLabel("Recovery code").first().fill("abcd-efgh-ijkl-mnop-qrst-uv23-45");
+    await pg.getByText("Bring my name here", { exact: true }).first().click();
+    await pg.waitForTimeout(1200);
+    t = await text2();
+    await pg.screenshot({ path: path.join(OUT, "recovery-2-refusal.png") });
+    if (!/not available in this build yet|No one has that name|not the one for this name|Cannot reach the names directory/.test(t)) throw new Error(`a well-formed code got no refusal sentence: ${t.slice(0, 200)}`);
+    if (!/Nothing was changed/.test(t)) throw new Error("the refusal does not say nothing was changed");
+    await pg.getByText("I would rather add this phone from another device", { exact: true }).first().click();
+    await pg.waitForTimeout(600);
+    t = await text2();
+    if (!/Scan from your other device/.test(t)) throw new Error(`the scan step did not open: ${t.slice(0, 200)}`);
+  } finally { await ctx2.close(); }
+});
+await step("access: Claude Code's grant card, Don't allow, then Let Claude Code ask again", { skip: (await boxCall("pluginagent.status")).error ? "the box has no pluginagent" : undefined, expect: [/Claude Code/] }, async () => {
+  // Needs a box where Claude Code has not been granted. An ask is filed the way the plugin files one (pluginagent.ask); the walk answers it as the person would.
+  const st = (await boxCall("pluginagent.status")).data;
+  if (st?.granted) throw new Error("Claude Code is already granted on this box: revoke it first");
+  if (st?.declined) await boxCall("pluginagent.on");
+  const a = await boxCall("pluginagent.ask");
+  if (a.data?.state !== "waiting" && !(await boxCall("pluginagent.pending")).data?.length) throw new Error(`no ask is waiting (ask answered ${JSON.stringify(a.data ?? a.error)})`);
+  await go("u/access");
+  await page.getByText(/Let Claude Code on .* read your memory/).first().waitFor({ state: "visible", timeout: 8000 });
+  await page.screenshot({ path: path.join(OUT, "access-plugin-card.png") });
+  await click("Don't allow", { settle: 1500 });
+  await page.getByText("Let Claude Code ask again").first().waitFor({ state: "visible", timeout: 8000 });
+  await page.screenshot({ path: path.join(OUT, "access-plugin-declined.png") });
+  await click("Let Claude Code ask again", { settle: 1500 });
+  const t = (await text()).replace(/\s+/g, " ");
+  if (/Let Claude Code ask again/.test(t)) throw new Error("the ask-again row stayed after turning it on");
+});
 await step("settings: devices (chat's)", {}, async () => { await go("u/settings/devices"); });
 
 await step("join: a link in /u/install/join's own query fills nothing and leaves the address bare", {}, async () => {
@@ -349,6 +430,7 @@ await step("setup: create a space on this computer, close partway, resume", { sk
 
 await browser.close();
 server.close();
+claimServer?.close();
 fs.writeFileSync(path.join(OUT, "report.json"), JSON.stringify({ at: new Date().toISOString(), box: SOCKET || BOX_URL, presence: PRESENCE, spaces: spaceNames, report }, null, 2));
 if (liveNameCalls) console.log(`NOTE: ${liveNameCalls} request(s) to the live names directory were blocked`);
 const count = (s) => report.filter((r) => r.status === s).length;

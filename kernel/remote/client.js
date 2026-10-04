@@ -26,7 +26,11 @@ export function createRemoteKernel(cfg) {
     try { wireArgs = JSON.parse(JSON.stringify(args.map(a => (a === undefined ? null : a)))); } catch { throw new KernelError("bad_input", "a remote call takes plain data"); }
     const id = `rq_${clock().toString(36)}_${(++seq).toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
     let reply;
-    try { reply = await cfg.transport.send(cfg.space, { v: WIRE_VERSION, space: cfg.space, id, ts: clock(), call, args: wireArgs, ...(extra.proof !== undefined ? { proof: extra.proof, challenge: extra.challenge } : {}) }); } catch { throw new KernelError("unreachable", "the Space's home could not be reached"); }
+    try { reply = await cfg.transport.send(cfg.space, { v: WIRE_VERSION, space: cfg.space, id, ts: clock(), call, args: wireArgs, ...(extra.proof !== undefined ? { proof: extra.proof, challenge: extra.challenge } : {}) }); } catch (e) {
+      // the home's door refusing this connection says so (denied); anything else that stops the call is an outage
+      if (e && /** @type {any} */ (e).code === "denied") throw new KernelError("denied", "the Space's home did not admit this connection");
+      throw new KernelError("unreachable", "the Space's home could not be reached");
+    }
     if (!reply || reply.v !== WIRE_VERSION || reply.id !== id || typeof reply.ok !== "boolean") throw new KernelError("unavailable", "the home's answer was not understood");
     if (!reply.ok) {
       const code = String(reply.error && reply.error.code || "unavailable").slice(0, 40);
@@ -92,7 +96,7 @@ export function createRemoteKernel(cfg) {
   return Object.freeze({
     space: cfg.space,
     hosted: false,
-    gateway: Object.freeze({ grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), leases: build("leases") }),
+    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), leases: build("leases") }),
     lent: build("lent"),
     /** One wire call by its path (`lent.start`, `leases.issue`): the lent computer's runner client (core/runner/lent-client.js) speaks in these. The home still allows only what CALLS lists. */
     call: (/** @type {string} */ name, /** @type {any[]} */ args) => invokeWith(String(name), Array.isArray(args) ? args : []),

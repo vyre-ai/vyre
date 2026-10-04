@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { canonical as kc, proofBytes as kb } from "../../../../kernel/seal/wire.js";
-import { canonical, payloadHash, chainHash, proofBytes, spkiFromXY, p1363FromDer, proofBody, keyIdOf, b64, b64url, fromB64url } from "./presence-proof.js";
+import { canonical, payloadHash, chainHash, proofBytes, spkiFromXY, p1363FromDer, lowS, proofBody, keyIdOf, b64, b64url, fromB64url } from "./presence-proof.js";
 
 const vectors = (f) => JSON.parse(fs.readFileSync(new URL(`../../../../kernel/seal/${f}`, import.meta.url), "utf8")).vectors;
 
@@ -64,4 +64,24 @@ test("proofBody refuses a card whose fields do not hash to its payload_hash, and
   assert.ok(body.expires_at - body.issued_at <= 120000);
   assert.throws(() => proofBody({ ...req, fields: { device: "other" } }, { keyId: "k", now: 1, nonce: "n" }), { code: "ERR_PAYLOAD_MISMATCH" });
   assert.throws(() => proofBody({ ...req, person: "" }, { keyId: "k", now: 1, nonce: "n" }), { code: "ERR_NO_PERSON" });
+});
+
+test("lowS: every signature comes out with s in the low half and still verifies; the high twin is turned back", () => {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const N = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  const sOf = r => BigInt("0x" + Buffer.from(r.subarray(32)).toString("hex"));
+  let flipped = 0;
+  for (let i = 0; i < 60; i++) {
+    const msg = Buffer.from("op" + i);
+    const raw = new Uint8Array(crypto.sign("sha256", msg, { key: privateKey, dsaEncoding: "ieee-p1363" }));
+    const low = lowS(raw);
+    assert.ok(sOf(low) <= N >> 1n);
+    assert.ok(crypto.verify("sha256", msg, { key: publicKey, dsaEncoding: "ieee-p1363" }, Buffer.from(low)));
+    // the high twin of the same signature (n - s) is what the Enclave may return half the time
+    const twin = new Uint8Array(raw); let t = N - sOf(raw); for (let j = 63; j >= 32; j--) { twin[j] = Number(t & 0xffn); t >>= 8n; }
+    assert.deepEqual(lowS(twin), low);
+    if (sOf(raw) > N >> 1n) flipped++;
+  }
+  assert.ok(flipped > 5 && flipped < 55, "both halves seen");
+  assert.throws(() => lowS(new Uint8Array(70)));
 });

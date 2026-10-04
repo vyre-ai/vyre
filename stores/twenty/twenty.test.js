@@ -145,3 +145,27 @@ test("a search asked again for the same words, a page later, does not scan again
   assert.equal((await b.store.search({ text: "harlow", page: { limit: 10 } })).rows.length, 3);
   assert.ok(fake.requests.slice(m).some((r) => r.op.startsWith("Q_")), "a write dropped it");
 });
+
+test("attr_filter: a member's list and totals are filtered inside Twenty by the mirrored kernel attributes; a type with older rows refuses it", async () => {
+  const b = await boot(); await b.store.define({ add_types: [CONTACT] });
+  assert.equal(b.store.features().attr_filter, true);
+  const mk = async (name, attrs) => { const id = mintUuid(); await b.store.create("contact", id, { name, status: "open", age: 1 }); b.store.meta.set(`vyre://${b.store.space}/contact/${id}`, attrs); return id; };
+  const a1 = await mk("A1", { project: "p1", owner: "per_x" }), a2 = await mk("A2", { project: "p2" }), a3 = await mk("A3", { project: "p1", owner: "per_y" }); await mk("A4", {});
+  const prefix = `vyre://${b.store.space}/contact/`;
+  const names = async (any) => (await b.store.query("contact", { attr_filter: { urn_prefix: prefix, any }, page: { limit: 50 } })).rows.map((r) => r.data.name).sort();
+  assert.deepEqual(await names([{ project: "p1" }]), ["A1", "A3"]);
+  assert.deepEqual(await names([{ project: "p1", owner: "per_x" }, { project: "p2" }]), ["A1", "A2"], "all terms of any one alternative");
+  assert.deepEqual(await names([]), [], "an empty any wants no row");
+  assert.deepEqual(await names([{ owner: "per_nobody" }]), [], "a row with no value matches nothing");
+  const before = fake.requests.length;
+  const total = await b.store.aggregate("contact", { attr_filter: { urn_prefix: prefix, any: [{ project: "p1" }] }, group_by: ["status"], measures: [{ fn: "count" }] });
+  assert.deepEqual(total.map((g) => [g.group.status, g.values.count]), [["open", 2]]);
+  assert.deepEqual(fake.requests.slice(before).map((r) => r.op).filter((o) => o.startsWith("Agg_") || o.startsWith("Q_")), ["Agg_contacts"], "one native total, no row scan");
+  assert.deepEqual((await b.store.query("contact", { filter: { field: "name", op: "eq", value: "A3" }, attr_filter: { urn_prefix: prefix, any: [{ project: "p1" }] }, page: { limit: 5 } })).rows.map((r) => r.id), [a3], "the caller's own filter still applies");
+  await assert.rejects(() => b.store.query("contact", { attr_filter: { urn_prefix: prefix, any: [{ colour: "red" }] }, page: { limit: 5 } }), { code: "unsupported" });
+  await assert.rejects(() => b.store.query("contact", { attr_filter: { urn_prefix: `vyre://${b.store.space}/matter/`, any: [{ project: "p1" }] }, page: { limit: 5 } }), { code: "unsupported" });
+  // a type whose rows were made before the mirror: refused, never answered from a partial mirror
+  b.store.mirrorReady.delete("contact");
+  await assert.rejects(() => b.store.query("contact", { attr_filter: { urn_prefix: prefix, any: [{ project: "p1" }] }, page: { limit: 5 } }), { code: "unsupported" });
+  void a1; void a2;
+});

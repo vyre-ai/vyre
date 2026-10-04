@@ -137,6 +137,10 @@
     "effect": "write"
    },
    {
+    "name": "spaces.attest",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.server-of",
     "reach": "modules",
     "effect": "read"
@@ -148,6 +152,11 @@
    },
    {
     "name": "spaces.admin-list",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
+    "name": "spaces.owner.claimed",
     "reach": "modules",
     "effect": "read"
    },
@@ -214,6 +223,10 @@
    },
    {
     "name": "spaces.members.add", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.add-agent", "effect": "write",
     "reach": "person"
    },
    {
