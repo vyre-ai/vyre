@@ -52,6 +52,7 @@ export default {
     };
 
     ctx.tool("import.scan", {
+      effect: "write",
       description: "The coding-agent sessions on this device (Claude Code, Codex, Gemini CLI; each source is tagged with its agent), by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).",
       input: { type: "object", properties: { folders: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
@@ -73,6 +74,7 @@ export default {
     });
 
     ctx.tool("import.plan", {
+      effect: "write",
       description: "Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed, within the plan's normal limits; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.",
       input: { type: "object", required: ["include"], properties: { include: { type: "array", items: { type: "string" } }, exclude: { type: "array", items: { type: "string" } } } },
       callers: PEOPLE,
@@ -167,6 +169,7 @@ export default {
     };
 
     ctx.tool("import.start", {
+      effect: "write",
       description: "Import a plan the person confirmed: { plan, mode: once (these sessions) | sync (these, then new ones too), pace: fast (understood in hours, uses more of the Claude plan's normal limits today) | gentle (over days) }. Never adds paid usage. The person's own action with a person session, never an agent. Records their consent with the server (sync.consent) and sends the plan's sessions through federation's sender, a batch at a time; progress comes as import.progress. Returns { run, sessions, mode, pace }.",
       input: { type: "object", required: ["plan", "mode", "pace"], properties: { plan: { type: "string" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
       callers: PEOPLE,
@@ -178,7 +181,7 @@ export default {
         const m = machine();
         // Consent goes to the server's own record, through federation's one door; the plan's hash
         // goes with this run, so a different plan is a different consent (e2e).
-        const c = await consent({ machine: m, on: true, mode, plan: p.hash });
+        const c = await consent({ machine: m, on: true, planHash: p.hash });
         if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
         await ctx.call("memory.pace", { pace });
         const id = "imp_" + crypto.randomBytes(6).toString("hex");
@@ -190,6 +193,7 @@ export default {
       },
     });
     ctx.tool("import.stop", {
+      effect: "write",
       description: "Stop sending: the files already sent stay, and so does everything made from them. For a sync import, new sessions stop going too (the server's consent turns off). Deletes nothing.",
       input: { type: "object", properties: {} },
       callers: PEOPLE,
@@ -201,6 +205,7 @@ export default {
       },
     });
     ctx.tool("import.cancel", {
+      effect: "write",
       description: "Stop this import. What it already sent stays until the server can drop just this import's files (a per-import delete, coming from federation); deleting everything a device sent is the person's own previewed action in Settings, never a cancel.",
       input: { type: "object", properties: {} },
       callers: PEOPLE,
@@ -214,6 +219,7 @@ export default {
     });
 
     ctx.tool("import.status", {
+      effect: "read",
       description: "How far the import has got, stage by stage: search (sessions indexed), meaning (turns embedded), graph (people, orgs and facts so far) and personal facts (turns read and waiting). Each { done, total }. Counts only, read when asked.",
       input: { type: "object", properties: {} },
       callers: [...PEOPLE, "module"],

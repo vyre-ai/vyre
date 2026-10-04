@@ -38,6 +38,7 @@ import { run as tailscale } from "../names/tailscale.js";
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
 import { reach, within } from "./access.js";
+import { createDoor } from "../../lib/gateway-door.js";
 import { classify, KINDS } from "./kinds.js";
 import { walk as searchWalk, defaults as searchDefaults } from "./search.js";
 import { picker } from "./picker.js";
@@ -66,6 +67,8 @@ const NAME = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 /** Callers of vyred's own socket that are the owner: the terminal and the Capsule. */
 const OWNER_SOCKET = new Set(["cli", "local", "capsule"]);
+/** The person's own surfaces and Vyre's modules: for a tool that reports on the tailnet or the box without the asker's identity surviving the hop, so no model is meant to call it. */
+const PERSON_AND_MODULE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
 
 /** Does this caller name an agent ("mcp:agent:kit", "harness:agent:kit")? The same test as glass's. */
 const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
@@ -397,9 +400,15 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     async function driveStatus() {
-      const st = await status();
       const configured = Object.entries(specs()).map(([name, s]) => ({ name, path: s.path, access: s.access }));
       const access = overall();
+      // Nothing in 0.3 depends on Tailscale: a box with none still answers, with the shared folders off (`tailnet: false`) and no error. The Space's own Drive does not use it.
+      let st;
+      try { st = await status(); } catch (e) {
+        if (/** @type {any} */ (e).code !== "no_tailscale") throw e;
+        return { enabled: false, tailnet: false, why: "this box has no tailnet, so its folders are not shared over VyreDrive; the Space's own Drive does not need one", access,
+          shares: configured.map(s => ({ ...s, shared: false })), list: [] };
+      }
       if (!hasCap(st, "drive:share")) {
         return { enabled: false, why: "the tailnet policy does not let this box share folders (no drive:share node attribute)", fix: FIX_SHARE,
           access, shares: configured.map(s => ({ ...s, shared: false })), list: [] };
@@ -448,11 +457,21 @@ export function drive(ctx, { role, guard: g, roots }) {
       return { ok: findings.length === 0 && unsafe.length === 0, findings, unsafe, checked: peers.length };
     }
 
+    /** The Space's own Drive (versions, restore; no tailnet): is one wired on this home, and can the caller read the top of it? { enabled, files?, more?, why? }. Never throws. */
+    const spaceDriveState = async (/** @type {any} */ meta) => {
+      try {
+        const d = await createDoor(ctx).open({}, meta);
+        if (!d.gateway.drive) return { enabled: false, why: "this Space has no Drive yet" };
+        try { const r = await d.gateway.drive.listPage(d.chain, "", { limit: 1000 }); return { enabled: true, files: r.entries.length, more: r.next !== null }; }
+        catch (e) { return { enabled: true, readable: false, why: "you may not list this Drive" }; }
+      } catch (e) { return { enabled: null, why: "the Drive's state is for a signed-in person" }; }
+    };
+
     ctx.tool("files.drive.status", {
       description: "VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now. A named agent (Vyre Drive step 5) sees only the shares whose folder falls inside one of its own granted projects; a share outside that is simply left off the list, the same as an ungranted project elsewhere.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
-        const st = await driveStatus();
+        const st = { ...(await driveStatus()), space: await spaceDriveState(meta) };
         const scope = await reach(ctx, meta && meta.caller, meta);
         if (scope.all) return st;
         const mine = p => within(p, scope.folders);
@@ -534,6 +553,8 @@ export function drive(ctx, { role, guard: g, roots }) {
     });
 
     ctx.tool("files.drive.audit", {
+      // The box sees who asks: a named agent is refused in the body (reach), a bare session is the person's own Claude and is not.
+      callers: [...PERSON_AND_MODULE, "mcp", "harness"],
       description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
@@ -678,6 +699,7 @@ export function drive(ctx, { role, guard: g, roots }) {
     // The box's side, asked from the Mac. Share and unshare stay the owner's here too: the box
     // trusts this paired Mac, so the Mac must not pass on an agent's request.
     ctx.tool("files.drive.status", {
+      callers: PERSON_AND_MODULE,
       description: "VyreDrive (built on Tailscale's Taildrive) from the Mac: the box's shares (asked over the link), and what this Mac has mounted.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -700,6 +722,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       run: ({ name, mode }) => forward("files.drive.access", { name, mode }),
     });
     ctx.tool("files.drive.audit", {
+      callers: PERSON_AND_MODULE,
       description: "Ask the box which nodes the tailnet policy lets into its VyreDrive shares, besides this Mac.",
       input: { type: "object", properties: {} },
       run: () => forward("files.drive.audit", {}),

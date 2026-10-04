@@ -34,6 +34,7 @@ import { evaluate } from "./eval.js";
 import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
+import { scanIndex, scrubIndex, scrubLog } from "./sealed.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
 import { transcriptFolders } from "../config/index.js";
@@ -101,10 +102,13 @@ export default {
       onVector: item => dense.add(item),
       // The capture port: after a batch of a session's turns is indexed (already scrubbed), the work module's engine keeps the same lines for the Space's memory, once, in chunks of
       // at most 2000. A session whose turns were rewritten is forgotten there first. No work module, or a refusal, is not an error: the Space just has no memory of conversations.
-      capture: async ({ session, rewritten, lines }) => {
+      capture: async ({ session, rewritten, lines, cwd }) => {
         if (rewritten) await ctx.call("work.know.forget", { session });
+        // The project the session's folder belongs to: the work module reads a session's lines under that project's record, so a teammate granted the project covers its sessions.
+        const of = cwd ? await ctx.call("projects.of", { cwd }).catch(() => null) : null;
+        const project = of && of.data && typeof of.data.slug === "string" ? of.data.slug : null;
         for (let i = 0; i < lines.length; i += 2000) {
-          const r = await ctx.call("work.know.capture", { session, lines: lines.slice(i, i + 2000) });
+          const r = await ctx.call("work.know.capture", { session, lines: lines.slice(i, i + 2000), ...(project ? { project } : {}) });
           if (r && r.error) { if (!captureWarned) { captureWarned = true; ctx.log(`recall: the Space's memory takes no conversations (${r.error.code || "refused"})`); } return; }
         }
       },
@@ -319,6 +323,7 @@ export default {
     const agentField = { agent: { type: "string" } };
 
     ctx.tool("recall.search", {
+      effect: "read",
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
@@ -351,6 +356,7 @@ export default {
       },
     });
     ctx.tool("recall.related", {
+      effect: "read",
       description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
       input: { type: "object", required: ["project_cwds", "text"], properties: {
         project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
@@ -376,6 +382,7 @@ export default {
       },
     });
     ctx.tool("recall.thread", {
+      effect: "read",
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
@@ -419,6 +426,7 @@ export default {
       },
     });
     ctx.tool("recall.transcript", {
+      effect: "read",
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" }, machines,
@@ -475,6 +483,7 @@ export default {
     // The same people as recall.transcript: the text of every turn goes by, redacted.
     const own = ["cli", "local", "deck", "capsule", "module"];
     ctx.tool("recall.watch", {
+      effect: "write",
       description: "Follow one session live: each completed turn arrives as a session.turn event (thread = the session id) and session.state says whether a reply is under way. from is a turn id to replay after first; without it, only new turns. Call again with the same watch id to renew it: a watch nobody renews ends after 3 minutes, and one whose session is quiet for 30 minutes ends too.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "string" }, watch: { type: "string" } } },
@@ -482,12 +491,14 @@ export default {
       run: async input => watches.watch(input),
     });
     ctx.tool("recall.unwatch", {
+      effect: "write",
       description: "Stop following a session (a watch id from recall.watch).",
       input: { type: "object", required: ["watch"], properties: { watch: { type: "string" } } },
       callers: own,
       run: async input => watches.unwatch(input),
     });
     ctx.tool("recall.sessions", {
+      effect: "read",
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
         cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
@@ -506,8 +517,10 @@ export default {
       },
     });
     ctx.tool("recall.forget", {
+      effect: "write",
       internal: true,
       description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
+      callers: ["module"],
       input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
       run: async ({ sessions: ids }) => {
         const n = indexer.forget(ids.map(String)); dense.invalidate();
@@ -516,12 +529,34 @@ export default {
         return { forgot: n };
       },
     });
+    ctx.tool("recall.sealscan", {
+      description: "One look at what Recall's index already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, and how many search vectors were made from them, never a value. It changes nothing. New turns are scrubbed on the way in.",
+      callers: ["cli", "local", "deck", "capsule"],
+      input: { type: "object", properties: {} },
+      run: async () => ({ ...scanIndex(db), log: scrubLog(db), note: "Counts only. Nothing was changed. A value that is sealed in a record today can only be matched by the sealing process's ledger, which Recall does not hold." }),
+    });
+    ctx.tool("recall.sealscrub", {
+      description: "Rewrite what Recall's index already holds that has the shape of a sealed value: each matched span becomes a placeholder, nothing else in a turn, title or name changes, and the search vectors made from a changed turn are dropped and made again. Only the person, with presence. One log row (counts and classes) is kept.",
+      callers: ["cli", "local", "deck", "capsule"],
+      presence: { summary: () => "Replace values shaped like an SSN, card or bank number in your searchable history with placeholders" },
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const r = scrubIndex(db);
+        if (r.turns) dense.invalidate();
+        ctx.log(`recall: sealed-class scrub rewrote ${r.turns} turns, ${r.titles} titles, ${r.names} names; dropped ${r.vectors} vectors`);
+        ctx.events.emit("recall.scrubbed", { turns: r.turns, titles: r.titles, names: r.names, vectors: r.vectors, classes: r.classes });
+        return r;
+      },
+    });
     ctx.tool("recall.index", {
+      effect: "write",
       description: "Index new and changed transcripts now. Returns what the pass did.",
+      callers: own,
       input: { type: "object", properties: {} },
       run: async () => pass(),
     });
     ctx.tool("recall.status", {
+      effect: "read",
       description: "How much is indexed, when the last pass ran, and whether search can rank by meaning.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -540,7 +575,9 @@ export default {
     });
 
     ctx.tool("recall.setup", {
+      effect: "write",
       description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      callers: ["cli", "local", "deck", "capsule"],
       input: { type: "object", properties: {} },
       run: async () => {
         if (opts.vectors === false) return { ready: false, why: vec.why };
@@ -553,7 +590,9 @@ export default {
     });
 
     ctx.tool("recall.eval", {
+      effect: "read",
       description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      callers: own,
       input: { type: "object", required: ["queries"], properties: {
         queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
         nonsense: stringArray, k: { type: "integer" } } },
@@ -602,9 +641,10 @@ export default {
         await chain;
         await vec.done;
         // A model load in flight writes into the home; let it settle before the home can go.
-        if (vec.loading) await within(vec.loading.catch(() => null), 5000);
-        const e = /** @type {any} */ (vec.embedder);
-        if (e && typeof e.close === "function") e.close();
+        // (This used to call `within`, the folder helper above, with a promise: it threw a TypeError, stop() ended there, the embedder's process was never closed and the daemon, and any
+        // test that started one, never exited.) The embedder is closed whatever the wait does.
+        try { if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]); }
+        finally { const e = /** @type {any} */ (vec.embedder); if (e && typeof e.close === "function") e.close(); }
       },
     };
   },

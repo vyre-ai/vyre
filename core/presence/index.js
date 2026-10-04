@@ -385,6 +385,27 @@ export const MIGRATIONS = [`
     expires INTEGER NOT NULL,
     tries INTEGER NOT NULL DEFAULT 0
   );
+`, `
+  -- A command-line session (\`vyre signin\`, core/signin): a third kind of person session, carried as the bearer header, signed by no key and pinned to one terminal login (node cli:<login key>).
+  -- SQLite cannot widen a CHECK, so the table is rebuilt with the same columns.
+  CREATE TABLE presence_people_v2 (
+    id TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('cookie', 'bearer', 'cli')),
+    node TEXT NOT NULL,
+    label TEXT,
+    key TEXT,
+    created INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    max INTEGER NOT NULL,
+    key_id TEXT,
+    paired INTEGER NOT NULL DEFAULT 0,
+    rotated INTEGER,
+    software INTEGER NOT NULL DEFAULT 0
+  );
+  INSERT INTO presence_people_v2 (id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software) SELECT id, hash, kind, node, label, key, created, last_used, max, key_id, paired, rotated, software FROM presence_people;
+  DROP TABLE presence_people;
+  ALTER TABLE presence_people_v2 RENAME TO presence_people;
 `];
 
 const CHALLENGE_TTL = 120_000;

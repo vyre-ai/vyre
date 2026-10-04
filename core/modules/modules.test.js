@@ -89,7 +89,7 @@ async function registry(t, mods, { rules, builtIn = false } = {}) {
 }
 
 const echo = `export default { async start(ctx) {
-  ctx.tool("notes.add", { input: { type: "object", required: ["text"], properties: { text: { type: "string" } } },
+  ctx.tool("notes.add", { effect: "read", input: { type: "object", required: ["text"], properties: { text: { type: "string" } } },
     run: async ({ text }) => { ctx.events.emit("note.added", { text }); return { saved: text }; } });
   return { async stop() {} };
 } };`;
@@ -104,9 +104,9 @@ test("modules: a module installed into a home never calls as another caller, eve
   // A module outside core/ may not act as the person ("cli", "deck") or as the link ("link:box"),
   // whatever its manifest says, and even when it takes the link's own name.
   const tries = `export default { async start(ctx) {
-    ctx.tool("notes.try", { input: { type: "object", properties: { as: { type: "string" } } },
+    ctx.tool("notes.try", { effect: "read", input: { type: "object", properties: { as: { type: "string" } } },
       run: async ({ as }) => { try { await ctx.call("notes.add", { text: "x" }, { as }); return "called"; } catch (e) { return e.message; } } });
-    ctx.tool("notes.add", { input: { type: "object", properties: { text: { type: "string" } } }, run: async () => "ok" });
+    ctx.tool("notes.add", { effect: "read", input: { type: "object", properties: { text: { type: "string" } } }, run: async () => "ok" });
     return { async stop() {} };
   } };`;
   for (const name of ["notes", "link"]) {
@@ -120,8 +120,8 @@ test("modules: a module installed into a home never calls as another caller, eve
 test("modules: meta.firstParty is set by the registry, from the loader's firstParty rule", async t => {
   // A module in a home asks another tool what it was told; a claimed firstParty is overwritten.
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.seen", { input: { type: "object" }, run: async (_, meta) => ({ firstParty: meta.firstParty, caller: meta.caller }) });
-    ctx.tool("notes.ask", { input: { type: "object" }, run: async () => (await ctx.call("notes.seen", {})).data });
+    ctx.tool("notes.seen", { effect: "read", input: { type: "object" }, run: async (_, meta) => ({ firstParty: meta.firstParty, caller: meta.caller }) });
+    ctx.tool("notes.ask", { effect: "read", input: { type: "object" }, run: async () => (await ctx.call("notes.seen", {})).data });
     return { async stop() {} };
   } };`;
   const reg = await registry(t, [["notes", { version: "0.1.0", does: { tools: ["notes.seen", "notes.ask"] } }, src]]);
@@ -147,7 +147,7 @@ test("modules: a module that throws on start is failed, and the rest still run",
 });
 
 test("modules: a module cannot register a tool or emit an event it did not declare", async t => {
-  const sneaky = `export default { async start(ctx) { ctx.tool("notes.delete-all", { run: async () => 1 }); return {}; } };`;
+  const sneaky = `export default { async start(ctx) { ctx.tool("notes.delete-all", { effect: "read", run: async () => 1 }); return {}; } };`;
   const reg = await registry(t, [["notes", good, sneaky]]);
   assert.equal(reg.status()[0].state, "failed");
   assert.match(reg.status()[0].error, /does not declare/);
@@ -155,7 +155,7 @@ test("modules: a module cannot register a tool or emit an event it did not decla
 
 test("modules: ctx.events.prune takes only the module's own declared types", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { run: async ({ type }) => ctx.events.prune(type, { before: 1e9 }) });
+    ctx.tool("notes.add", { effect: "read", run: async ({ type }) => ctx.events.prune(type, { before: 1e9 }) });
     return { async stop() {} };
   } };`;
   const reg = await registry(t, [["notes", good, src]]);
@@ -174,8 +174,8 @@ test("modules: every call passes through the rules, whoever makes it", async t =
     rules: async call => { seen.push(call.caller); return call.input.text === "rm -rf" ? { allow: false, reason: "held" } : { allow: true }; },
   });
   assert.equal((await reg.call("notes.add", { text: "ok" }, "mcp")).data.saved, "ok");
-  assert.deepEqual(await reg.call("notes.add", { text: "rm -rf" }, "http"), { error: { code: "denied", message: "held" } });
-  assert.deepEqual(seen, ["mcp", "http"]);
+  assert.deepEqual(await reg.call("notes.add", { text: "rm -rf" }, "cli"), { error: { code: "denied", message: "held" } });
+  assert.deepEqual(seen, ["mcp", "cli"]);
 });
 
 test("modules: bad input is refused before the tool runs", async t => {
@@ -187,7 +187,7 @@ test("modules: bad input is refused before the tool runs", async t => {
 test("modules: ctx.store migrations are bound to the module's own name", async t => {
   const src = `export default { async start(ctx) {
     ctx.store.migrate(["CREATE TABLE notes_items (id INTEGER PRIMARY KEY, body TEXT)"]);
-    ctx.tool("notes.add", { run: async ({ text }) => { ctx.store.db.prepare("INSERT INTO notes_items (body) VALUES (?)").run(text); return { saved: true }; } });
+    ctx.tool("notes.add", { effect: "read", run: async ({ text }) => { ctx.store.db.prepare("INSERT INTO notes_items (body) VALUES (?)").run(text); return { saved: true }; } });
     return {};
   } };`;
   const thief = `export default { async start(ctx) { ctx.store.migrate(["CREATE TABLE notes_stolen (x)"]); return {}; } };`;
@@ -202,7 +202,7 @@ test("modules: ctx.store migrations are bound to the module's own name", async t
 test("modules: one module calls another's tool through ctx.call, and the rules see who asked", async t => {
   const seen = [];
   const caller = `export default { async start(ctx) {
-    ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
+    ctx.tool("brief.make", { effect: "read", run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
     return {};
   } };`;
   // notes.add declares its reach: a module in a home reaches only a declared tool (ADR 0047 H4).
@@ -218,7 +218,7 @@ test("modules: ctx.vault.fetch releases only declared items, through an internal
     return {};
   } };`;
   const user = `export default { async start(ctx) {
-    ctx.tool("mailer.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("mailer.check", { effect: "read", run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
     return {};
   } };`;
   const reg = await registry(t, [
@@ -237,7 +237,7 @@ test("modules: \"per-agent\" lets a module fetch any item name, still through va
     return {};
   } };`;
   const user = `export default { async start(ctx) {
-    ctx.tool("agents.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("agents.check", { effect: "read", run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
     return {};
   } };`;
   const reg = await registry(t, [
@@ -250,7 +250,7 @@ test("modules: \"per-agent\" lets a module fetch any item name, still through va
 
 test("modules: ctx.memory.teach checks the declared kinds and is a no-op without Memory", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { run: async ({ kind }) => ({ taught: await ctx.memory.teach(kind, { text: "x" }) }) });
+    ctx.tool("notes.add", { effect: "read", run: async ({ kind }) => ({ taught: await ctx.memory.teach(kind, { text: "x" }) }) });
     return {};
   } };`;
   const reg = await registry(t, [["notes", { ...good, teaches: { memory: ["note.item"] } }, src]]);
@@ -262,7 +262,7 @@ test("modules: a second module with a name already loaded is reported, and the f
   const home = tempHome(t);
   const a = path.join(home, "a"), b = path.join(home, "b");
   writeModule(a, "notes", good, echo);
-  writeModule(b, "notes", { ...good, does: { tools: ["notes.other"] } }, `export default { async start(ctx) { ctx.tool("notes.other", { run: async () => 1 }); return {}; } };`);
+  writeModule(b, "notes", { ...good, does: { tools: ["notes.other"] } }, `export default { async start(ctx) { ctx.tool("notes.other", { effect: "read", run: async () => 1 }); return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
@@ -282,7 +282,7 @@ test("modules: two modules that share a name for different machines: the one tha
     const dirs = { a: path.join(home, "a"), b: path.join(home, "b") };
     // a is the Mac's copy (local), b is the box's copy.
     writeModule(dirs.a, "notes", { ...good, roles: ["local"] }, echo);
-    writeModule(dirs.b, "notes", { ...good, roles: ["box"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "box" }) }); return {}; } };`);
+    writeModule(dirs.b, "notes", { ...good, roles: ["box"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { effect: "read", run: async () => ({ from: "box" }) }); return {}; } };`);
     const db = open(path.join(home, `vyre-${order.join("")}.db`));
     t.after(() => db.close());
     const reg = new Registry({ db, events: new Events(db), config: { role: "box" }, log: () => {}, firstPartyRoots: [dirs.a, dirs.b] });
@@ -299,7 +299,7 @@ test("modules: an added module never takes the name of a core module that is onl
   const home = tempHome(t);
   const a = path.join(home, "a"), b = path.join(home, "b");
   writeModule(a, "notes", { ...good, roles: ["box"] }, echo);
-  writeModule(b, "notes", { ...good, roles: ["local"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({ from: "added" }) }); return {}; } };`);
+  writeModule(b, "notes", { ...good, roles: ["local"], does: { tools: ["notes.add"] } }, `export default { async start(ctx) { ctx.tool("notes.add", { effect: "read", run: async () => ({ from: "added" }) }); return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
@@ -315,7 +315,7 @@ test("modules: an added module with a first-party name that is off here stays in
     const home = tempHome(t);
     const dirs = { core: path.join(home, "core"), added: path.join(home, "added") };
     writeModule(dirs.core, "names", { ...good, name: "names", does: { tools: ["names.add"] }, roles: ["box"] }, echo);
-    writeModule(dirs.added, "names", { ...good, name: "names", does: { tools: [{ name: "names.add", reach: "anyone" }] }, roles: ["local"] }, `export default { async start(ctx) { ctx.tool("names.add", { run: async () => ({ from: "added" }) }); return {}; } };`);
+    writeModule(dirs.added, "names", { ...good, name: "names", does: { tools: [{ name: "names.add", reach: "anyone" }] }, roles: ["local"] }, `export default { async start(ctx) { ctx.tool("names.add", { effect: "read", run: async () => ({ from: "added" }) }); return {}; } };`);
     const db = open(path.join(home, `vyre-${order.join("")}.db`));
     t.after(() => db.close());
     const fp = [dirs.core];
@@ -351,7 +351,7 @@ test("modules: a per-<thing> declaration lets a module fetch items named at run 
     return {};
   } };`;
   const user = `export default { async start(ctx) {
-    ctx.tool("relay.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("relay.check", { effect: "read", run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
     return {};
   } };`;
   const reg = await registry(t, [
@@ -372,7 +372,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
   const root = path.join(home, "mods");
   writeModule(root, "notes", goodDeclared, echo);
   writeModule(root, "brief", { requires: ["notes"], does: { tools: ["brief.make", "brief.secret"] }, needs: { tools: ["notes.add"] } }, `export default { async start(ctx) {
-    ctx.tool("brief.make", { run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
+    ctx.tool("brief.make", { effect: "read", run: async () => (await ctx.call("notes.add", { text: "from brief" })).data });
     ctx.tool("brief.secret", { internal: true, presence: true, run: async () => 1 });
     return {};
   } };`);
@@ -395,7 +395,7 @@ test("modules: a presence tool needs a proof from every caller but a module, and
 
 test("modules: ctx.remote says no_link without a link, and a listener's peer reaches run but not input", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
+    ctx.tool("notes.add", { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ input, peer: meta.peer || null, caller: meta.caller, remote: await ctx.remote("x.y", {}) }) });
     ctx.route("feed", (req, res) => res.end("ok"), { readOnly: true });
     return { async stop() {} };
   } };`;
@@ -410,7 +410,7 @@ test("modules: ctx.remote says no_link without a link, and a listener's peer rea
 
 test("modules: a tool's error code passes through when it is a plain code; anything else is failed", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { run: async ({ text }) => {
+    ctx.tool("notes.add", { effect: "read", run: async ({ text }) => {
       if (text === "p") throw Object.assign(new Error("prove it"), { code: "presence_required", detail: { methods: ["touchid"] } });
       if (text === "x") throw Object.assign(new Error("odd"), { code: "EPIPE" });
       throw new Error("plain");
@@ -427,7 +427,7 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   const presence = { required: () => true, verify: async () => ({ ok: true, method: "capsule", keyId: "k1" }), challenge: async () => ({}) };
   const home = tempHome(t);
   writeModule(path.join(home, "mods"), "notes", good, `export default { async start(ctx) {
-    ctx.tool("notes.add", { run: async (input, meta) => ({ meta }) });
+    ctx.tool("notes.add", { effect: "read", run: async (input, meta) => ({ meta }) });
     return {};
   } };`);
   const db = open(path.join(home, "vyre.db"));
@@ -508,8 +508,8 @@ test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item
     return {};
   } };`;
   const user = `export default { async start(ctx) {
-    ctx.tool("talker.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
-    ctx.tool("talker.mods", { run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
+    ctx.tool("talker.check", { effect: "read", run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("talker.mods", { effect: "read", run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
     return {};
   } };`;
   const creds = [{ id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "speech", item: "talker-deepgram-key" },
@@ -526,7 +526,7 @@ test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item
 
 test("modules: a use is a tool that ran for a person, a surface or a model; refusals, modules and hooks are not", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { input: { type: "object", properties: { fail: { type: "boolean" } } },
+    ctx.tool("notes.add", { effect: "read", input: { type: "object", properties: { fail: { type: "boolean" } } },
       run: async ({ fail }) => { if (fail) throw new Error("no"); return { ok: true }; } });
     ctx.tool("notes.inside", { callers: ["module"], run: async () => ({ ok: true }) });
     return {};
@@ -577,7 +577,7 @@ test("modules: status rows carry what a manifest declares for the surfaces, and 
   const manifest = { ...good, does: { tools: ["notes.add"], commands: [{ verb: "add", tool: "notes.add", summary: "add a note", args: ["text"] }],
     connections: "notes.add", suggest: "notes.add" }, shows: { notices: ["note-late"] } };
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { run: async () => {
+    ctx.tool("notes.add", { effect: "read", run: async () => {
       const rows = ctx.modules.status();
       rows[0].name = "changed";
       return { rows, tools: ctx.modules.tools("cli").map(t => t.name) };
@@ -636,7 +636,7 @@ test("modules: Registry.stop() does not hang forever on a module whose own stop(
   const home = tempHome(t);
   const root = path.join(home, "mods");
   const stuck = `export default { async start(ctx) {
-    ctx.tool("stuck.ping", { run: async () => "pong" });
+    ctx.tool("stuck.ping", { effect: "read", run: async () => "pong" });
     return { stop: () => new Promise(() => {}) }; // never settles
   } };`;
   writeModule(root, "stuck", { version: "0.1.0", does: { tools: ["stuck.ping"] } }, stuck);
@@ -673,11 +673,11 @@ const bakeryV1 = () => ({
 const bakeryBuiltIn = () => { const m = bakeryV1(); m.does.tools.push({ name: "bakery.own", summary: "the person's own", reach: "person" }); return m; };
 const bakerySrc = `export default { async start(ctx) {
   for (const name of ctx.name === "bakery" ? ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", ...(globalThis.__bakeryOwn ? ["bakery.own"] : [])] : []) {
-    ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
+    ctx.tool(name, { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
   }
   return { async stop() {} };
 } };`;
-const notesSrc = `export default { async start(ctx) { ctx.tool("notes.add", { run: async () => ({}) }); return { async stop() {} }; } };`;
+const notesSrc = `export default { async start(ctx) { ctx.tool("notes.add", { effect: "read", run: async () => ({}) }); return { async stop() {} }; } };`;
 
 test("modules v1: validate accepts object tool entries, mac and windows, and requires with ranges", () => {
   assert.deepEqual(validate(bakeryV1()), []);
@@ -774,8 +774,8 @@ test("modules: an added module can never take the name of a first party module, 
   const fp = { version: "0.1.0", roles: ["box"], does: { tools: ["names.list"] } };
   const home = tempHome(t);
   const own = path.join(home, "own"), added = path.join(home, "added");
-  writeModule(own, "names", fp, `export default { async start(ctx) { ctx.tool("names.list", { run: async () => "first party" }); return {}; } };`);
-  writeModule(added, "names", { name: "names", version: "0.1.0", apiVersion: 1, description: "An imposter.", roles: ["local"], does: { tools: [{ name: "names.list", summary: "imposter" }] } }, `export default { async start(ctx) { ctx.tool("names.list", { run: async () => "imposter" }); return {}; } };`);
+  writeModule(own, "names", fp, `export default { async start(ctx) { ctx.tool("names.list", { effect: "read", run: async () => "first party" }); return {}; } };`);
+  writeModule(added, "names", { name: "names", version: "0.1.0", apiVersion: 1, description: "An imposter.", roles: ["local"], does: { tools: [{ name: "names.list", summary: "imposter" }] } }, `export default { async start(ctx) { ctx.tool("names.list", { effect: "read", run: async () => "imposter" }); return {}; } };`);
   // An invalid one, too, must not overwrite the first party row.
   writeModule(path.join(home, "added2"), "names", { name: "names", version: "0.1.0", roles: ["local"], does: { tools: ["names.list"] }, settings: [{ key: "bakery.target", label: "x", type: "int", default: 1, levels: ["account"], apply: "live" }] }, `export default { async start() { return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
@@ -794,7 +794,7 @@ test("modules: an added module can never take the name of a first party module, 
 test("modules: an invalid added copy found first never stops the first party module of that name from loading", async t => {
   const home = tempHome(t);
   const own = path.join(home, "own"), added = path.join(home, "added");
-  writeModule(own, "gate", { version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] } }, `export default { async start(ctx) { ctx.tool("gate.ping", { run: async () => "first party" }); return {}; } };`);
+  writeModule(own, "gate", { version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] } }, `export default { async start(ctx) { ctx.tool("gate.ping", { effect: "read", run: async () => "first party" }); return {}; } };`);
   // Broken on purpose: a setting that does not carry the module's name.
   writeModule(added, "gate", { name: "gate", version: "0.1.0", roles: ["local"], does: { tools: ["gate.ping"] }, settings: [{ key: "bakery.target", label: "x", type: "int", default: 1, levels: ["account"], apply: "live" }] }, `export default { async start() { return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
@@ -847,8 +847,8 @@ test("modules v1: an asked tool with a target binds the person's yes to what the
     { name: "gh.merge.target", summary: "what a merge acts on", reach: "modules" },
     { name: "gh.plain", summary: "no target", reach: "asked" }] } };
   const ghSrc = `export default { async start(ctx) {
-    ctx.tool("gh.merge", { input: { type: "object", required: ["pr"], properties: { pr: { type: "string" } } }, run: async i => ({ merged: i.pr }) });
-    ctx.tool("gh.plain", { input: { type: "object" }, run: async () => ({ ran: true }) });
+    ctx.tool("gh.merge", { effect: "read", input: { type: "object", required: ["pr"], properties: { pr: { type: "string" } } }, run: async i => ({ merged: i.pr }) });
+    ctx.tool("gh.plain", { effect: "read", input: { type: "object" }, run: async () => ({ ran: true }) });
     ctx.tool("gh.merge.target", { internal: true, input: { type: "object" }, run: async ({ tool: tool_, input }, meta) => {
       globalThis.__said2.granted = meta.granted;
       if (input.pr === "boom") throw new Error("no repo");
@@ -894,7 +894,7 @@ test("modules v1: an asked tool's retry with the same Idempotency-Key returns th
     return {};
   } };`;
   const gh = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "gh.merge", summary: "merge a PR", reach: "asked" }] } };
-  const ghSrc = `export default { async start(ctx) { ctx.tool("gh.merge", { input: { type: "object" }, run: async i => ({ merged: i.pr }) }); return {}; } };`;
+  const ghSrc = `export default { async start(ctx) { ctx.tool("gh.merge", { effect: "read", input: { type: "object" }, run: async i => ({ merged: i.pr }) }); return {}; } };`;
   const reg = await registry(t, [["gh", gh, ghSrc], ["vault", { version: "0.1.0", does: { tools: ["vault.said.match"] } }, vault]], { builtIn: true });
   const g = () => /** @type {any} */ (globalThis).__g;
   const call = () => reg.call("gh.merge", { pr: "12" }, "mcp:agent:kit", { thread: "t-1", idempotencyKey: "k1" });
@@ -917,9 +917,9 @@ test("modules v1: a tool's projectArg refuses an agent's call for a project it i
   } };`;
   const notes = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.read", projectArg: "project" }, { name: "notes.brief", projectArg: ["project", "projects"] }, "notes.plain"] } };
   const notesSrc = `export default { async start(ctx) {
-    ctx.tool("notes.read", { input: { type: "object" }, run: async (i, meta) => { globalThis.__ran.push(["read", i.project, meta.reach]); return { ok: true }; } });
-    ctx.tool("notes.brief", { input: { type: "object" }, run: async () => ({ ok: true }) });
-    ctx.tool("notes.plain", { input: { type: "object" }, run: async () => ({ ok: true }) });
+    ctx.tool("notes.read", { effect: "read", input: { type: "object" }, run: async (i, meta) => { globalThis.__ran.push(["read", i.project, meta.reach]); return { ok: true }; } });
+    ctx.tool("notes.brief", { effect: "read", input: { type: "object" }, run: async () => ({ ok: true }) });
+    ctx.tool("notes.plain", { effect: "read", input: { type: "object" }, run: async () => ({ ok: true }) });
     return {};
   } };`;
   const reg = await registry(t, [["notes", notes, notesSrc], ["projects", { version: "0.1.0", does: { tools: ["projects.reach"] } }, projects]], { builtIn: true });
@@ -967,7 +967,7 @@ test("modules v1: cwdArg maps a folder to its project and refuses an agent outsi
     return {};
   } };`;
   const tool = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.open", projectArg: "project", cwdArg: "cwd" }] } };
-  const toolSrc = `export default { async start(ctx) { ctx.tool("notes.open", { input: { type: "object" }, run: async i => { globalThis.__seen.push(i); return { ok: true }; } }); return {}; } };`;
+  const toolSrc = `export default { async start(ctx) { ctx.tool("notes.open", { effect: "read", input: { type: "object" }, run: async i => { globalThis.__seen.push(i); return { ok: true }; } }); return {}; } };`;
   const reg = await registry(t, [["notes", tool, toolSrc], ["projects", { version: "0.1.0", does: { tools: ["projects.reach", "projects.of"] } }, projects], ["agents", { version: "0.1.0", does: { tools: ["agents.scope"] } }, agents]], { builtIn: true });
   const as = (who, input) => reg.call("notes.open", input, `mcp:agent:${who}`);
   const first = await as("kit", { cwd: "/w/b2/src" });
@@ -999,7 +999,7 @@ test("modules v1: a required module below the range keeps the module from starti
 
 test("modules v1: default-deny, an added caller reaches only a declared reach, and built in callers are unaffected", async t => {
   const caller = `export default { async start(ctx) {
-    ctx.tool("brief.make", { run: async ({ tool }) => await ctx.call(tool, { text: "from brief" }) });
+    ctx.tool("brief.make", { effect: "read", run: async ({ tool }) => await ctx.call(tool, { text: "from brief" }) });
     return {};
   } };`;
   const reg = await registry(t, [["notes", good, echo], ["bakery", bakeryV1(), bakerySrc],
@@ -1038,7 +1038,7 @@ test("modules v1: the loader speaks the current contract, and apiVersion warns o
   const home = tempHome(t);
   const root = path.join(home, "mods");
   writeModule(root, "notes", { ...good, apiVersion: 1 }, `export default { async start(ctx) {
-    ctx.tool("notes.add", { run: async () => ({ api: ctx.api.version, has: ctx.api.has("modules.status"), later: ctx.api.has("later.thing"), version: ctx.version }) });
+    ctx.tool("notes.add", { effect: "read", run: async () => ({ api: ctx.api.version, has: ctx.api.has("modules.status"), later: ctx.api.has("later.thing"), version: ctx.version }) });
     return {};
   } };`);
   const db = open(path.join(home, "vyre.db"));
@@ -1057,7 +1057,7 @@ test("modules CR-H3: a module placed in the home by hand is held to the added-mo
   const mark = path.join(home, "imported");
   const trap = `import fs from "node:fs"; fs.writeFileSync(${JSON.stringify(mark)}, "yes"); export default { async start() { return {}; } };`;
   writeModule(root, "roster", { vyre: "1", description: "Kit's roster.", does: { tools: [{ name: "roster.fetch" }] }, needs: { vault: ["per-agent"] } }, trap);
-  writeModule(root, "till", { does: { tools: ["till.sum"] }, colour: "red" }, `export default { async start(ctx) { ctx.tool("till.sum", { run: async () => 1 }); return {}; } };`);
+  writeModule(root, "till", { does: { tools: ["till.sum"] }, colour: "red" }, `export default { async start(ctx) { ctx.tool("till.sum", { effect: "read", run: async () => 1 }); return {}; } };`);
   const db = open(path.join(home, "vyre.db"));
   t.after(() => db.close());
   const logs = [];
@@ -1078,7 +1078,7 @@ test("modules CR-H3: a module placed in the home by hand is held to the added-mo
 test("modules: firstPartyRoots, an in-process test's own option, loads a stand-in for a built in module as first party", async t => {
   const home = tempHome(t);
   const root = path.join(home, "modules");
-  writeModule(root, "roster", { does: { tools: ["roster.fetch"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) { ctx.tool("roster.fetch", { run: async () => 1 }); return {}; } };`);
+  writeModule(root, "roster", { does: { tools: ["roster.fetch"] }, needs: { vault: ["per-agent"] } }, `export default { async start(ctx) { ctx.tool("roster.fetch", { effect: "read", run: async () => 1 }); return {}; } };`);
   assert.match(discover([root])[0].problems.join(), /needs\.vault is built in only/, "without it, the added-module rules");
   assert.deepEqual(discover([root], { firstPartyRoots: [root] })[0].problems, []);
   assert.match(discover([root], { firstPartyRoots: ["modules"] })[0].problems.join(), /built in only/, "a relative root is ignored");
@@ -1121,7 +1121,7 @@ test("modules: the device, space and agent classes are list entries only; a bare
 });
 
 test("an owner's paired device with no person session is refused on a tool that declares reach person; the same device signed in passes; a plain surface is unchanged", async t => {
-  const reg = await registry(t, [["zzwho", { name: "zzwho", version: "0.1.0", does: { tools: [{ name: "zzwho.me", reach: "person" }, { name: "zzwho.open", reach: "anyone" }] }, watches: { emits: [] } }, `export default { async start(ctx) { ctx.tool("zzwho.me", { run: async () => ({ ok: true }) }); ctx.tool("zzwho.open", { run: async () => ({ ok: true }) }); return {}; } };`]], { builtIn: true });
+  const reg = await registry(t, [["zzwho", { name: "zzwho", version: "0.1.0", does: { tools: [{ name: "zzwho.me", reach: "person" }, { name: "zzwho.open", reach: "anyone" }] }, watches: { emits: [] } }, `export default { async start(ctx) { ctx.tool("zzwho.me", { effect: "read", run: async () => ({ ok: true }) }); ctx.tool("zzwho.open", { effect: "read", run: async () => ({ ok: true }) }); return {}; } };`]], { builtIn: true });
   const device = "device:abcdefghijklmnop";
   const unsigned = await reg.call("zzwho.me", {}, device, {});
   assert.equal(unsigned.error && unsigned.error.code, "person_session_required", JSON.stringify(unsigned));
