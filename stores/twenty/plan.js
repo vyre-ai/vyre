@@ -27,6 +27,8 @@ const SYSTEM_FIELDS = new Set(["id", "name", "createdAt", "updatedAt", "deletedA
 
 const COLORS = ["blue", "turquoise", "purple", "orange", "green", "gray", "red", "pink", "yellow", "sky"];
 export const VERSION_FIELD = "vyreVersion";
+/** The kernel attributes the store mirrors as real fields so Twenty can filter by them (the gateway's `attr_filter`): attribute name to column. */
+export const ATTR_COLUMNS = Object.freeze({ project: "vyreProject", owner: "vyreOwner", created_by: "vyreCreatedBy", sensitivity: "vyreSensitivity" });
 /** Twenty keeps a soft-deleted row in its unique index, but a removed record must free its value. A type with unique fields has this hidden JSON column: on remove the values move into it (and the unique columns go null), on restore they move back. */
 export const HELD_FIELD = "vyreHeld";
 /** @param {TypePlan} p */
@@ -170,6 +172,7 @@ export function toFilter(p, f) {
   if (f.field === "id") return { id: sys(f.op, f.value) };
   if (f.field === "created_at" || f.field === "updated_at") return { [f.field === "created_at" ? "createdAt" : "updatedAt"]: sys(f.op, typeof f.value === "number" ? new Date(f.value).toISOString() : f.value) };
   if (f.field === "version") return { [VERSION_FIELD]: sys(f.op, f.value) };
+  if (typeof f.field === "string" && f.field.startsWith("attr:") && Object.hasOwn(ATTR_COLUMNS, f.field.slice(5))) return { [/** @type {any} */ (ATTR_COLUMNS)[f.field.slice(5)]]: sys(f.op, f.value) };
   const fp = p.byVyre.get(f.field);
   if (!fp) throw new PlanError("unknown_field", `${p.vyre} has no field ${f.field}`);
   if (fp.sealed) throw new PlanError("invalid", `${p.vyre}.${f.field} is sealed and cannot be filtered`);

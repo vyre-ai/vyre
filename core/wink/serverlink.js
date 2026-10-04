@@ -9,6 +9,9 @@
 import { peerSession, streamPipe } from "./node/peer-wire.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
+import { memoryKeyStore, webCrypto } from "../../relay/client/webcrypto.js";
+import { base32 } from "../../relay/client/bytes.js";
+import crypto from "node:crypto";
 
 export const PEER_HOME = "home";
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -20,9 +23,9 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  */
 export function createServerLinks(o) {
   const log = o.log || (() => {});
-  /** @type {Map<string, { conn: any, peer: any, opening: Promise<any> | null, token: any, hello?: any }>} */
+  /** @type {Map<string, { conn: any, peer: any, opening: Promise<any> | null, token: any, invitee?: { keyId: Promise<string> } }>} */
   const links = new Map();
-  /** Where an INVITEE reaches a space's home (from the space's directory record), by the link id made for that invite. No paired server is involved. @type {Map<string, { channel: { relay: string, route: string, box: string }, hello: any }>} */
+  /** Where an INVITEE reaches a space's home (from the space's directory record), by the link id made for that invite. No paired server is involved. `hello` is the signed hello or a function of the channel's key id that makes one. @type {Map<string, { channel: { relay: string, route: string, box: string }, hello: any }>} */
   const invitees = new Map();
   const linkOf = (/** @type {string} */ sid) => {
     let l = links.get(sid);
@@ -30,7 +33,15 @@ export function createServerLinks(o) {
     const iv = invitees.get(sid);
     const ch = iv ? iv.channel : o.channelOf(sid);
     if (!ch) throw err("not_found", "this device has no paired server by that id");
-    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}), ...(iv ? { invitee: true } : {}) }), peer: null, opening: null, token: null, ...(iv ? { hello: iv.hello } : {}) };
+    if (iv) {
+      // An invitee's channel is its own throwaway key (no row at the box, nothing of this device's own identity on it); the key's id is what the signed hello binds, so a hello cannot be carried to another channel.
+      const provider = (o.options && o.options.crypto) || webCrypto();
+      const keyStore = memoryKeyStore();
+      const keyId = (async () => { const k = await provider.generateKeyPair(); await keyStore.set(k); return base32(crypto.createHash("sha256").update(Buffer.from(k.publicKey)).digest()).slice(0, 16); })();
+      keyId.catch(() => {});
+      const ks = { get: async () => { await keyId; return keyStore.get(); }, set: (/** @type {any} */ k) => keyStore.set(k) };
+      l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}), crypto: provider, keyStore: ks, invitee: true }), peer: null, opening: null, token: null, invitee: { keyId } };
+    } else l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}) }), peer: null, opening: null, token: null };
     links.set(sid, l);
     return l;
   };
@@ -43,8 +54,16 @@ export function createServerLinks(o) {
       // The relay client opens the channel only to the box key named by the route (the Noise handshake pins it). A box with another key never opens, so no stream head, and so no hello, is ever sent to it.
       let chan;
       try { chan = await Promise.race([l.conn.ready(), new Promise((_, rej) => { const t = setTimeout(() => rej(err("unreachable", "no answer")), o.openMs ?? 10_000); if (t.unref) t.unref(); })]); }
-      catch { throw err("unreachable", l.hello ? "that server is not the one this space names, or it cannot be reached" : "the server could not be reached"); }
-      const s = chan.open({ peer: "wink", space: PEER_HOME, ...(l.hello ? { invitee: l.hello } : {}) });
+      catch { throw err("unreachable", l.invitee ? "that server is not the one this space names, or it cannot be reached" : "the server could not be reached"); }
+      let hello = null;
+      if (l.invitee) {
+        const iv = invitees.get(sid);
+        const made = iv && iv.hello;
+        // a hello made now (a function of the channel's key id) is signed fresh for every stream, so a reconnect after the two-minute window never presents an old one
+        hello = typeof made === "function" ? await made(await l.invitee.keyId) : made;
+        if (!hello) throw err("not_found", "this invite has no hello to open with");
+      }
+      const s = chan.open({ peer: "wink", space: PEER_HOME, ...(hello ? { invitee: hello } : {}) });
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { s.reset("no answer"); reject(err("unreachable", "the server did not accept the peer stream")); }, o.openMs ?? 10_000);
         s.onhead = (/** @type {any} */ h) => { clearTimeout(timer); h && h.status === 200 ? resolve(undefined) : reject(err(h && h.status === 429 ? "rate_limited" : "denied", `the server refused the peer stream (${h && h.status})`)); };
@@ -124,13 +143,12 @@ export function createServerLinks(o) {
    * A session for a person who is NOT a member yet, to the home named by a space's directory record. `hello` is signed by the spaces module (the invitee's identity key over
    * the box, space and invite); it rides in the stream head and the door admits grants.invites.get and grants.invites.accept only. A new hello (a new invite, or the same one
    * signed again) replaces the old link, so an expired hello is never reused.
-   * @param {{ relay: string, route: string, box: string }} channel @param {any} hello
+   * @param {{ relay: string, route: string, box: string }} channel @param {any} hello a signed hello, or `(channelKeyId) => hello` (then pass `{ invite }` third)
    */
-  const inviteeSessionFor = (channel, hello) => {
-    if (!channel || !channel.route || !hello || typeof hello.invite !== "string") throw err("bad_input", "an invitee session needs a route and a signed hello");
-    const sid = `invitee:${channel.route}:${hello.invite}`;
-    const old = links.get(sid);
-    if (old && old.hello && old.hello.nonce !== hello.nonce) { try { old.peer && old.peer.close("done"); } catch { /* closed */ } try { old.conn.close(); } catch { /* closed */ } links.delete(sid); }
+  const inviteeSessionFor = function (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {{ invite?: string } | undefined} */ about) {
+    const invite = typeof hello === "function" ? about && about.invite : hello && hello.invite;
+    if (!channel || !channel.route || !hello || typeof invite !== "string") throw err("bad_input", "an invitee session needs a route, an invite and a signed hello");
+    const sid = `invitee:${channel.route}:${invite}`;
     invitees.set(sid, { channel, hello });
     return sessionFor(sid);
   };

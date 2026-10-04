@@ -35,7 +35,7 @@ async function world(t) {
   const mail = await outbox(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
     gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "alex@example.com", base: mail.base } } } }));
-  const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps,
+  const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps, softwareOk: () => process.env.VYRE_SEAL_DEV === "1" && process.env.VYRE_SEAL_SOFTWARE === "1",
     touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) }, who: async () => [] }) });
   t.after(() => d.stop());
   // What the names module does for each tailnet request, with the phone as the peer.
@@ -79,6 +79,10 @@ function deviceKey() {
 }
 
 test("mobile: a tailnet device is asked for presence on gate.approve, and a device key's signature sends it", async t => {
+  // a software device key is presence only on a development build behind the dev switches (PW-1); this test signs with one
+  const saved = { dev: process.env.VYRE_SEAL_DEV, sw: process.env.VYRE_SEAL_SOFTWARE };
+  Object.assign(process.env, { VYRE_SEAL_DEV: "1", VYRE_SEAL_SOFTWARE: "1" });
+  t.after(() => { for (const [k, v] of [["VYRE_SEAL_DEV", saved.dev], ["VYRE_SEAL_SOFTWARE", saved.sw]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   const w = await world(t);
   const tools = await (await fetch(`${w.base}/v1/tools`)).json();
   for (const name of ["gate.get", "gate.approve", "gate.reject", "gate.revise", "threads.answer", "push.subscribe", "vault.reveal", "vault.totp", "presence.session.open"]) {

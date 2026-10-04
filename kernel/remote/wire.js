@@ -14,7 +14,7 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 /** The calls that cross, by gateway group. Anything not here is refused (`no_such_call`); a call is only ever looked up, never built from a name. */
 export const CALLS = Object.freeze({
   grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
-  records: ["define", "get", "query", "aggregate", "search", "create", "update", "remove", "restore"],
+  records: ["definitions", "define", "get", "query", "aggregate", "search", "create", "update", "remove", "restore"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
   events: ["read"],
   surfaces: ["open", "revoke"],
@@ -25,7 +25,7 @@ export const CALLS = Object.freeze({
 });
 
 /** The reads a device may keep a marked copy of for its screens. */
-export const CACHEABLE = Object.freeze(new Set(["grants.list", "grants.members.list", "grants.members.get", "grants.invites.get", "records.get", "records.query", "records.aggregate", "events.read", "tasks.get", "tasks.needsYou", "tasks.card"]));
+export const CACHEABLE = Object.freeze(new Set(["grants.list", "grants.members.list", "grants.members.get", "grants.invites.get", "records.definitions", "records.get", "records.query", "records.aggregate", "events.read", "tasks.get", "tasks.needsYou", "tasks.card"]));
 
 /** Calls a person who is not a member yet may make: reading the join card and accepting the invite. */
 export const INVITEE_CALLS = Object.freeze(new Set(["grants.invites.get", "grants.invites.accept"]));

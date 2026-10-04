@@ -27,6 +27,7 @@ function lineFor(tool) {
   if (/reveal/.test(t)) return "Reveal it in Vyre on your phone.";
   if (/^tasks\.decide/.test(t)) return "Approve it in Vyre on your phone.";
   if (/^(grants|spaces\.roles|spaces\.members)\./.test(t)) return "Change who can use this in Vyre on your phone.";
+  if (/^spaces\.host-here/.test(t)) return "Make this space in Vyre on your phone.";
   if (/^wink\./.test(t)) return "Pair it in Vyre on your phone.";
   if (/^onboard\./.test(t)) return "Connect it in Vyre on your phone.";
   if (/^vault\.account\.unlock/.test(t)) return "Unlock it in Vyre on your phone.";

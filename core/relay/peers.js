@@ -19,3 +19,14 @@ export function peersFor(ctx) {
   if (!d || typeof d.space !== "string" || typeof d.allow !== "function" || typeof d.accept !== "function") return undefined;
   return d;
 }
+
+/**
+ * The invitee door: `acceptInvitee(stream, who, head)` of the same `ctx.peerDoor()`, or undefined. @param {any} ctx @returns {{ acceptInvitee: (stream: any, who: { inviteeId: string }, head: any) => void } | undefined}
+ */
+export function inviteesFor(ctx) {
+  const f = ctx && ctx.peerDoor;
+  if (typeof f !== "function") return undefined;
+  let d;
+  try { d = f(); } catch { return undefined; }
+  return d && typeof d.acceptInvitee === "function" ? d : undefined;
+}
