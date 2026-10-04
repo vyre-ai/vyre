@@ -27,6 +27,7 @@ import { runnerPorts } from "./gateway/runner-ports.js";
  * @param {{ space: string, owner: string, owner_uid: number, key?: Uint8Array | string, seal?: any, label?: () => { name?: string, words?: string }, clock?: () => number,
  *   legacyKeys?: (Uint8Array | string)[], currentCall?: () => any, store?: any, log?: any, chains?: any, grantsStore?: any, grants?: any, members?: any, bootstrap?: boolean, presence?: any, sealer?: any, door?: any,
  *   expr?: any, hasPresenceSession?: (chain: any) => boolean, onStageEnter?: any, stageTasks?: any, checkpointKey?: any,
+ *   deviceEnrolled?: (space: string, device: string) => Promise<boolean>,
  *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
@@ -72,6 +73,11 @@ export async function createKernel(cfg) {
    * chain: a module never builds a chain. Record calls wait for the module's types to be defined.
    * @param {any} m the module's manifest
    */
+  /** Is this device (a `device` fact) still enrolled in this Space? The spaces module keeps the list (`cfg.deviceEnrolled`); with no port every device is (a build without the module). Any error is a no. */
+  const enrolledHere = async (/** @type {string} */ space, /** @type {any} */ facts) => {
+    if (!cfg.deviceEnrolled || !facts || facts.kind !== "device" || typeof facts.device_key_id !== "string") return true;
+    try { return (await cfg.deviceEnrolled(space, facts.device_key_id)) !== false; } catch { return false; }
+  };
   const kernelFor = (/** @type {any} */ m) => {
     if (!grantsStore) throw new Error("ctx.kernel needs the kernel's own grants store");
     const needs = (m.needs && m.needs.kernel) || { actions: [] };
@@ -138,7 +144,11 @@ export async function createKernel(cfg) {
        */
       chain: async (/** @type {any} */ meta) => {
         if (meta && typeof meta.token === "string") return surfaces.chainFor(meta.token);
-        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+        if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
+          // A device the person removed from THIS Space has no chain in it (the user's ruling: devices enrol per Space); it keeps its chains in the Spaces it is still in.
+          if (!(await enrolledHere(cfg.space, meta.kernelFacts))) return gateway.serviceChain(m.name);
+          try { return chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
+        }
         await ready;
         return gateway.serviceChain(m.name);
       },
@@ -153,7 +163,10 @@ export async function createKernel(cfg) {
       const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
       if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
       if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
-      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") { try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ } }
+      if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
+        if (!(await enrolledHere(space, meta.kernelFacts))) throw new KernelError("not_a_member", "this device is not enrolled in that space");
+        try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }
+      }
       throw new KernelError("not_a_member", "no chain for this connection");
     };
     /** Wink's `offers` port over this Space's grants.offers (kernel/remote/offers-port.js): the caller's chain and proof come from the call's meta. */
