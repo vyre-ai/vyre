@@ -109,3 +109,9 @@ test("confine-probe.sh reports a real TCP listener, UDP socket and abstract unix
   const own = ownListeners();
   assert.ok(own.tcp.includes(tp) && own.udp.includes(up) && own.abstract.includes("@" + name), JSON.stringify(own));
 });
+
+test("confine-probe.sh does not report Docker's embedded resolver (127.0.0.11), which every container has", { skip: process.platform !== "linux" }, async () => {
+  const src = fs.readFileSync(PROBE, "utf8");
+  assert.match(src, /0B00007F/, "the resolver's address is skipped by address");
+  assert.equal((src.match(/!= 0B00007F/g) || []).length, 2, "for TCP and for UDP");
+});
