@@ -16,7 +16,7 @@ test("labels grant nothing on a kernel-on daemon: presence's session check, vaul
   const ids = { app: "aaaaaaaaaaaaaaaa", web: "bbbbbbbbbbbbbbbb", setup: "cccccccccccccccc", gone: "dddddddddddddddd", never: "eeeeeeeeeeeeeeee" };
   ins.run(ids.app, "phone", "app", 0, null); ins.run(ids.web, "browser", "web", 1, null); ins.run(ids.setup, "setup page", "setup", 0, null); ins.run(ids.gone, "old", "app", 0, 5);
   // The home's own Space is known to the spaces module (devices enrol per Space; a device with no list yet is enrolled).
-  d.registry.deps.db.prepare("INSERT OR IGNORE INTO spaces_space (id, name, label, created_by, status, created_at, updated_at) VALUES (?, 'alex.vyre.run', 'alex', 'per_x', 'live', 1, 1)").run(d.kernel.id.space);
+  d.registry.deps.db.prepare("INSERT OR IGNORE INTO spaces_space (id, name, label, created_by, status, created_at, updated_at) VALUES (?, 'alex.vyre.run', 'alex', 'per_x', 'done', 1, 1)").run(d.kernel.id.space);
   /** The meta the daemon builds for one call from a device: its own facts from the relay row, the person session id as a stand-in carried as a fact. */
   const metaOf = async (id, signedIn) => {
     const label = `device:${id}`, via = signedIn ? { person: { id: "ps1" } } : {};
