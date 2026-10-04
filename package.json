@@ -52,8 +52,6 @@
     "scripts/admin-wipe.mjs",
     "scripts/admin-anchor-reset.mjs",
     "scripts/postinstall.mjs",
-    "scripts/admin-wipe.mjs",
-    "scripts/admin-anchor-reset.mjs",
     "scripts/dev-enrol-software-key.mjs",
     "scripts/dev-sign-proof.mjs",
     "docs",
