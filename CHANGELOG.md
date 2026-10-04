@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(0.3, Projects): a type holds work (is listed under Projects, has tasks, a team, chats and files) when its definition says `kind: "project"` (kernel/contracts/fields.d.ts TypeDefinition.kind, optional, additive), set by Customize's Holds work switch or by a Kit. No type name is special any more: the `holdsWork` entries for matter, project and trip are gone from deck/ui/view-defs.js and the sample types carry the flag.
+
 - feat(0.3, Mac app, 4 Oct): the Vyre app in a Lumen window. Host/VyreAppWindow.swift (a regular NSWindow with a WKWebView on vyreapp://box/app/, every request forwarded to vyred over its socket by BoxSchemeHandler), Host/VyreMenu.swift (the full menu bar and Command shortcuts while it is open), Extensions/vyreapp ("Open Vyre" in the Capsule), Touch ID presence, notices and links through window.__vyreShell (apps/app/src/shell, used by src/real/presence.ts and notify.web.ts), menu commands as routes (app/_layout.tsx). Not yet compiled or run: the hosted macOS runner does that. Chat and terminal sockets do not work in this window yet (docs/work/native-core.md).
 - feat(0.3, Customize): Customize reads the vyred's types and sends every change (add a field, seal a field, rename, stages, a new type) as one records.define diff; the sample types remain in a mock build (screens/customize/real-model.js).
 

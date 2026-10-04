@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { addField, sealField } from "./logic.js";
 import { diffFor, isOwn, toKernelType, toTypeDef } from "./real-model.js";
 
-const matter = { name: "matter", label: "Matter", fields: [{ name: "title", label: "Title", kind: "text", required: true }, { name: "stage", label: "Stage", kind: "stage", options: ["Intake", "Closed"] }, { name: "ssn", label: "SSN", kind: "sealed", seal: { level: "ai", class: "free" } }],
+const matter = { name: "matter", label: "Matter", kind: "project", fields: [{ name: "title", label: "Title", kind: "text", required: true }, { name: "stage", label: "Stage", kind: "stage", options: ["Intake", "Closed"] }, { name: "ssn", label: "SSN", kind: "sealed", seal: { level: "ai", class: "free" } }],
   stages: [{ name: "Intake", tasks: [{ title: "Collect", doer: "juno", output: { kind: "note" } }] }, { name: "Closed" }] };
 
 test("a kernel type reads as the screen's type", () => {
@@ -37,4 +37,13 @@ test("a new type is an add_types diff, and the kernel's own types are not shown"
   const d = /** @type {any} */ (diffFor({ id: "trip", label: "Trip", plural: "Trips", spaces: ["h"], work: false, fields: [{ key: "title", label: "Title", kind: "text" }], stages: [] }, undefined));
   assert.equal(d.add_types[0].name, "trip");
   assert.ok(isOwn({ name: "matter" }) && !isOwn({ name: "def-flow" }) && !isOwn({ name: "flow-run" }) && !isOwn({ name: "goal" }));
+});
+
+test("holds work is the type's own kind flag, in both directions", () => {
+  assert.equal(toTypeDef(matter, "h").work, true);
+  assert.equal(toTypeDef({ name: "contact", label: "Contact", fields: [] }, "h").work, false);
+  const off = /** @type {any} */ (toKernelType({ ...toTypeDef(matter, "h"), work: false }, matter));
+  assert.equal(off.kind, "record");
+  const on = /** @type {any} */ (toKernelType({ ...toTypeDef({ name: "contact", label: "Contact", fields: [] }, "h"), work: true }, { name: "contact", label: "Contact", fields: [] }));
+  assert.equal(on.kind, "project");
 });

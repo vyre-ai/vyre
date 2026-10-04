@@ -9,7 +9,8 @@
 //   dashboard  { widgets: [{ kind: "sum"|"countBy"|"funnel"|"recent", field?, where? }] }
 //   titleField the field that names a record (its title on every card and row)
 //   plural     the plural of the label, for headings ("Contacts")
-//   holdsWork  the type appears under Projects and its record page has tasks, members, chats and files
+//   holdsWork  the type appears under Projects and its record page has tasks, members, chats and files. Not set here: it is the type's own `kind: "project"` flag
+//              (kernel/contracts/fields.d.ts, set in Customize or by a Kit), read by viewDefOf, so no type name is special.
 //   initials   draw a tile of the title's initials before it (people-like types)
 
 /** @typedef {{ kind: "sum"|"countBy"|"funnel"|"recent", field?: string, where?: string }} Widget */
@@ -24,7 +25,7 @@ export const viewDefs = {
     board: { groupBy: "role", card: ["email", "rating"] },
   },
   matter: {
-    plural: "Matters", titleField: "title", holdsWork: true,
+    plural: "Matters", titleField: "title",
     list: { columns: ["client", "stage", "fee", "owner"], sort: "closing" },
     board: { groupBy: "stage", card: ["title", "client", "fee", "owner"] },
     calendar: { date: "closing" },
@@ -36,14 +37,14 @@ export const viewDefs = {
     ] },
   },
   project: {
-    plural: "Projects", titleField: "title", holdsWork: true,
+    plural: "Projects", titleField: "title",
     list: { columns: ["stage", "owner", "priority", "due"], sort: "due" },
     board: { groupBy: "stage", card: ["title", "owner", "due"] },
     calendar: { date: "due" },
     dashboard: { widgets: [{ kind: "countBy", field: "stage" }, { kind: "sum", field: "budget", where: "stage != Ship" }, { kind: "recent" }] },
   },
   trip: {
-    plural: "Trips", titleField: "title", holdsWork: true,
+    plural: "Trips", titleField: "title",
     list: { columns: ["stage", "where", "leaves", "budget"], sort: "leaves" },
     board: { groupBy: "stage", card: ["title", "leaves", "budget"] },
     calendar: { date: "leaves" },
@@ -57,7 +58,9 @@ export const viewDefs = {
 
 /** The view definition of a type, or a plain one (title is the first field, five columns) for a type this table does not know. @param {{ name: string, label?: string, fields: readonly { name: string }[] }} def @param {Record<string, ViewDefinition>} [table] @returns {ViewDefinition} */
 export function viewDefOf(def, table = viewDefs) {
-  return table[def.name] || { plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) } };
+  const own = table[def.name] || { plural: `${def.label || def.name}s`, titleField: def.fields[0]?.name || "name", list: { columns: def.fields.slice(1, 5).map(f => f.name) } };
+  // A type holds work (appears under Projects) when its definition says kind "project": the type's own flag, not its name.
+  return { ...own, holdsWork: /** @type {any} */ (def).kind === "project" };
 }
 
 /** A private copy, so a test or a screen that edits a view leaves the shared table alone. */

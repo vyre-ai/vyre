@@ -62,7 +62,7 @@ export const contact = {
 
 /** @type {TypeDefinition} */
 export const matter = {
-  name: "matter", label: "Matter", icon: "records",
+  name: "matter", label: "Matter", kind: "project", icon: "records",
   fields: [
     { name: "title", label: "Title", kind: "text", required: true },
     { name: "client", label: "Client", kind: "link", to: "contact" },
@@ -82,7 +82,7 @@ export const matter = {
 
 /** @type {TypeDefinition} */
 export const project = {
-  name: "project", label: "Project", icon: "projects",
+  name: "project", label: "Project", kind: "project", icon: "projects",
   fields: [
     { name: "title", label: "Title", kind: "text", required: true },
     { name: "stage", label: "Phase", kind: "stage", options: PROJECT_STAGES },
@@ -97,7 +97,7 @@ export const project = {
 
 /** @type {TypeDefinition} */
 export const trip = {
-  name: "trip", label: "Trip", icon: "planner",
+  name: "trip", label: "Trip", kind: "project", icon: "planner",
   fields: [
     { name: "title", label: "Title", kind: "text", required: true },
     { name: "stage", label: "Status", kind: "stage", options: TRIP_STAGES },

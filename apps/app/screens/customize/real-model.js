@@ -10,13 +10,12 @@ export const isOwn = (t) => !/^(def-|flow-|goal$)/.test(String(t.name)) && !t.in
 
 /** One kernel type as the screen's. @param {any} t @param {string} space @returns {TypeDef} */
 export function toTypeDef(t, space) {
-  const stageField = (t.fields || []).find((/** @type {any} */ f) => f.kind === "stage");
   const stages = (t.stages || []).map((/** @type {any} */ s) => s.name).concat([]);
   const rules = Object.fromEntries((t.rules || []).filter((/** @type {any} */ r) => r.name).map((/** @type {any} */ r) => [r.name, r.require]));
   return {
-    id: t.name, label: t.label, plural: pluralOf(t.label), spaces: [space], work: Boolean(stageField || stages.length), icon: t.icon,
+    id: t.name, label: t.label, plural: pluralOf(t.label), spaces: [space], work: t.kind === "project", icon: t.icon,
     fields: (t.fields || []).map((/** @type {any} */ f) => ({ key: f.name, label: f.label, kind: f.kind, required: f.required || undefined, sealed: f.kind === "sealed" || Boolean(f.seal) || undefined })),
-    stages: stages.length ? stages : (stageField?.options ?? []).slice(),
+    stages: stages.length ? stages : ((t.fields || []).find((/** @type {any} */ f) => f.kind === "stage")?.options ?? []).slice(),
     ...(Object.keys(rules).length ? { rules } : {}),
   };
 }
@@ -33,7 +32,7 @@ export function toKernelType(t, original) {
   });
   const oldStages = new Map((original?.stages || []).map((/** @type {any} */ s) => [s.name, s]));
   const stages = t.stages.map((n) => oldStages.get(n) ?? { name: n });
-  return { ...(original ?? {}), name: t.id, label: t.label, ...(t.icon ? { icon: t.icon } : {}), fields, ...(stages.length ? { stages } : {}) };
+  return { ...(original ?? {}), name: t.id, label: t.label, ...(t.work ? { kind: "project" } : original?.kind ? { kind: "record" } : {}), ...(t.icon ? { icon: t.icon } : {}), fields, ...(stages.length ? { stages } : {}) };
 }
 
 /** The records.define diff for one screen change. @param {TypeDef} t @param {any | undefined} original */

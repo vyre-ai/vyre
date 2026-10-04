@@ -76,6 +76,8 @@ export interface StageDef { readonly name: string; readonly tasks?: readonly Tas
 export interface TypeDefinition {
   readonly name: string;
   readonly label: string;
+  /** `project`: a record of this type is a project (tasks, stages, a team, chats and files; listed under Projects). Absent: a plain record. Set in Customize or by a Kit. */
+  readonly kind?: 'project' | 'record';
   readonly icon?: string;
   readonly fields: readonly FieldDefinition[];
   readonly stages?: readonly StageDef[];
