@@ -22,7 +22,7 @@ async function rig(/** @type {any} */ t) {
   Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
-  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on", max_live: 60 } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
   const mk = (/** @type {string} */ n) => { const dir = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, `vyre-${n}-`))); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir; };
@@ -97,7 +97,7 @@ test("SW-1: an agent's session starts only inside a mapped project's folder: not
 
 test("SW-2: what a named agent may do does not depend on the label it sends: mcp, mcp:thread:<id>, harness and mcp:agent:kit answer the same", { timeout: 180_000 }, async t => {
   const { work, p1, p2, other, asKit, asAssistant, call, person } = await rig(t);
-  const labels = ["mcp", `mcp:thread:${person}`, "harness", "mcp:agent:kit"];
+  const labels = ["mcp", `mcp:thread:${person}`, "harness", "mcp:agent:kit", "mcp:agent:assistant"];
   /** @param {string} caller @param {any} meta @param {any} input */
   const outcome = async (caller, meta, input) => { const r = await call("threads.start", { prompt: "x", surface: "deck", ...input }, caller, meta); return r.error ? r.error.code : "ok"; };
   for (const label of labels) {
