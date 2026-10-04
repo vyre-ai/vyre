@@ -1,6 +1,7 @@
 // @ts-check
 // The native Capsule's own tests (local/capsule/native/Tests), compiled with swiftc and run here
 // so `npm test` covers them. Skipped where there is no swiftc: they need macOS.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

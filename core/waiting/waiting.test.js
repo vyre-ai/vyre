@@ -3,6 +3,7 @@
 // answer with the owners' real shapes (core/switchboard/asks.js shape, core/gate/gate.js brief,
 // core/planner/index.js planner.ringing, core/link/box.js link.pending).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

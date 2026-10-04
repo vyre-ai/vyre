@@ -1,4 +1,5 @@
 // The ledger match for memory.sealscan (SD-3): candidates, the pass over held text with a stand-in for the sealing process's yes or no, and the tool on a real daemon is in the daemon test.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

@@ -2,6 +2,7 @@
 // The phone's More sheet (js/more.js): the places that are not one of the four tabs, as a grid, with the
 // account head. It is the Places sheet with the four tabs left out: the hold that pins a place as a page stays.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";

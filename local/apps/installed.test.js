@@ -2,6 +2,7 @@
 // The installed-apps scan over a temp folder of fake bundles: XML and binary plists, one level
 // into plain subfolders, ranking, and a cache that expires on read.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

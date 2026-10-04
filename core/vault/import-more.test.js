@@ -1,6 +1,7 @@
 // @ts-check
 // The import-more formats. Every fixture is made up: alex, juno and kit at Harlow Legal and
 // Northwind Bakery, harlow.test, northwind.test and example.com, and sample values only.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";

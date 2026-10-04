@@ -2,6 +2,7 @@
 // Oversight, the state machine behind the panel: plan first, interject once, stop at once and
 // only once, resume only from a stop, and how long a stop takes to reach the extension.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createOversight } from "./oversight.js";

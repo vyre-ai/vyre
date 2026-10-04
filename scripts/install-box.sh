@@ -394,6 +394,7 @@ dev_sign() {
     cp /tmp/u/box/vyre /out/vyre
     tar -czf /out/vyre.tgz --transform "s,^\./,package/," -C /tmp/u .
   ' || die "could not pack and sign the checkout (see the lines above); nothing was installed"
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
   [ -s "$TMP/vyre.tgz" ] && [ -s "$TMP/SHA256SUMS.sig" ] || die "the packed checkout is incomplete; nothing was installed"
   TGZ=1; DEVSIGNED=1
   # An image left from an earlier install is used as it is (compose never rebuilds a present vyre:local), so it would run the OLD tree with none of this signing: remove it, and the box is built fresh.

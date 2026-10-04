@@ -5,6 +5,7 @@
 // the person can write. Here the built wrapper is checked: clean of every name, identical to the source except the marked block, and
 // then run with every hostile override and a hostile .env to show each is ignored or refused. Functions of the stripped text are run
 // (the file cut before its dispatch), with a fake docker that records every call and says yes to everything.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

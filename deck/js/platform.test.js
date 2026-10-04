@@ -1,6 +1,7 @@
 // @ts-check
 // deck/js/platform.js: the shell is only what the host injected; glyphs follow the platform.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { shell, installed, kbd, mac } from "./platform.js";

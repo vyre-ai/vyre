@@ -1,6 +1,7 @@
 // @ts-check
 // Chat 0.3 task B: steer, stop, edit and retry, branch. End to end on a real vyred in a temp home
 // with the fake claude (testing/fake-claude.js), the way a surface calls the tools.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

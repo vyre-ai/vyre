@@ -1,5 +1,6 @@
 // @ts-check
 // A home stopped before the Switchboard's start-up timers fire: nothing fires afterwards (no `database is not open`, no unhandled rejection).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../daemon/index.js";

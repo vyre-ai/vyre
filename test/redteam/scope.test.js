@@ -6,6 +6,7 @@
 // scope is decided after the request is planned and a real daemon cannot resolve a made-up host; nothing here boots a
 // vyred, so they run anywhere and nothing leaves the machine.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

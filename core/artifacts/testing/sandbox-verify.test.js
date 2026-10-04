@@ -1,4 +1,5 @@
 // The AR-S2 harness itself, without a browser: a browser that holds passes, one that leaks fails.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { verify } from "./sandbox-verify.mjs";

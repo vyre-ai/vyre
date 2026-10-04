@@ -4,6 +4,7 @@
 // address, middle initials; has_title, client_of, repo_for, deadline; prefers and decided behind
 // a flag. Precision first: every test has a distractor. Fictional data only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

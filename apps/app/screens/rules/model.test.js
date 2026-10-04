@@ -1,5 +1,6 @@
 // @ts-check
 // Rules against a fake box: the calls and their inputs, the grouping, the draft checks before an owner's proof is asked, and who refused.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

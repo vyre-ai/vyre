@@ -1,5 +1,6 @@
 // @ts-check
 // The stand-in names directory with --state: a claim survives a restart of the process.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

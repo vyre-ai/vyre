@@ -1,6 +1,7 @@
 // @ts-check
 // A vyred on a temp home never looks for or pairs with a real box (a stress run on the test box
 // found the user's live box and sent it a pairing request). The rule, and the link module under it.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

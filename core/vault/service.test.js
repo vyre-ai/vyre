@@ -1,6 +1,7 @@
 // @ts-check
 // A Flow's "Call a service": a connector is an api-credential with `service` rules; the rules are the vault's (deny wins, default no, `*` one segment, a trailing /* the rest); the Flow
 // never names a host or holds a key; an outward call after the kernel's approval runs once per idem key; only the kernel's lease module may call the two tools. Fakes: DNS, transport, clock.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -2,6 +2,7 @@
 // The transcripts adapter: finding transcript files as Claude Code lays them out, and reading
 // each into turns without ever throwing over a bad file or a bad line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

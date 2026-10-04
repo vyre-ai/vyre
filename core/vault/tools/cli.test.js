@@ -4,6 +4,7 @@
 // agent with a stub approver. Every test ends with the same promise as module.test.js: no value
 // in events, logs, audit rows, listings, tool listings or MCP-visible output.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

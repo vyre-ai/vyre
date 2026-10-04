@@ -1,5 +1,6 @@
 // @ts-check
 // A question's answers as threads.answer takes them: single, multi-select, Other, and never half-filled.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

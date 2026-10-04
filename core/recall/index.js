@@ -234,7 +234,7 @@ export default {
     // and agents.projects) rather than diverging here.
     /** A folder is inside one of these granted folders. Recall's own copy: no cross-feature import
      * (module boundary) — this is memory's teach.js `within`, restated. */
-    const within = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
+    const inFolders = (cwd, granted) => { const c = String(cwd || "").replace(/\/+$/, ""); return granted.some(f => { const base = String(f).replace(/\/+$/, ""); return !!base && (c === base || c.startsWith(base + "/")); }); };
     const denied = message => Object.assign(new Error(message), { code: "denied" });
     /** The user's own surfaces and modules see every session; only a named agent is scoped. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
@@ -312,7 +312,7 @@ export default {
       if (r.all) return r;
       const requested = (q.project_cwds || []).map(String);
       if (requested.length) {
-        const outside = requested.filter(c => !within(c, r.folders));
+        const outside = requested.filter(c => !inFolders(c, r.folders));
         if (outside.length) throw denied(`${r.agent} is not granted ${outside.join(", ")}`);
       } else {
         if (!r.folders.length) throw denied(`${r.agent} is not granted any project yet`);
@@ -342,7 +342,7 @@ export default {
         const scopeR = await scopeQuery(q, caller);
         // Defense in depth: q.project_cwds already carries the grant, so this is a no-op unless a
         // paired Mac is on an older build that does not scope its own side yet.
-        const scoped = hits => scopeR.all ? hits : hits.filter(h => within(h.cwd, scopeR.folders));
+        const scoped = hits => scopeR.all ? hits : hits.filter(h => inFolders(h.cwd, scopeR.folders));
         const here = async () => {
           // No model load for a corpus with no vectors yet: that would cost seconds and change nothing.
           const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -372,7 +372,7 @@ export default {
         // Never an unmapped folder: at least one given folder must be a real project's own (or
         // inside one), never a raw path a caller made up.
         const projects = await projectList();
-        const mapped = cwds.filter(c => projects.some(p => within(c, p.folders)));
+        const mapped = cwds.filter(c => projects.some(p => inFolders(c, p.folders)));
         if (!mapped.length) return { hits: [] };
         const limit = Math.max(1, Math.min(3, input.limit || 3));
         const any = db.prepare("SELECT 1 FROM recall_vectors LIMIT 1").get();
@@ -394,16 +394,16 @@ export default {
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
         // any session id it likes. Thrown the same way as "not found", so a scoped agent learns
         // nothing about a session it may not read (not even that it exists).
-        const gate = row => { if (!r.all && !within(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
+        const gate = row => { if (!r.all && !inFolders(row?.session?.cwd, r.folders)) throw new Error(`no session ${q.session}`); return row; };
         // Resolved among only what this caller may read, so an id or prefix outside its grant
         // never surfaces even as "more than one session starts with X" (reviewer's LOW: that
         // told a scoped agent such a session exists before the gate above ever ran).
         const resolveScoped = session => {
           if (r.all) return session;
           const exact = /** @type {any} */ (db.prepare("SELECT cwd FROM recall_sessions WHERE id = ?").get(session));
-          if (exact) { if (!within(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
+          if (exact) { if (!inFolders(exact.cwd, r.folders)) throw new Error(`no session ${session}`); return session; }
           const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session))
-            .filter(row => within(row.cwd, r.folders));
+            .filter(row => inFolders(row.cwd, r.folders));
           if (!like.length) throw new Error(`no session ${session}`);
           if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
           return like[0].id;
@@ -506,10 +506,10 @@ export default {
       run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
         const r = await reach(agent, caller);
-        if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
+        if (!r.all && q.cwd && !inFolders(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
-        const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
+        const scoped = rows => r.all ? rows : rows.filter(row => inFolders(row.cwd, r.folders));
         if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
@@ -643,7 +643,7 @@ export default {
         // A model load in flight writes into the home; let it settle before the home can go.
         // (This used to call `within`, the folder helper above, with a promise: it threw a TypeError, stop() ended there, the embedder's process was never closed and the daemon, and any
         // test that started one, never exited.) The embedder is closed whatever the wait does.
-        try { if (vec.loading) await Promise.race([vec.loading.catch(() => null), new Promise(r => setTimeout(r, 5000).unref())]); }
+        try { if (vec.loading) await within(vec.loading.catch(() => null), 5000); }
         finally { const e = /** @type {any} */ (vec.embedder); if (e && typeof e.close === "function") e.close(); }
       },
     };

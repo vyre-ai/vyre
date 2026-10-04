@@ -1,5 +1,6 @@
 // @ts-check
 // The storage-to-pool adapter against a fake with the shape of the pool engine (work/sealing kernel/storage/pool.js): addNode, nodes, used, drain, forget.
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

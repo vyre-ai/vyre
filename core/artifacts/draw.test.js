@@ -1,5 +1,6 @@
 // The typed renderers (chart, diagram, deck, SVG cleaner): what they draw, what they refuse and
 // say, and that nothing they draw can run a script or reach the network.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { drawChart, readChart } from "./draw/chart.js";

@@ -1,5 +1,6 @@
 // @ts-check
 // frames: child sessions (cross-origin iframes, nested) are kept, listed honestly, addressed and placed.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCtx } from "./extension/lib/ctx.js";

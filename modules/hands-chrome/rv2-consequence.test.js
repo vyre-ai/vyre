@@ -1,4 +1,5 @@
 // reviewer-2 repro HD-6b against work/kernel-declare a5ddff27b (drop into modules/hands-chrome/): the allow-list still trusts two things the PAGE controls, the role and the words around an allowed verb.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { of } from "./consequence.js";
