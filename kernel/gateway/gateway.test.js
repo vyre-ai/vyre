@@ -459,6 +459,27 @@ test("kind: a type may say it holds work (project), nothing else, and the defini
   assert.equal((await gw.definitions(owner())).find(x => x.name === "campaign").kind, "project");
 });
 
+test("linked: the reverse of a link, across types, only what the caller may read, capped by limit", async () => {
+  const hidden = new Set();
+  const attrs = urn => ({ project: hidden.has(urn) ? "p9" : "p1" });
+  const g = G({ resource: { prefix: `vyre://${SPACE}/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
+  const { r } = await withType(rig({ grants: [G({ actions: ["records.create", "records.define"] }), g], attrs }));
+  await r.define(owner(), { add_types: [roleType("client"), { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "client", kind: "link", to: "contact", label: "Client" }] }] });
+  const jane = await r.create(owner(), "contact", { name: "Jane" }), bob = await r.create(owner(), "contact", { name: "Bob" });
+  const m1 = await r.create(owner(), "matter", { title: "A", client: { urn: jane.urn } }), m2 = await r.create(owner(), "matter", { title: "B", client: { urn: jane.urn } });
+  await r.create(owner(), "matter", { title: "C", client: { urn: bob.urn } });
+  const c1 = await r.create(owner(), "client", { contact: { urn: jane.urn }, stage: "Active" });
+  const all = await r.linked(owner(), jane.urn);
+  assert.deepEqual(all.rows.map(x => `${x.type}.${x.field}`).sort(), ["client.contact", "matter.client", "matter.client"]);
+  assert.equal(all.truncated, false);
+  assert.deepEqual((await r.linked(owner(), jane.urn, { type: "matter" })).rows.map(x => x.record.id).sort(), [m1.id, m2.id].sort());
+  const cut = await r.linked(owner(), jane.urn, { limit: 2 });
+  assert.equal(cut.rows.length, 2); assert.equal(cut.truncated, true);
+  hidden.add(m2.urn);
+  assert.deepEqual((await r.linked(owner(), jane.urn, { type: "matter" })).rows.map(x => x.record.id), [m1.id], "a record the caller may not read is not listed");
+  await assert.rejects(() => r.linked(owner(), "not-a-urn"), { code: "bad_input" });
+});
+
 // ---- roles: what a contact is to the Space ----
 const roleType = (name, extra = {}) => ({ name, label: name, role: { link: "contact", ended: ["Ended"] }, fields: [
   { name: "contact", kind: "link", to: "contact", label: "Contact", required: true },

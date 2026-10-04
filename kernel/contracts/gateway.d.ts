@@ -33,6 +33,8 @@ export interface RecordsApi {
   restore(chain: Chain, type: string, id: RecordId): Promise<GatewayRecord>;
   /** Every role the holder (a contact or organization urn) has or had, current first. Only rows the caller may read; a holder the caller may not read has none. */
   roles(chain: Chain, holder: Urn, opts?: { readonly include_ended?: boolean }): Promise<readonly RoleHold[]>;
+  /** Everything that links to a record (the reverse of a link field), across types, only rows the caller may read; `truncated` when more exist than `limit` (default 50, at most 200). */
+  linked(chain: Chain, target: Urn, opts?: { readonly type?: string; readonly field?: string; readonly limit?: number }): Promise<{ readonly rows: readonly { readonly type: string; readonly field: string; readonly record: GatewayRecord }[]; readonly truncated: boolean }>;
   /** The holders of one role type, optionally at one stage (ended roles left out unless `include_ended`). */
   holders(chain: Chain, spec: { readonly role: string; readonly stage?: string; readonly include_ended?: boolean; readonly page: { readonly limit: number; readonly cursor?: string } }): Promise<Page<RoleHold>>;
   /**

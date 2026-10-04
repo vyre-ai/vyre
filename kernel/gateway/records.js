@@ -768,6 +768,32 @@ export function createRecords(cfg) {
       const p = await api.query(chain, t.name, { ...(and.length ? { filter: and.length === 1 ? and[0] : { and } } : {}), page: spec.page });
       return { rows: p.rows.map((/** @type {any} */ r) => hold(t, r)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
     },
+
+    /** Everything that links to this record (the reverse of a link field), any type, newest first within a type; only rows the caller may read. At most `limit` rows in all (default 50, at most 200). */
+    async linked(chain, target, o = {}) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const parts = String(target).split("/");
+      if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", "a target is a record urn");
+      if (o.type !== undefined) checkType(o.type);
+      const limit = Math.min(200, Math.max(1, Math.trunc(Number(o.limit ?? 50)) || 50));
+      if (!(await allowed(chain, "records.read", target))) return { rows: [], truncated: false };
+      let defs;
+      try { defs = await store.types(); } catch (e) { throw mapError(e); }
+      const rows = []; let truncated = false;
+      for (const t of defs) {
+        if (o.type !== undefined && t.name !== o.type) continue;
+        for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === parts[3] || x.to === undefined) && (o.field === undefined || x.name === o.field))) {
+          let cursor;
+          for (let pages = 0; pages < 20 && !truncated; pages++) {
+            const p = await api.query(chain, t.name, { filter: { field: lf.name, op: "eq", value: { urn: target } }, page: { limit: Math.min(100, limit - rows.length + 1), ...(cursor ? { cursor } : {}) } });
+            for (const r of p.rows) { if (rows.length >= limit) { truncated = true; break; } rows.push({ type: t.name, field: lf.name, record: r }); }
+            if (!p.next_cursor) break;
+            cursor = p.next_cursor;
+          }
+        }
+      }
+      return { rows, truncated };
+    },
   };
   return api;
 }
