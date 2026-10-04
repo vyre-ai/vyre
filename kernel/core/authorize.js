@@ -33,6 +33,8 @@ export function patternCovers(pattern, action, since = 0, version = undefined, r
 // The dimensions a grant has, and the keys each may carry. A dimension or a key this file does not list is NOT known, and an unknown one makes containment fail: a field added to
 // grants later refuses delegation until `contains` and `clampTo` learn it, never passes by being ignored.
 const GRANT_KEYS = new Set(["id", "space", "subject", "actions", "action_set_version", "resource", "conditions", "issuer", "source", "parent", "status", "created_at", "revoked_at", "reason"]);
+/** Resource types only the person they belong to may read (the `owner` attribute names them): a session's lines. */
+export const OWNER_SCOPED_TYPES = new Set(["session"]);
 const RESOURCE_KEYS = new Set(["prefix", "where", "fields"]);
 const COND_KEYS = new Set(["where", "when", "how", "audience", "delegate", "budget", "rate", "once"]);
 const sameJson = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
@@ -198,6 +200,14 @@ export function createAuthorizer(cfg) {
       for (const h of chain.hops) if (h.actor.space !== cfg.space) return deny("wrong_space");
       const attrs = (cfg.attrs && cfg.attrs(resource)) || {};
       if (attrs.space !== undefined && attrs.space !== cfg.space) return deny("wrong_space");
+      // A session's lines are its person's own (reviewer-2's KW-1): reading one needs the session's owner attribute to name the person asking, whatever role or `*/*` grant they hold. A session
+      // with no owner attribute is read by nobody (fail closed), so a capture that does not say whose session it is leaks nothing. The Space's owner reads their own, like anyone.
+      const segs = segments(resource);
+      if (segs && OWNER_SCOPED_TYPES.has(segs[1]) && def.risk === "read") {
+        const asker = chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor.id : null;
+        const canon = (/** @type {string} */ id) => (typeof cfg.canonicalPerson === "function" ? cfg.canonicalPerson(id) : id);
+        if (!asker || typeof attrs.owner !== "string" || canon(attrs.owner) !== canon(asker)) return deny("not_yours");
+      }
       const risk = def.risk;
       // Taint (6.3 step 5, invariant 9): what the chain consumed limits what it may drive.
       // An unknown trust value is the most restrictive, never trusted (invariant 9).

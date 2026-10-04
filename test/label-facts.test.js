@@ -79,12 +79,14 @@ req.end("{}");`);
 });
 
 test("the development stand-in makes a surface label that is not inside a model the owner; a model's shell and a release build never are", () => {
-  const unread = { model: false, outside: false }, ssh = { model: false, outside: false, server: { exe: "/usr/sbin/sshd", pid: 9, started: "x" } }, tmpSsh = { model: false, outside: false, server: { exe: "/tmp/sshd", pid: 9, started: "x" } }, sh = { model: false, outside: false, server: { exe: "/bin/sh", pid: 9, started: "x" } }, inside = { model: true, outside: false }, outside = { model: false, outside: true };
+  const unread = { model: false, outside: false }, ssh = { model: false, outside: false, server: { exe: "/usr/sbin/sshd", pid: 9, started: "x", uid: 0 } }, tmpSsh = { model: false, outside: false, server: { exe: "/tmp/sshd", pid: 9, started: "x", uid: 0 } }, userSsh = { model: false, outside: false, server: { exe: "/usr/sbin/sshd", pid: 9, started: "x", uid: 1000 } }, tmux = { model: false, outside: false, server: { exe: "/usr/bin/tmux", pid: 9, started: "x", uid: 1000 } }, sh = { model: false, outside: false, server: { exe: "/bin/sh", pid: 9, started: "x" } }, inside = { model: true, outside: false }, outside = { model: false, outside: true };
   assert.deepEqual(surfaceAncestry(unread, false), { inside: false, outside: false }, "no stand-in: an unreadable ancestry is no person");
   assert.deepEqual(surfaceAncestry(unread, true), { inside: false, outside: false }, "stand-in: an unknown is still no person (SI-1)");
   assert.deepEqual(surfaceAncestry(sh, true), { inside: false, outside: false }, "stand-in: a bare sh at the top (a setsid'd model) is no person");
   assert.deepEqual(surfaceAncestry(tmpSsh, true), { inside: false, outside: false }, "stand-in: an sshd copied somewhere a model can write is no person");
-  assert.deepEqual(surfaceAncestry(ssh, true), { inside: false, outside: true }, "stand-in: a login over sshd is the owner");
+  assert.deepEqual(surfaceAncestry(tmux, true), { inside: false, outside: false }, "stand-in: a user-owned tmux a model can start is no person (SI-1b)");
+  assert.deepEqual(surfaceAncestry(userSsh, true), { inside: false, outside: false }, "stand-in: a user-owned process named sshd is no person");
+  assert.deepEqual(surfaceAncestry(ssh, true), { inside: false, outside: true }, "stand-in: a login over the root sshd is the owner");
   assert.deepEqual(surfaceAncestry(ssh, false), { inside: false, outside: false }, "no stand-in file or a release build: never");
   assert.deepEqual(surfaceAncestry(outside, false), { inside: false, outside: true });
   assert.deepEqual(surfaceAncestry(inside, true), { inside: true, outside: false }, "a model's shell stays one");

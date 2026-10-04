@@ -64,9 +64,16 @@ test("ES-1: the seatbelt profile denies all writes first and allows them back on
     const proj = path.join(home, "proj"), tools = path.join(home, "tools"), temp = path.join(home, "t"); for (const d of [proj, tools, temp]) fs.mkdirSync(d, { recursive: true });
     const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), workdirs: [proj], temp, readOnly: [tools] });
     assert.ok(p.indexOf("(deny file-write*)") > 0 && p.indexOf("(deny file-write*)") < p.indexOf("(allow file* (subpath"), "all writes are denied before anything is allowed");
-    assert.match(p, /\(allow file-write\* \(subpath "\/dev"\)\)/);
+    assert.ok(p.includes('(literal "/dev/null")') && !p.includes('(subpath "/dev")'), "only the harmless device nodes, never the other terminals");
     assert.ok(p.includes(`(allow file* (subpath "${fs.realpathSync(proj)}"))`) && p.includes(`(allow file* (subpath "${fs.realpathSync(temp)}"))`));
     assert.ok(p.includes(`(allow file-read* (subpath "${fs.realpathSync(tools)}"))`) && !p.includes(`(allow file* (subpath "${fs.realpathSync(tools)}"))`), "a read-only folder is not writable");
+  } finally { rm(home); }
+});
+
+test("ES-5: the daemon's ports are denied on every address directly, not only on the addresses known at plan time", () => {
+  const home = tmp(); try {
+    const p = homeSeatbelt({ platform: "darwin", command: "/bin/sh", home, sessionSocket: path.join(home, ".vyre", "run", "s.sock"), daemonPorts: [4321, 4322] });
+    assert.ok(p.includes('(deny network-outbound (remote ip "*:4321"))') && p.includes('(deny network-outbound (remote ip "*:4322"))'));
   } finally { rm(home); }
 });
 
@@ -261,4 +268,43 @@ test("internet mode: plain HTTP through the proxy goes only to public addresses"
   assert.equal((await get(`http://pypi.example:${up.address().port}/simple/`)).s, 403);
   assert.equal((await get("http://private.example/x")).s, 403);
   assert.equal((await get("http://pypi.example/x", "")).s, 407);
+});
+
+// ---- reviewer-3 NG-1: the decision is on the 16 bytes, never the text ----------------------------------------------------------
+import { toBytes } from "./netguard.js";
+const NOT_PUBLIC = [
+  "::ffff:7f00:1", "::ffff:127.0.0.1", "::ffff:a9fe:a9fe", "::ffff:169.254.169.254", "::ffff:a00:1", "::ffff:c0a8:1", "::ffff:6464:6464", "::ffff:ac10:1", "::ffff:0a00:0001",
+  "::127.0.0.1", "::7f00:1", "0:0:0:0:0:ffff:7f00:1", "0000:0000:0000:0000:0000:ffff:7f00:0001", "::ffff:0:7f00:1", "::ffff:0:127.0.0.1",
+  "64:ff9b::7f00:1", "64:ff9b::a00:1", "64:ff9b::169.254.169.254", "64:ff9b:1::1", "2002:7f00:1::", "2002:a9fe:a9fe::1", "2002:c0a8:1::", "2001::1", "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+  "fec0::1", "fe80::1", "fd00::1", "fc00::1", "ff02::1", "::", "::1", "2001:db8::1", "3fff::1", "100::1", "192.88.99.1", "255.255.255.255", "127.0.0.1", "0.0.0.0", "10.1.1.1", "172.20.0.1", "192.168.0.9", "100.64.0.1", "169.254.169.254", "224.0.0.1", "203.0.113.5", "[::ffff:7f00:1]",
+];
+test("NG-1: every non-public form is refused on its 16 bytes, hex or dotted, compressed or expanded", () => {
+  for (const ip of NOT_PUBLIC) assert.equal(isPublicAddress(ip, []), false, ip);
+  for (const ip of ["8.8.8.8", "93.184.216.34", "2606:4700:4700::1111", "2a00:1450:4001:81d::200e", "::ffff:8.8.8.8", "::ffff:808:808", "64:ff9b::808:808", "2002:808:808::1"]) assert.equal(isPublicAddress(ip, []), true, ip);
+  assert.equal(toBytes("::ffff:7f00:1").equals(toBytes("::ffff:127.0.0.1")), true, "hex and dotted are the same bytes");
+  assert.equal(toBytes("::ffff:7f00:1").equals(toBytes("0:0:0:0:0:ffff:7f00:1")), true, "compressed and expanded are the same bytes");
+  assert.equal(isPublicAddress("fe80::1%eth0", []), false, "a zone id");
+  assert.equal(isPublicAddress("0177.0.0.1", []), false, "an octal form is not a literal and is not public");
+  assert.equal(isPublicAddress("2130706433", []), false);
+});
+
+test("NG-1: every form is refused as a DNS answer too, and by inet_aton-style names, zone ids and a trailing dot", async () => {
+  for (const ip of NOT_PUBLIC) await assert.rejects(() => resolvePublic("any.example", { lookup: async () => [{ address: "93.184.216.34" }, { address: ip }], own: [] }), /not a public/, "a second answer " + ip);
+  for (const h of ["0177.0.0.1", "2130706433", "0x7f.0.0.1", "0x7f000001", "127.1", "[fe80::1%eth0]", "fe80::1%25eth0", "localhost.", "", "a b", "example.com ", " example.com", "example.com\t", ".example.com", "a..b.example", "exa\u0000mple.com", "exa\nmple.com", "exa/mple.com", "exa@mple.com", "exa:mple.com"]) await assert.rejects(() => resolvePublic(h, { lookup: async n => (n === "localhost" ? [{ address: "127.0.0.1" }] : []), own: [] }), /not a public|no address/, h);
+});
+
+test("NG-1 end to end: CONNECT and absolute-URL HTTP to every form of the host's own loopback and metadata address never reach a real listener", async t => {
+  let hits = 0;
+  const lis = net.createServer(c => { hits++; c.on("error", () => {}); c.end("PONG"); }); await new Promise(r => lis.listen({ port: 0, host: "127.0.0.1" }, r)); t.after(() => lis.close());
+  const lport = lis.address().port;
+  const eg = createEgress({ routes: [], vault: {}, session: "s", token: "tok", internet: true }); const { port } = await eg.listen(); t.after(() => eg.close());
+  const auth = "Basic " + Buffer.from("vyre:tok").toString("base64");
+  const connect = host => new Promise(res => { const s = net.connect(port, "127.0.0.1"); let b = ""; s.on("connect", () => s.write(`CONNECT ${host} HTTP/1.1\r\nHost: ${host}\r\nProxy-Authorization: ${auth}\r\n\r\n`)); s.on("data", d => { b += d; if (b.includes("\r\n")) { s.destroy(); res(b.split("\r\n")[0]); } }); s.on("error", () => res("error")); setTimeout(() => res("timeout"), 2500); });
+  const absolute = url => new Promise(res => { const q = http.request({ hostname: "127.0.0.1", port, path: url, headers: { host: new URL(url).host, "proxy-authorization": auth } }, m => { let b = ""; m.on("data", d => b += d); m.on("end", () => res(m.statusCode + ":" + b)); }); q.on("error", () => res("error")); q.setTimeout(2500, () => { q.destroy(); }); q.end(); });
+  const forms = ["127.0.0.1", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]", "[::127.0.0.1]", "[0:0:0:0:0:ffff:7f00:1]", "[64:ff9b::7f00:1]", "[2002:7f00:1::]", "0177.0.0.1", "2130706433", "0x7f.0.0.1", "localhost", "localhost.", "[::1]"];
+  for (const f of forms) {
+    assert.match(await connect(`${f}:${lport}`), / 40[37] /, "CONNECT " + f);
+    const r = await absolute(`http://${f}:${lport}/`); assert.ok(!r.includes("PONG"), "HTTP " + f + " got " + r);
+  }
+  assert.equal(hits, 0, "the listener on the host's loopback was never contacted");
 });

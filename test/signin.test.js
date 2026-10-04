@@ -22,7 +22,7 @@ async function mod({ checkOk = true, dev = false, person = true } = {}) {
     now: () => t, kernel: { chain: async () => (person ? { hops: [{ actor: { kind: "person", id: "per_x" } }] } : { hops: [{ actor: { kind: "agent", id: "a" } }] }), proofFrom: () => ({ p: 1 }) }, devStandIn: () => dev, events: { emit: () => {} },
     cliSigninPayload: (/** @type {string} */ ask, /** @type {string} */ term) => ({ op: "grant.cli_signin", space: "spc", fields: { ask, terminal: term.slice(0, 4) }, payload_hash: `h(${ask})` }),
     cliSigninCheck: async () => (checkOk ? { ok: true } : { ok: false, why: "bad" }),
-    cliSessions: { startStandIn: (/** @type {string} */ n) => { started.push("dev:" + n); return { id: "id1", token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, start: (/** @type {string} */ k) => { started.push(k); return { token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, end: (/** @type {string} */ k) => { ended.push(k); return 1; } },
+    cliSessions: { nodeInUse: (/** @type {string} */ n) => n === "real-node", startStandIn: (/** @type {string} */ n) => { started.push("dev:" + n); return { id: "id1", token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, start: (/** @type {string} */ k) => { started.push(k); return { token: "id12345678.secret0123456789abcdef", expires: t + 1000 }; }, end: (/** @type {string} */ k) => { ended.push(k); return 1; } },
     tool: (/** @type {string} */ name, /** @type {any} */ def) => { tools[name] = def.run; },
   };
   await signin.start(ctx);
@@ -154,6 +154,7 @@ test("signin.dev makes the walk's person session only on a dev build with the st
   await assert.rejects(() => m.tools["signin.dev"]({ node: "n1" }, {}), { code: "denied" });
   m = await mod({ dev: true });
   await assert.rejects(() => m.tools["signin.dev"]({ node: "bad node!" }, {}), { code: "bad_input" });
+  await assert.rejects(() => m.tools["signin.dev"]({ node: "real-node" }, {}), { code: "denied" });
   const r = await m.tools["signin.dev"]({ node: "n1" }, {});
   assert.equal(r.kind, "cookie"); assert.equal(r.method, "stand-in"); assert.deepEqual(m.started, ["dev:n1"]);
 });

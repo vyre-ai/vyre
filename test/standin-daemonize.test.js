@@ -22,7 +22,7 @@ test("SI-1: a named login server at the top still gives the owner with the stand
   const rows = { 100: { ppid: 1, args: "/usr/bin/node vyred", pgid: 100, sid: 100, uid: 1000, start: 1 }, 300: { ppid: 1, args: "sshd: alex", pgid: 300, sid: 300, uid: 0, start: 2 }, 301: { ppid: 300, args: "-bash", pgid: 301, sid: 301, uid: 1000, start: 3 }, 4242: { ppid: 301, args: "vyre call x", pgid: 4242, sid: 301, uid: 1000, start: 4 } };
   const look = (/** @type {number} */ pid) => /** @type {any} */ (rows)[pid] || null;
   const exes = { 300: "/usr/sbin/sshd", 301: "/bin/bash", 4242: "/usr/bin/node", 100: "/usr/bin/node" };
-  const r = /** @type {any} */ (insideClaude(4242, { look, exe: (/** @type {number} */ p) => /** @type {any} */ (exes)[p], started: () => "t0", uid: () => 1000, self: 100, threads: [] }));
+  const r = /** @type {any} */ (insideClaude(4242, { look, exe: (/** @type {number} */ p) => /** @type {any} */ (exes)[p], started: () => "t0", uid: (/** @type {number} */ p) => (p === 300 ? 0 : 1000), self: 100, threads: [] }));
   if (!r.server) return; // this table did not name a server on this platform's walk: nothing to widen
   const shell = { model: Boolean(r.inside), outside: false, server: r.server };
   assert.equal(surfaceAncestry(shell, true).outside, true);

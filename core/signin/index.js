@@ -126,6 +126,7 @@ export default {
         if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person") throw refuse("this call is not from a signed-in person", "denied");
         const node = String(input.node || "");
         if (!/^[A-Za-z0-9_.:@-]{1,128}$/.test(node)) throw refuse("node must name the device the browser connects from", "bad_input");
+        if (typeof ctx.cliSessions.nodeInUse === "function" && ctx.cliSessions.nodeInUse(node)) throw refuse("that device already holds a signed-in session", "denied");
         const s = ctx.cliSessions.startStandIn(node);
         ctx.events.emit("presence.signed-in", { id: s.id, node: String(input.label || node), method: "stand-in" });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires, method: "stand-in" };

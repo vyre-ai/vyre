@@ -114,7 +114,7 @@ test("threadsock: a real session's call arrives with its own kernel token, in it
   fs.mkdirSync(fp, { recursive: true });
   const { writeModule } = await import("./helpers.js");
   writeModule(fp, "zz-room", { does: { tools: [{ name: "zz-room.peek", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
-    export default { async start(ctx) { ctx.tool("zz-room.peek", { run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
+    export default { async start(ctx) { ctx.tool("zz-room.peek", { effect: "read", run: async (i, meta) => ({ caller: meta.caller, token: meta.token || null, room: await ctx.kernel.audienceFor({}).catch(e => ({ error: e.code })) }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const ctx = d.registry.context(realManifest);
@@ -245,7 +245,7 @@ test("a person's own surface call carries a kernel chain in a module: the owner'
   const fp = path.join(root, "modules");
   fs.mkdirSync(fp, { recursive: true });
   writeModule(fp, "zz-who", { does: { tools: [{ name: "zz-who.me", reach: "anyone" }] }, needs: { kernel: { actions: [] } } }, `
-    export default { async start(ctx) { ctx.tool("zz-who.me", { run: async (i, meta) => {
+    export default { async start(ctx) { ctx.tool("zz-who.me", { effect: "read", run: async (i, meta) => {
       const c = await ctx.kernel.chain({ ...meta, ...(i && i.forge ? { kernelFacts: i.forge } : {}) });
       return { hops: c.hops.map(h => [h.actor.kind, h.actor.id, h.via && h.via.surface || null]), facts: Boolean(meta.kernelFacts) };
     } }); return {}; } };`);
@@ -281,7 +281,7 @@ test("an outward action with a placeholder: refused when the person the turn is 
   const root = tempHome(t);
   const fp = path.join(root, "modules");
   fs.mkdirSync(fp, { recursive: true });
-  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { effect: "read", run: async i => ({ sent: i }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
   t.after(() => d.stop());
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
@@ -319,7 +319,7 @@ test("RF-1: a placeholder resolves under the turn token's own chain, not the per
   const root = tempHome(t);
   const fp = path.join(root, "modules");
   fs.mkdirSync(fp, { recursive: true });
-  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { run: async i => ({ sent: i }) }); return {}; } };`);
+  writeModule(fp, "zz-out", { does: { tools: [{ name: "zz-out.send", reach: "anyone", outward: "send" }] } }, `export default { async start(ctx) { ctx.tool("zz-out.send", { effect: "read", run: async i => ({ sent: i }) }); return {}; } };`);
   // the kernel's presence check accepts a proof built for exactly this operation (a headless test has no hardware signer)
   const used = new Set();
   const kernelPresence = { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.op === op && canonical(proof.fields) === canonical(fields) && !used.has(proof.n) && (used.add(proof.n), true) ? null : "wrong_proof") };

@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { answer, edit, forget, group, restore, subjectOf, visible } from "./logic.js";

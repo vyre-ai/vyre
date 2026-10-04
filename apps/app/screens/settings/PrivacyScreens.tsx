@@ -1,14 +1,15 @@
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Switch, Text, markRef } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Divider, EmptyState, Row, Segmented, Switch, Text, markRef , allowsMock} from "@vyre/ui";
 import { Group, Page } from "../places/Frame";
 import { useTypes } from "../customize/state";
 import { PRIVACY_ROWS, RETENTION } from "./logic.js";
 import { RECORD_COUNTS, SEEING } from "./data";
 import { useSettings } from "./state";
+import { RealPrivacy, RealSeeing } from "./RealAccount";
 
 /** What my assistants can see, per assistant. */
-export function SeeingScreen() {
+function SampleSeeingScreen() {
   const router = useRouter();
   return (
     <Page title="What my assistants can see" back="/u/settings">
@@ -22,7 +23,7 @@ export function SeeingScreen() {
 }
 
 /** Privacy and sealing for the space showing (admins only): defaults, the sealed fields, how long facts are kept. */
-export function PrivacyScreen() {
+function SamplePrivacyScreen() {
   const router = useRouter();
   const { priv, setPriv } = useSettings();
   const types = useTypes((s) => s.types).filter((t) => t.spaces.includes("harlow"));
@@ -45,3 +46,6 @@ export function PrivacyScreen() {
     </Page>
   );
 }
+
+export const SeeingScreen = () => (allowsMock() ? <SampleSeeingScreen /> : <RealSeeing />);
+export const PrivacyScreen = () => (allowsMock() ? <SamplePrivacyScreen /> : <RealPrivacy />);

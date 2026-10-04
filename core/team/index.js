@@ -922,6 +922,8 @@ export default {
     const CHARTER_CALLERS = ["cli", "local", "deck", "capsule", "mcp"];
     /** Writing a charter is the person's own: their surfaces and modules, never a model (an agent or a session is mcp). */
     const CHARTER_WRITERS = ["cli", "local", "deck", "capsule", "module"];
+    /** The tools a teammate or a session in the project uses in its own work (ask, cancel, close, notes): the person's surfaces, modules and a model session. Each body checks who it is and which project. */
+    const TEAM_USE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp"];
     const charterRef = { teammate: { type: "string" }, project: { type: "string" }, role: { type: "string" } };
 
     ctx.tool("team.charter.get", {
@@ -937,7 +939,7 @@ export default {
       run: async (i, meta = {}) => { const tm = await charterTarget(i, meta, { write: false }); return { agent: tm.agent, versions: charterHistory(tm.agent, Math.min(200, Number(i.limit) || 50)) }; },
     });
     ctx.tool("team.charter.set", {
-      description: `Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most ${CHARTER_MAX} characters. Person-only: an agent or a session drafts (team.charter.draft), the person writes.`,
+      description: `Write a teammate's charter (a new version; the old ones stay). It adds to the teammate's system prompt and never replaces Vyre's own rules; a live thread starts fresh at its next request so the new charter applies. At most ${CHARTER_MAX} characters. Person-only: an agent or a session proposes the text to the person, who writes it.`,
       input: { type: "object", required: ["text"], properties: { ...charterRef, text: { type: "string" }, note: { type: "string" } } },
       callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
@@ -948,7 +950,7 @@ export default {
     ctx.tool("team.charter.revert", {
       description: "Make an older charter version the current one again, as a new version so the revert can be undone too.",
       input: { type: "object", required: ["version"], properties: { ...charterRef, version: { type: "integer" } } },
-      callers: CHARTER_CALLERS,
+      callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const old = charterRow(db.prepare("SELECT * FROM team_charters WHERE teammate = ? AND version = ?").get(tm.agent, Number(i.version)));
@@ -971,7 +973,7 @@ export default {
     ctx.tool("team.charter.draft", {
       description: "Write (or rewrite) a teammate's charter from what the project already knows: its brief, its role, the project's context and the teammate's notes, plus anything in from (a line or a conversation summary). Saved as a new version, and returned so the person can read and edit it. Nobody has to hand-write what a teammate is.",
       input: { type: "object", properties: { ...charterRef, from: { type: "string" } } },
-      callers: CHARTER_CALLERS,
+      callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const home = await projectHome(tm.project).catch(() => null);
@@ -1240,6 +1242,7 @@ export default {
       description: "Send work to a project's teammate by role (\"design\", \"backend\", ...): {to, text, refs?, priority?, wait?, project?}. Queues a request in the teammate's serial inbox and returns {request, state, position}. wait (at most 30s) returns the result if it finishes by then. The result otherwise comes back later as a message in the calling thread.",
       input: { type: "object", required: ["to", "text"], properties: { to: { type: "string" }, text: { type: "string" }, refs: { type: "array", items: { type: "string" } },
         priority: { type: "string", enum: PRIORITIES }, wait: { type: "boolean" }, project: { type: "string" }, key: { type: "string" } } },
+      callers: TEAM_USE,
       run: async (i, meta) => {
         const project = await projectOf(meta, i);
         const tm = byRole(project, i.to) || serving(project).find(x => x.role === i.to);
@@ -1288,6 +1291,7 @@ export default {
     ctx.tool("team.cancel", {
       description: "Cancel a queued request. A running request is interrupted only by a person (stop its teammate's session, or team.fail from inside it).",
       input: { type: "object", required: ["request"], properties: { request: { type: "string" } } },
+      callers: TEAM_USE,
       run: async (i, meta) => {
         const r = mustR(i.request);
         const person = isPerson(meta.caller);
@@ -1320,6 +1324,7 @@ export default {
         notes: { type: "string", enum: ["unchanged"] }, reason: { type: "string" } } },
       // Closes the request only. The next one is dispatched once this turn actually ends (the
       // thread.finished listener pump() set up), not from here: this tool runs mid-turn.
+      callers: TEAM_USE,
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
         if (i.notes === "unchanged") {
@@ -1343,6 +1348,7 @@ export default {
     ctx.tool("team.fail", {
       description: "The teammate itself closes its running request as failed, with why. request may be left out; it defaults to the teammate's one running request.",
       input: { type: "object", required: ["reason"], properties: { request: { type: "string" }, reason: { type: "string" } } },
+      callers: TEAM_USE,
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
         return finish(r, "failed", { result: i.reason });
@@ -1352,6 +1358,7 @@ export default {
     ctx.tool("team.merge", {
       description: "The integrator's own tool, once it believes it has resolved a merge conflict in its own worktree, or has run this project's own test command itself (vyred never runs it) and has its exit code: checks that directly (no conflict markers left, and, when a test command is set, that tests.exit_code was reported and is 0), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains, the test command was not actually run and reported, or it failed; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
       input: { type: "object", properties: { request: { type: "string" }, tests: { type: "object", properties: { exit_code: { type: "number" } } } } },
+      callers: TEAM_USE,
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
         const tm = byAgent(r.teammate);
@@ -1383,6 +1390,7 @@ export default {
       description: "A teammate's notes: its memory of record. action \"get\" reads the current text and version history; \"set\" (the teammate itself, or a person) writes a new version, versioned and copied to <project home>/.vyre/team/<role>/notes.md.",
       input: { type: "object", required: ["agent"], properties: { action: { type: "string", enum: ["get", "set"] }, agent: { type: "string" },
         part: { type: "string" }, text: { type: "string" } } },
+      callers: TEAM_USE,
       run: async (i, meta) => {
         const tm = mustT(i.agent);
         const part = checkPart(tm, i.part || "general");

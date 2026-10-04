@@ -1,0 +1,53 @@
+// @ts-check
+// core/files/space-drive.js: the Space's own Drive (kernel/storage/drive.js, behind kernel/gateway/drive.js) for the app: upload a new version of a file, list a file's versions, restore one.
+// Not the box's shared folders (files.drive.list and files.drive.read in browse.js are those). Every call is the CALLER'S own chain in the Space it names (lib/gateway-door.js): a call that proved
+// no person is refused, the kernel's `drive.write`, `drive.read` and `drive.restore` grants decide, a path is checked in one form (kernel/seal/uses.js safePath) and an upload is size-capped.
+// A Space with no Drive wired answers `unavailable`.
+import { createDoor } from "../../lib/gateway-door.js";
+import { safePath } from "../../kernel/seal/uses.js";
+
+const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
+const str = { type: "string" };
+const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
+/** The most one upload call carries, decoded. A larger file goes through the Flow or the VyreDrive mount, not a tool call. */
+export const MAX_UPLOAD = 8 * 1024 * 1024;
+
+/** @param {any} ctx */
+export function registerSpaceDrive(ctx) {
+  const door = createDoor(ctx);
+  /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
+  const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
+    const d = await door.open(i || {}, meta);
+    if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+    return fn(i || {}, d, d.gateway.drive);
+  } });
+  const pathOf = (/** @type {any} */ p) => { try { return safePath(String(p ?? "")); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
+
+  tool("files.drive.upload", `Put a file in the Space's Drive as a new version, under the caller's own grants: { space?, path, base64, base? }. \`path\` is relative (Clients/A/retainer.pdf), \`base64\` the bytes (at most ${MAX_UPLOAD / 1048576} MB here), \`base\` the version you edited from (a second writer on one file makes a new version flagged conflict, never a merge). Answers { path, version, conflict }.`,
+    obj({ space: str, path: str, base64: str, base: { type: "integer" } }, ["path", "base64"]), async (i, d, drive) => {
+      const p = pathOf(i.path), text = String(i.base64 ?? "");
+      if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) || text.length % 4 === 1) throw refuse("base64 is the file's bytes, standard base64", "bad_input");
+      // Check the size before decoding: 4 base64 characters carry 3 bytes.
+      if (Math.floor(text.length / 4) * 3 > MAX_UPLOAD + 3) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+      const bytes = new Uint8Array(Buffer.from(text, "base64"));
+      if (bytes.length > MAX_UPLOAD) throw refuse(`a file here is at most ${MAX_UPLOAD / 1048576} MB; a larger one goes through a Flow or the VyreDrive mount`, "too_large");
+      if (i.base !== undefined && (!Number.isInteger(i.base) || i.base < 1)) throw refuse("base is a version number", "bad_input");
+      const r = await drive.put(d.chain, p, bytes, { base: i.base ?? null });
+      return { path: p, version: r.version, conflict: Boolean(r.conflict), size: bytes.length };
+    });
+
+  tool("files.drive.versions", "The versions of one file in the Space's Drive, newest last, under the caller's own grants: { space?, path }. Answers { path, versions: [{ ver, size, at, by, ... }] }; a file the caller may not read is the same as one that is not there.",
+    obj({ space: str, path: str }, ["path"]), async (i, d, drive) => {
+      const p = pathOf(i.path);
+      return { path: p, versions: await drive.history(d.chain, p) };
+    });
+
+  tool("files.drive.restore", "Restore an old version of a file in the Space's Drive as a NEW version (nothing is lost): { space?, path, version }. The person's own act with their presence proof, which rides beside the request. Answers { path, from, version }.",
+    obj({ space: str, path: str, version: { type: "integer" } }, ["path", "version"]), async (i, d, drive) => {
+      const p = pathOf(i.path);
+      if (!Number.isInteger(i.version) || i.version < 1) throw refuse("name a version number", "bad_input");
+      const r = await drive.restore(d.chain, p, i.version, d.proof ? { presence: d.proof } : {});
+      return { path: p, from: i.version, version: r.version };
+    });
+}

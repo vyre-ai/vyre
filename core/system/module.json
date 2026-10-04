@@ -1,11 +1,37 @@
 {
   "name": "system",
   "version": "0.1.0",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "tools": ["system.info", "system.echo", { "name": "system.rename", "reach": "person" }] },
-  "watches": { "emits": ["system.started", "device.renamed"] },
-  "shows": { "cli": ["info"] },
+  "does": {
+    "reads": [
+      "system.info"
+    ],
+    "tools": [
+      "system.info",
+      { "name": "system.build", "reach": "anyone", "effect": "read" },
+      "system.echo",
+      {
+        "name": "system.rename",
+        "reach": "person",
+        "effect": "write"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "system.started",
+      "device.renamed"
+    ]
+  },
+  "shows": {
+    "cli": [
+      "info"
+    ]
+  },
   "needs": {},
   "teaches": {}
 }

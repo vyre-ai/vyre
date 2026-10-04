@@ -2,30 +2,132 @@
   "name": "flows",
   "version": "0.1.0",
   "description": "Flows and Kits: write, approve and run a Flow, with its triggers, waits and tasks. The assembly lives in the daemon (core/daemon/flows-host.js); this module registers the tools over it, each running under the caller's own chain.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "needs": { "daemon": ["flowsHost"] },
+  "needs": {
+    "daemon": [
+      "flowsHost"
+    ],
+    "kernel": {
+      "actions": [
+        "records.read",
+        "records.create",
+        "records.update",
+        "records.remove",
+        "events.read",
+        "tasks.request",
+        "tasks.read",
+        "tasks.work"
+      ],
+      "prefixes": [
+        "*"
+      ]
+    }
+  },
   "does": {
     "tools": [
-      { "name": "flows.define", "reach": "anyone" },
-      { "name": "flows.approve", "reach": "person" },
-      { "name": "flows.card", "reach": "anyone" },
-      { "name": "flows.get", "reach": "anyone" },
-      { "name": "flows.list", "reach": "anyone" },
-      { "name": "flows.code", "reach": "anyone" },
-      { "name": "flows.compile-text", "reach": "anyone" },
-      { "name": "flows.graph", "reach": "anyone" },
-      { "name": "flows.simulate", "reach": "anyone" },
-      { "name": "flows.start", "reach": "anyone" },
-      { "name": "flows.pause", "reach": "person" },
-      { "name": "flows.resume", "reach": "person" },
-      { "name": "flows.runs", "reach": "anyone" },
-      { "name": "flows.run", "reach": "anyone" },
-      { "name": "flows.retry", "reach": "anyone" },
-      { "name": "flows.kit.card", "reach": "anyone" },
-      { "name": "flows.kit.propose", "reach": "anyone" },
-      { "name": "flows.kit.remove", "reach": "person" },
-      { "name": "flows.kit.list", "reach": "anyone" }
+      {
+        "name": "flows.define",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "flows.approve",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "flows.propose",
+        "reach": "anyone"
+      },
+      {
+        "name": "flows.card",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.get",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.list",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.code",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.compile-text",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.graph",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.simulate",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.start",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "flows.pause",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "flows.resume",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "flows.runs",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.run",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.retry",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "flows.kit.card",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "flows.kit.propose",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "flows.kit.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "flows.kit.list",
+        "reach": "anyone",
+        "effect": "read"
+      }
     ]
   }
 }

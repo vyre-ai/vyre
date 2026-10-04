@@ -34,6 +34,7 @@ import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
 import * as connectionTools from "./tools/connections.js";
+import { isDeviceGroupId } from "./devices.js";
 import * as saidTools from "./said.js";
 import { grantPrompt, putPrompt } from "./prompt.js";
 import { scanEnvFiles } from "./envscan.js";
@@ -52,6 +53,8 @@ const PEOPLE = ["cli", "local"];
 // The Deck and the Capsule are surfaces a person uses. They call as themselves, and the presence
 // floor (ADR 0004) is what proves a person is there, whichever surface asks.
 const SURFACES = [...PEOPLE, "deck", "capsule"];
+// The Capsule calls every action with { id, front }: the item's id and the app that was in front.
+const frontApp = { type: "object" };
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -104,7 +107,7 @@ export default {
           if (!byWhois) return vault.onRelay(env, meta);
           return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onSync: env => (isDeviceGroupId(env && env.vault) ? vault.devices.onSync(env) : vault.shared.onSync(env)),
         onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
@@ -251,11 +254,13 @@ export default {
       presence("Let a module use a vault item", ({ name, module, watcher, project }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)}${project ? ` in ${project}` : ""} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
-    tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one.",
+    // The person's surfaces revoke any grant. A model session (named agent, thread or bare mcp) and another module may only withdraw a request they made themselves: that is why "mcp" and
+    // "module" are in the list (reviewer-2 group D: a bare mcp session used to revoke any module's active grant).
+    tool("vault.revoke", [...SURFACES, "tailnet", "device", "module", "mcp"], "Take an item away from a module, or from one of its watchers, in one project or (with no project) every one. From Claude or another module it withdraws only a request it made itself.",
       obj({ name: str, module: str, watcher: str, project: str }, ["name", "module"]), (input, { caller }) => {
         const c = String(caller);
-        // A named agent, or another module, may only withdraw a request it made itself; the person's surfaces and an unnamed session revoke freely.
-        return vault.revoke(input, c, /^mcp:agent:/.test(c) || c.startsWith("module:") ? { onlyPendingBy: c } : {});
+        const k = callerKind(c);
+        return vault.revoke(input, c, k === "mcp" || k === "harness" || k === "module" ? { onlyPendingBy: c } : {});
       });
 
     tool("vault.pending", [...SURFACES, "mcp"], "Grants and passes an agent asked for, waiting for a person.",
@@ -291,7 +296,7 @@ export default {
     // A surface with a live session skips the proof for a non-reprompt item (ADR 0006, decision 3).
     tool("vault.totp", [...SURFACES, "module", "tailnet", "device"], "The current one-time code for a login with a TOTP seed.",
       // `id` is the Capsule's name for the item (its actions get `{ id, front }`).
-      obj({ name: str, id: str, session: str }),
+      obj({ name: str, id: str, session: str, front: frontApp }),
       async ({ name, id }, { caller }) => {
         const n = name ?? id;
         if (typeof n !== "string" || !n) throw new Error("name the item");
@@ -363,7 +368,7 @@ export default {
       obj({ passphrase: str }, ["passphrase"]), input => vault.unlock(input.passphrase),
       presence("Unlock the vault", () => "Unlock the vault"));
 
-    tool("vault.lock", null, "Forget the key until the next unlock.", obj({}), () => vault.lock());
+    tool("vault.lock", null, "Forget the key until the next unlock.", obj({ id: str, front: frontApp }), () => vault.lock());
 
     tool("vault.identity", null, "This Vyre's public card, to give to someone who will share items with you. It holds no secret.",
       obj({}), () => vault.card());

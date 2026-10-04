@@ -89,7 +89,9 @@ test("link: a Mac answers on the box only once the person signs it in, and only 
   // transport ("cli:agent:kit" reads as "cli" by its first word alone).
   for (const caller of ["mcp", "mcp:agent:kit", "anonymous", "module:planner", "cli:agent:kit", "cli agent:kit", "capsule:agent:juno", "deck:thread:t1", "cli:agent:"]) {
     const r = await s.macCall("link.call", { tool: "agents.update", input: { name: "kit", description: "x" } }, caller);
-    assert.equal(r.error && r.error.code, "person_session_required", caller);
+    // A model label is refused by link.call's own callers list (group D HD-3); the rest reach the box and are refused there.
+    const refusedHere = ["mcp", "mcp:agent:kit", "anonymous"].includes(caller);
+    assert.equal(r.error && r.error.code, refusedHere ? "denied" : "person_session_required", caller);
   }
   // Human-only: the Mac's Secure Enclave key, enrolled at sign-in, signs this exact call (Touch ID).
   assert.equal((await s.macCall("link.status")).data.signedIn.touchId, true);
@@ -97,7 +99,7 @@ test("link: a Mac answers on the box only once the person signs it in, and only 
   assert.ok(!opened.error, JSON.stringify(opened.error));
   assert.equal(enclave.signed, 1, "one Touch ID for one human-only call");
   // Never for a model or a module: no signature is even asked for.
-  assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "mcp")).error.code, "person_session_required");
+  assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "mcp")).error.code, "denied");
   assert.equal((await s.macCall("link.call", { tool: "presence.session.open", input: {} }, "cli:agent:kit")).error.code, "person_session_required");
   assert.equal(enclave.signed, 1);
   // The box lists the Mac's session, pinned to the Mac's node.
