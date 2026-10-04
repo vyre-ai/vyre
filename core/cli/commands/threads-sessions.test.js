@@ -8,6 +8,7 @@
 // verb whose tool is missing must say what is coming in one line and exit 1; one whose tool is
 // there must do its job. Which vyred this is comes from its own tool list, never a guess.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

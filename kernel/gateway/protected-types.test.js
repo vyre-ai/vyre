@@ -1,4 +1,5 @@
 // A protected type (kit-proposal, kit-install, or a type that says `protected: true`): a row is changed only by whoever made it or an owner or admin. A member who may write the type cannot rewrite another's row.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "../index.js";

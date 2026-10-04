@@ -1,6 +1,7 @@
 // @ts-check
 // A session on the person's own server is sealed at every turn on a real daemon: the Switchboard says which transcript a finished turn belongs to, the runner seals it into the home's
 // checkpoint store as the owner's chain, and after a kill (a torn last line, an unfinished turn) `recover` puts the file back to exactly the last whole turn.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // owner's anchor.reset through scripts/admin-anchor-reset.mjs (the very script `sudo vyre admin anchor-reset` runs, as a real child process, reading the owner's proof from stdin) lets it start with the data from the
 // backup intact, leaves exactly one sealed `anchor.reset` event, and the same proof used a second time is refused. Stand-ins, said plainly: the "packaged" kernel is a development tree handed a release-stamped packageRoot
 // (the daemon's own isPackaged test), the owner's phone is a SOFTWARE signer (dev-kind sealing process, VYRE_SEAL_SOFTWARE), and the box wrapper (docker compose around the script) is not exercised here.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

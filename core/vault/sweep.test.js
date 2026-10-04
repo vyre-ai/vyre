@@ -3,6 +3,7 @@
 // shell history, skipping dependencies and binaries, and never saying a value.
 // Every value here is made at run time.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -5,6 +5,7 @@
 // source for literal ctx.call("x.y"), call("x.y") and use("x.y") and fails when the callee's reach
 // would refuse a module. It reads files only; it boots nothing. A call that runs for the person on
 // purpose (a person-proxy path) goes in PERSON_PROXY with the reason.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

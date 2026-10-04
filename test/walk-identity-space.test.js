@@ -2,6 +2,7 @@
 // Steps 2 and 3 of the end-to-end walk on a REAL vyred (core/daemon start, a real socket, the callers the daemon itself decides) against the stand-in names directory
 // (scripts/standin-directory.mjs, a real process on loopback): claim an identity, create a space, resolve both by name. Then BR-1 on the same daemon with the kernel on:
 // every unprivileged caller label naming a real member is refused by every bridges tool, and the member's own verified call works.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

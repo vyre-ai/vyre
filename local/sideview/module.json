@@ -4,7 +4,7 @@
   "description": "The side view on macOS: a session on the left and Chrome (or Glass on the box) filling the rest, tiled through the accessibility API in one call, and put back on close.",
   "roles": ["local"],
   "requires": [],
-  "does": { "tools": [{ "name": "sideview.open", "reach": "anyone" }, { "name": "sideview.close", "reach": "anyone" }, { "name": "sideview.status", "reach": "anyone" }] },
+  "does": { "tools": [{ "name": "sideview.open", "effect": "write", "reach": "anyone" }, { "name": "sideview.close", "effect": "write", "reach": "anyone" }, { "name": "sideview.status", "effect": "read", "reach": "anyone" }] },
   "watches": { "emits": [] },
   "shows": {},
   "needs": {},

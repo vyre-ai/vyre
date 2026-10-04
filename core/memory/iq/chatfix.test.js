@@ -5,6 +5,7 @@
 // land in one corrections listing with a source, and a decision answer's correction updates the
 // decision. Fictional data only (alex, Harlow Legal, Northwind Bakery, juno, kit).
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

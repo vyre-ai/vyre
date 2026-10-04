@@ -3,6 +3,7 @@
 // reach "asked", so an agent's unasked call is refused before the tool runs (no request ever
 // leaves), while the person's own call goes through to the tool. Boots a real vyred in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

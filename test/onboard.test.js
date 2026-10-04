@@ -5,6 +5,7 @@
 // socket, the loopback listener, the cookie, and only the onboarding tools behind it. Tailscale
 // and claude are fake binaries; nothing here reaches the real ones.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

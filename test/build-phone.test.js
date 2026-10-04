@@ -1,5 +1,6 @@
 // @ts-check
 // scripts/build-phone.mjs: the phone.vyre.run site is built only from a signed release, and is exactly what shell.json signed.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

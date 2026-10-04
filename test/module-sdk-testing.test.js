@@ -2,6 +2,7 @@
 // @vyre/module-sdk/testing (ADR 0047 section 7): the fake registry routes calls by reach and
 // outward exactly as section 2 says, holds the module to its manifest, and leaves nothing behind.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

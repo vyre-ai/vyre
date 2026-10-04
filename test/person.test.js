@@ -4,6 +4,7 @@
 // as the owner is only the owner's device; a script on it (no cookie, no signed token) cannot
 // answer an ask, approve, open a terminal or reach a human-only tool.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -325,12 +326,14 @@ test("person: a device its owner paired opens its person session at pairing with
 
   // Nothing is signed in before pairing: the person's own act is refused.
   assert.equal((await relayed(ID, "POST", "/v1/tools/agents.create", { name: "kit" })).error.code, "person_session_required");
-  // An unconfirmed record, a web device and another caller get no grant.
+  // An unconfirmed record and another caller get no grant; a confirmed browser gets a session and nothing more (reviewer-3's rule, 4 Oct): a grant that is believed in software only.
   rec = { ...rec, confirmed: false };
   assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink")).error, "unconfirmed");
-  rec = { ...rec, confirmed: true, kind: "web" };
-  assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink")).error, "web");
-  rec = { ...rec, kind: "phone" };
+  rec = { ...rec, confirmed: true, kind: "web", hardware: false };
+  const web = await d.registry.call("presence.person.pair-grant", { device: ID }, "module:wink");
+  assert.equal(web.data && web.data.granted, true, "a confirmed browser gets its session");
+  assert.equal(web.data && web.data.software, true, "and it is a software session, never believed to be in hardware");
+  rec = { ...rec, kind: "phone", hardware: true };
   assert.ok((await d.registry.call("presence.person.pair-grant", { device: ID }, "module:relay")).error, "not wink");
   assert.equal((await relayed(ID, "POST", "/v1/tools/presence.person.pair-challenge", {})).data.challenge.length, 32, "a device with no grant gets a challenge of the same shape");
   assert.ok((await relayed(ID, "POST", "/v1/tools/presence.person.start-paired", { sig: sign(dk, "x") })).error, "no grant, no session");

@@ -1,5 +1,6 @@
 // @ts-check
 // cdp: children that start paused while a guard is up, and the fallback that resumes one nobody resumed.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCdp } from "./extension/lib/cdp.js";

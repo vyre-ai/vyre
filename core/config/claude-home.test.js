@@ -1,6 +1,7 @@
 // @ts-check
 // claudeHome: the person's real Claude Code folder only for their own ~/.vyre.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import os from "node:os";

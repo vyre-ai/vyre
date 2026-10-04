@@ -1,5 +1,6 @@
 // @ts-check
 // The studs are data: every table is frozen, internally consistent and free of functions.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as c from "./index.js";

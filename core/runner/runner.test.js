@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import "./testing/require-sandbox.js";
 import { test } from "node:test";

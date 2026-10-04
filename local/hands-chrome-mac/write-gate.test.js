@@ -1,6 +1,7 @@
 // @ts-check
 // Hygiene: there is ONE write gate. Nothing in the extension may issue a request with the page's credentials except through pageFetch(), and pageFetch()
 // refuses a write that did not pass writeGate(). This test reads the source so that a new route cannot be added without going through it.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

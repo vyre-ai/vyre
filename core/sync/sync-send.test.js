@@ -3,6 +3,7 @@
 // with the daemon's real router so the raw chunk route (POST /v1/sync/upload/<id>) is reached too,
 // not only the tool logic (core/sync/sync.test.js covers that directly and more thoroughly).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

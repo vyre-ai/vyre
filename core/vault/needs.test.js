@@ -3,6 +3,7 @@
 // inside a real vyred in a temp home, with a synthetic module that declares what it needs.
 // Every value is made at run time; none may appear in any reply, event or log line.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

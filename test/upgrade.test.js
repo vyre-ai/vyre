@@ -3,6 +3,7 @@
 // sees its build differ from the installed one and restarts it, and only ever stops Vyre's own
 // pid. And `vyre assistant` makes the assistant that `vyre up`'s ending used to leave "not set up".
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

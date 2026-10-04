@@ -180,7 +180,7 @@ export default {
     const remoteCall = async (/** @type {string} */ device, /** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => {
       // ONE remote path (lead's ruling): the Wink peer wire to the paired server, as a session `{ call(tool, input) }` that a port supplies (`hooks.sessionFor(device)`, the daemon's wiring of the open
       // joinPeer session); the owner's proof rides in the input's `proof` for the SERVER's registry to verify. Until a port is wired, the Wink module's `wink.server.call` tool is tried.
-      const sessionForFn = typeof hooks.sessionFor === "function" ? hooks.sessionFor : typeof ctx.sessionFor === "function" ? ctx.sessionFor : null;
+      const sessionForFn = typeof hooks.sessionFor === "function" ? hooks.sessionFor : typeof ctx.sessionFor === "function" && typeof ctx.sessionForReady === "function" && ctx.sessionForReady() ? ctx.sessionFor : null;
       if (sessionForFn) {
         let session; try { session = await sessionForFn(device); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
         if (!session || typeof session.call !== "function") throw refuse("The server could not be reached. Nothing was made.", "server_unreachable");
@@ -188,9 +188,7 @@ export default {
         if (!pr || pr.ok === false) throw refuse(pr && pr.error && pr.error.message ? String(pr.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (pr && pr.error && pr.error.code) || "server_refused");
         return pr.data !== undefined ? pr.data : pr;
       }
-      let r; try { r = await ctx.call("wink.server.call", { device, tool, input, ...(meta && meta.kernel_proof ? { proof: meta.kernel_proof } : {}) }); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
-      if (!r || r.error) throw refuse(r && r.error && r.error.message ? String(r.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (r && r.error && r.error.code) || "server_refused");
-      return r.data;
+      throw refuse("This device has no way to reach a paired server. Nothing was made.", "server_unreachable");
     };
     /** The device of a space whose home is a server and which the SERVER hosts (set when it was made there). */
     const serverOf = async (/** @type {string} */ spaceId) => { const v = await kv.get(`server-hosted/${spaceId}`); return v && typeof v.device === "string" ? v.device : null; };
@@ -201,7 +199,12 @@ export default {
       try { await K.spaces.retire(id); } catch (e) { ctx.log.warn(`the kernel kept a space that did not finish being made (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     };
     /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
-    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => ({ chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) });
+    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => {
+      // A space the SERVER hosts is reached through a RemoteKernel: the chain argument never leaves this device (the server mints the chain from the peer it proved), so none is built here.
+      const h = space ? kernelHandle(space) : null;
+      if (h && h.hosted === false) return { chain: null, proof: K.proofFrom(meta) };
+      return { chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) };
+    };
     /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
     const members = async (id, meta) => {
       const h = kernelHandle(id);
@@ -325,6 +328,11 @@ export default {
     };
     const vpsDeps = () => ({ emit, ...(hooks.vpsDeps || { fetch: hooks.fetch || globalThis.fetch }) });
     /** Is this server already paired to this person (the pairing proved it)? Wink answers from the identity's own list (wink.server.paired); no answer means no, and the typed code step runs. @param {string} id */
+    /** Who may call a modules-only tool: the registry names a module caller `module:<name>` from the module it verified; only these first-party modules (and the daemon) are admitted, whatever a module's declaration says. @param {any} meta @param {string[]} names */
+    const onlyModules = (meta, names) => {
+      const c = String((meta && meta.caller) || "");
+      if (!names.some(n => c === `module:${n}`)) throw refuse("That is not for this caller.", "denied");
+    };
     const pairedServer = async id => {
       let who = null; try { who = identity.status(); } catch { who = null; }
       if (!who || !who.exists || !who.id) return false;
@@ -443,36 +451,12 @@ export default {
       if (!K || typeof K.adoptOwner !== "function") return;
       let s; try { s = identity.status(); } catch { return; }
       if (!s || !s.exists || !s.id || s.id === K.owner) return;
-      try { if (typeof K.owner === "string" && !(await kv.get("home-first-owner"))) await kv.put("home-first-owner", K.owner); } catch { /* the space.json record still names it */ }
-      try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+      try { await K.adoptOwner(s.id, { from: K.owner }); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
     };
-    /** Every Space this home hosts has the claimed identity as its owner too (a Space made before the claim, or by an older build, still has the first-start id): the same once-only adoption in each hosted kernel. */
-    /** The ids this home's owner has had before the claimed identity: the home kernel's space.json says it (previous_owner) and the module keeps what it saw at the first adoption. */
-    const firstOwners = () => {
-      const out = new Set();
-      try { const j = JSON.parse(fs.readFileSync(path.join(ctx.paths.root, "kernel", "space.json"), "utf8")); if (typeof j.previous_owner === "string") out.add(j.previous_owner); if (typeof j.owner === "string" && K && j.owner !== K.owner) out.add(j.owner); } catch { /* none */ }
-      if (K && typeof K.owner === "string") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = 'home-first-owner'").get()); if (r) out.add(JSON.parse(r.value)); } catch { /* none */ } }
-      return out;
-    };
-    /** @type {Set<string>} */ const hostedAdopted = new Set();
-    const adoptHosted = async () => {
-      if (!K || !K.spaces || typeof K.spaces.list !== "function") return;
-      let s; try { s = identity.status(); } catch { return; }
-      if (!s || !s.exists || !s.id) return;
-      for (const id of K.spaces.list()) {
-        const h = kernelHandle(id);
-        const k = h && h.hosted === true ? h.kernel : null;
-        if (!k || typeof k.kernelFor !== "function" || id === (K.space) || hostedAdopted.has(id + s.id)) continue;
-        try {
-          const hk = k.kernelFor({ name: "spaces", needs: { kernel: { spaces: true } } });
-          // ONLY a space hosted for this home's own first-start owner takes the claimed identity: a space hosted for somebody else (a person's own space this home hosts for them) is never touched.
-          if (hk && typeof hk.adoptOwner === "function" && hk.owner !== s.id && firstOwners().has(String(hk.owner))) await hk.adoptOwner(s.id);
-          hostedAdopted.add(id + s.id);
-        } catch (e) { ctx.log.warn(`a hosted space could not take your identity as its owner (${id}): ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
-      }
-    };
+    // Hosted spaces are NOT adopted here (HA-1): the kernel moves a hosted space to the claimed identity itself (kernel/spaces adoptOwner(to, from), at the claim and at every boot), only where the
+    // replaced home owner is its owner, keyed on the sealed owner.adopted event. This module never calls a hosted kernel's adoptOwner: through a handle that call replaces ANY owner.
     // single-flight: callers that arrive while one is running wait for it; the slot is cleared only AFTER the promise is stored (an early return must not leave a finished promise in it)
-    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce().then(adoptHosted); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
+    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce(); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await adoptOwner();
       try { const out = await fn(i || {}, meta || {}); await adoptOwner(); return out; } catch (e) { // after too: a call that claims or recovers the identity makes it the kernel's owner at once, not at the next call
@@ -696,7 +680,7 @@ export default {
 
     // ---- "setup in progress": the steps after the space has its home (look, members, connectors, the first Kit) are done on the device where the person started. The state is kept here, beside the
     // space's row, and read with the space (spaces.get, spaces.list). No secret, code, key or token is ever in it: only the shape below is kept, and anything else is dropped. ----
-    const SETUP_STEPS = ["look", "members", "connectors", "kit"];
+    const SETUP_STEPS = ["look", "members", "ai", "connectors", "kit"];
     const SETUP_WHERE = ["server", "vps", "here"];
     const text = (/** @type {any} */ v, /** @type {number} */ n) => (typeof v === "string" ? v.trim().slice(0, n) : null) || null;
     /** The device a call comes from, as the person sees it. A paired device's name is the home's own row; this computer is "this computer". @param {any} meta */
@@ -722,7 +706,7 @@ export default {
       const kit = typeof picks.kit === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(picks.kit) ? picks.kit : null;
       return { step: i.step, device, started: prev ? prev.started : at, updated: at, name: text(i.name, 80), address: text(i.address, 120), look: text(i.look, 80), where: i.where || null, picks: { connectors, kit } };
     };
-    tool("spaces.setup.save", "Keep where setup has got to for a space you are setting up (one of look, members, connectors, kit), so another device can carry on. Send setup: null when the last step is done. Only the device setup is on may save; no secret, code or key is kept.",
+    tool("spaces.setup.save", "Keep where setup has got to for a space you are setting up (one of look, members, ai, connectors, kit), so another device can carry on. Send setup: null when the last step is done. Only the device setup is on may save; no secret, code or key is kept.",
       obj({ space: str, setup: { type: ["object", "null"] } }, ["space", "setup"]), async (i, meta) => {
         const { row } = mine(i.space);
         const cur = await setupOf(row.id);
@@ -927,14 +911,19 @@ export default {
     });
     // A server paired to a person's identity (Wink pairing, once the pairing proved the identity's own key over this pairing) has the person's id as its owner too, not its first-start id (walker, step 4).
     // For the pairing module only: the kernel makes the change once, logged, and refuses a second one.
-    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str }, ["person"]), async i => {
+    tool("spaces.owner.adopt", "For the pairing module, after it has PROVED the identity: make this home's owner (and its hosted Spaces') the person's identity id. Once only.", obj({ person: str }, ["person"]), async (i, meta) => {
+      // Second layer (the registry's reach is the first): only the Wink module, and only for the identity ITS OWN pairing record names (never a value a caller chose), on a home that has no adopted owner yet.
+      onlyModules(meta, ["wink"]);
       const id = String(i.person);
+      let rec = null; try { const r = await ctx.call("wink.server.owner", {}); rec = r && r.data ? r.data : null; } catch { rec = null; }
+      if (!rec || rec.identity !== id) throw refuse("That is not the identity this server was paired to.", "forbidden");
       if (!/^per_[a-z2-7]{26}$/.test(id)) throw refuse("That is not a person id.", "bad_input");
       if (!K || typeof K.adoptOwner !== "function") throw refuse("This home has no kernel to change.", "unavailable");
-      try { const r = await K.adoptOwner(id); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
+      try { const r = await K.adoptOwner(id, { from: K.owner }); return { owner: r.owner, previous: r.previous, changed: r.changed }; } catch (e) { throw plainKernelError(e); }
     }, { internal: true });
     // The spaces a person owns or administers, for the pairing module's "Pair to:" choices (one id: the kernel's space id, the name the person gave it, the person's role there).
     tool("spaces.admin-list", "The finished spaces a person owns or administers here: { spaces: [{ space, name, role }] }, and the identity's own name when it is this device's. For modules (pairing targets).", obj({ person: str }, ["person"]), async (i, meta) => {
+      onlyModules(meta, ["wink"]);
       const person = String(i.person);
       const out2 = [];
       for (const row of spaces.all()) {
@@ -958,7 +947,8 @@ export default {
     });
     // The Vyre name for an identity id, for the pairing question at a server ("Alex (alex.vyre.run)"). The directory has no reverse lookup, so: this device's own identity (its claimed name), else a name the asker CLAIMS
     // (owner.vyre) that the directory resolves to exactly this id, else a name this home verified when that person joined. Otherwise null: the short id is shown, never an unchecked name.
-    tool("spaces.identity.name-of", "The claimed Vyre name for a person's id, verified: { name: 'alex.vyre.run' | null }. For modules.", obj({ id: str, claimed: str }, ["id"]), async i => {
+    tool("spaces.identity.name-of", "The claimed Vyre name for a person's id, verified: { name: 'alex.vyre.run' | null }. For modules.", obj({ id: str, claimed: str }, ["id"]), async (i, meta) => {
+      onlyModules(meta, ["wink"]);
       const id = String(i.id);
       let st = null; try { st = identity.status(); } catch { st = null; }
       if (st && st.exists && st.id === id && st.name) return { name: `${st.name}.vyre.run` };
@@ -1035,9 +1025,10 @@ export default {
       try { const h = await K.spaces.host({ owner: K.owner, name: label, ...(typeof i.id === "string" && i.id ? { id: i.id } : {}) }); return { space: h.space || h.id, existed: false }; } catch (e) { throw plainKernelError(e); }
     }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on this server` } });
     // Which paired server hosts a space this device made with a server as its home (null for a space hosted here): for the module that opens the remote path to that Space.
-    tool("spaces.server-of", "The paired server's device id that hosts a space this device made, or null. For modules.", obj({ space: str }, ["space"]), async i => ({ device: await serverOf(String(i.space)) }), { internal: true });
+    tool("spaces.server-of", "The paired server's device id that hosts a space this device made, or null. For modules.", obj({ space: str }, ["space"]), async (i, meta) => { onlyModules(meta, ["wink", "runner", "vyred"]); return { device: await serverOf(String(i.space)) }; }, { internal: true });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
-      async i => {
+      async (i, meta) => {
+        onlyModules(meta, ["vyred", "wink", "runner"]);
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
         // The device argument comes from other modules and the kernel (internal is reach, not trust): only the shapes a device id has are looked up (a relay device id or an enrolment entry id).
         if (!/^[A-Za-z0-9_-]{8,64}$/.test(String(i.device))) return { enrolled: false };
@@ -1140,18 +1131,20 @@ export default {
     });
 
     tool("spaces.resume", "Continue creating a space from the last good step. Give a new name if the first was taken, confirm 'this computer' if asked, or paste the server token again.",
-      obj({ space: str, name: str, confirmThisComputer: { type: "boolean" }, vpsToken: str }, ["space"]), async i => {
+      obj({ space: str, name: str, confirmThisComputer: { type: "boolean" }, vpsToken: str }, ["space"]), async (i, meta) => {
         const { row } = mine(i.space);
         const ctx2 = /** @type {any} */ ({});
         if (i.name) ctx2.name = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (i.confirmThisComputer) ctx2.confirmThisComputer = true;
         if (i.vpsToken) ctx2.vpsToken = String(i.vpsToken);
-        // a creation that failed gave its kernel Space back: host it again under the same id before going on
-        if (row.status !== "done" && K && K.spaces && typeof K.spaces.host === "function" && /^spc_[a-z2-7]{12}$/.test(row.id) && !kernelHandle(row.id)) {
+        // a creation that failed gave its Space back: host it again under the same id before going on (on the SERVER when that is its home)
+        const srvDevice = await serverOf(row.id);
+        if (srvDevice && row.status !== "done") await remoteCall(srvDevice, "spaces.host-here", { name: row.label, id: row.id }, meta);
+        else if (row.status !== "done" && K && K.spaces && typeof K.spaces.host === "function" && /^spc_[a-z2-7]{12}$/.test(row.id) && !kernelHandle(row.id)) {
           try { await K.spaces.host({ owner: /** @type {string} */ (me().id), name: row.label, id: row.id }); } catch (e) { ctx.log.warn(`the kernel could not start the space again: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
         }
         const rv = await flow.resume(row.id, ctx2);
-        if (rv && rv.status === "failed") await retireHosted(row.id);
+        if (rv && rv.status === "failed") await retireHosted(row.id, meta);
         return sync(row.id, rv);
       });
 
@@ -1473,13 +1466,14 @@ export default {
     }, { internal: true });
     // For the pairing module on a server that has never seen an identity: read the claimed Vyre name's chain from the directory (verified, first sight) and answer its device entries only when the chain is
     // THIS id's. Nothing is stored. A directory that cannot be reached is `unreachable`, which is not the same as no such entry.
-    tool("spaces.identity.lookup", "A claimed Vyre name's identity list from the directory, verified, and only if it is the given id's: { entries }. Nothing is kept. For the pairing module.", obj({ name: str, id: str }, ["name", "id"]), async i => {
+    tool("spaces.identity.lookup", "A claimed Vyre name's identity list from the directory, verified, and only if it is the given id's: { entries }. Nothing is kept. For the pairing module.", obj({ name: str, id: str, pin: { type: "object" } }, ["name", "id"]), async i => {
       const label = String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, "");
       if (!/^[a-z0-9][a-z0-9-]{1,30}$/.test(label)) return { entries: [] };
       let r;
-      try { r = await dir.resolve(label); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
+      const pin = i.pin && typeof i.pin === "object" && typeof i.pin.id === "string" && Number.isInteger(i.pin.seq) && typeof i.pin.head === "string" ? { id: i.pin.id, seq: i.pin.seq, head: i.pin.head } : undefined;
+      try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}) })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */

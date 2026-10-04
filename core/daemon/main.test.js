@@ -1,6 +1,7 @@
 // @ts-check
 // vyred's foreground entry (core/daemon/main.js): a stop that arrives while it is still starting
 // drains and exits 0, instead of the signal killing it half started (ADR 0029, R7).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // moves around, the gap and the daily cap holding across calls, dismiss and reset, what's new
 // after a version moves, and the hub switching tips off.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

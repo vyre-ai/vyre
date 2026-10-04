@@ -2,6 +2,7 @@
 // devtools (dev.*): DOM inspect, sources, console, state, lazy domains, floor, redaction. A fake
 // cdp answers with canned CDP results; nothing here starts Chrome.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test, mock } from "node:test";
 import assert from "node:assert/strict";
 import dev from "./extension/caps/devtools.js";

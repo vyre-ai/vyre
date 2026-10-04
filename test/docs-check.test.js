@@ -3,6 +3,7 @@
 // trees in temp folders. Also the pieces the checker leans on: GitHub-style slugs and the
 // reference generator (every tool a manifest declares is on the tools page, and two runs agree).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

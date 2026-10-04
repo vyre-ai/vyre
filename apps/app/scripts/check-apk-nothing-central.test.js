@@ -1,5 +1,6 @@
 // @ts-check
 // The nothing-central check as a pure function over strings.
+import "../../../scripts/mac-test-guard.mjs";
 import "./test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

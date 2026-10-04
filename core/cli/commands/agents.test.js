@@ -4,6 +4,7 @@
 // (core/switchboard/testing/fake-claude.js) for the agents' threads, the fake computer driver,
 // and `present` as the presence verifier so no dialog is ever shown.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

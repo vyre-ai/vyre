@@ -157,6 +157,24 @@ sleep 3
 vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"second\",\"surface\":\"deck\"}" >/dev/null 2>&1
 i=0; until [ "$(sealed)" = 2 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 2 was not sealed (sealed: $(sealed))"; exit 1; }; sleep 1; done
 echo "ok: a session on the server is sealed at every turn (turn 1 and turn 2 are checkpoints in the home's store)"
+
+# A session on the server SURVIVES A CRASH (sessions): kill the whole container with SIGKILL after turn 2 is sealed, leave a torn line and an unfinished turn in the transcript (what a kill leaves),
+# start it again: the thread is stopped for the restart, the next message puts the transcript back to exactly the last sealed turn (runner.recover, called by the Switchboard before it resumes) and the
+# session answers, and the third turn is sealed after it.
+tfile=$(docker exec -u 1000 vyre-vyre-1 sh -c "ls /home/vyre/.claude/projects/*/$tid.jsonl" 2>/dev/null | head -n 1)
+[ -n "$tfile" ] || { echo "the session's transcript was not found on the box"; exit 1; }
+docker exec -u 1000 vyre-vyre-1 sh -c "cp $tfile /tmp/sealed-copy.jsonl"
+docker kill vyre-vyre-1 >/dev/null
+docker exec -u 0 vyre-vyre-1 true 2>/dev/null && { echo "the container is still running after docker kill"; exit 1; }
+docker start vyre-vyre-1 >/dev/null
+ready || { echo "vyred did not come back after the kill"; exit 1; }
+docker exec -u 1000 vyre-vyre-1 sh -c "printf '%s\n%s' '{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":\"UNFINISHED\"}}' '{\"type\":\"assistant\",\"mess' >> $tfile"
+docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" || { echo "could not leave the kill's leftovers in the transcript"; exit 1; }
+vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"back after the crash\",\"surface\":\"deck\"}" >/dev/null 2>&1
+i=0; until [ "$(sealed)" = 3 ]; do i=$((i + 1)); [ $i -lt 60 ] || { echo "the resumed turn was not sealed (sealed: $(sealed)); status:"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | tail -5; exit 1; }; sleep 1; done
+docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the killed turn's leftovers reached the resumed session"; exit 1; }
+docker exec -u 1000 vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
+echo "ok: a session on the server survives a crash (killed, restarted, put back to its last sealed turn, resumed, and the next turn sealed)"
 docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude /home/vyre/fake-claude.mjs
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.

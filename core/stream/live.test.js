@@ -3,6 +3,7 @@
 // a message steered into it, the socket killed mid-reply, and a resume from the cursor. The frames a
 // client that was cut off holds must equal the frames of a client that never was, folded to the
 // same transcript. Typed terminal commands and withdrawn queued messages ride in the same log.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

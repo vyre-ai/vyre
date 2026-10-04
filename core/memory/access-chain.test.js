@@ -1,6 +1,7 @@
 // @ts-check
 // Memory's access layer decided from the kernel chain's facts, not label strings (CUTOVER section H). Every caller class gets the SAME answer from the chain (kernel on) as it
 // got from its label (kernel off): the table's rows, run both ways. Only the model and the projects.reach stand-in (a 0.2 module this one asks) are stand-ins.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

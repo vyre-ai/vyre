@@ -4,6 +4,7 @@
 // sessions know; a folder belongs to the most specific project that holds it; only the user's
 // surfaces and agents granted everything read the main graph. Fictional data only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -234,8 +235,9 @@ test("scope: a caller that names no agent and no room reads the main graph only 
   assert.ok(!(await call("memory.relevant", { text: "ask Sam Okafor", room: "northwind" }, "mcp")).error);
   assert.ok(!(await call("memory.relevant", { text: "ask Sam Okafor", project_cwds: [`${W}/northwind`] }, "mcp")).error);
   assert.ok(!(await call("memory.relevant", { text: "anything", room: "unfiled" }, "mcp")).error);
-  // Steering and curating stay as they were.
-  assert.ok(!(await call("memory.curate", {}, "mcp")).error);
+  // MS-1: steering and curating rebuild the WHOLE graph, so an unnamed model session may not (it may read the rooms it names); the person's surfaces still can.
+  assert.ok((await call("memory.curate", {}, "mcp")).error);
+  assert.ok(!(await call("memory.curate", {}, "cli")).error);
 });
 
 test("scope: the user's own tools refuse any caller that names an agent", async t => {

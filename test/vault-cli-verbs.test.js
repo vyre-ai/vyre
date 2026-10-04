@@ -5,6 +5,7 @@
 // refusal, and --json where it is a read. The last test runs the writes against the REAL
 // presence verifier with no terminal: each is refused with exit 3, asking for a person.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

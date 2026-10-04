@@ -2,6 +2,7 @@
 // Unit tests for capsule.js: what the Capsule's words mean for mail, and the row ids that carry
 // them (ADR 0016 decision 8). Pure.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parse, composeId, parseComposeId, messageId, parseMessageId } from "./capsule.js";

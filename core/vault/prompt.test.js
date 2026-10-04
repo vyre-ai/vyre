@@ -1,6 +1,7 @@
 // @ts-check
 // The approval prompt names the module, the item, the project scope and the agent that asked (reviewer-2).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { grantPrompt } from "./prompt.js";

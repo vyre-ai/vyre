@@ -3,6 +3,7 @@
 // actions in order, signed with --mode anyone, opened one by one, and nothing runs when the gate
 // says no dialog may be shown.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

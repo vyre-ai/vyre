@@ -8,6 +8,7 @@
 // resolved address, unwraps an IPv4-mapped IPv6 address before checking it, and a wildcard host
 // matches exactly one label, never a bare suffix or a deeper subdomain.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalize, classify, hostAllowed, addressBlocked, checkTarget, PRESETS, presetFor, presetRead } from "./api-request.js";

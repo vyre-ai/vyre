@@ -1,6 +1,7 @@
 // @ts-check
 // capsule: commands, views and actions from the manifests' `view:` entries.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -64,8 +65,8 @@ const kit = () => ({
     actions: [{ id: "open", title: "Open", do: { open: "{url}" } }, { id: "web", title: "Web", do: { open: "javascript:alert(1)" } }, { id: "vyre", title: "Pair", do: { open: "vyre://pair" } }, { id: "ask", title: "Ask", do: { ask: "kit, do it" } }, { id: "elsewhere", title: "Away", do: { push: "orders" } }, { id: "mine", title: "Mine", do: { push: "things" } }, { id: "send", title: "Send", tool: "kit.send", input: { id: "{id}" }, outward: true }] } } } },
 });
 const kitSrc = `export default { async start(ctx) {
-  ctx.tool("kit.list", { input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "kit.list", caller: meta.caller }); return { items: [{ id: "k1", name: "Thing", url: "https://kit.example/1" }] }; } });
-  ctx.tool("kit.send", { input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "kit.send", caller: meta.caller, asked: meta.asked }); return { said: "Kit sent." }; } });
+  ctx.tool("kit.list", { effect: "read", input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "kit.list", caller: meta.caller }); return { items: [{ id: "k1", name: "Thing", url: "https://kit.example/1" }] }; } });
+  ctx.tool("kit.send", { effect: "read", input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "kit.send", caller: meta.caller, asked: meta.asked }); return { said: "Kit sent." }; } });
   return {};
 } };`;
 
@@ -219,12 +220,12 @@ test("capsule: an added module's view names its own tools, a person can never be
 
 test("capsule: each MCP hub server gets a Tools command: its tools listed, a form from the input schema, a read runs, a write previews then the hub holds it", async t => {
   const stub = ["mcp", { version: "0.1.0", roles: ["local"], does: { tools: ["mcp.servers", "mcp.tools", "mcp.call"] } }, `export default { async start(ctx) {
-    ctx.tool("mcp.servers", { input: { type: "object" }, run: async () => [{ name: "harlow-docs", state: "stopped" }] });
-    ctx.tool("mcp.tools", { input: { type: "object" }, run: async () => [
+    ctx.tool("mcp.servers", { effect: "read", input: { type: "object" }, run: async () => [{ name: "harlow-docs", state: "stopped" }] });
+    ctx.tool("mcp.tools", { effect: "read", input: { type: "object" }, run: async () => [
       { name: "harlow-docs__search", server: "harlow-docs", tool: "search", description: "Search the docs", outward: false, input: { type: "object", required: ["q"], properties: { q: { type: "string" }, limit: { type: "integer" }, exact: { type: "boolean" }, kind: { enum: ["memo", "brief"] }, tags: { type: "array" } } } },
       { name: "harlow-docs__post", server: "harlow-docs", tool: "post", description: "Post a note", outward: true, input: { type: "object", required: ["body"], properties: { body: { type: "string" } } } },
       { name: "other__x", server: "other", tool: "x", description: "not this server", outward: false, input: { type: "object" } }] });
-    ctx.tool("mcp.call", { input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "mcp.call", input: i, caller: meta.caller }); return i.tool === "post" ? { held: true, id: "g9" } : { content: [{ type: "text", text: "Found 2 memos" }] }; } });
+    ctx.tool("mcp.call", { effect: "read", input: { type: "object" }, run: async (i, meta) => { globalThis.__cap.push({ tool: "mcp.call", input: i, caller: meta.caller }); return i.tool === "post" ? { held: true, id: "g9" } : { content: [{ type: "text", text: "Found 2 memos" }] }; } });
     return {};
   } };`];
   const reg = await registry(t, [stub]);

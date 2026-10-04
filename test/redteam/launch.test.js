@@ -4,6 +4,7 @@
 // M-S1 (staging overrides on the setup page), B4 (claim token), U (update request). Runs on runners and testbox:
 // node --test "test/redteam/*.test.js". The update and publish-release attacks live in test/box-update.test.js
 // (they need its fake docker box) and carry the same IDs in their names.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { setupOverrides } from "../../site/setup/config.js";
