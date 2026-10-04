@@ -12,7 +12,7 @@
 // key       THIS device's identity key: its public half (32 raw bytes, base64url) is sent to the existing device inside the pairing, over this device's own encrypted channel, so the yes at the
 //           words covers it. The private half never leaves the device.
 // onWords   called once with the three words this device derived. Show them: the person at the other device picks the same words from three sets.
-// Resolves { paired: true, enrolled, relay, route, box, device, name }: `enrolled` says whether the identity list took the key (false with `reason` when the existing device could not sign the
+// Resolves { paired: true, enrolled, relay, route, box, device, name, identity? }: `name` is the OTHER DEVICE'S name (the box), `identity` is the identity this device joined ({ id, vyre? }: its Vyre name when it has one), to read the identity's list by: `enrolled` says whether the identity list took the key (false with `reason` when the existing device could not sign the
 // change, for example an identity it does not hold); persist relay, route, box and the key store when the person wants this device paired to that computer too. Rejects with an Error whose
 // `code` is one of: bad_code, taken (the code was used, expired or never existed), busy, unreachable, denied (the person said no or the words did not match), expired, cancelled.
 import { pairTicket, connect } from "./client.js";
@@ -102,7 +102,7 @@ export async function addThisDevice(o) {
       const r = await wait({ ...base, reveal: na });
       // the other device derives the same three words only after the reveal: a different set means someone sits between the two
       if (r.words && String(r.words) !== words) throw fail("denied", "The words did not match, so nothing was added. Start again from the other device.");
-      if (r.state === "yes") { stop(); return { paired: true, enrolled: r.enrolled !== false, ...(r.enrolled === false && r.reason ? { reason: String(r.reason) } : {}), relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name }; }
+      if (r.state === "yes") { stop(); return { paired: true, enrolled: r.enrolled !== false, ...(r.enrolled === false && r.reason ? { reason: String(r.reason) } : {}), relay, route: paired.route, box: paired.box, device: paired.device, name: paired.name, ...(r.identity && typeof r.identity.id === "string" ? { identity: { id: String(r.identity.id), ...(typeof r.identity.vyre === "string" ? { vyre: r.identity.vyre } : {}) } } : {}) }; }
       if (r.state === "no") throw fail("denied", "The other device said no, so nothing was added.");
       if (r.state === "expired") throw fail("expired", "Nobody answered at the other device in time.");
       await new Promise(res => setTimeout(res, pollMs));

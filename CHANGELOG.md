@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(wink): `wink.phone.wait` answers `identity: { id, vyre? }` once the yes is done, and `addThisDevice` returns it, so a device that joined an identity reads its list by the identity's own name; `name` stays the other device's (box) name.
+
 - feat(wink): a browser with no box pairs to a server by the code the phone's Devices screen shows, with the existing `joinWithCode({ relay, input, name, onState, pairOptions: { crypto, keyStore, about: { kind: "web" } } })` (relay/client/join.js); a test covers it. wink.code.ack no longer says "Development only" (reviewer-3 TY-2).
 
 - feat(wink): a device with no box of its own uses the typed code through the client library, with no tool to call. `addThisDevice({ code, relay, key, onAck })` (relay/client/phonepair.js) adds this device to an identity from the code the other device shows, and `redeemInviteCode({ relay, input, onAck })` (relay/client/join.js) takes an invitation's code out to its link for the join page or spaces.invites.accept. Both run the code's PAKE over the relay and show the ack to type back. A phone that came in by the typed code is confirmed by the code itself: the ticket is gated like the QR's, the ack typed back on the computer is the yes (no three words), and the identity list takes the key through the same wink.phone.wait step. The tool `wink.code.redeem for: "phone"` follows the same path through this app's own box.
