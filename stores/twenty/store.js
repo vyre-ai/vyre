@@ -21,7 +21,7 @@ import { isUuid } from "../../kernel/core/ids.js";
 import { createAggregator } from "../../kernel/store/query.js";
 import { SnapshotStore } from "./snapshots.js";
 import { twentyGet } from "./client.js";
-import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty } from "./plan.js";
+import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
 export const CONFORMANCE_REVISION = 5;
@@ -57,6 +57,15 @@ export class TwentyStore {
     this.graceMs = o.graceMs ?? 250; this.now = o.now ?? Date.now;
     /** @type {boolean | undefined} */ this.auditSwitch = undefined;
     /** @type {Map<string, { at: number, hits: any[] }>} */ this.searchKept = new Map();
+    // the kernel attributes (owner, project, created_by, sensitivity) of each record, mirrored into Twenty fields so a member's lists and totals can be filtered there
+    this.attrFile = o.dir ? path.join(o.dir, "attr-mirror.json") : null;
+    /** @type {Set<string>} types whose every row carries its attributes in Twenty (made after the mirror existed, or empty when its columns were added) */ this.mirrorReady = new Set();
+    try { if (this.attrFile) for (const t of JSON.parse(fs.readFileSync(this.attrFile, "utf8"))) this.mirrorReady.add(t); } catch { /* first start */ }
+    /** @type {Set<string>} */ this.attrCols = new Set();
+    this.metaQueue = Promise.resolve(); this.metaFailed = false;
+    const store = this;
+    /** The gateway keeps each record's attributes in this map (`store.meta`); setting one also writes it to the record's mirror columns, in order, and a failed write is remembered (the filter refuses until it is repaired). */
+    this.meta = new (class AttrMap extends Map { /** @param {string} u @param {any} a */ set(u, a) { super.set(u, a); store.mirrorAttrs(u, a); return this; } })();
     /** @type {Map<string, import("./plan.js").TypePlan>} */ this.plans = new Map();
     this.snaps = new SnapshotStore(o.dir ? path.join(o.dir, "snapshots.jsonl") : null);
     /** @type {any[]} */ this.log = [];
@@ -143,7 +152,73 @@ export class TwentyStore {
 
   // ---- features and health ---------------------------------------------------------------------
   get kind() { return "twenty"; }
-  features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; }
+  features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true), attr_filter: true }; }
+
+  /** Write one record's kernel attributes to its mirror columns, after the writes queued before it. @param {string} urn @param {any} attrs */
+  mirrorAttrs(urn, attrs) {
+    const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(urn));
+    if (!m || !attrs || typeof attrs !== "object" || !this.plans.has(m[1])) return;
+    const [, type, id] = m;
+    this.metaQueue = this.metaQueue.then(async () => {
+      try {
+        const p = this.#plan(type);
+        if (!(await this.#attrColumns(p))) return;
+        const data = Object.fromEntries(Object.entries(ATTR_COLUMNS).map(([k, col]) => [col, typeof attrs[k] === "string" && attrs[k] ? attrs[k] : null]));
+        const row = await this.#cas(p, id, [], data);
+        if (row) this.#snap(p, row);
+      } catch { this.metaFailed = true; }
+    });
+  }
+
+  /** Make sure the object has the four mirror columns; a type with no rows when they are added has every row mirrored from then on. @param {import("./plan.js").TypePlan} p */
+  async #attrColumns(p) {
+    if (this.attrCols.has(p.vyre)) return true;
+    const cur = await this.#t(() => this.client.gql("metadata", `query Cols { objects(paging: { first: 200 }) { edges { node { id nameSingular fields(paging: { first: 200 }) { edges { node { name } } } } } } }`));
+    const obj = cur.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
+    if (!obj) return false;
+    const have = new Set(obj.fields.edges.map((/** @type {any} */ e) => e.node.name));
+    let added = false;
+    for (const [k, col] of Object.entries(ATTR_COLUMNS)) {
+      if (have.has(col)) continue;
+      await this.#t(() => this.client.gql("metadata", "mutation CreateField($i: CreateOneFieldMetadataInput!) { createOneField(input: $i) { id name } }", { i: { field: { objectMetadataId: obj.id, type: "TEXT", name: col, label: `Vyre ${k}`, isNullable: true } } }));
+      added = true;
+    }
+    if (added && !this.mirrorReady.has(p.vyre)) {
+      const n = await this.#t(() => this.client.gql("graphql", `query Cnt_${p.plural} { ${p.plural}(first: 1) { totalCount } }`));
+      if (Number(n[p.plural]?.totalCount ?? 1) === 0) this.#markMirrored(p.vyre);
+    }
+    this.attrCols.add(p.vyre);
+    return true;
+  }
+  /** @param {string} type */
+  #markMirrored(type) {
+    this.mirrorReady.add(type);
+    if (this.attrFile) { fs.mkdirSync(path.dirname(this.attrFile), { recursive: true, mode: 0o700 }); fs.writeFileSync(this.attrFile, JSON.stringify([...this.mirrorReady]), { mode: 0o600 }); }
+  }
+  /**
+   * The spec with the gateway's `attr_filter` turned into a filter on the mirror columns, ANDed with the caller's filter. Anything this store cannot honour exactly is `unsupported` (the gateway then goes row by
+   * row): a type whose rows were made before the mirror existed, or a mirror write that failed. It never ignores the filter. @param {string} type @param {any} spec
+   */
+  async #withAttrFilter(type, spec) {
+    if (!spec || !spec.attr_filter) return spec;
+    const af = spec.attr_filter, p = this.#plan(type);
+    const unsupported = (/** @type {string} */ why) => new StoreError("unsupported", `attr_filter: ${why}`);
+    if (!af || typeof af.urn_prefix !== "string" || !Array.isArray(af.any)) throw unsupported("not a filter");
+    if (af.urn_prefix !== `vyre://${this.space}/${type}/` && !new RegExp(`^vyre://[^/]+/${type}/$`).test(af.urn_prefix)) throw unsupported("another type's prefix");
+    await this.metaQueue;
+    if (this.metaFailed) throw unsupported("a mirror write failed");
+    if (!(await this.#attrColumns(p))) throw unsupported("no mirror columns");
+    if (!this.mirrorReady.has(type)) throw unsupported("this type holds rows made before the mirror");
+    const alts = af.any.map((/** @type {any} */ alt) => {
+      const terms = Object.entries(alt || {});
+      if (!terms.length || terms.some(([k, v]) => !Object.hasOwn(ATTR_COLUMNS, k) || typeof v !== "string")) throw unsupported("an attribute this store does not mirror");
+      return terms.length === 1 ? { field: `attr:${terms[0][0]}`, op: "eq", value: terms[0][1] } : { and: terms.map(([k, v]) => ({ field: `attr:${k}`, op: "eq", value: v })) };
+    });
+    // an empty `any` wants no row
+    const attr = alts.length ? (alts.length === 1 ? alts[0] : { or: alts }) : { field: "id", op: "eq", value: "00000000-0000-0000-0000-000000000000" };
+    const { attr_filter: _drop, ...rest } = spec;
+    return { ...rest, filter: rest.filter ? { and: [rest.filter, attr] } : attr };
+  }
   async health() {
     const h = await twentyGet(this.client, "/healthz");
     if (h.status !== 200) return { ok: false, detail: `Twenty is not answering (${h.status || "no reply"})`, checked_at: this.now() };
@@ -190,6 +265,7 @@ export class TwentyStore {
         const r = await this.client.gql("metadata", "mutation CreateObj($i: CreateOneObjectInput!) { createOneObject(input: $i) { id nameSingular } }", { i: { object: { nameSingular: p.singular, namePlural: p.plural, labelSingular: p.label, labelPlural: p.label + "s", icon: p.icon, ...(audit ? { isAuditLogged: false } : {}) } } });
         obj = { id: r.createOneObject.id, nameSingular: p.singular, labelSingular: p.label, icon: p.icon, fields: { edges: [] } }; objs.set(p.singular, obj);
         changes.push(`added type ${def.name}`);
+        this.#markMirrored(p.vyre); this.attrCols.delete(p.vyre);
       } else {
         if (audit && obj.isAuditLogged !== false) { await this.client.gql("metadata", "mutation UpdObj($i: UpdateOneObjectInput!) { updateOneObject(input: $i) { id } }", { i: { id: obj.id, update: { isAuditLogged: false } } }); obj.isAuditLogged = false; changes.push(`stopped the timeline on ${def.name}`); }
         if (known) for (const old of known.fields) if (!p.byVyre.has(old.vyre)) throw new StoreError("unsupported", `Field ${old.vyre} of ${def.name} was removed: removing a field is a migration, not a define`);
@@ -258,6 +334,7 @@ export class TwentyStore {
 
   /** @param {string} type @param {any} spec */
   async query(type, spec) {
+    spec = await this.#withAttrFilter(type, spec);
     const p = this.#plan(type);
     const limit = Math.min(Math.max(Number(spec.page?.limit) || 50, 1), MAX_PAGE);
     /** @type {any} */ let after;
@@ -349,6 +426,7 @@ export class TwentyStore {
 
   /** Groups and measures over the rows that match, computed by the kernel's own aggregate. @param {string} type @param {any} spec */
   async aggregate(type, spec) {
+    spec = await this.#withAttrFilter(type, spec);
     const p = this.#plan(type);
     for (const g of spec.group_by ?? []) { const f = p.byVyre.get(g); if (g !== "id" && !f) throw new StoreError("unknown_field", `${type} has no field ${g}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${g} is sealed`); }
     for (const m of spec.measures ?? []) { const f = m.field ? (p.byVyre.get(m.field) ?? p.byVyre.get(m.field.split(".")[0])) : null; if (m.field && !f) throw new StoreError("unknown_field", `${type} has no field ${m.field}`); if (f?.sealed) throw new StoreError("invalid", `${type}.${m.field} is sealed`); }

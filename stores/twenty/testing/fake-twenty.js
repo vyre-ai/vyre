@@ -60,6 +60,7 @@ export class FakeTwenty {
   #metadata(op, v, query = "") {
     if (op.startsWith("Boot_") || op.startsWith("Rot_")) return this.#boot(op, query);
     switch (op) {
+      case "Cols": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, fields: { edges: [...o.fields.values()].map((f) => ({ node: { name: f.name } })) } } })) } };
       case "AuditProbe": return { __type: { inputFields: [{ name: "nameSingular" }, { name: "isAuditLogged" }] } };
       case "Health": return { objects: { totalCount: this.objects.size } };
       case "Objs": return { objects: { edges: [...this.objects.values()].map((o) => ({ node: { id: o.id, nameSingular: o.nameSingular, namePlural: o.namePlural, labelSingular: o.labelSingular, icon: o.icon, isAuditLogged: o.isAuditLogged, fields: { edges: [...o.fields.values()].map((f) => ({ node: f })) } } })) } };
@@ -162,6 +163,7 @@ export class FakeTwenty {
       for (const r of gone) rows.delete(r.id);
       return { [`destroy${obj.namePlural[0].toUpperCase()}${obj.namePlural.slice(1)}`]: gone.map((r) => ({ id: r.id })) };
     }
+    if (kind === "Cnt") { const { rows } = this.#objByPlural(name); return { [name]: { totalCount: rows.size, edges: [] } }; }
     if (kind === "Agg") {
       const { rows } = this.#objByPlural(name);
       const dims = v.g.map((x) => Object.keys(x)[0]);
