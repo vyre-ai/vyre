@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
-import { STRENGTHS } from "./strengths.js";
+import { STRENGTHS, isNotSoftware } from "./strengths.js";
 import { yes } from "./one-yes.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
@@ -395,7 +395,10 @@ export default {
         const a = [...asks.values()].find(x => x.id === String(input.id));
         if (!a || a.expires <= Date.now()) throw Object.assign(new Error("that sign-in ask is gone"), { code: "not_found" });
         // the phone's yes on the card is the one prompt: this call carries it (`proof`, a signed yes over the exact request), and the device that asked never answers its own card. The proof is checked where it is used (yes()).
-        if (String((meta && meta.caller) || "") === `device:${a.device}`) throw Object.assign(new Error("a device cannot answer its own card"), { code: "denied" });
+        const asker = String((meta && meta.caller) || "");
+        if (asker === `device:${a.device}`) throw Object.assign(new Error("a device cannot answer its own card"), { code: "denied" });
+        // a paired device answers (yes or no) only from a session of a real key: a software session may list a card but cannot say no for the owner, and a no from it would hold the asker for ten minutes
+        if (asker.startsWith("device:")) { const sid = meta && meta.person && meta.person.id; if (!(sid && isNotSoftware(people.strength(String(sid))))) throw Object.assign(new Error("only the owner's phone can answer a card"), { code: "denied" }); }
         if (a.state !== "waiting") return { state: a.state };
         if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
         if (!(input.proof && typeof input.proof === "object" && !Array.isArray(input.proof) && JSON.stringify(input.proof).length <= 8192)) throw Object.assign(new Error("a yes carries the owner's signed proof"), { code: "bad_input" });
