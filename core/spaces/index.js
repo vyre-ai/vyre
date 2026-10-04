@@ -244,7 +244,7 @@ export default {
     /** The name a person chose for themselves (their identity card), as this device knows it: their own, or one it verified when they were added by name or joined. Null when not known here. @param {string} id */
     const nameOf = async id => {
       const st = identity.status();
-      if (st.exists && st.id === id && st.name) return `${st.name}.vyre.run`.replace(/(\.vyre\.run)+$/, ".vyre.run");
+      if (st.exists && (st.id === id || (K && K.owner === id)) && st.name) return `${st.name}.vyre.run`.replace(/(\.vyre\.run)+$/, ".vyre.run");
       const n = /** @type {string|null} */ (await kv.get(`person-name/${id}`));
       return n ? `${n}.vyre.run` : null;
     };
@@ -344,6 +344,8 @@ export default {
       },
       members: {
         async bootstrapOwner(/** @type {string} */ person, /** @type {any} */ c) {
+          // A Space the kernel hosts made its first owner (the person named to host()) when it was hosted: nothing to write here, and never a second record of it in the local table.
+          if (kernelHandle(c.spaceId)) return { space: c.spaceId, person, role: "owner" };
           const m = membersFor(c.spaceId);
           const have = await m.get(person);
           if (have && have.role === "owner") return have;
@@ -597,7 +599,7 @@ export default {
             if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
             if (i.storeChoice !== "create") return { status: "needs_confirmation", confirm: { text: confirm.text, choices: ["create", "cancel"] } };
           }
-          const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
+          const hosted = await KS.host({ owner: (K && typeof K.owner === "string" ? K.owner : s.id), name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
           spaceId = hosted.space || hosted.id;
         }
         const home = { ...i.home };
@@ -609,6 +611,13 @@ export default {
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
       });
+
+    // A Space made before the kernel hosted them has a module-local id (spc_ plus 16 hex) that the kernel's registry does not know. This build makes none (spaces.create hosts in the kernel first) and
+    // 0.3 is the first release with Spaces, so there is nothing to move; if one is found anyway it is said once, never mapped or deleted in silence.
+    if (K && K.spaces) {
+      const legacy = spaces.all().filter(r => !/^spc_[a-z2-7]{12}$/.test(r.id));
+      if (legacy.length) ctx.log.warn(`${legacy.length} space(s) have a module-local id the kernel's registry does not know: ${legacy.map(r => r.id).join(", ")}. They keep working without a kernel only.`);
+    }
 
     // ---- "setup in progress": the steps after the space has its home (look, members, connectors, the first Kit) are done on the device where the person started. The state is kept here, beside the
     // space's row, and read with the space (spaces.get, spaces.list). No secret, code, key or token is ever in it: only the shape below is kept, and anything else is dropped. ----
@@ -721,7 +730,12 @@ export default {
         return { device: dev.eid, spaces: ids };
       });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
-      async i => ({ enrolled: await isEnrolled(String(i.device), spaceOf(i.space).id) }), { internal: true });
+      async i => {
+        // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
+        let id = String(i.space);
+        try { id = spaceOf(i.space).id; } catch { /* not one of ours: the id as given */ }
+        return { enrolled: await isEnrolled(String(i.device), id) };
+      }, { internal: true });
 
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
@@ -1064,6 +1078,11 @@ export default {
       await kv.put(pinKey, r.pin);
       return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
     };
+    // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
+    tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {
+      const st = identity.status();
+      return st.exists && st.id ? { id: st.id, name: st.name || null, label: st.name || null } : null;
+    }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {

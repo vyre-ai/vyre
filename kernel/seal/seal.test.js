@@ -8,6 +8,7 @@ import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { startSealer } from "./client.js";
+import { wipeSealDir } from "./wipe.js";
 import { person, withAgent, chain, signer, tmp, property, randomSsn, luhnCard, enrolDevice, SPACE } from "./testing.js";
 
 const REC = "vyre://spc_testspace0001/contact/c_jane";
@@ -450,4 +451,82 @@ test("found against the real chains: a member on a paired device reveals with a 
   const { createChainBuilder } = await import("../core/chain.js"), { createKernelSeal } = await import("../core/seal.js");
   const sp = createChainBuilder({ space: SPACE, owner: "per_alex", owner_uid: 501, seal: createKernelSeal({ key: Buffer.alloc(32, 3) }), clock: Date.now, is_person: () => true }).fromFacts({ kind: "session_person", person: "per_bob", session: "x", vouched: true });
   assert.equal(await code(s.api.reveal({ chain: sp, ref: ref.ref, purpose: "p", proof: bob.proof(sp, "seal.reveal", { ref: ref.ref, purpose: "p" }) })), "human_only");
+});
+
+const FIRST = { module: "memory", first_party: true };
+test("seal.detect: yes or no for one candidate, first-party modules only, rate limited, nothing returned but the answer", async t => {
+  const { s } = await setup(t);
+  await put(s, "123-45-6789");
+  const ask = (value, over = {}) => s.detectValue({ chain: person(), caller: FIRST, value, canRead: async () => true, ...over });
+  const yes = await ask("123 45 6789");
+  assert.deepEqual(Object.keys(yes).sort(), ["event", "match"]);
+  assert.equal(yes.match, true);
+  assert.deepEqual(yes.event, { type: "seal.detect", module: "memory", count: 1 });
+  assert.equal((await ask("321-54-9876")).match, false);
+  assert.ok(!JSON.stringify(yes).includes("6789"));
+  // Not a first-party module, a model in the chain, a value too short to mean anything.
+  assert.equal(await code(ask("123-45-6789", { caller: { module: "memory" } })), "first_party_only");
+  assert.equal(await code(ask("123-45-6789", { caller: undefined })), "first_party_only");
+  assert.equal(await code(ask("123-45-6789", { chain: withAgent() })), "human_only");
+  assert.equal(await code(ask("12")), "bad_input");
+  // Five a minute per module: two answered above, three more, then refused (refusals before the bucket do not spend it).
+  await ask("111-22-3333"); await ask("111-22-3334"); await ask("111-22-3335");
+  assert.equal(await code(ask("111-22-3336")), "rate_limited");
+});
+
+test("reset with wipe (host, daemon stopped): the master key goes first, the folder is emptied, and a fresh start opens none of the old values and makes a new Space key", async t => {
+  const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
+  let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  await enrolDevice(s, signer("per_alex"));
+  await put(s, "123-45-6789");
+  const pub1 = (await s.spaceKey.pub({ chain: person() })).pub;
+  assert.ok(fs.existsSync(path.join(dir, "master.key")));
+  await s.close();
+  const r = wipeSealDir(dir);
+  assert.equal(r.master_destroyed, true); assert.ok(r.removed > 0);
+  assert.deepEqual(fs.readdirSync(dir), [], "the folder is empty");
+  s = mk();
+  await enrolDevice(s, signer("per_alex"));
+  assert.notEqual((await s.spaceKey.pub({ chain: person() })).pub, pub1, "a new Space checkpoint key");
+  assert.equal((await put(s, "123-45-6789", { unique: true })).ref.present, true, "the old value is not remembered as a duplicate");
+  assert.equal(diskHolds(dir, "123-45-6789"), null);
+});
+
+test("seal.detect (SD-1, SD-2): a value sealed only in a record the person cannot read answers no, canRead is required, and the day counts survive a restart", async t => {
+  const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
+  let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  await enrolDevice(s, signer("per_alex"));
+  const OTHER = "vyre://spc_testspace0001/contact/c_other";
+  await put(s, "123-45-6789");                                        // in REC
+  await put(s, "321-54-9876", { record: OTHER });                     // only in OTHER
+  const ask = (value, canRead) => s.detectValue({ chain: person(), caller: FIRST, value, canRead });
+  const readsRec = async r => r === REC;
+  assert.equal((await ask("123-45-6789", readsRec)).match, true);
+  assert.equal((await ask("321-54-9876", readsRec)).match, false, "sealed only where the person cannot read: no");
+  assert.equal((await ask("321-54-9876", async () => true)).match, true);
+  assert.equal(await code(s.detectValue({ chain: person(), caller: FIRST, value: "123-45-6789" })), "bad_input");
+  // The same value in both records: one the person reads is enough.
+  await put(s, "123-45-6789", { record: OTHER });
+  assert.equal((await ask("123-45-6789", async r => r === OTHER)).match, true);
+  assert.equal((await ask("999-88-7777", async () => true)).event.count, 5, "five answered today for this module");
+  // A restart does not give the day back.
+  await s.close(); s = mk();
+  assert.equal((await s.detectValue({ chain: person(), caller: FIRST, value: "111-22-3333", canRead: async () => true })).event.count, 6);
+});
+
+test("BL-2 anchor: the log's latest (seq, head) moves only forward, a split is refused, it survives a restart, and a Space sees only its own", async t => {
+  const dir = tmp("seal"), mk = () => startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
+  let s = mk(); t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+  const A = { space: SPACE }, h = c => c.repeat(20);
+  assert.equal(await s.anchor.read(A), null);
+  assert.deepEqual(await s.anchor.advance({ ...A, seq: 10, head: h("a") }), { seq: 10, head: h("a") });
+  assert.equal((await s.anchor.advance({ ...A, seq: 10, head: h("a") })).seq, 10, "the same again is fine");
+  assert.equal(await code(s.anchor.advance({ ...A, seq: 9, head: h("b") })), "anchor_behind");
+  assert.equal(await code(s.anchor.advance({ ...A, seq: 10, head: h("c") })), "anchor_split");
+  assert.equal((await s.anchor.advance({ ...A, seq: 25, head: h("d") })).seq, 25);
+  assert.equal(await code(s.anchor.advance({ ...A, seq: -1, head: h("d") })), "bad_input");
+  assert.equal(await s.anchor.read({ space: "spc_otherspace0001" }), null);
+  await s.close(); s = mk();
+  assert.deepEqual(await s.anchor.read(A), { seq: 25, head: h("d") });
+  assert.equal(diskHolds(dir, h("d")), null, "the head is not on disk in the clear");
 });

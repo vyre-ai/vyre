@@ -42,6 +42,9 @@ export const DEVICE_MIGRATIONS = [
    CREATE TABLE vault_group_conflicts (id INTEGER PRIMARY KEY, item TEXT NOT NULL, name TEXT NOT NULL, body TEXT NOT NULL, at INTEGER NOT NULL);`,
 ];
 
+/** A device group's name in the vault's own sync namespace (`device:<group>`): a vault id on a sync envelope, never a caller label, and nothing here decides who a caller is. */
+const DEVICE_GROUP_PREFIX = "device:";
+export const isDeviceGroupId = id => String(id).startsWith(DEVICE_GROUP_PREFIX);
 const JOIN_PREFIX = "vyre-join:v1:", APPROVAL_PREFIX = "vyre-device:v1:";
 const JOIN_TAG = "vyre-join-v1", APPROVAL_TAG = "vyre-device-v1", RECORD_TAG = "vyre-device-record-v1", ROSTER_TAG = "vyre-roster-v1";
 const ROLES = ["full", "storage"];

@@ -22,8 +22,9 @@
 // sha256. The route id must be the hash of the key (core/relay/wire.js routeId), the clock within
 // 60 seconds, and the nonce unused. No dependencies: WebCrypto only.
 //
-// Nothing here serves user content, sets a cookie, reads one, or answers CORS. A state-changing
-// request that carries a foreign Origin (a browser's) is refused; a box sends none.
+// Nothing here serves user content, sets a cookie or reads one. CORS is narrow: `GET /v1/ids/resolve` is public read-only data and answers any origin (no credentials). `POST /v1/ids/claim`,
+// `/v1/ids/append` and `/v1/ids/update` carry their own proof (the identity's own signature is the authentication), so they also accept the Vyre app's origins (env.APP_ORIGINS, default
+// https://app.vyre.run) and answer that exact origin. Every other state-changing request that carries a foreign Origin (a browser's) is refused; a box sends none.
 
 /** Repeats what core/names/rules.js and core/names/directory.js use; names/worker/worker.test.js checks they match. */
 export const AUTH_TAG = "vyre-names-v1";
@@ -198,6 +199,17 @@ const headers = () => ({ "content-type": "application/json", "cache-control": "n
 const reply = (status, body) => new Response(JSON.stringify(body), { status, headers: headers() });
 const fail = e => reply(e.status, { error: { code: e.code, message: e.message } });
 
+/** The routes a browser page of the Vyre app may call: signed by the identity's own key, so the Origin check adds nothing. */
+const APP_OPS = new Set(["idClaim", "idAppend", "idUpdate"]);
+const appOrigins = env => new Set(String((env && env.APP_ORIGINS) || "https://app.vyre.run").split(",").map(x => x.trim()).filter(Boolean));
+/** The CORS headers for this request on this route, or null. resolve: any origin, never credentials. App routes: the exact allowed origin only. */
+function corsHeaders(request, env, op) {
+  const origin = request.headers.get("origin");
+  if (op === "idResolve") return { "access-control-allow-origin": "*", "access-control-allow-methods": "GET", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
+  if (APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin)) return { "access-control-allow-origin": origin, "vary": "origin", "access-control-allow-methods": "POST", "access-control-allow-headers": "content-type", "access-control-max-age": "600" };
+  return null;
+}
+
 // ---- the Worker ----
 
 import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
@@ -214,6 +226,30 @@ export default {
   /** @param {Request} request @param {any} env */
   async fetch(request, env) {
     const url = new URL(request.url);
+    // A preflight is answered for the CORS routes only; the route a preflight asks about is the one in the Access-Control-Request-Method header.
+    if (request.method === "OPTIONS") {
+      const asked = request.headers.get("access-control-request-method") || "";
+      const op = /** @type {Record<string, string>} */ (ROUTES)[`${asked} ${url.pathname}`];
+      const cors = op ? corsHeaders(request, env, op) : null;
+      return cors ? new Response(null, { status: 204, headers: cors }) : new Response(null, { status: 405 });
+    }
+    const op0 = /** @type {Record<string, string>} */ (ROUTES)[`${request.method} ${url.pathname}`];
+    const res = await route(request, env, url);
+    const cors = op0 ? corsHeaders(request, env, op0) : null;
+    if (!cors) return res;
+    const out = new Response(res.body, res);
+    for (const [k, v] of Object.entries(cors)) if (k === "vary" || k === "access-control-allow-origin" || k === "access-control-allow-methods" || k === "access-control-allow-headers" || k === "access-control-max-age") out.headers.set(k, v);
+    return out;
+  },
+  /** The hourly sweep: finish recoveries that came due, lapse unpointed names, drop old counters. @param {any} _event @param {any} env */
+  async scheduled(_event, env) {
+    await env.DIRECTORY.get(env.DIRECTORY.idFromName("v1")).fetch("https://directory/op", { method: "POST", body: JSON.stringify({ op: "sweep" }) });
+  },
+};
+
+/** @param {Request} request @param {any} env @param {URL} url */
+async function route(request, env, url) {
+  {
     if (url.pathname === "/health") return new Response('{"ok":true}', { headers: headers() });
     const op = /** @type {Record<string, string>} */ (ROUTES)[`${request.method} ${url.pathname}`];
     if (!op) return new Response(null, { status: url.pathname.startsWith("/v1/names/") ? 405 : 404 });
@@ -223,8 +259,12 @@ export default {
       // browser caller, so any Origin that is not exactly its own is refused, and so is a
       // request the browser marks cross-site.
       const origin = request.headers.get("origin");
-      if (origin !== null && origin !== (env.ORIGIN || "https://names.vyre.run")) return fail(err(403, "origin", "not for browsers"));
-      if (request.headers.get("sec-fetch-site") === "cross-site") return fail(err(403, "origin", "not for browsers"));
+      // The Vyre app's origins may call the routes that carry their own proof (APP_OPS): the identity's signature authenticates, and the Origin must match one exactly.
+      const fromApp = APP_OPS.has(op) && origin !== null && appOrigins(env).has(origin);
+      if (!fromApp) {
+        if (origin !== null && origin !== (env.ORIGIN || "https://names.vyre.run")) return fail(err(403, "origin", "not for browsers"));
+        if (request.headers.get("sec-fetch-site") === "cross-site") return fail(err(403, "origin", "not for browsers"));
+      }
       if (!/^application\/json\b/i.test(request.headers.get("content-type") || "")) return fail(err(415, "content_type", "send application/json"));
     }
     const ip = request.headers.get("cf-connecting-ip") || "unknown";
@@ -255,12 +295,8 @@ export default {
     const res = await env.DIRECTORY.get(env.DIRECTORY.idFromName("v1")).fetch("https://directory/op", {
       method: "POST", body: JSON.stringify({ op, ip, auth, body, query }) });
     return new Response(res.body, { status: res.status, headers: headers() });
-  },
-  /** The hourly sweep: finish recoveries that came due, lapse unpointed names, drop old counters. @param {any} _event @param {any} env */
-  async scheduled(_event, env) {
-    await env.DIRECTORY.get(env.DIRECTORY.idFromName("v1")).fetch("https://directory/op", { method: "POST", body: JSON.stringify({ op: "sweep" }) });
-  },
-};
+  }
+}
 
 /** @param {Request} request @param {URL} url @param {string} text @param {number} now @returns {Promise<{route: string, nonce: string, ts: number}|null>} */
 async function authenticate(request, url, text, now) {

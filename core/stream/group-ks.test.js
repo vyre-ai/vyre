@@ -55,7 +55,9 @@ function rig(t, o = {}) {
     call: async (/** @type {string} */ tool, /** @type {any} */ i) => {
       if (tool === "threads.start" || tool === "threads.send") {
         const id = tool === "threads.start" ? `thr_${++n}` : String(i.thread);
-        // vyred opens the thread's session from the person's own send (here: bob, in the chat of the room it was sent in)
+        // vyred opens the thread's session from the person's own send (here: bob, in the chat of the room it was sent in), and the kernel begins the turn as the session opens (lib/kernel-session.js open): once per send, never from the stream
+        calls.push("beginTurn");
+        if (o.begin === "refused") return { error: { code: "not_found", message: "no" } };
         if (!held.has(id)) { const chat = String(i.chat || "c1"); const s = await fk.kernel.for().surfaces.open({ person: "bob" }, { chat, agent: "kit" }); held.set(id, s.token); tokenChat.set(s.token, chat); }
         return { data: { id } };
       }
@@ -97,7 +99,7 @@ test("the stream opens no session of its own for an assistant: the reply opens t
   const bob = (await r.call("c1", "bob"), r.watch("c1", "bob"));
   await r.send("c1", "bob", "q1", "what is the fee?");
   const kit = r.kit("c1");
-  assert.ok(r.calls.includes("beginTurn") && !r.calls.includes("appendOpen"), "the turn began when the thread was started; no reply is open yet");
+  assert.ok(r.calls.includes("beginTurn") && !r.calls.includes("appendOpen"), "the turn began when the session opened; no reply is open yet");
   r.say(kit, "m1", { delta: "SECRET one " });
   await r.groups.idle();
   r.fk.change("c1", { add: ["dave"] });

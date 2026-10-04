@@ -1,6 +1,7 @@
 // The web build of notify.ts: the browser's own Notification API, shown only while a tab is open.
 // No service-worker push, no token. Where the browser has none, it says so.
 
+import { shell } from "../shell/shell";
 import { cleanNotice, nullTransport, SAY, type Notice, type NotifyState, type PushTransport } from "./notify-model.ts";
 
 export type { Notice, NotifyState, PushTransport } from "./notify-model.ts";
@@ -29,6 +30,9 @@ export async function requestNotify(): Promise<{ state: NotifyState; say: string
 
 export async function showLocal(notice: Notice): Promise<boolean> {
   const c = cleanNotice(notice);
+  // The Mac app's window posts it through Notification Center itself.
+  const mac = shell();
+  if (c && mac) { await mac.notify(c.title, c.body ?? "").catch(() => {}); return true; }
   const n = api();
   if (!c || !n || n.permission !== "granted") return false;
   new (n as unknown as new (t: string, o: { body?: string; tag: string }) => unknown)(c.title, { body: c.body, tag: c.id });

@@ -307,9 +307,9 @@ export function render(s, ctx) {
     const address = s.named && (s.named.address || s.named.name);
     const next = el("div", { class: "actions" }, button(dv.phone === "paired" ? "Continue" : "Skip for now", dv.phone === "paired" ? "primary" : "quiet", () => actions.continueToClaim()));
     if (dv.phone === "idle" || dv.phone === "failed" || dv.phone === "minting") return [
-      el("div", { class: "actions" }, button(dv.phone === "minting" ? "Making the ring" : "Add my phone", "primary", () => actions.addPhone())),
-      dv.error ? el("p", { class: "warn", role: "alert" }, dv.error) : null,
-      el("p", { class: "note" }, "You can add phones later from your server's own page."), next,
+      el("p", { class: "lead" }, "Your first device pairs from the server's own terminal."),
+      el("p", { class: "note" }, "The install shows a QR code and a long code there. Scan it with the Vyre app on your phone, or paste the code into the app on a computer, and confirm the three words. Then you finish setting up in the app, not here."),
+      next,
     ];
     if (dv.phone === "showing") return [
       el("div", { class: "ring-slot", "data-role": "ring", role: "img", "aria-label": "The ring to scan with the Vyre app on your phone" }),

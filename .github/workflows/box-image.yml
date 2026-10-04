@@ -203,7 +203,7 @@ jobs:
 
       # The compose files must not add Docker's own init (init: true) to a service on this image:
       # then docker-init is PID 1 and tini runs as a child, warning "not running as PID 1". vyre
-      # boots for real (with its tailscale, which waits at NeedsLogin); docker-api and egress, under
+      # boots for real; docker-api and egress, under
       # the computers profile, are created and inspected (no Init, the image's tini entrypoint).
       - name: Compose runs the image's tini as PID 1
         if: hashFiles('core/daemon/loop.sh') != ''
@@ -215,7 +215,7 @@ jobs:
         run: |
           export DOCKER_GID=$(stat -c %g /var/run/docker.sock)
           F="-f box/compose.yml -f box/compose.egress.yml"
-          docker compose $F up -d tailscale vyre
+          docker compose $F up -d vyre
           i=0; until [ "$(docker compose $F ps -q vyre)" ] && docker exec "$(docker compose $F ps -q vyre)" cat /proc/1/comm >/dev/null 2>&1; do i=$((i + 1)); [ $i -lt 30 ] || { docker compose $F logs; exit 1; }; sleep 1; done
           sleep 3
           id=$(docker compose $F ps -q vyre)

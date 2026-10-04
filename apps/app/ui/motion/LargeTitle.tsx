@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, RefreshControl, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { useAnimatedScrollHandler, useAnimatedStyle, useDerivedValue, useSharedValue, withSpring, withTiming } from "react-native-reanimated";
 import { Text } from "../components/Text";
@@ -16,13 +16,20 @@ const BAR = 44;
  * `onRefresh` adds pull to refresh (the system's refresh control; the page keeps its content while it runs).
  * On a wide screen there is no bar: the title is the first line of the page, as before.
  */
-export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own, wide }: {
+export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own, wide, startAt }: {
+  /** Scroll this far (dp) once the page has drawn: for captures, which show a card further down. */ startAt?: number;
   title: string; /** A two-column page (Now): the content stops at the wide width (1040) with a 32 gutter on a wide screen. */ wide?: boolean; sub?: string; actions?: ReactNode; /** The page draws its own large title (a heading with its own actions); this supplies the bar, the collapse and the refresh. */ own?: boolean; onRefresh?: () => void | Promise<void>; children: ReactNode;
 }) {
   const { phone, color, map } = useUiTheme();
   const px = (k: string) => parseInt(String(map[k]), 10) || 0;
   const reduced = useReducedMotion();
   const [refreshing, setRefreshing] = useState(false);
+  const scroller = useRef<{ scrollTo?: (o: { y: number; animated: boolean }) => void } | null>(null);
+  useEffect(() => {
+    if (!startAt) return;
+    const t = setTimeout(() => scroller.current?.scrollTo?.({ y: startAt, animated: false }), 600);
+    return () => clearTimeout(t);
+  }, [startAt]);
   const y = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => { y.value = e.contentOffset.y; });
   // The bar's small title and hairline: one spring on whether the large title has scrolled out. Reduced motion: a plain fade, no spring.
@@ -61,7 +68,7 @@ export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own
   }
   return (
     <View className="min-h-0 flex-1">
-      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} refreshControl={refresh} style={{ flex: 1 }} contentContainerStyle={content}>
+      <Animated.ScrollView ref={scroller as never} onScroll={onScroll} scrollEventThrottle={16} refreshControl={refresh} style={{ flex: 1 }} contentContainerStyle={content}>
         {head}
         {children}
       </Animated.ScrollView>

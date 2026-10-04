@@ -30,6 +30,7 @@ import { agentClaim, ownerDevice } from "../modules/index.js";
 import { loadKeys, keyHandle } from "./keys.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
 import { redeem } from "./redeem.js";
+import { deviceIdOf } from "../../lib/caller.js";
 import { tailscaleApi, desktopJoin, pairedBox, MINT_ITEM, DEVICE_TAG, JOIN_PATH } from "./tailnet.js";
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 
@@ -67,6 +68,8 @@ export const MIGRATIONS = [
   `ALTER TABLE relay_devices ADD COLUMN orphan_node TEXT;`,
   // relay.devices.ask-trust: when an untrusted browser last asked to be trusted (once per limit).
   `ALTER TABLE relay_devices ADD COLUMN trust_asked INTEGER;`,
+  // Where the app SAYS it made its device key (hardware | software | unknown), from the pairing hello: self-reported, display only (the Devices line shows only "software").
+  `ALTER TABLE relay_devices ADD COLUMN key_storage TEXT NOT NULL DEFAULT 'unknown';`,
 ];
 /** A direct report counts as the device's path for this long; the app reports on every switch. */
 const DIRECT_FRESH = 10 * 60_000;
@@ -259,7 +262,7 @@ export default {
       }).catch(() => {});
     };
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, trust_asked, node_id, node_name, last_path, path_at, rtt, key_storage FROM relay_devices WHERE removed_at IS NULL AND kind != 'setup' ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -357,7 +360,9 @@ export default {
      * @param {Buffer} pub @param {string} id @param {string} name @param {any} hello @param {any} match
      */
     async function enrol(pub, id, name, hello, match) {
-      const kind = hello.kind === "web" ? "web" : "app";
+      // One pairing path (lead ruling, 4 Oct 2026): a browser that completed it, three words confirmed, is one of the person's devices like any other: a row of kind app, whose key is
+      // software (WebCrypto). Only the older one-step pairings (the classic QR, no gate) still make a limited `web` row.
+      const kind = hello.kind === "web" && !(match && match.gate) ? "web" : "app";
       // A desktop asks to join the tailnet in its pairing hello (ADR 0046 section 3). The grant
       // is what makes a later key possible at all, so it only ever comes from a pairing, which a
       // present person started; a web device never gets one.
@@ -371,11 +376,23 @@ export default {
         if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
         else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
       }
-      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL)
+      const storage = hello.kind === "web" ? "software" : pk && ["hardware", "software"].includes(pk.storage) ? pk.storage : "unknown";
+      db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted, join_grant, join_mints, join_last, key_storage) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0, ?, 0, NULL, ?)
         ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
           kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0, join_grant = excluded.join_grant, join_mints = 0, join_last = NULL,
-          node_id = NULL, node_name = NULL, node_tagged = 0`)
-        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant);
+          node_id = NULL, node_name = NULL, node_tagged = 0, key_storage = excluded.key_storage`)
+        .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest, grant, storage);
+      // A browser's passkey (ADR 0032 2b), after the three words and in the same step as its row: enrolled bound to THIS device id and to the app's own origin, so it proves for nothing else.
+      // A phone keeps its device key above. Offered in the hello as passkey { credential_id, public_key, alg, rp_id }; a refusal leaves the device paired without it and says so in the log.
+      const pkey = hello.passkey;
+      if (pkey && typeof pkey === "object" && kind === "app") {
+        try {
+          const r = /** @type {any} */ (await ctx.call("presence.enroll", { kind: "passkey", name, public_key: String(pkey.public_key || ""), alg: pkey.alg ?? -7, rp_id: String(pkey.rp_id || ""), credential_id: String(pkey.credential_id || ""), device: id }));
+          if (r && r.error) ctx.log(`relay: this device's passkey was not enrolled: ${r.error.message || r.error.code}`);
+          // a browser has no device key, so its passkey is the row's presence key: removing the device removes it (the existing path), and the list shows presence
+          else if (r && r.data && r.data.id && !presenceKey) { presenceKey = String(r.data.id); presence = { enrolled: true, reason: "" }; db.prepare("UPDATE relay_devices SET presence_key = ? WHERE id = ?").run(presenceKey, id); }
+        } catch (e) { ctx.log(`relay: this device's passkey was not enrolled: ${/** @type {Error} */ (e).message}`); }
+      }
       // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
       // Carries the new device's own key fingerprint (reviewer, 28 Sep LOW) so the notice reads
       // the same short form ("a1b2 c3d4") as every other Touch ID / confirm screen that shows one.
@@ -434,7 +451,7 @@ export default {
     function holdPending(pub, id, name, hello, match) {
       if (pendingPairs.size >= PENDING_MAX && !pendingPairs.has(id)) throw new Error("too many pairings are waiting; make a new code in a minute");
       pendingDrop(id, "replaced");
-      const keep = { v: 1, ...(hello.kind === "web" ? { kind: "web" } : {}), ...(hello.tailnet ? { tailnet: hello.tailnet } : {}), ...(hello.enroll ? { enroll: hello.enroll } : {}), ...(hello.release ? { release: hello.release } : {}), ...(hello.manifest ? { manifest: hello.manifest } : {}), ...(hello.presenceKey ? { presenceKey: hello.presenceKey } : {}) };
+      const keep = { v: 1, ...(hello.kind === "web" ? { kind: "web" } : {}), ...(hello.tailnet ? { tailnet: hello.tailnet } : {}), ...(hello.enroll ? { enroll: hello.enroll } : {}), ...(hello.release ? { release: hello.release } : {}), ...(hello.manifest ? { manifest: hello.manifest } : {}), ...(hello.presenceKey ? { presenceKey: hello.presenceKey } : {}), ...(hello.passkey ? { passkey: hello.passkey } : {}) };
       const p = { pub: Buffer.from(pub), name, hello: keep, gate: String(match.gate), match, channels: new Set(), timer: setTimeout(() => pendingDrop(id, "nobody confirmed this pairing in time"), PENDING_MS) };
       if (p.timer.unref) p.timer.unref();
       pendingPairs.set(id, p);
@@ -549,6 +566,8 @@ export default {
       mintTicket: async () => { const refusal = macCoreRefusal(platform, keys.core); if (refusal) throw refusal; return mintTicket(); },
       recoverCode: async input => { const r = /** @type {any} */ (await ctx.call("names.recover.code", input)); return r && r.data !== undefined ? r.data : r; } });
 
+    /** The caller label the relay listener hands a paired device, by its kind; null for a kind that may not connect. @param {string} kind @param {string} id */
+    const callerLabel = (kind, id) => kind === "app" ? `device:${id}` : kind === "web" ? `web:${id}` : kind === "setup" ? `setup:${id}` : null;
     let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
       if (reply && reply.pending) {
@@ -556,7 +575,8 @@ export default {
         const pid = String(reply.pending), p = pendingPairs.get(pid);
         if (!p) { channel.close(4401, "this pairing is over"); return; }
         const peer = { node: p.name, stableId: pid, login: null, tags: [], caps: {}, kind: "device" };
-        bridge(channel, { handler: pendingHandler(p.gate), caller: `device:${pid}`, peer, log: m => ctx.log(m) });
+        // an unconfirmed redeemer is `web:<id>`: it reaches only the tools that name that class (its own pairing's), and becomes `device:<id>` only at the confirm (BR-2)
+        bridge(channel, { handler: pendingHandler(p.gate), caller: `web:${pid}`, peer, log: m => ctx.log(m) });
         p.channels.add(channel);
         const closed0 = channel.onclose;
         channel.onclose = reason => { closed0(reason); p.channels.delete(channel); };
@@ -565,6 +585,10 @@ export default {
       const id = String(reply.device);
       const row = /** @type {any} */ (db.prepare("SELECT name, kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) { channel.close(4401, "device removed"); return; }
+      // The label is the trust claim (BR-2, lead ruling 4 Oct 2026): `device:<id>` only for a live, confirmed device of kind app. A browser is `web:<id>` and a setup page `setup:<id>`,
+      // labels the registry never admits as an owner's device, so they reach just the tools that name their class. Any other kind gets no label and no channel.
+      const label = callerLabel(row.kind, id);
+      if (!label) { channel.close(4401, "this device cannot connect"); return; }
       if (!handle) handle = ctx.handler({});
       if (!webHandle) webHandle = ctx.handler({ tool: name => !WEB_DENY.test(name) });
       const limited = row.kind === "web" && !row.trusted;
@@ -574,7 +598,7 @@ export default {
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
       const peers = peersFor(ctx);
-      bridge(channel, { handler, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
+      bridge(channel, { handler, caller: label, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
@@ -603,7 +627,7 @@ export default {
     /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
     const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
     const view = (d, rtt = null, withAsk = false) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
-      online: pathOf(d) !== null, path: pathOf(d), rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
+      online: pathOf(d) !== null, path: pathOf(d), storage: d.key_storage || "unknown", rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
       ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY,
@@ -1021,6 +1045,7 @@ export default {
     });
 
     ctx.tool("relay.devices.list", {
+      callers: ["web"],
       description: "Devices paired through the relay: id, name, when paired and last seen, whether presence is enrolled, and whether it is connected now.",
       input: obj(),
       run: async (_, meta = {}) => {
@@ -1036,7 +1061,7 @@ export default {
         }));
         // A limited browser (a web device not yet trusted) sees the list but not who else is waiting to be trusted.
         const c = String((meta && meta.caller) || "");
-        const me = c.startsWith("device:") ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(7))) : null;
+        const me = /^(device|web|setup):/.test(c) ? /** @type {any} */ (db.prepare("SELECT kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(c.slice(c.indexOf(":") + 1))) : null;
         const withAsk = !(me && me.kind === "web" && !me.trusted);
         return { devices: rows.map((d, i) => view(d, rtts[i], withAsk)) };
       },
@@ -1085,6 +1110,7 @@ export default {
     // the owner's pin, or the newest release this box ships knowing. Open to any paired device,
     // web ones included, since the loader must ask before it can load anything else.
     ctx.tool("relay.web.release", {
+      callers: ["web"],
       description: "Which build of the hosted web app this box trusts: its release, the content-addressed folder sha and the manifest hash the loader must check. The owner's pin, or the newest release this box knows.",
       input: obj(),
       run: async (_, meta = {}) => {
@@ -1129,14 +1155,15 @@ export default {
         owner(meta.caller, meta, "a device's path");
         const c = String(meta.caller || "");
         const rtt = Number.isFinite(input.rtt) && input.rtt >= 0 && input.rtt < 60_000 ? Math.round(input.rtt) : null;
-        if (c.startsWith("device:") && meta.peer && meta.peer.via === "tailnet") {
+        const callerDevice = deviceIdOf(c);
+        if (callerDevice !== null && meta.peer && meta.peer.via === "tailnet") {
           // A desktop bound through ADR 0046's tagged join, calling over its own tailnet node.
-          const id = c.slice("device:".length);
+          const id = callerDevice;
           moved(id, input.path === "direct" ? "direct" : "relay", rtt);
           return { path: input.path, device: id };
         }
-        if (c.startsWith("device:")) {
-          const id = c.slice("device:".length);
+        if (callerDevice !== null) {
+          const id = callerDevice;
           if (input.path !== "relay") throw fail("bad_input", "through the relay, a device reports the relay path");
           moved(id, "relay", rtt);
           const code = crypto.randomBytes(16).toString("base64url");
@@ -1246,12 +1273,13 @@ export default {
     });
 
     ctx.tool("relay.devices.ask-trust", {
+      callers: ["web"],
       description: "A browser paired from the hosted web app asks the owner to trust it fully. Only that browser, about itself; it tells every surface once (device.trust-asked) and the owner's own relay.devices.trust, with presence, is the approval.",
       input: obj(),
       run: async (_, meta = {}) => {
         const c = String((meta && meta.caller) || "");
-        if (!c.startsWith("device:") || agentClaim(c) || (meta && meta.agent)) throw fail("denied", "only a paired browser can ask to be trusted, about itself");
-        const id = c.slice("device:".length);
+        if (!c.startsWith("web:") || agentClaim(c) || (meta && meta.agent)) throw fail("denied", "only a paired browser can ask to be trusted, about itself");
+        const id = c.slice("web:".length);
         const row = /** @type {any} */ (db.prepare("SELECT id, name, kind, pub, trusted, trust_asked FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
         if (!row) throw fail("not_found", "this browser is not paired");
         if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
@@ -1317,7 +1345,7 @@ export default {
       description: "Setup page only: a one-time challenge (two minutes) for a claim at the given address. The page signs it with its own key and puts the result in the link's fragment.",
       input: obj({ host: str }, ["host"]),
       run: async (input, meta = {}) => {
-        if (!setup || !setup.live || !setup.device || String(meta.caller || "") !== `device:${setup.device}`) throw fail("denied", "only this box's setup page can make a claim token");
+        if (!setup || !setup.live || !setup.device || String(meta.caller || "") !== `setup:${setup.device}`) throw fail("denied", "only this box's setup page can make a claim token");
         return { ...setup.mintClaim(String(input.host || "")), route: route() };
       },
     });

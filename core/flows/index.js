@@ -1,9 +1,9 @@
 // @ts-check
 // flows: the tools over the Flows assembly the daemon builds (core/daemon/flows-host.js). With the kernel off there is no assembly and every tool says so; with it on, each call runs under
-// the CALLER's own chain: a person on their own surface acts as the Space's owner; an assistant acts through the session token it was given (its person's chain, narrowed to the
-// assistant); anything else has no chain and is refused. Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
+// the CALLER's own chain, from the kernel and nowhere else (`ctx.kernel.chain(meta)`): a session token's chain (an assistant acting through the session it was given, its person's chain narrowed to the
+// assistant) or the chain the daemon proved for a person's own surface. A call with neither gets the module's own service chain from the kernel, which is not a caller, and is refused. This module never
+// decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
-import { isPerson } from "../../lib/caller.js";
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
 
 const str = { type: "string" };
@@ -47,11 +47,20 @@ export default {
       if (!f) throw refuse("no such Space here", "not_found");
       return f;
     };
-    /** The caller's own chain: a session token's, else the owner's for a person on their own surface. @param {any} f @param {any} meta */
+    /**
+     * The caller's own chain, from the kernel only. The kernel hands back a verified session token's chain, else the chain built from facts the daemon proved about the connection, else THIS
+     * module's own service chain: that last one is not a caller, so a chain that does not begin with a person is refused.
+     * @param {any} _f @param {any} meta
+     */
     const chainOf = async (f, meta) => {
-      if (meta && typeof meta.token === "string") { const c = await f.chainForToken(meta.token); if (c) return c; throw refuse("this session is not valid", "denied"); }
-      if (isPerson(meta)) return f.personChain();
-      throw refuse("a Flow is changed or run under a person's own chain or an assistant's session", "denied");
+      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") throw refuse("Flows run only where the kernel is on", "unavailable");
+      let chain;
+      // A session token is checked by the door of the Space the call is for (a hosted firm Space has its own); anything else is the kernel's own answer for this call.
+      if (meta && typeof meta.token === "string") { chain = await f.chainForToken(meta.token); if (!chain) throw refuse("this session is not valid", "denied"); }
+      else { try { chain = await ctx.kernel.chain(meta); } catch { throw refuse("this call has no chain", "denied"); } }
+      const first = chain && Array.isArray(chain.hops) ? chain.hops[0] : null;
+      if (!first || !first.actor || first.actor.kind !== "person") throw refuse("a Flow is changed or run under a person's own chain or an assistant's session; this call carries neither", "denied");
+      return chain;
     };
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {

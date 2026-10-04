@@ -7,7 +7,7 @@
 import { useRef, useState } from "react";
 import { ScrollView, View, useWindowDimensions, StyleSheet } from "react-native";
 import { Button, Chip, Text, useUiTheme } from "@vyre/ui";
-import { ChatAvatar } from "./ChatAvatar";
+import { Face } from "./Face";
 import { useSyncExternalStore } from "react";
 import type { ChatStore } from "./store";
 import type { Fanout } from "./group.js";
@@ -45,7 +45,7 @@ function Card({ store, message, fanout, width, phone, renderText }: {
       ]}
     >
       <View style={S.s1}>
-        <ChatAvatar name={lab.name} family="agent" size="sm" />
+        <Face name={lab.name} family={lab.family} size={24} />
         <Text strong style={S.s2} numberOfLines={1}>{lab.name}</Text>
         {kept ? <Chip tone="ok" icon="check">Kept</Chip> : lost ? <Text size="caption" tone="label">Not kept</Text> : null}
       </View>

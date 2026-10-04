@@ -1,0 +1,47 @@
+# The integrator's run on the merged 0.3 tree: the boot check, then the whole unit suite WITHOUT --test-force-exit (a forced exit drops tests and still reports green).
+# It runs when a push to work/v0.3 changes .github/int-run.txt, so a team's own push never starts it.
+name: int-03
+on:
+  push:
+    branches: ["work/v0.3"]
+    paths: [".github/int-run.txt", ".github/workflows/int-03.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: int-03-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: { VYRE_NO_DIALOGS: "1" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: boot, kernel off
+        run: VYRE_KERNEL=0 node scripts/boot-check.mjs
+      - name: boot, kernel on (dev file key)
+        run: VYRE_KERNEL=1 VYRE_KERNEL_FILE_KEY=1 node scripts/boot-check.mjs
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env: { VYRE_NO_DIALOGS: "1" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - name: unit suite, no force exit
+        run: |
+          set +e
+          node --test --test-reporter=spec "core/**/*.test.js" "kernel/**/*.test.js" "records/**/*.test.js" "stores/**/*.test.js" "test/**/*.test.js" "deck/**/*.test.js" "modules/**/*.test.js" "local/*/*.test.js" "relay/**/*.test.js" "names/**/*.test.js" "apps/test/*.test.js" "apps/app/**/*.test.js" "lib/**/*.test.js" > unit.log 2>&1
+          echo "exit=$?" > unit.exit
+          tail -n 14 unit.log
+          grep -E "^(✖|  ✖)" unit.log | sort | uniq | head -80
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: unit-log, path: "unit.log" }
+      - name: result
+        run: cat unit.exit; grep -q "exit=0" unit.exit
