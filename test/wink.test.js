@@ -769,7 +769,8 @@ test("paired session on the real kernel: pair, pick, start-paired, then memory.g
   const label = `device:${paired.device}`;
   const read = async via => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   const ok = await read({ person: { id: sessionId } });
@@ -812,7 +813,8 @@ async function pairedOnKernel(t, { confirmWithRealKey = false } = {}, shared = n
   const sessionId = started.body.data.id, label = `device:${paired.device}`;
   const read = async (via = { person: { id: sessionId } }) => {
     const info = await w.d.registry.call("relay.device.info", { id: paired.device }, "module:vyred");
-    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data || null);
+    const rec = await w.d.registry.call("wink.device.record", { id: paired.device }, "module:vyred");
+    const facts = callerFacts(label, { caller: label }, via, w.d.kernel, false, info.data ? { ...info.data, person: rec.data ? rec.data.owner : null } : null);
     return w.d.registry.call("memory.graph", {}, label, { ...via, ...(facts ? { kernelFacts: facts } : {}) });
   };
   assert.ok(!(await read()).error, "the paired session reads memory with no prompt");
@@ -1798,7 +1800,7 @@ test("a kernel that refuses the owner fails the pairing: the owner record is tak
 });
 
 test("a device is the owner's person only as the person its row names: a row naming another person, or nobody, gets no person facts", () => {
-  const k = { id: { owner: "per_" + "a".repeat(26), space: "spc_x" } };
+  const k = { id: { owner: "per_" + "a".repeat(26), space: "spc_x" }, grants: { adopted: () => ({ from: "per_first", to: "per_" + "a".repeat(26) }) } };
   const row = person => ({ kind: "app", removed: false, ...(person !== undefined ? { person } : {}) });
   const facts = r => callerFacts("device:abcdefghijklmnop", { caller: "device:abcdefghijklmnop", peer: { kind: "device", stableId: "abcdefghijklmnop" } }, null, k, false, r);
   assert.equal(facts(row(k.id.owner)).person, k.id.owner);

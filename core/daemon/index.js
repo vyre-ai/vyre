@@ -89,7 +89,11 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (policy.caller && ownerDevice(policy.caller)) {
     // A paired device is a person only as the person its own row names (`device.person`, from Wink's record of who confirmed it), and only while that person is this home's owner: the owner is never
     // handed to a device just because it is an owner device. A row that names nobody, or somebody else, gets no person facts.
-    if (String(policy.caller).startsWith("device:") && (!device || typeof device.person !== "string" || device.person !== k.id.owner)) return null;
+    // Once the home's owner is a claimed identity (the kernel's `owner.adopted`), the row must name exactly that identity; before any claim the owner is the home's own first-start id and a device's row names the home's own pre-claim identity.
+    if (String(policy.caller).startsWith("device:")) {
+      const claimed = k.grants && typeof k.grants.adopted === "function" ? k.grants.adopted() : null;
+      if (!device || typeof device.person !== "string" || !device.person || (claimed && device.person !== k.id.owner)) return null;
+    }
     const deviceId = String(policy.caller).startsWith("device:") ? String(policy.caller).slice(7) : String((policy.peer && (policy.peer.stableId || policy.peer.node)) || "owner");
     return { kind: "device", device_key_id: deviceId, person: k.id.owner, path: String(policy.caller).startsWith("device:") ? "relay" : "wink", ...(via && via.person ? { session: String(via.person.id) } : {}) };
   }
