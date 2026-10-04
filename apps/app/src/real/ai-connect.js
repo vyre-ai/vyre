@@ -42,6 +42,7 @@ export const safeLink = (url) => { try { const u = new URL(String(url)); return 
 /** @param {string | undefined} code @param {string} message */
 export function aiRefusal(code, message) {
   if (code === "not_allowed" || code === "denied") return "Only the owner of this space connects an AI account. Ask them to do it.";
+  if (code === "not_a_server") return "Make your Vyre name on this computer first. Then connect an AI account.";
   if (code === "pair_first") return "Pair this server to your Vyre app first. Then connect an AI account.";
   if (code === "presence_required" || code === "needs_presence") return "That needs you. Approve on this device, then try again.";
   if (code === "expired" || code === "timeout") return "The sign-in ran out of time. Nothing was connected. Start over.";
