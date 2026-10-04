@@ -256,8 +256,21 @@ export function createWink(inject = {}) {
     };
     /** What this box calls its own space: its name, else the name the app gave the space that adopted it, never "this space". */
     const boxName = () => { const om = ownerMeta(); return String(ctx.config.name || (om && om.kind === "space" && om.name) || "your space"); };
-    const directory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName })
+    const baseDirectory = inject.directory || (kernelHasRoles(ctx.kernel) ? kernelDirectory({ kernel: ctx.kernel, space: spaceId, name: boxName, label: id => { const om = ownerMeta(); return om && om.identity === id && om.name ? String(om.name) : null; } })
       : ownDirectory({ identity: owner1, space: spaceId, name: boxName }));
+    // The spaces the person made here (spaces.create) are kernel-hosted Spaces with their own ids: they are targets too, beside the home's own, and the identity's name is the one it claimed.
+    const directory = inject.directory ? baseDirectory : {
+      async memberships(/** @type {string} */ identity) {
+        const base = await baseDirectory.memberships(identity);
+        let more = []; try { const r = await ctx.call("spaces.admin-list", { person: identity }); more = (r && r.data && r.data.spaces) || []; } catch { /* the spaces module is not here */ }
+        return [...base, ...more.filter((/** @type {any} */ m) => !base.some(b => b.space === m.space))];
+      },
+      async label(/** @type {string} */ identity) {
+        const own = baseDirectory.label ? await baseDirectory.label(identity) : null;
+        if (own) return own;
+        try { const r = await ctx.call("spaces.admin-list", { person: identity }); return (r && r.data && r.data.identity && r.data.identity.name) || null; } catch { return null; }
+      },
+    };
     // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
     // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));

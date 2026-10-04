@@ -1322,3 +1322,18 @@ test("the old ring (relay.pair.ticket) is held for the same words: nothing is re
   assert.equal((await w.call("wink.phone.pairing")).asking, false, "a ring phone that cannot show words is never asked about");
   assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false });
 });
+
+test("ruling 7: a server adopted by an identity makes that identity its home owner (spaces.owner.adopt with the identity id), and the pair targets name the person it was given, not a first-start id", async () => {
+  const w = world();
+  await w.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME, name: "alex" }, identity: ME, peerSecret: "A".repeat(43) }, { caller: "device:home1" });
+  assert.ok(w.drops.some(([tool, input]) => tool === "spaces.owner.adopt" && input.person === ME), JSON.stringify(w.drops));
+  // a space target adopted with an identity does the same; a bad identity id calls nothing
+  const w2 = world();
+  await w2.tools.get("wink.server.adopt").run({ owner: { kind: "space", id: HARLOW }, identity: "per_evil", peerSecret: "A".repeat(43) }, { caller: "device:home1" });
+  assert.ok(!w2.drops.some(([tool]) => tool === "spaces.owner.adopt"));
+  // the directory's label for an identity is the name it claimed, when one is given
+  const { kernelDirectory } = await import("./pairing.js");
+  const dir = kernelDirectory({ kernel: { grants: { roleOf: async () => "owner" } }, space: async () => HARLOW, name: () => "Harlow Legal", label: async id => (id === ME ? "alex" : null) });
+  assert.equal(await dir.label(ME), "alex");
+  assert.equal(await dir.label("per_other"), null);
+});

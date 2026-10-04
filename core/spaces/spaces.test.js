@@ -1119,3 +1119,14 @@ test("an invite made `to` a person refuses another person at redeem (forbidden),
   assert.deepEqual([row.accepted_by, row.joined_by_label, row.joined_device, row.to], [[named.id], [null], null, named.id]);
   void w;
 });
+
+test("spaces.admin-list gives the pairing module the finished spaces a person owns or administers, under the kernel ids' names, and the identity's own name", async t => {
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  const r = await d.ok("spaces.admin-list", { person: alex.id }, "module:wink");
+  assert.deepEqual(r.spaces.map(x => [x.space, x.name, x.role]), [[space, "Harlow Legal", "owner"]]);
+  assert.deepEqual(r.identity, { id: alex.id, name: "alex" });
+  const other = await d.ok("spaces.admin-list", { person: person().id }, "module:wink");
+  assert.deepEqual([other.spaces, other.identity], [[], null]);
+  void w;
+});
