@@ -9,7 +9,7 @@
 import { createGateway } from "./gateway/index.js";
 import { createMemoryStore } from "./store/memory.js";
 import { createEventLog } from "./core/events.js";
-import { createChainBuilder, isExactlyPerson } from "./core/chain.js";
+import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
