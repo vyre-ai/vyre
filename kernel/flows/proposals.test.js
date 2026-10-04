@@ -105,3 +105,14 @@ test("PR-4: two events for one approved task apply one change", async () => {
   await new Promise(r => setImmediate(r)); await settle(w);
   assert.equal(applied.length, 1);
 });
+
+test("flows.start: a run an assistant's chain starts is tainted (its input is a model's); a person's own is not", async () => {
+  const { w, assistant } = await pworld();
+  const d = await w.runner.define(null, { format: 1, name: "manual_probe", label: "Probe", authorship: "human", trigger: { on: "manual" }, steps: [] }, ALEX);
+  await w.runner.approve(d.id, d.version, ALEX, d.hash);
+  const a = await w.runner.start(d.id, { x: 1 }, assistant, "k1");
+  const p = await w.runner.start(d.id, { x: 1 }, w.kernel.as(ALEX), "k2");
+  await w.runner.drain();
+  assert.equal((await w.store.getRun(a.run)).tainted, true);
+  assert.equal((await w.store.getRun(p.run)).tainted, false);
+});
