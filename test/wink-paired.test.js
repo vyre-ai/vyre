@@ -69,7 +69,7 @@ async function world(t, opt = {}) {
   if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}), ...(opt.kernelSealer ? { kernelSealer: opt.kernelSealer } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}), ...(opt.kernelSealer ? { kernelSealer: opt.kernelSealer } : {}), ...(opt.kernelDoor ? { kernelDoor: opt.kernelDoor } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
@@ -341,7 +341,7 @@ async function standinIdentity(t) {
 }
 
 /** A box-less device pairs a fresh server and picks the words; resolves what the device then holds. */
-async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, kernelSealer = null } = {}) {
+async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "hardware", ident = null, devKey = null, realPresence = false, kernelSealer = null, kernelDoor = null } = {}) {
   ident = ident || await standinIdentity(t);
   // the real rule: a server is owned only with the identity proof, checked against the directory
   const noProof = process.env.VYRE_TEST_PAIR_NO_PROOF;
@@ -352,7 +352,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   const saved = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
-  const w = await world(t, { kernel: true, realPresence, kernelSealer });
+  const w = await world(t, { kernel: true, realPresence, kernelSealer, kernelDoor });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const ks = keystore(t);
   const presenceKey = devKey ? devKey.presenceKey : { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: presenceStorage };
@@ -903,7 +903,7 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   const ident = await standinIdentity(t);
   // M1's own device key (the file its Wink module offers in every pairing hello): pairing it as the owner's computer is what enrols it in the home's sealing process
   const devKey = deviceKey(path.join(ident.home, "wink-keys.json.device"));
-  const f = await pairFreshServer(t, { ident, kernelSealer: sealer, kind: "computer", presenceStorage: "software", devKey });
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer, kind: "computer", presenceStorage: "software", devKey, kernelDoor: { usesKernelChain: true, ledgerKey: () => Buffer.alloc(32, 7).toString("base64") } });
   const server = f.w.d;
   const links = linksFor(t, f);
   await links.startPaired("srv");
@@ -934,6 +934,39 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   spacesHooks.buildRoot = undefined;
   const made1 = await dcall("spaces.invites.create", { space: id, role: "member" });
   assert.ok(!made1.error && /\/join\/inv_/.test(made1.data.link), `dev kind: ${JSON.stringify(made1).slice(0, 400)}`);
+  // a sealed value from M1 goes to the SERVER's sealing process (the record keeps only the reference)
+  const PERSON = { name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] };
+  const def = await dcall("records.define", { space: id, diff: { add_types: [PERSON] } });
+  assert.ok(!def.error, String(JSON.stringify(def.error)));
+  const rec = await dcall("records.create", { space: id, type: "person", data: { name: "Jane" } });
+  assert.ok(!rec.error, String(JSON.stringify(rec.error)));
+  const urn = `vyre://${id}/person/${rec.data.record.id}`;
+  const put = await dcall("records.seal-put", { urn, field: "ssn", value: "123-45-6789", class: "us-ssn" });
+  assert.ok(!put.error, String(JSON.stringify(put.error)));
+  assert.ok(!JSON.stringify(put.data).includes("123-45-6789"), "the value is not in the record");
+  // a reveal on the server's space: the home's sealing process checks the yes. No proof: the call says what to sign; the proof made for that challenge shows the value; a wrong one shows nothing
+  // revealing is a grant the owner gives (nobody holds it by role): the owner grants it to herself, signed by M1's own enrolled key
+  { const { proofRequest } = await import("../kernel/remote/proof.js");
+    const { softwareActProof } = await import("../core/spaces/presence-signer.js");
+    const hostedHere = server.kernel.spaces.hosted(id);
+    const ownerChain = hostedHere.kernel.chains.fromFacts({ kind: "device", device_key_id: "x-walk", person: ident.id, path: "direct", session: "s" });
+    const gin = { subject: { kind: "actor", actor: { kind: "person", id: ident.id, space: id } }, actions: ["seal.reveal"], resource: { prefix: urn }, source: "walk:reveal" };
+    const rq = proofRequest(id, "create", gin);
+    await hostedHere.gateway.grants.create(ownerChain, gin, { presence: softwareActProof(path.join(droot, "wink-keys.json.device"), ident.id, { op: rq.op, payload_hash: rq.payload_hash, space: id }) }); }
+  const asked = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" });
+  assert.ok(!asked.error && asked.data.needs_proof === true && asked.data.request.op === "seal.reveal" && asked.data.request.challenge, JSON.stringify(asked).slice(0, 400));
+  const { softwareProof } = await import("../core/spaces/presence-signer.js");
+  const keyFile = path.join(droot, "wink-keys.json.device");
+  const proofFor = (/** @type {any} */ rq, /** @type {any} */ tweak = {}) => ({ ...softwareProof(keyFile, ident.id, { op: rq.op, payload_hash: rq.payload_hash, nonce: rq.challenge, home: rq.home, space: id }), ...tweak });
+  const hdr = (/** @type {any} */ p) => ({ "x-vyre-kernel-proof": Buffer.from(JSON.stringify(p)).toString("base64url") });
+  const shown = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" }, hdr(proofFor(asked.data.request)));
+  assert.ok(!shown.error && shown.data.value === "123-45-6789", JSON.stringify(shown).slice(0, 300));
+  const again = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" });
+  const bad = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" }, hdr(proofFor(again.data.request, { signature: Buffer.alloc(64).toString("base64url") })));
+  assert.ok(bad.error, "a proof with a wrong signature shows nothing");
+  const other = await dcall("records.reveal", { urn, field: "ssn", purpose: "check the id" });
+  const forOther = await dcall("records.reveal", { urn, field: "ssn", purpose: "another purpose" }, hdr(proofFor(other.data.request)));
+  assert.ok(forOther.error || forOther.data.needs_proof, "a proof for another request shows nothing");
   // and the home knows the invite
   const invs = await server.kernel.spaces.hosted(id).gateway.grants.invites.list(server.kernel.spaces.hosted(id).kernel.chains.fromFacts({ kind: "device", device_key_id: "x", person: ident.id, path: "direct", session: "s" }), {}).catch(() => null);
   if (invs) assert.ok(JSON.stringify(invs).includes(made1.data.id), "the home holds the invite");
@@ -960,4 +993,23 @@ test("a pairing refused twice in a minute says its reason both times in the serv
     await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys: k, hello: { v: 1, pair: "y".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }));
   }
   await until(async () => f.w.logs.filter(l => /relay: refused (a hello|again) \(this pairing code has expired/.test(l)).length >= 2);
+});
+
+test("pair, release, then pair a browser as ANOTHER identity: refused with the server's own words and a log line saying why", async t => {
+  const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software" });
+  const w = f.w, dev = f.done.device;
+  const rel = await w.d.registry.call("wink.server.release", {}, `device:${dev}`, { peer: { kind: "device", stableId: dev, node: dev } });
+  assert.deepEqual(rel.data, { released: true }, JSON.stringify(rel.error));
+  await until(async () => !(await relayHas(w, dev)));
+  const other = await standinIdentity(t);
+  const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  let shown = "";
+  const pairing = pairServer({ payload: made.qr, owner: { id: other.id, name: "Bea", vyre: "alex" }, signIdentity: other.sign, deviceKind: "web", keyStorage: "software", about: { kind: "web" }, name: "Bea's browser", crypto: nodeCrypto(), keyStore: keystore(t), presenceKey: { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" }, pollMs: 100, onWords: x => { shown = x; } });
+  pairing.catch(() => {});
+  const q = await until(async () => { const x = (await w.call("wink.server.pairing", {}, "cli", PROOF)).data; return x && x.asking ? x : null; }, 6000).catch(() => null);
+  if (q) { await until(async () => shown); await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF); }
+  const r = await pairing.then(() => "paired", e => `${e.code}: ${e.message}`);
+  assert.match(r, /^owned_by_other: This server already belongs to another Vyre identity/);
+  await until(async () => w.logs.some(l => /a pairing from web:\S+ did not finish \(owned_by_other\)/.test(l)));
 });

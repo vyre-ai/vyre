@@ -155,6 +155,16 @@ export default {
       const rec = await d.gateway.records.get(d.chain, u.type, u.id);
       const v = rec && rec.data ? rec.data[String(i.field)] : undefined;
       if (!v || typeof v !== "object" || typeof v.ref !== "string") throw refuse("there is nothing sealed there to show", "not_found");
+      if (d.remote) {
+        // A space on a server: the home's sealing process checks the yes. The first call says what to sign (a challenge from the home); the proof made for that challenge (it names `home` and `challenge`) comes back beside the next call and goes on as the trailing option.
+        const kp = d.kernelProof && typeof d.kernelProof.challenge === "string" ? d.kernelProof : null;
+        try { return await d.gateway.seal.reveal(d.chain, { record: i.urn, ref: v.ref, purpose: String(i.purpose) }, ...(kp ? [{ presence: kp, challenge: kp.challenge }] : [])); }
+        catch (e) {
+          const ch = /** @type {any} */ (e) && /** @type {any} */ (e).challenge;
+          if (ch && typeof ch.nonce === "string" && /^(needs_presence|presence_required)$/.test(String(/** @type {any} */ (e).code)) && !kp) return { needs_proof: true, request: { space: d.space, op: ch.op, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, expires: ch.expires } };
+          throw e;
+        }
+      }
       return d.gateway.seal.reveal(d.chain, { record: i.urn, ref: v.ref, purpose: String(i.purpose), proof: d.proof });
     }, byUrn);
     tool("records.sees-as", "The record as the person sees it, or as their assistant would (sealed fields only as placeholders, and only the fields its grants allow).", obj({ urn: str, who: { type: "string", enum: ["person", "assistant"] } }, ["urn", "who"]), async (i, d) => {

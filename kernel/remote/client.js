@@ -94,6 +94,8 @@ export function createRemoteKernel(cfg) {
       for (const p of parts.slice(0, -1)) node = node[p] ||= {};
       node[parts[parts.length - 1]] = (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith(`${group}.${name}`, args);
     }
+    // a reveal's proof is made for the home's challenge and travels as the trailing option, never inside the request (PW-4)
+    if (group === "seal") root.reveal = (/** @type {any} */ _chain, /** @type {any} */ i, /** @type {any} */ ...rest) => { const { proof: _p, ...bare } = i && typeof i === "object" ? i : /** @type {any} */ ({}); return invokeWith("seal.reveal", [bare, ...rest]); };
     const freeze = (/** @type {any} */ o) => { for (const v of Object.values(o)) if (typeof v === "object") freeze(v); return Object.freeze(o); };
     return freeze(root);
   };
@@ -101,7 +103,7 @@ export function createRemoteKernel(cfg) {
   return Object.freeze({
     space: cfg.space,
     hosted: false,
-    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), leases: build("leases") }),
+    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), seal: build("seal"), leases: build("leases") }),
     lent: build("lent"),
     /** One wire call by its path (`lent.start`, `leases.issue`): the lent computer's runner client (core/runner/lent-client.js) speaks in these. The home still allows only what CALLS lists. */
     call: (/** @type {string} */ name, /** @type {any[]} */ args) => invokeWith(String(name), Array.isArray(args) ? args : []),

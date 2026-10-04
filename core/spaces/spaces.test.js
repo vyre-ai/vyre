@@ -204,12 +204,13 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const assess = await d.ok("spaces.assess-computer", { device: { name: "alex's laptop", alwaysOn: false } });
   assert.match(assess.warning, /unreachable while/);
 
-  // Not confirmed: it waits and says why.
+  // Not confirmed: it asks, says why, and makes nothing.
   const first = await d.ok("spaces.create", { name: "Harlow", displayName: "Harlow Legal", home: { kind: "this-computer" } });
-  assert.equal(first.status, "waiting");
-  assert.equal(first.waiting.for, "confirm");
-  assert.equal(first.steps.find(s => s.step === "validate").state, "waiting");
-  const done = await d.ok("spaces.resume", { space: first.space, confirmThisComputer: true });
+  assert.equal(first.status, "needs_confirmation");
+  assert.match(first.confirm.text, /unreachable while/);
+  assert.equal(first.space, undefined, "nothing was made");
+  const done = await d.ok("spaces.create", { name: "Harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
+  first.space = done.space;
   assert.equal(done.status, "done", JSON.stringify(done));
   assert.deepEqual(done.steps.map(s => s.state), Array(7).fill("done"));
   assert.equal(done.workspaceId, null);
