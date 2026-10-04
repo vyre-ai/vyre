@@ -9,11 +9,8 @@
 // Every touch point with the OS (who, the terminal device, the Touch ID helper, WebAuthn) is
 // injectable, so tests never open a dialog or write to a real terminal.
 
-<<<<<<< HEAD
 import { PERSON_SURFACES as PERSON_SURFACE_LIST } from "../../lib/person-surfaces.js";
-=======
 import { strengthOfMethod, strengthRefusal } from "../../kernel/seal/strength.js";
->>>>>>> origin/work/devbox
 import crypto from "node:crypto";
 import { normalizePublicKey, checkRsa } from "./keys.js";
 import fs from "node:fs";
