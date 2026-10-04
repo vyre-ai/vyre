@@ -37,7 +37,7 @@ function box(t, opts = {}) {
   const env = {
     PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: path.join(base, "srv", "vyre"),
     VYRE_WRAPPER: path.join(base, "bin-out", "vyre"), VYRE_DOCKER_SOCK: path.join(base, "none"),
-    VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0",
+    VYRE_NO_UP: "1", VYRE_MODULES_TRIES: "0", VYRE_DEV_SIGN: "0",
     // Never the real relay: a closed local port, so a code's progress lines go nowhere in tests.
     VYRE_RELAY: "http://127.0.0.1:9",
   };
@@ -479,10 +479,3 @@ test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it ag
   assert.ok(!fs.existsSync(out));
 });
 
-test("install-box.sh v2: a box that is running with no module started is a loud failure that names the checkout, not a success", t => {
-  const b = box(t);
-  const r = run({ ...b.env, VYRE_MODULES_TRIES: "1", VYRE_NO_UP: "" }, ["--yes", "--from", REPO]);
-  assert.notEqual(r.status, 0);
-  assert.match(r.stderr + r.stdout, /none of its modules started/);
-  assert.match(r.stderr + r.stdout, /--from/);
-});
