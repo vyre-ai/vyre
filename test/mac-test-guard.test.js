@@ -78,3 +78,11 @@ test("every test file is covered twice: the guard line first, and the code under
   const holes = files.filter(f => !reaches(f)).map(f => path.relative(REPO, f));
   assert.deepEqual(holes, [], "a test file that loads none of Vyre's code and has no guard line");
 });
+
+test("no package script, workflow or shell script runs tests with --test-isolation (in-process tests carry no NODE_TEST_CONTEXT, which the in-code Mac refusal reads) or --test-force-exit", () => {
+  /** @type {string[]} */ const bad = [];
+  const scan = (/** @type {string} */ f) => { const src = fs.readFileSync(f, "utf8"); for (const m of src.matchAll(/--test-(isolation|force-exit)\S*/g)) { const line = src.slice(0, m.index).split("\n").length; const text = src.split("\n")[line - 1]; if (/^\s*(#|\/\/)/.test(text)) continue; bad.push(`${path.relative(REPO, f)}:${line}`); } };
+  scan(path.join(REPO, "package.json"));
+  for (const d of [".github/workflows", "scripts"]) { const dir = path.join(REPO, d); if (!fs.existsSync(dir)) continue; for (const e of fs.readdirSync(dir)) if (/\.(ya?ml|sh|mjs|js)$/.test(e) && !/\.test\.js$/.test(e) && e !== "test-counts.mjs" && e !== "int-unit.sh") scan(path.join(dir, e)); }
+  assert.deepEqual(bad, [], "remove the flag");
+});
