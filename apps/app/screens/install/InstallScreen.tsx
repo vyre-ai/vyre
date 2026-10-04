@@ -63,6 +63,9 @@ function NameField({ value, onChange, label, also, space, real }: { value: strin
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
+/** TEST builds only: the browser claim path is on (EXPO_PUBLIC_VYRE_WEB_CLAIM=1). RC1 builds leave it off. */
+const WEB_CLAIM: boolean = typeof process !== "undefined" && process.env?.EXPO_PUBLIC_VYRE_WEB_CLAIM === "1";
+
 export function InstallScreen({ start, link: linkIn }: { start?: "create" | "join"; link?: string }) {
   const router = useRouter();
   const first = !start;
@@ -186,8 +189,8 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name" && Platform.OS === "web" && !MOCK) {
-    // RC1: a name is not claimed from a browser (the user's ruling, 4 Oct); the phone or Mac app does it, and a browser signs in to a name that exists.
+  if (step === "name" && Platform.OS === "web" && !MOCK && !WEB_CLAIM) {
+    // RC1: a name is not claimed from a browser (the user's ruling, 4 Oct); the phone or Mac app does it, and a browser signs in to a name that exists. A TEST build (EXPO_PUBLIC_VYRE_WEB_CLAIM=1, pointed at the stand-in names directory) turns the claim on for the walk.
     body = (
       <Page title="Claim your Vyre name on the phone or Mac app" sub="Open Vyre on your phone or Mac to choose the name. Then come back here and pair this browser with it.">
         <Button kind="primary" label="I already have a name, pair this browser" onPress={() => setStep("scan")} />
