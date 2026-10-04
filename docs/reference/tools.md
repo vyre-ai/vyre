@@ -60,6 +60,7 @@ Make an agent: a name, its projects ("*" for all), its credentials (Vault items 
   - `instructions` string
   - `kind` "assistant" or "agent"
   - `model` string
+  - `personal` boolean
   - `projects` any
   - `skills` list of string
 - Callers: `capsule`, `cli`, `deck`, `local`, `module`
@@ -157,6 +158,7 @@ Change an agent (name it by name or agent): its projects, credentials, instructi
   - `kind` "assistant" or "agent"
   - `model` string
   - `name` string
+  - `personal` boolean
   - `projects` any
   - `skills` list of string
 - Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
@@ -287,7 +289,7 @@ Do one thing in an app that sends, posts or pays as the person. Every call needs
   - `action` string, required: One of the app's actions, as apps.list and errors name them.
   - `app` string, required: App name or bundle id: Clock, Notes, Reminders, Weather.
   - `args` object: The action's arguments.
-- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
+- Callers: any caller
 - Needs a person present.
 
 ### `apps.setup`
