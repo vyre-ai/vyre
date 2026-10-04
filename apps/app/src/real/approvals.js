@@ -82,3 +82,53 @@ export async function askPhone(call, o) {
     await sleep(o.pollMs ?? 2000);
   }
 }
+
+
+/** The moment a tool belongs to when it needs the owner's fresh yes: vault secrets (reveal, copy, totp, inject, resolve, render), pairing, and outward send, post, pay, publish, reply, forward. @param {string} tool @returns {"vault" | "pair" | "outward" | null} */
+export const momentOf = (tool) => {
+  const t = String(tool);
+  if (VAULT_TOOLS.has(t)) return "vault";
+  if (PAIR_TOOLS.has(t)) return "pair";
+  if (/^[a-z][a-z0-9]*\.(send|post|pay|publish|reply|forward)[a-z0-9.-]*$/.test(t)) return "outward";
+  return null;
+};
+// Each moment covers an explicit tool list (wink-2, f0409aa1b); anything else is bad_input at ask, so a floor refusal on another tool is never turned into an ask.
+const VAULT_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.inject", "vault.resolve", "vault.render"]);
+const PAIR_TOOLS = new Set(["presence.enroll", "link.pair.approve", "wink.phone.pair.answer", "wink.server.pair.answer", "wink.pair.server"]);
+
+/**
+ * An act that needs the owner's yes and carries no approval answers the ordinary floor error `presence_required` on a moment tool (wink-2, f0409aa1b; the earlier `held` answer was withdrawn, and is still
+ * read here if a server sends it: detail { moment, request } is exactly what approvals.ask takes). The browser asks the phone, then sends the same act again with the approval id.
+ * @param {any} error @param {string} tool @param {Record<string, unknown>} [input]
+ * @returns {{ moment: "vault" | "pair" | "outward", request: { op: string, fields: Record<string, any> } } | null}
+ */
+export const heldAsk = (error, tool, input = {}) => {
+  const d = error && error.code === "held" ? error.detail : null;
+  if (d && ["pair", "vault", "outward"].includes(d.moment) && d.request && typeof d.request.op === "string") return { moment: d.moment, request: { op: d.request.op, fields: d.request.fields && typeof d.request.fields === "object" ? d.request.fields : {} } };
+  const moment = momentOf(tool);
+  return error && error.code === "presence_required" && moment ? { moment, request: { op: String(tool), fields: input } } : null;
+};
+
+/**
+ * Ask the owner's phone for the yes (approvals.ask { moment, request } -> { id, expires_in_s, line }), then wait while the phone answers: approvals.status gives { state } and NO proof (the server verifies and spends
+ * the phone's proof itself). Resolves { approval } (the id approvals.status names) when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
+ * @param {{ moment: string, request: any, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
+ * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" }>}
+ */
+export async function askYes(call, o) {
+  const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const now = o.now ?? Date.now;
+  const ask = await call("approvals.ask", { moment: o.moment, request: o.request });
+  if (!ask || typeof ask.id !== "string") throw Object.assign(new Error("the ask did not open"), { code: "ask_failed" });
+  o.onWaiting?.(typeof ask.line === "string" ? ask.line : "");
+  const start = now();
+  for (;;) {
+    if (o.signal?.stopped) return { ended: "none" };
+    const s = await call("approvals.status", { id: ask.id });
+    if (s.state === "approved") return { approval: typeof s.approval === "string" ? s.approval : ask.id };
+    if (s.state === "refused" || s.state === "none" || s.state === "timeout") return { ended: s.state };
+    if (now() - start > (o.limitMs ?? 300_000)) return { ended: "timeout" };
+    await sleep(o.pollMs ?? 2000);
+  }
+}

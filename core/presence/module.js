@@ -10,7 +10,6 @@
 import crypto from "node:crypto";
 import { devSwitch } from "../../kernel/devbuild.js";
 import { STRENGTHS } from "./strengths.js";
-import { yes } from "./one-yes.js";
 import { Presence } from "./index.js";
 import { PersonSessions } from "./person.js";
 import { isServer } from "../config/index.js";
@@ -205,36 +204,6 @@ export default {
 
     /** The strength a session records from the proof that opened it (what the server verified): a passkey with user verification, Touch ID through the pinned Capsule: `real`; a device key: `software`. @param {string} method */
     const openedBy = method => (method === "passkey" || method === "touchid" || method === "capsule" ? STRENGTHS[1] : STRENGTHS[0]);
-    // ---- a card for the owner's phone (one permission rule, ruling c328cd1) ----------------------------------------------------------------------------------
-    // A paired device is YOU: it does admin acts with no session and no prompt. A fresh yes from a real device key is asked at three moments only (pairing a new device, a vault secret, an outward send/post/pay).
-    // A browser with no key it can sign with asks the owner's PHONE for that yes: `session-ask { moment, request }` makes one card, the phone answers `session-answer { id, yes, proof }` with its own signed yes over
-    // the exact request, and the browser reads it back once through `session-status` and attaches it to its act. Nothing here upgrades a session: the strength of a session is what its own sign-in proved.
-    const ASK_MS = 5 * 60_000;
-    /** A device the owner declined cannot ask again for 10 minutes. @type {Map<string, number>} */
-    const refusedUntil = new Map();
-    /** What a card may ask for, by moment (the phone shows exactly what yes() will be asked about): the op's shape and plain fields only. */
-    const CARD_OPS = { pair: /^(wink|presence)\.[a-z0-9.-]{1,60}$/, vault: /^vault\.[a-z0-9.-]{1,60}$/, outward: /^[a-z][a-z0-9]*\.[a-z0-9.-]{1,60}$/ };
-    /** The outward moment is any tool marked `outward: true` in its module.json (the registry's flag), not a verb pattern. */
-    const isOutwardOp = (/** @type {string} */ op) => { try { return Boolean(ctx.modules && typeof ctx.modules.isOutward === "function" && ctx.modules.isOutward(op)); } catch { return false; } };
-    /** @param {string} moment @param {any} request @returns {{ op: string, fields: Record<string, string | number | boolean> } | null} */
-    const cardRequest = (moment, request) => {
-      if (!request || typeof request !== "object" || Array.isArray(request) || typeof request.op !== "string" || !CARD_OPS[/** @type {"pair"} */ (moment)] || !CARD_OPS[/** @type {"pair"} */ (moment)].test(request.op) || (moment === "outward" && !isOutwardOp(request.op))) return null;
-      const f = request.fields && typeof request.fields === "object" && !Array.isArray(request.fields) ? request.fields : {};
-      const keys = Object.keys(f);
-      if (keys.length > 12) return null;
-      /** @type {Record<string, string | number | boolean>} */ const fields = {};
-      for (const k of keys) { const v = f[k]; if (!/^[a-z][a-z0-9_]{0,31}$/.test(k) || !(typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 200))) return null; fields[k] = v; }
-      return { op: request.op, fields };
-    };
-    /** The line the owner's phone shows, made HERE from the validated request and this server's own name for the device: what is asked, of what, by which device. */
-    const cardLine = (/** @type {string} */ moment, /** @type {{ op: string, fields: Record<string, any> }} */ r, /** @type {string} */ deviceName) => {
-      const what = moment === "vault" ? `reveal or use ${r.fields.name ? `"${String(r.fields.name).slice(0, 80)}"` : "a secret"} in your vault` : moment === "pair" ? "pair a new device" : `${r.op.split(".").pop()} ${Object.entries(r.fields).slice(0, 4).map(([k, v]) => `${k}: ${String(v).slice(0, 80)}`).join(", ")}`.trim();
-      return `${deviceName} wants to ${what}`;
-    };
-    /** @type {Map<string, { id: string, device: string, label: string, state: "waiting" | "approved" | "refused", moment: string, request: any, proof?: any, asked?: number, expires: number }>} */
-    const asks = new Map();
-    const liveAsk = (/** @type {string} */ device) => { const a = asks.get(device); if (a && a.expires <= Date.now()) { asks.delete(device); return null; } return a || null; };
-
     // ---- an owner-paired device (ADR 0032 section 2d) ----------------------------------------------
     // The pairing, once the owner confirmed it with a presence proof, asks for one grant. This tool
     // trusts none of its arguments: it names the device, and the pair record (wink's, read here)
@@ -327,91 +296,6 @@ export default {
       run: async input => { locked.delete(String(input.device)); return { allowed: String(input.device) }; },
     });
 
-    ctx.tool("presence.person.session-ask", {
-      effect: "write",
-      description: "A paired device that cannot sign a yes itself (a browser) asks its owner's phone for the yes one of the three moments needs (pair, vault, outward): { id, expires_in_s }. One open ask per device. The owner answers with presence.person.session-answer from their own device; the device reads the signed yes back with presence.person.session-status.",
-      callers: RELAY_DEVICE_CALLERS,
-      input: obj({ moment: { type: "string", enum: ["pair", "vault", "outward"] }, request: { type: "object" } }, ["moment", "request"]),
-      run: async (input, meta = {}) => {
-        const peer = meta.peer;
-        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot ask that way"), { code: "denied" });
-        const device = nodeOf(meta);
-        const r = await ctx.call("wink.device.record", { id: device }).catch(() => null);
-        const rec = r && r.data;
-        if (!rec || rec.id !== device || !rec.confirmed || !rec.owner || rec.confirmedBy !== rec.owner) throw Object.assign(new Error("this device is not paired to an owner"), { code: "denied" });
-        const hold = refusedUntil.get(device);
-        if (hold && hold > Date.now()) throw Object.assign(new Error("the owner said no to this device a moment ago; try again in a few minutes"), { code: "rate_limited" });
-        const moment = String(input.moment);
-        const request = cardRequest(moment, input.request);
-        if (!request) throw Object.assign(new Error("that request does not fit this kind of card"), { code: "bad_input" });
-        const open = liveAsk(device);
-        if (open && open.state === "waiting") {
-          // one card at a time per device: the same card again is the same card, a different one is refused with the open one named
-          if (open.moment === moment && JSON.stringify(open.request) === JSON.stringify(request)) return { id: open.id, expires_in_s: Math.max(1, Math.round((open.expires - Date.now()) / 1000)) };
-          throw Object.assign(new Error("another card from this device is still waiting"), { code: "conflict", data: { open: { id: open.id, moment: open.moment } } });
-        }
-        const a = { id: `ask_${crypto.randomBytes(9).toString("base64url")}`, device, label: cardLine(moment, request, String(rec.name || "a device")), state: /** @type {const} */ ("waiting"), moment, request, asked: Date.now(), expires: Date.now() + ASK_MS };
-        asks.set(device, a);
-        ctx.events.emit("presence.session-asked", { id: a.id, device, moment: a.moment, line: a.label });
-        return { id: a.id, expires_in_s: ASK_MS / 1000 };
-      },
-    });
-    ctx.tool("presence.person.session-status", {
-      effect: "read",
-      description: "The state of this device's own sign-in ask: waiting, approved, refused, none (no such ask) or timeout.",
-      callers: RELAY_DEVICE_CALLERS,
-      input: obj({ id: str }, ["id"]),
-      run: async (input, meta = {}) => {
-        const peer = meta.peer;
-        if (!(peer && peer.kind === "device")) throw Object.assign(new Error("this device cannot ask that way"), { code: "denied" });
-        const a = asks.get(nodeOf(meta));
-        if (!a || a.id !== String(input.id)) return { state: "none" };
-        if (a.expires <= Date.now()) { asks.delete(a.device); return { state: "timeout" }; }
-        // the signed yes goes back once, to the device that asked
-        if (a.state === "approved" && a.proof) { const proof = a.proof; a.proof = undefined; return { state: a.state, proof }; }
-        return { state: a.state };
-      },
-    });
-    ctx.tool("presence.person.session-pending", {
-      effect: "read",
-      description: "The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, line, moment, request, asked_at }] } (`line` is made by this server from the request and its own name for the device, never the asker's words), newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).",
-      callers: ["cli", "local", "deck", "capsule", "mobile"],
-      input: obj({}),
-      run: async (_i, meta = {}) => {
-        // a paired device may read the list only with its own non-software session (the owner's phone); a software or no session sees nothing, and another device's ask is never shown to a browser
-        const caller = String((meta && meta.caller) || "");
-        // a paired device is you: any of the owner's paired sessions lists the cards, so a card always reaches the phone. The safety is in the answer: only a yes signed by a real key counts (session-answer, yes()).
-        if (caller.startsWith("device:") && !(meta && meta.person && meta.person.id)) throw Object.assign(new Error("sign in to list these cards"), { code: "denied" });
-        const out = [];
-        for (const a of [...asks.values()]) { if (a.expires <= Date.now()) { asks.delete(a.device); continue; } if (a.state === "waiting") out.push({ id: a.id, device: a.device, line: a.label, moment: a.moment, request: a.request, asked_at: a.asked || 0 }); }
-        out.sort((x, y) => y.asked_at - x.asked_at);
-        return { asks: out };
-      },
-    });
-    ctx.tool("presence.person.session-answer", {
-      effect: "write",
-      description: "The owner answers a device's card from their own device: yes carries the owner's signed yes (`proof`, over the exact request on the card) back to the device that asked.",
-      callers: ["cli", "local", "deck", "capsule", "mobile"],
-      input: obj({ id: str, yes: { type: "boolean" }, proof: { type: "object" } }, ["id", "yes"]),
-      run: async (input, meta = {}) => {
-        const a = [...asks.values()].find(x => x.id === String(input.id));
-        if (!a || a.expires <= Date.now()) throw Object.assign(new Error("that sign-in ask is gone"), { code: "not_found" });
-        // the phone's yes on the card is the one prompt: this call carries it (`proof`, a signed yes over the exact request), and the device that asked never answers its own card. The proof is checked where it is used (yes()).
-        if (String((meta && meta.caller) || "") === `device:${a.device}`) throw Object.assign(new Error("a device cannot answer its own card"), { code: "denied" });
-        if (a.state !== "waiting") return { state: a.state };
-        if (input.yes !== true) { a.state = "refused"; refusedUntil.set(a.device, Date.now() + 10 * 60_000); return { state: "refused" }; }
-        if (!(input.proof && typeof input.proof === "object" && !Array.isArray(input.proof) && JSON.stringify(input.proof).length <= 8192)) throw Object.assign(new Error("a yes carries the owner's signed proof"), { code: "bad_input" });
-        // only a yes signed by a real key over the exact request the server wrote on the card counts (yes(): enclave, keystore, passkey, Touch ID; a software key is refused software_key on a release build); it is CHECKED here and spent where the act uses it (dry), so any device answering with junk is refused
-        /** @type {any} */ let chain; try { chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(meta) : undefined; } catch { chain = undefined; }
-        const v = await yes(a.moment, { ...(chain ? { chain } : {}), op: a.request.op, fields: a.request.fields }, input.proof, { dry: true });
-        if (!v.ok) throw Object.assign(new Error(v.reason === "software_key" ? "approve this with the key in your phone: a software key cannot say yes here" : "that yes did not stand"), { code: v.reason });
-        a.proof = input.proof;
-        a.state = "approved";
-        a.expires = Date.now() + ASK_MS;
-        ctx.events.emit("presence.session-approved", { id: a.id, device: a.device });
-        return { state: "approved" };
-      },
-    });
     ctx.tool("presence.person.pair-challenge", {
       effect: "write",
       description: "A device its owner paired asks for the challenge of its grant, to sign for presence.person.start-paired. A device with no grant gets a random one, so nothing says whether a grant exists.",
@@ -445,7 +329,7 @@ export default {
       description: "The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.",
       input: obj({ id: str }, ["id"]),
       run: async (input, meta = {}) => {
-        if (String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
+        if (!["module:pluginagent", "module:approvals"].includes(String((meta && meta.caller) || ""))) throw Object.assign(new Error("only pluginagent asks a session's strength"), { code: "denied" });
         return { strength: people.strength(String(input.id)) };
       },
     });
@@ -457,7 +341,6 @@ export default {
       run: async (input, meta = {}) => {
         if (String((meta && meta.caller) || "") !== "module:wink") throw Object.assign(new Error("only the pairing ends paired sessions"), { code: "denied" });
         const n = people.endDevice(input.device ? String(input.device) : undefined);
-        if (input.device) { asks.delete(String(input.device)); refusedUntil.delete(String(input.device)); } else { asks.clear(); refusedUntil.clear(); }
         if (n) ctx.events.emit("presence.signed-out", { device: input.device || "all" });
         return { ended: n };
       },

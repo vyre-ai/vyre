@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { payloadHash as kernelHash } from "./payload-hash.js";
-import { ACTS, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
+import { ACTS, askPhone, endLine, heldAsk, momentOf, phoneRoute, proofHeader, askYes } from "./approvals.js";
 
 /** @param {any[]} statuses */
 function box(statuses, tamper = "") {
@@ -60,4 +60,45 @@ test("only acts the kernel's proof table covers take the phone route, and the pr
 test("AP-1 on the asking side: a proof request or an ask whose hash is not the hash of its fields is refused", async () => {
   await assert.rejects(askPhone(box([{ state: "waiting" }], "request").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
   await assert.rejects(askPhone(box([{ state: "waiting" }], "ask").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
+});
+
+test("a `held` answer carries its own moment and request, and wins over the tool's name", () => {
+  const detail = { moment: "outward", request: { op: "mail.send", fields: { to: "a@b.c" } } };
+  assert.deepEqual(heldAsk({ code: "held", detail }, "mail.send", { to: "ignored" }), detail);
+  assert.equal(heldAsk({ code: "held", detail: { moment: "nope", request: { op: "x" } } }, "records.list", {}), null);
+  assert.equal(heldAsk({ code: "held" }, "records.list", {}), null);
+});
+
+test("presence_required on a vault, pairing or outward tool is the trigger, with the tool and its plain input as the request", () => {
+  assert.deepEqual(heldAsk({ code: "presence_required" }, "vault.reveal", { name: "Bank" }), { moment: "vault", request: { op: "vault.reveal", fields: { name: "Bank" } } });
+  assert.equal(heldAsk({ code: "presence_required" }, "wink.pair.server", {}).moment, "pair");
+  assert.equal(heldAsk({ code: "presence_required" }, "mail.send", { to: "a" }).moment, "outward");
+  assert.equal(heldAsk({ code: "presence_required" }, "records.list", {}), null);
+  assert.equal(heldAsk({ code: "presence_required" }, "vault.list", {}), null, "a vault tool outside the list is not an ask");
+  assert.equal(heldAsk({ code: "presence_required" }, "wink.pair.server", {}).moment, "pair");
+  assert.equal(heldAsk({ code: "presence_required" }, "vault.totp", {}).moment, "vault");
+  assert.equal(heldAsk({ code: "not_found" }, "vault.reveal", {}), null);
+  assert.equal(heldAsk(null, "vault.reveal", {}), null);
+  assert.equal(momentOf("social.post"), "outward"); assert.equal(momentOf("rules.define"), null);
+});
+
+test("asking for the yes: ask, poll, and return the approval id for one retry, with no proof carried", async () => {
+  const calls = [];
+  const states = [{ state: "waiting" }, { state: "approved", approval: "ap_1" }];
+  let i = 0;
+  const call = async (t, input) => { calls.push([t, input]); return t === "approvals.ask" ? { id: "ap_1", line: "Vyre on browser wants to reveal a secret" } : states[Math.min(i++, 1)]; };
+  let said = "";
+  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, onWaiting: (l) => { said = l; } }), { approval: "ap_1" });
+  assert.deepEqual(calls[0], ["approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }]);
+  assert.deepEqual(calls[1], ["approvals.status", { id: "ap_1" }]);
+  assert.match(said, /wants to reveal/);
+});
+
+test("a no, a timeout and Stop waiting end it without an approval", async () => {
+  const ask = (state) => async (t) => (t === "approvals.ask" ? { id: "a" } : { state });
+  const o = { moment: "outward", request: { op: "mail.send", fields: {} }, sleep: async () => {} };
+  assert.deepEqual(await askYes(ask("refused"), o), { ended: "refused" });
+  assert.deepEqual(await askYes(ask("timeout"), o), { ended: "timeout" });
+  assert.deepEqual(await askYes(ask("waiting"), { ...o, signal: { stopped: true } }), { ended: "none" });
+  await assert.rejects(askYes(async () => ({}), o), (e) => e.code === "ask_failed");
 });

@@ -107,7 +107,10 @@ test("a software or unattested key never shows as apple-appattest, a caller cann
   assert.equal(first.attested, true);
   assert.equal(await code(enrol(r.s, w, signer("per_carol"))), "aa_key_bound", "the same App Attest key for another Secure Enclave key");
   const ch = person("per_bob"), e = signer("per_bob").enrolment, { token } = await r.s.begin({ chain: ch, person: "per_bob", key_id: e.key_id, spki: e.spki });
-  assert.equal(await code(r.s.enrol({ chain: ch, person: "per_bob", key_id: e.key_id, spki: e.spki, signer: e.signer, token, attested: true })), "unattested", "attested: true from the caller changes nothing: no verifier, no attestation");
+  // UY-2 (ruling 6410c6a): a phone's unattested enclave key now enrols on release, but never as attested: `attested: true` from the caller changes nothing, and the mark says unattested
+  const got = await r.s.enrol({ chain: ch, person: "per_bob", key_id: e.key_id, spki: e.spki, signer: e.signer, token, attested: true });
+  assert.equal(got.attested, false, "attested: true from the caller changes nothing: no verifier, no attestation");
+  assert.equal(got.strength, "unattested");
 });
 
 test("B2: a proof needs an assertion with a counter strictly above the last; a missing, replayed, lower or wrong-message one is refused, parallel proofs let one win, and the counter survives a restart", async t => {

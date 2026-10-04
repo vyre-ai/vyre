@@ -33,13 +33,7 @@ export async function openPeer(): Promise<Peer> {
 }
 
 /** One tool call over the peer wire. Resolves the tool's data; rejects with { code, message } in the server's words. */
-export async function peerCall<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
-  const { withPairedSession } = await import("./paired-retry.js");
-  const { snapshot } = await import("../auth/notice.js");
-  const { howApprove } = await import("./on-phone.js");
-  // An admin act with no live paired session: start one with the device key and make the call once more (lead's ruling ea835cb).
-  return withPairedSession({ call: () => peerCallOnce<T>(tool, input), renew: () => renewSessionOnPhone(), failure: () => snapshot().renewFailed, how: howApprove() });
-}
+export const peerCall = <T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> => peerCallOnce<T>(tool, input);
 
 async function peerCallOnce<T = unknown>(tool: string, input: Record<string, unknown> = {}): Promise<T> {
   let p = await openPeer();
@@ -74,31 +68,6 @@ export function renewSession(): Promise<boolean> {
     } catch (e) { notice.noteRenewFailed((e as { code?: string })?.code); return false; }
     finally { renewing = null; }
   })());
-}
-
-/**
- * An admin act needs the phone's strength: ask the owner's phone to approve this browser's session (the sheet says so, with a way to stop waiting), then start the session with the device key as usual.
- * Resolves true when the session started; throws an Error in our words when the phone said no, nobody answered, or the server cannot ask yet. Routine renewals stay silent (renewSession).
- */
-export async function renewSessionOnPhone(): Promise<boolean> {
-  const { loadPairing, relayCrypto, relayKeyStore, about, deviceName } = await import("../api/relay");
-  const pairing = await loadPairing();
-  if (!pairing) throw Object.assign(new Error("This device is not paired to a server."), { code: "unreachable" });
-  const { startPaired, channelCall } = await import("../auth/paired");
-  const { pairedKey } = await import("../auth/paired-key");
-  const { askPhoneForSession, sessionEndLine } = await import("./phone-session.js");
-  const { useApproval } = await import("./approval-state");
-  const ch = await channelCall({ relay: pairing.relay, route: pairing.route, box: pairing.box, name: deviceName() }, { crypto: relayCrypto(), keyStore: relayKeyStore(), about });
-  const st = useApproval.getState();
-  try {
-    st.show("Sign this browser in");
-    const out = await askPhoneForSession(ch.call, { signal: st.signal, label: deviceName() });
-    if ("ended" in out) throw Object.assign(new Error(sessionEndLine(out.ended)), { code: "not_approved" });
-    const k = await pairedKey();
-    await startPaired({ device: String(pairing.device), call: ch.call, sign: k.sign, signEnclave: k.signEnclave, label: deviceName() });
-    closePeer();
-    return true;
-  } finally { useApproval.getState().hide(); ch.close(); }
 }
 
 /** Drop the open peer (sign out, a removed device). */
