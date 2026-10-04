@@ -18,6 +18,9 @@ export function groups(rules: Rule[]): { kind: RuleKind; title: string; help: st
   return KINDS.map((k) => ({ ...k, rules: rules.filter((r) => r.kind === k.kind && (r.status ?? "active") === "active").sort((a, b) => (a.at ?? 0) - (b.at ?? 0)) })).filter((g) => g.rules.length);
 }
 
+/** Rules an owner turned off: still listed, binding nothing, until turned on again. */
+export const disabled = (rules: Rule[]): Rule[] => rules.filter((r) => r.status === "disabled").sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
+
 /** Who suggested a proposal, in words. A Kit or an assistant is named; a person is "a member". */
 export function proposer(p: Rule): string {
   const b = p.by;

@@ -2,16 +2,17 @@
 // from its first chunk (files.drive.read). The box refuses secrets and anything outside a share; a refusal reads as "not available".
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, Tabs, Text } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, Tabs, Text, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
+import { SpaceDrive } from "./SpaceDrive";
 
-type Tab = "files" | "sharing";
+type Tab = "space" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
-  const [tab, setTab] = useState<Tab>("files");
+  const [tab, setTab] = useState<Tab>("space");
   const [status, setStatus] = useState<Status | null>(null);
   const [share, setShare] = useState<string | null>(null);
   const [path, setPath] = useState("");
@@ -39,7 +40,7 @@ export default function RealDrive() {
 
   const files = (
     <>
-      {!status && !err ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {!status && !err ? <LoadingState rows={3} /> : null}
       {status && !status.shares.length ? <Card><EmptyState title="No folders offered" body="Your home has not offered a folder to the app yet." /></Card> : null}
       {status && status.shares.length > 1 ? (
         <View className="flex-row flex-wrap gap-s2">
@@ -56,15 +57,15 @@ export default function RealDrive() {
           ))}
         </View>
       ) : null}
-      {err ? <Card flush><EmptyState title="Drive did not open that" body={err} action={{ label: "Try again", onPress: () => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e)))) }} /></Card> : null}
-      {!err && share && list === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
+      {err ? <Card flush><ErrorState title="Drive did not load" reason={err} retry={() => (share ? load(share, path) : statusReal().then(setStatus).catch((e) => setErr(say(e))))} /></Card> : null}
+      {!err && share && list === null ? <LoadingState rows={3} /> : null}
       {!err && list ? (
         <Card flush>
           {entries.length ? entries.map((e, i) => (
             <View key={e.name}>{i ? <Divider inset={60} /> : null}
               <Row dense chevron={e.dir} lead={<IconTile name={e.dir ? "drive" : "file"} />} title={e.name} sub={entryLine(e)} onPress={() => show(e)} />
             </View>
-          )) : <EmptyState title="Nothing here" body="This folder is empty, or everything in it is kept away from the app." />}
+          )) : <EmptyState title="Nothing here yet" body="This folder is empty, or everything in it is kept away from the app." />}
           {list.next != null ? <View className="p-s3"><Button kind="ghost" size="sm" label={`Show more (${entries.length} of ${list.total})`} onPress={() => share && load(share, path, list.next)} /></View> : null}
         </Card>
       ) : null}
@@ -80,12 +81,12 @@ export default function RealDrive() {
         {status.shares.map((s) => <Row key={s.name} dense title={s.name} sub={`${s.access === "rw" ? "Read and write" : "Read only"}, ${s.shared ? "shared now" : "not shared now"}`} />)}
       </View>
     </Card>
-  ) : <Card><EmptyState title="Loading" body="Asking your Vyre." /></Card>;
+  ) : <LoadingState rows={3} />;
 
   return (
-    <Frame title="Drive" sub="Folders your home shares, as it allows them.">
-      <Tabs<Tab> value={tab} onChange={setTab} items={[["files", "Files"], ["sharing", "On your computer"]]} />
-      {tab === "files" ? files : sharing}
+    <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
+      <Tabs<Tab> value={tab} onChange={setTab} items={[["space", "Space"], ["files", "Box folders"], ["sharing", "On your computer"]]} />
+      {tab === "space" ? <SpaceDrive /> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

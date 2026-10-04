@@ -7,6 +7,7 @@ import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { lendInfo, useDevices } from "./state";
 import { lendState, removeText } from "./wink.js";
 import { MOCK, said } from "../../src/real/box";
+import { RealDeviceSpaces } from "./RealDeviceSpaces";
 
 /** One device: what it is, which spaces it is in, share it with a space, remove it. */
 /** Computers already lent once this session: the first grant is a pairing (Face ID), later ones are not asked again (lead ruling 4 Oct). */
@@ -42,11 +43,7 @@ export function DeviceScreen() {
             </View>
           ))}
         </Card>
-      </Group> : (
-        <Group title="Spaces">
-          <Card flush>{Object.entries(SPACE_NAMES).map(([k, n], i) => <View key={k}>{i ? <Divider /> : null}<Row lead={<Avatar of={spaceRef(n)} size={40} />} title={n} sub="Reaches it through your identity" /></View>)}</Card>
-        </Group>
-      )}
+      </Group> : <RealDeviceSpaces device={d.id} name={d.name} computer={d.device === "computer"} />}
       {MOCK && d.device === "computer" ? (
         <Group title="Share this computer">
           <Card className="gap-s3">

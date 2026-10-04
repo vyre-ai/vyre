@@ -131,10 +131,10 @@ export default function AutofillSettings() {
 
 function describe(s: Autofill.AutofillStatus | null, enabled: boolean): string {
   if (!s) return "Checking this phone";
-  if (!s.paired) return "Not paired. Run vyre vault pair --phone on the box, then enter its address and code.";
+  if (!s.paired) return "Not paired. Run vyre vault pair --phone on your home, then enter its address and code.";
   const parts = [`Paired as ${s.name ?? "this phone"}`];
-  if (s.revoked) parts.push("the box unpaired this phone, so pair again");
-  else if (!s.reachable) parts.push("the box is not answering");
+  if (s.revoked) parts.push("your home unpaired this phone, so pair again");
+  else if (!s.reachable) parts.push("your home is not answering");
   parts.push(enabled ? "Vyre fills on this phone" : "not yet the phone's autofill service");
   parts.push(s.unlocked ? "unlocked" : "locked");
   return parts.join(", ") + ".";
@@ -144,7 +144,7 @@ function message(e: unknown): string {
   const code = (e as { code?: string })?.code;
   if (code === "ERR_BAD_SERVER") return "The address must start with https://";
   if (code === "ERR_NO_BIOMETRICS") return "Set a screen lock and a fingerprint or face first.";
-  if (code === "ERR_NETWORK") return "The box did not answer.";
+  if (code === "ERR_NETWORK") return "Your home did not answer.";
   return e instanceof Error ? e.message : String(e);
 }
 

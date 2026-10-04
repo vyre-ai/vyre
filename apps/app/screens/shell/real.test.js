@@ -44,6 +44,8 @@ test("a space still being created says so, and an empty box has only All spaces"
   const m = await import("./real-model.ts");
   const d = await load1({ data: [{ ...S2, status: "creating" }] }, { data: ID });
   assert.equal(d.spaces[0].sub, "Setting up");
+  const dead = await load1({ data: [{ ...S2, status: "failed" }] }, { data: ID });
+  assert.deepEqual(dead.spaces.map((s) => s.id), ["all"], "a space that never got its home is not listed");
   const e = await load1({ data: [] }, { data: ID });
   assert.deepEqual(e.spaces.map((s) => s.id), ["all"]);
   assert.equal(m.showingName(e, "all"), "Space");

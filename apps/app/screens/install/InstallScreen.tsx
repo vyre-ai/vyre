@@ -5,15 +5,17 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
-import { AFTER_HOME, CONTINUE_HERE, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
+import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { COPY } from "../devices/wink.js";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
-import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, listSpaces, previewInvite, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
-import { applyClaim, createInput, inviteFrom, nameNoteReal, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
+import { clearJoin } from "../../src/shell/join-hold.js";
+import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
+import { applyClaim, createInput, inviteFrom, nameNoteReal, pendingLines, nameStatusReal, savesAt, setupElsewhere, setupFrom } from "./real.js";
+import { HIDDEN, claimBlocked } from "../shell/rc";
 import { setupElsewhere as setupElsewhereLine } from "./flow.js";
 
 type Made = { name: string; look: string; addr: string; line: string };
@@ -63,7 +65,7 @@ function NameField({ value, onChange, label, also, space, real, onRetry }: { val
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
-export function InstallScreen({ start, link: linkIn }: { start?: "create" | "join"; link?: string }) {
+export function InstallScreen({ start, link: linkIn, external }: { start?: "create" | "join"; link?: string; external?: boolean }) {
   const router = useRouter();
   const first = !start;
   const [step, setStep] = useState(startStep(start));
@@ -79,6 +81,9 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const [pairTo, setPairTo] = useState("me");
   const [pickConnectors, setPickConnectors] = useState<string[]>([]);
   const [pickKit, setPickKit] = useState<string | null>(null);
+  // Real box: the Kits it offers (null: it offers none) and what asking for the picked one came to, for the done page.
+  const [kitList, setKitList] = useState<{ id: string; label: string; sub: string }[] | null | undefined>(undefined);
+  const [kitResult, setKitResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [inviteLine, setInviteLine] = useState("");
   const [loaded, setLoaded] = useState(false);
   // Real box only: what the directory said about each name, the space being made, the recovery code (shown once, never kept), another device's setup, the invite.
@@ -126,7 +131,17 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     } catch (e) { setWrong(said(e)); } finally { setBusy(false); }
   };
   const doMake = (w: "server" | "vps" | "here") => (MOCK ? make(w) : void makeReal(w));
-  const advance = (from: string) => setStep(nextSetup(from));
+  // The invite token lives only as long as the join steps: leaving them (cancel, done, any other step) forgets it.
+  useEffect(() => { if (step !== "join" && step !== "invite") clearJoin(); }, [step]);
+  const advance = (from: string) => {
+    if (from === "kit" && !MOCK && spaceId && pickKit) {
+      setBusy(true);
+      void proposeKitFor(spaceId, pickKit).then((r) => { setKitResult(r); setStep(nextSetup(from)); }).finally(() => setBusy(false));
+      return;
+    }
+    setStep(nextSetup(from));
+  };
+  useEffect(() => { if (!MOCK && step === "kit" && kitList === undefined) void kitChoices().then(setKitList); }, [step]);
 
   // Closing and reopening resumes at the same step: read what was kept once, then keep every resumable step.
   useEffect(() => {
@@ -147,7 +162,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     void (async () => {
       try {
         const who = await readIdentity();
-        if (who) { setName(who.label); if (first && step === "name") setStep("spaces"); }
+        if (who) { setName(who.label); setStep((s) => (first && s === "name" ? "spaces" : s)); }
         // Identity first: a device with no name cannot create or join a space, so any other way in starts at the name. A kept invite waits for it.
         else { noId.current = true; setStep((s) => (["scan", "scanwords", "recovery"].includes(s) ? s : "name")); }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.
@@ -195,7 +210,14 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
   let body: React.ReactNode = null;
-  if (step === "name") {
+  if (step === "name" && !MOCK && claimBlocked()) {
+    // RC1: the key is made on the phone, so a browser cannot claim a name (screens/shell/rc.ts).
+    body = (
+      <Page title={HIDDEN.claimTitle} sub={HIDDEN.claimBody}>
+        <Button kind="primary" label={HIDDEN.claimAction} onPress={() => setStep("scan")} />
+      </Page>
+    );
+  } else if (step === "name") {
     body = (
       <Page title="Choose your Vyre name" sub="It is how people find you. You can add your own domain later.">
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
@@ -222,7 +244,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
-        <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner>
+        {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
         <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); setStep(invite ? "invite" : "spaces"); }} />
       </Page>
     );
@@ -306,7 +328,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         <View className="gap-s2">
           <Text size="caption" strong tone="label">Your phone</Text>
           {two ? (
-            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(COPY.rejected); setStep("srv1"); }} />
+            <PairWords session={session} who="Your server" onConfirmed={() => { setSession(null); doMake(where); }} onRejected={() => { setSession(null); setWrong(SERVER_FAILED.rejected); setStep("srv1"); }} />
           ) : (
             <Card className="gap-s3">
               <View className="gap-s1"><Text size="caption" strong tone="label">Pair to:</Text><Segmented label="Pair to" value={pairTo} onChange={setPairTo} options={pairToOptions(name, `${spaceSt.slug}.vyre.run`)} /></View>
@@ -328,7 +350,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
   } else if (step === "look") {
     body = (
       <Page title={`Give ${sn} a look`} sub="This is how its mark shows on every screen. You can change it later.">
-        {where === "here" ? null : <Terminal lines={[connectedLine(sn, device)]} />}
+        {where === "here" ? null : MOCK ? <Terminal lines={[connectedLine(sn, device)]} /> : <Chip tone="ok" icon="check">{`${sn} is paired. Setup carries on here.`}</Chip>}
         <View className="items-center gap-s3"><Avatar of={spaceRef(sn)} size={56} /></View>
         <Segmented label="Look" value={look} onChange={setLook} options={DATA.looks.map((l) => [l.id, l.label] as [string, string])} />
         <Button kind="primary" label="Continue" onPress={() => advance("look")} />
@@ -366,12 +388,14 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
     body = (
       <Page title="Start with a Kit" sub="A Kit adds record types, Flows and views in one step. Pick one, or start empty.">
         <Card flush>
-          {DATA.kits.map((k) => (
+          {(MOCK ? DATA.kits : kitList ?? []).map((k) => (
             <Row key={k.id} dense lead={<IconTile name="box" />} title={k.label} sub={k.sub} end={<Chip tone={pickKit === k.id ? "ok" : "plain"} icon={pickKit === k.id ? "check" : undefined}>{pickKit === k.id ? "Chosen" : "Choose"}</Chip>} onPress={() => setPickKit(pickKit === k.id ? null : k.id)} />
           ))}
+          {!MOCK && kitList === undefined ? <Row dense title="Looking for Kits" /> : null}
+          {!MOCK && kitList !== undefined && !(kitList ?? []).length ? <Row dense title="No Kits to pick here yet" sub="You can add one later from Kits." /> : null}
         </Card>
         <View className="flex-row gap-s2">
-          <Button kind="primary" label="Finish setup" onPress={() => advance("kit")} />
+          <Button kind="primary" label={busy ? "Asking" : "Finish setup"} onPress={busy ? () => {} : () => advance("kit")} />
           <Button kind="ghost" label="Start empty" onPress={() => { setPickKit(null); advance("kit"); }} />
         </View>
       </Page>
@@ -383,6 +407,7 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         <Text size="page" strong className="text-center">{`${last?.name ?? sn} is ready`}</Text>
         <Text tone="muted" className="text-center">{last?.line}</Text>
         <Text mono size="caption" tone="label">{last?.addr}</Text>
+        {MOCK ? null : pendingLines({ kit: pickKit ? { id: pickKit, label: kitList?.find((k) => k.id === pickKit)?.label ?? pickKit } : null, kitResult, connectors: pickConnectors.map((id) => DATA.connectors.find((c) => c.id === id)?.label ?? id) }).map((l) => <Text key={l} tone="muted" className="text-center">{l}</Text>)}
         <Button kind="primary" label="Continue" onPress={() => setStep("spaces")} />
       </View>
     );
@@ -408,7 +433,8 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Row lead={<Avatar of={spaceRef(inv.space)} size={56} />} title={inv.space} sub={inv.address} />
         {inv.from ? <Text tone="muted">{`${inv.from} invited you.`}</Text> : null}
-        <Text mono size="caption" tone="label">{inv.link}</Text>
+        {external ? <Banner tone="warn">This invitation came from a link outside Vyre. Check that the space name is the one you expect before you join.</Banner> : null}
+        <Text mono size="caption" tone="label">{inv.link.replace(/\/join\/.*$/, "/join/…")}</Text>
         {"words" in inv && inv.words ? <View className="gap-s1"><Text size="caption" strong tone="label">Check these words with whoever invited you</Text><Text mono strong>{inv.words}</Text></View> : null}
         <View className="gap-s1"><Text size="caption" strong tone="label">You join as</Text><View className="flex-row"><Chip tone="accent">{inv.role}</Chip></View><Text size="caption" tone="muted">{inv.roleLine}</Text></View>
         <View className="gap-s1"><Text size="caption" strong tone="label">You will see</Text><Text size="caption" tone="muted">{inv.sees}</Text></View>

@@ -2,12 +2,12 @@
 // person's own call: the box asks for presence, the app's person session answers it, and the value lives in this screen's state for 30 seconds.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { Button, Card, Chip, Divider, EmptyState, IconTile, Row, SealedMask, Tabs, Text, showToast } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, SealedMask, Segmented, Sheet, Tabs, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { usePhone } from "../places/Page";
 import { Footnote, Frame, Sec } from "../places/Frame";
 import { REVEAL_MS } from "./logic.js";
-import { listReal, revealReal, revokeReal, usesReal } from "./real";
-import { itemsOf, kindWord, revealRefusal, useCount, usesLine, type ListRow, type RealItem, type Tab, type UseRow } from "./real-model";
+import { listReal, putReal, revealReal, revokeReal, stateReal, unlockReal, usesReal } from "./real";
+import { NEW_KINDS, itemsOf, kindWord, putInput, putRefusal, revealRefusal, useCount, usesLine, type ListRow, type NewItem, type RealItem, type Tab, type UseRow } from "./real-model";
 
 const say = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
@@ -19,6 +19,11 @@ export default function RealVault() {
   const [err, setErr] = useState("");
   const [sel, setSel] = useState<string | null>(null);
   const [pushed, setPushed] = useState(false);
+  const [unlock, setUnlock] = useState<"passphrase" | "none">("none");
+  const [pass, setPass] = useState("");
+  const [adding, setAdding] = useState<NewItem | null>(null);
+  const [problem, setProblem] = useState("");
+  const [busy, setBusy] = useState(false);
   const [uses, setUses] = useState<Record<string, UseRow[]>>({});
   const [shown, setShown] = useState<{ key: string; value: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -28,6 +33,7 @@ export default function RealVault() {
   const load = useCallback(() => {
     setErr("");
     listReal().then((r) => { setRows(r.items); setLocked(r.locked); }).catch((e) => setErr(say(e, "The vault did not answer.")));
+    stateReal().then((s) => { if (s) setUnlock(s.unlock); }).catch(() => {});
   }, []);
   useEffect(load, [load]);
 
@@ -50,6 +56,19 @@ export default function RealVault() {
   };
   const remove = (item: RealItem, who: string) =>
     revokeReal(item.id, who).then(() => { showToast(`${who} no longer has ${item.name}.`); load(); }).catch((e) => showToast(say(e, "That did not work.")));
+
+  const doUnlock = () => {
+    if (!pass) return;
+    setBusy(true); setProblem("");
+    unlockReal(pass).then(() => { setPass(""); showToast("The vault is open."); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
+  };
+  const doAdd = () => {
+    if (!adding) return;
+    const p = putInput(adding);
+    if ("error" in p) { setProblem(p.error); return; }
+    setBusy(true); setProblem("");
+    putReal(p.input).then(() => { showToast(`${adding.name.trim()} is in the vault.`); setAdding(null); load(); }).catch((e) => setProblem(putRefusal((e as { code?: string }).code, say(e, "")))).finally(() => setBusy(false));
+  };
 
   const detail = cur ? (
     <Card>
@@ -112,9 +131,19 @@ export default function RealVault() {
     <Frame title="Vault" sub="Logins, keys and cards.">
       <Footnote icon="shield">Assistants never see a credential. Every use is logged.</Footnote>
       <Tabs<Tab> value={tab} onChange={(t) => { hide(); setSel(null); setTab(t); }} items={[["Login", "Logins"], ["Key", "Keys"], ["Card", "Cards"]]} />
+      {!err && rows && !locked ? <View className="self-start"><Button kind="primary" icon="plus" label="Add an item" onPress={() => { setProblem(""); setAdding({ kind: "login", name: "", username: "", secret: "", url: "" }); }} /></View> : null}
       {err ? <Card flush><EmptyState title="The vault did not answer" body={err} action={{ label: "Try again", onPress: load }} /></Card> : null}
       {!err && rows === null ? <Card flush><EmptyState title="Loading" body="Asking your Vyre." /></Card> : null}
-      {!err && rows && locked ? <Card flush><EmptyState title="The vault is locked" body="Unlock it on your home, then come back." action={{ label: "Try again", onPress: load }} /></Card> : null}
+      {!err && rows && locked ? (
+        unlock === "passphrase" ? (
+          <Card><View className="gap-s3">
+            <Text strong>The vault is locked</Text>
+            <Field label="Passphrase" value={pass} onChangeText={setPass} kind="password" help="The first time, the passphrase you type becomes the vault's." />
+            {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+            <View className="self-start"><Button kind="primary" label={busy ? "Opening" : "Unlock"} onPress={busy || !pass ? () => {} : doUnlock} /></View>
+          </View></Card>
+        ) : <Card flush><EmptyState title="The vault is locked" body="Unlock it on your home, then come back." action={{ label: "Try again", onPress: load }} /></Card>
+      ) : null}
       {!err && rows && !locked ? (
         <View className={phone ? "gap-s4" : "flex-row items-start gap-s4"}>
           <View className={phone ? "" : "min-w-0 flex-1"}>
@@ -124,12 +153,26 @@ export default function RealVault() {
                   <Row dense chevron={phone} selected={!phone && cur?.id === v.id} lead={<IconTile name={v.tab === "Card" ? "file" : "key"} />} title={v.name}
                     sub={uses[v.id] ? `${v.line} · ${useCount(uses[v.id], Date.now())} uses today` : v.line} onPress={() => { hide(); setSel(v.id); setPushed(true); }} />
                 </View>
-              )) : <EmptyState title="Nothing here" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : "No items yet. Add one from your home's terminal with vyre vault put."} />}
+              )) : <EmptyState title="Nothing here yet" body={rows.length ? `No ${tab.toLowerCase()}s in the vault.` : "No items yet. Add one from your home's terminal with vyre vault put."} />}
             </Card>
           </View>
           {phone ? null : <View className="min-w-pane min-w-0 flex-[1.2]">{detail}</View>}
         </View>
       ) : null}
+          <Sheet open={!!adding} onClose={() => setAdding(null)} title="Add to the vault">
+        {adding ? (
+          <View className="gap-s3">
+            <Segmented label="Kind" value={adding.kind} onChange={(kind) => setAdding({ ...adding, kind })} options={NEW_KINDS} />
+            <Field label="Name" value={adding.name} onChangeText={(name) => setAdding({ ...adding, name })} placeholder={adding.kind === "login" ? "Harlow Drive" : "OpenAI key"} />
+            {adding.kind === "login" ? <Field label="Username" value={adding.username} onChangeText={(username) => setAdding({ ...adding, username })} /> : null}
+            <Field label={adding.kind === "login" ? "Password" : "Value"} value={adding.secret} onChangeText={(secret) => setAdding({ ...adding, secret })} kind="password" />
+            {adding.kind === "login" ? <Field label="Web address (optional)" value={adding.url} onChangeText={(url) => setAdding({ ...adding, url })} placeholder="https://drive.harlow.example" /> : null}
+            {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
+            <Button kind="primary" label={busy ? "Saving" : "Save with Face ID"} onPress={busy ? () => {} : doAdd} />
+            <Text size="caption" tone="label">The box asks you to approve this save. Assistants never see the value.</Text>
+          </View>
+        ) : null}
+      </Sheet>
     </Frame>
   );
 }

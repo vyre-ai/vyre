@@ -12,6 +12,7 @@
 name: android-app
 on:
   push:
+    branches: ["main", "work/v0.3", "work/native-android*", "work/ui*", "work/app*"]
     paths:
       - "apps/app/app.json"
       - "apps/app/package.json"
