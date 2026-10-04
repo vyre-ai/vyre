@@ -42,7 +42,7 @@ test("JL-2: an invite names the person unless anyone-with-the-link is chosen, an
 
 test("a space on one person's computer says why nobody can join it", async () => {
   const { inviteRefusal } = await import("./invite.js");
-  assert.equal(inviteRefusal("this_computer", "x"), "This space lives on this computer, so other people cannot join it. Move it to your server first.");
-  assert.equal(inviteRefusal("unreachable", "x", "Chris"), "This space lives on Chris's computer and cannot be reached from here. Ask them to move it to their server.");
-  assert.equal(inviteRefusal("unreachable", "x"), "This space lives on its owner's computer and cannot be reached from here. Ask them to move it to their server.");
+  assert.equal(inviteRefusal("this_computer", "x"), "This space lives on this computer, so other people cannot join it. To invite people, make a space on your server.");
+  assert.equal(inviteRefusal("unreachable", "x", "Chris"), "This space lives on Chris's computer and cannot be reached from here. Ask them to invite you to a space on their server.");
+  assert.equal(inviteRefusal("unreachable", "x"), "This space lives on its owner's computer and cannot be reached from here. Ask them to invite you to a space on their server.");
 });

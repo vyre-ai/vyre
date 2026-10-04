@@ -41,8 +41,8 @@ export function inviteRefusal(code, message, owner = "") {
   if (code === "presence_required") return "That needs you. Approve on this device, then try again.";
   if (code === "not_found") return "That invite is already gone.";
   // A space that lives on one person's computer (windows, work/spaces): the inviter cannot make a link; an invitee cannot reach it.
-  if (code === "this_computer") return "This space lives on this computer, so other people cannot join it. Move it to your server first.";
-  if (code === "unreachable") return `This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to move it to their server.`;
+  if (code === "this_computer") return "This space lives on this computer, so other people cannot join it. To invite people, make a space on your server.";
+  if (code === "unreachable") return `This space lives on ${owner ? `${owner}'s` : "its owner's"} computer and cannot be reached from here. Ask them to invite you to a space on their server.`;
   return message || "The invite did not go through.";
 }
 
