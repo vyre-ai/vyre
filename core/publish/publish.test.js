@@ -456,3 +456,23 @@ test("publish: a build that hands over a link, or a path that climbs out, is ref
   }
   assert.equal((await b.ok("publish.status", { deployment: id })).stage, "Draft");
 });
+
+test("publish: a static build's files are written once checked, and the edge hands the box the copy into the site volume; a link in the build writes nothing", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  const sitesDir = path.join(b.publishRoot, "sites");
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<p>x</p>" }, { path: "p", type: "symlink", target: "/etc/passwd", content: "" }], logs: "" });
+  assert.equal((await b.call("publish.preview", { deployment: id })).error?.code, "bad_output");
+  assert.ok(!fs.existsSync(sitesDir) || fs.readdirSync(sitesDir).length === 0, "a link in the hand-off writes nothing");
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<h1>ok</h1>" }, { path: "a/b.css", content: "x" }], logs: "" });
+  await b.ok("publish.preview", { deployment: id });
+  const made = fs.readdirSync(sitesDir);
+  assert.equal(made.length, 1);
+  assert.equal(fs.readFileSync(path.join(sitesDir, made[0], "index.html"), "utf8"), "<h1>ok</h1>");
+  await goLive(b, id);
+  const e = await b.ok("publish.edge", {});
+  assert.equal(e.fills.length, 1);
+  assert.equal(e.fills[0].deployment, id);
+  assert.match(e.fills[0].volume, /_site-[0-9a-f]{16}$/);
+  assert.ok(e.fills[0].docker.includes("--network") && e.fills[0].docker.includes(`${path.join(sitesDir, made[0])}:/in:ro`));
+});

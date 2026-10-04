@@ -15,6 +15,7 @@ import dns from "node:dns/promises";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
 import { joinPageHtml } from "../../lib/publish/join.js";
+import { writeSiteFiles, volumeFill } from "../../lib/publish/site-write.js";
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
 import { createRoleAuthorize } from "../../lib/spaces/authz.js";
 import { NO_BUILDER } from "./builder-plan.js";
@@ -222,6 +223,8 @@ export default {
         },
         names: { owns: async (host, spaceId) => { const r = await call("names.owns", { host, space: spaceId }); return !r.missing && !!(r.data && (r.data === true || r.data.owns === true)); } },
         builder,
+        // The checked files of a static build go into a fresh folder under the space's publish folder (private, 0700); `publish.edge` hands the box the copy into the site volume.
+        site: { write: (/** @type {string} */ _id, /** @type {any[]} */ files) => { const sites = path.join(publishDir(space.id), "sites"); fs.mkdirSync(sites, { recursive: true, mode: 0o700 }); return { dir: writeSiteFiles(sites, files) }; } },
       });
       p = { pub, ledger: led, lock: Promise.resolve() };
       publishers.set(space.id, p);
@@ -453,7 +456,15 @@ export default {
           for (const s of d.secrets || []) if (s.use.includes("runtime")) await put(path.join("secrets", d.id, s.name), await files.read(s.ref), 0o600);
         }
         // What starts the project (it is not this module) builds the edge image first: `docker build -t <image> -f caddy.Dockerfile .` in `dir`.
-        return { dir, files: written, compose, caddyfile, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
+        // Where each live static site's files wait, and the docker call that copies them into the site's volume (the box runs it; this module starts nothing).
+        const fills = [];
+        for (const d of await storeFor(b.space.id).list("deployments")) {
+          const slug = d.id.replace(/^dep_/, "");
+          if (!compose.services["w-" + slug] || !(d.runtime && d.runtime.kind === "static") || !(d.site && d.site.dir)) continue;
+          const volume = `${compose.name}_site-${slug}`;
+          fills.push({ deployment: d.id, volume, docker: volumeFill(d.site.dir, volume) });
+        }
+        return { dir, files: written, compose, caddyfile, fills, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
       },
     });
 
