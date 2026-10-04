@@ -25,6 +25,7 @@ const BOX_URL = flag("--box-url", "");
 const OUT = path.resolve(flag("--out", "walk-out"));
 const ONLY = flag("--only", "").split(",").filter(Boolean);
 const WIDTH = Number(flag("--width", "1280"));
+const CALLER = flag("--caller", "deck");
 const PRESENCE = bool("--presence");
 if (!SOCKET && !BOX_URL) { console.error("app-walk: give --socket <path to the box's vyred.sock> or --box-url <http://host:port>"); process.exit(2); }
 fs.mkdirSync(OUT, { recursive: true });
@@ -45,8 +46,8 @@ const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/cs
 /** Every box answer to a tool call, in order, so a step can say which refusals it saw. */
 const answers = [];
 function forward(req, res) {
-  const opts = SOCKET ? { socketPath: SOCKET, path: req.url, method: req.method, headers: { ...req.headers, host: "localhost" } }
-    : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: req.url, method: req.method, headers: { ...req.headers, host: new URL(BOX_URL).host } };
+  const opts = SOCKET ? { socketPath: SOCKET, path: req.url, method: req.method, headers: { ...req.headers, host: "localhost", "x-vyre-caller": CALLER } }
+    : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: req.url, method: req.method, headers: { ...req.headers, host: new URL(BOX_URL).host, "x-vyre-caller": CALLER } };
   const up = http.request(opts, (r) => {
     const tool = /^\/v1\/tools\/([^/?#]+)/.exec(req.url)?.[1];
     const chunks = [];
@@ -81,8 +82,8 @@ const BASE = `http://127.0.0.1:${server.address().port}/app`;
 function boxCall(tool, input = {}) {
   return new Promise((resolve) => {
     const body = JSON.stringify(input);
-    const opts = SOCKET ? { socketPath: SOCKET, path: `/v1/tools/${tool}`, method: "POST", headers: { host: "localhost", "content-type": "application/json", "content-length": Buffer.byteLength(body) } }
-      : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: `/v1/tools/${tool}`, method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(body) } };
+    const opts = SOCKET ? { socketPath: SOCKET, path: `/v1/tools/${tool}`, method: "POST", headers: { host: "localhost", "x-vyre-caller": CALLER, "content-type": "application/json", "content-length": Buffer.byteLength(body) } }
+      : { host: new URL(BOX_URL).hostname, port: new URL(BOX_URL).port, path: `/v1/tools/${tool}`, method: "POST", headers: { "x-vyre-caller": CALLER, "content-type": "application/json", "content-length": Buffer.byteLength(body) } };
     const r = http.request(opts, (x) => { let s = ""; x.on("data", (c) => (s += c)); x.on("end", () => { try { const j = JSON.parse(s); resolve(j.error ? { error: j.error } : { data: j.data ?? j }); } catch { resolve({ error: { code: "bad_reply", message: s.slice(0, 120) } }); } }); });
     r.on("error", (e) => resolve({ error: { code: "unreachable", message: String(e.message) } }));
     r.end(body);
@@ -107,8 +108,8 @@ page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text(
 const report = [];
 const slug = (s) => s.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
 const text = () => page.locator("body").innerText();
-const settle = async (ms = 900) => { await page.waitForLoadState("networkidle").catch(() => {}); await page.waitForTimeout(ms); };
-const go = async (route) => { await page.goto(`${BASE}/${route}`, { waitUntil: "networkidle" }).catch(() => {}); await settle(); };
+const settle = async (ms = 900) => { await page.waitForLoadState("networkidle", { timeout: 4000 }).catch(() => {}); await page.waitForTimeout(ms); };
+const go = async (route) => { await page.goto(`${BASE}/${route}`, { waitUntil: "domcontentloaded" }).catch(() => {}); await settle(); };
 const click = async (label, o = {}) => { const l = page.getByText(label, { exact: o.exact ?? true }).first(); await l.waitFor({ state: "visible", timeout: o.timeout ?? 8000 }); await l.click(); await settle(o.settle ?? 700); };
 const press = async (name) => { const b = page.getByRole("button", { name }).first(); await b.waitFor({ state: "visible", timeout: 8000 }); await b.click(); await settle(); };
 
