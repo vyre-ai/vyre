@@ -17,9 +17,6 @@
  "core/cli/screen/screen-live.test.js": {
   "owner": "launch"
  },
- "core/glass/glass.test.js": {
-  "owner": "tailnet"
- },
  "core/hooks/hooks.test.js": {
   "owner": "launch"
  },
@@ -28,9 +25,6 @@
  },
  "core/recall/embed-install.test.js": {
   "owner": "assistant"
- },
- "core/relay/setup.test.js": {
-  "owner": "tailnet"
  },
  "core/sessions/api-key.test.js": {
   "owner": "sessions"
@@ -92,9 +86,6 @@
  "kernel/retrofit/agent-reach.test.js": {
   "owner": "platform"
  },
- "relay/client/e2e.test.js": {
-  "owner": "tailnet"
- },
  "test/chrome-flags.test.js": {
   "owner": "launch"
  },
@@ -111,19 +102,16 @@
   "owner": "platform-2"
  },
  "test/federation-answer.test.js": {
-  "owner": "tailnet"
+  "owner": "sessions"
  },
  "test/federation-send.test.js": {
-  "owner": "tailnet"
+  "owner": "sessions"
  },
  "test/flows-daemon.test.js": {
   "owner": "sessions"
  },
  "test/hygiene.test.js": {
   "owner": "platform-2"
- },
- "test/link.test.js": {
-  "owner": "tailnet"
  },
  "test/module-sdk.test.js": {
   "owner": "platform-2"
@@ -146,9 +134,6 @@
  "test/reach-registry.test.js": {
   "owner": "platform"
  },
- "test/relay.test.js": {
-  "owner": "tailnet"
- },
  "test/roles-enforced.test.js": {
   "owner": "platform"
  },
@@ -159,7 +144,7 @@
   "owner": "platform"
  },
  "test/wink.test.js": {
-  "owner": "tailnet"
+  "owner": "platform"
  },
  "test/within-hygiene.test.js": {
   "owner": "launch"
