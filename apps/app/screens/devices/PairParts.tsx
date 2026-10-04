@@ -15,11 +15,14 @@ const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.tic
 export type LongCode = Extract<WinkCode, { ok: true }>;
 
 /** Scan the code with the camera, or paste the long one. Both go through parseWinkCode; a short typed code is refused in plain words. */
+/** RC1: the drawn Wink avatar cannot be read by the camera yet (RC2), so no camera view is offered; a code is typed or pasted. */
+const CAMERA_SCAN = false;
+
 export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; sample?: string }) {
   const [text, setText] = useState("");
   const [say, setSay] = useState("");
   const [cam, setCam] = useState<ScanSupport | null>(null);
-  useEffect(() => { if (canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
+  useEffect(() => { if (CAMERA_SCAN && canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
 
   const take = (raw: string) => {
     const r = parseWinkCode(raw);
@@ -43,7 +46,7 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
 
   return (
     <View className="w-full gap-s3">
-      {canScanLive && ScanCamera && cam?.state === "granted" ? (
+      {CAMERA_SCAN && canScanLive && ScanCamera && cam?.state === "granted" ? (
         <View className="h-48 w-full overflow-hidden rounded-card"><ScanCamera style={{ flex: 1 }} {...scan} /></View>
       ) : cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
       <Field label="Or paste the long code" name="Long code" value={text} onChangeText={(v) => { setText(v); if (say) setSay(""); }} placeholder="vyre://wink/2?..." mono error={say || undefined} />

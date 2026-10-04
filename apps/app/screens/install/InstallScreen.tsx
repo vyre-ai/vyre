@@ -14,7 +14,7 @@ import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, first
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
-import { readProgress, writeProgress } from "../../src/state/setup-progress";
+import { readProgress, writeProgress, writeSkipped } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
 import { ConnectClaude } from "../settings/ConnectClaude";
@@ -318,6 +318,15 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { try { setSession(claimBlocked() ? openPairing(c) : addThisDevice(c, { deviceLabel: device })); setStep("scanwords"); } catch (e) { setWrong(recoverRefusal((e as { code?: string }).code)); } }} />}
+        {isPhone(dk) && !MOCK ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}
+      </Page>
+    );
+  } else if (step === "novyre") {
+    // Phone only. A phone connects to a Vyre that runs on a computer or a server; with none yet it can send itself the setup link. No install line, no server choice here.
+    body = (
+      <Page title={NO_VYRE.title} sub={NO_VYRE.line}>
+        <Button kind="primary" label={NO_VYRE.send} onPress={() => { Share.share({ message: NO_VYRE.share }).catch(() => {}); }} />
+        <Button kind="ghost" label={NO_VYRE.notNow} onPress={() => { void writeSkipped(true).finally(() => router.replace("/u/now" as never)); }} />
       </Page>
     );
   } else if (step === "scanwords") {
