@@ -74,7 +74,10 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 
 - SAVE (restart): handed off to the integrator for the RC: work/platform a79d58f1 (vyre module + everything before), settings-write d62792d0 (after native-core fa349d31; e2e glancing at the checked() addition). b4fix 97686e1b landed in b4. Waiting on: e2e ok for d62792d0; integrator's RC report; loader `replaces` + ctx.settings (P1 second half) once native-core is on main; event renames after 0.1.0 (lead routes). No testbox processes running.
 
+- 4 Oct resume: createKernel Proxy boot test pushed (kernel-reg 87129f821, boot 5/5, daemon-smoke 1/1). Kernel-on rehearsal on trunk 6368a11c0 + kernel-default-on + memory-shim-removal (local branch work/kernel-rehearsal in vyre-kernel-default-on): 203 red of 1226; 123 (+1) red only with the kernel on; 96 are one cause (no signed modules.json in a dev checkout, VYRE_KERNEL_PATH_RULE=1 fixes them), 28 real, posted by owner in team/0.2/CHAT.md. Waiting on the lead for the path-rule decision and on owners for the 28 (platform's own 10: core/daemon/client-write, draft-stream, core/settings, core/update, test/daemon, reads-are-reads, route-declared, stop-quiet, chaos x2). Testbox data: ~/kdo3-all.tsv, ~/kdo3-flip.txt, ~/kdo3-rule.tsv.
+
 ## Next
+0a. Platform's own 10 of the 28 kernel-on reds (run with the kernel on and VYRE_KERNEL_PATH_RULE=1).
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
 2. P1 once native-core's settings are on main (loader adopts packages/module-sdk/manifest.js, apiVersion, ctx.api/log/paths.data/settings, watches.on + needs.tools, replaces + disable, registry.status commands, core/cli/commands/module.js with polish-cli review).
