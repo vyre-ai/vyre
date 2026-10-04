@@ -23,9 +23,6 @@
  "core/files/drive.test.js": {
   "owner": "vault"
  },
- "core/glass/glass.test.js": {
-  "owner": "tailnet"
- },
  "core/hooks/hooks.test.js": {
   "owner": "launch"
  },
@@ -37,9 +34,6 @@
  },
  "core/recall/embed-install.test.js": {
   "owner": "records"
- },
- "core/relay/setup.test.js": {
-  "owner": "tailnet"
  },
  "core/runner/runner.test.js": {
   "owner": "runner"
@@ -104,9 +98,6 @@
  "kernel/retrofit/agent-reach.test.js": {
   "owner": "platform"
  },
- "relay/client/e2e.test.js": {
-  "owner": "tailnet"
- },
  "test/chrome-flags.test.js": {
   "owner": "launch"
  },
@@ -133,9 +124,6 @@
  },
  "test/hygiene.test.js": {
   "owner": "platform-2"
- },
- "test/link.test.js": {
-  "owner": "tailnet"
  },
  "test/module-sdk.test.js": {
   "owner": "platform-2"
@@ -166,9 +154,6 @@
  },
  "test/reach-registry.test.js": {
   "owner": "platform"
- },
- "test/relay.test.js": {
-  "owner": "tailnet"
  },
  "test/roles-enforced.test.js": {
   "owner": "platform"
