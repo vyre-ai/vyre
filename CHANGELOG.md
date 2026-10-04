@@ -4,6 +4,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- spaces, cli: `vyre space add-agent <space> <agent>` (tool `spaces.members.add-agent`) adds an agent as an actor of a space through the kernel's own actor membership, under the person's proof; refused plainly without it.
+- names: a key that was removed and put back is a newcomer again for the record rule (its age starts when it was last added), so an old key cannot come back and repoint a record it once signed. The forged-token test now carries a real, well formed person proof.
+
 - spaces: a space asked for on a server is never made on this computer instead (`server_not_paired`, `server_unreachable`, nothing made); a read of a server-hosted space's members gives up after 4 s so a silent server cannot hold up lists and pairing; `invites.create` and `members.set-role` say `no_identity` on a home with no claimed identity.
 - records, cli (#84): every `records.*` answer carries `acted_in: { id, label }`, the space it acted in ("home" for the home's own); with no `space` calls still act in the home's space. `vyre space use <name>` remembers a space, `vyre call --space <name>` overrides it, and tools that take a `space` get the remembered one; `vyre status` shows it.
 
