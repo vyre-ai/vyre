@@ -22,6 +22,8 @@ async function world(t, opts = {}) {
   const rig = await createRig({ people: { per_bob: "member" }, agents: ["juno"], defs: [MATTER, NOTE, ...(opts.defs || [])], ...(opts.rig || {}) });
   await rig.restrict("per_bob", { actions: ["records.read"] });
   const mem = rig.k.kernelFor(MEMORY);
+  // KW-1 (kernel): a session resource is read only by its owner attribute's person. The work module registers it; here the Space's owner owns every session the test keeps.
+  rig.k.kernelFor({ name: "work", needs: { kernel: { actions: [], attrs: true } } }).registerAttrs("session", () => ({ owner: rig.owner }));
   const serviceChain = mem.serviceChain();
   await mem.records.query(serviceChain, "note", { page: { limit: 1 } }).catch(() => {}); // wait for the service to be installed
   const alex = rig.actor("person", "per_alex"), bob = rig.actor("person", "per_bob");
