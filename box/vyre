@@ -66,6 +66,15 @@ SYSTEMD_DIR=${VYRE_SYSTEMD_DIR:-/etc/systemd/system}
 SYSTEMD_SEAM=${VYRE_SYSTEMD_DIR:+1}
 UPDATER_NAME=${VYRE_UPDATER_NAME:-vyre-update}
 CHOME_SEAM=${VYRE_CONTAINER_HOME:-}
+SPACES_ROOT=${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}
+SPACES_UNIT=${VYRE_SPACES_UNIT:-vyre-spaces}
+CTR_NAME=${VYRE_CTR_NAME:-vyre-vyre-1}
+DAEMON_UID=${VYRE_DAEMON_UID:-1000}
+SPACES_CAP=${VYRE_SPACES_CAP:-16}
+SPACES_UP_PER_MIN=${VYRE_SPACES_UP_PER_MIN:-6}
+SPACES_SPOOL_CAP=${VYRE_SPACES_SPOOL_CAP:-64}
+ADMIN_NOTTY=${VYRE_ADMIN_NO_TTY:-0}
+SPACES_WATCH_ONCE=${VYRE_SPACES_WATCH_ONCE:-0}
 root_guard() { :; }
 # <<< seams
 root_guard "${1:-}"
@@ -512,9 +521,9 @@ put_wrapper() {
 # signed release shown again) is refused and nothing changes.
 publish_release() {
   src=$1
-  # A release that carries a signed module list (modules.json) must publish it: for that release every refusal below is fatal (non-zero), so the update stops
+  # A release that carries a signed module list (modules.json), or a box that already has one published, must publish one (so a release that drops the list cannot publish best-effort over it): for that release every refusal below is fatal (non-zero), so the update stops
   # and the old image and the old list stay (L-1). A release without one (0.2.x, a development source) keeps the old best-effort behaviour.
-  FATAL=0; [ -f "$src/modules.json" ] && FATAL=1
+  FATAL=0; if [ -f "$src/modules.json" ] || [ -f "$UPD_STATE/release/modules.json" ]; then FATAL=1; fi
   if [ "$(id -u)" != "$ROOT_UID" ]; then
     sudo -n "$WRAPPER" publish-release "$src" >/dev/null 2>&1 && return 0
     echo "vyre: could not put the release's signature files where vyred serves them (that needs sudo); the phone's shell check stays off until an update runs as root" >&2
@@ -586,8 +595,10 @@ modules_ok() {
   while [ $i -lt "${MODULES_WAIT:-30}" ]; do
     out=$(compose exec -T vyre vyre modules 2>/dev/null || true)
     bad=""
-    for n in $(printf '%s\n' "$out" | awk '$3 == "failed" { print $1 }'); do
-      printf '%s\n' "$names" | grep -qx "$n" && bad="$bad $n"
+    # Every listed module must be reported running or off (off by default is a choice, not a failure); one reported failed, or not reported at all, is a box with fewer modules than the list.
+    for n in $names; do
+      st=$(printf '%s\n' "$out" | awk -v n="$n" '$1 == n { print $3; exit }')
+      case "$st" in running|off) ;; *) bad="$bad $n" ;; esac
     done
     [ -z "$bad" ] && [ -n "$out" ] && return 0
     i=$((i + 1)); sleep 1
@@ -795,6 +806,8 @@ update() {
   compose up -d || roll_back
   ready || roll_back
   modules_ok || roll_back
+  # The Space helper (when installed): the new container has none of the old one's network joins or firewall rules, and the image the helper regenerates from changed.
+  if [ -s "$SP_PRIV/images" ]; then space_helper_record && space_helper_reattach || echo "vyre: the Space helper could not be brought up to date after the update" >&2; fi
   put_text "$VERSION" "$DIR/VERSION"
   UPD_DONE=1
   # Raise the floor (never lower it): the host's own record of the newest version this server has had.
@@ -819,6 +832,7 @@ update() {
 # request there, and nothing else in the container (Vyre-owned sessions run as uid 1001) can. update-state/ is root's,
 # mounted read-only, so vyred can only read what the update says about itself.
 updater_dirs() {
+  sp_dirs
   mkdir -p "$UPD_ROOT" "$UPD_REQ" "$UPD_STATE" "$UPD_STATE/release" "$UPD_PRIV" 2>/dev/null || return 0
   chmod 755 "$UPD_ROOT" "$UPD_STATE" "$UPD_STATE/release" 2>/dev/null || true
   chmod 700 "$UPD_PRIV" 2>/dev/null || true
@@ -1126,6 +1140,468 @@ if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then BUI
 if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
   case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
 fi
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+# The Space helper: the root side of a Space's Twenty store (docs/work/space-helper.md, Revision 2). Linux only.
+#
+# vyred (uid DAEMON_UID in its container) drops one file `req-<32 hex>` holding `<verb> <space>` into SP_SPOOL, a folder it alone can write; a root path unit
+# runs `space-helper-run`. The request is data: it is CLAIMED by rename into a root-only folder, looked at with stat, parsed whole against one anchored
+# pattern, and only then acted on, from root's own regenerated copy of the Space's compose file. Five verbs: up, stop, down, firewall-add, firewall-del.
+# `purge` and `fscrypt-enable` are not verbs: they are `sudo vyre admin ...` (RH-2). No request carries a secret, a path, an image, a subnet or a flag.
+#   spool/    vyred's alone (DAEMON_UID, 0700), mounted read-write into the container
+#   status/   root writes `status-<id>`, mounted read-only into the container
+#   private/  root's only: claim/, spaces/<name>/{record,secrets.env,compose.yml,empty-front/}, image, images, memory, log, rate-*, lock-*
+# ---------------------------------------------------------------------------------------------------------------------------------------------
+SP_SPOOL=$SPACES_ROOT/spool
+SP_STATE=$SPACES_ROOT/status
+SP_PRIV=$SPACES_ROOT/private
+SP_NAME_RE='[a-z][a-z0-9-]{0,30}'
+
+# sp_dirs: the three folders, made before compose mounts them (a missing bind source becomes a root-owned folder vyred cannot write).
+sp_dirs() {
+  mkdir -p "$SPACES_ROOT" "$SP_SPOOL" "$SP_STATE" "$SP_PRIV" 2>/dev/null || return 0
+  chmod 755 "$SPACES_ROOT" "$SP_STATE" 2>/dev/null || true
+  chmod 700 "$SP_PRIV" 2>/dev/null || true
+  chown "$DAEMON_UID:$DAEMON_UID" "$SP_SPOOL" 2>/dev/null || true
+  chmod 700 "$SP_SPOOL" 2>/dev/null || true
+}
+# sp_dirs_ok: every folder from SPACES_ROOT up is root's and not writable by others, status and private are real root folders, the spool is a real folder
+# vyred owns and nobody else can write. Nothing is read or written otherwise.
+sp_dirs_ok() {
+  d=$SPACES_ROOT
+  while :; do
+    [ -d "$d" ] && [ ! -L "$d" ] && own_ok "$d" "$ROOT_UID" strict || return 1
+    if [ "$d" = "$CHAIN_TOP" ] || [ "$d" = / ] || [ "$d" = . ]; then break; fi
+    d=$(dirname "$d")
+  done
+  for d in "$SP_STATE" "$SP_PRIV"; do [ -d "$d" ] && [ ! -L "$d" ] && own_ok "$d" "$ROOT_UID" strict || return 1; done
+  [ -d "$SP_SPOOL" ] && [ ! -L "$SP_SPOOL" ] && own_ok "$SP_SPOOL" "$DAEMON_UID" strict
+}
+# sp_log TEXT: one capped line, no path, no secret: only characters a reason needs.
+sp_log() {
+  l=$(printf '%s' "$*" | LC_ALL=C tr -c 'A-Za-z0-9 :._,=+-' '?' | cut -c1-160)
+  f=$SP_PRIV/log
+  if [ -f "$f" ] && [ "$(wc -c <"$f")" -gt 262144 ]; then mv -f "$f" "$f.1"; fi
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$l" >>"$f" 2>/dev/null || true
+}
+# sp_status ID STATE MESSAGE: status/status-<id>, written whole and renamed; the daemon reads only its own id.
+sp_status() {
+  m=$(printf '%s' "$3" | LC_ALL=C tr -c 'A-Za-z0-9 :._,=+-' '?' | cut -c1-120)
+  t=$SP_STATE/.tmp-$1
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  printf '{"id":"%s","state":"%s","message":"%s","at":%s}\n' "$1" "$2" "$m" "$(date +%s)" >"$t" && chmod 644 "$t" && rename_over "$t" "$SP_STATE/status-$1" || true
+}
+# hdock ARGS: docker, from a clean environment, with a root-owned config folder: nothing a caller or a shell hands down reaches it.
+hdock() { env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker "$@"; }
+# sp_dc NAME ARGS: compose for one Space, only on root's own copy, the project name fixed from the validated name.
+sp_dc() {
+  n=$1; shift
+  d=$SP_PRIV/spaces/$n
+  timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker compose --project-directory "$d" --project-name "vyre-$n-twenty" \
+    --env-file "$d/secrets.env" -f "$d/compose.yml" "$@"
+}
+sp_known() { [ -f "$SP_PRIV/spaces/$1/record" ] && [ ! -L "$SP_PRIV/spaces/$1/record" ]; }
+sp_running() { [ -n "$(hdock ps -q --filter "label=com.docker.compose.project=vyre-$1-twenty" 2>/dev/null || true)" ]; }
+# sp_pid: the vyre container's pid, taken fresh on every call (a recreated container has a new one and a new, empty network namespace).
+sp_pid() {
+  p=$(hdock inspect -f '{{.State.Pid}}' "$CTR_NAME" 2>/dev/null || true)
+  case "$p" in ""|*[!0-9]*|0) return 1 ;; esac
+  printf '%s\n' "$p"
+}
+sp_net_subnets() { hdock network inspect -f '{{range .IPAM.Config}}{{.Subnet}} {{end}}' "vyre-$1-twenty_store" 2>/dev/null | tr -d '\r'; }
+sp_subnet_ok() { printf '%s\n' "$1" | grep -Eqx '([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}|[0-9a-f:]+/[0-9]{1,3}'; }
+sp_ipt() { case "$1" in *:*) echo ip6tables ;; *) echo iptables ;; esac; }
+# sp_fw_each FAMILY PID ARGS: one iptables call inside the vyre container's own network namespace, where the agents' sockets are local.
+sp_fw_each() {
+  fam=$1; pid=$2; shift 2
+  timeout 20 nsenter -t "$pid" -n "$fam" -w "$@"
+}
+# sp_fw_apply NAME: every subnet of the Space's store network gets the rule (reviewer-3's shape): -C first, then inserted at position 1, then verified with -C.
+sp_fw_apply() {
+  n=$1
+  pid=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  subs=$(sp_net_subnets "$n")
+  [ -n "$subs" ] || { MSG="the Space's network does not exist"; return 1; }
+  for s in $subs; do
+    sp_subnet_ok "$s" || { MSG="a subnet of the Space's network is not one the helper accepts"; return 1; }
+    fam=$(sp_ipt "$s")
+    if ! sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner ! --uid-owner "$DAEMON_UID" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1; then
+      sp_fw_each "$fam" "$pid" -I OUTPUT 1 -d "$s" -m owner ! --uid-owner "$DAEMON_UID" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule could not be added"; return 1; }
+    fi
+    sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner ! --uid-owner "$DAEMON_UID" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule is not there after it was added"; return 1; }
+  done
+}
+# sp_probe NAME: the rule is proved, not assumed. In the vyre container's namespace a connect to the store's address as an agent uid must be REFUSED at once
+# (exit 1: not a timeout, which a dead store or a dropped packet also gives), and as the daemon's uid must go through (the control), for each address family the store has.
+sp_probe() {
+  n=$1
+  pid=$(sp_pid) || { MSG="the vyre container is not running"; return 1; }
+  sid=$(hdock ps -q --filter "label=com.docker.compose.project=vyre-$n-twenty" --filter "label=com.docker.compose.service=server" 2>/dev/null | head -n 1 || true)
+  [ -n "$sid" ] || { MSG="the Space's server is not running, so the firewall could not be proved"; return 1; }
+  net="vyre-$n-twenty_store"
+  ip4=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"$net\"}}{{.IPAddress}}{{end}}" "$sid" 2>/dev/null || true)
+  ip6=$(hdock inspect -f "{{with index .NetworkSettings.Networks \"$net\"}}{{.GlobalIPv6Address}}{{end}}" "$sid" 2>/dev/null || true)
+  [ -n "$ip4$ip6" ] || { MSG="the Space's server has no address on its network"; return 1; }
+  for ip in $ip4 $ip6; do
+    printf '%s\n' "$ip" | grep -Eqx '[0-9a-f:.]+' || { MSG="an address the helper does not accept"; return 1; }
+    if ! timeout 8 nsenter -t "$pid" -n setpriv --reuid="$DAEMON_UID" --regid="$DAEMON_UID" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/3000" >/dev/null 2>&1; then
+      MSG="the control connect (the daemon's uid) did not reach the store, so the firewall could not be proved"; return 1
+    fi
+    # Every uid but the daemon's is refused: an agent's (2000) and a Vyre session's (the daemon's uid plus one), so nothing else can reach Twenty's first-user signup (RH-6).
+    for ou in 2000 $((DAEMON_UID + 1)); do
+      prc=0
+      timeout 8 nsenter -t "$pid" -n setpriv --reuid="$ou" --regid="$ou" --clear-groups -- timeout 4 bash -c "exec 3<>/dev/tcp/$ip/3000" >/dev/null 2>&1 || prc=$?
+      [ "$prc" = 1 ] || { MSG="uid $ou can reach the store (or the answer was not a refusal)"; return 1; }
+    done
+  done
+}
+# sp_attach NAME: the vyre container joins the Space's network (with the alias the store calls it by), then the rule goes in. Both live in that container's
+# namespace and are lost when it is recreated, so this runs at every `up` and after every update.
+sp_attach() {
+  n=$1; net="vyre-$n-twenty_store"
+  hdock network inspect "$net" >/dev/null 2>&1 || { MSG="the Space's network does not exist"; return 1; }
+  if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
+    hdock network connect --alias "vyre-$n" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
+  fi
+  sp_fw_apply "$n"
+}
+# sp_fw_del NAME: only while no container of the project runs; removes exactly the rules carrying vyre:<name>, found by listing the chain, in the namespace of the pid current now.
+sp_fw_del() {
+  n=$1
+  if sp_running "$n"; then MSG="the Space is running; stop or down it first"; return 1; fi
+  pid=$(sp_pid) || { MSG="nothing to remove: the vyre container is not running"; return 0; }
+  for fam in iptables ip6tables; do
+    lines=$(timeout 20 nsenter -t "$pid" -n "$fam" -w -S OUTPUT 2>/dev/null | grep -F -- "--comment vyre:$n -j REJECT" || true)
+    [ -n "$lines" ] || continue
+    printf '%s\n' "$lines" | while IFS= read -r l; do
+      printf '%s\n' "$l" | grep -Eqx -- "-A OUTPUT -d [0-9a-f:./]+ -m owner ! --uid-owner $DAEMON_UID -m comment --comment vyre:$n -j REJECT( --reject-with [a-z0-9-]+)?" || continue
+      rest=${l#-A OUTPUT }
+      set -f
+      # shellcheck disable=SC2086 # the words of a line that matched the strict pattern above
+      timeout 20 nsenter -t "$pid" -n "$fam" -w -D OUTPUT $rest >/dev/null 2>&1 || true
+      set +f
+    done
+    if timeout 20 nsenter -t "$pid" -n "$fam" -w -S OUTPUT 2>/dev/null | grep -qF -- "--comment vyre:$n -j REJECT"; then MSG="a firewall rule could not be removed"; return 1; fi
+  done
+}
+# sp_secrets NAME: made once, by root, kept 0600 in root's folder; the daemon never reads them (RH-1).
+sp_secrets() {
+  f=$SP_PRIV/spaces/$1/secrets.env
+  [ -f "$f" ] && [ ! -L "$f" ] && return 0
+  t=$(mktemp "$f.XXXXXX") || return 1
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  printf 'PG_PASSWORD=%s\nREDIS_PASSWORD=%s\nAPP_SECRET=%s\nENCRYPTION_KEY=%s\n' "$(sp_rnd)" "$(sp_rnd)" "$(sp_rnd)" "$(sp_rnd)" >"$t" && chmod 600 "$t" && rename_over "$t" "$f" || { rm -f "$t"; return 1; }
+}
+sp_rnd() { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n'; }
+# sp_lint FILE NAME: a closed check of the regenerated compose: only the keys the generator uses, only the Space's own named volumes and the one empty folder,
+# only the images root recorded, the network internal. Anything else is a refusal, so a bug in the generator cannot become host access.
+sp_lint() {
+  awk -v name="$2" '
+  function bad(m) { print "lint: " m; ok = 0 }
+  BEGIN { ok = 1; split("image restart mem_limit memswap_limit networks volumes environment depends_on healthcheck command", a, " "); for (i in a) allowed[a[i]] = 1
+    vol["      - server-data:/app/packages/twenty-server/.local-storage"] = 1; vol["      - ./empty-front:/app/packages/twenty-server/dist/front:ro"] = 1; vol["      - db-data:/var/lib/postgresql/data"] = 1
+    split("server worker db redis", s, " "); for (i in s) svc["  " s[i] ":"] = 1 }
+  NR == FNR { img[$0] = 1; next }
+  /^#/ || /^$/ { next }
+  /^[a-z]/ { k = $1; sub(/:.*/, "", k); if (k != "name" && k != "services" && k != "networks" && k != "volumes") bad("top-level key " k)
+    if (k == "name" && $0 != "name: vyre-" name "-twenty") bad("the project name"); top = k; key = ""; next }
+  top == "services" && /^  [a-z]/ { if (!($0 in svc)) bad("service " $0); next }
+  top == "services" && /^    [a-z_]+:/ { k = $1; sub(/:.*/, "", k); if (!(k in allowed)) bad("service key " k); key = k
+    if (k == "restart" && $0 != "    restart: \"no\"") bad("a restart policy")
+    if (k == "image") { v = $0; sub(/^    image: /, "", v); if (!(v in img)) bad("an image root did not record") } next }
+  top == "services" && /^      / { if (key == "volumes" && !($0 in vol)) bad("a volume entry"); next }
+  top == "networks" { if ($0 != "  store:" && $0 != "    internal: true") bad("the networks block"); next }
+  top == "volumes" { if ($0 != "  db-data:" && $0 != "  server-data:" && $0 != "    name: vyre-" name "-twenty_db-data" && $0 != "    name: vyre-" name "-twenty_server-data") bad("the volumes block"); next }
+  { bad("a line outside every block") }
+  END { exit ok ? 0 : 1 }' "$SP_PRIV/images" "$1"
+}
+# sp_run_gen NAME OUT: the generator, inside the image root recorded (by id): unprivileged, read-only, no network, no mounts, stdout only, capped at 64 KB.
+sp_run_gen() {
+  img=$(head -n 1 "$SP_PRIV/image" 2>/dev/null || true)
+  printf '%s\n' "$img" | grep -Eqx 'sha256:[0-9a-f]{64}' || return 1
+  mem=$(head -n 1 "$SP_PRIV/memory" 2>/dev/null || true)
+  case "$mem" in small|standard) ;; *) mem=small ;; esac
+  # shellcheck disable=SC2016 # the script is node's, not the shell's
+  { timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user 65534:65534 --pids-limit 64 --memory 128m \
+      --entrypoint node "$img" -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>process.stdout.write(m.composeFile({space:process.argv[1],memory:process.argv[2]})))' "$1" "$mem" 2>/dev/null || true; } | head -c 65537 >"$2"
+  sz=$(wc -c <"$2")
+  [ "$sz" -ge 200 ] && [ "$sz" -le 65536 ] && head -n 1 "$2" | grep -q '^# Generated by Vyre'
+}
+sp_gen() {
+  n=$1; d=$SP_PRIV/spaces/$n
+  [ -s "$SP_PRIV/images" ] || { MSG="root has no recorded image for the helper; run sudo vyre space-helper install"; return 1; }
+  t=$(mktemp "$d/compose.XXXXXX") || return 1
+  if ! sp_run_gen "$n" "$t"; then rm -f "$t"; MSG="the compose file could not be regenerated"; return 1; fi
+  # RH-7: a store never starts by itself. A restart policy would bring it up after a reboot or a Docker restart with no rule in the (new) vyre container; only `up` starts a Space.
+  sed 's/^    restart: unless-stopped$/    restart: "no"/' "$t" >"$t.r" && mv "$t.r" "$t"
+  if ! l=$(sp_lint "$t" "$n"); then rm -f "$t"; MSG="the regenerated compose file was refused: $(printf '%s' "$l" | head -n 1)"; return 1; fi
+  chmod 600 "$t"; mkdir -p "$d/empty-front"; chmod 755 "$d/empty-front"
+  rename_over "$t" "$d/compose.yml"
+}
+# space_helper_record: the image the helper regenerates from is the one the vyre container runs now (an update has verified it), recorded by id, and the
+# image names the generator may put in a compose file are recorded with it. Run at install and after every healthy update.
+space_helper_record() {
+  id=$(hdock inspect -f '{{.Image}}' "$CTR_NAME" 2>/dev/null || true)
+  printf '%s\n' "$id" | grep -Eqx 'sha256:[0-9a-f]{64}' || { echo "vyre: the vyre container's image id could not be read" >&2; return 1; }
+  t=$(mktemp "$SP_PRIV/probe.XXXXXX") || return 1
+  printf '%s\n' "$id" >"$SP_PRIV/image.new" && rename_over "$SP_PRIV/image.new" "$SP_PRIV/image"
+  if ! sp_run_gen imgprobe "$t"; then rm -f "$t"; echo "vyre: the compose generator did not run in the image" >&2; return 1; fi
+  grep '^    image: ' "$t" | sed 's/^    image: //' | sort -u >"$SP_PRIV/images.new" && rename_over "$SP_PRIV/images.new" "$SP_PRIV/images"
+  rm -f "$t"
+}
+sp_up() {
+  n=$1
+  if ! sp_known "$n"; then
+    [ "$(find "$SP_PRIV/spaces" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)" -lt "$SPACES_CAP" ] || { MSG="too many Spaces on this server"; return 1; }
+    # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+    mkdir -p "$SP_PRIV/spaces/$n" && chmod 700 "$SP_PRIV/spaces/$n" && : >"$SP_PRIV/spaces/$n/record" || { MSG="could not make the Space's folder"; return 1; }
+  fi
+  sp_secrets "$n" || { MSG="could not make the Space's secrets"; return 1; }
+  sp_gen "$n" || return 1
+  sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
+  # Joined and firewalled BEFORE the store starts, so it never runs unfirewalled; proved after, and stopped again if the proof fails.
+  sp_attach "$n" || return 1
+  sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
+  if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
+  MSG="the store is up and the agents are firewalled from it"
+}
+sp_stop() { sp_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }; MSG=stopped; }
+sp_down() {
+  hdock network disconnect -f "vyre-$1-twenty_store" "$CTR_NAME" >/dev/null 2>&1 || true
+  sp_dc "$1" down >/dev/null 2>&1 || { MSG="down failed"; return 1; }
+  MSG="removed; the data is kept (purge is a command on the server)"
+}
+sp_fw_add() {
+  sp_attach "$1" || return 1
+  if sp_running "$1"; then sp_probe "$1" || return 1; fi
+  MSG="the firewall is in place"
+}
+# sp_read_claimed FILE: LINE is the request, or nothing and a reason in MSG. stat of the claimed copy first; only then is it read.
+sp_read_claimed() {
+  c=$1
+  st=$(stat -c '%F|%u|%h|%s|%a|%Y' "$c" 2>/dev/null) || { MSG="unreadable"; return 1; }
+  IFS='|' read -r ft uid nl sz mode mt <<STAT
+$st
+STAT
+  case "$ft" in "regular file") ;; *) MSG="not a regular file"; return 1 ;; esac
+  [ "$uid" = "$DAEMON_UID" ] || { MSG="not made by the daemon's uid"; return 1; }
+  [ "$nl" = 1 ] || { MSG="more than one link"; return 1; }
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  [ "$sz" -ge 2 ] && [ "$sz" -le 64 ] || { MSG="wrong size"; return 1; }
+  [ $((0$mode & 077)) -eq 0 ] || { MSG="mode allows group or others"; return 1; }
+  [ $(($(date +%s) - mt)) -le 300 ] || { MSG="stale"; return 1; }
+  [ "$(LC_ALL=C tr -d '\040-\176\n' <"$c" | wc -c)" = 0 ] || { MSG="bytes outside printable ASCII"; return 1; }
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  [ "$(wc -l <"$c")" = 1 ] && [ "$(tail -c 1 "$c" | od -An -tx1 | tr -d ' \n')" = 0a ] || { MSG="not exactly one line"; return 1; }
+  LINE=$(cat -- "$c")
+  printf '%s\n' "$LINE" | grep -Eqx "(up|stop|down|firewall-add|firewall-del) $SP_NAME_RE" || { MSG="not a request the helper knows"; return 1; }
+}
+# sp_do ID VERB NAME: one request, with its status before and after, one Space at a time, and the up lane rate limited.
+sp_do() {
+  id=$1; v=$2; n=$3; MSG=""
+  case "$n" in *-twenty*) sp_status "$id" failed "that name is not allowed"; sp_log "refused $v: a name with -twenty"; return 0 ;; esac
+  if [ "$v" != up ] && ! sp_known "$n"; then sp_status "$id" failed "no such Space"; sp_log "refused $v: unknown Space"; return 0; fi
+  if [ "$v" = up ]; then
+    mn=$(($(date +%s) / 60)); r=$SP_PRIV/rate-up; last=$(cat "$r" 2>/dev/null || true); cnt=0
+    case "$last" in "$mn "*) cnt=${last#* } ;; esac
+    case "$cnt" in ""|*[!0-9]*) cnt=0 ;; esac
+    if [ "$cnt" -ge "$SPACES_UP_PER_MIN" ]; then sp_status "$id" busy "too many up requests this minute"; sp_log "busy: up rate"; return 0; fi
+    printf '%s %s\n' "$mn" $((cnt + 1)) >"$r"
+  fi
+  lk=$SP_PRIV/lock-$n
+  if [ -d "$lk" ] && [ -n "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rmdir "$lk" 2>/dev/null || true; fi
+  mkdir "$lk" 2>/dev/null || { sp_status "$id" busy "that Space is busy"; sp_log "busy: $v"; return 0; }
+  sp_status "$id" running "$v"
+  rc=0
+  case "$v" in up) sp_up "$n" || rc=1 ;; stop) sp_stop "$n" || rc=1 ;; down) sp_down "$n" || rc=1 ;; firewall-add) sp_fw_add "$n" || rc=1 ;; firewall-del) sp_fw_del "$n" || rc=1 ;; esac
+  rmdir "$lk" 2>/dev/null || true
+  if [ "$rc" = 0 ]; then sp_status "$id" ok "${MSG:-done}"; sp_log "ok $v"; else sp_status "$id" failed "${MSG:-failed}"; sp_log "failed $v: ${MSG:-}"; fi
+}
+# space_helper_run: what the path unit runs, as root.
+space_helper_run() {
+  umask 077; LC_ALL=C; export LC_ALL
+  if ! sp_dirs_ok; then echo "vyre: $SPACES_ROOT (or a folder above it) is not as the Space helper needs it; nothing was done" >&2; exit 0; fi
+  set_root_run
+  mkdir -p "$SP_PRIV/claim" "$SP_PRIV/docker-config" 2>/dev/null; chmod 700 "$SP_PRIV/claim" "$SP_PRIV/docker-config" 2>/dev/null || true
+  # A request claimed by a run that did not finish is answered "interrupted", never replayed.
+  for c in "$SP_PRIV"/claim/req-*; do
+    [ -e "$c" ] || continue
+    b=${c##*/}; sp_status "${b#req-}" failed "interrupted"; rm -f -- "$c"
+  done
+  n=0; cleanup_q=""; other_q=""
+  for f in "$SP_SPOOL"/* "$SP_SPOOL"/.[!.]*; do
+    [ -e "$f" ] || [ -L "$f" ] || continue
+    b=${f##*/}; h=${b#req-}
+    if [ "$h" = "$b" ] || [ "${#h}" != 32 ]; then rm -rf -- "$f" 2>/dev/null || true; sp_log "dropped an entry that is not a request"; continue; fi
+    case "$h" in *[!0-9a-f]*) rm -rf -- "$f" 2>/dev/null || true; sp_log "dropped an entry that is not a request"; continue ;; esac
+    n=$((n + 1))
+    if [ "$n" -gt "$SPACES_SPOOL_CAP" ]; then rm -f -- "$f" 2>/dev/null || true; sp_log "dropped: spool over its cap"; continue; fi
+    # Claimed by rename (which never follows a link at the last name) into a folder only root can use, then looked at there.
+    mv -- "$f" "$SP_PRIV/claim/$b" 2>/dev/null || continue
+    if sp_read_claimed "$SP_PRIV/claim/$b"; then
+      v=${LINE%% *}; nm=${LINE#* }
+      case "$v" in stop|down|firewall-del) cleanup_q="$cleanup_q $h:$v:$nm" ;; *) other_q="$other_q $h:$v:$nm" ;; esac
+    else
+      sp_status "$h" failed "refused: $MSG"; sp_log "refused: $MSG"; rm -f -- "$SP_PRIV/claim/$b"
+    fi
+  done
+  # The cleanup lane first, so a flood of up never delays a stop, a down or a firewall-del.
+  for q in $cleanup_q $other_q; do
+    h=${q%%:*}; r=${q#*:}; v=${r%%:*}; nm=${r#*:}
+    sp_do "$h" "$v" "$nm"
+    rm -f -- "$SP_PRIV/claim/req-$h"
+  done
+  [ -z "$cleanup_q$other_q" ] || sleep 1
+  exit 0
+}
+# space_helper_reattach: after an update the vyre container is a new one with no network joins and no rules: every recorded Space whose containers still run is
+# joined and firewalled again and proved. A Space that fails is stopped (never left running unfirewalled) and said.
+space_helper_reattach() {
+  [ -s "$SP_PRIV/images" ] || return 0
+  for r in "$SP_PRIV"/spaces/*/record; do
+    [ -f "$r" ] || continue
+    d=${r%/record}; n=${d##*/}
+    printf '%s\n' "$n" | grep -Eqx "$SP_NAME_RE" || continue
+    sp_running "$n" || continue
+    MSG=""
+    if ! { sp_attach "$n" && sp_probe "$n"; }; then
+      sp_dc "$n" stop >/dev/null 2>&1 || true
+      echo "vyre: the Space $n was stopped: ${MSG:-its firewall could not be proved} (ask for up again once the server is healthy)" >&2
+      sp_log "stopped after update: ${MSG:-}"
+    fi
+  done
+}
+# space_helper install|remove|status: the path unit, root's. DirectoryNotEmpty on the spool; trigger limits off, so a flood cannot disable the unit that does
+# the cleanup (the helper itself throttles).
+space_helper() {
+  units=$SYSTEMD_DIR; un=$SPACES_UNIT
+  case "$un" in *[!A-Za-z0-9._-]*|"") die "the helper unit name is a plain unit name" ;; esac
+  case "${1:-status}" in
+    install)
+      # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+      command -v systemctl >/dev/null 2>&1 && { [ -d /run/systemd/system ] || [ -n "$SYSTEMD_SEAM" ]; } || { echo "vyre: this server has no systemd, so the Space helper is not installed"; return 0; }
+      if [ "$(id -u)" != 0 ] && [ -z "$SYSTEMD_SEAM" ]; then exec sudo -n "$WRAPPER" space-helper install; fi
+      own_ok "$WRAPPER" "$ROOT_UID" strict || die "$WRAPPER must be owned by root and not writable by others: the helper runs it as root"
+      sp_dirs; set_root_run
+      mkdir -p "$SP_PRIV/docker-config" && chmod 700 "$SP_PRIV/docker-config"
+      space_helper_record || die "the helper could not record the image it regenerates from; nothing was installed"
+      { printf '[Unit]\nDescription=Vyre Space helper, asked for by vyred\nStartLimitIntervalSec=0\n\n[Service]\nType=oneshot\nExecStart=%s space-helper-run\nTimeoutStartSec=3600\n' "$WRAPPER"; } >"$units/$un.service.new" && mv "$units/$un.service.new" "$units/$un.service"
+      { printf '[Unit]\nDescription=Vyre Space helper requests\nStartLimitIntervalSec=0\n\n[Path]\nDirectoryNotEmpty=%s\nUnit=%s.service\nTriggerLimitIntervalSec=0\n\n[Install]\nWantedBy=multi-user.target\n' "$SP_SPOOL" "$un"; } >"$units/$un.path.new" && mv "$units/$un.path.new" "$units/$un.path"
+      { printf '[Unit]\nDescription=Vyre Space helper, firewall after every start of the vyre container\nAfter=docker.service\nStartLimitIntervalSec=0\n\n[Service]\nExecStart=%s space-helper watch\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n' "$WRAPPER"; } >"$units/$un-watch.service.new" && mv "$units/$un-watch.service.new" "$units/$un-watch.service"
+      systemctl daemon-reload
+      systemctl enable --now "$un.path" >/dev/null 2>&1 || systemctl enable "$un.path"
+      systemctl enable --now "$un-watch.service" >/dev/null 2>&1 || systemctl enable "$un-watch.service"
+      printf '1\n' >"$SP_STATE/ready"
+      say "Spaces can be asked for from Vyre: $un.path watches $SP_SPOOL"
+      ;;
+    remove)
+      [ "$(id -u)" = 0 ] || [ -n "$SYSTEMD_SEAM" ] || exec sudo -n "$WRAPPER" space-helper remove
+      rm -f "$SP_STATE/ready"
+      systemctl disable --now "$un.path" >/dev/null 2>&1 || true
+      systemctl disable --now "$un-watch.service" >/dev/null 2>&1 || true
+      rm -f "$units/$un.path" "$units/$un.service" "$units/$un-watch.service"
+      systemctl daemon-reload 2>/dev/null || true
+      say "the Space helper is removed (the Spaces and their data are kept)"
+      ;;
+    watch)
+      # Event driven, not polling: every start of the vyre container (a restart outside the wrapper, a reboot, a Docker restart) gets its Spaces joined and firewalled
+      # again, and a Space that cannot be proved is stopped (RH-7). The one pass at the top covers a boot where the container is already up.
+      [ "$(id -u)" = 0 ] || [ -n "$SYSTEMD_SEAM" ] || exec sudo -n "$WRAPPER" space-helper watch
+      sp_dirs_ok || die "$SPACES_ROOT is not as the Space helper needs it"
+      set_root_run
+      while :; do
+        space_helper_reattach
+        hdock events --filter "container=$CTR_NAME" --filter event=start --format '{{.ID}}' 2>/dev/null | while IFS= read -r _; do sleep 2; space_helper_reattach; done
+        [ "$SPACES_WATCH_ONCE" != 1 ] || break
+        sleep 5
+      done
+      ;;
+    reattach)
+      # Root's: join and firewall again every Space that still runs, after the vyre container was recreated by something other than an update.
+      [ "$(id -u)" = 0 ] || [ -n "$SYSTEMD_SEAM" ] || exec sudo -n "$WRAPPER" space-helper reattach
+      sp_dirs_ok || die "$SPACES_ROOT is not as the Space helper needs it"
+      set_root_run; space_helper_reattach
+      ;;
+    status)
+      if [ -f "$units/$un.path" ]; then say "the Space helper is installed ($un.path)"; else say "the Space helper is not installed"; fi
+      ;;
+    *) die "vyre space-helper install|remove|status|reattach|watch" ;;
+  esac
+}
+# admin ACTION [TARGET]: the ONE path for a destructive or irreversible act (RH-2). Root, on a terminal, with the plain consequence printed and an exact word typed.
+# It is not a spool verb and the daemon cannot reach it. Actions are a closed list.
+admin() {
+  if [ "$(id -u)" != 0 ] && [ -z "$SYSTEMD_SEAM" ]; then own_ok "$WRAPPER" "$ROOT_UID" strict || die "$WRAPPER is not root's"; exec sudo "$WRAPPER" admin "$@"; fi
+  [ "$ADMIN_NOTTY" = 1 ] || { [ -t 0 ] && [ -t 1 ]; } || die "vyre admin needs a terminal: it asks you to type a word, and a pipe cannot answer"
+  umask 077
+  act=${1:-}; tgt=${2:-}
+  case "$act" in
+    purge-space)
+      printf '%s\n' "$tgt" | grep -Eqx "$SP_NAME_RE" || die "vyre admin purge-space SPACE"
+      sp_known "$tgt" || die "this server has no Space named $tgt"
+      word="purge-space $tgt"
+      echo "This destroys the Space $tgt's records store: its database and files are deleted, and the keys that opened them. It cannot be undone."
+      ;;
+    fscrypt-enable)
+      word="fscrypt"
+      echo "This turns on file encryption for this server's disk. It cannot be undone, and it changes nothing else."
+      ;;
+    wipe)
+      word="wipe"
+      echo "This destroys everything on this server: every Space's records store and its keys, the vault and its keys, the sealing key, the database backups and the previous release kept for a rollback, then starts a new, empty Vyre with no owner. It cannot be undone."
+      ;;
+    *) die "vyre admin wipe | purge-space SPACE | fscrypt-enable" ;;
+  esac
+  printf 'To go on, type exactly: %s\n> ' "$word"
+  IFS= read -r typed || die "nothing was typed; nothing was done"
+  [ "$typed" = "$word" ] || die "that was not the word; nothing was done"
+  [ -d "$SP_PRIV" ] || mkdir -p "$SP_PRIV"
+  sp_log "admin $act ${tgt:-} by ${SUDO_USER:-root}"
+  case "$act" in
+    wipe)
+      # The daemon is stopped, then vault's wipeHome runs from a one-off container of the SAME image (the home is a volume; wipeHome takes the home's lock and refuses while
+      # vyred or the sealer runs), then a new Space identity is made offline and the daemon starts unowned. Nothing here is a daemon tool and nothing comes from the daemon.
+      set_root_run; prepare_run
+      compose run --rm --no-deps -T --entrypoint test vyre -f /opt/vyre/scripts/admin-wipe.mjs >/dev/null 2>&1 || die "this release has no admin-wipe step (scripts/admin-wipe.mjs in the image); nothing was changed"
+      compose stop vyre >/dev/null 2>&1 || die "the daemon could not be stopped; nothing was changed"
+      for r in "$SP_PRIV"/spaces/*/record; do
+        [ -f "$r" ] || continue
+        d=${r%/record}; nm=${d##*/}
+        printf '%s\n' "$nm" | grep -Eqx "$SP_NAME_RE" || continue
+        sp_dc "$nm" down -v --remove-orphans >/dev/null 2>&1 || die "the store of the Space $nm could not be removed; the daemon is stopped and nothing else was destroyed. Fix that and run this again."
+        MSG=""; sp_fw_del "$nm" >/dev/null 2>&1 || true
+        rm -rf -- "${d:?}"
+      done
+      compose run --rm --no-deps -T --entrypoint node vyre /opt/vyre/scripts/admin-wipe.mjs || die "the vault and sealing wipe failed; the daemon is stopped. Nothing was started. Fix the line above and run this again."
+      # What the host kept: database backups (they hold keys) and the releases set aside for a rollback.
+      for f in "$UPD_PRIV/backups" "$UPD_PRIV/release.prev" "$UPD_PRIV/release.bad" "$UPD_PRIV/src.prev" "$SRCDIR.prev" "$BOXPREV"; do
+        [ -e "$f" ] || [ -L "$f" ] || continue
+        find "$f" -type f -exec sh -c 'for x; do n=$(wc -c <"$x"); head -c "$((n > 32 ? n : 32))" /dev/urandom >"$x" 2>/dev/null || true; done' sh {} + 2>/dev/null || true
+        rm -rf -- "$f"
+      done
+      compose up -d >/dev/null 2>&1 || die "the wipe is done but the daemon did not start; run: vyre up"
+      say "wiped. Vyre is running again, new and empty, with no owner. Pair a device to claim it."
+      ;;
+    purge-space)
+      set_root_run
+      sp_dc "$tgt" down -v --remove-orphans >/dev/null 2>&1 || die "the Space's containers and volumes could not be removed; nothing else was deleted"
+      sp_fw_del "$tgt" || echo "vyre: the firewall rule for $tgt was left: ${MSG:-}" >&2
+      rm -rf -- "${SP_PRIV:?}/spaces/$tgt"
+      say "the Space $tgt is purged"
+      ;;
+    fscrypt-enable)
+      base=$(head -n 1 "$SP_PRIV/lending-base" 2>/dev/null || true)
+      [ -n "$base" ] || die "no lending folder is recorded on this server, so there is nothing to encrypt"
+      fi=$(findmnt -no FSTYPE,SOURCE --target "$base" 2>/dev/null || true)
+      ftype=${fi%% *}; dev=${fi#* }
+      case "$ftype" in ext4) ;; *) die "this disk is $ftype, not ext4: Vyre uses its slower method by itself" ;; esac
+      case "$dev" in /dev/*) ;; *) die "the disk is not a block device under /dev; nothing was done" ;; esac
+      if tune2fs -l "$dev" 2>/dev/null | grep -q 'Filesystem features:.*encrypt'; then say "file encryption is already on"; return 0; fi
+      tune2fs -O encrypt "$dev" || die "tune2fs did not turn it on"
+      say "file encryption is on"
+      ;;
+  esac
+}
+
 case "${1:-}" in up|update) expire_code ;; esac
 case "${1:-}" in
   up)
@@ -1155,6 +1631,17 @@ case "${1:-}" in
     ;;
   update-from-request)
     update_from_request
+    ;;
+  space-helper-run)
+    space_helper_run
+    ;;
+  space-helper)
+    shift
+    space_helper "$@"
+    ;;
+  admin)
+    shift
+    admin "$@"
     ;;
   updater)
     shift
