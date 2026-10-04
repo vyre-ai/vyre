@@ -76,3 +76,21 @@ test("a named agent acts only within its own grants: not another project, not th
     assert.ok(!rec.agent || rec.agent === "kit", `the new thread did not borrow the assistant: ${JSON.stringify(rec.agent)}`);
   }
 });
+
+test("SW-1: an agent's session starts only inside a mapped project's folder: not a folder in no project, not / or /etc, not through a symlink or ..", { timeout: 120_000 }, async t => {
+  const { work, p1, asAssistant, asKit, call } = await rig(t);
+  const start = (/** @type {any} */ input, /** @type {any} */ meta = asAssistant, caller = "mcp:agent:assistant") => call("threads.start", { prompt: "x", surface: "deck", ...input }, caller, meta);
+  const sub = path.join(p1, "sub"); fs.mkdirSync(sub);
+  const link = path.join(p1, "to-etc"); fs.symlinkSync("/etc", link);
+  const outsideLink = path.join(p1, "to-work"); fs.symlinkSync(work, outsideLink);
+  for (const [what, cwd] of [["a folder in no project", work], ["/", "/"], ["/etc", "/etc"], ["a symlink out of the project", link], ["a symlink to another folder", outsideLink], ["a .. out of the project", path.join(p1, "..", path.basename(work))], ["a folder that is not there", path.join(p1, "nope")]]) {
+    const r = await start({ cwd });
+    assert.equal(r.error && r.error.code, "denied", `${what}: ${JSON.stringify(r)}`);
+  }
+  assert.ok(!(await start({ cwd: p1 })).error, "the project's own folder");
+  assert.ok(!(await start({ cwd: sub })).error, "a folder inside it");
+  assert.ok(!(await start({ project: "one" })).error, "the project by name");
+  assert.equal((await start({})).error?.code, "denied", "no folder and no project is not a place");
+  // a person's own start keeps today's rule
+  assert.ok(!(await call("threads.start", { cwd: work, prompt: "mine", surface: "deck" }, "cli")).error, "the person may start anywhere they could before");
+});

@@ -1012,6 +1012,22 @@ export class Switchboard {
    * nothing another will load and another user cannot pre-create it. A leftover or a link at the path is removed first. Removed when the session's socket closes.
    * @param {string} id
    */
+  /**
+   * Whether a model agent's session may start where it asks: the folder (or the named project's home) must resolve, through symlinks and `..`, inside a mapped project's home or workspace folder.
+   * @param {unknown} project @param {unknown} cwd @returns {Promise<{ ok: boolean, why: string }>}
+   */
+  async projectFolders(project, cwd) {
+    const r = /** @type {any} */ (await this.deps.call("projects.list", {}).catch(() => null));
+    const rows = r && r.data && Array.isArray(r.data.projects) ? r.data.projects : (r && Array.isArray(r.data) ? r.data : []);
+    const roots = [];
+    for (const p of rows) for (const f of [p.home, ...(Array.isArray(p.workspaces) ? p.workspaces.map((/** @type {any} */ w) => (w && w.path) || w) : [])]) { try { if (typeof f === "string" && f) roots.push(fs.realpathSync(f)); } catch { /* gone */ } }
+    const want = typeof cwd === "string" && cwd ? cwd : (() => { const p = rows.find((/** @type {any} */ x) => x.slug === project || x.name === project); return p ? p.home : ""; })();
+    if (!want) return { ok: false, why: "name a project or a folder inside one: an agent's session does not start anywhere else" };
+    let real; try { real = fs.realpathSync(String(want)); } catch { return { ok: false, why: "that folder does not exist" }; }
+    const inside = roots.some(root => real === root || real.startsWith(root.endsWith(path.sep) ? root : root + path.sep));
+    return inside ? { ok: true, why: "" } : { ok: false, why: "an agent's session starts only inside a project folder it can see" };
+  }
+
   sessionTemp(id) {
     const dir = sessionTempDir(String(this.deps.root || ""), id);
     try { const st = fs.lstatSync(dir); if (st.isSymbolicLink() || !st.isDirectory()) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* not there */ }
@@ -3353,6 +3369,12 @@ export default {
         // A model session with no named agent behind it has no grants of its own to act under (a model caller is never the person): it starts nothing. The assistant and the agents the person made are named
         // (meta.agent, from the daemon's own record of the session), and a first-party module acts for its own purpose.
         if (modelCall && !firstParty && !agent) throw Object.assign(new Error("an unnamed model session starts no sessions: it has no agent grants of its own to act under"), { code: "denied" });
+        // SW-1: "every project" is every MAPPED project, not the disk. A named agent's (the assistant's included) session starts in a folder that, after symlinks and `..`, lies inside a project it is
+        // granted (its home or a workspace folder); anything else, `/` and `/etc` included, is refused. A person's own threads.start keeps today's rule.
+        if (modelCall && !firstParty && agent) {
+          const folders = await sb.projectFolders(i.project, i.cwd);
+          if (!folders.ok) throw Object.assign(new Error(folders.why), { code: "denied" });
+        }
         const rest = modelCall && !firstParty ? Object.fromEntries(Object.entries(restAll).filter(([k]) => START_FIELDS.has(k))) : restAll;
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
