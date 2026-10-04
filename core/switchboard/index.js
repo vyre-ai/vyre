@@ -2901,8 +2901,9 @@ export class Switchboard {
     return { watch: id, fired: false };
   }
 
-  unwatch(id) {
-    return { removed: Number(this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(String(id)).changes) > 0 };
+  /** @param {string} id @param {string|null} [by] a model caller removes only the watches it made itself */
+  unwatch(id, by = null) {
+    return { removed: Number((by ? this.db.prepare("DELETE FROM threads_watches WHERE id = ? AND by = ?").run(String(id), by) : this.db.prepare("DELETE FROM threads_watches WHERE id = ?").run(String(id))).changes) > 0 };
   }
 
   /** An event a watch may be waiting for: emit thread.watched for each such watch, once. */
@@ -3022,6 +3023,10 @@ export function surfaceFor(input, caller, owner) {
   else s = asked && asked !== c ? `via:${c || "vyre"}` : (c || "vyre");
   return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
 }
+
+/** The person's own surfaces (deck admits the owner's devices); a model reaches only the tools below that list "mcp" and "harness", every one scoped by sessionMay or its own check. */
+const SB_PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
+const SB_MODEL = [...SB_PEOPLE, "module", "mcp", "harness"];
 
 export const fromLink = caller => /^link:/.test(String(caller || ""));
 
@@ -3249,11 +3254,15 @@ export default {
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
     const isAdminCall = (/** @type {any} */ peer) => !peer || !(peer.login || peer.stableId || peer.node) || String(peer.login || "") === String(((ctx.config && ctx.config.network) || {}).owner || "\u0000");
 
+    // The person's own surface may also pick an agent or an account for the new thread (an agent's credentials, a scope-checked account); a model never does, whatever its schema lists.
+    const PERSON_START_KEYS = ["agent", "agent_kind", "account"];
+    const START_KEYS = ["project", "cwd", "prompt", "name", "model", "surface", "append", "purpose", "provider", "effort", "lean"];
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
+        agent: str, agent_kind: str, account: str,
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
         chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
@@ -3267,13 +3276,15 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, ...rest } = i;
+        const { mentions, pasted, starter: _claimed, ...rest0 } = i;
+        // Only these keys reach launch from a client (reviewer-2 HD-2): resume, fork, agent, agent_kind, env, scope, account, kernelTurn and the like are a module's own to pass. A module's own call is not narrowed.
+        const rest = String(caller || "").startsWith("module:") ? rest0 : Object.fromEntries(Object.entries(rest0).filter(([k]) => START_KEYS.includes(k) || (PERSON_START_KEYS.includes(k) && isPerson(caller))));
         const plain = /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) && !thread && !agent;
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
         return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
-      });
+      }, SB_MODEL);
 
     /**
      * On the box, the person's words for a thread the box does not have go to the paired Mac that
@@ -3421,7 +3432,7 @@ export default {
         const opts = { ...(kernelTurnOf(i, caller, firstParty) ? { kernelTurn: kernelTurnOf(i, caller, firstParty) } : {}), queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images), uuid, ...(note ? { note } : {}), ...(personTurn(caller) ? { author: authorOf(peer) } : {}) };
         const once = over && !sb.sentBefore(uuid) ? await sb.sendOnce(i.thread, i.text, surfaceOf(i, caller), over, opts) : null;
         return once || sb.send(i.thread, i.text, surfaceOf(i, caller), opts);
-      });
+      }, [...SB_MODEL, "link:box"]);
 
     tool("threads.continue-here", "Carry a paired Mac's session on in a new thread on this box: its conversation comes over the link (or from the last synced copy when the Mac is asleep), a box session on the same provider starts with that history as context, and the new thread's id comes back. The Mac's own session is untouched and none of its files come over. A person's own surface only; logged as thread.continued.",
       { type: "object", required: ["thread"], properties: { thread: { type: "string", description: "The Mac session's id." }, machine: { type: "string", description: "The paired Mac's name or id, when more than one could hold it." }, surface: str } },
@@ -3468,7 +3479,7 @@ export default {
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
+      async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); }, SB_MODEL);
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
@@ -3523,19 +3534,19 @@ export default {
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
-      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); });
+      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.watch(i, String(caller || "")); }, SB_MODEL);
 
     tool("threads.unwatch", "Stop waiting on a watch.",
       { type: "object", required: ["watch"], properties: { watch: str } },
-      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch); });
+      async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch, /^(?:mcp|harness)(?::|$)/.test(String(caller || "")) ? String(caller) : null); }, SB_MODEL);
 
     tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message; open questions of that turn are cancelled.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
+      async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); }, SB_MODEL);
 
     tool("threads.switch", "Continue a thread on another provider (and account), between turns: the same thread, folder and files, the new provider given a brief of what was said. A person or an agent that may act on the thread can do it. provider: claude, codex or grok; account: one granted to this project or agent (never a guess between two); text: the next message to send there.",
       { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: str, account: str, model: str, text: str } },
-      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
+      async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); }, SB_MODEL);
 
     tool("threads.unqueue", "Take back queued words before they are handed over: one (queued: the queued_id threads.send gave, or thread.queued's queued) or all of the thread's. Only a person's surface can.",
       { type: "object", required: ["thread"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
@@ -3680,7 +3691,7 @@ export default {
         guard(caller, "fork sessions");
         if (i.at) return sb.forkAt(i.thread, i.at, { prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
         return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) });
-      });
+      }, SB_MODEL);
 
     tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking), plan (read and plan only) or bypassPermissions (\"Doesn't ask\": no questions; Vyre's security floor and the Gate still hold, and only in a session with Vyre's plugin). Only a person's surface can; no answer ever sets it.",
       { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
@@ -3703,7 +3714,7 @@ export default {
           if (!own && !granted) throw Object.assign(new Error("an agent deletes its own threads, or threads of a project it is granted"), { code: "denied" });
         }
         return sb.delete(i.thread);
-      });
+      }, SB_MODEL);
 
     // The same reach as delete: a person, the assistant, or an agent for its own and its granted projects' threads.
     const mayReach = (meta, rec) => {
@@ -3715,14 +3726,14 @@ export default {
     };
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
+      async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); }, SB_MODEL);
     tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); });
+      async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); }, SB_MODEL);
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
+      async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); }, SB_MODEL);
 
     // For other modules (teammates, ADR 0031): put words in a thread that never steer: a new turn
     // when the thread is idle, else handed over when its running turn ends.
