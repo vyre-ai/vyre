@@ -71,6 +71,7 @@ Remove an agent's record and its spend. Refused while one of its threads is runn
 
 - Input:
   - `agent` string, required
+  - `id` string: The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `agents.history`
@@ -5575,6 +5576,14 @@ Whether this request is signed in as the person (a person session), and until wh
 
 - Input: none
 - Callers: any caller
+
+### `presence.person.strength`
+
+The strength of a live person session, for a module that relays a paired device's act to a person-only tool: { strength: one of STRENGTHS | null }. Only pluginagent asks.
+
+- Input:
+  - `id` string, required
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `presence.remove`
 

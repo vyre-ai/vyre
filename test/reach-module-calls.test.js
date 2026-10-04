@@ -101,3 +101,19 @@ test("a call with a computed tool name is only in a file on the reviewed list", 
   const stale = Object.keys(computed).filter(f => (counts[f] || 0) < computed[f].count).sort();
   assert.deepEqual(stale, [], "lower these counts in test/reach-computed-calls.json");
 });
+
+// A relay mark in a call's meta (`relayedBy`) would let a tool trust "the registry relayed this": only core/modules/index.js may ever write one (reviewer-3, plugin grant). Today nothing writes it; this keeps it that way.
+test("only core/modules/index.js may write a `relayedBy` mark", () => {
+  const bad = [];
+  for (const top of ["core", "modules", "local", "lib", "kernel", "harness"]) {
+    const dir = path.join(root, top);
+    if (!fs.existsSync(dir)) continue;
+    for (const f of files(dir)) {
+      if (!/\.m?js$/.test(f) || f.endsWith(".test.js")) continue;
+      const rel = path.relative(root, f).split(path.sep).join("/");
+      if (rel === "core/modules/index.js") continue;
+      if (/\brelayedBy\b/.test(fs.readFileSync(f, "utf8"))) bad.push(rel);
+    }
+  }
+  assert.deepEqual(bad, [], "only the registry marks a relayed call");
+});

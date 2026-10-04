@@ -1024,6 +1024,7 @@ generated: scripts/gen-docs-reference
 - `presence.person.start` tool, [explained](tools.md#presencepersonstart). 1 mention: concepts/presence.md [33](../concepts/presence.md#which-tools-need-it)
 - `presence.person.start-paired` tool, [explained](tools.md#presencepersonstart-paired). 1 mention: adr/0032-person-and-device.md [118](../adr/0032-person-and-device.md#2d-a-device-its-owner-paired-opens-its-person-session-at-pairing)
 - `presence.person.status` tool, [explained](tools.md#presencepersonstatus). No mentions.
+- `presence.person.strength` tool, [explained](tools.md#presencepersonstrength). No mentions.
 - `presence.proved` event, [explained](events.md#presence). 2 mentions: concepts/presence.md [91](../concepts/presence.md#what-a-tool-sees); adr/0004-presence.md [208](../adr/0004-presence.md#consequences)
 - `presence.refused` event, [explained](events.md#presence). 2 mentions: concepts/presence.md [91](../concepts/presence.md#what-a-tool-sees); adr/0004-presence.md [208](../adr/0004-presence.md#consequences)
 - `presence.remove` tool, [explained](tools.md#presenceremove). 5 mentions: concepts/presence.md [33](../concepts/presence.md#which-tools-need-it); adr/0004-presence.md [72, 127](../adr/0004-presence.md#layer-1--presence-proof-checked-by-vyred); adr/0018-mobile.md [103](../adr/0018-mobile.md#3--presence-on-the-phone-a-device-key-enrolled-with-the-decks-passkey), [158](../adr/0018-mobile.md#6--what-stays-on-the-phone)
