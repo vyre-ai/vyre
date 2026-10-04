@@ -732,6 +732,62 @@ export default {
         emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
         return { device: dev.eid, spaces: ids };
       });
+    tool("spaces.devices.list", "The same as spaces.devices.spaces, for the Device screen: the spaces a device of yours reaches, whether it is enrolled in each, and whether you lend it to that space.",
+      obj({ device: str }), async (i, meta) => {
+        const s = me();
+        const dev = await deviceOf(i.device, meta);
+        const out2 = [];
+        for (const row of spaces.all()) {
+          if (row.status !== "done") continue;
+          const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+          if (!m && row.createdBy !== s.id) continue;
+          const enrolled = await isEnrolled(dev.eid, row.id);
+          const l = await kv.get(`lend/${row.id}/${dev.eid}`);
+          out2.push({ space: row.id, name: row.name, label: row.label, displayName: row.displayName, role: m ? m.role : "owner", enrolled, removed: !enrolled, lent: Boolean(l && l.lent) });
+        }
+        return { device: { eid: dev.eid, label: dev.label || null, self: dev.eid === ownDeviceEid(meta) }, spaces: out2 };
+      });
+    // Lending a computer to a space is a grant STORED ON THE HOME (this module's own table, so it survives a restart), not a setting held by the screen. The first grant for a device in a space asks for the
+    // person's presence (Face ID); turning it off never does, and turning it on again after a first grant does not. Only the person whose device it is (it is on their identity list) switches it on; the
+    // space's owner may switch a lent device off.
+    const lendKey = (/** @type {string} */ space, /** @type {string} */ device) => `lend/${space}/${device}`;
+    const lendSync = (/** @type {string} */ key) => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(key)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
+    tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
+      obj({ space: str, device: str, on: { type: "boolean" } }, ["space", "device", "on"]), async (i, meta) => {
+        const s = me();
+        const row = spaceOf(i.space);
+        const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+        if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
+        await notRemoved(row.id, meta);
+        const key = lendKey(row.id, String(i.device));
+        const cur = await kv.get(key);
+        if (i.on !== true) {
+          // off: the person whose device it is, or an owner of the space
+          const owner = (m && m.role === "owner") || row.createdBy === s.id;
+          let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }
+          if (!mine && !(owner && cur)) throw refuse("That is not one of your devices.", "not_found");
+          if (!cur || !cur.lent) return { space: row.id, device: String(i.device), lent: false, first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
+          const next = { ...cur, lent: false, ended_at: now(), ended_by: s.id };
+          await kv.put(key, next);
+          emit("space.device-lent", { space: row.id, device: next.device, lent: false });
+          return { space: row.id, device: next.device, lent: false, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
+        }
+        const dev = await deviceOf(i.device, meta);
+        if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
+        const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
+        const next = { lent: true, device: dev.eid, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
+        await kv.put(key, next);
+        emit("space.device-lent", { space: row.id, device: dev.eid, lent: true });
+        return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
+      }, { presence: { summary: (/** @type {any} */ i) => `Lend this computer to ${i && i.space}`, when: (/** @type {any} */ i) => { if (!i || i.on !== true) return false; try { const row = spaceOf(i.space); const cur = lendSync(lendKey(row.id, String(i.device))); return !(cur && cur.first_grant_at); } catch { return true; } } } });
+    tool("spaces.devices.lend.status", "Whether a device of yours is lent to a space, when it was first lent and who allowed it.", obj({ space: str, device: str }, ["space", "device"]), async (i, meta) => {
+      const s = me();
+      const row = spaceOf(i.space);
+      const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+      if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
+      const cur = await kv.get(lendKey(row.id, String(i.device)));
+      return { space: row.id, device: String(i.device), lent: Boolean(cur && cur.lent), first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
+    });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
       async i => {
         // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
