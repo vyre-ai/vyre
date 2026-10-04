@@ -40,7 +40,7 @@ Scope: `records/` (the language, the Kits, the Stripe connector, the stand-in ga
 ## Done 4 Oct afternoon (resume 13:50Z)
 
 - Forget path: sqlite `persist.destroy` decrements kept stage counts, deletes the attribute row and cache entry in one savepoint (tests in kernel/store/sqlite.test.js). `records.forget` needs presence (stand-in header in tests), PERSON_ONLY for assistants, `records.forget.propose` makes a task; the answer carries sessions_mentioning, sealed_dropped, sealed_left, files_kept and the plain sentence. The store status line (`records_store` on /v1/health and `vyre status`) was already in 750f36420.
-- Open: records on a server-hosted space from a device (gateway-door routing, both stores); the 20k mixed-load table on a quiet box.
+- NEXT (paused 4 Oct by lead, wake on message): (4) records on a server-hosted space from a device (gateway-door routing, both stores); the 20k mixed-load table on a quiet box.
 
 ## Done 5 Oct (resume after the team restart)
 
