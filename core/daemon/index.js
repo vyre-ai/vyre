@@ -37,6 +37,7 @@ import { registryRules } from "../harness/rules.js";
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
+import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 
@@ -107,6 +108,21 @@ async function kernelSession(req, kernelOf) {
   const k = kernelOf ? kernelOf() : null;
   if (!k || !k.surfaces || typeof k.surfaces.verify !== "function") return null;
   try { await k.surfaces.verify(t); return t; } catch { return null; }
+}
+
+/** The kernel session of a plugin agent (Claude Code on this computer): one per agent and registry, opened by vyred through the same door a thread's is, renewed by its token function. Never handed to the client. @type {WeakMap<object, Map<string, () => Promise<string | undefined>>>} */
+const pluginTokensOf = new WeakMap();
+/** @param {any} registry @param {string} agent @returns {Promise<string | undefined>} */
+async function pluginToken(registry, agent) {
+  const open = registry.deps && registry.deps.kernelSession;
+  if (typeof open !== "function") return undefined;
+  let mine = pluginTokensOf.get(registry);
+  if (!mine) { mine = new Map(); pluginTokensOf.set(registry, mine); }
+  let f = mine.get(agent);
+  if (!f) { const s = await open({ thread: `plugin:${agent}`, agent }); f = s && s.token; if (!f) return undefined; mine.set(agent, f); }
+  const t = await f();
+  if (!t) mine.delete(agent);
+  return t;
 }
 export const REPO = path.resolve(HERE, "..", "..");
 export const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version;
@@ -565,7 +581,9 @@ const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|se
  */
 export function socketCaller(req) {
   const label = String(req.headers["x-vyre-caller"] || "");
-  return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
+  if (!label || FORBIDDEN_LABEL.test(label)) return "anonymous";
+  // RC-1: a model's label carries no thread the client chose. `mcp:thread:<id>` is bare `mcp` here; route() rebuilds the thread part from what it verified. A named agent stays: route() checks its key.
+  return MODEL_LABEL.test(label) && !AGENT_CLAIM.test(label) ? /** @type {string} */ (modelLabel(label)) : label;
 }
 
 /** A model's own label: its tools' callers lists and the agent key already decide what it may do. */
@@ -960,6 +978,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (agentNode && !(said && policy.peer && policy.peer.agent === said[1])) {
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
+  /** @type {string | null} */ let pluginAgent = null;
   if (policy.thread) {
     // Bound above; a key or a session claim on this socket changes nothing.
   } else if (said && !agentNode && !AGENT_LABEL.test(caller)) {
@@ -967,8 +986,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
-    if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
-    Object.assign(via, { thread: v.data.thread, agent: said[1] });
+    if (v && v.data && v.data.thread) Object.assign(via, { thread: v.data.thread, agent: said[1] });
+    else {
+      // Claude Code on this computer (core/pluginagent): an agent the person granted once, with no thread of its own. Its key is checked the same way, and the daemon stamps its kernel token below.
+      const plug = key ? await registry.call("pluginagent.vouch", { agent: said[1], key }, "module:vyred").catch(() => null) : null;
+      if (!(plug && plug.data && plug.data.ok === true)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
+      // Not a thread's agent: its calls are a model's own (`mcp`), and what it is comes from the kernel token vyred stamps, never from the label.
+      pluginAgent = said[1];
+    }
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its
     // Bash, say) claiming to be the user or a surface. Refused out loud rather than taken as either.
@@ -982,6 +1007,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
   }
+  // RC-1: a model's label is built here from what was verified above, never passed through as the client sent it.
+  if (!policy.caller && MODEL_LABEL.test(caller)) caller = /** @type {string} */ (modelLabel(caller, via));
   // A plain model caller (Claude Code through Vyre's MCP, no verified thread or agent): who it is, from the kernel, for the threads tools that
   // narrow it. Set here only, over anything a client could send: meta.peerSession "<claude pid>:<start>" and meta.peerCwd, null where unreadable.
   if (socket && !via.thread && !via.agent && MODEL_LABEL.test(caller)) {
@@ -1153,6 +1180,12 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         }
         if (!ok) return send(res, 403, { error: { code: "denied", message: "a session binds only its own process or one vyred started, not another's" } });
       }
+    }
+    // The plugin agent's token is vyred's, set here and never the client's: its session is opened by the daemon for that agent and renewed before it runs out.
+    if (pluginAgent) {
+      delete req.headers["x-vyre-kernel-session"];
+      const t = await pluginToken(registry, pluginAgent).catch(() => null);
+      if (t) req.headers["x-vyre-kernel-session"] = t;
     }
     const sessionToken = await kernelSession(req, kernelOf);
     if (sessionToken === null) return send(res, 401, { error: { code: "no_session", message: "this call carries a session credential that is not valid, so it was not made" } });
