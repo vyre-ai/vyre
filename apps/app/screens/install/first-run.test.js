@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -107,4 +107,16 @@ test("who it is for is kept with the progress and with what the box keeps", () =
   assert.equal(setupFrom({ step: "look", name: "Harlow Legal", addr: null, look: "amber", where: "server", connectors: [], kit: null, who: "client" }).picks.who, "client");
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "personal" } } }).who, "personal");
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
+});
+
+test("the Mac's boxless window types the server's code: the words follow the prototype, three wrong tries end it", () => {
+  assert.ok(isBoxlessMac({ boxless: true }) && !isBoxlessMac({}) && !isBoxlessMac(null));
+  assert.equal(MAC_SERVER.title, "Type the code your server shows");
+  assert.equal(MAC_SERVER.ackTitle, "Type this on your server");
+  assert.equal(MAC_SERVER.doneTitle, "Connected to your server");
+  assert.deepEqual(macServerSay("wrong", 2), { title: "That code is not right", line: "Check the code on your server and type it again. 2 tries left.", over: false });
+  assert.equal(macServerSay("wrong", 1).line.includes("1 try left"), true);
+  assert.equal(macServerSay("wrong", 0).over, true);
+  assert.deepEqual(macServerSay("expired", 3), { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true });
+  assert.deepEqual(macServerSay("offline", 3), { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false });
 });

@@ -9,9 +9,10 @@ import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SER
 import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { RealAdd } from "../devices/RealAdd";
 import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
+import { MacServer } from "./MacServer";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isPhone, isWho, whoLine } from "./first-run.js";
+import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -148,7 +149,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const finish = () => router.replace((first || start === "phone" || start === "connect" ? "/u/now" : "/u/spaces") as never);
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
-  const afterName = () => (invite ? "invite" : first && dk === "mac" ? "macwhere" : "spaces");
+  const boxless = isBoxlessMac(shell());
+  const afterName = () => (invite ? "invite" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
@@ -205,7 +207,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     void (async () => {
       try {
         const me0 = await readIdentity();
-        if (me0) { setName(me0.label); setStep((s) => (first && (s === "name" || s === "welcome") ? "spaces" : s)); }
+        if (me0) { setName(me0.label); setStep((s) => (first && (s === "name" || s === "welcome") ? (boxless && dk === "mac" ? "macserver" : "spaces") : s)); }
         // Identity first: a device with no name cannot create or join a space, so any other way in starts at the name. A kept invite waits for it.
         else {
           noId.current = true;
@@ -415,6 +417,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         </Card>
       </Page>
     );
+  } else if (step === "macserver") {
+    body = <MacServer name={name} onBack={() => setStep("welcome")} onDone={() => setStep("addphone")} />;
   } else if (step === "macwhere") {
     const pick = (w: "server" | "here") => () => { setWhere(w); setMacFlow(true); setStep("create"); };
     body = (
