@@ -105,3 +105,32 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
   await agree(b, on, "existing home");
   assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "deck" })).data.id, made.data.id, "the id did not change");
 });
+
+test("lend is the one switch: it makes the kernel's compute offers (the space's side and the member's own) and turning it off withdraws them", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "lend-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const lines = /** @type {string[]} */ ([]);
+  const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const ok = async (/** @type {string} */ tool, /** @type {any} */ input = {}) => { const r = await deck(tool, input); assert.ok(!r.error, `${tool}: ${JSON.stringify(r.error)} :: ${lines.slice(-6).join(" ; ").slice(0, 600)}`); return r.data; };
+  const made = await ok("spaces.identity.create", { name: "alex" });
+  const sp = await ok("spaces.create", { name: "lenddev", home: { kind: "this-computer", confirmed: true } });
+  const hosted = d.kernel.spaces.hosted(sp.space);
+  const q = { member: made.id, device: made.eid, device_key: made.eid };
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false });
+  const on = await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: true });
+  assert.equal(on.lent, true);
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: true, memberAccepts: true }, "one switch made both kernel offers");
+  assert.equal((await ok("spaces.devices.lend.status", { space: sp.space, device: made.eid })).lent, true);
+  const off = await ok("spaces.devices.lend", { space: sp.space, device: made.eid, on: false });
+  assert.equal(off.lent, false);
+  assert.deepEqual(hosted.gateway.grants.offers.active(q), { spaceAllows: false, memberAccepts: false }, "off withdrew both");
+});

@@ -28,7 +28,7 @@ import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
-import { kernelMembers } from "./kernel-members.js";
+import { kernelMembers, plainKernelError } from "./kernel-members.js";
 import { acceptProofRequest } from "../../kernel/remote/proof.js";
 import {
   MIGRATIONS, kvStore, seenStore, membershipStore, roleNames, inviteStore, pairingService, spaceTable,
@@ -752,6 +752,23 @@ export default {
     // space's owner may switch a lent device off.
     const lendKey = (/** @type {string} */ space, /** @type {string} */ device) => `lend/${space}/${device}`;
     const lendSync = (/** @type {string} */ key) => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(key)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
+    /** The kernel's compute offers for a lent computer, the ONE mechanism: the Space's side (an owner or admin) and the member's own side, bound to the computer's key. A Space with no kernel has only the stored record. */
+    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ role) => {
+      const port = K && typeof K.offersPort === "function" && kernelHandle(spaceId) ? K.offersPort() : null;
+      if (!port) return false;
+      const s = me();
+      const x = { member: /** @type {string} */ (s.id), device_key: dev.eid, meta };
+      try {
+        if (on) {
+          if (role === "owner" || role === "admin") await port.set(spaceId, dev.eid, "space", true, x);
+          await port.set(spaceId, dev.eid, "member", true, x);
+        } else {
+          await port.set(spaceId, dev.eid, "member", false, x);
+          if (role === "owner" || role === "admin") await port.set(spaceId, dev.eid, "space", false, x);
+        }
+      } catch (e) { throw plainKernelError(e); }
+      return true;
+    };
     tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
       obj({ space: str, device: str, on: { type: "boolean" } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
@@ -767,15 +784,17 @@ export default {
           let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }
           if (!mine && !(owner && cur)) throw refuse("That is not one of your devices.", "not_found");
           if (!cur || !cur.lent) return { space: row.id, device: String(i.device), lent: false, first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
-          const next = { ...cur, lent: false, ended_at: now(), ended_by: s.id };
+          const viaKernel = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, m ? m.role : "owner");
+          const next = { ...cur, lent: false, ended_at: now(), ended_by: s.id, kernel: viaKernel };
           await kv.put(key, next);
           emit("space.device-lent", { space: row.id, device: next.device, lent: false });
           return { space: row.id, device: next.device, lent: false, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
         }
         const dev = await deviceOf(i.device, meta);
         if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
+        const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner");
         const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
-        const next = { lent: true, device: dev.eid, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
+        const next = { lent: true, kernel: viaKernel, device: dev.eid, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
         await kv.put(key, next);
         emit("space.device-lent", { space: row.id, device: dev.eid, lent: true });
         return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
