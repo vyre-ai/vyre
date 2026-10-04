@@ -142,7 +142,8 @@ const KNOWN = new Set(Object.values(SERVER_FAILED));
 export function serverSay(e) {
   // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.
   const c = String(e?.code ?? "");
-  const m0 = String(e?.message ?? "").trim();
+  // A plain string is a sentence that already went through here (the screens pass the mapped words back): it counts as the message.
+  const m0 = String(e?.message ?? (typeof e === "string" ? e : "")).trim();
   if (c === "bad_code") return SERVER_FAILED.badCode;
   if (c === "bad_owner") return SERVER_FAILED.badOwner;
   if (c === "taken") return SERVER_FAILED.used;
