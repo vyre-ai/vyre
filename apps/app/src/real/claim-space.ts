@@ -10,16 +10,29 @@ import { tool } from "./box";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
 
-export async function makeSpaceOnPairedServer(o: { name: string; displayName?: string; acceptBuiltinStore?: boolean }) {
+/** The stored route: where this device reaches its paired server. Throws unreachable when not paired. */
+export async function pairedRoute(): Promise<{ relay: string; route: string; box: string }> {
   const { loadPairing } = await import("../api/relay");
-  const [mine, pairing] = await Promise.all([loadIdentity().catch(() => null), loadPairing()]);
-  if (!pairing) throw Object.assign(new Error("This device is not paired to a server."), { code: "unreachable" });
+  const p = await loadPairing();
+  if (!p) throw Object.assign(new Error("This device is not paired to a server."), { code: "unreachable" });
+  return { relay: p.relay, route: p.route, box: p.box };
+}
+
+/** The paired session plus the presence proof: spaces.host-here over the peer wire as this device's paired session (renewed once on a lapse), and the proof answered as for any person-only act. Answers { space }. */
+export const hostOnPairedServer = (name: string, o: { acceptBuiltinStore?: boolean } = {}) =>
+  tool<{ space: string }>("spaces.host-here", { name, ...(o.acceptBuiltinStore ? { acceptBuiltinStore: true } : {}) });
+
+/** Takes back a space the server started for a claim the directory refused. */
+export const retireOnPairedServer = (space: string) => tool("spaces.retire-here", { id: space });
+
+export async function makeSpaceOnPairedServer(o: { name: string; displayName?: string; acceptBuiltinStore?: boolean }) {
+  const [mine, route] = await Promise.all([loadIdentity().catch(() => null), pairedRoute()]);
   if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
   return claimServerSpace({
     identity: { id: mine.id, name: mine.name, eid: mine.eid, ops: mine.ops as any[], key: mine.key },
     name: o.name, displayName: o.displayName, base: DIRECTORY,
-    route: { relay: pairing.relay, route: pairing.route, box: pairing.box },
-    host: ({ name }) => tool<{ space: string }>("spaces.host-here", { name, ...(o.acceptBuiltinStore ? { acceptBuiltinStore: true } : {}) }),
-    retire: (space) => tool("spaces.retire-here", { id: space }),
+    route,
+    host: ({ name }) => hostOnPairedServer(name, o),
+    retire: retireOnPairedServer,
   });
 }
