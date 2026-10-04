@@ -592,3 +592,30 @@ test("TAKEOVER (regression): a space this home hosts for ANOTHER person keeps th
   assert.deepEqual((await again.gateway.grants.members.list(herChain2)).map((/** @type {any} */ m) => [m.person, m.role]), [[alice, "owner"]], "after a restart alice is still the owner");
   assert.equal(again.kernel.grants.roleOf({ kind: "person", id: identity.id, space: again.space }), null);
 });
+
+test("spaces.owner.adopt (SO-1/SO-2): an added module, the terminal and an agent are refused; the Wink module is refused unless the identity is the one ITS OWN pairing record names; the other modules-only tools refuse a caller that is not an admitted module", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "adopt-box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, log: () => {} });
+  t.after(() => d.stop());
+  const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input = {}) => d.registry.call(tool, input, caller, {});
+  const owner0 = d.kernel.id.owner;
+  const evil = "per_" + "e".repeat(26);
+  for (const caller of ["module:evil", "module:presence", "cli", "agent:thread-1"]) {
+    const r = await as(caller, "spaces.owner.adopt", { person: evil });
+    assert.ok(r.error, `${caller} must be refused, got ${JSON.stringify(r).slice(0, 120)}`);
+  }
+  // the Wink module itself, with an identity its pairing record does not name (there is no pairing here at all): refused, nothing adopted
+  const noRecord = await as("module:wink", "spaces.owner.adopt", { person: evil });
+  assert.equal(noRecord.error?.code, "forbidden", JSON.stringify(noRecord));
+  assert.equal(d.kernel.id.owner, owner0, "the home's owner did not change");
+  // the other modules-only tools
+  for (const [tool, input] of [["spaces.identity.name-of", { id: evil }], ["spaces.admin-list", { person: evil }], ["spaces.server-of", { space: "spc_aaaaaaaaaaaa" }]]) {
+    const r = await as("module:evil", tool, input);
+    assert.ok(r.error, `${tool} is refused to an added module`);
+  }
+  assert.ok((await as("module:wink", "spaces.admin-list", { person: evil })).data, "the Wink module may read the list");
+});

@@ -76,8 +76,8 @@ async function device(t, { records = false, wink = false, kernelFor = undefined 
     const dir = fs.mkdtempSync(path.join(path.dirname(root), "wink-"));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     fs.mkdirSync(path.join(dir, "wink"));
-    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }, { name: "wink.server.call", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
-    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); ctx.tool('wink.server.call', { description: 'x', input: { type: 'object' }, run: async i => { globalThis.__winkCalls.push(i); if (globalThis.__winkRefuse) throw Object.assign(new Error('the server said no'), { code: 'forbidden' }); globalThis.__hn = (globalThis.__hn || 0) + 1; return i.tool === 'spaces.host-here' ? { space: 'spc_' + 'abcdefghjkl' + 'mnopqrstuvwx'[globalThis.__hn - 1], existed: false } : { retired: true }; } }); return { async stop() {} }; } };\n");
+    fs.writeFileSync(path.join(dir, "wink", "module.json"), JSON.stringify({ name: "wink", version: "0.0.1", roles: ["box"], requires: [], does: { tools: [{ name: "wink.server.paired", reach: "modules" }] }, watches: { emits: [] }, needs: {}, teaches: {} }));
+    fs.writeFileSync(path.join(dir, "wink", "index.js"), "globalThis.__winkCalls = []; export default { async start(ctx) { ctx.tool('wink.server.paired', { description: 'x', input: { type: 'object' }, run: async i => ({ paired: i.device === 'srv_paired0000000001' }) }); return { async stop() {} }; } };\n");
     found.push(...discover([dir], { firstPartyRoots: [dir] }).filter(f => f.manifest && f.manifest.name === "wink"));
   }
   const db = open(p.db);
@@ -1173,7 +1173,12 @@ test("a space whose home is a PAIRED server is hosted by the server: the device 
   const w = world(t);
   const d = await device(t, { wink: true });
   await d.ok("spaces.identity.create", { name: "alex" });
-  const calls = () => /** @type {any[]} */ (/** @type {any} */ (globalThis).__winkCalls);
+  const { hooks } = await import("./index.js");
+  /** @type {any[]} */ const recorded = [];
+  let counter = 0;
+  hooks.sessionFor = async dev => ({ call: async (tool, input) => { recorded.push({ device: dev, tool, input, proof: input.proof }); if (/** @type {any} */ (globalThis).__winkRefuse) throw Object.assign(new Error("the server said no"), { code: "forbidden" }); counter++; return tool === "spaces.host-here" ? { space: "spc_" + "abcdefghjkl" + "mnopqrstuvwx"[counter - 1], existed: false } : { retired: true }; } });
+  t.after(() => { hooks.sessionFor = null; });
+  const calls = () => recorded;
   const home = { kind: "server", device: { id: "srv_paired0000000001", name: "walker server", alwaysOn: true }, confirmed: true };
   const made = await d.call("spaces.create", { name: "servedspace", home }, "cli", { kernel_proof: { op: "t" } });
   assert.ok(!made.error, JSON.stringify(made.error));
