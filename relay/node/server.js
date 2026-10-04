@@ -16,7 +16,9 @@
 
 import http from "node:http";
 import crypto from "node:crypto";
+import net from "node:net";
 import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
+import { createTunnelFront } from "./tunnel.js";
 import { LIMITS, CLOSE, ROUTE_RE, routeId, authMessage, verifyRoute, TICKET_TTL, SETUP_TTL, MBX_LINE_MAX, isP256Spki, setupFingerprint, verifyP256, mbxReadMessage, CODE, CODE_ALPHABET, CODE_RV_RE, CODE_REFUSED } from "../../core/relay/wire.js";
 
 /** A fixed window per key (an IP, or the constant "*" for the global cap): true while under it. */
@@ -423,7 +425,7 @@ export function createRelay(o = {}) {
       releaseCode(route);
       r.control = peer;
       r.ticket = crypto.randomBytes(18).toString("base64url");
-      peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: FEATURES }) });
+      peer.json({ t: "ready", ticket: r.ticket, waiting: [...r.conns].filter(([, x]) => !x.box && !x.tunnel).map(([c]) => c), ...(o.legacyNoAck ? {} : { features: o.tunnel ? [...FEATURES, "tunnel"] : FEATURES }) });
       log("box.connected", { route });
       // The only thing a control socket sends after auth: registering a pairing ticket's locator
       // (ADR 0045). Everything here is the box's own word about its own route, so this is not a
@@ -468,6 +470,7 @@ export function createRelay(o = {}) {
     conn.box = peer;
     for (const f of conn.buffer) peer.send(f);
     conn.buffer = [];
+    if (conn.onbox) conn.onbox(true);
     peer.onmessage = (data, binary) => { if (binary) conn.device.send(data); };
     peer.onclose = () => {
       if (r.conns.get(c) !== conn) return;
@@ -504,8 +507,52 @@ export function createRelay(o = {}) {
     };
   }
 
+  // The Publish tunnel (relay/node/tunnel.js): a public visitor is a connection like a device's, except that the far end is a TCP socket and the open message is `tunnel`, which carries the
+  // name and the visitor's address on this authenticated channel (never in the bytes). An old box ignores the message and the visitor times out.
+  /** @type {ReturnType<typeof createTunnelFront> | null} */
+  const tunnelFront = o.tunnel ? createTunnelFront({
+    resolve: o.tunnel.resolve, log, ...(o.tunnel.limits ? { limits: o.tunnel.limits } : {}),
+    open: async (route, visitor, sink) => {
+      const r = routes.get(route);
+      if (!r || !r.control || !r.control.socket || r.conns.size >= limits.open) return null;
+      const c = crypto.randomBytes(12).toString("base64url");
+      const conn = /** @type {any} */ ({ tunnel: true, buffer: [], box: null,
+        // the "device" end of a connection is the visitor's socket here: what the box sends comes out as bytes, and closing it closes the visitor
+        device: /** @type {any} */ ({
+          send: (/** @type {Buffer} */ data) => { if (sink.data(Buffer.from(data)) === false && conn.box) { conn.box.socket.pause(); sink.whenDrained(() => conn.box && conn.box.socket.resume()); } },
+          close: () => sink.end(),
+        }) });
+      r.conns.set(c, conn);
+      const answered = new Promise(resolve => { conn.onbox = resolve; });
+      r.control.json({ t: "tunnel", c, host: visitor.host, ip: visitor.ip, port: visitor.port });
+      const timer = setTimeout(() => conn.onbox(false), Math.max(200, ((o.tunnel.limits && o.tunnel.limits.openMs) || 8000) - 500));
+      timer.unref?.();
+      const ok = await answered;
+      clearTimeout(timer);
+      if (!ok || !conn.box) { r.conns.delete(c); tidy(route); return null; }
+      const box = conn.box;
+      return {
+        write: b => { box.send(b); if (box.socket.writableNeedDrain) { box.socket.once("drain", sink.resume); return false; } return true; },
+        close: () => { if (r.conns.get(c) === conn) { r.conns.delete(c); tidy(route); } box.close(CLOSE.deviceGone, "visitor left"); },
+      };
+    },
+  }) : null;
+  /** @type {import("node:net").Server[]} */
+  const tunnelServers = [];
+
   return {
     server,
+    /** The public listeners of the Publish tunnel: TLS passthrough on `tlsPort` (443) and the fixed redirect on `httpPort` (80). Only with the `tunnel` option. @param {{ tlsPort?: number, httpPort?: number, host?: string }} [a] @returns {Promise<{ tls: number, http: number }>} */
+    listenTunnel(a = {}) {
+      if (!tunnelFront) return Promise.reject(new Error("this relay was made without the tunnel option"));
+      const host = a.host || "127.0.0.1";
+      const front = tunnelFront;
+      const t = net.createServer(s => front.tls(s)), h = net.createServer(s => front.http(s));
+      tunnelServers.push(t, h);
+      const on = (/** @type {import("node:net").Server} */ srv, /** @type {number|undefined} */ port) => new Promise(resolve => srv.listen(port ?? 0, host, () => resolve(/** @type {import("node:net").AddressInfo} */ (srv.address()).port)));
+      return Promise.all([on(t, a.tlsPort), on(h, a.httpPort)]).then(([tls, http]) => ({ tls, http }));
+    },
+    tunnel: tunnelFront,
     /** @param {number} [port] @param {string} [host] @returns {Promise<string>} the relay's ws:// base */
     listen(port = 0, host = "127.0.0.1") {
       return new Promise(resolve => server.listen(port, host, () => {
@@ -516,6 +563,8 @@ export function createRelay(o = {}) {
     /** For tests: how many routes and connections the relay holds, and live codes and requests waiting on a box. */
     stats() { return { routes: routes.size, conns: [...routes.values()].reduce((n, r) => n + r.conns.size, 0), codes: codeSlots.size, codeRequests: codePending.size }; },
     close() {
+      tunnelFront && tunnelFront.close();
+      for (const srv of tunnelServers) srv.close();
       for (const r of routes.values()) { r.control?.close(1001, "relay stopping"); for (const x of r.conns.values()) { x.device.close(1001); x.box?.close(1001); } }
       routes.clear();
       return new Promise(resolve => { server.close(() => resolve(undefined)); server.closeAllConnections?.(); });

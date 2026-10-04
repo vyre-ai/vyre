@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":337,"tool":1131,"event":449,"config":254,"env":212,"screen":20,"concept":43},
+  "counts": {"command":337,"tool":1131,"event":449,"config":254,"env":213,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2175,6 +2175,7 @@
     {"kind":"env","name":"VYRE_DOCKER_SHA256","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_DOCKER_SOCK","definedIn":"scripts/install-box.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_DOCKER_URL","definedIn":"scripts/install-mac-server.sh","page":null,"mentions":[]},
+    {"kind":"env","name":"VYRE_DONE_TRIES","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_DRIVE_ACCESS","definedIn":"core/files/drive.js","page":"reference/config.md#environment-variables","mentions":[{"page":"get-started/tailscale.md","line":396,"anchor":"vyredrive-the-box-folders-on-your-mac"},{"page":"adr/0014-tailnet.md","line":51,"anchor":"1-taildrive-the-boxs-folders-on-the-mac"}]},
     {"kind":"env","name":"VYRE_DTACH_BIN","definedIn":"core/term/dtach.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_EGRESS_AUTHKEY","definedIn":"box/compose.egress.yml","page":null,"mentions":[{"page":"get-started/tailscale.md","line":512,"anchor":"glass-egress-through-your-mac-exit-node"},{"page":"adr/0014-tailnet.md","line":187,"anchor":"5-an-exit-node-for-glass-per-site"}]},
