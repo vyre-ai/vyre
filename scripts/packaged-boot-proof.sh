@@ -6,6 +6,8 @@
 # installer writes it and NO development variable, then checks (1) every module of the signed list runs and none failed, and (2) one tampered module file is refused, with the
 # kernel's plain line, and nothing else fails. It caught two bugs no unit test could: packed folders missing from package.json "files", and two modules with one name.
 # --drop FOLDER removes a folder from the copy before the build (for a known, open problem only; say which in the job).
+# DEV_KIND=1: the candidate is built development-kind and the terminal is the owner (dev-presence-stand-in in the home, as the walks use); only that run does the session blocks (own-server sealing, kill and resume).
+# The release run asserts the release-kind rules (DP-1) instead.
 set -eu
 # Checks that do not stop the run: each failure is said where it happens and collected, so one broken check never hides the ones after it; the run fails at the end if any did.
 FAILS=""
@@ -38,7 +40,7 @@ for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-m
 grep -q "$NEW" "$SRC/lib/release-sig.js" "$SRC/box/vyre"
 
 ( cd "$SRC" && npm ci --no-audit --no-fund >/dev/null && (cd apps/app && npm ci --no-audit --no-fund >/dev/null) \
-  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta sh scripts/build-site.sh >"$WORK/build.log" 2>&1 ) || { tail -30 "$WORK/build.log"; exit 1; }
+  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta VYRE_TEST_DEV_KIND="${DEV_KIND:-0}" sh scripts/build-site.sh >"$WORK/build.log" 2>&1 ) || { tail -30 "$WORK/build.log"; exit 1; }
 [ -s "$SRC/site/box/modules.json" ] || { echo "packaged-boot-proof: the build made no modules.json" >&2; exit 1; }
 listed=$(node -p 'Object.keys(require(process.argv[1]).modules).length' "$SRC/site/box/modules.json")
 echo "the signed list names $listed modules"
@@ -46,9 +48,11 @@ echo "the signed list names $listed modules"
 unpacked="$WORK/tgz-root"; mkdir -p "$unpacked"; tar -xzf "$SRC/site/box/vyre.tgz" -C "$unpacked" --strip-components=1
 node "$SRC/scripts/verify-list-trees.mjs" "$unpacked" "$SRC/site/box/modules.json"
 
+if [ "${DEV_KIND:-0}" != 1 ]; then # (a dev-kind run is the owned box for the session blocks: it is not a release build)
 # DP-1: the packed tree says release, and its own isPackaged() agrees; the development stand-in file is refused there.
 grep -qx 'export const BUILD_KIND = "release";' "$unpacked/lib/build-kind.js" || { echo "the packed lib/build-kind.js does not say release"; exit 1; }
 node --input-type=module -e 'const { isPackaged } = await import(process.argv[1] + "/kernel/devbuild.js"); if (isPackaged(process.argv[1]) !== true) { console.error("the packed tree is not a packaged build"); process.exit(1); }' "$unpacked" || exit 1
+fi
 
 ( cd "$SRC/site/box" && python3 -m http.server 18090 --bind 127.0.0.1 >/dev/null 2>&1 & echo $! >"$WORK/http.pid" )
 trap 'kill "$(cat "$WORK/http.pid" 2>/dev/null)" 2>/dev/null || true; vyre uninstall --delete-data --yes >/dev/null 2>&1 || true' EXIT
@@ -116,9 +120,11 @@ for port in 7300 7301; do
   docker exec -u 1000 vyre-vyre-1 node -e 'const s=require("net").connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>{console.log("LISTENING");process.exit(0)});s.on("error",()=>process.exit(1))' 127.0.0.1 "$port" | grep -q LISTENING && { echo "something listens on port $port inside the box: a server has no setup page"; soft; }
 done
 docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { echo "the box publishes the onboarding port on the host"; soft; }
+if [ "${DEV_KIND:-0}" != 1 ]; then
 # DP-1 on the running image: the container's build is a release build, and a dev-presence-stand-in file in its home does not make it a development one.
 docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; soft; }
 docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; soft; }
+fi
 
 # The host's `vyre call` is answered as a plain terminal caller (the wrapper execs as the vyre user, with a terminal when there is one): never caller_unknown. Personal memory then says "no kernel chain" (only a person reads it: a signed-in terminal or a device; a CI server has no owner to sign in).
 hc=$(vyre call memory.me '{}' 2>&1 || true)
@@ -136,6 +142,7 @@ printf '%s' "$out" | grep -Eq 'refused: (unknown_key|no_proof|bad_proof|needs_pr
 printf '%s' "$out" | grep -Eq 'no Vyre home|no_home|has no anchor-reset step|has no admin' && { echo "admin anchor-reset could not even start its step: $out"; soft; }
 ready || { docker logs vyre-vyre-1 2>&1 | tail -20; echo "vyred did not come back after the anchor-reset refusal"; exit 1; }
 sleep 5
+if [ "${DEV_KIND:-0}" != 1 ]; then
 # DP-1 and the software signer: a REAL sealing process from a release-kind tree refuses a software presence key even with the variable and the dev flag set. The probe runs on a COPY of the
 # image's tree (kernel/seal/testing.js and test/scratch.mjs are not shipped and are added to the copy only), so the signed tree under test is not touched.
 docker exec -u 1000 vyre-vyre-1 sh -c 'rm -rf /tmp/probe && mkdir /tmp/probe && cp -a /opt/vyre/lib /opt/vyre/kernel /opt/vyre/package.json /tmp/probe/ && mkdir /tmp/probe/test'
@@ -146,6 +153,7 @@ docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { e
 # The copy keeps the image's read-only folders (the owner makes them writable first; root here has no DAC_OVERRIDE), and the probe script docker cp left in sticky /tmp is root's own to remove.
 docker exec -u 1000 vyre-vyre-1 sh -c 'chmod -R u+w /tmp/probe 2>/dev/null; rm -rf /tmp/probe'
 docker exec -u 0 vyre-vyre-1 rm -f /tmp/software-release.mjs
+fi
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')
@@ -159,6 +167,8 @@ docker exec -u 0 vyre-vyre-1 sh -c 'echo "<!-- tampered -->" >> /opt/vyre/apps/a
 [ "$(appcode)" = 503 ] || { echo "a changed file of the web app was served (/app/ answered $(appcode))"; soft; }
 docker exec -u 0 vyre-vyre-1 sh -c 'sed -i "$ d" /opt/vyre/apps/app/dist/index.html'
 
+if [ "${DEV_KIND:-0}" = 1 ]; then # an owned box: the session blocks need the person at the terminal (a release box in CI has no owner)
+docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in
 # The runner on a server (own-server sealing): the module runs on the box, says what the box does, and a session on the server is SEALED AT EVERY TURN into the home's checkpoint store
 # (core/runner/ownserver.js, the daemon's core/daemon/ownserver-host.js). A stand-in `claude` (the repo's fake, copied in like the probes above) writes the transcript the way Claude Code does.
 rs=$(vyre call runner.status 2>&1) || { echo "$rs"; echo "runner.status did not answer on the box"; exit 1; }
@@ -192,6 +202,7 @@ docker exec -u 1000 vyre-vyre-1 sh -c "grep -q UNFINISHED $tfile" && { echo "the
 docker exec -u 1000 vyre-vyre-1 sh -c "head -c \$(wc -c < /tmp/sealed-copy.jsonl) $tfile | cmp -s - /tmp/sealed-copy.jsonl" || { echo "the resumed transcript does not start with the last sealed turns"; exit 1; }
 echo "ok: a session on the server survives a crash (killed, restarted, put back to its last sealed turn, resumed, and the next turn sealed)"
 docker exec -u 0 vyre-vyre-1 rm -f /usr/local/bin/claude /home/vyre/fake-claude.mjs
+fi
 
 # One module file changed after it was signed: refused, plainly, and nothing else is.
 docker exec -u 0 vyre-vyre-1 sh -c 'echo "// tampered" >> /opt/vyre/core/work/index.js'

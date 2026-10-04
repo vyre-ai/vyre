@@ -129,7 +129,8 @@ fi
 # The web app at /app/ (apps/app/dist), which vyre.tgz ships; nothing when --src has no apps/app.
 sh "$here/scripts/build-app.sh" --src "$src"
 # The build kind is part of what is signed: the package says "release", so its daemon ignores the developer switches (kernel/devbuild.js). The checkout keeps "development".
-if [ -f "$src/lib/build-kind.js" ]; then
+# VYRE_TEST_DEV_KIND=1 (CI proofs only, scripts/release.sh never passes it) leaves the checkout's development kind in the package, so a proof can run an owned box with the software signer.
+if [ -f "$src/lib/build-kind.js" ] && [ "${VYRE_TEST_DEV_KIND:-}" != 1 ]; then
   kind_keep=$(mktemp)
   cp "$src/lib/build-kind.js" "$kind_keep"
   trap 'cp -f "$kind_keep" "$src/lib/build-kind.js" 2>/dev/null; rm -f "$kind_keep"' EXIT

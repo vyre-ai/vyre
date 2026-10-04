@@ -5,6 +5,8 @@
 # served from two local web servers. Then: (1) the old release is installed with the real installer and given data; (2) `vyre update` takes it to the candidate: the candidate's version runs, the kernel
 # is on (VYRE_KERNEL=1) and the store setting kept (VYRE_STORE), the signed modules run, the data written before is still there; (3) `vyre update --rollback` puts the old release back and the data is
 # still there (the old line has no module list, so no phone approval is asked). The real key never appears.
+# DEV_KIND=1: the same run with the candidate built development-kind and the owner a stand-in at the terminal (dev-presence-stand-in in the home, as the walks use), so the reads and writes go through the product
+# as the owner (a release-kind box in CI has no owner: personal memory is then proven at the home's database files).
 set -eu
 [ -n "${CI:-}" ] || { echo "rc-update-proof: runs on a CI runner only (CI is unset)" >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")/.." && pwd)
@@ -30,7 +32,7 @@ CANDKEY=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/relea
 [ -n "$CANDKEY" ] || fail "could not read the candidate's pinned key"
 for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh deck/sw.js; do [ -f "$WORK/new/$f" ] && sed -i "s#$CANDKEY#$NEWPUB#g" "$WORK/new/$f"; done
 ( cd "$WORK/new" && npm ci --no-audit --no-fund >/dev/null && (cd apps/app && npm ci --no-audit --no-fund >/dev/null) \
-  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta VYRE_TEST_UNSTRIPPED_WRAPPER=1 sh scripts/build-site.sh >"$WORK/new-build.log" 2>&1 ) || { tail -30 "$WORK/new-build.log"; fail "the candidate did not build"; }
+  && VYRE_SIGNING_KEY="$(cat "$WORK/proof.pem")" VYRE_CHANNEL=beta VYRE_TEST_UNSTRIPPED_WRAPPER=1 VYRE_TEST_DEV_KIND="${DEV_KIND:-0}" sh scripts/build-site.sh >"$WORK/new-build.log" 2>&1 ) || { tail -30 "$WORK/new-build.log"; fail "the candidate did not build"; }
 NEWV=$(tr -d ' \r\n' <"$WORK/new/site/box/VERSION")
 
 # The old line: the tag, its pinned key swapped to the same throwaway key, built the way it was released.
@@ -61,6 +63,7 @@ home_has() { docker exec -u 1000 vyre-vyre-1 sh -c 'find /home/vyre/.vyre -type 
 read_back() { # TEXT TOOL
   rb=$(vyre call "$2" '{}' 2>&1 || true)
   printf '%s' "$rb" | grep -q "$1" && return 0
+  [ "${DEV_KIND:-0}" != 1 ] || return 1 # an owned box reads through the product, no fallback
   printf '%s' "$rb" | grep -Eq 'no kernel chain|presence|sign ?in|not a signed-in person|denied' && home_has "$1"
 }
 # An untouched 0.2 server: no VYRE_STORE (a 0.2 install never wrote one; the default is the built-in store). Real records are written through the 0.2 tools the data is read back with.
@@ -116,6 +119,10 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
           [ -z "$(sudo ls /var/lib/vyre-spaces/private/spaces 2>/dev/null)" ] || fail "$1: a Space store was set up on a box that never chose one" ;;
   esac
   every_module "$1"
+  if [ "${DEV_KIND:-0}" = 1 ]; then
+    docker exec -u 1000 vyre-vyre-1 sh -c 'grep -q "development" /opt/vyre/lib/build-kind.js' || fail "$1: DEV_KIND=1 but the candidate is not development-kind"
+    docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in || fail "$1: could not place the owner stand-in"
+  fi
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
   if [ "$2" = none ]; then
     rs=$(vyre status --json 2>/dev/null | tr -d '\n ' || true)
