@@ -20,14 +20,17 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  */
 export function createServerLinks(o) {
   const log = o.log || (() => {});
-  /** @type {Map<string, { conn: any, peer: any, opening: Promise<any> | null, token: any }>} */
+  /** @type {Map<string, { conn: any, peer: any, opening: Promise<any> | null, token: any, hello?: any }>} */
   const links = new Map();
+  /** Where an INVITEE reaches a space's home (from the space's directory record), by the link id made for that invite. No paired server is involved. @type {Map<string, { channel: { relay: string, route: string, box: string }, hello: any }>} */
+  const invitees = new Map();
   const linkOf = (/** @type {string} */ sid) => {
     let l = links.get(sid);
     if (l) return l;
-    const ch = o.channelOf(sid);
+    const iv = invitees.get(sid);
+    const ch = iv ? iv.channel : o.channelOf(sid);
     if (!ch) throw err("not_found", "this device has no paired server by that id");
-    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}) }), peer: null, opening: null, token: null };
+    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}) }), peer: null, opening: null, token: null, ...(iv ? { hello: iv.hello } : {}) };
     links.set(sid, l);
     return l;
   };
@@ -38,7 +41,7 @@ export function createServerLinks(o) {
     if (l.opening) return l.opening;
     l.opening = (async () => {
       const chan = await l.conn.ready();
-      const s = chan.open({ peer: "wink", space: PEER_HOME });
+      const s = chan.open({ peer: "wink", space: PEER_HOME, ...(l.hello ? { invitee: l.hello } : {}) });
       await new Promise((resolve, reject) => {
         const timer = setTimeout(() => { s.reset("no answer"); reject(err("unreachable", "the server did not accept the peer stream")); }, o.openMs ?? 10_000);
         s.onhead = (/** @type {any} */ h) => { clearTimeout(timer); h && h.status === 200 ? resolve(undefined) : reject(err(h && h.status === 429 ? "rate_limited" : "denied", `the server refused the peer stream (${h && h.status})`)); };
@@ -114,8 +117,24 @@ export function createServerLinks(o) {
     return { id: t.id, expires: t.expires };
   };
 
+  /**
+   * A session for a person who is NOT a member yet, to the home named by a space's directory record. `hello` is signed by the spaces module (the invitee's identity key over
+   * the box, space and invite); it rides in the stream head and the door admits grants.invites.get and grants.invites.accept only. A new hello (a new invite, or the same one
+   * signed again) replaces the old link, so an expired hello is never reused.
+   * @param {{ relay: string, route: string, box: string }} channel @param {any} hello
+   */
+  const inviteeSessionFor = (channel, hello) => {
+    if (!channel || !channel.route || !hello || typeof hello.invite !== "string") throw err("bad_input", "an invitee session needs a route and a signed hello");
+    const sid = `invitee:${channel.route}:${hello.invite}`;
+    const old = links.get(sid);
+    if (old && old.hello && old.hello.nonce !== hello.nonce) { try { old.peer && old.peer.close("done"); } catch { /* closed */ } try { old.conn.close(); } catch { /* closed */ } links.delete(sid); }
+    invitees.set(sid, { channel, hello });
+    return sessionFor(sid);
+  };
+
   return {
     sessionFor,
+    inviteeSessionFor,
     startPaired,
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
     remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),

@@ -55,7 +55,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
     const state = await stateNow();
     const op = await C.makeOp(state, body, { by: by.by, ts: Math.max(now(), state.ts), sign: by.sign });
     let next;
-    try { next = await C.applyOp(state, op, { ...ctx(), live: true }); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
+    try { next = await C.applyOp(state, op, { ...ctx(), now: now(), live: true }); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
     try { await dir.append(nameOf(), [op]); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
     seen.mark(String(store.status().id), op.seq, op.ts);
     store.setChain([...store.ops(), op], C.pinOf(next));

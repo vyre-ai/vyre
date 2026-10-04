@@ -107,3 +107,26 @@ test("dev-sign-proof --gate: the proof for a kernel-gated act (an invite in a cr
   assert.equal(d.status, 0, d.stderr);
   assert.deepEqual(await s.presenceProve({ chain: /** @type {any} */ (chainIn(id.space)), op: "grant.role", fields: rfields, proof: JSON.parse(d.stdout) }), { ok: true, method: "software", strength: "software" });
 });
+
+test("dev-sign-proof takes its op names from kernel/remote/proof.js: --call reproduces proofRequest for EVERY call it knows, and --gate names rules acts grant.rule_<x>", { timeout: 120_000 }, async t => {
+  const { proofRequest, PROOF_CALLS, opOf } = await import("./remote/proof.js");
+  const home = tempHome(t), id = homeIdentity(home);
+  assert.equal(run(ROOT, "dev-enrol-software-key.mjs", ["--home", home]).status, 0);
+  const sample = /** @type {Record<string, any[]>} */ ({
+    create: [{ x: 1 }], revoke: ["g1", "why"], narrow: ["g1", { a: 1 }], setRole: [{ person: "per_b", role: "member" }], ruleSet: [{ id: 1 }], ruleRemove: ["r1"], ruleEnable: ["r1"], ruleDisable: ["r1"], ruleAccept: ["r1"], ruleDismiss: ["r1"],
+    transferOwner: [{ to: "per_b" }], removeMember: [{ person: "per_b" }], removeActor: [{ id: "a1", kind: "agent" }], addActor: [{ id: "a1", kind: "agent" }], offer: [{ x: 1 }], unoffer: ["o1"],
+    lend: [{ member: "per_b", device: "d1", device_key: "k" }], unlend: [{ member: "per_b", device: "d1" }], inviteCreate: [{ role: "member" }], inviteConfirm: ["i1", { words: "w" }],
+  });
+  assert.deepEqual(Object.keys(sample).sort(), [...PROOF_CALLS].sort(), "a new proof call needs a sample here, so the script keeps up");
+  const space = "spc_dg3xdpn6yc5w";
+  for (const call of PROOF_CALLS) {
+    const want = proofRequest(space, call, ...sample[call]);
+    const out = run(ROOT, "dev-sign-proof.mjs", ["--home", home, "--space", space, "--call", call, "--args", JSON.stringify(sample[call])]);
+    assert.equal(out.status, 0, `${call}: ${out.stderr}`);
+    const p = JSON.parse(out.stdout);
+    assert.deepEqual([p.decision, p.payload_hash], [want.op, want.payload_hash], call);
+  }
+  assert.equal(opOf("rules.set"), "grant.rule_set"); assert.equal(opOf("grants.invite"), "grant.invite");
+  const g = run(ROOT, "dev-sign-proof.mjs", ["--home", home, "--space", id.space, "--gate", "rules.set", "--resource", `vyre://${id.space}/rule/new`, "--input", "{\"id\":1}"]);
+  assert.equal(JSON.parse(g.stdout).decision, "grant.rule_set", "--gate uses the same naming");
+});
