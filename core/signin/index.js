@@ -1,88 +1,137 @@
 // @ts-check
-// signin: `vyre signin`, the daemon half. The command line asks, the paired phone approves with Face ID, the terminal gets a person session of its own (see approvals, the same route for kernel acts).
-import { randomBytes, createHash } from "node:crypto";
-import os from "node:os";
-import { payloadHash } from "../../kernel/seal/wire.js";
+// signin: the command line's person session (`vyre signin`, `vyre signout`).
+//
+// Why it exists: a call on the socket that names `cli` is only a label, and anything running as the owner's user can send it. The daemon therefore treats the label as a person only when it measured the
+// ancestry itself (core/daemon `outside`). A real person at a terminal over ssh, in tmux or through `docker exec` cannot be told from a model's shell by that measurement, so they sign in once.
+//
+// The flow follows the rollback approval (core/modulelist): `signin.ask` (the CLI, from a terminal login) opens one ask and `signin.pending` hands the owner's phone the card to sign; `signin.answer`
+// takes the phone's proof, which the sealing process checks like any other grant act (op grant.cli_signin, bound to this ask and to the terminal); `signin.status` hands the CLI its credential once, only to
+// the terminal that asked; `signin.end` is `vyre signout`.
+//
+// The pin, and why a model's shell cannot satisfy it: the session is made for a terminal login key, a string the daemon builds from the kernel's own view of the peer (the login's leader pid and start
+// time on a tty `who` lists, or the clients of a tmux session that each run in such a login with no Claude above them: core/daemon atTerminal). It is never read from the call. The credential is the
+// bearer secret in a 0600 file, and it counts only on a call from a process whose measured login key is the same. A program started by a model (under a claude or a thread) gets no key at all, so it can
+// neither ask, nor read the status, nor use a copied secret. A process that is not under a claude but is in the owner's login (their own shell) is the person's own and may use it, as before. A process
+// that left the login (setsid, a daemon) gets no login key. Same uid does not help: the key is a property of the process tree, not of the file or the user.
 
-const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
-const SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
-const ASK_MS = 5 * 60_000, MAX_OPEN = 5;
+import { randomBytes } from "node:crypto";
+
+const ASK_MS = 5 * 60_000;
+/** One new ask per this long, so a terminal cannot nag the owner's phone. */
+const NEW_ASK_MS = 30_000;
+const NEEDS_TERMINAL = "Run this in a terminal you are logged in on, not from a program.";
 const obj = (/** @type {Record<string, any>} */ properties = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties, required, additionalProperties: false });
+const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+const PERSON_SURFACES = ["cli", "local", "deck", "capsule", "mobile", "device"];
+
+/** @param {any} t the terminal meta the daemon measured */
+const loginKey = t => (t && typeof t === "object" ? t.key : typeof t === "string" ? t : null);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
+    /** The one open ask: the terminal it is for and where it stands. `token` is held until the same terminal reads it, once. @type {{ id: string, key: string, at: number, state: "waiting" | "approved" | "refused", token?: string, expires?: number } | null} */
+    let ask = null, lastAskAt = -Infinity;
+    const live = () => { if (ask && ask.state === "waiting" && now() - ask.at > ASK_MS) ask = null; return ask; };
+    const need = () => { if (typeof ctx.cliSigninPayload !== "function" || typeof ctx.cliSessions !== "object" || !ctx.kernel) throw refuse("this build has no command-line sign-in", "unavailable"); };
+    const card = (/** @type {any} */ a) => {
+      const p = ctx.cliSigninPayload(a.id, a.key);
+      return { id: a.id, state: a.state, title: "Sign in the command line?", body: "A terminal on your box asks to act as you. Approve with Face ID on this phone, or say no and nothing changes.", op: p.op, space: p.space, fields: p.fields, payload_hash: p.payload_hash, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) };
+    };
 
-    // ---- `vyre signin`: the command line asks, the phone approves, the terminal gets a person session of its own ----
-    // The pin is the terminal login key the daemon measured for the asking call (never a model's shell: it has none). The session is made for exactly that terminal (`cli:<key>`), so a token read from the
-    // CLI's file is no use to anything else. The phone's proof is over { ask, pin_hash }, checked once by the kernel's verifier; this module mints the session only after it stands.
-    /** @type {Map<string, { id: string, pin: string, pin_hash: string, at: number, state: "waiting" | "approved" | "refused", token?: string }>} */
-    const signins = new Map();
-    const sweepIn = () => { for (const [id, a] of signins) if (a.state === "waiting" && now() - a.at > ASK_MS) signins.delete(id); };
-    const hashPin = (/** @type {string} */ pin) => createHash("sha256").update(pin).digest("base64url");
-    const space = () => String((ctx.kernel && ctx.kernel.space) || "");
-    const inCard = (/** @type {any} */ a) => { const fields = { ask: a.id, pin_hash: a.pin_hash }; return { id: a.id, title: `Sign in the command line on ${os.hostname()}?`, body: "Approve with Face ID on this phone, or say no and nothing changes.", op: "grant.signin", space: space(), fields, payload_hash: payloadHash("grant.signin", space(), fields), expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) }; };
     ctx.tool("signin.ask", {
-      description: "Ask the person's paired phone to sign this terminal in. Answers { id, expires_in_s }; a call with no login terminal (a model's shell) is refused. Read the outcome with signin.status.",
+      description: "Ask the owner's phone to sign in this terminal. Answers { id, expires_in_s }; read the outcome with signin.status. Only from a terminal login the daemon can see; nothing is signed in until the owner approves. One ask at a time, open for 5 minutes.",
       input: obj(),
       callers: ["cli", "local"],
       run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
-        sweepIn();
-        const pin = meta && typeof meta.terminalKey === "string" ? meta.terminalKey : "";
-        if (!pin) throw refuse("sign in from your own terminal: this call has no login terminal", "no_terminal");
-        for (const a of signins.values()) if (a.state === "waiting" && a.pin === pin) return { id: a.id, expires_in_s: inCard(a).expires_in_s };
-        if ([...signins.values()].filter(a => a.state === "waiting").length >= MAX_OPEN) throw refuse("too many sign-ins are waiting", "rate_limited");
-        const id = `si_${randomBytes(9).toString("base64url")}`;
-        signins.set(id, { id, pin, pin_hash: hashPin(pin), at: now(), state: "waiting" });
-        return { id, expires_in_s: ASK_MS / 1000 };
+        need();
+        const key = loginKey(meta && meta.terminal);
+        if (!key) throw refuse(NEEDS_TERMINAL, "no_terminal");
+        const a = live();
+        if (a && a.state === "waiting" && a.key === key) return { id: a.id, expires_in_s: card(a).expires_in_s };
+        if (now() - lastAskAt < NEW_ASK_MS) throw refuse("a sign-in was asked for a moment ago: wait a little before asking again", "rate_limited");
+        ask = { id: `si_${randomBytes(9).toString("base64url")}`, key, at: now(), state: "waiting" };
+        lastAskAt = now();
+        return { id: ask.id, expires_in_s: ASK_MS / 1000 };
       },
     });
+
     ctx.tool("signin.pending", {
-      description: "The command-line sign-ins waiting for the person, as the phone shows them: { approvals: [{ id, title, body, op, space, fields, payload_hash, expires_in_s }] }. Sign payload_hash and nothing else.",
+      description: "The command-line sign-in waiting for the owner, as the phone shows it: { id, title, body, op, space, fields, payload_hash } to sign, or { none: true }.",
       input: obj(),
-      callers: SURFACES,
-      run: async () => { sweepIn(); return { approvals: [...signins.values()].filter(a => a.state === "waiting").map(inCard) }; },
+      callers: PERSON_SURFACES,
+      run: async () => { need(); const a = live(); return a && a.state === "waiting" ? card(a) : { none: true }; },
     });
+
     ctx.tool("signin.answer", {
-      description: "The person's answer to a command-line sign-in: { id, approve: true } with the presence proof signed over the card's payload_hash beside the call, or { id, approve: false } (a no ends it only from the person's own signed-in session).",
+      description: "The owner's answer to the sign-in ask: { id, approve: true } with the presence proof signed over the card's payload_hash (Face ID on the phone), or { id, approve: false }. A no, a wrong proof or a timed-out ask changes nothing.",
       input: obj({ id: { type: "string" }, approve: { type: "boolean" } }, ["id", "approve"]),
-      callers: SURFACES,
+      callers: PERSON_SURFACES,
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        sweepIn();
-        const a = signins.get(String(input.id));
-        if (!a || a.state !== "waiting") throw refuse("there is no sign-in waiting with that id", "not_found");
+        need();
+        const a = live();
+        if (!a || a.state !== "waiting" || a.id !== String(input.id)) throw refuse("there is no sign-in waiting for you", "not_found");
+        // A no ends the ask only from the person's own session: a label alone cannot cancel the owner's sign-in.
         if (input.approve !== true) { if (!meta || !meta.person) return { answered: "ignored", why: "a no needs your signed-in session" }; a.state = "refused"; return { answered: "refused" }; }
-        if (!ctx.kernel || typeof ctx.kernel.verifyProof !== "function" || !ctx.personSessions) throw refuse("this build cannot sign a terminal in", "unavailable");
-        const given = ctx.kernel.proofFrom(meta), proof = given && given.presence ? given.presence : null; // proofFrom answers `{ presence }`, the option a kernel call takes
-        if (!proof) throw refuse("this needs your presence: approve it on your device", "needs_presence");
         const chain = await ctx.kernel.chain(meta);
-        const why = await ctx.kernel.verifyProof({ chain, op: "grant.signin", fields: { ask: a.id, pin_hash: a.pin_hash }, proof });
-        if (why) throw refuse(why === "wrong_payload" ? "that approval was not for this" : "this needs your presence: approve it on your device", "needs_presence");
-        const s = ctx.personSessions.start({ node: `cli:${a.pin}`, kind: "cookie", label: "command line" });
-        a.state = "approved"; a.token = s.token;
+        const r = await ctx.cliSigninCheck(chain, ctx.kernel.proofFrom(meta) || null, a.id, a.key);
+        if (!r || r.ok !== true) throw refuse(r && r.why === "owner_only" ? "only the owner can approve this" : "that approval was not for this sign-in: ask again", r && r.why === "owner_only" ? "denied" : "needs_presence");
+        const s = ctx.cliSessions.start(a.key);
+        a.state = "approved"; a.token = s.token; a.expires = s.expires;
         return { answered: "approved" };
       },
     });
+
     ctx.tool("signin.status", {
-      description: "Where this terminal's sign-in stands: { state: waiting | approved | refused | none }; when approved the bearer token, once, to keep in the 0600 session file (30 days idle, 90 at most).",
+      description: "Where the sign-in ask stands: waiting, approved (with the credential, once, only to the terminal that asked), refused, or none.",
       input: obj({ id: { type: "string" } }, ["id"]),
       callers: ["cli", "local"],
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
-        sweepIn();
-        const a = signins.get(String(input.id));
-        if (!a || !meta || meta.terminalKey !== a.pin) return { state: "none" };
+        const a = live();
+        const key = loginKey(meta && meta.terminal);
+        // Only the terminal that asked reads the answer: another terminal, or a program with no login, learns nothing.
+        if (!a || a.id !== String(input.id) || !key || key !== a.key) return { state: "none" };
         if (a.state === "waiting") return { state: "waiting" };
-        signins.delete(a.id);
-        return a.state === "approved" ? { state: "approved", token: a.token, expires_in_days: 30 } : { state: "refused" };
+        const out = a.state === "approved" ? { state: "approved", token: a.token, expires: a.expires } : { state: a.state };
+        ask = null;
+        return out;
       },
     });
-    ctx.tool("signin.out", {
-      description: "End this terminal's session: the token stops working at once.",
+
+    ctx.tool("signin.end", {
+      description: "Sign this terminal out: its command-line session ends.",
       input: obj(),
       callers: ["cli", "local"],
-      run: async (/** @type {any} */ _i, /** @type {any} */ meta) => { if (meta && meta.person && ctx.personSessions) { ctx.personSessions.revoke(meta.person.id); return { out: true }; } return { out: false }; },
+      run: async (/** @type {any} */ _i, /** @type {any} */ meta) => {
+        need();
+        const key = loginKey(meta && meta.terminal);
+        if (!key) throw refuse(NEEDS_TERMINAL, "no_terminal");
+        return { ended: ctx.cliSessions.end(key) };
+      },
     });
-    return { async stop() { signins.clear(); } };
+
+    // DEVELOPMENT ONLY, for the app walk: the walk runs in a browser, which is never under sshd, so on a development build whose home holds the hand-made stand-in file a CLI the daemon already counts as the
+    // owner (surfaceAncestry: a named login server on the system list, never any unknown) mints an ordinary cookie person session for the browser's node, marked "stand-in", which the harness hands the
+    // browser like any signed-in session. A release-kind build refuses it: devStandIn is false there.
+    ctx.tool("signin.dev", {
+      description: "Development builds only: make a person session (a cookie) for the owner on the device node you name, marked as the stand-in's. Needs the dev stand-in file and a caller the daemon already counts as the owner.",
+      input: obj({ node: { type: "string" }, label: { type: "string" } }, ["node"]),
+      callers: ["cli", "local"],
+      run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
+        need();
+        if (typeof ctx.devStandIn !== "function" || ctx.devStandIn() !== true || typeof ctx.cliSessions.startStandIn !== "function") throw refuse("this build takes no sign-in stand-in", "dev_only");
+        let c = null; try { c = await ctx.kernel.chain(meta); } catch { c = null; }
+        const hops = c && Array.isArray(c.hops) ? c.hops : [];
+        if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person") throw refuse("this call is not from a signed-in person", "denied");
+        const node = String(input.node || "");
+        if (!/^[A-Za-z0-9_.:@-]{1,128}$/.test(node)) throw refuse("node must name the device the browser connects from", "bad_input");
+        if (typeof ctx.cliSessions.nodeInUse === "function" && ctx.cliSessions.nodeInUse(node)) throw refuse("that device already holds a signed-in session", "denied");
+        const s = ctx.cliSessions.startStandIn(node);
+        ctx.events.emit("presence.signed-in", { id: s.id, node: String(input.label || node), method: "stand-in" });
+        return { kind: "cookie", id: s.id, token: s.token, expires: s.expires, method: "stand-in" };
+      },
+    });
+    return { async stop() { ask = null; } };
   },
 };

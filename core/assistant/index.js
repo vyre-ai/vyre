@@ -209,6 +209,8 @@ export default {
     ctx.tool("assistant.daily", {
       description: "Today's assistant thread. On the first call of the person's local day it starts a fresh thread seeded with memory's digest of yesterday's, so the conversation carries on with no seam; later calls return the same thread. Deferred while the assistant is mid-turn or waiting on an answer.",
       input: { type: "object", properties: {} },
+      // Rolling the day starts a thread and ends the last one: the person's surfaces and modules, not a session.
+      callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (_, meta = {}) => { await gate(meta); return rollDay(); },
     });
 

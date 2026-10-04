@@ -323,6 +323,7 @@ export default {
     const agentField = { agent: { type: "string" } };
 
     ctx.tool("recall.search", {
+      effect: "read",
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
@@ -355,6 +356,7 @@ export default {
       },
     });
     ctx.tool("recall.related", {
+      effect: "read",
       description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
       input: { type: "object", required: ["project_cwds", "text"], properties: {
         project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
@@ -380,6 +382,7 @@ export default {
       },
     });
     ctx.tool("recall.thread", {
+      effect: "read",
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
@@ -423,6 +426,7 @@ export default {
       },
     });
     ctx.tool("recall.transcript", {
+      effect: "read",
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" }, machines,
@@ -479,6 +483,7 @@ export default {
     // The same people as recall.transcript: the text of every turn goes by, redacted.
     const own = ["cli", "local", "deck", "capsule", "module"];
     ctx.tool("recall.watch", {
+      effect: "write",
       description: "Follow one session live: each completed turn arrives as a session.turn event (thread = the session id) and session.state says whether a reply is under way. from is a turn id to replay after first; without it, only new turns. Call again with the same watch id to renew it: a watch nobody renews ends after 3 minutes, and one whose session is quiet for 30 minutes ends too.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "string" }, watch: { type: "string" } } },
@@ -486,12 +491,14 @@ export default {
       run: async input => watches.watch(input),
     });
     ctx.tool("recall.unwatch", {
+      effect: "write",
       description: "Stop following a session (a watch id from recall.watch).",
       input: { type: "object", required: ["watch"], properties: { watch: { type: "string" } } },
       callers: own,
       run: async input => watches.unwatch(input),
     });
     ctx.tool("recall.sessions", {
+      effect: "read",
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
         cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
@@ -510,8 +517,10 @@ export default {
       },
     });
     ctx.tool("recall.forget", {
+      effect: "write",
       internal: true,
       description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
+      callers: ["module"],
       input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
       run: async ({ sessions: ids }) => {
         const n = indexer.forget(ids.map(String)); dense.invalidate();
@@ -540,11 +549,14 @@ export default {
       },
     });
     ctx.tool("recall.index", {
+      effect: "write",
       description: "Index new and changed transcripts now. Returns what the pass did.",
+      callers: own,
       input: { type: "object", properties: {} },
       run: async () => pass(),
     });
     ctx.tool("recall.status", {
+      effect: "read",
       description: "How much is indexed, when the last pass ran, and whether search can rank by meaning.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -563,7 +575,9 @@ export default {
     });
 
     ctx.tool("recall.setup", {
+      effect: "write",
       description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      callers: ["cli", "local", "deck", "capsule"],
       input: { type: "object", properties: {} },
       run: async () => {
         if (opts.vectors === false) return { ready: false, why: vec.why };
@@ -576,7 +590,9 @@ export default {
     });
 
     ctx.tool("recall.eval", {
+      effect: "read",
       description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      callers: own,
       input: { type: "object", required: ["queries"], properties: {
         queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
         nonsense: stringArray, k: { type: "integer" } } },

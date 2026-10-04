@@ -153,6 +153,7 @@ export default {
     });
 
     ctx.tool("spend.check", {
+      effect: "read",
       description: "Whether a provider may spend now: { ok, capped, spent, cap, left, line? }. Ask before a call that costs; at the cap answer from what is already known and show the line. No cap set means ok.",
       input: { type: "object", properties: { provider: { type: "string" } } },
       run: async i => {
@@ -165,6 +166,7 @@ export default {
     });
 
     ctx.tool("spend.summary", {
+      effect: "read",
       description: "Today's spend (UTC) per provider with its cap, and the rows behind it: { day, all: { spent, cap, left, capped }, providers: [{ provider, spent, cap, left, capped, calls, estimated }], rows }; all is every provider together against spend.all.daily_usd. day is YYYY-MM-DD for an earlier one.",
       input: { type: "object", properties: { day: { type: "string" } } },
       run: async i => {
@@ -185,6 +187,7 @@ export default {
     });
 
     ctx.tool("spend.raise", {
+      effect: "write",
       description: "Raise a provider's daily cap (provider: all is the cap over every provider together): to (new cap in USD) or by (add this much), or off: true for no cap. The person's own surfaces only. Takes effect at once; a paused thread goes on when it is resumed, and the cap says again tomorrow if reached.",
       callers: PEOPLE,
       input: { type: "object", properties: { provider: { type: "string" }, to: { type: "number" }, by: { type: "number" }, off: { type: "boolean" } } },

@@ -11,23 +11,28 @@
     "tools": [
       {
         "name": "goals.set",
+        "effect": "write",
         "reach": "anyone",
         "projectArg": "project"
       },
       {
         "name": "goals.accept",
+        "effect": "write",
         "reach": "person"
       },
       {
         "name": "goals.milestone-done",
+        "effect": "write",
         "reach": "anyone"
       },
       {
         "name": "goals.get",
+        "effect": "read",
         "reach": "anyone"
       },
       {
         "name": "goals.list",
+        "effect": "read",
         "reach": "anyone",
         "projectArg": "project"
       }
