@@ -607,6 +607,7 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Tools: [41](tools.md#relay), 14 of them only for other modules
 - Emits: [22 events](events.md#relay)
 - Shows on: capsule, cli, deck
+- Needs daemon: `tunnelEnd`
 - Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

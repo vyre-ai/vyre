@@ -15,7 +15,7 @@ const SCRIPT = path.join(path.dirname(fileURLToPath(import.meta.url)), "i.sh");
 const PAYLOAD = "vyre://wink/2?t=AAECAwQFBgcICQoLDA0ODw&r=wss%3A%2F%2Frelay.test";
 const withQr = () => JSON.stringify({ data: { qr: PAYLOAD, art: qrArt(PAYLOAD), expires: 1 } });
 
-function rig(t, { installed = false, code = "ok", sudoSays = "", qrencode = false, ask = "none" } = {}) {
+function rig(t, { installed = false, code = "ok", sudoSays = "", qrencode = false, ask = "none", owned = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-i-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const log = path.join(dir, "log");
@@ -29,6 +29,7 @@ case "$2" in
   wink.server.code) ${code === "ok" ? `cat "${dir}/qr.json"` : code === "old" ? `printf '\\033[1m  no_such_tool: \\033[0mno tool wink.server.code\\n' >&2; exit 1` : `printf "  unavailable: Can't connect.\\n"; exit 1`} ;;
   wink.server.pairing) ${ask === "asks" ? `echo '{"data":{"asking":true,"name":"Harlow Legal","choices":["vessel train mouse","amber coral seven","north puppy ladder"]}}'` : `echo '{"data":{"asking":false}}'`} ;;
   wink.server.pair.answer) echo '{"data":{"answered":true,"yes":true}}' ;;
+  wink.server.status) ${owned ? `echo '{"data":{"owned":true,"space":"Harlow Legal","device":"Alex iPhone"}}'` : `echo '{"data":{"owned":false}}'`} ;;
 esac
 `, { mode: 0o755 });
   if (qrencode) fs.writeFileSync(path.join(dir, "qrencode"), `#!/bin/sh\necho "qrencode $*" >> "${log}"\nprintf 'FAKE-QRENCODE-ART\\n'\n`, { mode: 0o755 });
@@ -149,8 +150,8 @@ test("install: --pair-to names the identity up front, is sent as pairTo, never r
 test("install: the terminal asks who is asking with three sets of words, takes a pick of 1, 2 or 3, and a bare y is a no (run under a pseudo terminal)", t => {
   const py = spawnSync("python3", ["-c", "import pty"], { encoding: "utf8" });
   if (py.status !== 0) { t.skip("no python3 pty here"); return; }
-  const answer = (/** @type {string} */ reply) => {
-    const r = rig(t, { ask: "asks" });
+  const answer = (/** @type {string} */ reply, owned = false) => {
+    const r = rig(t, { ask: "asks", owned });
     const driver = `
 import os, pty, sys, select, time
 pid, fd = pty.fork()
@@ -171,7 +172,7 @@ while time.time() < end:
             os.write(fd, ${JSON.stringify(reply + "\n")}.encode()); sent = True
 sys.stdout.write(out.decode("utf8", "replace"))
 `;
-    const run = spawnSync("python3", ["-c", driver], { encoding: "utf8", env: { PATH: `${r.dir}:${process.env.PATH}`, VYRE_WRAPPER: path.join(r.dir, "vyre"), VYRE_INSTALLER: path.join(r.dir, "installer.sh"), VYRE_ASK_TRIES: "3" } });
+    const run = spawnSync("python3", ["-c", driver], { encoding: "utf8", env: { PATH: `${r.dir}:${process.env.PATH}`, VYRE_WRAPPER: path.join(r.dir, "vyre"), VYRE_INSTALLER: path.join(r.dir, "installer.sh"), VYRE_ASK_TRIES: "3", VYRE_DONE_TRIES: "2" } });
     return { out: run.stdout, calls: r.calls() };
   };
   const pick = answer("2");
@@ -181,6 +182,10 @@ sys.stdout.write(out.decode("utf8", "replace"))
   assert.match(pick.out, /3\) north puppy ladder/);
   assert.match(pick.calls, /wink\.server\.pair\.answer \{"yes":true,"pick":2\}/);
   assert.doesNotMatch(pick.calls, /wink\.server\.pair\.answer \{"yes":true\}/, "never a bare yes");
+  assert.doesNotMatch(pick.out, /Connected to/, "nothing is claimed until the server says it is owned");
+  assert.match(pick.out, /has not finished yet/);
+  const done = answer("2", true);
+  assert.match(done.out, /Connected to Harlow Legal\. Finish setting up on your Alex iPhone\./);
   const bare = answer("y");
   assert.match(bare.calls, /wink\.server\.pair\.answer \{"yes":false\}/, "a bare y is a no");
   assert.doesNotMatch(bare.calls, /"yes":true/);

@@ -3631,7 +3631,7 @@ Call a tool on your box from this Mac (threads, agents, files). Answers box_unre
 - Input:
   - `tool` string, required
   - `input` object
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mobile`, `module`
 - Registered only on the Mac (local).
 
 ### `link.companion.approve`
