@@ -11467,6 +11467,9 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `reveal` string
     - `tag` string
   - `peerSecret` string
+  - `proof` object
+    - `eid` string
+    - `sig` string
 - Callers: `web`
 
 ### `wink.server.code`
@@ -11569,6 +11572,9 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `reveal` string
     - `tag` string
   - `peerSecret` string
+  - `proof` object
+    - `eid` string
+    - `sig` string
 - Callers: any caller
 - Needs a person present.
 
