@@ -5,6 +5,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
 import { tempHome } from "./helpers.js";
+const until = async (/** @type {() => Promise<any>} */ f, /** @type {string} */ what, ms = 20_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out: ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
@@ -79,9 +80,14 @@ test("ENG-2: a user agent already named engineer becomes the built-in at start: 
   assert.equal(eng.builtin, true); assert.equal(eng.computer, false);
 });
 
-test("RC1 walk: the Engineer proposes a Kit from records.kits.library, a task waits for the owner, and the approved Kit installs on a real kernel", { timeout: 120_000, todo: "install: records.define needs presence under the Kit's chain; kernel-2 to accept the approved task as the approver's presence (asked in CHAT)" }, async t => {
+test("RC1 walk: the Engineer proposes a Kit from records.kits.library, a task waits for the owner, and the approved Kit installs on a real kernel", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true });
+  // the kernel's own presence verifier, replaced by one that accepts a proof naming exactly the op and fields asked (the way kernel/tasks/kit-apply.test.js does)
+  const { canonical } = await import("../kernel/core/canonical.js");
+  const used = new Set();
+  const kernelPresence = { check: async (/** @type {any} */ q) => { return (q.chain && q.proof && q.proof.op === q.op && canonical(q.proof.fields) === canonical(q.fields) && !used.has(q.proof.n) && (used.add(q.proof.n), true) ? null : "wrong_proof"); } };
+  const logs = /** @type {string[]} */ ([]);
+  const d = await start({ root, log: m => logs.push(String(m)), kernel: true, kernelPresence });
   t.after(() => d.stop());
   const owner = d.kernel.id.owner, space = d.kernel.id.space;
   const personChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
@@ -102,11 +108,12 @@ test("RC1 walk: the Engineer proposes a Kit from records.kits.library, a task wa
   const task = await d.kernel.gateway.ask.get(personChain, p.data.task);
   assert.equal(task.form.kind, "kit_install"); assert.equal(task.checker.id, owner);
   assert.deepEqual((await d.kernel.store.types()).map((/** @type {any} */ x) => x.name), typesBefore, "nothing installed before the yes");
-  // the owner's yes arrives as the kernel's approved task event; here the install runs the way that event runs it
-  const host = d.registry.deps.flowsHost.get(space);
-  const done = await host.flows.kits.apply(p.data.proposal);
+  // the owner's yes: the checker's decision with a proof over the task, its payload and its form; the kernel's event then runs the install
+  const row = await d.kernel.gateway.ask.get(personChain, p.data.task);
+  await d.kernel.gateway.ask.decide(personChain, p.data.task, { outcome: "approved", proof: { op: "task.decide", fields: { task: p.data.task, payload_hash: row.payload.payload_hash, decision: row.payload.decision }, n: Math.random() } });
+  await until(async () => (await d.kernel.store.types()).length > typesBefore.length, "the Kit's types to be defined");
   const after = (await d.kernel.store.types()).map((/** @type {any} */ x) => x.name);
-  assert.ok(after.length > typesBefore.length, `the Kit's types are defined: ${JSON.stringify(done)}`);
-  const installed = (await d.registry.call("flows.kit.list", {}, "cli", await ownerMeta())).data;
-  assert.equal(installed.find((/** @type {any} */ k) => k.kit_id === id || k.id === id)?.status, "installed", JSON.stringify(installed));
+  const kitRow = async () => ((await d.registry.call("flows.kit.list", {}, "cli", await ownerMeta())).data || []).find((/** @type {any} */ k) => k.kit_id === id || k.id === id);
+  const done = await until(async () => { const k = await kitRow(); return k && k.status !== "installing" ? k : null; }, `the install to finish (${logs.filter(m => /flows|kit|install/i.test(m)).slice(0, 3).join(" | ")})`);
+  assert.equal(done.status, "installed", JSON.stringify(done));
 });
