@@ -63,7 +63,7 @@ function NameField({ value, onChange, label, also, space, real, onRetry }: { val
 }
 
 /** The install flow, one thing per screen. `start` is the route: first run, create a space, or join one. */
-export function InstallScreen({ start, link: linkIn }: { start?: "create" | "join"; link?: string }) {
+export function InstallScreen({ start, link: linkIn, external }: { start?: "create" | "join"; link?: string; external?: boolean }) {
   const router = useRouter();
   const first = !start;
   const [step, setStep] = useState(startStep(start));
@@ -422,7 +422,8 @@ export function InstallScreen({ start, link: linkIn }: { start?: "create" | "joi
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Row lead={<Avatar of={spaceRef(inv.space)} size={56} />} title={inv.space} sub={inv.address} />
         {inv.from ? <Text tone="muted">{`${inv.from} invited you.`}</Text> : null}
-        <Text mono size="caption" tone="label">{inv.link}</Text>
+        {external ? <Banner tone="warn">This invitation came from a link outside Vyre. Check that the space name is the one you expect before you join.</Banner> : null}
+        <Text mono size="caption" tone="label">{inv.link.replace(/\/join\/.*$/, "/join/…")}</Text>
         {"words" in inv && inv.words ? <View className="gap-s1"><Text size="caption" strong tone="label">Check these words with whoever invited you</Text><Text mono strong>{inv.words}</Text></View> : null}
         <View className="gap-s1"><Text size="caption" strong tone="label">You join as</Text><View className="flex-row"><Chip tone="accent">{inv.role}</Chip></View><Text size="caption" tone="muted">{inv.roleLine}</Text></View>
         <View className="gap-s1"><Text size="caption" strong tone="label">You will see</Text><Text size="caption" tone="muted">{inv.sees}</Text></View>
