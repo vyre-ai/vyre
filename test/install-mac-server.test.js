@@ -426,6 +426,24 @@ test("install-mac-server.sh: --dry-run in system mode prints the plan and change
   assert.ok(!/^sudo /m.test(m.calls()));
 });
 
+test("install-mac-server.sh: a box-url file beside the script is the release source (the rc channel); the environment beats it; a link that is not https is ignored", t => {
+  const m = sys(t);
+  const dir = fs.mkdtempSync(path.join(m.base || os.tmpdir(), "setup-"));
+  const copy = path.join(dir, "install-mac-server.sh");
+  fs.copyFileSync(SCRIPT, copy);
+  const url = (/** @type {Record<string,string>} */ extra) => run({ ...m.env, VYRE_CODE: CODE, VYRE_TEST_SCRIPT: copy, VYRE_BOX_URL: "", ...extra }, ["--dry-run", "--system"]);
+  fs.writeFileSync(path.join(dir, "box-url"), "https://github.com/vyre-ai/vyre/releases/download/v0.3.0-rc.1/\n");
+  let r = url({});
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /from https:\/\/github\.com\/vyre-ai\/vyre\/releases\/download\/v0\.3\.0-rc\.1\//);
+  r = url({ VYRE_BOX_URL: "https://example.test/box/" });
+  assert.match(r.stdout, /from https:\/\/example\.test\/box\//);
+  fs.writeFileSync(path.join(dir, "box-url"), "http://insecure.test/\n");
+  r = url({});
+  assert.match(r.stdout, /from https:\/\/vyre\.run\/box\//);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("install-mac-server.sh: the system Colima start command reaches the root installer, one argument each", t => {
   const m = noBrewSys(t);
   const r = run(m.env, ["--yes", "--system"]);
