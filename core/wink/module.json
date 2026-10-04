@@ -270,6 +270,10 @@
         "reach": "modules"
       },
       {
+        "name": "wink.server.channel",
+        "reach": "modules"
+      },
+      {
         "name": "wink.device.paired",
         "reach": "modules"
       }

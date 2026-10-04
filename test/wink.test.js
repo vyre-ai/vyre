@@ -1135,7 +1135,7 @@ async function standinIdentity(t) {
   spacesHooks.fetch = /** @type {any} */ (fetchDir);
   spacesHooks.now = () => clock.t;
   t.after(async () => { spacesHooks.fetch = null; spacesHooks.now = null; await rt.settle(); });
-  return { id: store.status().id, state,
+  return { id: store.status().id, state, store, ops: () => store.ops(), clock,
     sign: async m => ({ eid: store.status().eid, sig: Buffer.from(await store.sign(Buffer.from(m))).toString("base64url") }) };
 }
 
@@ -1164,7 +1164,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   await until(async () => shown);
   assert.equal((await w.call("wink.server.pair.answer", { yes: true, pick: q.choices.indexOf(shown) + 1 }, "cli", PROOF)).data.yes, true);
   const done = await pairing;
-  return { w, dk, ks, owner, done, made, sign: m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
+  return { w, dk, ks, ident, owner, done, made, sign: m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url") };
 }
 const linksFor = (t, f) => {
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: f.ks }, name: "Alex's iPhone", sign: f.sign,
@@ -1509,6 +1509,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   assert.equal(rec.data.name, "Jane");
   const rows = await rk.gateway.records.query(null, "contact", { page: { limit: 50 } });
   assert.ok(JSON.stringify(rows).includes("Jane"));
+  // the device's own records tools reach the server-hosted space through the same remote kernel (lib/gateway-door), and refuse a caller that is not a signed-in person
+  const viaTool = await dcall("records.list", { space: id, type: "contact" });
+  assert.ok(!viaTool.error, JSON.stringify(viaTool.error));
+  assert.ok(JSON.stringify(viaTool.data).includes("Jane"), "records.list on the device reads the record that lives on the server");
+  const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
+  assert.ok(stranger.error, "a caller that is not the signed-in person is refused");
   // and the record is on the SERVER, not on the device
   const onServer = server.kernel.spaces.hosted(id);
   assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", { page: { limit: 50 } })).includes("Jane"), "the record lives in the server's store");
@@ -1535,4 +1541,63 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
   const again = await reg.call("spaces.owner.adopt", { person: owner.id }, "module:wink");
   assert.ok(!again.error && again.data.changed === false, `adopting the same identity again changes nothing: ${JSON.stringify(again)}`);
   assert.equal(w.d.kernel.id.owner, owner.id, "still the identity");
+});
+
+test("an invitee's session opens the stream with the signed hello in its head and only for that route; a new hello replaces the old link", async t => {
+  const heads = [], closed = [];
+  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
+  const links = createServerLinks({ connect, options: {}, name: "Kit's phone", channelOf: () => null });
+  t.after(() => links.close());
+  const ch = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
+  const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
+  await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  // a second hello for the same invite closes the first link and opens a new one with the new hello
+  await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
+  assert.equal(heads[1].head.invitee.nonce, "n2");
+  assert.deepEqual(closed, ["rt-harlow"]);
+  // no route, or no signed hello: nothing is opened
+  assert.throws(() => links.inviteeSessionFor(null, hello), e => e.code === "bad_input");
+  assert.throws(() => links.inviteeSessionFor(ch, {}), e => e.code === "bad_input");
+  // a paired-server id never reaches an invitee link
+  assert.throws(() => links.sessionFor("srv"), e => e.code === "not_found");
+});
+
+test("a box-less client makes its first space on a paired server: the server hosts it, the device signs the space's chain and record, and the directory resolves it with the home's route", async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { idDirectory: mkDir, memorySeen: memSeen } = await import("../lib/identity/directory.js");
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space), "the SERVER's kernel hosts the space the device claimed");
+  const dir = mkDir({ base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, seen: memSeen() });
+  const r = await dir.resolve("harlow", { resolve: async id => (id === f.ident.id ? st.ops() : null) });
+  assert.ok(r.ok, JSON.stringify(r));
+  assert.deepEqual([r.kind, r.payload.id, r.payload.ownerName, r.payload.home.kind], ["space", made.space, "alex", "server"]);
+  assert.deepEqual(r.payload.route, ROUTE);
+  // a refused host call claims nothing in the directory
+  await assert.rejects(() => claimServerSpace({ identity, name: "nopeproof", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, host: a => session.call("spaces.host-here", a) }), e => e.code === "presence_required");
+  assert.equal((await dir.check("nopeproof")).status, "ok");
+});
+
+test("host-here on a server too small for the larger store asks for the owner's word, in the kernel's words, and hosts only when asked again with it", async t => {
+  const f = await pairFreshServer(t);
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const sp = f.w.d.kernel.spaces;
+  spacesHooks.storePlan = async () => ({ store: "sqlite", confirm: { text: "This server is small: the space will use the built-in store.", choices: ["create", "cancel"] } });
+  t.after(() => { spacesHooks.storePlan = null; });
+  const before = sp.list().length;
+  await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "needs_store_confirmation" && /built-in store/.test(e.message));
+  assert.equal(sp.list().length, before, "nothing was hosted before the owner agreed");
+  const made = await session.call("spaces.host-here", { name: "smallroom", acceptBuiltinStore: true, proof: { key: "k2" } });
+  assert.match(made.space, /^spc_[a-z2-7]{12}$/);
+  assert.ok(sp.hosts(made.space));
 });
