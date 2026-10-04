@@ -57,7 +57,8 @@ export function streamPipe(s) {
     write: b => s.write(b), end: () => s.end(), destroy: () => s.reset("closed"),
     buffered: () => Number(s.ch?.transport?.bufferedAmount || 0), ondata: () => {}, onclose: () => {},
   };
-  s.ondata = b => p.ondata(b);
+  // the relay channel hands Uint8Array chunks; the session's reader needs Buffers
+  s.ondata = b => p.ondata(Buffer.isBuffer(b) ? b : Buffer.from(b.buffer, b.byteOffset, b.byteLength));
   s.onend = () => p.onclose("ended");
   s.onreset = why => p.onclose(why || "reset");
   return p;
