@@ -1,9 +1,9 @@
 // @ts-check
 // The R3 connection states and the outbox rows (connection.ts), without React: the store is read
 // through getState.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 
-import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

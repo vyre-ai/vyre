@@ -1,9 +1,9 @@
 // @ts-check
 // Send on chat's core: the row paints under u:<uuid> at once and the box's confirm never moves,
 // re-keys or doubles it (native bar 9); a refusal takes it back.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 
-import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { applyEvent, confirmSend, createSession, dropLocal } from "../../../../deck/chat/core/session-state.js";

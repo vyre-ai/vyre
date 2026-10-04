@@ -1,9 +1,9 @@
 // @ts-check
 // The pure halves of src/native: what a scanned code is, how a failed prompt reads, how a notice
 // is trimmed, and which path the app takes. No native module, no DOM.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 
-import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 

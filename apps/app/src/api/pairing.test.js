@@ -1,9 +1,9 @@
 // @ts-check
 // The pairing link's parsing (pairing.ts): the offer out of `vyre://pair?offer=...` however it was
 // encoded, a stored pairing checked on load, and the relay base a request's proof ignores.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 
-import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parsePairUrl } from "../../../../relay/client/client.js";
