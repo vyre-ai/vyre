@@ -363,7 +363,9 @@ test("spaces.devices.enrolled is fail-closed: an unknown space is enrolled only 
   assert.equal(await enrolled(dev, w.space), false, "cancelled");
   // a finished space of the person's: enrolled, and not once the kernel says the person is no longer a member of it
   const fin = (await deck("spaces.create", { name: "finishedone", home: { kind: "this-computer", confirmed: true } })).data;
-  assert.equal(await enrolled(dev, fin.space), true);
+  assert.equal(await enrolled(dev, fin.space), false, "dev met the box before this space existed: it is not on dev's list (the sunset rule)");
+  ins.run("devicexxxxxxxxxx8", "phone eight", "app", 0, null);
+  assert.equal(await enrolled("devicexxxxxxxxxx8", fin.space), true, "a paired device meeting the box now is enrolled in the spaces its person belongs to");
   // migration by contact: the first answer wrote this device an explicit list; a space joined LATER is not added to it by itself
   const afterContact = (await deck("spaces.devices.list", { device: dev })).error;
   void afterContact;
