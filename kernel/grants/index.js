@@ -691,6 +691,13 @@ export function createGrantsStore(cfg) {
       const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
       return [...rules.values()].filter(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action) && (!r.covers.resource || urnMatches(r.covers.resource, resource)));
     },
+    /** Is any active standing rule bound to this chain for this action, whatever resource it names? (A caller that totals rows needs to know no rule could treat two rows differently.) @param {any} chain @param {string} action */
+    rulesTouch(chain, action) {
+      if (!rules.size || !isChain(chain)) return false;
+      const assistant = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "agent" || h.actor.kind === "automation");
+      const member = chain.hops.some((/** @type {any} */ h) => h.actor.kind === "person");
+      return [...rules.values()].some(r => r.status === "active" && ((member && r.binds.includes("members")) || (assistant && r.binds.includes("assistants"))) && r.covers.actions.includes(action));
+    },
     /** The rules and the proposals, for a manager and above. @param {any} chain */
     async rulesList(chain) {
       reader(chain);
