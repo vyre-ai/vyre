@@ -6,6 +6,7 @@
 // stub and not a raw port. Per the launch instructions this never touches the user's own Chrome
 // profile: every browser here gets its own --user-data-dir under a temp folder, removed after.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

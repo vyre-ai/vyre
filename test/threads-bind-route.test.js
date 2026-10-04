@@ -1,6 +1,7 @@
 // @ts-check
 // The daemon's threads.bind route reads the caller's process ancestry with the imported `ancestry()`; a local `const ancestry` in the same handler once shadowed it and broke the call before any
 // check ran (sessions found it). A real daemon: the call must come back as a structured answer, never an exception. A test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { tempHome } from "./helpers.js";

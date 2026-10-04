@@ -1,5 +1,6 @@
 // A total and a search must not show what a person may not see. The store may total rows itself (one GROUP BY) only when every row gets the caller's same answer; otherwise the
 // gateway totals the rows it allowed, and the answer is what the reference store gives that person. Both stores, both kinds of caller.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

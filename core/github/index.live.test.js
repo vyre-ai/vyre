@@ -21,6 +21,7 @@
 // octocat/Hello-World is GitHub's own tiny public demo repo (two files, no history to speak of),
 // chosen so a real clone costs nothing meaningful in a CI run.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";

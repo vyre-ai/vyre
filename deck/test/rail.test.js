@@ -3,6 +3,7 @@
 // mounts it left of the header, css/deck.css draws it 72 wide. Order, labels, names, the Now
 // badge, the Cmd+number keys and the CSS geometry.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

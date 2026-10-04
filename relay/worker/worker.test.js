@@ -3,6 +3,7 @@
 // relay/node/server.test.js, each run twice, once with a live object and once with the object
 // thrown away after every event (hibernation), plus core/relay/link.js's box side end to end.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import worker, * as W from "./index.js";

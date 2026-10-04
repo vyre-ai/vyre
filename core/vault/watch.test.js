@@ -2,6 +2,7 @@
 // watch tests: a fake watcher child that prints the signals a test asks for, and a fake clock for
 // the wall-clock gap check. Nothing here waits on a real sleep or screen lock.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

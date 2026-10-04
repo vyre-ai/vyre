@@ -2,6 +2,7 @@
 // Tests run against a fake ACME server on 127.0.0.1 that checks what a real one checks: the
 // JWS signature, alg ES256, a fresh single-use nonce, the url in the protected header, jwk only
 // on newAccount and kid afterwards, and the DNS-01 key authorization in the fake zone.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

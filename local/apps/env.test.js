@@ -3,6 +3,7 @@
 // shortcuts go through temp files, and the real exec refuses before spawning anything when no
 // dialog may be shown or the machine is not a Mac.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

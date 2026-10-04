@@ -28,6 +28,7 @@
   "watches": {
     "emits": [
       "onboard.stepped",
+      "onboard.claude-changed",
       "onboard.finished"
     ]
   },

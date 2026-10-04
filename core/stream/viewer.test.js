@@ -1,6 +1,7 @@
 // @ts-check
 // V-1 (reviewer re-gate, chat-03): a field's own `placeholder: true` is never believed. Every placeholder is rebuilt from a whitelist of
 // keys; each probe below is the reviewer's and fails on the code that passed a flagged field through untouched.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { render, forViewer, resolveRefs } from "./viewer.js";

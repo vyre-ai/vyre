@@ -1,6 +1,7 @@
 // @ts-check
 // The release gate: a build with the placeholder key, or a install script whose key differs from
 // release.js, is refused (scripts/check-release-key.mjs).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -3,6 +3,7 @@
 // does not say), the secrets warning from files.drive.audit's `unsafe`, and the remount step
 // files.drive.access answers with.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";

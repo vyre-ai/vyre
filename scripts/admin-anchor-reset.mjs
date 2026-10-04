@@ -16,6 +16,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { DatabaseSync } from "node:sqlite";
 import { startSealer } from "../kernel/seal/client.js";
+import { devSwitch } from "../kernel/seal/appattest.js";
 import { chainCtx, payloadHash } from "../kernel/seal/wire.js";
 import { createSqliteEventLog } from "../kernel/store/sqlite-log.js";
 import { createChainBuilder } from "../kernel/core/chain.js";
@@ -56,7 +57,7 @@ try {
   }
   const dbFile = path.join(home, "vyre.db");
   if (!fs.existsSync(dbFile)) throw new Refused("no_home", "this home has no database to record the reset in");
-  const dev = process.env.VYRE_SEAL_DEV === "1";
+  const dev = devSwitch(process.env.VYRE_SEAL_DEV); // a release-kind build ignores the variable (a root-run wrapper step may pass it on)
   const sealer = startSealer({ dir: sealDir, dev, ...(dev && process.env.VYRE_SEAL_UNATTESTED === "1" ? { unattested: true } : {}), ...(dev && process.env.VYRE_SEAL_SOFTWARE === "1" ? { software: true } : {}), ...(process.env.VYRE_SEAL_PROFILE ? { profile: process.env.VYRE_SEAL_PROFILE } : {}) });
   try {
     await sealer.health?.();

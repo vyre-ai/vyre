@@ -4,6 +4,7 @@
 // server (core/mcp/testing/fake-mcp.js, a stdio child): the send is held, nothing reaches the
 // server before the person approves, and exactly one call arrives after.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

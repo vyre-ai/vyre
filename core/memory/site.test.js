@@ -1,6 +1,7 @@
 // @ts-check
 // site.*: the store for what Vyre for Chrome learns. Fictional data only (a made-up GoHighLevel-like app).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

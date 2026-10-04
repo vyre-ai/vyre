@@ -8,6 +8,7 @@
 //   - Each module owns tables prefixed with its own name and migrates them itself, so modules
 //     built in parallel by different people never collide on a table.
 
+import "../../lib/mac-test-refusal.js";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";
@@ -50,7 +51,16 @@ export function migrate(db, module, steps) {
     }
     db.exec("BEGIN");
     try {
-      db.exec(sql);
+      try { db.exec(sql); }
+      catch (e) {
+        // An upgraded box can already hold what a step adds (a column put there by an earlier build whose list was numbered differently): that part of the step is done. Retry
+        // statement by statement and skip only "duplicate column name" refusals, so a real error still fails the module.
+        if (!/duplicate column name/i.test(String(/** @type {Error} */ (e).message))) throw e;
+        for (const part of sql.split(";")) {
+          if (!part.trim()) continue;
+          try { db.exec(part); } catch (e2) { if (!/duplicate column name/i.test(String(/** @type {Error} */ (e2).message))) throw e2; }
+        }
+      }
       db.prepare("INSERT INTO _migrations (module, version, at) VALUES (?,?,?)").run(module, v, Date.now());
       db.exec("COMMIT");
     } catch (e) {

@@ -2,6 +2,7 @@
 // A person's memory and Recall survive owner adoption (the claimed identity becomes the home's owner id). Nothing in memory or Recall is keyed by a person id, so the data stays; the one
 // place an id is read is the gate's membership check, which asks the kernel who the id is NOW (`canonicalPerson`). Real daemon, kernel on, a seeded Recall index and a told fact.
 // A session token minted BEFORE adoption names the old id: it must still be the owner's after.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

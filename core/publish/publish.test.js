@@ -1,6 +1,7 @@
 // @ts-check
 // publish: the module over a real registry with fake spaces, vault, seal, builder, names and tasks modules.
 // Sample world only: alex (owner), kit (admin), sam (member), juno (a model), Harlow Legal, Northwind Bakery.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

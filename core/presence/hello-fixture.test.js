@@ -4,6 +4,7 @@
 // public data is stored. The rsa.test.js cases build their own keys; this one proves the same
 // code accepts what a real machine produced.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

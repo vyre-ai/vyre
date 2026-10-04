@@ -3,6 +3,7 @@
 // child process, against a vyred in this process in a temp home, with a watcher that reads
 // nothing from the network and files one item into a Harlow Legal project.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

@@ -1,5 +1,6 @@
 // @ts-check
 // The box container's restart loop (core/daemon/loop.sh, ADR 0029 R4 and R7), with a fake vyred.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

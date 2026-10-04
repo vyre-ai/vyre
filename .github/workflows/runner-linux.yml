@@ -1,0 +1,42 @@
+name: runner-linux
+# The runner's real sandbox on a hosted Linux machine: bubblewrap and gocryptfs installed, so the tests that run a session in the real sandbox and encrypted workspace RUN here
+# and a missing sandbox fails the job (VYRE_REQUIRE_SANDBOX=1) instead of skipping. Owner: runner.
+on:
+  workflow_dispatch:
+  push:
+    branches: [work/runner, work/devbox]
+    paths: ["core/runner/**", "lib/agent-sandbox.js", "kernel/remote/**", ".github/workflows/runner-linux.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: runner-linux-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VYRE_REQUIRE_SANDBOX: "1"
+      VYRE_TEST_HOSTED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: bubblewrap, gocryptfs, fuse
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap gocryptfs fuse3
+          # Ubuntu 24.04 blocks unprivileged user namespaces; the runner needs them for bubblewrap.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          bwrap --version; gocryptfs -version | head -1
+      - run: npm ci --no-audit --no-fund
+      - name: the runner's tests, sandbox required
+        run: node --test --test-reporter=spec "core/runner/*.test.js" 2>&1 | tee runner-linux.txt
+      - name: no runner test file may have skipped for want of the sandbox
+        run: "! grep -E 'SKIPPED on this machine|# SKIP' runner-linux.txt | grep -iE 'sandbox|bubblewrap|gocryptfs'"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: runner-linux
+          path: runner-linux.txt

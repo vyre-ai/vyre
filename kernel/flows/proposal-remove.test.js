@@ -1,4 +1,5 @@
 // reviewer-2 repro PR-5 against work/flows 648e10c77: a types proposal's card names only the types added or changed; `remove_types` in the same diff rides along unseen and is applied on the yes.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";

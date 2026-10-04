@@ -1,6 +1,7 @@
 // AR8: artifacts, their versions, tags and files go out in `vyre backup`, come back on restore, and go
 // with the data on an uninstall. One round trip through the real backup and restore, then a fresh
 // registry on the restored home reads everything the old one held.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -25,8 +26,8 @@ const AGENTS = `export default { async start(ctx) { ctx.tool("agents.list", { ru
 /** A registry with the artifacts module on `home`, stopped by the caller. */
 async function bootOn(home) {
   const root = path.join(home, "mods");
-  writeModule(root, "threads", { does: { tools: ["threads.get"] } }, THREADS);
-  writeModule(root, "agents", { does: { tools: ["agents.list"] } }, AGENTS);
+  writeModule(root, "threads", { does: { tools: [{ name: "threads.get", reach: "modules" }] } }, THREADS);
+  writeModule(root, "agents", { does: { tools: [{ name: "agents.list", reach: "modules" }] } }, AGENTS);
   const db = open(path.join(home, "vyre.db"));
   const reg = new Registry({ db, events: new Events(db), config: { role: "box" }, paths: { root: home }, log: () => {} });
   const core = discover([path.join(import.meta.dirname, "..")]).filter(f => f.manifest?.name === "artifacts");

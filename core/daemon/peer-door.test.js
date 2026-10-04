@@ -1,3 +1,5 @@
+import "../../scripts/mac-test-guard.mjs";
+import "../runner/testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createPeerDoor } from "./peer-door.js";

@@ -2,6 +2,7 @@
 // refuses what it should with a readable reason, and the SDK types name every manifest key and
 // every ctx member the loader hands a module.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

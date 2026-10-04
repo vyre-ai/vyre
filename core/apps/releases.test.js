@@ -3,6 +3,7 @@
 // the manifest rewritten to the signed file, the APK immutable and signed once, names that are
 // not the release refused, and nobody but the owner's devices served.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

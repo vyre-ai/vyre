@@ -1,5 +1,6 @@
 // @ts-check
 // Settings on the real box (updates, notifications) against a fake box shaped like the dev box's answers.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

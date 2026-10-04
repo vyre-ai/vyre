@@ -3,6 +3,7 @@
 // only, grouped by kind), a "#name" token in the draft, a chip under the box that carries {kind, id}, and
 // "/remember" as the save-a-memory mode. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, $, $$, text } from "../test/fake-dom.js";

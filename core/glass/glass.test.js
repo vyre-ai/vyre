@@ -6,6 +6,7 @@
 // the module registered, as vyred's router does; the last test runs the module inside a real
 // vyred and fetches over its socket.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -2,6 +2,7 @@
 // The typed Wink code: parsing, the draft's CPace test vectors (appendix B.3, ristretto255 + SHA-512),
 // and the session between a typist and a showing device.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as C from "./code.js";

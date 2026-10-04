@@ -3,6 +3,7 @@
 // public key, it signs a one-time challenge after its own biometric prompt. A wrong key, a reused
 // or late challenge, and a browser without a key are refused; failures count toward the lockout.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

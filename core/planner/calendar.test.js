@@ -3,6 +3,7 @@
 // google.* tools answer from an in-memory calendar per account, and an invite with attendees is
 // held (as core/google does at the Gate) instead of written. Nothing reaches Google.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";

@@ -2,6 +2,7 @@
 // Watchtower's rules and the breach check, without vyred. The breach check never reaches the
 // network here: fetch is injected, and the test checks what would have been sent.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

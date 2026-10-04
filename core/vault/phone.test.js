@@ -1,6 +1,7 @@
 // @ts-check
 // UX-33: the phone app adds a secret and unlocks from the app itself. A paired phone calls as `mobile`; the presence floor (Face ID on the phone) proves the person; vault.state tells the app
 // whether to show the empty state, the locked state or the list. Models, guests and agents still cannot. Every value is a sample.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

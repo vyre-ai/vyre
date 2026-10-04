@@ -3,6 +3,7 @@
 // owner, the person's own session (with their presence) signs the AI account in and the status says connected; a model, another module or a second person (an agent) can do none of it.
 // Not covered here: the device pairing exchange itself (core/wink/pairing.test.js) and the owner's session from signin.dev on a dev-kind box (a stand-in): the owner is marked by the
 // tailnet owner flag the module also honours (network.ownerSeen), and the presence is the test stand-in (test/helpers present).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -74,4 +75,19 @@ test("with an owner, a model, another module, an agent and a second person's lab
   assert.ok(agentOnPerson.error, "an agent riding the person's surface is refused");
   const items = (await d.registry.call("vault.list", {}, "cli")).data.items;
   assert.ok(!items.some((/** @type {any} */ i) => i.name === "anthropic-api-key"), "nothing was stored");
+});
+
+test("there is no first-passkey path: onboard.passkey refuses with the pairing message, and no status or link answer carries a passkey link", { timeout: 60_000 }, async t => {
+  for (const network of [{}, { ownerSeen: true }]) {
+    const d = await box(t, network);
+    for (const caller of ["deck", "cli", "local", "onboard", "mcp"]) {
+      const r = await d.registry.call("onboard.passkey", {}, caller);
+      assert.ok(r.error, `${caller} must be refused`);
+      assert.ok(/Pair this server to your Vyre app first|denied|no_such_tool/.test(String(r.error.message) + String(r.error.code)), `${caller}: ${JSON.stringify(r.error)}`);
+    }
+    const st = await d.registry.call("onboard.status", {}, "deck");
+    assert.ok(!JSON.stringify(st.data).includes("passkeyUrl"), "the status offers no passkey link");
+    const link = await d.registry.call("onboard.link", { mint: false }, "cli");
+    assert.ok(!JSON.stringify(link).includes("passkeyUrl"), "the link answer offers none either");
+  }
 });

@@ -3,6 +3,7 @@
 // read are fakes that record their calls. The git source is a bare repo in the temp folder, read
 // over file://, so nothing reaches the network.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

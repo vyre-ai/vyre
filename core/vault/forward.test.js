@@ -2,6 +2,7 @@
 // Credentialed calls from a lent computer run at the home, through vault.request's own path: the three credential kinds a real firm needs (a plain key, an OAuth sign-in that
 // refreshes, a Google service account with domain-wide delegation for named mailboxes), route allow and deny lists with a default of no, outward calls held, plain size limits,
 // and no key, token or header value in anything that goes back to the device or into the audit. Fakes only: DNS, transport and clock.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

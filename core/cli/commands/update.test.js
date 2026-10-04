@@ -4,6 +4,7 @@
 // never started (bring and the health wait are fakes); restore and stop only record their calls.
 // Nothing here reaches the network, a real npm, or a real vyred.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

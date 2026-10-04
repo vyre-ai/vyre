@@ -4,6 +4,7 @@
 // generator, so no key-shaped literal sits in the source. A key must never come back in a
 // response, an audit row or an event.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

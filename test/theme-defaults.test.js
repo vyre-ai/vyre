@@ -3,6 +3,7 @@
 // deck.css) hold the same values, so the docs' swatches, the theme.colors defaults and what the
 // Deck paints can never drift apart.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
