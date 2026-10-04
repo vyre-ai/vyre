@@ -140,7 +140,7 @@ export async function bring(role, mineOf = build) {
  * @typedef {{ ask(q: string): Promise<string>, tty: boolean }} IO
  * @typedef {{ io?: IO, bring?: typeof bring, call?: typeof call, health?: (box: string) => Promise<any>,
  *   save?: typeof config.save, openCapsule?: () => Promise<boolean>, addBox?: (target: string, opts: any) => Promise<number>,
- *   openUrl?: (url: string) => void, platform?: string }} Deps
+ *   openUrl?: (url: string) => void, platform?: string, sleep?: (ms: number) => Promise<void> }} Deps
  */
 
 /** Questions on the person's own terminal. One readline per question, so nothing holds stdin open. */
