@@ -81,7 +81,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 4 | 2 | cli |
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
-| [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
+| [`team`](#team) | `core/team` | `box`, `local` | 32 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 36 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
@@ -831,7 +831,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/team`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`, `projects`, `sessions`
-- Tools: [31](tools.md#team), 2 of them only for other modules
+- Tools: [32](tools.md#team), 2 of them only for other modules
 - Emits: [10 events](events.md#team)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

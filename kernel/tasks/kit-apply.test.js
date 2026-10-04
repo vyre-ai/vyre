@@ -90,3 +90,49 @@ test("the waiver is no presence for anything else: a define outside the Kit, the
   await assert.rejects(() => k.gateway.records.define(kitChain, { add_types: [CONTACT] }, { waiver }), { code: "not_allowed" }, "an ended waiver");
   await assert.rejects(() => k.gateway.records.define(kitChain, { add_types: [CONTACT] }, { waiver: {} }), { code: "not_allowed" }, "a made-up waiver");
 });
+
+test("KW-A: a refused define spends nothing; KW-B: another chain of the same person (another device) cannot use the waiver", async () => {
+  const { k, owner, approved, kitChain } = await rig();
+  const BAD = { name: "Bad Name", label: "Broken", fields: [{ name: "x", kind: "text", label: "X" }] };
+  const kit = { ...KIT, types: [BAD, PET] };
+  const task = await approved(kit);
+  const waiver = await k.gateway.kits.begin({ chain: kitChain, task, kit });
+  const first = await k.gateway.records.define(kitChain, { add_types: [BAD] }, { waiver }).catch(e => e);
+  assert.equal(first.code, "bad_input", "the Kit lists it, so the waiver covered it and the define itself failed");
+  const again = await k.gateway.records.define(kitChain, { add_types: [BAD] }, { waiver }).catch(e => e);
+  assert.equal(again.code, "bad_input", "the failed define stranded nothing");
+  await k.gateway.records.define(kitChain, { add_types: [PET] }, { waiver });
+  // another chain of the same person: same actors, another device
+  const owner2 = k.chains.fromFacts({ kind: "device", device_key_id: "d-other", person: OWNER, path: "direct", session: "s2" });
+  const other = k.chains.fromFacts({ kind: "module", inbound: owner2, module: "kits", first_party: true });
+  const task2 = await approved();
+  const w2 = await k.gateway.kits.begin({ chain: kitChain, task: task2, kit: KIT });
+  await assert.rejects(() => k.gateway.records.define(other, { add_types: [CONTACT] }, { waiver: w2 }), { code: "not_allowed" }, "same person, another device");
+  await k.gateway.records.define(kitChain, { add_types: [CONTACT] }, { waiver: w2 });
+});
+
+test("KT-4 kits.resume: an install that stopped after kit.applying is finished once, only for the types not yet defined, by the approver's own chain; a Kit with no types still begins", async () => {
+  const { k, owner, alice, approved, kitChain } = await rig();
+  const task = await approved();
+  await assert.rejects(() => k.gateway.kits.resume({ chain: kitChain, task, kit: KIT }), { code: "not_allowed" }, "an approval never applied cannot be resumed");
+  const w = await k.gateway.kits.begin({ chain: kitChain, task, kit: KIT });
+  await k.gateway.records.define(kitChain, { add_types: [CONTACT] }, { waiver: w });
+  // the process stops here: PET was never defined. A new waiver is needed.
+  await assert.rejects(() => k.gateway.records.define(kitChain, { add_types: [PET] }, { waiver: {} }), { code: "not_allowed" });
+  const asst = k.chains.fromFacts({ kind: "agent_session", vouched: true, person: OWNER, agent: "assistant", session: "s1" });
+  await assert.rejects(() => k.gateway.kits.resume({ chain: asst, task, kit: KIT }), { code: "not_allowed" }, "an assistant never resumes");
+  await assert.rejects(() => k.gateway.kits.resume({ chain: kitChain, task, kit: { ...KIT, types: [CONTACT, { ...PET, label: "Pets" }] } }), { code: "not_allowed" }, "not the approved Kit");
+  const r = await k.gateway.kits.resume({ chain: kitChain, task, kit: KIT });
+  assert.equal(k.log.read({ type: "kit.resumed" }).length, 1);
+  assert.deepEqual(k.log.read({ type: "kit.resumed" })[0].data.types, ["pet"], "only what is missing");
+  await assert.rejects(() => k.gateway.records.define(kitChain, { change_types: [{ ...CONTACT, label: "Changed" }] }, { waiver: r }), { code: "not_allowed" }, "a defined type is not part of a resume");
+  await assert.rejects(() => k.gateway.records.define(kitChain, { add_types: [CONTACT] }, { waiver: r }), { code: "not_allowed" }, "an already defined type is not covered");
+  await k.gateway.records.define(kitChain, { add_types: [PET] }, { waiver: r });
+  await assert.rejects(() => k.gateway.kits.resume({ chain: kitChain, task, kit: KIT }), { code: "not_allowed" }, "once");
+  // a Kit with no types begins (the host verifies every install through begin)
+  const bare = { id: "bare", name: "Bare", version: 1, types: [] };
+  const t2 = await approved(bare);
+  const wb = await k.gateway.kits.begin({ chain: kitChain, task: t2, kit: bare });
+  assert.ok(wb);
+  void owner; void alice;
+});

@@ -31,13 +31,19 @@ const loginKey = t => (t && typeof t === "object" ? t.key : typeof t === "string
 export default {
   async start(ctx) {
     const now = typeof ctx.now === "function" ? ctx.now : Date.now;
-    /** The one open ask: the terminal it is for and where it stands. `token` is held until the same terminal reads it, once. @type {{ id: string, key: string, at: number, state: "waiting" | "approved" | "refused", token?: string, expires?: number } | null} */
+    /** The one open ask: the terminal it is for and where it stands. `token` is held until the same terminal reads it, once. @type {{ id: string, key: string, at: number, state: "waiting" | "approved" | "refused", from?: string|null, token?: string, expires?: number } | null} */
     let ask = null, lastAskAt = -Infinity;
     const live = () => { if (ask && ask.state === "waiting" && now() - ask.at > ASK_MS) ask = null; return ask; };
     const need = () => { if (typeof ctx.cliSigninPayload !== "function" || typeof ctx.cliSessions !== "object" || !ctx.kernel) throw refuse("this build has no command-line sign-in", "unavailable"); };
     const card = (/** @type {any} */ a) => {
       const p = ctx.cliSigninPayload(a.id, a.key);
-      return { id: a.id, state: a.state, title: "Sign in the command line?", body: "A terminal on your box asks to act as you. Approve with Face ID on this phone, or say no and nothing changes.", op: p.op, space: p.space, fields: p.fields, payload_hash: p.payload_hash, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) };
+      // SG-2: the phone says where the login came from, so `ssh localhost` from a model's shell reads as this machine and a login from another computer names its address (the copy is ui-ux's).
+      const host = String((ctx.config && ctx.config.name) || "your server");
+      const local = !a.from || a.from === "127.0.0.1" || a.from === "::1" || a.from === "localhost";
+      return { id: a.id, state: a.state, title: `Sign in to ${host}'s terminal`,
+        body: local ? `Something on ${host} asked to sign in as you. That is you at its own terminal, or a program running on it. Approve only if you opened that terminal yourself.`
+          : `A computer at ${a.from} asked to sign in to ${host} as you. Approve only if that is one of your computers and you just used it.`,
+        asked_from: local ? `${host} itself, not another computer` : a.from, op: p.op, space: p.space, fields: p.fields, payload_hash: p.payload_hash, expires_in_s: Math.max(0, Math.round((ASK_MS - (now() - a.at)) / 1000)) };
     };
 
     ctx.tool("signin.ask", {
@@ -51,7 +57,7 @@ export default {
         const a = live();
         if (a && a.state === "waiting" && a.key === key) return { id: a.id, expires_in_s: card(a).expires_in_s };
         if (now() - lastAskAt < NEW_ASK_MS) throw refuse("a sign-in was asked for a moment ago: wait a little before asking again", "rate_limited");
-        ask = { id: `si_${randomBytes(9).toString("base64url")}`, key, at: now(), state: "waiting" };
+        ask = { id: `si_${randomBytes(9).toString("base64url")}`, key, at: now(), state: "waiting", from: meta && meta.terminal && typeof meta.terminal === "object" && typeof meta.terminal.from === "string" ? meta.terminal.from : null };
         lastAskAt = now();
         return { id: ask.id, expires_in_s: ASK_MS / 1000 };
       },
@@ -128,7 +134,7 @@ export default {
         if (!/^[A-Za-z0-9_.:@-]{1,128}$/.test(node)) throw refuse("node must name the device the browser connects from", "bad_input");
         if (typeof ctx.cliSessions.nodeInUse === "function" && ctx.cliSessions.nodeInUse(node)) throw refuse("that device already holds a signed-in session", "denied");
         const s = ctx.cliSessions.startStandIn(node);
-        ctx.events.emit("presence.signed-in", { id: s.id, node: String(input.label || node), method: "stand-in" });
+        // presence.signed-in is presence's event: the daemon says it when it starts the stand-in session (core/daemon cliSessions.startStandIn), not this module.
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires, method: "stand-in" };
       },
     });

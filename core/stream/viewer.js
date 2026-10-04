@@ -17,6 +17,7 @@
 //   hidden: { hidden: "role", kind, present }
 
 import { kindOf } from "./frame.js";
+import { within } from "../../lib/within.js";
 
 /** Block kinds whose `fields` are drawn per viewer. */
 export const FIELD_BLOCKS = Object.freeze(["record", "draft", "answer"]);
@@ -137,9 +138,7 @@ export async function resolveRefs(frame, viewer) {
     // F-1: a resolver that never answers must not stall the frames behind this one: after the deadline the cited field is the chip.
     let spec = null;
     const ms = Number.isFinite(viewer.resolveMs) && /** @type {number} */ (viewer.resolveMs) > 0 ? /** @type {number} */ (viewer.resolveMs) : RESOLVE_MS;
-    /** @type {any} */ let timer;
-    try { spec = await Promise.race([viewer.resolve(b.record, b.field), new Promise(res => { timer = setTimeout(() => res(null), ms); timer.unref?.(); })]); } catch { spec = null; }
-    finally { clearTimeout(timer); }
+    try { spec = await within(viewer.resolve(b.record, b.field), ms, null); } catch { spec = null; }
     if (!isObj(spec) || spec.placeholder === true) return unreadable(b);
     const f = { ...spec, name: b.field, label: typeof b.label === "string" ? b.label : typeof spec.label === "string" ? spec.label : b.field };
     if (!canRead(f, viewer)) return { block: "field", ...placeholder(f, viewer) };
