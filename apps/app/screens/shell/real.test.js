@@ -1,5 +1,6 @@
 // @ts-check
 // The shell on the real box against a fake box shaped like the dev box's spaces.list and spaces.identity.status.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

@@ -1,5 +1,6 @@
 // @ts-check
 // spaces: a person's identity chain on real devices (file stores in temp homes) against the real directory Worker on the fake runtime.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

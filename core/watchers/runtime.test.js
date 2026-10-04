@@ -2,6 +2,7 @@
 // The runtime on its own: a real store and real child processes, with the clock, the vault,
 // projects and Memory stubbed, so every rule in the brief can be driven by hand.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test as nodeTest } from "node:test";
 // Real watcher children and loopback servers: a hosted runner, never the person's Mac.
 const offMac = skipOffRunner();

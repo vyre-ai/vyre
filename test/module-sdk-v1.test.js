@@ -2,6 +2,7 @@
 // Module contract v1 (ADR 0047): object tool entries with reach and outward, the stricter rules for
 // an added module, and the capability summary the install card and the capability manifest read.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { checkManifest, toolEntries, capabilities, widened, updatePlan, REACHES } from "../packages/module-sdk/manifest.js";

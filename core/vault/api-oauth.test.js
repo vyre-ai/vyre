@@ -7,6 +7,7 @@
 // client from its vault item; a rotated refresh token is sealed before the call goes on; a refused
 // refresh says how to sign in again; and no response, error or audit row carries a token.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

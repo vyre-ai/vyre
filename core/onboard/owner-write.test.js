@@ -1,5 +1,6 @@
 // @ts-check
 // HD-1: the onboarding writers are the person's own; a model client or another module is refused, and once the box has an owner a write needs presence.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { ownerWrite } from "./index.js";

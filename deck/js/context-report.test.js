@@ -2,6 +2,7 @@
 // js/context-report.js: the Deck tells cohesion's context where the person is (ADR 0036 part 2),
 // only the project and thread, once per place, again on coming back, never while hidden.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { placeOf, reportContext } from "./context-report.js";

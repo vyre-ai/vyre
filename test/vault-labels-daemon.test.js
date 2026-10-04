@@ -1,6 +1,7 @@
 // The person comes from the kernel's chain, never from a caller label, in the four sites the vault team owned (presence's session check, Drive share and unshare, vault connections, the sync
 // namespace): on a REAL kernel-on daemon, with the facts from the daemon's own `callerFacts` and the home's relay rows. A confirmed owner device signed in is the person; a web device, a setup
 // device, a removed device, an id never paired, an unsigned owner device and a tailnet label with no proven facts get nothing. Run on a test box, never on a person's Mac.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start, callerFacts } from "../core/daemon/index.js";

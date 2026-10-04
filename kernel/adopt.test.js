@@ -1,6 +1,7 @@
 // @ts-check
 // The owner's adoption of the claimed identity (reviewer-2's AO-1 to AO-4, the lead's AO-6): once, logged, serialised, repaired at boot from the log, and everything keyed by the old
 // owner's id still belongs to the person. Real daemons on a temp home, kernel on (a test box, never a Mac).
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

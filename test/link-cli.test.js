@@ -3,6 +3,7 @@
 // box of test/link-harness.js (two vyreds in temp homes, the tailnet simulated at both ends).
 // A browser is a fake `open` that writes down what it was asked to open. No Tailscale, no dialogs.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

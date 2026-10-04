@@ -7,6 +7,7 @@
 // latest mounts the tail again, and a deep link mounts its row first. Prints the numbers.
 // Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../test/fake-dom.js";

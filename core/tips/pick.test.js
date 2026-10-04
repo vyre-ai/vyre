@@ -1,6 +1,7 @@
 // @ts-check
 // The selection rules, one by one, on plain data: no store, no clock, no daemon.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pick } from "./pick.js";

@@ -1,6 +1,7 @@
 // @ts-check
 // A Space made by spaces.create has its own kernel: the development presence stand-in (a hand-made file in a development build) must reach it as it reaches the home's, or the walk's
 // admin acts there answer needs_presence. Without the file the hosted kernel still asks for presence. A test box, never a Mac.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

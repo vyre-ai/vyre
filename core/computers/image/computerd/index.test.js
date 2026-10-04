@@ -4,6 +4,7 @@
 // /cdp/json/version shape, a WebSocket round trip through hands-chrome's own client, the token
 // and shield checks on the upgrade, the fill token, and a Chrome restart. All in a temp dir.
 
+import "../../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawn } from "node:child_process";

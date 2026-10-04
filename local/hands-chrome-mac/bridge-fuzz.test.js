@@ -3,6 +3,7 @@
 // hostile frames (the kind a page can cause the extension to relay: odd types, prototype keys,
 // malformed escapes, huge and deeply nested values, replies nobody asked for). Whatever arrives, the
 // bridge keeps serving, nothing throws out of it, and a real extension still gets its calls through.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

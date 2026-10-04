@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { sizeWord, child, parent, crumbs, previewKind, readFile, listAll, whyNot, PREVIEW_MAX } from "./drive-browse.js";

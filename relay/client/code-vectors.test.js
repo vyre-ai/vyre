@@ -4,6 +4,7 @@
 // associated data, not the draft's fixed ones. cfrg-draft21-vectors.json is the draft-21 appendix vector for the same group, unchanged.
 // The post-ISK values (tags, number, key, ack, seed) come from the script's own Python, a second reading of code.js, not a reference.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

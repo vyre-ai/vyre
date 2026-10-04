@@ -7,6 +7,7 @@
 // Where the product does not yet do what ADR 0008 says, the check stays here as a todo subtest
 // naming the gap, so it turns green (and says so) the day the product catches up.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

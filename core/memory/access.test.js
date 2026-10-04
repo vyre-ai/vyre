@@ -3,6 +3,7 @@
 // (docs/adr/0007-intelligence.md, decision 4; ADR 0004). The memory module against a stand-in
 // for vyred, over the shared fictional corpus.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

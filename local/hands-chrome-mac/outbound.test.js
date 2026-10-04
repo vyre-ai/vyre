@@ -1,5 +1,6 @@
 // @ts-check
 // Only what SENDS something as the person is held: everything else is hands-free after the grant.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { classifySend, held, digest, guardInstall, guardInstallWrites, guardCollect } from "./extension/shared/outbound.js";

@@ -3,6 +3,7 @@
 // fakes read their answers from one shared object and count every call, so a test can say that a
 // keystroke called nothing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
@@ -97,9 +98,9 @@ async function world(t, { fakes = SOURCES.map(s => s[0]), extra = [], data = DAT
   const root = path.join(home, "mods");
   /** @type {any} */ (globalThis).SUGGEST_FAKE = { calls: {}, inputs: {}, delay: {}, data, offered: [] };
   for (const [name, tools, emits] of SOURCES.filter(s => fakes.includes(s[0])))
-    writeModule(root, name, { roles: ["box", "local"], does: { tools }, watches: { emits } }, FAKE(tools, emits));
+    writeModule(root, name, { roles: ["box", "local"], does: { reads: tools.filter(n => !/poke$/.test(n)), tools }, watches: { emits } }, FAKE(tools, emits));
   for (const [name, tools, offers] of extra)
-    writeModule(root, name, { roles: ["box", "local"], requires: ["suggest"], does: { tools } }, FAKE(tools, [], offers));
+    writeModule(root, name, { roles: ["box", "local"], requires: ["suggest"], does: { reads: tools, tools } }, FAKE(tools, [], offers));
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
   // The fakes stand in for Vyre's own projects, threads, planner and the rest, so they load as

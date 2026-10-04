@@ -6,6 +6,7 @@
 // worker signs for the sender's origin and refuses the popup; that the bridge acts only on
 // trusted clicks; and one create and sign-in end to end, verified as a relying party would.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

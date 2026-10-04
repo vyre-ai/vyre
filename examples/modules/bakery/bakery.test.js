@@ -1,6 +1,7 @@
 // bakery's own tests, on the SDK's testing harness: no vyred, a temp home, and fakes for the Gate,
 // the vault, memory and push. From outside the Vyre repo, import "@vyre/module-sdk/testing".
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";

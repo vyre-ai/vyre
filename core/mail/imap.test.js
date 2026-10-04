@@ -3,6 +3,7 @@
 // the read-only guarantees (nothing marked read, no MAIL FROM from a test), MIME reading, the
 // send path with Bcc kept out of the headers, and that no error ever carries the password.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";

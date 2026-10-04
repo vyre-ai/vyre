@@ -3,6 +3,7 @@
 // a batch over five becomes one todo, a fixed item's todo is done, a dismissed one stays quiet,
 // no planner means nothing happens, and the timer is due once a day after 09:00.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

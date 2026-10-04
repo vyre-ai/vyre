@@ -2,6 +2,7 @@
 // homeServe: the home's peer door dispatcher (kernel-2's ask). A joined device calls through a real admitPeer/joinPeer pair over a loopback pipe; the
 // kernel's withKernelCall is wrapped INSIDE homeServe so the proven node key reaches Wink first. peer-cache: the sync allow over wink.peer.allow.
 
+import "../../scripts/mac-test-guard.mjs";
 import crypto from "node:crypto";
 import { test } from "node:test";
 import assert from "node:assert/strict";

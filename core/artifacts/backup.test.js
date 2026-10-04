@@ -1,6 +1,7 @@
 // AR8: artifacts, their versions, tags and files go out in `vyre backup`, come back on restore, and go
 // with the data on an uninstall. One round trip through the real backup and restore, then a fresh
 // registry on the restored home reads everything the old one held.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

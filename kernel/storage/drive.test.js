@@ -1,5 +1,6 @@
 // @ts-check
 // VyreDrive on the pool: versions, conflicts that are kept not merged, deletes that can be undone, pruning, backups, safe paths, and the bytes only ever in the pool.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

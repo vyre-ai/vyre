@@ -3,6 +3,7 @@
 // register under the names the manifest declares, tailnet callers are refused, and nothing read
 // from the screen reaches the log or an event.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

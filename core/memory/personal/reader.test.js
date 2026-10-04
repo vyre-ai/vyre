@@ -1,6 +1,7 @@
 // @ts-check
 // The reader over a store, with a fake runner: no model is ever called.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

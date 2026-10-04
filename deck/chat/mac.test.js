@@ -5,6 +5,7 @@
 // "Answer it on" when the box cannot forward it), and the reply's
 // live rows give way to the Mac's blocks (recall.transcript, source "mac") so nothing shows twice. Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../test/fake-dom.js";

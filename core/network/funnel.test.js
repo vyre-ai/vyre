@@ -2,6 +2,7 @@
 // funnel: the /s/ share path on Tailscale Funnel, against a fake tailscale that keeps a serve
 // config the way the real one does, and a fake module context. No real binary, no network.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { startFunnel, parseShare, consentUrl, onArgs, offArgs } from "./funnel.js";

@@ -3,6 +3,7 @@
 // waiting.count is the one number; the owners' reads still give each draft's words and each
 // question's options. A box without waiting keeps today's merge (deck/js/needs.test.js).
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { install } from "../test/fake-dom.js";

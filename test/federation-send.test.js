@@ -5,6 +5,7 @@
 // the thread's events come back to the box's bus through link.events, labelled with the Mac,
 // until the answer is finished. Agents, MCP, guests and modules never reach the Mac.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -1,5 +1,6 @@
 // @ts-check
 // The storage pool: classes and copy counts, encryption before it leaves, healing, draining, capacity and the one number, quotas, residency.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

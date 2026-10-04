@@ -1,5 +1,6 @@
 // reviewer-2 repro SI-1 against work/kernel-lb1 de955f6cf (drop into test/): with the dev stand-in file, a setsid'd, daemonized model process (parent init, own process group) is named a server by insideClaude
 // ("unknown", not inside), asTaken keeps its label (model false), and surfaceAncestry turns "not inside a model" into outside: a person chain from a label.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { insideClaude } from "../core/daemon/peer.js";

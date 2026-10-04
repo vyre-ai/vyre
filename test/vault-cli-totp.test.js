@@ -5,6 +5,7 @@
 // period, whatever the period. The verbs run against a real vyred in a temp home whose verifier
 // finds a person at every call, with a fake api.pwnedpasswords.com so nothing leaves the machine.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

@@ -1,6 +1,7 @@
 // @ts-check
 // C-6 (reviewer gate chat-03): assistant text deltas and shell output stay in the stream log for 24 hours, then their content is gone
 // and their cursors stay. A group chat's words (authored text) are its record and stay.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

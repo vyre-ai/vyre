@@ -2,6 +2,7 @@
 // The box service runs as 0:0 with every capability dropped but SETUID/SETGID (its entrypoint drops to the vyre user), so a one-off `compose run --entrypoint node` is root WITHOUT DAC_OVERRIDE and cannot read the vyre-owned
 // home (0700): `sudo vyre admin anchor-reset` said "no Vyre home" and `admin wipe` could not touch the home on a real packaged install (found on testbox6, 5 Oct). Every one-off run that executes node against the home must name
 // `-u vyre`. (A one-off run through the default entrypoint, like restore, drops privileges itself; a `--entrypoint test` only checks a file exists.)
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

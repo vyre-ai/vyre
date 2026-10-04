@@ -2,6 +2,7 @@
 // A local core joins the box as a companion of the desktop app already paired on the same machine (core/link/companion.js).
 // The handlers run directly over an in-memory table and a fake device registry: what is checked here is the box's own rules.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

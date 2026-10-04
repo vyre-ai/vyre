@@ -1,5 +1,6 @@
 // @ts-check
 // The space's Drive against the box's shapes: folders from paths, the calls and their inputs, upload paths and refusals.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

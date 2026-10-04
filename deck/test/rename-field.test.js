@@ -1,6 +1,7 @@
 // @ts-check
 // Rename in place (js/rename-field.js, #65): the pencil opens a field, Enter keeps, Esc leaves, an error stays in the field, and the tool is the one for the device's kind.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 

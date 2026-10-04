@@ -1,4 +1,5 @@
 // @ts-check
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { nearRole, editDistance, markMade, madeNow, unmark } from "./made.js";

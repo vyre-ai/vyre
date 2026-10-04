@@ -1,4 +1,5 @@
 // Theme overrides (ADR 0033): merged over tokens.json, refused whole when a rule breaks.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

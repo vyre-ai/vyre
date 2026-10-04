@@ -1,6 +1,7 @@
 // @ts-check
 // reviewer-2's KW-1: a member's `*/*` read grant covered `vyre://<space>/session/<id>`, so any member read any person's session lines. A session is now owner-scoped in the kernel: reading one needs the
 // session's `owner` attribute (offered by a first-party module that declared needs.kernel.attrs) to name the person asking; no attribute, no reader. Real kernel rig.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "./kernel-rig.js";

@@ -1,5 +1,6 @@
 // @ts-check
 // The GitHub CLI Vyre signs in with: the box image and the Mac installer pin the same version, and each pin carries a real checksum.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -5,6 +5,7 @@
 // same code serves anyone who installs it: which folders hold projects, which domains are the
 // user's own, whether this machine is the box or the Mac, all come from ~/.vyre/config.json.
 
+import "../../lib/mac-test-refusal.js";
 import crypto from "node:crypto";
 import { ownerOnly } from "../../lib/owner-only.js";
 import fs from "node:fs";

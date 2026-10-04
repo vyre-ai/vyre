@@ -2,6 +2,7 @@
 // Item history: the last 10 sealed versions per item, what changed (names only, from HMACs),
 // reading and copying an old version, reverting, and no value in any row, file name or listing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

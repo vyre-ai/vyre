@@ -1,6 +1,7 @@
 // @ts-check
 // A cited field (field-ref) on every wire form, and the deadline on a resolver that never answers (reviewer F-1, chat-03): the WebSocket form is
 // tested in kernel.test.js; here the SSE form (serveSSE) and the relay duplex (testkit makeLink, a hop with its own delay), each per viewer, in order.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

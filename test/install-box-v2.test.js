@@ -3,6 +3,7 @@
 // that names image digests is cosign-checked and pulled by digest, a running install is never replaced,
 // and the Docker flavors that cannot work stop in plain words. All against stub docker/sudo and a
 // file:// release site: no network, no real Docker.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
