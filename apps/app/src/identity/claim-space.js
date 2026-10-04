@@ -13,7 +13,6 @@
 import * as C from "../../../../kernel/identity/chain.js";
 import { recordMessage } from "../../../../names/worker/id-messages.js";
 import { sealRecord } from "./seal.js";
-import { generateDeviceKey } from "./keys.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
@@ -29,8 +28,8 @@ function plain(e) {
 /**
  * @param {{ identity: { id: string, name?: string | null, eid: string, ops: any[], key: import("./keys.js").DeviceKey },
  *   name: string, displayName?: string, base: string, fetch?: typeof fetch, now?: () => number, random?: (n: number) => Uint8Array,
- *   route?: { relay: string, route: string, box: string } | null, host: (a: { name: string }) => Promise<{ space: string }>, retire?: (space: string) => Promise<any>,
- *   headers?: Record<string, string>, forceSoftware?: boolean }} o
+ *   route?: { relay: string, route: string, box: string } | null, host: (a: { name: string }) => Promise<{ space: string, rootPublic?: string }>, retire?: (space: string) => Promise<any>,
+ *   headers?: Record<string, string>}} o
  *   `identity.ops` is this person's own chain as the app holds it; `route` is where the paired server is reached (relay, route and box, from pairing).
  */
 export async function claimServerSpace(o) {
@@ -43,8 +42,9 @@ export async function claimServerSpace(o) {
   const made = await o.host({ name: label });
   const space = made && typeof made.space === "string" ? made.space : "";
   if (!/^spc_[a-z2-7]{12}$/.test(space)) throw refuse("The server did not give the space an id. Nothing was made.", "server_refused");
+  const rootPublic = made && typeof made.rootPublic === "string" ? made.rootPublic : "";
   try {
-    const rootKey = await generateDeviceKey({ forceSoftware: o.forceSoftware });
+    if (!/^[A-Za-z0-9_-]{43}$/.test(rootPublic)) throw refuse("This server is too old to prove it holds a space. Update it first. Nothing was made.", "server_too_old");
     const ts = now();
     const viaPos = await C.viaOf(me.ops);
     const genesis = await C.makeGenesis({
@@ -54,7 +54,7 @@ export async function claimServerSpace(o) {
     const ownerOps = async (/** @type {string} */ id) => (id === me.id ? me.ops : null);
     const state = await C.verifyChain([genesis], { now: ts + C.SKEW_MS, ownerOps });
     const payload = {
-      v: 1, id: space, name: label, label: String(o.displayName || label).slice(0, 80), rootPublic: rootKey.publicKey, home: { kind: "server" },
+      v: 1, id: space, name: label, label: String(o.displayName || label).slice(0, 80), rootPublic, home: { kind: "server" },
       ...(me.name ? { ownerName: String(me.name) } : {}), ...(o.route && o.route.route ? { route: o.route } : {}),
     };
     const sealed = await sealRecord(label, payload, random);
@@ -67,7 +67,7 @@ export async function claimServerSpace(o) {
     /** @type {any} */ let json = null;
     try { json = await res.json(); } catch { /* not JSON */ }
     if (!res.ok || !json || json.error || !json.data) { const e = (json && json.error) || {}; throw refuse(plain(e), String(e.code || "directory")); }
-    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic: rootKey.publicKey, claimed: json.data };
+    return { space, name: `${label}.vyre.run`, label, chain: [genesis], pin: C.pinOf(state), rootPublic, claimed: json.data };
   } catch (e) {
     if (o.retire) { try { await o.retire(space); } catch { /* the server keeps an empty space; the person can retire it later */ } }
     throw e;

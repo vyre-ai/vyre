@@ -101,7 +101,25 @@ export const idOps = {
     try { key = await C.signerKey(state, String(r.by), r.via ? String(r.via) : undefined, Number(r.ts), this.idLive(), { seq: r.vseq, head: r.vhead }); } catch (e) { throw err(403, "bad_signature", String(/** @type {any} */ (e).message)); }
     const sealedHash = await C.sha256hex(sealed);
     if (!await C.verifyWith(key.pub, recordMessage({ name: rec.name, id: state.id, by: String(r.by), via: r.via ? String(r.via) : undefined, ts: r.ts, sealedHash, vseq: r.vseq, vhead: r.vhead }), r.sig)) throw err(403, "bad_signature", "the record's signature does not check out");
-    return { by: String(r.by), via: r.via ? String(r.via) : undefined, ...(r.vseq !== undefined ? { vseq: r.vseq, vhead: r.vhead } : {}), ts: Number(r.ts), sig: r.sig };
+    const out = { by: String(r.by), via: r.via ? String(r.via) : undefined, ...(r.vseq !== undefined ? { vseq: r.vseq, vhead: r.vhead } : {}), ts: Number(r.ts), sig: r.sig };
+    // Not stored: whether the signing device was a newcomer, for the caller's rule (a record update by a young device).
+    Object.defineProperty(out, "young", { value: key.young === true, enumerable: false });
+    // When the signing key was last put on its list: a key that was removed and put back starts again from now (a removal resets its age).
+    let since = NaN;
+    try {
+      if (state.kind === "space") {
+        // the signing device is on the OWNER's list: its age is that entry's, on the owner's chain as it stands now
+        const ops = await ownerOps.call(this, String(r.by));
+        const owner = ops ? await C.verifyChain(ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS }) : null;
+        const dev = owner && r.via ? owner.entries.find((/** @type {any} */ e) => e.eid === String(r.via)) : null;
+        if (dev) since = Number(dev.since);
+      } else {
+        const e = state.entries.find((/** @type {any} */ x) => x.eid === String(r.by));
+        if (e) since = Number(e.since);
+      }
+    } catch { since = NaN; }
+    Object.defineProperty(out, "since", { value: since, enumerable: false });
+    return out;
   },
 
   /** Check a signed act (alias clear, release) by an entry; `fresh` forbids a newcomer. @this {any} */
@@ -193,6 +211,12 @@ export const idOps = {
     if (!rec) throw err(404, "not_found", "no such name");
     const state = await C.verifyChain(rec.ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS });
     const sig = await this.idCheckRecord(rec, state, b.rec, b.sealed);
+    // A space's record says where its home is (route, home, root key), sealed, so what changed cannot be told here: a device under 24 hours old (a stolen one, added with a recovery code) must not
+    // repoint a space. It may continue what it itself signed (the same device as the record's current signer), so a phone that made the space this morning can finish setting it up.
+    // The same for a person's record (where their home or box is). Continuing means the same signer: the same device through the owner's list for a space, the same entry for a person.
+    // ...and only while it has been on its list since it signed that record: a key that was removed and put back is a newcomer again, so an old compromised key cannot come back and repoint.
+    const same = !!(rec.rec && (rec.rec.via ? sig.via === rec.rec.via : !sig.via && sig.by === rec.rec.by) && !(Number.isFinite(/** @type {any} */ (sig).since) && /** @type {any} */ (sig).since > rec.rec.ts));
+    if (sig.young && !same) throw err(403, "newcomer", rec.kind === "space" ? "a sign-in under 24 hours old cannot change where a space lives" : "a sign-in under 24 hours old cannot change where your name points");
     if (rec.rec && sig.ts <= rec.rec.ts) throw err(400, "stale", "the record must be newer than the one it replaces and match the clock");
     Object.assign(rec, { sealed: b.sealed, rec: sig });
     await this.idSave(rec);

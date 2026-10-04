@@ -2,7 +2,7 @@
 export function parseServerPayload(s: string): { seed: Uint8Array; relay: string } | null;
 export function pairServer(o: {
   payload: string;
-  owner: { id: string; name?: string; kind?: "identity" | "space" };
+  owner: { id: string; name?: string; vyre?: string; kind?: "identity" | "space" };
   name?: string;
   proof?: { eid: string; sig: string };
   deviceKind?: "phone" | "computer" | "web"; keyStorage?: "hardware" | "software";
@@ -11,4 +11,4 @@ export function pairServer(o: {
   about?: { kind?: "app" | "web"; release?: string; manifest?: string };
   presenceKey?: unknown; passkey?: unknown;
   onWords?: (words: string) => void; signal?: AbortSignal; pollMs?: number; timeoutMs?: number;
-}): Promise<{ paired: true; relay: string; route: string; box: string; device: string; name: string; owner: unknown }>;
+}): Promise<{ paired: true; relay: string; route: string; box: string; device: string; name: string; owner: unknown; session?: boolean }>;

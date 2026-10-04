@@ -13,7 +13,7 @@ export function createGate(cfg) {
     const d = await authorizer.authorize({ chain, action, resource, ...(opts.presence ? { presence: opts.presence } : {}), ...(opts.waiver ? { waiver: opts.waiver } : {}), ...(opts.input_hash ? { input_hash: opts.input_hash } : {}), ...(opts.probe ? { probe: true } : {}) });
     // An act that was allowed is counted now (once, rate, meter), before anything runs. A probe (quiet) never counts.
     if (d.effect === "allow") { if (!opts.quiet && cfg.enforce) cfg.enforce(chain, d); return d; }
-    if (d.effect === "ask") throw Object.assign(new KernelError(d.reason, `${action} needs ${d.reason === "needs_presence" ? "presence" : "approval"}`), { decision: d.decision, obligations: d.obligations });
+    if (d.effect === "ask") throw Object.assign(new KernelError(d.reason, `${action} needs ${d.reason === "needs_presence" ? "presence" : "approval"}`), { decision: d.decision, obligations: d.obligations, ...(d.presence_reason ? { detail: { reason: d.presence_reason } } : {}) });
     if (!opts.quiet && d.obligations.some((/** @type {any} */ o) => o.type === "audit")) {
       try { log.append(chain, { type: "access.denied", sv: 1, subject: resource, data: { action, reason: d.reason }, prov: { decision: d.decision } }); } catch { /* the refusal stands even if the note cannot be written */ }
     }

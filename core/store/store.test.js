@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { open, migrate } from "./index.js";
+import { open, migrate, setRepairLog } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
 test("store: every connection is WAL with a busy timeout", t => {
@@ -50,7 +50,10 @@ test("store: a step that adds a column the box already has is not an error (an u
   const db = open(path.join(tempHome(t), "vyre.db"));
   migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)"]);
   db.exec("ALTER TABLE notes_a ADD COLUMN title TEXT");
+  const lines = [];
+  setRepairLog(l => lines.push(l));
   migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)", "ALTER TABLE notes_a ADD COLUMN title TEXT; ALTER TABLE notes_a ADD COLUMN body TEXT"]);
+  assert.deepEqual(lines, ["migration notes v2: column already present, treated as applied"], "one plain line each time the repair fires");
   assert.deepEqual(db.prepare("PRAGMA table_info(notes_a)").all().map(c => c.name), ["id", "title", "body"]);
   assert.throws(() => migrate(db, "notes", ["CREATE TABLE notes_a (id INTEGER)", "ALTER TABLE notes_a ADD COLUMN title TEXT; ALTER TABLE notes_a ADD COLUMN body TEXT", "ALTER TABLE notes_nope ADD COLUMN x TEXT"]), /no such table/);
   db.close();

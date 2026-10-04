@@ -777,6 +777,36 @@ test("peer: under a root leader vyred cannot read (a real ssh login), the first 
   assert.ok(names().includes("juno") && names().includes("kit") && !names().includes("nova"));
 });
 
+test("peer: on a development build with the stand-in file, a stand-in proof trusts the root leader once; without the file it does not", { skip: process.platform !== "linux" ? "needs /proc" : false }, async t => {
+  const self = insideClaude(process.pid, { self: 999999 });
+  if (self.server?.exe !== "uid0") { t.skip("not under an unreadable root leader (run over ssh on testbox)"); return; }
+  const config = await import("../core/config/index.js");
+  const { ping } = await import("../core/daemon/index.js");
+  /** a vyred outside this test's ancestry (setsid -f), with or without the hand-made stand-in file, and a curl that calls it from here, under the root sshd */
+  const up = async (/** @type {boolean} */ standIn) => {
+    const home = tempHome(t);
+    if (standIn) fs.writeFileSync(path.join(home, "dev-presence-stand-in"), "");
+    const pidFile = path.join(home, "vyred-test.pid");
+    const script = `const { start } = await import(${JSON.stringify(path.resolve(import.meta.dirname, "../core/daemon/index.js"))});
+      await start({ root: process.env.VYRE_HOME, log: () => {} });
+      (await import("node:fs")).writeFileSync(process.env.PID_FILE, String(process.pid));`;
+    execFileSync("setsid", ["-f", process.execPath, "--input-type=module", "-e", script], { stdio: "ignore", env: { ...process.env, VYRE_HOME: home, PID_FILE: pidFile } });
+    const socket = config.ensure(home).socket;
+    for (let n = 0; n < 100 && !(fs.existsSync(pidFile) && await ping(socket)); n++) await new Promise(r => setTimeout(r, 100));
+    t.after(() => { try { process.kill(Number(fs.readFileSync(pidFile, "utf8"))); } catch {} });
+    return (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} [proof] */ proof) => JSON.parse(execFileSync("curl", ["-s", "--unix-socket", socket, "-X", "POST", `http://x/v1/tools/${tool}`,
+      "-H", "content-type: application/json", "-H", "x-vyre-caller: cli", ...(proof ? ["-H", `x-vyre-presence: ${proof}`] : []), "-d", JSON.stringify(input)], { encoding: "utf8" }));
+  };
+  const dev = await up(true);
+  assert.equal(dev("agents.create", { name: "kit" }).error?.code, "presence_required", "asked once, no header");
+  const trusted = dev("agents.create", { name: "juno" }, "stand-in");
+  assert.equal(trusted.error, undefined, JSON.stringify(trusted));
+  assert.equal(dev("agents.create", { name: "nova" }).error, undefined, "the leader stays trusted for this daemon");
+  const bare = await up(false);
+  const refused = bare("agents.create", { name: "juno" }, "stand-in");
+  assert.equal(refused.error?.code, "presence_required", `no stand-in file: ${JSON.stringify(refused)}`);
+});
+
 test("peer: the trusted-leader test seam cannot reach a real vyred", async () => {
   // Only a verifier handed to start() may pre-trust a server. vyred's own Presence has no such
   // method, main.js never hands start() a verifier, and the fixture refuses a home outside temp.

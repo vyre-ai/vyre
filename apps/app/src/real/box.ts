@@ -7,7 +7,7 @@ import { call } from "../api/box";
 import { peerCall, peerWanted } from "./peer";
 import { wantsPasskey } from "./presence-model.js";
 import { claimBlocked } from "../../screens/shell/rc";
-import { needsPerson, onPhoneFor } from "./on-phone.js";
+import { needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
 import { APPROVE_ON_PHONE, actWords, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
 import { useApproval } from "./approval-state";
 import { Platform } from "react-native";
@@ -57,6 +57,13 @@ export async function tool<T = unknown>(name: string, input: Record<string, unkn
       if (e instanceof PresenceError) throw new BoxError(e.code, e.message);
       throw e;
     }
+  }
+  // A presence proof made with a software key (a computer's key file) is refused on a release server: the person approves it on their phone, in our words.
+  if (r.error?.code === "software_key") throw new BoxError("software_key", softwareKeyLine());
+  // A refused proof on an approval says why in error.detail.reason (expired, replayed, wrong request...): each has its own sentence.
+  if (r.error?.code === "needs_presence") {
+    const line = reasonLine((r.error as { detail?: { reason?: string } }).detail?.reason);
+    if (line) throw new BoxError("needs_presence", line);
   }
   if (r.error) throw new BoxError(r.error.code ?? "error", r.error.message ?? "");
   return r.data as T;

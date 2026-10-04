@@ -178,10 +178,11 @@ test("home (interactive): New session in a project starts claude in its home; th
   assert.equal(fs.realpathSync(c.cwd), fs.realpathSync(harlow));
   assert.match(c.argv[c.argv.indexOf("--append-system-prompt") + 1], /"Harlow Legal"/);
 
-  // The switchboard's agents.list answers: none yet, then the one made; q still quits.
+  // The switchboard's agents.list answers: the built-in Engineer is always there (the person's way to open @Engineer), then the one made; q still quits.
   const first = await drive(["q"]);
   assert.equal(first.code, 0);
-  assert.match(first.term.screen(), /Agents[^\n]*\n\s+none yet/);
+  assert.match(first.term.screen(), /Agents[^\n]*\n[^\n]*engineer\s+not started/);
+  assert.doesNotMatch(first.term.screen(), /juno/);
   await w.d.registry.call("agents.create", { name: "juno", kind: "assistant" }, "local");
   const again = await drive(["q"]);
   assert.equal(again.code, 0);
