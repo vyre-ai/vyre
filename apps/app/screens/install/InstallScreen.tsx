@@ -233,7 +233,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
-        <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner>
+        {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
         <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); setStep(invite ? "invite" : "spaces"); }} />
       </Page>
     );

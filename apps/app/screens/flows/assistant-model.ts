@@ -4,7 +4,7 @@
 export type Agent = { name: string; kind: string; status?: string; doing?: string; thread?: string | null };
 export type FlowRow = { id: string; name?: string; status: string; active?: boolean; versions?: number };
 export type KitRow = { id: string; version: number; status: string };
-export type TaskRow = { id: string; kind?: string; title?: string; state?: string; form?: { kind?: string }; by?: unknown };
+export type TaskRow = { id: string; kind?: string; title?: string; state?: string; form?: { kind?: string; what?: string }; by?: unknown };
 
 export const ENGINEER = "engineer";
 
@@ -17,16 +17,15 @@ export const mayTalk = (role: string | undefined): boolean => role === "owner" |
 /** What the page shows for the Engineer's state. */
 export function stateOf(a: Agent | null): "none" | "new" | "ready" { return !a ? "none" : a.thread ? "ready" : "new"; }
 
-/** An open task the Engineer (or a Kit) put in Now as a proposal: its own `kind` says so, or its form is a Kit install. Done, skipped and rejected ones are over. */
-export const openProposals = (tasks: TaskRow[]): TaskRow[] => tasks.filter((t) => (t.kind === "proposal" || t.form?.kind === "kit_install" || t.form?.kind === "proposal") && t.state !== "done" && t.state !== "skipped" && t.state !== "rejected");
+/** An open task the Engineer put in Now as a proposal: its form kind is "proposal" (sessions confirmed; `form.what` is flow or types). Done, skipped and rejected ones are over. */
+export const openProposals = (tasks: TaskRow[]): TaskRow[] => tasks.filter((t) => t.form?.kind === "proposal" && t.state !== "done" && t.state !== "skipped" && t.state !== "rejected");
 
 /** Proposals waiting on a person, as cards: each proposal task in Now (opens its approve card), a Flow version not yet approved, a Kit waiting for a yes. */
 export function proposals(flows: FlowRow[], kits: KitRow[], tasks: TaskRow[] = []): { key: string; title: string; sub: string; href: string | null }[] {
   const t = openProposals(tasks).map((x) => ({ key: `task:${x.id}`, title: x.title || "A proposal", sub: "A proposal waiting for your approval", href: `/u/task/${x.id}` }));
   const f = flows.filter((x) => x.status !== "approved").map((x) => ({ key: `flow:${x.id}`, title: x.name || x.id, sub: "A Flow waiting for your approval", href: `/u/flows/${x.id}` }));
   const k = kits.filter((x) => x.status === "pending").map((x) => ({ key: `kit:${x.id}`, title: x.id.replace(/[-_]+/g, " "), sub: "A Kit waiting for your yes", href: null }));
-  // A pending Kit has its install card as a task already: do not list it twice.
-  return [...t, ...f, ...k.filter(() => !t.length)];
+  return [...t, ...f, ...k];
 }
 
 export function engineerRefusal(code: string | undefined, message: string): string {

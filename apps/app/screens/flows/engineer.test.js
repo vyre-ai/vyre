@@ -64,13 +64,13 @@ test("what is waiting for a person: Flow versions not approved and Kits pending,
   assert.deepEqual(cards.map((c) => [c.title, c.sub, c.href]), [["Estate leads", "A Flow waiting for your approval", "/u/flows/b"], ["estate planning", "A Kit waiting for your yes", null]]);
 });
 
-test("a proposal task in Now is a card that opens its approve page, and is not listed twice with its pending Kit", { skip: !strip }, async () => {
+test("a proposal task in Now is a card that opens its approve page (only form.kind proposal counts), beside a pending Kit", { skip: !strip }, async () => {
   const { assistantSource } = await import("./assistant-source.ts");
   const m = await import("./assistant-model.ts");
-  const rows = [{ id: "t1", kind: "proposal", title: "Add a Retainer type", state: "ready" }, { id: "t2", kind: "proposal", title: "Old", state: "done" }, { id: "t3", kind: "ask", title: "Not one", state: "ready" }, { id: "t4", title: "Install Estate planning", state: "ready", form: { kind: "kit_install" } }];
+  const rows = [{ id: "t1", title: "Add a Retainer type", state: "ready", form: { kind: "proposal", what: "types" } }, { id: "t2", title: "Old", state: "done", form: { kind: "proposal", what: "flow" } }, { id: "t3", kind: "proposal", title: "Not one: only form.kind counts", state: "ready" }, { id: "t4", title: "Install Estate planning", state: "ready", form: { kind: "kit_install" } }];
   const b = box({ "tasks.list": { data: { tasks: rows } }, "flows.list": { data: [] }, "flows.kit.list": { data: [{ id: "estate-planning", version: 1, status: "pending" }] } });
   const s = assistantSource(b.call);
   const cards = m.proposals(await s.flows(), await s.kits(), await s.tasks());
-  assert.deepEqual(cards.map((c) => [c.title, c.href]), [["Add a Retainer type", "/u/task/t1"], ["Install Estate planning", "/u/task/t4"]]);
+  assert.deepEqual(cards.map((c) => [c.title, c.href]), [["Add a Retainer type", "/u/task/t1"], ["estate planning", null]]);
   assert.deepEqual(m.proposals([], [], []), []);
 });
