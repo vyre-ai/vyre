@@ -228,6 +228,7 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const members = await d.ok("spaces.members.list", { space: done.space });
   assert.equal(members.members[0].person, alex.id);
   assert.equal(members.members[0].role, "owner");
+  assert.equal(members.members[0].name, "alex.vyre.run", "a member shows the name they chose");
   assert.equal(d.of("space.create-done").length, 1);
   assert.ok(d.of("member.added").some(e => e.person === alex.id && e.role === "owner"));
 
@@ -398,6 +399,7 @@ test("members through the tools: admins cannot touch owners, the last owner stay
   const asOwner = await add({ person: bo.id, role: "owner" }, { proof: "touch" });
   assert.ok(!asOwner.error, JSON.stringify(asOwner.error));
   assert.equal(asOwner.data.membership.role, "owner");
+  assert.equal(asOwner.data.membership.name, null, "a person this device has no verified name for shows no name, never a guess");
 
   // Act as the admin: the same home, another person.
   await actAs(d, "juno-device");
@@ -875,12 +877,12 @@ test("space creation asks the kernel which store it would use: a server too smal
   const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
   const hosts = [];
   let small = true;
-  const kernel = { for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
+  const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
       storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
       host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
-  const d = await device(t, { kernelFor: () => kernel });
+  const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
   // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
@@ -896,6 +898,10 @@ test("space creation asks the kernel which store it would use: a server too smal
   const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
   assert.equal(made.status, "done", JSON.stringify(made));
   assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
+  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
+  const label = await d.ok("spaces.label", {}, "module:vyred");
+  assert.equal(label.name, "harlow.vyre.run");
+  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
   // a server with room for the larger store: no question, no flag
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
@@ -956,4 +962,73 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.equal((await d.ok("spaces.get", { space })).setup, null);
   assert.equal((await d.call("spaces.setup.claim", { space }, "cli", laptop)).error?.code, "no_setup");
   void w;
+});
+
+test("a device's spaces: the Access screen lists them, a space can remove one device without touching the others, and the removed device is refused there", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
+  const mine = await d.ok("spaces.devices.spaces", {}, "cli", asDevice);
+  assert.deepEqual([mine.device.self, mine.spaces.map(x => [x.label, x.removed]).sort()], [true, [["harlow", false], ["northwind", false]]]);
+  assert.equal((await d.call("spaces.devices.spaces", { device: "nope" })).error?.code, "not_found");
+  assert.equal((await d.ok("spaces.devices.remove", { space: a.space, device: eid })).removed, true);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.removed]).sort(), [["harlow", true], ["northwind", false]]);
+  assert.equal((await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error?.code, "device_removed");
+  assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error, "the other space is untouched");
+  assert.deepEqual((await d.ok("spaces.list", {}, "cli", asDevice)).map(x => x.label), ["northwind"]);
+  assert.ok(!(await d.call("spaces.get", { space: a.space })).error, "the person's own socket still reaches it");
+  assert.equal((await d.ok("spaces.devices.restore", { space: a.space, device: eid })).removed, false);
+  assert.ok(!(await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error);
+  void w;
+});
+
+test("device enrolment: no list means every space, pairing sets the list, a new space reaches only the device that made it, and enrol is one call", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const eid = me.eid;
+  const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  assert.equal((await d.ok("spaces.devices.enrolled", { device: eid, space: a.space }, "module:x")).enrolled, true, "no list yet: enrolled everywhere");
+  // pairing: every space pre-ticked, the person unticks northwind
+  const set = await d.ok("spaces.devices.set", { device: eid, spaces: [a.space] });
+  assert.deepEqual(set.spaces, [a.space]);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.enrolled]).sort(), [["harlow", true], ["northwind", false]]);
+  assert.equal((await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error?.code, "device_removed");
+  // a space made later is enrolled on the device that made it
+  const c = await d.ok("spaces.create", { name: "juno", home: { kind: "this-computer", confirmed: true } }, "cli", asDevice);
+  assert.ok(!(await d.call("spaces.get", { space: c.space }, "cli", asDevice)).error);
+  // "Add to this device": one call
+  assert.equal((await d.ok("spaces.devices.enrol", { space: b.space, device: eid })).enrolled, true);
+  assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error);
+  assert.deepEqual((await d.ok("spaces.devices.set", { device: eid, spaces: [a.space, "spc_nope"].slice(0, 1) })).spaces, [a.space]);
+  void w;
+});
+
+test("presence recovery is carried: begin and recover reach the sealing process with the person's chain, the identity ops and a bind signed by this device; every change to the list is synced", async t => {
+  const w = world(t);
+  const calls = [];
+  const presence = { begin: async i => { calls.push(["begin", i]); return { token: "tok1" }; }, recover: async i => { calls.push(["recover", i]); return { ok: true }; }, sync: async i => { calls.push(["sync", i]); return { ok: true }; } };
+  const kernel = { space: "spc_bbbbbbbbbbbb", presence, for: () => null, chain: async () => ({ hops: [{ actor: { kind: "person", id: "per_k" } }] }), proofFrom: () => ({}), serviceChain: () => ({}) };
+  const d = await device(t, { kernelFor: () => kernel });
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const b = await d.ok("spaces.presence.begin", { key_id: "k1", spki: "SPKI" });
+  assert.equal(b.token, "tok1");
+  assert.deepEqual([calls[0][1].person, calls[0][1].key_id], [me.id, "k1"]);
+  const r = await d.ok("spaces.presence.recover", { key_id: "k1", spki: "SPKI", signer: "chip", token: "tok1" });
+  assert.equal(r.ok, true);
+  const rec = calls.find(c => c[0] === "recover")[1];
+  assert.deepEqual([rec.person, rec.bind.eid, rec.ops.length > 0, typeof rec.bind.sig], [me.id, me.eid, true, "string"]);
+  const other = (await import("node:crypto")).generateKeyPairSync("ed25519");
+  await d.ok("spaces.identity.entry.remove", { eid: "nope" }).catch(() => null);
+  const before = calls.filter(c => c[0] === "sync").length;
+  await d.ok("spaces.presence.sync", {});
+  assert.equal(calls.filter(c => c[0] === "sync").length, before + 1);
+  assert.equal(calls.filter(c => c[0] === "sync").at(-1)[1].person, me.id);
+  void w; void other;
 });
