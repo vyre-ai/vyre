@@ -270,10 +270,16 @@ await step("settings: rules, add one and see it listed", { skip: has("rules") ? 
   await page.getByLabel("Actions").first().fill("mail.send");
   await page.getByLabel("Name").first().fill(label);
   await click("Add the rule", { settle: 2500 });
-  const t = (await text()).replace(/\s+/g, " ");
-  if (!t.includes(label) && !/Refused|needs you|Approve|Only an owner/i.test(t)) throw new Error(`the new rule is not listed and no refusal is shown: ${t.slice(0, 240)}`);
-  if (!t.includes(label)) throw new Error(`the rule was refused in words: ${t.slice(0, 240)}`);
-  // Turn it off and on again, then remove it: each is one rules call with the owner's presence.
+  let t = (await text()).replace(/\s+/g, " ");
+  if (/Approve on your phone/.test(t)) {
+    // A kernel act in the web app: the phone must approve it. The walk has no phone, so it proves the sheet and that stopping changes nothing.
+    await page.screenshot({ path: path.join(OUT, "rules-approve-on-phone.png") });
+    await click("Stop waiting", { settle: 1500 });
+    t = (await text()).replace(/\s+/g, " ");
+    if (t.includes(label)) throw new Error("the rule was added although nobody approved it");
+    return;
+  }
+  if (!t.includes(label)) throw new Error(`neither the rule nor the Approve on your phone sheet: ${t.slice(0, 240)}`);
   await click("Turn off", { settle: 1500 }).catch(() => {});
   await click("Remove", { settle: 1500 }).catch(() => {});
 });
