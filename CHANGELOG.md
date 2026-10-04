@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(relay): a refused pairing says its reason in the log every time (the first five repeats in a minute as "refused again"), so a retry is no longer silent.
+
 - feat(spaces): on a development build an invitee's accept is signed by the computer's own software key and enrols it on the server in the same call. fix(wink): a server removed and paired again no longer reuses the old relay connection (`forget`).
 
 - feat(kernel,spaces,wink): pairing a computer as a server's owner enrols its presence key in the home's sealing process in the same call as the owner adoption (software keys only on a development build; a failure leaves the pairing as it was and says why). The owner's computer can then prove its own invites.

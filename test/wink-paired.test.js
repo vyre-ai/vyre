@@ -951,3 +951,13 @@ test("a link to a server that was removed and paired again is made afresh: forge
   await links.sessionFor("srv").call("x").catch(() => {});
   assert.deepEqual(opened, ["a", "c"], "the next call connects to the new route");
 });
+
+test("a pairing refused twice in a minute says its reason both times in the server's log", async t => {
+  const f = await pairFreshServer(t);
+  const crypt = nodeCrypto();
+  for (let i = 0; i < 2; i++) {
+    const k = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+    await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys: k, hello: { v: 1, pair: "y".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }));
+  }
+  await until(async () => f.w.logs.filter(l => /relay: refused (a hello|again) \(this pairing code has expired/.test(l)).length >= 2);
+});
