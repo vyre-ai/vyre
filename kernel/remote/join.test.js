@@ -8,18 +8,18 @@ import { createRemoteServer } from "./server.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", KIT = "per_" + "k".repeat(26), INVITE = "inv_" + "a".repeat(32), ENTRY = "e".repeat(26);
 const bind = { key_id: "dk_1", spki: "c3BraQ", signer: "secure_enclave", sig: "c2ln" };
-/** @param {{ evidence?: any, invite?: any, join?: (i: any) => any, joinKey?: boolean, noEvidence?: boolean }} [o] */
+/** @param {{ evidence?: any, invite?: any, join?: (i: any) => any, joinKey?: boolean, noEvidence?: boolean, acceptFails?: boolean }} [o] */
 function rig(o = {}) {
-  const seen = { accepted: /** @type {any[]} */ ([]), joined: /** @type {any[]} */ ([]), evidence: /** @type {any[]} */ ([]) };
+  const seen = { unjoined: /** @type {any[]} */ ([]), accepted: /** @type {any[]} */ ([]), joined: /** @type {any[]} */ ([]), evidence: /** @type {any[]} */ ([]) };
   const chain = { fake: "invitee chain" };
   const k = {
     chains: { fromFacts: () => chain },
     gateway: { members: { roleOf: () => null }, grants: { invites: {
       get: async () => (o.invite === undefined ? { status: "pending" } : o.invite),
-      accept: async (/** @type {any} */ c, /** @type {string} */ id, /** @type {any} */ a) => { seen.accepted.push({ c, id, a }); return { membership: { person: KIT, role: "member" } }; },
+      accept: async (/** @type {any} */ c, /** @type {string} */ id, /** @type {any} */ a) => { if (o.acceptFails) throw Object.assign(new Error("contents differ"), { code: "contents_differ" }); seen.accepted.push({ c, id, a }); return { membership: { person: KIT, role: "member" } }; },
     } } },
     surfaces: {},
-    ...(o.joinKey === false ? {} : { joinKey: async (/** @type {any} */ i) => { seen.joined.push(i); if (o.join) return o.join(i); return { joined: true }; } }),
+    ...(o.joinKey === false ? {} : { unjoinKey: async (/** @type {any} */ i) => { seen.unjoined.push(i); return { undone: true }; }, joinKey: async (/** @type {any} */ i) => { seen.joined.push(i); if (o.join) return o.join(i); return { joined: true }; } }),
   };
   const evidence = o.evidence === undefined ? { ops: [{ id: KIT }], entries: [{ eid: ENTRY, kind: "device", pub: "cHVi", young: false }] } : o.evidence;
   const server = createRemoteServer({ space: SPACE, kernel: k, ...(o.noEvidence ? {} : { identityEvidence: async (/** @type {any} */ w) => { seen.evidence.push(w); return evidence; } }) });
@@ -85,4 +85,20 @@ test("a malformed bind is refused before anything is read, and an accept with no
   assert.equal(r.ok, true);
   assert.equal(seen.joined.length + seen.evidence.length, 0, "no bind, no enrolment");
   assert.equal(seen.accepted.length, 1);
+});
+
+test("all or nothing: when the accept does not finish after the key was enrolled, the key is taken back in the same call; when it finishes, it stays", async () => {
+  const bad = rig({ acceptFails: true });
+  const r = await bad.ask(bind);
+  assert.equal(r.ok, false);
+  assert.equal(r.error.code, "contents_differ");
+  assert.equal(bad.seen.joined.length, 1);
+  assert.deepEqual(bad.seen.unjoined, [{ chain: bad.chain, person: KIT, invite: INVITE, key_id: "dk_1" }]);
+  const good = rig();
+  assert.equal((await good.ask(bind)).ok, true);
+  assert.equal(good.seen.unjoined.length, 0);
+  // a refusal before enrolment has nothing to take back
+  const early = rig({ evidence: { ops: [], entries: [] } });
+  assert.equal((await early.ask(bind)).error.code, "not_listed");
+  assert.equal(early.seen.unjoined.length, 0);
 });

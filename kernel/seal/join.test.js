@@ -80,3 +80,17 @@ test("join: a software key is refused unless the process takes software keys, an
   const bad = signer(I.id, undefined, "my_own_chip");
   assert.equal(await code(s.join(args(I.id, bad, I.ops, bindFor(I.d1, I.id, bad)))), "bad_signer");
 });
+
+test("unjoin: takes back exactly the key a join just enrolled, for that invite and that person, and the person is a stranger again", async t => {
+  const s = await start(t), I = await identity(), sg = signer(I.id), ch = person(I.id);
+  assert.equal(await code(s.unjoin({ chain: ch, person: I.id, invite: INVITE, key_id: sg.key_id })), "not_found", "nothing to undo yet");
+  await s.join(args(I.id, sg, I.ops, bindFor(I.d1, I.id, sg)));
+  assert.equal(await code(s.unjoin({ chain: ch, person: I.id, invite: "inv_" + "b".repeat(32), key_id: sg.key_id })), "not_found", "another invite's key is not this one's to undo");
+  assert.equal(await code(s.unjoin({ chain: person(I.id + "x"), person: I.id, invite: INVITE, key_id: sg.key_id })), "chain_not_person");
+  assert.equal((await s.unjoin({ chain: ch, person: I.id, invite: INVITE, key_id: sg.key_id })).undone, true);
+  assert.equal(await code(reveal(s, I.id, sg)), "unknown_key", "the key is gone");
+  assert.equal((await s.join(args(I.id, sg, I.ops, bindFor(I.d1, I.id, sg)))).joined, true, "a stranger again: the same person can join afresh");
+  // a key that was enrolled the ordinary way is never undone by this
+  const other = signer(I.id), ch2 = person(I.id);
+  assert.equal(await code(s.unjoin({ chain: ch2, person: I.id, invite: INVITE, key_id: other.key_id })), "not_found");
+});

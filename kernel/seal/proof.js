@@ -19,7 +19,7 @@ export const NEWCOMER_MS = 24 * 3_600_000;
 export class Presence {
   /** @param {() => number} [now] @param {{ verifiers?: Record<string, (att: any, spki: Buffer) => string | null>, allowUnattested?: boolean }} [o] a verifier checks a platform attestation (App Attest, Android key attestation, a TPM quote, WebAuthn) and returns the signer class it proves, or null */
   constructor(now = Date.now, { verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null, file = null, custody = null } = {}) {
-    this.keys = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware; this.appattest = appattest;
+    this.keys = new Map(); this.joined = new Map(); this.used = new Map(); this.tokens = new Map(); this.now = now; this.since = now(); this.verifiers = verifiers; this.allowUnattested = allowUnattested; this.allowSoftware = allowSoftware; this.appattest = appattest;
     this.file = file; this.pins = new Map(); this.barred = new Set(); this.ever = new Set(); this.v = 0; this.recovery = false; this.custody = custody;
     // Enrolled keys, and the persons who ever enrolled one, live in the sealing folder (public keys only), MACed under a key derived from the master and
     // anchored by a sealed marker (a version counter and the persons) in the encrypted store. A file that is missing while the anchor exists, fails its
@@ -211,8 +211,22 @@ export class Presence {
       attested = true;
     } else if (signer === SOFTWARE) { /* allowed above: a development build only */ } else if (!this.allowUnattested) return { refused: "unattested" };
     this.keys.set(key_id, { person, signer, attested, spki, device: bind.eid, since: this.now(), founder: false, ...(aa ? { aa } : {}), key: crypto.createPublicKey({ key: Buffer.from(spki, "base64"), format: "der", type: "spki" }) });
-    this.pins.set(person, ev.pin); this.ever.add(person); this.save();
+    this.pins.set(person, ev.pin); this.ever.add(person); this.joined.set(key_id, { person, invite }); this.save();
     return { attested, device: bind.eid };
+  }
+  /**
+   * Take back a key `join` just enrolled, because the accept that carried it did not finish (all or nothing): only a key this process enrolled by `join` for this invite, for this person, and only the person's
+   * only key (a person who had none before: join refuses anyone else), so it restores what was there before. Nothing else is ever removed this way.
+   * @returns {{ undone: boolean } | { refused: string }}
+   */
+  unjoin({ person, invite, key_id, ctx }) {
+    if (!ctx?.one_person || ctx.model_originated || ctx.person !== person) return { refused: "chain_not_person" };
+    const j = this.joined.get(key_id), k = this.keys.get(key_id);
+    if (!j || !k || j.person !== person || j.invite !== invite) return { refused: "not_found" };
+    this.joined.delete(key_id); this.keys.delete(key_id);
+    if (!this.have(person)) { this.pins.delete(person); this.ever.delete(person); }
+    this.save();
+    return { undone: true };
   }
   /** @returns {string|null} the reason a proof is refused, or null when it stands. */
   refuse(proof, { op, space, fields, ctx }) {

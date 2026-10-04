@@ -69,6 +69,8 @@ export function startSealer({ dir, sinks = {}, timeoutMs = 20_000, execPath = pr
     sync: i => withCtx("presence.sync", i, { person: i.person, ops: i.ops, binds: i.binds }),
     /** RC1: an invitee's first key on a server that has never met them, from the identity chain (ops) and a listed device's signature over this invite, Space and key. */
     join: i => withCtx("presence.join", i, { person: i.person, ops: i.ops, bind: i.bind, invite: i.invite, key_id: i.key_id, spki: i.spki, signer: i.signer, attestation: i.attestation }),
+    /** Take back the key a join just enrolled when the accept that carried it did not finish. */
+    unjoin: i => withCtx("presence.unjoin", i, { person: i.person, invite: i.invite, key_id: i.key_id }),
     recover: i => withCtx("presence.recover", i, { person: i.person, ops: i.ops, bind: i.bind, key_id: i.key_id, spki: i.spki, signer: i.signer, token: i.token, attestation: i.attestation }),
     revoke: i => withCtx("presence.revoke", i, { key_id: i.key_id, proof: i.proof }),
     /** Does this proof stand for this kernel act (a task op) by the one person in the chain? Uses the proof up. Resolves null when it stands, else the reason. */

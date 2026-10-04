@@ -1891,6 +1891,10 @@ test("join end to end: a second identity's device previews and accepts an invite
   if (process.env.WLOG) console.error("DBG unenrolled", JSON.stringify(unenrolled).slice(0, 400));
   assert.ok(unenrolled.error, "a key the server was never told of proves nothing");
   assert.equal(await sealer.health().then(h => h.needs_recovery.includes(kit.id)), false);
+  // all or nothing: an accept that does not finish (a damaged presence proof) leaves no key behind, so the sealing process still knows nothing of kit
+  const damaged = await k.call("spaces.invites.accept", { link: mine.link, presence_key: kitSigner.enrolment }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields, { tamper: true }) });
+  assert.ok(damaged.error, "a damaged proof does not join");
+  assert.equal(await sealer.presenceCheck({ chain: inviteeChain, op: first.data.request.op, fields: first.data.request.fields, proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) }), "unknown_key", "the key the failed accept enrolled was taken back");
   // the invitee's first key on this server comes from the accept itself (RC1): the app names the presence key, kit's identity device signs over this invite, Space and key, the server reads kit's list from the
   // directory, and its sealing process enrols the key inside the same accept. No fixture enrols anything.
   const joined = await k.call("spaces.invites.accept", { link: mine.link, presence_key: kitSigner.enrolment }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });

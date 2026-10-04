@@ -54,7 +54,7 @@ export function createRemoteServer(cfg) {
    * over this invite, this Space, this identity and that key by the device the invitee's hello named. The identity's signed device list comes from the names directory (`cfg.identityEvidence`), never from the caller; the
    * device the transport verified (`peer.entry`) must be on it and not young, and the signature must hold, before the sealing process enrols the key for that person, inside this same accept. Answers null when the key is
    * enrolled, else one reason code: not_listed, bad_binding, young_device, known_person, bad_invite, unavailable (or the sealing process's own refusal). Nothing is enrolled on a refusal.
-   * @param {any} chain @param {any} peer @param {string} invite @param {any} bind @returns {Promise<{ code: string, message: string } | null>}
+   * @param {any} chain @param {any} peer @param {string} invite @param {any} bind @returns {Promise<{ code: string, message: string } | null>} null when the key is enrolled (the caller then undoes it if the accept does not finish: all or nothing)
    */
   async function joinKey(chain, peer, invite, bind) {
     const no = (/** @type {string} */ code, /** @type {string} */ message) => ({ code, message });
@@ -155,6 +155,7 @@ export function createRemoteServer(cfg) {
           try {
             // presence over the wire: a proof beside the args goes to the kernel as its `{ presence }` option (merged into a trailing options object, else appended) once its nonce is ours and live
             let callArgs = request.args;
+            /** @type {{ person: string, invite: string, key_id: string } | null} */ let joined = null;
             const hasProof = request.proof !== undefined && request.proof !== null;
             if (hasProof) {
               let size = 0; try { size = Buffer.byteLength(JSON.stringify(request.proof)); } catch { size = Infinity; }
@@ -180,8 +181,15 @@ export function createRemoteServer(cfg) {
               const refused = await joinKey(who.chain, peer, String(callArgs[0]), bind);
               if (refused) return fail(id, refused.code, refused.message);
               callArgs = [callArgs[0], rest, ...callArgs.slice(2)];
+              joined = { person: peer.person, invite: String(callArgs[0]), key_id: bind.key_id };
             }
-            let result = await target.fn(who.chain, ...callArgs);
+            let result;
+            try { result = await target.fn(who.chain, ...callArgs); }
+            catch (e) {
+              // all or nothing: an accept that does not finish leaves no key behind (the person asks again with a fresh accept)
+              if (joined && typeof k.unjoinKey === "function") { try { await k.unjoinKey({ chain: who.chain, ...joined }); } catch { /* the key stays only if the sealing process cannot be reached; it is a newcomer key for a valid invite */ } }
+              throw e;
+            }
             if (attestNonce && typeof cfg.attest === "function" && result && typeof result === "object") {
               let a = null; try { a = await cfg.attest(attestNonce); } catch { a = null; }
               if (a) result = { ...result, attest: a };
