@@ -12,19 +12,22 @@ import { spawnAsAgent } from "./client.js";
 export const PROBE = path.join(path.dirname(fileURLToPath(import.meta.url)), "confine-probe.sh");
 
 /**
- * @typedef {{ name: string, path: string }} Out a thing the session must not reach (the name is what a refusal says)
- * @param {{ account?: number | null, shared?: boolean, cwd: string, vyreUid: number, out: Out[], signal?: AbortSignal, timeoutMs?: number, spawn?: typeof spawnAsAgent, probe?: string, socket?: string }} o
- * @returns {Promise<{ ok: boolean, failures: string[], confined_by: "uid", results: { uid: number | null, project: string | null, reached: string[] } }>}
+ * @typedef {{ name: string, path: string, list?: boolean }} Out a thing the session must not reach (the name is what a refusal says); `list` ones may be entered, only read or listed counts
+ * @param {{ account?: number | null, shared?: boolean, cwd?: string, workdirs?: string[], vyreUid: number, out: Out[], allowListen?: number[], allowAbstract?: string[], refuseListen?: boolean, signal?: AbortSignal, timeoutMs?: number, spawn?: typeof spawnAsAgent, probe?: string, socket?: string }} o
+ * @returns {Promise<{ ok: boolean, failures: string[], confined_by: "uid", results: { uid: number | null, project: string[], reached: string[], listening: number[] } }>}
  */
 export async function confineSelfTest(o) {
   const spawn = o.spawn || spawnAsAgent;
   const failures = /** @type {string[]} */ ([]);
-  // A thing to keep out of reach that is not there proves nothing, so it is a misconfigured box, not a pass.
-  const out = o.out.filter(x => { if (fs.existsSync(x.path)) return true; failures.push(`${x.name} is not where the box says it is (${x.path}), so it could not be checked`); return false; });
-  const results = { uid: /** @type {number | null} */ (null), project: /** @type {string | null} */ (null), reached: /** @type {string[]} */ ([]) };
+  const dirs = o.workdirs && o.workdirs.length ? o.workdirs : (o.cwd ? [o.cwd] : []);
+  // A thing to keep out of reach that is not there proves nothing, so it is a misconfigured box, not a pass. Deny paths first, then list-only paths: the probe numbers them in that order.
+  const exists = (/** @type {Out} */ x) => { if (fs.existsSync(x.path)) return true; failures.push(`${x.name} is not where the box says it is (${x.path}), so it could not be checked`); return false; };
+  const out = [...o.out.filter(x => !x.list), ...o.out.filter(x => x.list)].filter(exists);
+  const denyPaths = out.filter(x => !x.list).map(x => x.path), listPaths = out.filter(x => x.list).map(x => x.path);
+  const results = { uid: /** @type {number | null} */ (null), project: /** @type {string[]} */ ([]), reached: /** @type {string[]} */ ([]), listening: /** @type {number[]} */ ([]), udp: /** @type {number[]} */ ([]), abstract: /** @type {string[]} */ ([]) };
   /** @type {any} */ let child = null;
   try {
-    child = await spawn([o.probe || PROBE, "allow", o.cwd, "deny", ...out.map(x => x.path)], { cwd: o.cwd, env: { PATH: "/usr/bin:/bin" }, ...(o.account != null ? { account: o.account, shared: Boolean(o.shared) } : {}), ...(o.socket ? { socket: o.socket } : {}) });
+    child = await spawn([o.probe || PROBE, "allow", ...dirs, "deny", ...denyPaths, "list", ...listPaths], { cwd: dirs[0], env: { PATH: "/usr/bin:/bin" }, ...(o.account != null ? { account: o.account, shared: Boolean(o.shared) } : {}), ...(o.socket ? { socket: o.socket } : {}) });
   } catch (e) { return { ok: false, failures: [...failures, `the confinement check could not start: ${String(/** @type {Error} */ (e).message || e).slice(0, 160)}`], confined_by: "uid", results }; }
   let text = "";
   child.stdout.on("data", (/** @type {any} */ d) => { text += d; });
@@ -35,18 +38,45 @@ export async function confineSelfTest(o) {
   const timer = setTimeout(killer, o.timeoutMs || 20_000);   // not unref'd: the check waits on it, and it is cleared the moment the probe ends
   await new Promise(res => { child.once("close", res); child.once("exit", res); child.once("error", res); });
   clearTimeout(timer);
+  let denied = 0;
   for (const line of text.split("\n")) {
     let m;
     if ((m = /^uid (\d+)$/.exec(line))) results.uid = Number(m[1]);
-    else if ((m = /^project (rw|no)$/.exec(line))) results.project = m[1];
+    else if ((m = /^project (rw|no)$/.exec(line))) results.project.push(m[1]);
     else if ((m = /^reached (\d+)$/.exec(line))) results.reached.push(out[Number(m[1])] ? out[Number(m[1])].name : `path ${m[1]}`);
+    else if (/^denied \d+$/.test(line)) denied++;
+    else if ((m = /^listen (\d+)$/.exec(line))) results.listening.push(Number(m[1]));
+    else if ((m = /^udp (\d+)$/.exec(line))) results.udp.push(Number(m[1]));
+    else if ((m = /^abstract (@\S+)$/.exec(line))) results.abstract.push(m[1]);
   }
   if (results.uid === null) failures.push("the confinement check said nothing, so who the session runs as is unknown");
   else if (results.uid === 0) failures.push("the session would run as root");
   else if (results.uid === o.vyreUid) failures.push("the session would run as the same user as Vyre");
-  if (results.project !== "rw") failures.push("the session cannot use its own project folder");
+  if (dirs.length === 0) failures.push("the session has no project folder to check");
+  dirs.forEach((d, i) => { if (results.project[i] !== "rw") failures.push(`the session cannot use its own project folder ${d}`); });
   for (const n of results.reached) failures.push(`the session can reach ${n}`);
-  const answered = results.reached.length + (text.match(/^denied \d+$/gm) || []).length;
-  if (results.uid !== null && answered !== out.length) failures.push("the confinement check did not answer for every protected path");
+  // The session shares the box's network: a port something listens on is a door it can knock on. Reported always (results.listening); a start is refused for it only when the box asks (refuseListen):
+  // the packaged box has one loopback listener nobody has named yet (found by the hosted run), so today it is a finding, not a gate.
+  if (o.refuseListen) for (const port of [...new Set(results.udp)]) if (!(o.allowListen || []).includes(port)) failures.push(`the session can send to UDP port ${port}, which something in the box listens on`);
+  if (o.refuseListen) for (const n of [...new Set(results.abstract)]) if (!(o.allowAbstract || []).includes(n)) failures.push(`the session can connect to the abstract socket ${n}, which no file mode protects`);
+  if (o.refuseListen) for (const port of [...new Set(results.listening)]) if (!(o.allowListen || []).includes(port)) failures.push(`the session can connect to port ${port}, which something in the box listens on`);
+  if (results.uid !== null && results.reached.length + denied !== out.length) failures.push("the confinement check did not answer for every protected path");
   return { ok: failures.length === 0, failures, confined_by: "uid", results };
+}
+
+/**
+ * The listeners THIS process owns (vyred's own, which the box expects): the socket inodes of its own file descriptors matched against the kernel's tables. Anything else listening in the box is
+ * unknown to it, and a start is refused for it (the port is named). Linux only; elsewhere none.
+ * @returns {{ tcp: number[], udp: number[], abstract: string[] }}
+ */
+export function ownListeners(proc = "/proc") {
+  const out = { tcp: /** @type {number[]} */ ([]), udp: /** @type {number[]} */ ([]), abstract: /** @type {string[]} */ ([]) };
+  const mine = new Set();
+  try { for (const fd of fs.readdirSync(`${proc}/self/fd`)) { try { const l = fs.readlinkSync(`${proc}/self/fd/${fd}`); const m = /^socket:\[(\d+)\]$/.exec(l); if (m) mine.add(m[1]); } catch { /* closed */ } } } catch { return out; }
+  const table = (/** @type {string} */ f, /** @type {string} */ want, /** @type {number[]} */ into) => {
+    try { for (const line of fs.readFileSync(`${proc}/net/${f}`, "utf8").split("\n").slice(1)) { const c = line.trim().split(/\s+/); if (c.length > 9 && c[3] === want && mine.has(c[9])) into.push(parseInt(c[1].split(":").pop() || "0", 16)); } } catch { /* no table */ }
+  };
+  table("tcp", "0A", out.tcp); table("tcp6", "0A", out.tcp); table("udp", "07", out.udp); table("udp6", "07", out.udp);
+  try { for (const line of fs.readFileSync(`${proc}/net/unix`, "utf8").split("\n").slice(1)) { const c = line.trim().split(/\s+/); if (c.length >= 8 && c[7].startsWith("@") && mine.has(c[6])) out.abstract.push(c[7]); } } catch { /* none */ }
+  return out;
 }

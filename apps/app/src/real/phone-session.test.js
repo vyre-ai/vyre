@@ -27,3 +27,9 @@ test("stopping the wait ends it, and a server without the tools says to update",
   assert.deepEqual(await askPhoneForSession(box(["waiting"]).call, { ...FAST, signal: { stopped: true } }), { ended: "none" });
   await assert.rejects(askPhoneForSession(async () => ({ error: { code: "no_such_tool" } }), FAST), (/** @type {any} */ e) => e.code === "server_too_old" && /Update it/.test(e.message));
 });
+
+test("the browser's label rides on the ask", async () => {
+  /** @type {any[]} */ const seen = [];
+  await askPhoneForSession(async (t, i) => { seen.push([t, i]); return t === SESSION_ASK ? { data: { id: "p" } } : { data: { state: "approved" } }; }, { ...FAST, label: "Vyre on browser" });
+  assert.deepEqual(seen[0], [SESSION_ASK, { label: "Vyre on browser" }]);
+});

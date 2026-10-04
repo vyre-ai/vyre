@@ -121,20 +121,30 @@ export function createServerLinks(o) {
     });
   };
 
+  /** A tool call on the server's own HTTP surface over this link (the sign-in tools, which a paired device calls before it holds a session). @param {any} l */
+  const postOn = l => async (/** @type {string} */ tool, /** @type {any} */ body) => {
+    const r = await l.conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => null);
+    if (r.status >= 300 || !j || j.error) throw err(String((j && j.error && j.error.code) || "denied"), String((j && j.error && j.error.message) || `the server answered ${r.status}`));
+    return j.data;
+  };
+  /** Ask the server's owner to let this device sign in from their phone (a device whose own key is software, such as a browser): { id, expires_in_s }. Then poll `signInStatus`, and on `approved` call `startPaired`: that session has the phone's strength. @param {string} sid @param {string} [label] */
+  const askSignIn = async (sid, label) => postOn(linkOf(sid))("presence.person.session-ask", label ? { label } : {});
+  /** @param {string} sid @param {string} id @returns {Promise<{ state: "waiting" | "approved" | "refused" | "none" | "timeout" }>} */
+  const signInStatus = async (sid, id) => postOn(linkOf(sid))("presence.person.session-status", { id });
+
   /** This device's sign-in to the server: pair-challenge, then start-paired with the key the server's owner confirmed. Holds the token. @param {string} sid */
   const startPaired = async sid => {
     if (typeof o.sign !== "function") throw err("unavailable", "this device has no key to sign in with");
     const l = linkOf(sid);
-    const post = async (/** @type {string} */ tool, /** @type {any} */ body) => {
-      const r = await l.conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json().catch(() => null);
-      if (r.status >= 300 || !j || j.error) throw err(String((j && j.error && j.error.code) || "denied"), String((j && j.error && j.error.message) || `the server answered ${r.status}`));
-      return j.data;
-    };
+    const post = postOn(l);
     const ch = await post("presence.person.pair-challenge", {});
     const device = String((l.conn.reply && l.conn.reply.device) || "");
-    const sig = await o.sign(`paired-start\n${device}\n${ch.challenge}`);
-    const t = await post("presence.person.start-paired", { sig, ...(o.name ? { label: o.name } : {}) });
+    const message = `paired-start\n${device}\n${ch.challenge}`;
+    const sig = await o.sign(message);
+    // a device whose identity entry has an enclave (or keystore) key signs the same message with it too: the server then marks this session enclave-strength (a device key copied off the phone cannot)
+    const esig = typeof o.signEnclave === "function" ? await Promise.resolve(o.signEnclave(message)).catch(() => null) : null;
+    const t = await post("presence.person.start-paired", { sig, ...(esig ? { esig: String(esig) } : {}), ...(o.name ? { label: o.name } : {}) });
     l.token = t;
     return { id: t.id, expires: t.expires };
   };
@@ -157,6 +167,8 @@ export function createServerLinks(o) {
     sessionFor,
     inviteeSessionFor,
     startPaired,
+    askSignIn,
+    signInStatus,
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
     remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),
     token: (/** @type {string} */ sid) => (links.get(sid) ? links.get(sid)?.token : null),

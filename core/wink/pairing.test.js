@@ -1606,3 +1606,38 @@ test("PI-2, computer side: a computer that pairs a server sends the head and len
     assert.deepEqual(seen[0].owner.pin, want);
   }
 });
+
+test("the enclave key must still stand on the identity's directory list: checked at sign-in, cached for 10 minutes, and a revoked entry makes the device software and marks it for re-pairing", async () => {
+  let clock = 1_000_000;
+  const KEY = "BAAA";
+  let entries = [{ eid: "e_phone", kind: "device", enclave: KEY }];
+  let reachable = true;
+  const lookups = [];
+  const w = world({ now: () => clock, call: async (tool, input) => { if (tool === "spaces.identity.lookup") { lookups.push(input); if (!reachable) throw Object.assign(new Error("down"), { code: "unreachable" }); return { data: { entries } }; } return undefined; } });
+  w.p.devices.add({ id: "dev1", identity: ME, kind: "phone", name: "Alex's phone", target: { kind: "identity", id: ME } });
+  w.p.devices.setConfirmed("dev1", { by: ME, keyId: "k1", key: null });
+  w.p.devices.setEnclaveKey("dev1", KEY, "e_phone", "alex");
+  const live = () => w.tools.get("wink.device.enclave-live").run({ device: "dev1" }, { caller: "module:presence" });
+  await assert.rejects(() => w.tools.get("wink.device.enclave-live").run({ device: "dev1" }, { caller: "module:evil" }), e => e.code === "denied");
+  assert.deepEqual(await live(), { ok: true });
+  assert.equal(lookups.length, 1);
+  assert.deepEqual(lookups[0], { name: "alex", id: ME }, "the directory list of the identity, by its Vyre name");
+  entries = [];
+  clock += 9 * 60_000;
+  assert.deepEqual(await live(), { ok: true }, "inside the 10-minute window the answer is the cached one");
+  assert.equal(lookups.length, 1);
+  clock += 2 * 60_000;
+  assert.deepEqual(await live(), { ok: false }, "after the window the revoked entry is seen");
+  assert.ok(w.events.some(e => e[0] === "wink.device-needs-repair" && e[1].device === "dev1"), "and the device is marked for re-pairing");
+  assert.equal(w.db.prepare("SELECT needs_repair FROM wink_devices WHERE id = 'dev1'").get().needs_repair, 1);
+  // a directory that cannot be reached: software for this sign-in, nothing remembered
+  w.p.devices.setEnclaveKey("dev1", KEY, "e_phone", "alex");
+  entries = [{ eid: "e_phone", kind: "device", enclave: KEY }];
+  clock += 11 * 60_000; reachable = false;
+  assert.deepEqual(await live(), { ok: false });
+  reachable = true;
+  assert.deepEqual(await live(), { ok: true }, "the next sign-in asks again");
+  // another key under the same entry id is not this device's key
+  clock += 11 * 60_000; entries = [{ eid: "e_phone", kind: "device", enclave: "BBBB" }];
+  assert.deepEqual(await live(), { ok: false });
+});

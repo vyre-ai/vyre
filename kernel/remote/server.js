@@ -109,7 +109,7 @@ export function createRemoteServer(cfg) {
     if (!peer || typeof peer.person !== "string" || !peer.person || typeof peer.device_key_id !== "string" || !peer.device_key_id) throw new KernelError("not_a_member", "no chain for this connection");
     const path = peer.path === "wink" ? "wink" : "relay"; // anything but a Wink node is the relay: the weaker surface
     if (k.gateway.members.roleOf({ kind: "person", id: peer.person, space: cfg.space }) !== null) {
-      return { member: true, chain: await k.chains.fromFacts({ kind: "device", device_key_id: peer.device_key_id, person: peer.person, path, ...(typeof peer.session === "string" && peer.session && peer.session.length <= 64 ? { session: peer.session } : {}) }) };
+      return { member: true, chain: await k.chains.fromFacts({ kind: "device", device_key_id: peer.device_key_id, person: peer.person, path, ...(typeof peer.session === "string" && peer.session && peer.session.length <= 64 ? { session: peer.session, ...(peer.software === true ? { software: true } : {}) } : {}) }) };
     }
     if (!INVITEE_CALLS.has(call)) throw new KernelError("not_a_member", "no chain for this connection");
     return { member: false, chain: await k.chains.fromFacts({ kind: "invitee", person: peer.person, vouched: true }) };

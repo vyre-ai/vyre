@@ -77,6 +77,8 @@ const CALL_AS = { agents: (/** @type {string} */ as) => isPerson(as), link: ["li
   connectors: (/** @type {string} */ as) => isPerson(as),
   // stream asks threads.get as the very caller of stream.open (a person's surface or device, or an assistant), so a session's read is decided under that caller's own authority, never the module's.
   stream: (/** @type {string} */ as) => isPerson(as) || agentClaim(as) !== null,
+  // pluginagent.revoke is the person's own act (presence): the plugin agent it made is deleted as the revoking person, agents.delete's person-only rule deciding; checked per call below.
+  pluginagent: (/** @type {string} */ as) => isPerson(as),
   // term asks threads.get as the person who opened the terminal, so a session's folder and its terminal are decided under that person's own authority.
   term: (/** @type {string} */ as) => isPerson(as) };
 /**
@@ -995,6 +997,7 @@ export class Registry {
         if (!core || !(typeof allowed === "function" ? allowed(String(as)) : (allowed || []).includes(String(as)))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // mentions replays the asking person to a provider's search tool, never to any other tool.
         if (m.name === "connectors" && !(tool === "vault.put" && input && typeof input === "object" && input.kind === "api-credential")) throw new Error(`connectors may not call ${tool} as ${as}: it relays a person to vault.put for an api-credential only`);
+        if (m.name === "pluginagent" && tool !== "agents.delete") throw new Error(`pluginagent may not call ${tool} as ${as}: it relays the revoking person to agents.delete only`);
         // agents relays the asking person to threads.send alone (agents.ask's tags), never to any other tool.
         if (m.name === "agents") checkAgentsRelay(tool, String(as));
         if (m.name === "capsule" && !this.capsuleMayCall(String(as), tool)) throw new Error(`capsule may not call ${tool} as ${as}: no Capsule view of that module declares it`);

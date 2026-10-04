@@ -13,6 +13,7 @@ import { withKernelCall, KERNEL_CALL_TOOL } from "../../kernel/remote/wink.js";
 import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote/wire.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
+import { devSwitch } from "../../kernel/devbuild.js";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -27,6 +28,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
+  const softwareOk = o.softwareOk || (() => devSwitch(process.env.VYRE_SEAL_SOFTWARE));
   /** @type {Map<string, any>} */ const servers = new Map();
   const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { const h = o.kernel.spaces.for(space); return h && h.hosted === true ? h.kernel : null; } catch { return null; } })() : null));
   const serverFor = (/** @type {string} */ space) => {
@@ -49,7 +51,7 @@ export function createPeerDoor(o) {
   };
   /** The person a device is: the facts the daemon proves for it (PH-1) name the home's owner, and only for a live app device. @param {string} id */
   /** The device's own live paired session (it signed in with start-paired), or null: a call is the person's with a session and a device's own, with no person, without one. @param {string} id */
-  const sessionOf = id => { const now = (o.now || Date.now)(); try { const s = o.people ? o.people.list().find(x => x.node === id && x.paired && x.expires > now) : null; return s ? { id: String(s.id), kind: String(s.kind) } : null; } catch { return null; } };
+  const sessionOf = id => { const now = (o.now || Date.now)(); try { const s = o.people ? o.people.list().find(x => x.node === id && x.paired && x.expires > now) : null; return s ? { id: String(s.id), kind: String(s.kind), ...(s.software ? { software: true } : {}) } : null; } catch { return null; } };
   const factsOf = async (/** @type {string} */ id, /** @type {any} */ person = null) => { const row = await rowOf(id); return row ? o.callerFacts(`device:${id}`, { caller: `device:${id}`, peer: { kind: "device", stableId: id } }, person ? { person } : null, o.kernel, false, row) : null; };
   const personOf = async (/** @type {string} */ id) => { const f = await factsOf(id); return f && typeof f.person === "string" ? f.person : null; };
 
@@ -133,7 +135,14 @@ export function createPeerDoor(o) {
   };
   /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */
   const inviteeRequest = (space, call, args, now) => ({ v: WIRE_VERSION, space, id: `inv-${crypto.randomBytes(8).toString("hex")}`, ts: now, call, args });
-  const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "relay" });
+  const dispatchFor = (/** @type {any} */ peerStream) => withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, peerStream), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), sessionOf: (/** @type {string} */ d) => {
+    // a software-marked paired session (a device key nobody had to touch) is presence for an admin act only where the presence module itself takes software proofs: a development build behind its switch, never a release build
+    const s = sessionOf(d);
+    if (!s) return null;
+    if (s.software && !softwareOk()) { log(`peer door: ${d} holds a software-strength session: not presence for an admin act here`); return null; }
+    log(`peer door: ${d} session counts as presence, strength ${s.software ? "software (development switch)" : "enclave or phone-approved"}`);
+    return s.software ? { id: s.id, software: true } : s.id;
+  }, pathOf: () => "relay" });
   /** @type {Map<string, number>} device -> its open streams, across its peer streams */
   const openByDevice = new Map();
   /** @type {Set<{ id: string, check: () => void }>} the accepted peer streams with streams open, re-checked when a device is removed or a session ends (PS-C: an event, not a fast poll) */
