@@ -5,6 +5,7 @@
 // this ever built a `cmd /c start` line; every OAuth URL has a `&`. Fixed by never touching a
 // shell on win32 and by refusing every scheme but http(s), on every platform.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { openInBrowser } from "./kit.js";

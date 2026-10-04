@@ -4,6 +4,7 @@
 // event, a log or an audit row. The Secret Key is a fake, injected: the real one arrives with the
 // account key hierarchy.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

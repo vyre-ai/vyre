@@ -2,6 +2,7 @@
 // talk: the terminal push-to-talk against a real vyred, a fake mic and the fake speech provider,
 // plus `vyre voice key` and `vyre voice status` run as a person would, as a real process.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

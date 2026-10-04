@@ -3,6 +3,7 @@
 // home seeded with the fictional corpus, and a fake `claude` first on PATH that records how it
 // was started instead of starting anything.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";

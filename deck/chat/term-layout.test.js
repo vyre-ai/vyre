@@ -3,6 +3,7 @@
 // fills the Chat content area, the phone key bar docks at the bottom and rides the keyboard, the
 // key bar is a 7-column grid, the screen is mono 12/18 on --code-bg, and the state dots use
 // --focus, --label and the failed mark, never gold or violet. Reads term.css and term.js as text.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

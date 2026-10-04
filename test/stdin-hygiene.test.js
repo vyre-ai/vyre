@@ -2,6 +2,7 @@
 // 'error' event, and an event nobody listens for is an uncaught exception that takes vyred down.
 // try/catch does not see it. Any source that writes or ends a spawned child's stdin must attach an
 // error listener to it. This reads the source only; it boots nothing.
+import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

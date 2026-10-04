@@ -2,6 +2,7 @@
 // The stuck watch on the REAL kernel (test/kernel-rig.js): the real transition table, `ask.stuck` as the doer, the kernel's own denial detection with its fix and
 // cool-down (`observeDenial`, `declineFix`), and `unblock` by a person with a presence proof. Stand-ins: the presence verifier (SHIM(presence)) and the kernel's detection
 // chain, which only the kernel's own module holds (SHIM(detect chain), a platform gap).
+import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createRig } from "../../../test/kernel-rig.js";

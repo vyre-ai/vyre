@@ -3,6 +3,7 @@
 // keeps a code fresh for whoever is looking at it, so a second scan always finds a live ring. No proof is asked for a renewal;
 // a server that wants one gets a plain Refresh. Never while hidden, never more than a handful in a row, never after redemption.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text } from "./fake-dom.js";

@@ -8,6 +8,7 @@
 //   - Each module owns tables prefixed with its own name and migrates them itself, so modules
 //     built in parallel by different people never collide on a table.
 
+import "../../lib/mac-test-refusal.js";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import path from "node:path";

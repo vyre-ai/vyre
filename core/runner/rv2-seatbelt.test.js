@@ -1,3 +1,4 @@
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 // reviewer-2 probes (kept in the tree, run by the hosted Mac job) for the macOS home profile (core/runner/homesandbox.js homeSeatbelt), against origin/work/runner c3afce4cb. Drop into core/runner/ and run on the hosted Mac job
 // (NOT run by me: no tests on the Mac I work on). Each probe tries something the profile's text does not forbid; the asserts name what must NOT work. A failing assert is a hole.

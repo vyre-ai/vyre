@@ -5,6 +5,7 @@
 // byte-offset ring (replay after an offset, trimmed at line ends, the cut marker), the fallback to a
 // plain pty without dtach, and with a real dtach a shell that survives a vyred stop and start.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

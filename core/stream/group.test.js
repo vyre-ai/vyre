@@ -1,5 +1,6 @@
 // @ts-check
 // Group chats on the stream: frames, routing, per-viewer rendering, presence, read markers, concurrent streams.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { validate, frame, toEnvelope, whoAnswers, render, assertAskerCanRead, createPresence, presenceFor, createReadMarkers, settle, HOLDBACK, cutData, forViewer, isEncrypted } from "./index.js";

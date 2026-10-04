@@ -4,6 +4,7 @@
 // sets from `tailscale whois`. A tailnet device may now ask for the human-only tools, and presence
 // still decides them: no proof is presence_required, a device key's signature sends.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

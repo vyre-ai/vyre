@@ -2,6 +2,7 @@
 // settings in a real vyred in a temp home: precedence, checking, each kind of store, and that
 // only a person changes anything. Claude Code's files are a temp folder, never ~/.claude.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

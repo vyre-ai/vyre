@@ -1,6 +1,7 @@
 // @ts-check
 // Ranked matching for the composer's pickers: tiers, offsets, paths and multi-token queries.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { scoreMatch, compareScores, scorePath, scoreFields } from "./match.js";

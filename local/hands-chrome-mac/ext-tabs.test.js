@@ -1,5 +1,6 @@
 // @ts-check
 // tabs.*: reuse before open, focus only on request, blind tabs hidden, close only what Vyre opened.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createCtx } from "./extension/lib/ctx.js";

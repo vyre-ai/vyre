@@ -4,6 +4,7 @@
 // again exactly once. Two calls at once share one sheet; "Not now" fails them; with no handler
 // the error reaches the caller as before. No real passkey: navigator.credentials is a fake.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { install, $, $$ } from "../test/fake-dom.js";

@@ -2,6 +2,7 @@
 // Who may call each watchers tool (ADR 0047 reach), against the real Registry and the real manifest:
 // every tool names its reach, a model cannot turn a watcher on unless the person's own words asked
 // for it, and only the person deletes, runs or resumes one. No daemon, no children: a temp home and stubs.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

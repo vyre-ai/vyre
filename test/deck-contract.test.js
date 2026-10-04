@@ -4,6 +4,7 @@
 // whatever they are asked, so a Deck call that no real tool accepts passed every test and failed
 // on the user's box ("Give kit a computer" sent agent to agents.update, which requires name).
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

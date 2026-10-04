@@ -2,6 +2,7 @@
 // The context module against fake projects and sight modules in a temp home. Nothing here reads
 // a real screen or a real project: every answer comes from a fake written into the home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

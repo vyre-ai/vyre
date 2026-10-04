@@ -1,6 +1,7 @@
 // @ts-check
 // glance, capabilities, log, prompt diff and the daily thread, against fake owners in a temp home.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

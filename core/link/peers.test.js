@@ -3,6 +3,7 @@
 // functions are pure wiring — what they ask relay.devices.node/relay.status and what they do with
 // the answer — not the relay module's own logic, already tested in test/relay.test.js.
 
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ownedNode, openPeer, selfIdentity } from "./peers.js";

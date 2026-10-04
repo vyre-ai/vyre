@@ -1,5 +1,6 @@
 // @ts-check
 // presence: the tab group, the step badge, the pill and the way out, against a fake chrome.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createPresence, pillScript, pillGone, cardScript, IDLE_MS, WAIT_MAX_MS, GROUP_TITLE } from "./extension/lib/presence.js";

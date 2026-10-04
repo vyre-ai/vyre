@@ -1,6 +1,7 @@
 // @ts-check
 // Apple App Attest in the sealing process (kernel/seal/appattest.js). The simulator cannot attest, so these tests build the same STRUCTURE under a synthetic root: root -> intermediate -> leaf with the nonce
 // extension, a CBOR attestation object, authData, and assertions. They prove the code path and every refusal, NOT Apple's real bytes (APPATTEST_VERIFIED stays false until a real fixture passes, AA-3).
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

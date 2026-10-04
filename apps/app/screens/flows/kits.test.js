@@ -1,5 +1,6 @@
 // @ts-check
 // Kits on the real box against a fake box shaped like flows.kit.list.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

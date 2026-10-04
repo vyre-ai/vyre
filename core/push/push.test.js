@@ -2,6 +2,7 @@
 // Web Push: the crypto checked against an independent reading of the RFCs (WebCrypto, as a
 // browser would decrypt), and the module in a real vyred against a fake push service.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

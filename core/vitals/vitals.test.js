@@ -4,6 +4,7 @@
 // end through the real store. seams stand in for this device's own OS reads and for computers'
 // per-agent breakdown, so nothing here touches a real /proc, cgroup or Docker.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

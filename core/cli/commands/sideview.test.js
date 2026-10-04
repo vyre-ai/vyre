@@ -4,6 +4,7 @@
 // starts it, and a word it does not know is refused first. The side view itself is tested with
 // fake tiles in local/sideview.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

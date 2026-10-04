@@ -1,4 +1,5 @@
 // The work module over the REAL gateway and tasks of the kernel (not the fake): the tools it registers, what a caller sees, and that nothing runs without a kernel-built chain.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import mod from "./index.js";

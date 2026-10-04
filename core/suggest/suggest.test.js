@@ -3,6 +3,7 @@
 // fakes read their answers from one shared object and count every call, so a test can say that a
 // keystroke called nothing.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

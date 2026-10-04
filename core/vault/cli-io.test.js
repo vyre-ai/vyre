@@ -2,6 +2,7 @@
 // Tests for the Vault's terminal helpers. The hidden prompt is driven through a fake terminal so
 // the test can prove exactly what reached the screen: the question, and nothing typed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PassThrough } from "node:stream";

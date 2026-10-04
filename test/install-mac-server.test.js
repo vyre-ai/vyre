@@ -4,6 +4,7 @@
 // caffeinate with the env file's lines exported, and uninstall leaves the person's data. The default
 // (system service) mode runs the root installer under one fake sudo. All against a
 // fake launchctl, caffeinate, brew and colima in a temp home: no real service, no Homebrew, no root.
+import "../scripts/mac-test-guard.mjs";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,6 +1,7 @@
 // @ts-check
 // Who may change a box's name, owner or sign-in (reviewer-2): the person's own surfaces and devices, and only the named
 // modules that run those steps for them. A model session, an agent, a hook, a guest and any other module are refused.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
