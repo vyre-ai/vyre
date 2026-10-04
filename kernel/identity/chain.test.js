@@ -438,3 +438,22 @@ test("NE-1: a passkey op's head does not depend on the assertion's signature byt
   const a = await C.applyOp(w.state, op, { now: T0 + 25 * H }), b = await C.applyOp(w.state, twinOp, { now: T0 + 25 * H });
   assert.equal(a.head, b.head, "both forms are valid and give the same head");
 });
+
+test("NE-1 cares: a long garbage sig on an Ed25519 entry is refused (it can never be an accepted op whose hash ignores its sig); two different valid passkey signatures over one op give one head and cannot change what the op says", async () => {
+  const phone = await key("phone"), friend = await key("friend"), other = await key("other"), pk = await passkey("alex's passkey");
+  const w0 = await person(phone);
+  const op = await C.makeOp(w0.state, { type: "add", entry: friend.entry("device") }, { by: phone.eid, ts: T0 + 25 * H, sign: phone.sign });
+  const garbage = { ...op, sig: C.b64u(Buffer.alloc(200, 7)) };
+  await refused(C.applyOp(w0.state, garbage, { now: T0 + 25 * H }), "bad_signature");
+  // two different valid assertions over the same op: one head
+  const w = await person(pk);
+  const body = { type: "add", entry: friend.entry("device") };
+  const a = await C.makeOp(w.state, body, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  const b = await C.makeOp(w.state, body, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  assert.notEqual(a.sig, b.sig, "ECDSA signs differently each time");
+  const sa = await C.applyOp(w.state, a, { now: T0 + 25 * H }), sb = await C.applyOp(w.state, b, { now: T0 + 25 * H });
+  assert.equal(sa.head, sb.head);
+  // the signature still binds the content: another op's body under a's signature is refused
+  const swapped = { ...a, entry: other.entry("device") };
+  await refused(C.applyOp(w.state, swapped, { now: T0 + 25 * H }), "bad_signature");
+});
