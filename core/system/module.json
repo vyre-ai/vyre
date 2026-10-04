@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["system.info", "system.echo", { "name": "system.rename", "reach": "person" }] },
+  "does": { "tools": ["system.info", "system.echo", { "name": "system.rename", "reach": "person", "effect": "write" }] },
   "watches": { "emits": ["system.started", "device.renamed"] },
   "shows": { "cli": ["info"] },
   "needs": {},
