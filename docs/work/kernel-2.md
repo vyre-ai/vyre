@@ -52,3 +52,11 @@ SQLite compares bytes; the reference compares UTF-16 code units. Text sort, comp
 
 ## Known slow paths (exact, not fast)
 Search with two or more common words, or a word under 3 characters, ranks by the general SQL (about 0.5 s at 500,000 records). A restricted caller's count by stage is row by row.
+
+# 0.3 rules tools and the log anchor (work/kernel-rules-tools, work/kernel-anchor)
+
+## Rules tools
+`rules.list`, `.get`, `.define`, `.test`, `.enable`, `.disable` (and `.remove`, `.propose`, `.accept`, `.dismiss`) in core/rules-tools over the kernel's rule store; shapes in team/0.2/CHAT.md. Off means status `disabled`: the rule stays listed, binds nothing, and the change is an event in the log. `rules.test` writes nothing and says which kind binds an act for an assistant, a member or an assistant acting for a member, for a stored rule or one not yet defined. Time-window rules are 0.3.1.
+
+## Log anchor (BL-2)
+The sealing process keeps the newest (seq, head) it was shown, outside the database, forward only. A checkpoint verifies the log, advances the anchor, then is written. A restart compares the log with the anchor; a packaged build refuses to start on a failed check, and the owner's `anchor.reset` (presence) is the way out after a restore. It defends against the database alone being put back. It does not defend against a whole-home restore or someone who holds the sealing folder; a second copy outside the home is a packaging decision for launch.
