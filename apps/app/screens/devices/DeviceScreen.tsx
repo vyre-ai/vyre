@@ -29,7 +29,7 @@ export function DeviceScreen() {
           {cur.map((k, i) => (
             <View key={k}>{i ? <Divider /> : null}
               <Row lead={<Avatar of={spaceRef(SPACE_NAMES[k])} size={40} />} title={SPACE_NAMES[k]} sub={`Joined ${d.since}`}
-                end={<Button kind="ghost" size="sm" label={`Remove from ${SPACE_NAMES[k]}`} onPress={() => setFace({ title: `Remove from ${SPACE_NAMES[k]}`, body: `${d.name} stops reaching ${SPACE_NAMES[k]} now. Its other spaces are untouched.`, onApprove: () => { removeFromSpace(d.id, k); showToast(`Removed from ${SPACE_NAMES[k]}.`); } })} />} />
+                end={<Button kind="hold" size="sm" label={`Remove from ${SPACE_NAMES[k]}`} onPress={() => { removeFromSpace(d.id, k); showToast(`${d.name} no longer reaches ${SPACE_NAMES[k]}. Its other spaces are untouched.`); }} />} />
             </View>
           ))}
           {missing.map((k, i) => (
