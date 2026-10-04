@@ -427,5 +427,62 @@ export function createAuthorizer(cfg) {
     } catch { return false; }
   }
 
-  return Object.freeze({ authorize, rowUniform, actions: reg });
+  /** The kernel attributes a store can filter on from its own attribute table (the ones the gateway writes with a record). */
+  const PUSH_ATTRS = new Set(["owner", "project", "sensitivity", "created_by"]);
+  /**
+   * For a caller whose answer is NOT the same for every row, can the answer be said as a predicate on stored attributes alone? True only for the plain case: one person (and the default
+   * assistant acting for them), no rule on the action, no temp member, and every grant that carries the action over the type is whole-type with no parent and no condition, carrying at most
+   * `where` terms of the form `attr eq "text"` on a stored attribute. The answer is `{ any: [ { attr: value, ... }, ... ] }`: a row is allowed when its attributes equal ALL the terms of ANY
+   * one alternative (a missing attribute matches nothing, as in `evaluate`). `{ any: [] }` allows no row. Null: not expressible here (uniform callers, and everything with anything more
+   * in it) and the caller is totalled row by row. Two restricted hops are not combined: that is null too.
+   * @param {{ chain: any, action: string, type: string }} input @returns {Promise<{ any: Record<string, string>[] } | null>}
+   */
+  async function rowPredicate(input) {
+    try {
+      const { chain, action, type } = input;
+      if (!input || !isChain(chain) || !chain.hops.length || !reg.get(action)) return null;
+      if (chain.space !== cfg.space || !/^[a-z][a-z0-9_]{0,63}$/.test(type)) return null;
+      if (cfg.rules && cfg.rules.touches ? cfg.rules.touches(chain, action) : Boolean(cfg.rules)) return null;
+      const proto = `vyre://${cfg.space}/${type}/x`;
+      /** @type {Record<string, string>[] | null} */ let result = null;
+      for (const h of chain.hops) {
+        const actor = h.actor;
+        if (!cfg.members.has(actor) || actor.kind === "service") return null;
+        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
+        if (ms && ms.role === "temp") return null;
+        let whole = false;
+        /** @type {Record<string, string>[]} */ const alts = [];
+        for (const g of await cfg.grants.forSubject(actor, h, { chain, action, resource: proto, probe: true })) {
+          if (g.status !== "active" || g.space !== cfg.space) continue;
+          const p = segments(g.resource.prefix);
+          if (!p) return null;
+          const reaches = p.length <= 2 ? p.every((seg, i) => seg === "*" || seg === [cfg.space, type][i]) : p.slice(0, 2).every((seg, i) => seg === "*" || seg === [cfg.space, type][i]);
+          if (!reaches) continue;
+          let cov = null;
+          for (const pa of g.actions) { const c = patternCovers(pa, action, since(action), g.action_set_version, riskOf(action)); if (c === "covered") { cov = c; break; } if (c) cov = c; }
+          if (cov === null) continue;
+          if (cov !== "covered") return null;
+          if (g.parent || (g.conditions && Object.keys(g.conditions).length)) return null;
+          if (!(p.length <= 2 || (p[2] === "*" && p.length === 3))) return null;
+          const where = g.resource.where || [];
+          if (!where.length) { whole = true; break; }
+          /** @type {Record<string, string>} */ const alt = {};
+          let never = false;
+          for (const w of where) {
+            if (!w || w.op !== "eq" || typeof w.value !== "string" || !PUSH_ATTRS.has(w.attr)) return null;
+            if (Object.hasOwn(alt, w.attr) && alt[w.attr] !== w.value) never = true;
+            alt[w.attr] = w.value;
+          }
+          if (!never) alts.push(alt);
+        }
+        if (whole) continue;
+        if (result !== null) return null;
+        result = alts;
+      }
+      return result === null ? null : { any: result };
+    } catch { return null; }
+  }
+
+  return Object.freeze({ authorize, rowUniform, rowPredicate, actions: reg });
 }
