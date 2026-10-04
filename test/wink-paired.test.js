@@ -290,7 +290,7 @@ test("PS-4 and sessions scope, on the real kernel: a paired session lists only i
 test("a device with no box pairs a fresh server through pairServer: the claimed identity and its name become the owner, only after the right pick at the server", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   assert.deepEqual(parseServerPayload(made.qr)?.seed, parseServerQr(made.qr).seed, "the client's parser reads what the box prints");
@@ -350,7 +350,7 @@ async function pairFreshServer(t, { kind = "phone", about, presenceStorage = "ha
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const w = await world(t, { kernel: true, realPresence, kernelSealer });
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -434,7 +434,7 @@ test("device-first: a web device is recorded as web with software storage", asyn
 test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's call with a proof is judged by the tool (denied, no identity port here), never refused as an unknown field", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const scan = parseServerQr(made.qr);
@@ -450,7 +450,7 @@ test("wink.server.adopt takes `proof` through the registry: a waiting redeemer's
 test("a box-less device pairs a fresh server, is recorded as the owner's device with its kind, and then start-paired succeeds with no second step", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
@@ -512,7 +512,7 @@ test("guard: a daemon with the kernel mounts the relay peer door (a merge once d
 test("pairServer maps a refused owner to bad_owner, not a network error, and nothing is owned", async t => {
   const w = await world(t);
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const made = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   await assert.rejects(pairServer({ payload: made.qr, owner: { id: "per_a", name: "Alex" }, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "bad_owner");
@@ -522,7 +522,7 @@ test("pairServer maps a refused owner to bad_owner, not a network error, and not
 test("a pairing whose app closed before the yes does not leave the server busy: the ask is dropped and the next scanner is asked", async t => {
   const w = await world(t, { abandonMs: 150 });
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const first = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
   const owner = { kind: "identity", id: "per_" + "q".repeat(26), name: "Alex" };
@@ -557,7 +557,7 @@ async function attemptPairing(t, ident, { sign = ident.sign, owner = { id: ident
   process.env.VYRE_SEAL_DEV = "1";
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   const saved = process.env.VYRE_WINK_TYPED_CODE;
-  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_WINK_TYPED_CODE = "0";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
   const w = await world(t, { kernel: true });
   const code = (await w.call("wink.server.code", { qr: true }, "cli", PROOF)).data;
