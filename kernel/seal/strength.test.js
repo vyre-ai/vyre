@@ -21,13 +21,13 @@ test("the one rule: hardware always satisfies presence, software only behind a d
   assert.deepEqual([methodOf("hardware"), methodOf("software")], ["attested", "software"]);
 });
 
-test("a client's claim of hardware changes nothing: the key is enrolled as software, and says so", async t => {
+test("a client's claim of hardware changes nothing: the key is enrolled as unattested (UY-2), and says so", async t => {
   const dir = tmp("str1"), s = startSealer({ dir, timeoutMs: 8000, dev: true, unattested: true });
   t.after(async () => { await s.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const sg = signer("per_alex"), ch = person("per_alex"), e = sg.enrolment;
   const { token } = await s.begin({ chain: ch, person: "per_alex", key_id: e.key_id, spki: e.spki });
   const r = await s.enrol({ chain: ch, person: "per_alex", key_id: e.key_id, spki: e.spki, signer: e.signer, token, attested: true, hardware: true, strength: "hardware", storage: "secure_enclave" });
-  assert.deepEqual([r.attested, r.strength], [false, "software"]);
+  assert.deepEqual([r.attested, r.strength], [false, "unattested"], "never hardware: only a verified attestation says that");
 });
 
 test("dev: a software key satisfies an invite and a role change and the use is marked method software; release: the same proofs are refused with software_key, whatever the act", async t => {
@@ -52,7 +52,7 @@ test("dev: a software key satisfies an invite and a role change and the use is m
   assert.equal(await code(rel.anchor.reset({ chain: ch, proof: alex.proof(ch, "anchor.reset", {}) })), SOFTWARE_KEY, "anchor.reset too: every presence-required act uses the same check");
 });
 
-test("each dev switch admits only its own kind of key: VYRE_SEAL_SOFTWARE a software-class key and nothing else, VYRE_SEAL_UNATTESTED an unattested hardware-class key and nothing else", async t => {
+test("each dev switch admits only its own kind of key: VYRE_SEAL_SOFTWARE a software-class key and nothing else, VYRE_SEAL_UNATTESTED an unattested hardware-class key and nothing else (a phone's secure-chip key needs no switch, UY-2)", async t => {
   const dir = tmp("str3"), both = startSealer({ dir, timeoutMs: 8000, dev: true, software: true, unattested: true });
   const soft = signer("per_alex", undefined, "software"), hw = signer("per_alex", undefined, "secure_enclave"), ch = person("per_alex");
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -62,10 +62,10 @@ test("each dev switch admits only its own kind of key: VYRE_SEAL_SOFTWARE a soft
   const fields = { k: "v" }, op = "task.decide";
   const ask = async (/** @type {any} */ o, /** @type {any} */ sg) => { const s = startSealer({ dir, timeoutMs: 8000, dev: true, ...o }); try { await s.health(); await new Promise(r => setTimeout(r, 50)); return await s.presenceProve({ chain: ch, op, fields, proof: sg.proof(ch, op, fields) }); } finally { await s.close(); } };
   assert.equal((await ask({ software: true }, soft)).ok, true, "software switch: the software key");
-  assert.equal((await ask({ software: true }, hw)).code, SOFTWARE_KEY, "software switch: an unattested hardware-class key is refused");
+  assert.equal((await ask({ software: true }, hw)).method, "unattested", "software switch: a phone's unattested secure-chip key says yes on release too (UY-2), marked unattested, not by this switch");
   assert.equal((await ask({ unattested: true }, hw)).ok, true, "unattested switch: the unattested hardware-class key");
   assert.equal((await ask({ unattested: true }, soft)).code, SOFTWARE_KEY, "unattested switch: a software-class key is refused");
-  assert.equal((await ask({}, soft)).code, SOFTWARE_KEY); assert.equal((await ask({}, hw)).code, SOFTWARE_KEY, "no switch: neither");
+  assert.equal((await ask({}, soft)).code, SOFTWARE_KEY, "no switch: a software key is refused"); assert.deepEqual(await ask({}, hw), { ok: true, method: "unattested", strength: "unattested" }, "no switch (a release build): the unattested secure-chip key is admitted and marked unattested (UY-2)");
 });
 
 test("by method (the registry's presence): the methods that need a person's gesture count as hardware, a device-method file key and anything unknown are software", () => {

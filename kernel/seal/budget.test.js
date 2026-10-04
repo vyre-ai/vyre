@@ -13,7 +13,8 @@ const code = f => fs.readFileSync(path.join(KERNEL, f), "utf8").split("\n").filt
 const GROUPS = {
   leases: { cap: 120, files: ["seal/leases.js"] },
   attest: { cap: 250, files: ["seal/appattest.js", "seal/strength.js"] },
-  // RC1 ceiling 900 (reviewer-2 sign-off BG-1): the PW-1 strength rule, the nested payload hash and the invitee first-key join took the sealing process over 800. 900 is the ceiling; more needs reviewer-2's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
+  // BG-1 (reviewer-2's sign-off, RC1): 900 is the CEILING for the sealing group, raised from 800 for what RC1 had to put inside the sealing process: the one key-strength rule (strength.js, by method and signer,
+  // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-2's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
   sealing: { cap: 900, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
