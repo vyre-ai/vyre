@@ -172,12 +172,13 @@ export default {
     // ---- the Space's own kernel decides roles and memberships when it hosts or can reach one (ctx.kernel.for(space)): nothing here is then an authority ----
     const K = ctx.kernel && typeof ctx.kernel.for === "function" ? ctx.kernel : null;
     const kernelHandle = (/** @type {string} */ id) => { if (!K) return null; try { return K.for(id) || null; } catch { return null; } };
-    const kctxOf = async (/** @type {any} */ meta) => ({ chain: await K.chain(meta), proof: K.proofFrom(meta) });
+    /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
+    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => ({ chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) });
     /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
     const members = async (id, meta) => {
       const h = kernelHandle(id);
       if (!h) return membersFor(id);
-      const k = await kctxOf(meta);
+      const k = await kctxOf(meta, id);
       return createKernelMembers({ space: id, handle: h, now, displayNames: rnames.load(id), reader: () => k });
     };
     /** A person's role in a space from the place that decides it. @param {string} id @param {string} person @param {any} [meta] */
@@ -243,7 +244,7 @@ export default {
     /** The name a person chose for themselves (their identity card), as this device knows it: their own, or one it verified when they were added by name or joined. Null when not known here. @param {string} id */
     const nameOf = async id => {
       const st = identity.status();
-      if (st.exists && st.id === id && st.name) return `${st.name}.vyre.run`.replace(/(\.vyre\.run)+$/, ".vyre.run");
+      if (st.exists && (st.id === id || (K && K.owner === id)) && st.name) return `${st.name}.vyre.run`.replace(/(\.vyre\.run)+$/, ".vyre.run");
       const n = /** @type {string|null} */ (await kv.get(`person-name/${id}`));
       return n ? `${n}.vyre.run` : null;
     };
@@ -343,6 +344,8 @@ export default {
       },
       members: {
         async bootstrapOwner(/** @type {string} */ person, /** @type {any} */ c) {
+          // A Space the kernel hosts made its first owner (the person named to host()) when it was hosted: nothing to write here, and never a second record of it in the local table.
+          if (kernelHandle(c.spaceId)) return { space: c.spaceId, person, role: "owner" };
           const m = membersFor(c.spaceId);
           const have = await m.get(person);
           if (have && have.role === "owner") return have;
@@ -400,8 +403,19 @@ export default {
 
     // ---- tools ----
     /** Errors a person can read: ours and the libraries' carry a short lowercase code; anything else is logged and made plain. */
+    /** The claimed identity IS the kernel's owner (one person, ruled 4 Oct): the first call after the claim (or after a start that finds one) hands the kernel the identity's id, once. */
+    /** @type {Promise<void> | null} */ let adopting = null;
+    const adoptOwner = () => adopting || (adopting = (async () => {
+      try {
+        if (!K || typeof K.adoptOwner !== "function") return;
+        let s; try { s = identity.status(); } catch { return; }
+        if (!s || !s.exists || !s.id || s.id === K.owner) return;
+        try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+      } finally { adopting = null; }
+    })());
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
-      try { return await fn(i || {}, meta || {}); } catch (e) {
+      await adoptOwner();
+      try { const out = await fn(i || {}, meta || {}); await adoptOwner(); return out; } catch (e) { // after too: a call that claims or recovers the identity makes it the kernel's owner at once, not at the next call
         const err = /** @type {any} */ (e);
         if (err && typeof err.code === "string" && /^[a-z][a-z0-9_.-]{1,40}$/.test(err.code) && typeof err.message === "string") throw err;
         ctx.log.error(`a spaces tool failed: ${err && err.name}: ${String(err && err.message).slice(0, 200)}`);
@@ -588,7 +602,7 @@ export default {
             if (i.storeChoice === "cancel") return { status: "cancelled", reason: "You chose not to create it on this server." };
             if (i.storeChoice !== "create") return { status: "needs_confirmation", confirm: { text: confirm.text, choices: ["create", "cancel"] } };
           }
-          const hosted = await KS.host({ owner: s.id, name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
+          const hosted = await KS.host({ owner: (K && typeof K.owner === "string" ? K.owner : s.id), name: label, ...(confirm ? { accept_builtin_store: true } : {}) });
           spaceId = hosted.space || hosted.id;
         }
         const home = { ...i.home };
@@ -600,6 +614,13 @@ export default {
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
       });
+
+    // A Space made before the kernel hosted them has a module-local id (spc_ plus 16 hex) that the kernel's registry does not know. This build makes none (spaces.create hosts in the kernel first) and
+    // 0.3 is the first release with Spaces, so there is nothing to move; if one is found anyway it is said once, never mapped or deleted in silence.
+    if (K && K.spaces) {
+      const legacy = spaces.all().filter(r => !/^spc_[a-z2-7]{12}$/.test(r.id));
+      if (legacy.length) ctx.log.warn(`${legacy.length} space(s) have a module-local id the kernel's registry does not know: ${legacy.map(r => r.id).join(", ")}. They keep working without a kernel only.`);
+    }
 
     // ---- "setup in progress": the steps after the space has its home (look, members, connectors, the first Kit) are done on the device where the person started. The state is kept here, beside the
     // space's row, and read with the space (spaces.get, spaces.list). No secret, code, key or token is ever in it: only the shape below is kept, and anything else is dropped. ----
@@ -712,7 +733,12 @@ export default {
         return { device: dev.eid, spaces: ids };
       });
     tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
-      async i => ({ enrolled: await isEnrolled(String(i.device), spaceOf(i.space).id) }), { internal: true });
+      async i => {
+        // A Space this module has no row for (the home's own Space, which the kernel makes before any space is created here) is asked by its id as given: no list means enrolled.
+        let id = String(i.space);
+        try { id = spaceOf(i.space).id; } catch { /* not one of ours: the id as given */ }
+        return { enrolled: await isEnrolled(String(i.device), id) };
+      }, { internal: true });
 
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
@@ -894,7 +920,7 @@ export default {
         const s = await gate(row.id, undefined, meta);
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
-          const k = await kctxOf(meta);
+          const k = await kctxOf(meta, row.id);
           const rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) });
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
@@ -907,18 +933,18 @@ export default {
       const row = spaceOf(i.space);
       await gate(row.id, undefined, meta);
       if (!kernelHandle(row.id)) throw refuse("Only an invite made through the space's kernel waits for confirmation.", "not_kernel");
-      return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta), String(i.id), String(i.words)));
+      return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta, row.id), String(i.id), String(i.words)));
     });
     tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);
-      if (kernelHandle(row.id)) return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.revoke(await kctxOf(meta), String(i.id)));
+      if (kernelHandle(row.id)) return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.revoke(await kctxOf(meta, row.id), String(i.id)));
       return out(await invitesFor(row).revokeInvite({ actor: s.id, id: String(i.id) }));
     });
     tool("spaces.invites.list", "Invites you made, or all you may manage as owner or admin. Never includes the link.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);
-      if (kernelHandle(row.id)) return { invites: out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.list(await kctxOf(meta))) };
+      if (kernelHandle(row.id)) return { invites: out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.list(await kctxOf(meta, row.id))) };
       return { invites: out(await invitesFor(row).listInvites({ actor: s.id })) };
     });
 
@@ -979,7 +1005,7 @@ export default {
       if (carried.rk && spaceFingerprint(r.id, r.payload.rootPublic) !== carried.rk) throw refuse("This invite could not be verified. Ask for a new one.", "forged");
       const h = kernelHandle(r.payload.id);
       if (!h) throw refuse("This device cannot reach that space yet.", "unreachable");
-      const k = await kctxOf(meta);
+      const k = await kctxOf(meta, r.payload.id);
       const card = await kernelMembers({ handle: h, now }).invites.get(k, invId);
       return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
     };
@@ -1163,6 +1189,8 @@ export default {
     const syncTimer = setInterval(() => { const s = identity.status(); if (s.exists && s.name) idops.sync().catch(e => ctx.log.warn(`the identity check failed: ${/** @type {Error} */ (e).message}`)); }, syncEvery);
     if (typeof syncTimer.unref === "function") syncTimer.unref();
 
+    // At start: an identity claimed before this start, on a home whose kernel still has its first-start owner, is adopted now, not at the first spaces call.
+    adoptOwner().catch(() => {});
     return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
   },
 };
