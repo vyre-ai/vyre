@@ -1545,13 +1545,13 @@ test("the pairing path adopts for real: after the pick the SERVER's home owner i
 
 test("an invitee's session opens the stream with the signed hello in its head and only for that route; a new hello replaces the old link", async t => {
   const heads = [], closed = [];
-  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
+  const connect = o => ({ ready: async () => ({ open: head => { heads.push({ route: o.route, invitee: o.invitee === true, head }); return { reset() {}, set onhead(f) { f({ status: 403 }); } }; } }), close: () => closed.push(o.route), reply: {} });
   const links = createServerLinks({ connect, options: {}, name: "Kit's phone", channelOf: () => null });
   t.after(() => links.close());
   const ch = { relay: "https://relay.example", route: "rt-harlow", box: "bx-harlow" };
   const hello = { space: "spc_aaaaaaaaaaaa", invite: "inv_" + "a".repeat(32), identity: "per_kit", entry: "e1", ts: 1, nonce: "n1", sig: "s1" };
   await assert.rejects(() => links.inviteeSessionFor(ch, hello).call("grants.invites.get", {}), e => e.code === "denied");
-  assert.deepEqual(heads[0], { route: "rt-harlow", head: { peer: "wink", space: "home", invitee: hello } });
+  assert.deepEqual(heads[0], { route: "rt-harlow", invitee: true, head: { peer: "wink", space: "home", invitee: hello } }, "the channel hello says invitee (the relay client sends { v: 1, invitee: true })");
   // a second hello for the same invite closes the first link and opens a new one with the new hello
   await assert.rejects(() => links.inviteeSessionFor(ch, { ...hello, nonce: "n2", sig: "s2" }).call("grants.invites.get", {}), e => e.code === "denied");
   assert.equal(heads[1].head.invitee.nonce, "n2");

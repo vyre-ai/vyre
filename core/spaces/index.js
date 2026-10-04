@@ -1421,7 +1421,7 @@ export default {
       const who = me();
       const ts = now(), nonce = crypto.randomBytes(12).toString("base64url");
       const sig = b64u(await identity.sign(`vyre-invitee-hello-v1\n${channel.box}\n${space}\n${invite}\n${who.id}\n${who.eid}\n${ts}\n${nonce}`));
-      return { space, invite, identity: who.id, ...(who.name ? { name: who.name } : {}), entry: who.eid, ts, nonce, sig };
+      return { space, invite, identity: who.id, ...(who.name ? { name: `${String(who.name).replace(/\.vyre\.run$/, "")}.vyre.run` } : {}), entry: who.eid, ts, nonce, sig };
     };
     /** The card for a kernel invite, from the Space's own kernel, after the link's pin and fingerprint are checked against the identity list. @param {any} i @param {any} p @param {any} meta */
     const kernelCard = async (i, p, meta) => {

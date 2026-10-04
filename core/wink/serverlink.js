@@ -30,7 +30,7 @@ export function createServerLinks(o) {
     const iv = invitees.get(sid);
     const ch = iv ? iv.channel : o.channelOf(sid);
     if (!ch) throw err("not_found", "this device has no paired server by that id");
-    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}) }), peer: null, opening: null, token: null, ...(iv ? { hello: iv.hello } : {}) };
+    l = { conn: o.connect({ relay: ch.relay, route: ch.route, box: ch.box, name: o.name || "a device", ...(o.options || {}), ...(iv ? { invitee: true } : {}) }), peer: null, opening: null, token: null, ...(iv ? { hello: iv.hello } : {}) };
     links.set(sid, l);
     return l;
   };
