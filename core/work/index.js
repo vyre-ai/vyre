@@ -20,6 +20,8 @@ import { createEngineer } from "./engineer/index.js";
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
+/** Who may call the tools the assistant itself uses: the person's surfaces, modules and a model session. Every one runs under the caller's own kernel chain, which decides what it reaches; a model with no valid session token has no chain and is refused. */
+const WORK_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"];
 const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]+\/[^/]+\/[^/]+$/.test(s);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -70,6 +72,7 @@ export default {
     ctx.tool("work.call", {
       description: "Run one of the listed tools. Returns { result, component }: the component is what to show, a record card, a task card, a draft or a held-for-approval card. An outward act (send, pay, publish, share) is never run: it returns held with a task, and a person approves it.",
       input: obj({ tool: { type: "string" }, input: { type: "object" } }, ["tool"]),
+      callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await surfaceOf().call(chain, String(input.tool), input.input || {});
@@ -143,6 +146,7 @@ export default {
     ctx.tool("work.know.answer", {
       description: "Answer a question from the Space's own records and history. Every claim cites a source the caller may read; with none to cite it says so.",
       input: obj({ question: { type: "string" } }, ["question"]),
+      callers: WORK_CALLERS,
       run: async (input, extra) => {
         const chain = await chainOf(extra);
         const result = await engineOf().answer(chain, String(input.question), { room: await audienceOf(extra) });
