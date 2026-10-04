@@ -42,7 +42,7 @@ export const CREDENTIALS = { "setup-token": "claude-setup-token", "api-key": "an
 
 /**
  * @param {any} config the loaded config (role, sessions)
- * @returns {{ driver: "sdk"|"cli", auth: "login"|"setup-token"|"api-key", claude: string, idle_minutes: number, max_live: number, install: boolean, dir: string|null,
+ * @returns {{ driver: "sdk"|"cli", auth: "login"|"setup-token"|"api-key", claude: string, idle_minutes: number, start_timeout_s: number, max_live: number, install: boolean, dir: string|null,
  *   subreaper: boolean|string, spawner: "on"|"off", thread_socket: "auto"|"on"|"off", uid?: number, gid?: number }}
  */
 export function sessionsConfig(config) {
@@ -58,6 +58,8 @@ export function sessionsConfig(config) {
     auth: ["login", "setup-token", "api-key"].includes(s.auth) ? s.auth : box ? "setup-token" : "login",
     claude: typeof s.claude === "string" && s.claude ? s.claude : box ? "bundled" : "installed",
     idle_minutes: num(s.idle_minutes, 10),
+    // a session whose agent says nothing within this long fails instead of sitting in "starting" (0 or absent: 90)
+    start_timeout_s: num(s.start_timeout_s, 90),
     max_live: num(s.max_live, box ? 6 : 0),
     install: s.install !== false,
     dir: typeof s.dir === "string" && s.dir ? s.dir : process.env.VYRE_SESSIONS_SDK_DIR || null,
