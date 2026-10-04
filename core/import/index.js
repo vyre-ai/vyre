@@ -181,7 +181,7 @@ export default {
         const m = machine();
         // Consent goes to the server's own record, through federation's one door; the plan's hash
         // goes with this run, so a different plan is a different consent (e2e).
-        const c = await consent({ machine: m, on: true, mode, plan: p.hash });
+        const c = await consent({ machine: m, on: true, planHash: p.hash });
         if (c?.error) throw Object.assign(new Error(c.error.code === "no_such_tool" ? "this device cannot send to a server yet" : `the server did not take the consent: ${c.error.message}`), { code: c.error.code === "no_such_tool" ? "unavailable" : "failed" });
         await ctx.call("memory.pace", { pace });
         const id = "imp_" + crypto.randomBytes(6).toString("hex");
