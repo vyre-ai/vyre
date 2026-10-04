@@ -37,3 +37,9 @@ test("a refused approval proof (with a reason) and other errors pass straight th
   await assert.rejects(withPairedSession({ call: async () => { throw Object.assign(new Error("n"), { code: "not_found" }); }, renew: async () => true, failure: () => null }), /n/);
   assert.equal(renewed, 0);
 });
+
+test("a renew that throws its own sentence (the phone said no) is the answer, and the call is not repeated", async () => {
+  let n = 0;
+  await assert.rejects(withPairedSession({ call: async () => { n++; throw noSession(); }, renew: async () => { throw Object.assign(new Error("You said no on your phone. Nothing changed."), { code: "not_approved" }); }, failure: () => null }), (e) => e.code === "not_approved" && /said no on your phone/.test(e.message));
+  assert.equal(n, 1);
+});

@@ -16,6 +16,7 @@ export async function withPairedSession(o) {
   try { return await o.call(); }
   catch (e) {
     if (!isNoSession(e)) throw e;
+    // renew may throw its own sentence (the phone said no, nobody answered, the server cannot ask yet): that sentence is the answer.
     if (!(await o.renew())) throw Object.assign(new Error(renewWords(o.failure() ?? "other")), { code: "session_refused" });
     try { return await o.call(); }
     catch (e2) {
