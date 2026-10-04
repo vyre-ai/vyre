@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1182,"event":452,"config":254,"env":237,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1184,"event":452,"config":254,"env":237,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2456,6 +2456,7 @@
     {"kind":"tool","name":"wink.decline","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdecline","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.declined","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.key","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdevicekey","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.device.paired","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicepaired","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.device.record","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkdevicerecord","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.expired","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.found","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
@@ -2497,6 +2498,7 @@
     {"kind":"tool","name":"wink.server.code","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkservercode","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.confirm","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverconfirm","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.handover","definedIn":"core/wink/compose.js","page":"reference/tools.md#winkserverhandover","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.server.owned","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverowned","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.pair.answer","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpairanswer","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.paired","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpaired","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.server.pairing","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkserverpairing","module":"wink","mentions":[]},
