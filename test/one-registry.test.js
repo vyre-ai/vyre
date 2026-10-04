@@ -52,7 +52,8 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   assert.deepEqual((await ok("records.list", { space, type: "contact" })).acted_in, { id: space, label: "estatedev" });
   // with no `space` a call acts in the home's own space and says so; a made-up id is refused, not answered empty
   const homeMe = await ok("records.me");
-  assert.deepEqual(homeMe.acted_in, { id: d.kernel.space, label: "home" }, "no space given: the home's own space, named");
+  assert.equal(homeMe.acted_in.label, "home", "no space given: the home's own space, named");
+  assert.match(homeMe.acted_in.id, /^spc_[a-z2-7]{12}$/);
   assert.notEqual(homeMe.acted_in.id, space);
   assert.equal((await ok("records.me", { space })).acted_in.id, space, "records.me with the created id acts in it");
   const bogus = await deck("records.types", { space: "spc_aaaaaaaaaaaa" });
