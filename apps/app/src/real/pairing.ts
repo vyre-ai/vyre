@@ -8,7 +8,7 @@
 import type { PairingSession } from "../api/pairing-session";
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
-import { pairServerDirect } from "./pair-direct.js";
+import { pairServer } from "@vyre/relay-client/serverpair.js";
 
 const box = () => import("./box");
 const POLL_MS = 2000;
@@ -104,10 +104,11 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
   let wake: () => void = () => {};
   const seen = new Promise<void>((r) => { wake = r; });
   let failed: Error | null = null;
-  const run = pairServerDirect({
-    ticket: code.ticket, relay: code.relay, deviceName: deviceName(),
-    identity: { id: mine.id, name: mine.name, eid: mine.key.eid, sign: (m) => mine.key.sign(m) },
-    pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey() },
+  const abort = new AbortController();
+  // The relay client does the pairing (relay/client/serverpair.js): redeem the code, show the words, the person at the server picks the same words, the server records this identity as its owner.
+  const run = pairServer({
+    payload: textOf(code), owner: { id: mine.id, name: mine.name }, name: deviceName(),
+    crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), signal: abort.signal,
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
   run.catch((e: Error) => { failed = e; wake(); });
@@ -119,11 +120,14 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     answer: async () => false,
     async confirm() {
       const r = await run;
-      await savePairing(r.paired);
+      await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
       // The connection made while there was no pairing (the box check) is stale: drop it so the next call goes over the relay to this server.
       await disconnect();
       await connect().catch(() => {});
     },
-    reject() { /* the server's side drops this device when nothing is answered */ },
+    reject() { abort.abort(); },
   };
 }
+
+/** The long code as the text pairServer reads (vyre://wink/2?t=...&r=...). */
+const textOf = (code: Extract<WinkCode, { ok: true; kind: "ticket" }>) => `vyre://wink/2?t=${code.ticket}&r=${encodeURIComponent(code.relay)}`;
