@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { ON_PHONE, needsPerson, onPhoneFor, softwareKeyLine } from "./on-phone.js";
+import { ON_PHONE, needsPerson, onPhoneFor, reasonLine, softwareKeyLine } from "./on-phone.js";
 import { actWords } from "./approvals.js";
 
 test("RC1: a person-only ask in a blocked browser says to do it on the phone, for each way the box asks", () => {
@@ -55,4 +55,14 @@ test("a proof made with a software key says to approve on the phone, in our word
   const i = box.indexOf('r.error?.code === "software_key"');
   assert.ok(i > 0 && i < box.indexOf('if (r.error) throw new BoxError(r.error.code'), "the software_key mapping comes first");
   assert.ok(!box.includes("r.error.message ?? \"\"); // software"), "the server's text is not shown for it");
+});
+
+test("each verifier reason has our own sentence, an unknown one has none", () => {
+  for (const r of ["no_proof", "wrong_decision", "wrong_payload", "unknown_key", "bad_signature", "expired", "replayed", "software_key", "needs_bind", "unavailable", "refused"]) {
+    const line = reasonLine(r, "phone");
+    assert.ok(line && !/[\u2014]/.test(line), r);
+  }
+  assert.equal(reasonLine("expired", "phone"), "That approval ran out. Approve it again.");
+  assert.equal(reasonLine("software_key", "touchid"), "Approve this with Touch ID.");
+  assert.equal(reasonLine("surprise", "phone"), null);
 });
