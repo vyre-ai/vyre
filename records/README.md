@@ -28,3 +28,11 @@ export default defineKit({ id: "demo", version: 1, includes: [Matter] });
 - Types in a stored kit are the kernel's `TypeDefinition`. Templates, roles, flows, views and code steps are kit-level definitions.
 - `kits/estate-planning`: "Estate planning matter". `kit.ts` is the source, `kit.json` the stored form (regenerate with `node language/cli.js compile kits/estate-planning/kit.ts > kits/estate-planning/kit.json`).
 - `connectors/stripe`: the Stripe connector (test mode). `flows/run.js`: the minimal flow runner it uses until the platform's step runner lands. `testing/gateway-lite.js`: a stand-in gateway for tests.
+
+## Core types, roles and what is said to a contact
+
+- `core-types.js`: `contact`, `organization`, `communication`, `participant`, `event`, `template`, `playbook`, `team-member`, defined in every Space. A Kit may add fields to a core type by naming it: the language stores the whole type, core fields first, and a different kind on a core field's name is an error.
+- A person is one `contact`. Its main `email` and `phone` are unique in the Space (written lower case and E.164); other addresses go in `other_emails` and `other_phones` (lists, not unique, not searched by `findContact`). What a person is to the Space is a role: any type with `role: { link, ended? }` whose required `link` field points at a contact or organization. `records.roles(holder)` and `records.holders({ role, stage? })` answer the two questions; both are checked row by row for the caller.
+- `comms/log.js`: `logCommunication` writes one `communication` per connector item (`source_key` unique) and a `participant` per person, matched to contacts by main email or phone; `timelineOf` lists what was said to a contact, newest first. Nothing there sends.
+- `records.merge(keep, drop)` joins two contacts that are one person (fills gaps, joins lists, moves every link, one `records.merged` event) and `records.unmerge(merge_id)` undoes it.
+- Field switches on any field: `unique`, `hidden` (removed softly, the data is kept), `hidden_from: [roles]`, `computed` (an Expression or a total over the records that link here). `kernel.migrate.sealField` seals a plain field that already has values and scrubs the old ones.

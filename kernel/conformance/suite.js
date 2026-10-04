@@ -284,6 +284,20 @@ export function conformance(make, { test, assert }, label = "store") {
     assert.equal((await s.get("client", r.id)).data.old, "kept");
   });
 
+  T("search: a record holding every word ranks above one holding some", async s => {
+    await add(s, { name: "Harlow Legal" });
+    const both = await add(s, { name: "Jane Harlow" });
+    await add(s, { name: "Jane Doe" });
+    await add(s, { name: "Northwind" });
+    const hits = await s.search({ text: "jane harlow", page: { limit: 10 } });
+    assert.equal(hits.rows[0].id, both.id, "the record with both words is first");
+    assert.equal(hits.rows.length, 3, "records with one of the words follow");
+    const p1 = await s.search({ text: "jane harlow", page: { limit: 2 } });
+    assert.equal(p1.rows.length, 2); assert.ok(p1.next_cursor);
+    const p2 = await s.search({ text: "jane harlow", page: { limit: 2, cursor: p1.next_cursor } });
+    assert.deepEqual([...p1.rows, ...p2.rows].map((/** @type {any} */ h) => h.id), hits.rows.map((/** @type {any} */ h) => h.id), "pages walk the same order");
+  });
+
   T("health, version and features are honest", async s => {
     const h = await s.health();
     assert.equal(h.ok, true);

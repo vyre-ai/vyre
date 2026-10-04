@@ -284,23 +284,39 @@ export class TwentyStore {
     return agg.result();
   }
 
-  /** @param {{ text: string, types?: string[], page: { limit: number, cursor?: string } }} spec */
+  /**
+   * Search the text fields of every type (or the named ones). Rows that hold every word come first, found with one filtered scan (a word may sit in any field); only
+   * when that does not fill the page and the next one are the rows holding some of the words scanned too. Within each tier a row ranks by how many words it holds,
+   * then by id. A common word with other words next to it therefore costs a few rows, not a pass over the whole type.
+   * @param {{ text: string, types?: string[], page: { limit: number, cursor?: string } }} spec
+   */
   async search(spec) {
     const words = String(spec.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
     if (!words.length) return { rows: [] };
-    /** @type {any[]} */ const hits = [];
-    for (const [type, p] of this.plans) {
-      if (spec.types && !spec.types.includes(type)) continue;
-      const fields = p.fields.filter((f) => f.type === "TEXT" && !f.sealed);
-      if (!fields.length) continue;
-      const r = await this.#scan(type, { filter: { or: words.flatMap((w) => fields.map((f) => ({ field: f.vyre, op: "contains", value: w }))) } });
-      for (const rec of r) {
-        let score = 0, snippet;
-        for (const f of fields) { const text = rec.data[f.vyre]; if (typeof text !== "string") continue; const low = text.toLowerCase(); for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet ?? text.slice(0, 80); } }
-        if (score) hits.push({ type, id: rec.id, score, ...(snippet ? { snippet } : {}) });
+    const want = spec.page.limit + 1;
+    /** @param {"and" | "or"} mode @param {Set<string>} skip */
+    const gather = async (mode, skip) => {
+      /** @type {any[]} */ const hits = [];
+      for (const [type, p] of this.plans) {
+        if (spec.types && !spec.types.includes(type)) continue;
+        const fields = p.fields.filter((f) => f.type === "TEXT" && !f.sealed && f.def.hidden !== true);
+        if (!fields.length) continue;
+        const per = (/** @type {string} */ w) => ({ or: fields.map((f) => ({ field: f.vyre, op: "contains", value: w })) });
+        const r = await this.#scan(type, { filter: mode === "and" ? { and: words.map(per) } : { or: words.flatMap((w) => per(w).or) } });
+        for (const rec of r) {
+          if (skip.has(rec.id)) continue;
+          let score = 0, snippet;
+          for (const f of fields) { const text = rec.data[f.vyre]; if (typeof text !== "string") continue; const low = text.toLowerCase(); for (const w of words) if (low.includes(w)) { score += 1; snippet = snippet ?? text.slice(0, 80); } }
+          if (score) hits.push({ type, id: rec.id, score, ...(snippet ? { snippet } : {}) });
+        }
       }
-    }
-    hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+      hits.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1));
+      return hits;
+    };
+    let hits = words.length > 1 ? await gather("and", new Set()) : [];
+    // the cursor is the id of the last hit served, so the page is found by position in the whole list: the first page and the next need the first tier to reach one past the cursor
+    const reach = (h) => { if (!spec.page.cursor) return h.length; const i = h.findIndex((x) => x.id === spec.page.cursor); return i === -1 ? h.length : i + 1; };
+    if (words.length === 1 || hits.length < reach(hits) + want) hits = [...hits, ...(await gather("or", new Set(hits.map((h) => h.id))))];
     let start = 0;
     if (spec.page.cursor) { const i = hits.findIndex((h) => h.id === spec.page.cursor); start = i === -1 ? hits.length : i + 1; }
     const slice = hits.slice(start, start + spec.page.limit);
