@@ -128,8 +128,10 @@ export function createGateway(cfg) {
     const all = async () => { const out = []; let cursor; do { const p = await cfg.store.query(i.type, { include_deleted: true, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); out.push(...p.rows); cursor = p.next_cursor; } while (cursor); return out; };
     const has = (/** @type {any} */ v) => typeof v === "string" && v.length > 0;
     let moved = 0;
+    /** @type {Set<string>} the plain values that move: what the task texts are searched for afterwards */ const plain = new Set();
     for (const row of await all()) {
       if (!has(row.data[i.field])) continue;
+      plain.add(row.data[i.field]);
       const u = `vyre://${cfg.space}/${i.type}/${row.id}`;
       const binned = Boolean(row.deleted_at);
       let version = row.version;
@@ -144,6 +146,8 @@ export function createGateway(cfg) {
     await records.define(chain, { change_types: [{ ...withField, fields: withField.fields.map((/** @type {any} */ x) => (x.name === i.field ? { ...x, hidden: true, required: false } : x)) }] });
     let erased = 0;
     if (i.scrub_history !== false) {
+      // Free text a task kept (a form, a draft, an answer) may quote a value: it is cleared BEFORE the store's scrub, whose last step rewrites the file, so nothing survives in free pages.
+      if (plain.size && cfg.tasks && typeof cfg.tasks.scrubTexts === "function") await cfg.tasks.scrubTexts({ values: [...plain] });
       if (typeof cfg.store.scrub === "function") await cfg.store.scrub(i.type, [i.field]);
       const prefix = `vyre://${cfg.space}/${i.type}/`;
       for (const e of cfg.log.read()) {
