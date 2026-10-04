@@ -120,9 +120,9 @@ docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { ec
 docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; soft; }
 docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; soft; }
 
-# The host's `vyre call` is a person at the server's terminal (the wrapper execs as the vyre user, with a terminal when there is one): not caller_unknown, not "no kernel chain".
+# The host's `vyre call` is answered as a plain terminal caller (the wrapper execs as the vyre user, with a terminal when there is one): never caller_unknown. Personal memory then says "no kernel chain" (only a person reads it: a signed-in terminal or a device; a CI server has no owner to sign in).
 hc=$(vyre call memory.me '{}' 2>&1 || true)
-printf '%s' "$hc" | grep -Eq 'caller_unknown|carries no kernel chain|could not tell who is calling' && { echo "host vyre call is not read as the person at the terminal: $hc"; soft; }
+printf '%s' "$hc" | grep -Eq 'caller_unknown|could not tell who is calling' && { echo "host vyre call is not read as the person at the terminal: $hc"; soft; }
 
 # The admin steps refuse for the RIGHT reason on the packaged image (not "no such step" or "no Vyre home"): a wrong typed word, and a bad proof for the anchor reset (the daemon is stopped for it
 # and started again either way). VYRE_ADMIN_NO_TTY stands in for the terminal the real command needs.
@@ -143,7 +143,9 @@ docker cp "$HERE/kernel/seal/testing.js" vyre-vyre-1:/tmp/probe/kernel/seal/test
 docker cp "$HERE/test/scratch.mjs" vyre-vyre-1:/tmp/probe/test/scratch.mjs
 docker cp "$HERE/scripts/packaged-probes/software-release.mjs" vyre-vyre-1:/tmp/software-release.mjs
 docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; soft; }
-docker exec -u 0 vyre-vyre-1 rm -rf /tmp/probe /tmp/software-release.mjs # docker cp leaves root-owned files in /tmp (sticky), uid 1000 cannot remove them
+# The copy keeps the image's read-only folders (the owner makes them writable first; root here has no DAC_OVERRIDE), and the probe script docker cp left in sticky /tmp is root's own to remove.
+docker exec -u 1000 vyre-vyre-1 sh -c 'chmod -R u+w /tmp/probe 2>/dev/null; rm -rf /tmp/probe'
+docker exec -u 0 vyre-vyre-1 rm -f /tmp/software-release.mjs
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')

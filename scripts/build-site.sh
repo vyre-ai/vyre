@@ -139,6 +139,8 @@ fi
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"
+# Developer scripts that start a daemon with a presence double (scripts/boot-check.mjs, scripts/proof-box.mjs) must never ride in a release: a shell user on the server could run them.
+if tar -tzf "$out/vyre.tgz" | grep -Eq '^package/scripts/(boot-check|proof-box)\.mjs$'; then echo "build-site: the package carries a developer script that starts a daemon with a presence double (scripts/boot-check.mjs or scripts/proof-box.mjs); it must not ship" >&2; exit 1; fi
 
 # The version the tarball carries, for the /start page and the installer's messages.
 node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/package.json" >"$out/VERSION"
