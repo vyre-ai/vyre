@@ -1,5 +1,6 @@
 import "../global.css";
 import "../src/identity/webcrypto";
+import "../src/identity/restore-wire";
 import { useEffect } from "react";
 import { router, Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";

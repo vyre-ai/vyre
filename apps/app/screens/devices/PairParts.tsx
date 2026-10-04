@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CAMERA_SCAN } from "../install/first-run.js";
 import { Platform, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
@@ -15,9 +16,6 @@ const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.tic
 export type LongCode = Extract<WinkCode, { ok: true }>;
 
 /** Scan the code with the camera, or paste the long one. Both go through parseWinkCode; a short typed code is refused in plain words. */
-/** RC1: the drawn Wink avatar cannot be read by the camera yet (RC2), so no camera view is offered; a code is typed or pasted. */
-const CAMERA_SCAN = false;
-
 export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; sample?: string }) {
   const [text, setText] = useState("");
   const [say, setSay] = useState("");
@@ -48,7 +46,7 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
     <View className="w-full gap-s3">
       {CAMERA_SCAN && canScanLive && ScanCamera && cam?.state === "granted" ? (
         <View className="h-48 w-full overflow-hidden rounded-card"><ScanCamera style={{ flex: 1 }} {...scan} /></View>
-      ) : cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
+      ) : CAMERA_SCAN && cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
       <Field label="Or paste the long code" name="Long code" value={text} onChangeText={(v) => { setText(v); if (say) setSay(""); }} placeholder="vyre://wink/2?..." mono error={say || undefined} />
       <View className="flex-row flex-wrap gap-s2">
         <Button kind="primary" size="sm" label="Continue" onPress={() => take(text)} />
