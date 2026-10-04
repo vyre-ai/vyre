@@ -72,7 +72,7 @@ test("a space made on this computer says it sleeps", () => {
 
 test("setup carries on after the home: look, members, connectors, kit, done", () => {
   assert.equal(AFTER_HOME, "look");
-  assert.deepEqual(["look", "members", "connectors", "kit"].map(nextSetup), ["members", "connectors", "kit", "done"]);
+  assert.deepEqual(["look", "members", "ai", "connectors", "kit"].map(nextSetup), ["members", "ai", "connectors", "kit", "done"]);
   assert.equal(backOf("members"), "look");
   assert.equal(backOf("look"), null);
 });

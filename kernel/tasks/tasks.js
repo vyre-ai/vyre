@@ -86,6 +86,8 @@ export function createTasks(cfg) {
   const roleHolders = cfg.roleHolders || (() => []);
   /** @type {Map<string, any>} */ const tasks = new Map();
   /** @type {Map<string, any>} */ const bodies = new Map();
+  /** The task store for free text: durable when the kernel gives one (`cfg.texts`), else memory (a test rig). */
+  const texts = cfg.texts || (() => { /** @type {Map<string, any>} */ const m = new Map(); return { get: (/** @type {string} */ id) => m.get(id), set: (/** @type {string} */ id, /** @type {any} */ v) => { if (v === undefined) m.delete(id); else m.set(id, v); }, drop: (/** @type {string} */ id) => { m.delete(id); } }; })();
   /** A standing always-ask rule names who must approve: that person, or someone who holds that role now. No rule: any approval stands. @param {{ approver?: { person?: string, role?: string } } | undefined} rule @param {{ approver_chain: any } | undefined} by */
   const approverOk = (rule, by) => {
     if (!rule || !rule.approver) return true;
@@ -151,9 +153,26 @@ export function createTasks(cfg) {
   const guardedSkip = (/** @type {any} */ t) => needsCheck(t) || Boolean(t.required);
   const guarded = guardedSkip;
   const appendOrUndo = (/** @type {string} */ id, /** @type {any} */ chain, /** @type {any} */ ev, /** @type {any} */ opt) => { try { const e = cfg.log.append(chain, ev, opt); pending.delete(id); return e; } catch (e) { unstage(id); throw e; } };
+  // FREE TEXT NEVER GOES INTO THE LOG IN THE CLEAR (lead's ruling on reviewer-2's TR-1): a title, a note, an answer, a form, a reason or a draft is what a person or an assistant typed, and the append-only,
+  // hash-chained log cannot forget it. The log carries the task without that text plus the hash of it (`text_hash`) and, in an event's own data, `<key>_hash` for a reason, answer or evidence; the text
+  // itself lives in the task store (`cfg.texts`, durable), which a scrub can empty when a record is forgotten or a field is sealed late. A restart reads the text back from the store and keeps it only
+  // if it hashes to what the log recorded.
+  const TEXT_KEYS = ["reason", "answer", "evidence", "note", "title"];
+  const textOf = (/** @type {any} */ t) => ({ title: t.title, ...(t.note !== undefined ? { note: t.note } : {}), ...(t.answer !== undefined ? { answer: t.answer } : {}), ...(t.form !== undefined ? { form: t.form } : {}), ...(t.stuck ? { stuck: { reason: t.stuck.reason, suggested_fix: t.stuck.suggested_fix } } : {}) });
+  const withoutText = (/** @type {any} */ t) => { const { note: _n, answer: _a, form: _f, ...rest } = t; const out = { ...rest, title: "" }; if (t.stuck) { const { reason: _r, suggested_fix: _s, ...st } = t.stuck; out.stuck = st; } return out; };
+  const withText = (/** @type {any} */ t, /** @type {any} */ x) => { const o = { ...t, title: x.title }; for (const k of ["note", "answer", "form"]) if (x[k] !== undefined) o[k] = x[k]; if (t.stuck && x.stuck) o.stuck = { ...t.stuck, ...x.stuck }; return o; };
+  const textHash = (/** @type {any} */ t) => sha256(canonical(textOf(t)));
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ t, /** @type {any} */ data, /** @type {any} */ decision) => {
-    // The event carries the task as it stands after the change (never the canonical body: that holds the draft, which the log must not), so the log alone rebuilds every task at the next start (`rebuild` below): tasks used to live in memory only.
-    try { const now = tasks.get(t.id) || t; const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...data, state: t.state, task: now } }, decision ? { decision } : {}); pending.delete(t.id); return e; } catch (e) { unstage(t.id); throw e; }
+    const now = tasks.get(t.id) || t;
+    const prior = texts.get(t.id);
+    try {
+      const logged = { ...data };
+      for (const k of TEXT_KEYS) if (logged[k] !== undefined) { logged[`${k}_hash`] = sha256(canonical(logged[k])); delete logged[k]; }
+      // the store first (a stale value after a failed append is put back below); then the event, which names the text only by its hash
+      texts.set(t.id, { ...textOf(now), ...(bodies.has(t.id) ? { body: bodies.get(t.id) } : {}) });
+      const e = cfg.log.append(chain, { type, sv: 1, subject: urnOf(cfg.space, t.id), data: { ...logged, state: t.state, task: { ...withoutText(now), text_hash: textHash(now) } } }, decision ? { decision } : {});
+      pending.delete(t.id); return e;
+    } catch (e) { try { texts.set(t.id, prior); } catch { /* the store is whatever it was */ } unstage(t.id); throw e; }
   };
 
   /** The transition table is the one source: ask it which rule applies, and check the caller's role is the rule's. */
@@ -311,7 +330,7 @@ export function createTasks(cfg) {
       const payload = freeze({ payload_hash: sha256(canonical(body)), decision, draft_hash: sha256(canonical(evidence)), ...(t.form !== undefined ? { form_hash: sha256(canonical(t.form)) } : {}) });
       bodies.set(id, body);
       const n = put(t, { state: "needs_check", payload });
-      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision, ...(["decision", "fields", "note"].includes(t.output.kind) ? { evidence: body.evidence } : {}) });
+      note(chain, "task.needs-check", n, { payload_hash: payload.payload_hash, decision });
       return n;
     },
 
@@ -542,21 +561,24 @@ export function createTasks(cfg) {
     },
   };
   // The tasks the log holds, at start: the newest event of each task carries the task as it was after that change (never its canonical body, which holds the draft). A task that was waiting for a check had its draft only in memory: it goes back to `ready` so its doer makes the draft again, rather than waiting for a card nobody can open. An event from before this was written (no `task`) adds nothing.
-  /** @type {Map<string, any>} */ const evidence = new Map();
   try {
     const f = { type: "task.*" };
     const evs = cfg.log && typeof cfg.log.read === "function" ? (cfg.log.iterate ? [...cfg.log.iterate(f)] : cfg.log.read(f)) : [];
     for (const e of evs) {
       const d = e && e.data;
       if (!d || !d.task || typeof d.task.id !== "string" || d.task.space !== cfg.space) continue;
-      tasks.set(d.task.id, deepFreeze(structuredClone(d.task)));
+      tasks.set(d.task.id, deepFreeze(structuredClone(d.task))); // text restored below
       if (e.type === "task.created" && typeof d.proposal_for === "string") proposals.set(d.task.id, d.proposal_for);
-      if (e.type === "task.needs-check" && d.evidence !== undefined) evidence.set(d.task.id, d.evidence);
     }
-    // A decision, fields or note waiting for its check has its answer in its needs-check event (as a completed one always did): its canonical body is rebuilt from it, and used only if it hashes to what was shown.
-    for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id) && t.payload && evidence.has(id) && ["decision", "fields", "note"].includes(t.output.kind)) {
-      const body = deepFreeze({ task: id, kind: t.output.kind, evidence: deepFreeze(structuredClone(evidence.get(id))) });
-      if (sha256(canonical(body)) === t.payload.payload_hash) bodies.set(id, body);
+    // The text comes back from the task store, and only if it hashes to what the log recorded; a task whose text is gone keeps its structure with a plain title.
+    for (const [id, t] of [...tasks]) {
+      const logged = /** @type {any} */ (t).text_hash, { text_hash: _h, ...rest } = /** @type {any} */ (t);
+      const x = texts.get(id);
+      const restored = x && typeof x === "object" ? withText(rest, x) : null;
+      if (restored && sha256(canonical(textOf(restored))) === logged) {
+        tasks.set(id, deepFreeze(restored));
+        if (t.state === "needs_check" && x.body && t.payload && sha256(canonical(x.body)) === t.payload.payload_hash) bodies.set(id, deepFreeze(structuredClone(x.body)));
+      } else tasks.set(id, deepFreeze({ ...rest, title: "(the text of this task is no longer available)" }));
     }
     for (const [id, t] of tasks) if (t.state === "needs_check" && !bodies.has(id)) { const { payload, ...rest } = t; tasks.set(id, deepFreeze({ ...rest, state: "ready" })); }
   } catch { /* a log that cannot be read leaves no tasks, never a half set */ tasks.clear(); bodies.clear(); proposals.clear(); }
