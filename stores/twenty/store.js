@@ -27,6 +27,8 @@ import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toO
 export const CONFORMANCE_REVISION = 5;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
+/** A search ranks the first this many matching rows of each type per tier: a scan of every match cost minutes at 20,000 records (testbox4, 5 Oct). */
+const SEARCH_SCAN = 1_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
 
 export class StoreError extends Error {
@@ -277,11 +279,12 @@ export class TwentyStore {
   #snapIfNew(/** @type {import("./plan.js").TypePlan} */ p, /** @type {any} */ row) { const r = this.#rec(p, row); if (!this.snaps.get(p.vyre, row.id)) this.snaps.set(p.vyre, row.id, { version: r.version, updatedAt: row.updatedAt, data: r.data }); return r; }
 
   /** Pull rows through query() until done, up to a ceiling. @param {string} type @param {any} spec */
-  async #scan(type, spec) {
+  async #scan(type, spec, stopAt = Infinity) {
     /** @type {any[]} */ const all = []; let cursor;
     do {
       const r = await this.query(type, { ...spec, page: { limit: MAX_PAGE, ...(cursor ? { cursor } : {}) } });
       all.push(...r.rows); cursor = r.next_cursor;
+      if (all.length >= stopAt) return all;
       if (all.length > MAX_SCAN) throw new StoreError("unsupported", `a search scans at most ${MAX_SCAN} rows; narrow the filter`);
     } while (cursor);
     return all;
@@ -376,7 +379,7 @@ export class TwentyStore {
         const fields = p.fields.filter((f) => f.type === "TEXT" && !f.sealed && f.def.hidden !== true);
         if (!fields.length) continue;
         const per = (/** @type {string} */ w) => ({ or: fields.map((f) => ({ field: f.vyre, op: "contains", value: w })) });
-        const r = await this.#scan(type, { filter: mode === "and" ? { and: words.map(per) } : { or: words.flatMap((w) => per(w).or) } });
+        const r = await this.#scan(type, { filter: mode === "and" ? { and: words.map(per) } : { or: words.flatMap((w) => per(w).or) } }, SEARCH_SCAN);
         for (const rec of r) {
           if (skip.has(rec.id)) continue;
           let score = 0, snippet;

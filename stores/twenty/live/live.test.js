@@ -104,6 +104,13 @@ if (!URL_ || !KEY_FILE) {
     await wait(10_000);
     const before = await timeline();
     console.log(`timeline holds the plain value before sealing: ${before.includes("123-45-678")}`);
+    console.log(`timeline before sealing (first 600 chars): ${before.slice(0, 600)}`);
+    // positive controls: the same looks DO find the plain value before sealing, in the places that keep it
+    const col0 = store.plans.get("patient").byVyre.get("ssn").twenty;
+    const rowsBefore = await client.gql("graphql", `query R($f: PatientFilterInput) { patients(filter: $f, first: 5) { edges { node { id } } } }`, { f: { [col0]: { like: "%123-45-678%" } } });
+    assert.equal(rowsBefore.patients.edges.length, 1, "control: the row holds the plain value before sealing");
+    assert.ok(JSON.stringify((await store.changes(null, 5000)).entries).includes("123-45-678"), "control: the change log holds it before sealing");
+    assert.ok(JSON.stringify(host.log.read()).includes("123-45-678"), "control: the event log holds it before sealing");
     const out = await host.kernel.migrate.sealField(c, { type: "patient", field: "ssn", class: "us-ssn" });
     assert.equal(out.moved, 1);
     await wait(10_000); // a timeline write queued before the purge may land after it: look again
