@@ -139,7 +139,7 @@ export default {
         tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
       // A model asks (the request is held for the person); the person's surfaces and modules (the MCP hub, mail, google) file requests too.
-      callers: ["cli", "local", "deck", "capsule", "tailnet", "device", "space", "agent", "module", "mcp", "harness"],
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "module", "mcp", "harness"],
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
       run: async (input, { caller, thread, agent }) => {

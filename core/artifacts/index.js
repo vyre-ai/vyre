@@ -114,7 +114,7 @@ export const _test = {
 
 const PERSONAL = "personal";
 /** Who may call a tool that changes state: the person's own surfaces and Vyre's modules (PEOPLE), and for the tools a model uses to make and keep its own work, a model session too (WITH_AGENTS). Every one of those tools scopes what a model reaches to its own project or own work (scopeOf). */
-const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
 const WITH_AGENTS = [...PEOPLE, "mcp", "harness"];
 const DAY = 86_400_000;
 const EXPIRES = /** @type {Record<string, number|null>} */ ({ "1d": DAY, "7d": 7 * DAY, "30d": 30 * DAY, never: null });

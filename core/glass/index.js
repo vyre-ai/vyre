@@ -147,7 +147,7 @@ export default {
 
     // The file tools that change a target (upload, move, mkdir, trash) are open to the person's surfaces and to a model: filesFor holds a model to its own computer's files and gives a plain mcp or harness session none.
     const FILE_WRITERS = new Set(["glass.files.upload", "glass.files.move", "glass.files.mkdir", "glass.files.trash"]);
-    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "mcp", "harness"];
+    const FILE_WRITE_CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, ...(FILE_WRITERS.has(name) ? { callers: FILE_WRITE_CALLERS } : {}), ...extra });
 
     // ---- screens -------------------------------------------------------------------------

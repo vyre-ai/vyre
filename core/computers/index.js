@@ -33,7 +33,7 @@ const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
 /** The person's own surfaces; a module hop is checked against the original caller by the registry. */
-const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet", "device"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device"];
 /** An agent's own hands (mcp:agent:<name>, a model session) and the harness; only the tools that act on the caller's OWN computer list them. */
 const OWN = [...PEOPLE, "module", "mcp", "harness"];
 

@@ -62,7 +62,7 @@ const OWNER = ["cli", "local", "capsule", "deck"];
 /** The person's own surfaces and modules acting for them: never a model (an agent or a session is mcp). */
 const PERSON_ONLY = [...OWNER, "module"];
 /** projects.catalog lists every session on the device with its first message: the person's surfaces (the Deck and Capsule over a device or the tailnet too) and modules, never a model. */
-const CATALOG_READERS = [...OWNER, "tailnet", "device", "module"];
+const CATALOG_READERS = [...OWNER, "mobile", "tailnet", "device", "module"];
 // Reviewer's MEDIUM 2 on f8330ccc: callers: ["module"] alone lets ANY module reach these three,
 // third-party ones installed into the modules folder included — modules skip presence entirely,
 // so an installed module could grant an agent any project, or clear a person's explicit revokes

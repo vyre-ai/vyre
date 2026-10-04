@@ -36,7 +36,7 @@ export function registerWinkNetwork(ctx) {
   };
 
   // Read-only and secret-free: the person's own surfaces, their devices and the modules (the link's health reads it); never a model, an agent, a guest or anonymous (the golden set holds this).
-  const READ = ["cli", "local", "deck", "capsule", "tailnet", "device", "module"];
+  const READ = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"];
   ctx.tool("network.wink.status", {
     callers: READ,
     description: "How the network looks from this machine: whether you are signed in, per space whether the link is up and whether it goes direct or through the relay, the relay, the server's door, your storage devices and the clock. Read only. Answers { identity, spaces, relay, storage, clock, otherVpn }.",

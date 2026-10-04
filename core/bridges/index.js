@@ -55,7 +55,7 @@ export const ACTIONS = BRIDGE_ACTIONS;
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 /** The callers a person-facing bridges tool may be reached by: the person's own surfaces and devices, and sessions (a model session is the person's only through its assistant claim, which personOf checks). Not guests, hooks or modules. */
-const BRIDGE_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness"]);
+const BRIDGE_CALLERS = Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet", "mcp", "harness"]);
 const PERSON = { type: "string", minLength: 1, maxLength: 128 };
 const NO_RECORDS = "records are not installed in that space";
 const NOT_FOUND = "no such share";

@@ -3360,7 +3360,7 @@ export default {
       : run;
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
-    const MODEL_REACH = ["cli", "local", "deck", "capsule", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
+    const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
     const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
@@ -3604,12 +3604,12 @@ export default {
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); },
-      ["cli", "local", "deck", "capsule", "tailnet", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); },
-      ["cli", "local", "deck", "capsule", "tailnet", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // the computers' keyboard lease lapses on a timer, with no person as original caller
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },

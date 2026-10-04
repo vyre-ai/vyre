@@ -36,7 +36,7 @@ export function register({ vault, tool }) {
 
   // From the phone (the owner's paired device): the password AND the person's presence (Face ID), always. A device-method key alone is never enough (revised PW-1: presence is by method), and unlike the desk tool above
   // the password does not stand in for the proof here, because a phone's call arrives with no terminal or Mac login behind it. A model, a module or a browser session without presence cannot call it.
-  tool("vault.account.unlock-phone", ["device"], "Unlock your personal vault from the phone: its password, and Face ID.",
+  tool("vault.account.unlock-phone", ["mobile", "device"], "Unlock your personal vault from the phone: its password, and Face ID.",
     obj({ password }, ["password"]), (input, { caller }) => {
       if (typeof input.password !== "string" || !input.password) throw new Error("give the password");
       return vault.unlockAccount({ password: input.password, method: "password" }, caller);

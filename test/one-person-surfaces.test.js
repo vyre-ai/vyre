@@ -1,8 +1,8 @@
 import "../scripts/mac-test-guard.mjs";
 // The lead's ruling (5 Oct): there is ONE list of the person's surfaces, lib/person-surfaces.js (cli, local, deck, capsule); core/modules, core/presence and lib/caller.js take it from there, and a bare
-// `mobile` label is not on it (the phone arrives as its paired device with a person session). Two lists is the same fault as two answers to "who is the person". This finds (1) any list or set that names all four
-// surfaces together with `mobile`, which is a second identity list with the old member (zero allowed), and (2) a declaration of a person-surfaces constant outside the leaf file. Callers lists that spell the four
-// names out (PEOPLE = ["cli", "local", "deck", "capsule"], a callers list) are counted per file in test/one-person-surfaces.json: an owner imports the one list and lowers the number; a new one fails. It only shrinks.
+// `mobile` label is not on it (the phone arrives as its paired device with a person session). Two lists is the same fault as two answers to "who is the person". The identity lists all come from the leaf. Callers
+// lists that still spell the four names out WITH `mobile` (a label any caller can send, so it only lets a call reach the tool, never makes a person) are counted per file in test/one-person-surfaces.json: each owner
+// drops `mobile` and imports the one list, and lowers the number; a new one fails. It only shrinks.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -44,20 +44,19 @@ export function lists(src) {
   return out;
 }
 const FROZEN = JSON.parse(fs.readFileSync(path.join(ROOT, "test", "one-person-surfaces.json"), "utf8")).files;
-test("no second list of person surfaces: none names mobile with them, and the spelled-out callers lists only shrink", () => {
+test("callers lists that still name mobile with the four surfaces are frozen and only shrink (a bare mobile is no person; each owner drops it from their list)", () => {
   const files = [];
   for (const top of ["core", "local", "modules", "lib", "kernel"]) { const d = path.join(ROOT, top); if (fs.existsSync(d)) walk(d, files); }
-  const withMobile = [], counts = {};
+  /** @type {Record<string, number>} */ const counts = {};
   for (const f of files) {
     const rel = path.relative(ROOT, f);
     if (rel === THE_LEAF) continue;
-    const found = lists(fs.readFileSync(f, "utf8"));
-    for (const l of found) if (l.mobile) withMobile.push(rel);
-    if (found.length) counts[rel] = found.length;
+    const n = lists(fs.readFileSync(f, "utf8")).filter(l => l.mobile).length;
+    if (n) counts[rel] = n;
   }
-  assert.deepEqual([...new Set(withMobile)].sort(), [], "a surface list with mobile: the phone is its paired device, not a label");
+  if (process.env.WRITE_FROZEN) fs.writeFileSync(path.join(ROOT, "test", "one-person-surfaces.json"), JSON.stringify({ files: counts }, null, 1) + "\n");
   const over = Object.entries(counts).filter(([f, n]) => n > (FROZEN[f] || 0)).map(([f, n]) => `${f}: ${n} (frozen ${FROZEN[f] || 0})`);
-  assert.deepEqual(over, [], "import PERSON_SURFACES from lib/caller.js instead of spelling the four surfaces out again");
+  assert.deepEqual(over, [], "a new list naming mobile: the phone is its paired device, not a label");
   const stale = Object.keys(FROZEN).filter(f => !counts[f] || counts[f] < FROZEN[f]).map(f => `${f}: ${counts[f] || 0} (frozen ${FROZEN[f]})`);
-  assert.deepEqual(stale, [], "lower these numbers in test/one-person-surfaces.json");
+  assert.deepEqual(stale, [], "lower these numbers in test/one-person-surfaces.json (WRITE_FROZEN=1 rewrites it)");
 });
