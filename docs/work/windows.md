@@ -453,3 +453,15 @@ app.
 - A refusal from records.workspace.create fails the workspace step on a kernel-hosted space; other spaces still warn.
 - Left: delete the legacy membership store; invites on the kernel; spaces.label; presence.recover; Publish ingress (Caddy). golden.json/allow.json need re-recording (platform-2 told).
 - Test finding: `--test-force-exit` silently drops tests mid-file (platform-2 fixing the flag).
+
+## Spaces session 2, 4 Oct (windows, work/spaces)
+Done and pushed (head after this note; testbox3 runs):
+- spaces.create never falls back to a local space for a named server (server_not_paired / server_unreachable); server-hosted membership reads time out in 4 s.
+- A create refused part way retires what the server started; the same person retrying the name resumes the pending row (test: refused then retried, test/wink.test.js).
+- #84: every records.* answer carries acted_in {id,label}; `vyre space use|--clear`, `vyre call --space`, `vyre status` shows it (live-daemon CLI check in test/one-registry.test.js).
+- `vyre space add-agent <space> <agent>` (spaces.members.add-agent), tested in test/one-registry.test.js.
+- PR-1: a key removed and re-added is a newcomer again (names/worker/ids.js, test red without fix); SK-1: forged-token test uses a real person proof.
+- records.types/records.define on a space on a paired server: records.definitions wire call, proof carried over the door (lib/remote-proof.js); no proof still needs_presence.
+- Invitee hello v2 (channel key id) lifted from tailnet's join-e2e diff; needs wink-rc1 b8be5b14b to land together.
+- walk-identity-space fixed (stand-in file, terminal label). federation-answer test 6 is red on 06d805db7 too and is not spaces: platform-2.
+Next: confirm the last full run (wink, daemon-smoke, kernel/boot, docs, boundaries, remote, names) result; regenerate docs reference with npm run docs:ref on a test box and commit it; send the final sha to devbox, integrator and reviewer-3; the app passing `space` explicitly (app-wire); join e2e on work/join-e2e after wink-rc1 lands.

@@ -1553,7 +1553,10 @@ export default {
         const nonce = b64u(crypto.randomBytes(16));
         let got;
         try { got = await h.gateway.grants.invites.get(null, invId, { attest: nonce }); }
-        catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); const c = String(/** @type {any} */ (e).code || ""); if (/^(unavailable|unreachable|failed)$/.test(c) || !c) throw gone(); throw plainKernelError(e); }
+        catch (e) { remoteHandles.delete(`${r.payload.id}/${invId}`); const c = String(/** @type {any} */ (e).code || "");
+          // The home's door refusing this person (an invite made for someone else, spent, or not admitted) is not an outage: it gets its own plain answer and no reason (JE-1).
+          if (/^(denied|not_a_member|forbidden|not_allowed)$/.test(c)) throw refuse("This invite is not for you.", "not_for_you");
+          if (/^(unavailable|unreachable|failed)$/.test(c) || !c) throw gone(); throw plainKernelError(e); }
         const { attest, ...bare } = got && typeof got === "object" ? got : /** @type {any} */ ({});
         let proven = false;
         try { proven = Boolean(r.payload.rootPublic) && Boolean(attest) && attest.pub === r.payload.rootPublic && typeof attest.sig === "string" && await C.verifyWith(String(attest.pub), Buffer.from(attestMessage(r.payload.id, nonce)), attest.sig); } catch { proven = false; }
