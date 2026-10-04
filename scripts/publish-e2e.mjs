@@ -44,7 +44,7 @@ try {
   const put = (/** @type {string} */ html) => {
     run("docker", ["run", "--rm", "-v", `${vol}:/srv`, "alpine:3", "sh", "-c", "chmod -R u+w /srv; rm -rf /srv/* /srv/.[!.]*"]);
     const dirIn = writeSiteFiles(scratch, [{ path: "index.html", content: html }, { path: ".hidden", content: "secret" }, { path: "sub/page.html", content: "<p>page</p>" }]);
-    const r = run("docker", volumeFill(dirIn, vol));
+    const r = run("docker", volumeFill(dirIn, vol, scratch));
     fs.rmSync(dirIn, { recursive: true, force: true });
     return r;
   };

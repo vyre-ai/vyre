@@ -474,5 +474,33 @@ test("publish: a static build's files are written once checked, and the edge han
   assert.equal(e.fills.length, 1);
   assert.equal(e.fills[0].deployment, id);
   assert.match(e.fills[0].volume, /_site-[0-9a-f]{16}$/);
+  // FF-1: edit the stored record to point anywhere else and the edge hands out no fill for it
+  const db = b.reg.deps.db;
+  const row = JSON.parse(db.prepare("SELECT body FROM publish_deployments WHERE id = ?").get(id).body);
+  const tamper = (/** @type {any} */ site) => db.prepare("UPDATE publish_deployments SET body = ? WHERE id = ?").run(JSON.stringify({ ...row, site }), id);
+  for (const evil of [{ dir: "/etc" }, { name: "/etc" }, { name: "../../etc" }, { name: "site-ABCDEF" }, { name: "site-../x" }, { name: 7 }]) {
+    tamper(evil);
+    assert.deepEqual((await b.ok("publish.edge", {})).fills, [], JSON.stringify(evil));
+  }
+  fs.symlinkSync("/etc", path.join(sitesDir, "site-LINK01"));
+  tamper({ name: "site-LINK01" });
+  assert.deepEqual((await b.ok("publish.edge", {})).fills, [], "a link named like a site folder");
+  tamper(row.site);
   assert.ok(e.fills[0].docker.includes("--network") && e.fills[0].docker.includes(`${path.join(sitesDir, made[0])}:/in:ro`));
+});
+
+test("publish: a retired or superseded deployment's site folder is removed, and a folder no deployment names is swept", async t => {
+  const b = await boxRegistry(t);
+  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
+  const sitesDir = path.join(b.publishRoot, "sites");
+  b.pf.build = async () => ({ digest: "sha256:" + "f".repeat(64), files: [{ path: "index.html", content: "<h1>1</h1>" }], logs: "" });
+  await b.ok("publish.preview", { deployment: id });
+  const first = fs.readdirSync(sitesDir);
+  assert.equal(first.length, 1);
+  fs.mkdirSync(path.join(sitesDir, "site-ORPHAN"), { mode: 0o700 });
+  const id2 = (await b.ok("publish.create", { ...DRAFT, name: "kit" })).deployment.id;
+  await b.ok("publish.preview", { deployment: id2 });
+  const now = fs.readdirSync(sitesDir).sort();
+  assert.ok(!now.includes("site-ORPHAN"), "an unnamed folder is swept");
+  assert.ok(now.includes(first[0]) && now.length === 2, "both live previews keep theirs");
 });
