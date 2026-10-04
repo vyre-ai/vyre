@@ -284,6 +284,8 @@ export default {
       if (c.startsWith("tailnet-guest:")) throw fail("denied", `${what} is the owner's; a guest never sees the box's devices`);
       if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
       if (["anonymous", "hook"].includes(c)) throw fail("denied", `${what} is the owner's`);
+      // a bare model session ("mcp", "harness") and a Vyre-owned session are not the owner either (platform-3: relay.status let a bare mcp through)
+      if (/^(mcp|harness|session)(?=$|[\s:])/.test(c) || /(?:^|[\s:])thread:/.test(c)) throw fail("denied", `${what} is the owner's, not a model's`);
     };
 
     // ---- the link ----
@@ -443,7 +445,8 @@ export default {
       return h;
     };
     /** Ends a waiting pairing: its channels close and a reconnect finds nothing. @returns {boolean} whether one was waiting */
-    const ABANDON_MS = seam.abandonMs ?? 15_000;
+    // How long a waiting pairing's app may be gone before it is dropped: long enough for a phone on a bad network to reconnect (its client backs off from 1 s), short enough that an abandoned ask does not hold the server for minutes.
+    const ABANDON_MS = seam.abandonMs ?? 30_000;
     const pendingDrop = (id, why) => {
       const p = pendingPairs.get(id);
       if (!p) return false;
