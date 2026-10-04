@@ -144,7 +144,7 @@ if [ -f "$src/scripts/modules-manifest.mjs" ] && [ -f "$src/kernel/modules/relea
   ver=$(cat "$out/VERSION")
   node "$src/scripts/modules-manifest.mjs" "$unpacked" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --release "$ver" --out "$out/modules.json" || exit 1
   # The web app's files (lib/app-build.js): the daemon serves a file of /app/ only when it matches this list, so it is signed with the rest (MW-5). No apps/app/dist, no list.
-  if [ -f "$src/scripts/appbuild-manifest.mjs" ]; then node "$src/scripts/appbuild-manifest.mjs" "$unpacked" --release "$ver" --out "$out/appbuild.json" || exit 1; fi
+  if [ -f "$src/scripts/appbuild-manifest.mjs" ]; then node "$src/scripts/appbuild-manifest.mjs" "$unpacked" --release "$ver" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --out "$out/appbuild.json" || exit 1; fi
   rm -rf "$unpacked"
 fi
 

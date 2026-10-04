@@ -75,7 +75,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 6 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
-| [`system`](#system) | `core/system` | `box`, `local` | 3 | 2 | cli |
+| [`system`](#system) | `core/system` | `box`, `local` | 4 | 2 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 31 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 56 | 36 | cli |
@@ -749,7 +749,7 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 - Folder: `core/system`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [3](tools.md#system)
+- Tools: [4](tools.md#system)
 - Emits: [2 events](events.md#system)
 - Shows on: cli
 

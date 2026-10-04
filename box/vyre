@@ -1258,7 +1258,7 @@ sp_fw_apply() {
       fi
       sp_fw_each "$fam" "$pid" -C OUTPUT -d "$s" -m owner --uid-owner "$rg" -m comment --comment "vyre:$n" -j REJECT >/dev/null 2>&1 || { MSG="the firewall rule is not there after it was added"; return 1; }
     done
-    sp_sub_set "$n" "$s"
+    sp_sub_set "$n" "$s" || { MSG="the list of firewalled subnets could not be written"; return 1; }
   done
 }
 # sp_probe NAME: the rule is proved, not assumed. In the vyre container's namespace a connect to the store's address as an agent uid must be REFUSED at once
@@ -1292,6 +1292,8 @@ sp_probe() {
 # namespace and are lost when it is recreated, so this runs at every `up` and after every update.
 sp_attach() {
   n=$1; net="vyre-$n-twenty_store"
+  # The container must mount the helper's state folder (where the entry reads the marker): a recreate without it would start with no wall to wait for (SH-5).
+  hdock inspect -f '{{range .Mounts}}{{.Destination}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx '/run/vyre-spaces-state' || { MSG="the vyre container does not mount the helper's state folder; recreate it with: vyre up"; return 1; }
   hdock network inspect "$net" >/dev/null 2>&1 || { MSG="the Space's network does not exist"; return 1; }
   if ! hdock inspect -f '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$CTR_NAME" 2>/dev/null | tr ' ' '\n' | grep -qx "$net"; then
     hdock network connect --alias "vyre-$n" "$net" "$CTR_NAME" >/dev/null 2>&1 || { MSG="the vyre container could not join the Space's network"; return 1; }
@@ -1324,8 +1326,8 @@ sp_fw_del() {
 # start of the vyre container and puts the rules in BEFORE the daemon runs (SH-1), so a plain `docker restart` never leaves a store reachable.
 sp_sub_set() {
   f=$SP_STATE/subnets
-  # shellcheck disable=SC2015 # A && B || C on purpose: C is "carry on"
-  { grep -vxF -- "$1 $2" "$f" 2>/dev/null || true; printf '%s %s\n' "$1" "$2"; } >"$f.new" && chmod 644 "$f.new" && rename_over "$f.new" "$f" || true
+  { grep -vxF -- "$1 $2" "$f" 2>/dev/null || true; printf '%s %s\n' "$1" "$2"; } >"$f.new" || return 1
+  chmod 644 "$f.new" && rename_over "$f.new" "$f"
 }
 sp_sub_del() {
   f=$SP_STATE/subnets
@@ -1545,14 +1547,19 @@ space_helper_run() {
   [ -z "$cleanup_q$other_q" ] || sleep 1
   exit 0
 }
-# sp_wall_ready: after the rules were put in and proved for this container, a read-only marker names THIS container instance (the first 12 characters of its id, which is the hostname
-# Docker gives it), so the entry of a container started later cannot pass on an earlier container's marker (core/spawner/space-wall.sh).
+# sp_wall_ready: after the rules were put in and proved for this container, a read-only marker names THIS START of THIS container: `<first 12 characters of its id> <start time, epoch seconds>`.
+# A `docker restart` keeps the id but starts a new process, so the entry (core/spawner/space-wall.sh) compares the start time with its own and an earlier start's marker never passes (SH-4).
 sp_wall_ready() {
   id=$(hdock inspect -f '{{.Id}}' "$CTR_NAME" 2>/dev/null | cut -c1-12 || true)
   case "$id" in ""|*[!0-9a-f]*) return 0 ;; esac
-  # shellcheck disable=SC2015 # A && B || C on purpose: C is "carry on"
-  printf '%s\n' "$id" >"$SP_STATE/wall-ready.new" && chmod 644 "$SP_STATE/wall-ready.new" && rename_over "$SP_STATE/wall-ready.new" "$SP_STATE/wall-ready" || true
+  st=$(hdock inspect -f '{{.State.StartedAt}}' "$CTR_NAME" 2>/dev/null || true)
+  ep=$(date -d "$st" +%s 2>/dev/null || true)
+  case "$ep" in ""|*[!0-9]*) return 0 ;; esac
+  # shellcheck disable=SC2015 # A && B || C on purpose: C is the refusal
+  printf '%s %s\n' "$id" "$ep" >"$SP_STATE/wall-ready.new" && chmod 644 "$SP_STATE/wall-ready.new" && rename_over "$SP_STATE/wall-ready.new" "$SP_STATE/wall-ready" || return 1
 }
+# sp_wall_clear: the marker goes when the container dies or stops, so nothing is left for a later start to find.
+sp_wall_clear() { rm -f "$SP_STATE/wall-ready" "$SP_STATE/wall-ready.new" 2>/dev/null || true; }
 # space_helper_reattach: after an update the vyre container is a new one with no network joins and no rules: every recorded Space whose containers still run is
 # joined and firewalled again and proved. A Space that fails is stopped (never left running unfirewalled) and said.
 space_helper_reattach() {
@@ -1569,7 +1576,7 @@ space_helper_reattach() {
       sp_log "stopped after update: ${MSG:-}"
     fi
   done
-  sp_wall_ready
+  sp_wall_ready || echo "vyre: the helper could not write the firewall marker; the vyre container will not start its daemon until it can" >&2
 }
 # space_helper install|remove|status: the path unit, root's. DirectoryNotEmpty on the spool; trigger limits off, so a flood cannot disable the unit that does
 # the cleanup (the helper itself throttles).
@@ -1591,6 +1598,8 @@ space_helper() {
       systemctl daemon-reload
       systemctl enable --now "$un.path" >/dev/null 2>&1 || systemctl enable "$un.path"
       systemctl enable --now "$un-watch.service" >/dev/null 2>&1 || systemctl enable "$un-watch.service"
+      # The list of firewalled subnets exists from the start (empty), so a container entry that finds the helper installed and no list fails closed (SH-5).
+      [ -f "$SP_STATE/subnets" ] || { : >"$SP_STATE/subnets" && chmod 644 "$SP_STATE/subnets"; }
       printf '1\n' >"$SP_STATE/ready"
       say "Spaces can be asked for from Vyre: $un.path watches $SP_SPOOL"
       ;;
@@ -1611,7 +1620,12 @@ space_helper() {
       set_root_run
       while :; do
         space_helper_reattach
-        hdock events --filter "container=$CTR_NAME" --filter event=start --format '{{.ID}}' 2>/dev/null | while IFS= read -r _; do sleep 2; space_helper_reattach; done
+        hdock events --filter "container=$CTR_NAME" --filter event=start --filter event=die --filter event=stop --filter event=kill --filter event=oom --format '{{.Action}}' 2>/dev/null | while IFS= read -r act; do
+          case "$act" in
+            start) sleep 2; space_helper_reattach ;;
+            die|stop|kill|oom) sp_wall_clear ;;
+          esac
+        done
         [ "$SPACES_WATCH_ONCE" != 1 ] || break
         sleep 5
       done

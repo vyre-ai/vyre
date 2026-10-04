@@ -62,7 +62,9 @@ export function check(dir, { pulled = false, pubkey = "", installer = false, mac
         const v = read("VERSION").toString("utf8").trim();
         if (!j || j.v !== 1 || !j.files || typeof j.files !== "object" || !j.files["index.html"]) problems.push("appbuild.json is not { v: 1, release, files: {...} } with index.html");
         else {
-          if (j.release !== v) problems.push(`appbuild.json says release ${j.release}, VERSION says ${v}`);
+          if (j.release !== v || j.version !== v) problems.push(`appbuild.json says release ${j.release}, VERSION says ${v}`);
+          if (j.counter !== releaseCounter(v)) problems.push(`appbuild.json counter is ${j.counter}, this version makes ${releaseCounter(v)}`);
+          if (!/^[0-9a-f]{64}$/.test(String(j.tree))) problems.push("appbuild.json has no tree hash");
           for (const [f, h] of Object.entries(j.files)) if (!/^[0-9a-f]{64}$/.test(String(h)) || f.startsWith("/") || f.split("/").includes("..")) problems.push(`appbuild.json has a bad entry for ${f}`);
         }
       } catch (e) { problems.push(`appbuild.json cannot be read: ${/** @type {Error} */ (e).message}`); }

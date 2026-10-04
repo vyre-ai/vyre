@@ -32,13 +32,15 @@ if (a[0] === "inspect") {
     if (fmt === "{{.State.Pid}}") out(rd("ctr-pid", "4242"));
     if (fmt === "{{.Image}}") out("sha256:" + "a".repeat(64));
     if (fmt === "{{.Id}}") out(rd("ctr-id", "abcdef012345") + "0".repeat(52));
-    if (fmt.includes(".Mounts")) out(has("no-mounts") ? "" : "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre/.vyre|" + F + "/lend");
+    if (fmt === "{{.State.StartedAt}}") out(rd("ctr-start", "2026-10-04T10:00:00.123456789Z"));
+    if (fmt.includes(".Mounts") && fmt.includes("|")) out(has("no-mounts") ? "" : "/work|/var/lib/docker/volumes/w/_data\\n/home/vyre/.vyre|" + F + "/lend");
+    if (fmt.includes(".Destination}} {{end}}")) out(has("no-state-mount") ? "/work /home/vyre/.vyre " : "/work /home/vyre/.vyre /run/vyre-spaces /run/vyre-spaces-state ");
     out(rd("joined").split("\\n").join(" ") + " ");
   }
   if (name === "srv1") out(fmt.includes("Global") ? "invalid IP" : (fmt.includes("IPAddress") ? "172.30.4.2" : ""));
   process.exit(1);
 }
-if (a[0] === "events") { if (has("events")) { fs.rmSync(F + "/events"); out("abc"); } process.exit(0); }
+if (a[0] === "events") { if (has("events")) { const lines = rd("events"); fs.rmSync(F + "/events"); out(lines); } process.exit(0); }
 if (a[0] === "pull") process.exit(has("pull-fails") ? 1 : 0);
 if (a[0] === "image" && a[1] === "inspect") { const nm = a[a.length - 1].split(":")[0]; out(nm + "@sha256:" + require("crypto").createHash("sha256").update(rd("digest-salt", "x") + nm).digest("hex")); }
 if (a[0] === "ps") { const n = nameOf(a.join(" ")); out(n && has("running-" + n) ? "srv1" : ""); }
@@ -484,7 +486,7 @@ test("space helper RH-7: `space-helper watch` reattaches after the vyre containe
   await r.prime();
   r.ask("up harlow\n"); await r.helper();
   // docker restart vyre-vyre-1: a new pid, no joins, an empty namespace; the watcher sees the start event.
-  r.flag("ctr-pid", "3131"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("events");
+  r.flag("ctr-pid", "3131"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("events", "start\n");
   const ok = /** @type {any} */ (await r.run(["space-helper", "watch"], { VYRE_SPACES_WATCH_ONCE: "1" }));
   assert.equal(ok.code, 0, ok.out);
   assert.equal(r.rules("3131").length, 2, "the rules are back in the new namespace");
@@ -526,31 +528,56 @@ test("space helper SH-2 and SH-3: a family the network lacks (`invalid IP`) is i
   assert.equal(r.rules().length, 2);
 });
 
-test("space helper SH-1: the host writes a marker that names the container instance after it proved the rules; space-wall.sh holds the daemon back until its own instance's marker is there", opts, async t => {
+test("space helper SH-1, SH-4, SH-5: the host writes a marker that names this START of the container; the entry holds the daemon back until its own start's marker is there, and fails closed", opts, async t => {
   const r = rig(t);
   await r.prime();
   r.ask("up harlow\n"); await r.helper();
   const list = path.join(r.SP, "status", "subnets");
   assert.equal(fs.readFileSync(list, "utf8").trim(), "harlow 172.30.4.0/24");
-  // The wall script reads the container's own hostname: a fake `hostname` on PATH stands in for Docker's (the first 12 characters of the container id).
   const bin = fs.mkdtempSync(path.join(SCRATCH, "wallbin-")); t.after(() => fs.rmSync(bin, { recursive: true, force: true }));
-  const as = (/** @type {string} */ host) => { fs.writeFileSync(path.join(bin, "hostname"), `#!/bin/sh\necho ${host}\n`, { mode: 0o755 }); return spawnSync("sh", [path.join(REPO, "core/spawner/space-wall.sh")], { env: { PATH: `${bin}:${process.env.PATH}`, VYRE_SPACES_STATE: path.join(r.SP, "status"), VYRE_WALL_WAIT: "2" }, encoding: "utf8" }); };
-  // A container that was started and has no marker yet: refused, the daemon does not start.
-  let w = as("abcdef012345");
+  // The entry reads the container's own hostname and start time: a fake `hostname` on PATH and VYRE_WALL_TEST_START stand in for Docker's id and PID 1's start.
+  const as = (/** @type {string} */ host, /** @type {number} */ start) => { fs.writeFileSync(path.join(bin, "hostname"), `#!/bin/sh\necho ${host}\n`, { mode: 0o755 }); return spawnSync("sh", [path.join(REPO, "core/spawner/space-wall.sh")], { env: { PATH: `${bin}:${process.env.PATH}`, VYRE_SPACES_STATE: path.join(r.SP, "status"), VYRE_WALL_WAIT: "2", VYRE_WALL_TEST_START: String(start) }, encoding: "utf8" }); };
+  const epoch = (/** @type {string} */ s) => Math.floor(Date.parse(s) / 1000);
+  const S1 = epoch("2026-10-04T10:00:00Z");
+  // A container started and no marker yet: the daemon does not start.
+  let w = as("abcdef012345", S1);
   assert.equal(w.status, 1); assert.match(w.stderr, /the daemon is not starting/);
-  // The watcher (or reattach) proves the rules for the running container and names it.
+  // The helper proves the rules for the running container and names this start.
   const ok = /** @type {any} */ (await r.run(["space-helper", "reattach"])); assert.equal(ok.code, 0, ok.out);
-  assert.equal(fs.readFileSync(path.join(r.SP, "status", "wall-ready"), "utf8").trim(), "abcdef012345");
-  assert.equal(as("abcdef012345").status, 0);
-  // A container started later has another id: the old marker does not pass.
-  w = as("fedcba543210");
-  assert.equal(w.status, 1);
-  r.flag("ctr-id", "fedcba543210");
+  assert.equal(fs.readFileSync(path.join(r.SP, "status", "wall-ready"), "utf8").trim(), `abcdef012345 ${S1}`);
+  assert.equal(as("abcdef012345", S1).status, 0);
+  // SH-4: a docker restart keeps the id and starts a new process. The old marker names the old start, so it does not pass.
+  w = as("abcdef012345", S1 + 600);
+  assert.equal(w.status, 1, "the same container id, a later start: the earlier marker must not pass");
+  // The helper sees the new start and writes the new marker.
+  r.flag("ctr-start", "2026-10-04T10:10:00Z");
   assert.equal((/** @type {any} */ (await r.run(["space-helper", "reattach"]))).code, 0);
-  assert.equal(as("fedcba543210").status, 0, "after the host proved the new instance");
-  // Nothing firewalled, nothing to wait for.
+  assert.equal(as("abcdef012345", S1 + 600).status, 0, "after the host proved this start");
+  assert.equal(as("abcdef012345", S1).status, 1, "and the earlier start no longer matches");
+  // A different container (another id) with the same start time does not pass either.
+  assert.equal(as("fedcba543210", S1 + 600).status, 1);
+  // The marker goes when the container dies or stops: nothing is left for a later start to find.
+  r.flag("events", "die\n");
+  assert.equal((/** @type {any} */ (await r.run(["space-helper", "watch"], { VYRE_SPACES_WATCH_ONCE: "1" }))).code, 0);
+  assert.ok(!fs.existsSync(path.join(r.SP, "status", "wall-ready")), "removed on die");
+  // SH-5: the helper is installed (status/ready) and the list of firewalled stores is missing: closed. An empty list: nothing to wait for. No helper: nothing to wait for.
+  const saved = fs.readFileSync(list);
   fs.rmSync(list);
-  assert.equal(as("0123456789ab").status, 0);
+  w = as("abcdef012345", S1); assert.equal(w.status, 1); assert.match(w.stderr, /list of firewalled stores is missing/);
+  fs.writeFileSync(list, "");
+  assert.equal(as("abcdef012345", S1).status, 0);
+  fs.writeFileSync(list, saved);
+  fs.rmSync(path.join(r.SP, "status", "ready"));
+  assert.equal(as("abcdef012345", S1).status, 0, "no helper on this server");
+});
+
+test("space helper SH-5: an `up` is refused when the vyre container does not mount the helper's state folder, because its entry would then have no wall to wait for", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.flag("no-state-mount");
+  const id = r.ask("up harlow\n"); await r.helper();
+  assert.equal(r.status(id).state, "failed"); assert.match(r.status(id).message, /does not mount the helper's state folder/);
+  assert.ok(!fs.existsSync(path.join(r.F, "running-harlow")), "the store never started");
 });
 
 test("space helper: the vyre container's compose is never privileged and keeps NET_ADMIN only for the entry step, which drops it before the daemon runs", async () => {
