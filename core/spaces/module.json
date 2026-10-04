@@ -90,6 +90,18 @@
     "reach": "person"
    },
    {
+    "name": "spaces.presence.begin",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.presence.recover",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.presence.sync",
+    "reach": "person"
+   },
+   {
     "name": "spaces.devices.spaces",
     "reach": "person"
    },
