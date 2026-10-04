@@ -34,3 +34,16 @@ for f in /proc/net/tcp /proc/net/tcp6; do
     echo "listen $((0x${local##*:}))"
   done < "$f"
 done
+# UDP listeners (state 07) and ABSTRACT unix sockets (names starting with @: no file mode protects them): the session shares the box's network namespace, so both are reachable.
+for f in /proc/net/udp /proc/net/udp6; do
+  [ -r "$f" ] || continue
+  while read -r _ local _ st _; do
+    [ "$st" = 07 ] || continue
+    echo "udp $((0x${local##*:}))"
+  done < "$f"
+done
+if [ -r /proc/net/unix ]; then
+  while read -r _ _ _ _ _ _ _ name; do
+    case "$name" in @*) echo "abstract $name" ;; esac
+  done < /proc/net/unix
+fi

@@ -36,6 +36,8 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: npm
+      # The sandbox tests run for real (the self-test of the home sandbox needs bubblewrap), not skipped. Ubuntu 24.04 restricts unprivileged user namespaces for it, so the runner allows them.
+      - run: sudo apt-get install -y bubblewrap && (sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true)
       - run: npm ci --no-audit --no-fund
       # The phone app's tests (apps/app/**) import @noble/*, which only apps/app's own lockfile installs; scripts are off, nothing builds.
       - run: npm ci --ignore-scripts --no-audit --no-fund
