@@ -137,7 +137,10 @@ test("the wire carries no group the home did not allow: an unknown call and a le
 
 import { createRunner } from "./runner.js";
 import { createLenderHost } from "./lender-host.js";
-const SKIP_RUN = process.platform !== "linux" && process.platform !== "darwin";
+import { unavailable, } from "./sandbox.js";
+import { workspaceUnavailable } from "./workspace.js";
+// The real runner needs a sandbox and an encrypted workspace on this machine (bubblewrap and gocryptfs on Linux): without them the test is skipped, as in the runner's other tests.
+const SKIP_RUN = (process.platform !== "linux" && process.platform !== "darwin") || unavailable() !== "" || Boolean(workspaceUnavailable(undefined, {}));
 
 test("the real runner on a lent computer, ports from the lender host over the real kernel: it starts the Space's session, checkpoints reach the home's store, a second computer resumes, and a withdrawn Offer tells the runner", { skip: SKIP_RUN, timeout: 120_000 }, async t => {
   const r = await rig(t, { cap: "provider" });
