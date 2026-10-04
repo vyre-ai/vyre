@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":340,"tool":1127,"event":449,"config":254,"env":222,"screen":20,"concept":43},
+  "counts": {"command":340,"tool":1129,"event":449,"config":254,"env":222,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1720,6 +1720,8 @@
     {"kind":"tool","name":"vault.said.record","definedIn":"core/vault/said.js","page":"reference/tools.md#vaultsaidrecord","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.said.revoke","definedIn":"core/vault/said.js","page":"reference/tools.md#vaultsaidrevoke","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.search","definedIn":"core/vault/tools/surfaces.js","page":"reference/tools.md#vaultsearch","module":"vault","mentions":[{"page":"using/vault.md","line":27,"anchor":"the-rule-that-has-no-off-switch"}]},
+    {"kind":"tool","name":"vault.service.catalog","definedIn":"core/vault/service.js","page":"reference/tools.md#vaultservicecatalog","module":"vault","mentions":[]},
+    {"kind":"tool","name":"vault.service.forward","definedIn":"core/vault/service.js","page":"reference/tools.md#vaultserviceforward","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.session.close","definedIn":"core/vault/tools/surfaces.js","page":"reference/tools.md#vaultsessionclose","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.session.open","definedIn":"core/vault/prove.js","page":"reference/tools.md#vaultsessionopen","module":"vault","mentions":[{"page":"concepts/presence.md","line":30,"anchor":"which-tools-need-it"},{"page":"adr/0004-presence.md","line":216,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"}]},
     {"kind":"tool","name":"vault.session.status","definedIn":"core/vault/tools/surfaces.js","page":"reference/tools.md#vaultsessionstatus","module":"vault","mentions":[]},

@@ -45,6 +45,8 @@ jobs:
             start=$(date +%s)
             if perl -e 'alarm 480; exec @ARGV' node --test --test-timeout=240000 --test-force-exit --test-reporter=spec "$f" > /tmp/one.log 2>&1; then
               echo "ok   $f ($(( $(date +%s) - start ))s)"
+              # Names of every test, so a skip or a canary shows by name (spec reporter marks: ✔ ran, ﹣ skipped).
+              case "$f" in core/vault/*) grep -E "^\s*(✔|✖|﹣|ℹ (pass|fail|skipped))" /tmp/one.log | sed 's/^/     /';; esac
             else
               echo "FAIL $f ($(( $(date +%s) - start ))s)"; sed -n '/failing tests:/,$p' /tmp/one.log | grep -vE "^\s+at " | head -70
               case " $known " in *" $f "*) echo "     (known hang, not failing the job)";; *) fail=1;; esac
