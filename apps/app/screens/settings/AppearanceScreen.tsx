@@ -39,11 +39,11 @@ export function AppearanceScreen() {
   const look = scope === "me" ? null : looks[scope] ?? DEFAULT_LOOKS.mine;
   const showing = space === "all" ? own[0]?.id ?? "mine" : space;
   const set = (patch: Record<string, string | undefined>) => look && setLook(scope, patch as any);
-  const own = resolved.own.length > 0;
+  const hasOwn = resolved.own.length > 0;
   return (
     <Page title="Appearance" sub="Who sets what. A firm looks like itself; you control what reaches your eyes." back="/u/settings">
       <Segmented label="Whose settings" value={scope} onChange={setScope} options={[["me", "Me"], ...own.map((x) => [x.id, x.name] as [string, string])]} />
-      <Banner><Text strong>Showing now: </Text><Text>{showingLine(NAMES[showing] ?? "Space", resolved, { ...FONT_NAMES, sans: FONT_NAMES.system }, own)}</Text></Banner>
+      <Banner><Text strong>Showing now: </Text><Text>{showingLine(NAMES[showing] ?? "Space", resolved, { ...FONT_NAMES, sans: FONT_NAMES.system }, hasOwn)}</Text></Banner>
       {scope === "me" ? (
         <Group title="Belongs to you, on every space">
           <Card className="gap-s3">
