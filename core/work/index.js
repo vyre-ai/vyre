@@ -118,7 +118,7 @@ export default {
         const ok = checkAdd({ spec, adder, count: Number(input.count) || 0, humanApproved: adder.kind === "person" });
         if (!ok.ok) throw fail(ok.reason === "cap" ? "cap" : "needs_human", String(ok.detail));
         const teammate = { kind: /** @type {const} */ ("agent"), id: `${spec.name}.${input.project.split("/").pop()}`, space: k.space };
-        const made = await delegateGrants(k, chain, { adder, teammate, wanted: spec.wanted });
+        const made = await delegateGrants(k, chain, { adder, teammate, wanted: spec.wanted, presence: typeof k.proofFrom === "function" ? (/** @type {any} */ _i) => k.proofFrom(extra).presence : null });
         return { teammate, grants: made.grants.map((/** @type {any} */ g) => g.id), obligations: made.obligations };
       },
     });
