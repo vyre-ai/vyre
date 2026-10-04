@@ -13,6 +13,7 @@ export function onPhoneFor(tool) {
   if (/^tasks\.decide/.test(t)) return "Approve it in Vyre on your phone.";
   if (/^(grants|spaces\.roles|spaces\.members)\./.test(t)) return "Change who can use this in Vyre on your phone.";
   if (/^wink\./.test(t)) return "Pair it in Vyre on your phone.";
+  if (/^onboard\./.test(t)) return "Connect it in Vyre on your phone.";
   if (/drive\.restore/.test(t)) return "Restore it in Vyre on your phone.";
   return ON_PHONE;
 }

@@ -371,7 +371,10 @@ test("KP-1: a passkey assertion must carry user verification, name this op, and 
 async function enclaveKey() {
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const pub = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
-  return { pub, esign: m => crypto.sign("sha256", Buffer.from(m), { key: privateKey, dsaEncoding: "ieee-p1363" }), esignDer: m => crypto.sign("sha256", Buffer.from(m), privateKey) };
+  const low = raw => { const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n; let s = 0n; for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]); if (s > n / 2n) { s = n - s; for (let i = 63; i >= 32; i--) { raw[i] = Number(s & 255n); s >>= 8n; } } return raw; };
+  const high = raw => { const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n; let s = 0n; for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]); if (s <= n / 2n) { s = n - s; for (let i = 63; i >= 32; i--) { raw[i] = Number(s & 255n); s >>= 8n; } } return raw; };
+  const rawSig = m => crypto.sign("sha256", Buffer.from(m), { key: privateKey, dsaEncoding: "ieee-p1363" });
+  return { pub, esign: m => low(Buffer.from(rawSig(m))), esignHigh: m => high(Buffer.from(rawSig(m))), esignDer: m => crypto.sign("sha256", Buffer.from(m), privateKey) };
 }
 const phoneEntry = (k, enc) => ({ ...k.entry("device"), enclave: enc.pub });
 
@@ -389,7 +392,9 @@ test("NK-2: the phone's seed alone cannot add, remove or replace-code; the seed 
   // the seed plus the right enclave signature, raw or DER
   const added = await withEsig({ type: "add", entry: code.entry("code") }, enc.esign);
   assert.ok(added.entries.some(e => e.eid === code.eid));
-  assert.ok((await withEsig({ type: "add", entry: mac.entry("device") }, enc.esignDer)).entries.some(e => e.eid === mac.eid), "a DER esig is read too");
+  // one op, one hash: the DER form and the high-s twin of the same signature are refused, not accepted as second valid ops
+  await assert.rejects(withEsig({ type: "add", entry: mac.entry("device") }, enc.esignDer), e => e.code === "needs_enclave");
+  await assert.rejects(withEsig({ type: "add", entry: mac.entry("device") }, enc.esignHigh), e => e.code === "needs_enclave");
   // another key's esig, and an esig made for another op
   await assert.rejects(withEsig({ type: "add", entry: thief.entry("device") }, other.esign), e => e.code === "needs_enclave");
   const forOther = await C.makeOp(w.state, { type: "add", entry: mac.entry("device") }, { by: phone.eid, ts: later, sign: phone.sign, esign: enc.esign });

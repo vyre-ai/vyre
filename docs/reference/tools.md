@@ -3528,7 +3528,7 @@ Add a lesson the user wrote or asked for (/vyre remember). From text alone, a kn
   - `session` string
   - `text` string
   - `when` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `learn.check`
 
@@ -4309,7 +4309,7 @@ Read any new turns and rebuild the graph now. full: true re-reads every turn. Re
 - Input:
   - `agent` string
   - `full` boolean
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `memory.decisions`
 
@@ -4408,7 +4408,7 @@ Mute a node so memory never offers it, everywhere (scope '*') or in one project 
   - `agent` string
   - `off` boolean
   - `scope` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `memory.pace`
 
@@ -4427,7 +4427,7 @@ Pin a node so it ranks first wherever it is relevant, everywhere (scope '*') or 
   - `agent` string
   - `off` boolean
   - `scope` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
 
 ### `memory.profile`
 
@@ -5021,7 +5021,7 @@ Store Claude Code's sign-in in the Vault: a subscription setup token or an API k
   - `code` string
   - `key` string
   - `kind` "subscription" or "api-key"
-  - `mode` one of "detect", "setup-token", "api-key"
+  - `mode` one of "detect", "setup-token", "api-key", "disconnect"
   - `token` string
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `onboard`, `tailnet`
 - Needs a person present.
@@ -8597,6 +8597,17 @@ Cancel a queued request. A running request is interrupted only by a person (stop
   - `request` string, required
 - Callers: `agent`, `capsule`, `cli`, `deck`, `device`, `local`, `mcp`, `mobile`, `module`, `space`, `tailnet`
 
+### `team.charter.accept`
+
+Accept (or, with decline: true, drop) the charter a session drafted for a teammate: it becomes a new version, written as the person's own act. The person's surfaces only.
+
+- Input:
+  - `decline` boolean
+  - `project` string
+  - `role` string
+  - `teammate` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+
 ### `team.charter.diff`
 
 What a charter version changed: the version's text beside the one before it (null for the first), who wrote it and how. What the Deck's "charter changed by <agent>" card shows before a one-tap team.charter.revert.
@@ -8617,7 +8628,7 @@ Write (or rewrite) a teammate's charter from what the project already knows: its
   - `project` string
   - `role` string
   - `teammate` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `team.charter.get`
 

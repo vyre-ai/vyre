@@ -11,7 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
-import { isPerson } from "../../lib/caller.js";
+import { isPerson, onTailnet } from "../../lib/caller.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { SETUP_STEPS, SKIPPABLE, PASSABLE, setupList } from "../../lib/setup-steps.js";
@@ -167,8 +167,8 @@ export default {
     // Reviewer, 28 Sep: onboard now loads on Solo too, so this can no longer resume
     // unconditionally -- on a Mac that would bind the setup listener with no server chosen and
     // nothing to onboard into. Belt and braces alongside the boxOnly() guard on onboard.link.
-    if (config.isServer(ctx.config.machine) && !net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
-    else keep.save(null);
+    // 0.3: a server has no first-run page. The listener is never opened (onboard.link refuses), so nothing listens on the onboarding port; a server is set up from the owner's app after pairing.
+    keep.save(null);
     let claimUrl = null;
     let indexing = null;
     let lastPhase = "idle";
@@ -298,12 +298,12 @@ export default {
       const accountName = await aiAccount().then(a => a.name).catch(() => null);
       // The sign-in and owner-claim links are the person's: a model session that reads the status is not handed them.
       if (!personOrPage(caller)) { tailscale.loginUrl = null; tailscale.claimUrl = null; }
-      const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
+      const mode = caller === "onboard" ? "loopback" : onTailnet({ caller }) ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
       // RELAY_JOIN_DARWIN_REASON above); every other platform can already join a relay today.
       const can = canRelayJoin(process.platform);
-      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can,
+      return { mode, role: ctx.config.role, machine: ctx.config.machine, platform: process.platform, can, owned: await isOwned(),
         owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: personOrPage(caller) ? ob().person || null : null, accountName: personOrPage(caller) ? accountName : null, person: personOrPage(caller) ? ob().person || null : null, assistant: ob().assistant || null, assistantState: ob().assistantState || null,
         // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
@@ -513,13 +513,19 @@ export default {
       effect: "write", callers: ONBOARD_CALLERS,
       description: "Store Claude Code's sign-in in the Vault: a subscription setup token or an API key. The value is never returned. setup-token alone starts `claude setup-token` and returns its sign-in url; setup-token with the code the page showed finishes it.",
       presence: { when: () => true, summary: async () => "Sign this server in to Claude" },
-      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key"] }, key: { type: "string" }, code: { type: "string" },
+      input: obj({ mode: { type: "string", enum: ["detect", "setup-token", "api-key", "disconnect"] }, key: { type: "string" }, code: { type: "string" },
         kind: { type: "string", enum: ["subscription", "api-key"] }, token: { type: "string" } }),
       run: async ({ mode, key, code, kind, token }, { caller, ...meta }) => {
         boxOnly();
         ownerWrite(caller, meta, "signing in to Claude", await isOwned());
         // Only a read (no mode, or detect, and nothing to store) is open to a non-person; storing a key or starting the sign-in is the person's (HD-1).
         if (mode !== "detect" && (mode || key || code || kind || token)) personOnly(caller);
+        if (mode === "disconnect") {
+          // The person disconnects the AI account: both sign-in items leave the vault (a missing one is fine) and the step reads as not signed in. Assistants on it stop and ask. The account itself is not touched.
+          for (const name of Object.values(VAULT_ITEM)) await call("vault.delete", { name }).catch(() => null);
+          save({ onboard: { claude: null } });
+          return stepOf("claude", caller);
+        }
         if (mode === "setup-token" && !key && !token) {
           if (!code) return { ...(await stepOf("claude", caller)), url: await signin.start(), needsCode: true };
           [kind, token] = ["subscription", await signin.finish(code)];
@@ -812,6 +818,7 @@ export default {
       input: obj({ mint: { type: "boolean" } }),
       run: async (input, { caller }) => {
         boxOnly(); // revisit once the Solo Deck loopback design (docs/design/anywhere.md) lands and reuses this link
+        throw Object.assign(new Error("a server has no setup page: pair it from your Vyre app (the installer shows the code; or run vyre call wink.server.code)"), { code: "not_available" });
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
