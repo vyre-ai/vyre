@@ -9,7 +9,7 @@
 import { createGateway } from "./gateway/index.js";
 import { createMemoryStore } from "./store/memory.js";
 import { createEventLog } from "./core/events.js";
-import { createChainBuilder, isExactlyPerson } from "./core/chain.js";
+import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
 import { createLimits } from "./core/limits.js";
 import { createTasks } from "./tasks/tasks.js";
@@ -51,7 +51,7 @@ export async function createKernel(cfg) {
   const baseHas = cfg.hasPresenceSession || ((/** @type {any} */ chain) => isExactlyPerson(chain) && Boolean(chain.hops[0].via && chain.hops[0].via.session));
   const hasPresenceSession = (/** @type {any} */ chain) => baseHas(chain) || (standIn() === true && isExactlyPerson(chain) && (standInUse("session"), true));
   const presence0 = cfg.presence || (cfg.sealer ? sealerPresence(cfg.sealer) : undefined);
-  const presence = presence0 && typeof cfg.standIn === "function" ? Object.freeze({ check: async (/** @type {any} */ i) => { if (i && i.proof && i.proof.method === "stand-in" && standIn() === true && isChain(i.chain) && isExactlyPerson(i.chain)) { standInUse(String(i.op)); return null; } return presence0.check(i); } }) : presence0;
+  const presence = typeof cfg.standIn === "function" ? Object.freeze({ check: async (/** @type {any} */ i) => { if (i && i.proof && i.proof.method === "stand-in" && standIn() === true && isChain(i.chain) && isExactlyPerson(i.chain)) { standInUse(String(i.op)); return null; } return presence0 ? presence0.check(i) : "no_presence"; } }) : presence0;
   const grantsStore = own ? undefined : cfg.grantsStore || createGrantsStore({ snapshot_every: cfg.snapshot_every, legacyKeys: cfg.legacyKeys, space: cfg.space, log, chains, seal, clock, presence, label: () => (label ? label() : {}) });
   const limits = createLimits({ space: cfg.space, log, clock });
   let fresh = false, migrated = false;
