@@ -1322,6 +1322,25 @@ export default {
         await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
+    tool("spaces.members.add-agent", "Add an agent (an assistant that does work in the space, for example as the doer of a task) to a space. The kernel's own actor membership: owners and admins only, under the person's proof.",
+      obj({ space: str, agent: str }, ["space", "agent"]),
+      async (i, meta) => {
+        const row = spaceOf(i.space);
+        await gate(row.id, undefined, meta);
+        const agent = String(i.agent || "").trim().toLowerCase();
+        if (!/^[a-z][a-z0-9_-]{0,39}$/.test(agent)) throw refuse("An agent's name is letters, digits, - and _, up to 40.", "bad_input");
+        const h = kernelHandle(row.id);
+        if (!h || !h.gateway || !h.gateway.grants || typeof h.gateway.grants.addActor !== "function") throw refuse("This space has no kernel here to add an agent to.", "unavailable");
+        const k = await kctxOf(meta, row.id);
+        try { await h.gateway.grants.addActor(k.chain, { kind: "agent", id: agent, space: row.id }, k.proof); }
+        catch (e) {
+          const c = String(/** @type {any} */ (e).code || "");
+          if (c === "needs_presence") throw refuse("This change needs your approval on your device.", "needs_presence");
+          if (c === "not_allowed") throw refuse("Only an owner or an admin can add an agent.", "forbidden");
+          throw e;
+        }
+        return { space: row.id, agent: { kind: "agent", id: agent } };
+      }, { presence: { summary: (/** @type {any} */ i) => `Add the agent ${i && i.agent} to ${i && i.space}` } });
     tool("spaces.members.remove", "Remove a person from a space. A space always keeps at least one owner.", obj({ space: str, person: str }, ["space", "person"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = await gate(row.id, undefined, meta);

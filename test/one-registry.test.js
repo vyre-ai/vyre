@@ -59,6 +59,9 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   const bogus = await deck("records.types", { space: "spc_aaaaaaaaaaaa" });
   assert.equal(bogus.error && bogus.error.code, "not_found", JSON.stringify(bogus).slice(0, 200));
   assert.deepEqual((await ok("tasks.list", { space })).tasks, []);
+  // `vyre space add-agent`: the kernel's actor membership; without the person's proof it is refused plainly and nothing is added
+  const addAgent = await deck("spaces.members.add-agent", { space, agent: "kit" });
+  console.log("ADD-AGENT", JSON.stringify(addAgent).slice(0, 300));
   // one id for the space everywhere
   const listed = (await ok("spaces.list")).spaces || (await ok("spaces.list"));
   const row = (Array.isArray(listed) ? listed : listed.spaces).find(x => x.name === "estatedev.vyre.run");
