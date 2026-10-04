@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1212,"event":461,"config":255,"env":246,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1214,"event":461,"config":255,"env":246,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2495,7 +2495,9 @@
     {"kind":"event","name":"wink.code-unavailable","definedIn":"core/wink/module.json","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.code-wrong","definedIn":"core/wink/module.json","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.code.ack","definedIn":"core/wink/code.js","page":"reference/tools.md#winkcodeack","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.code.carry","definedIn":"core/wink/index.js","page":"reference/tools.md#winkcodecarry","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.code.open","definedIn":"core/wink/index.js","page":"reference/tools.md#winkcodeopen","module":"wink","mentions":[]},
+    {"kind":"tool","name":"wink.code.redeem","definedIn":"core/wink/pairing.js","page":"reference/tools.md#winkcoderedeem","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.code.status","definedIn":"core/wink/index.js","page":"reference/tools.md#winkcodestatus","module":"wink","mentions":[]},
     {"kind":"event","name":"wink.confirmed","definedIn":"core/wink/index.js","page":"reference/events.md#wink","module":"wink","mentions":[]},
     {"kind":"tool","name":"wink.decline","definedIn":"core/wink/index.js","page":"reference/tools.md#winkdecline","module":"wink","mentions":[]},

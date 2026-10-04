@@ -32,6 +32,16 @@
         "effect": "write"
       },
       {
+        "name": "wink.code.redeem",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "wink.code.carry",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "wink.code.status",
         "reach": "person",
         "effect": "read"
