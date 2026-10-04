@@ -14,8 +14,13 @@ import { setPeerHosting } from "../core/daemon/peer.js";
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 setPeerHosting(false);
-const LABELS = ["cli", "local", "deck", "mobile"];
+const LABELS = ["cli", "local"];
+const CLAIMS = ["deck", "mobile"];
 const k = { id: { owner: "per_" + "a".repeat(26) } };
+
+test("a deck or mobile label on the socket never gets person facts, whatever the ancestry says", () => {
+  for (const label of CLAIMS) for (const a of [undefined, { inside: false }, { inside: false, outside: true }, { inside: true }]) assert.equal(callerFacts(label, {}, null, k, false, null, a), null, `${label} ${JSON.stringify(a)}`);
+});
 
 test("callerFacts gives a person's-surface label nothing without the ancestry measurement, nothing from under a model, and person facts only from a measured outsider", () => {
   for (const label of LABELS) {
@@ -65,12 +70,12 @@ test("on a real daemon: a process under a fake claude sending each person label 
   // the control: the same label from a plain process (this test hosting vyred is the one seam) is the person's
   const js = path.join(dir, "person.mjs");
   fs.writeFileSync(js, `import http from "node:http";
-const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.who", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "deck" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
+const req = http.request({ socketPath: ${JSON.stringify(d.paths.socket)}, path: "/v1/tools/probe.who", method: "POST", headers: { "content-type": "application/json", "content-length": 2, "x-vyre-caller": "cli" } }, res => { res.resume(); res.on("end", () => process.exit(0)); });
 req.end("{}");`);
   globalThis.__who = [];
   setPeerHosting(true);
   try { await new Promise(r => spawn(process.execPath, [js], { stdio: "ignore" }).on("close", r)); } finally { setPeerHosting(false); }
-  assert.deepEqual(globalThis.__who.map((/** @type {any} */ w) => w.kind), ["person"], "the person's own deck label still gets the person chain");
+  assert.deepEqual(globalThis.__who.map((/** @type {any} */ w) => w.kind), ["person"], "the person's own cli label still gets the person chain");
 });
 
 test("the development stand-in makes a surface label that is not inside a model the owner; a model's shell and a release build never are", () => {

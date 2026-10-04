@@ -70,7 +70,9 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   if (!policy.caller && caller === "capsule") return capsuleVerified === true ? { kind: "socket", surface: "capsule", uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: true } : null;
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
   // `above`): from under a Claude or a thread it is a model's (the builder then makes an agent chain, never a person), and with no measurement, or one that could not read the ancestry, there are none.
-  if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) {
+  // Only `cli` and `local` are what a person at a terminal sends. `deck` and `mobile` reach a daemon through their own listeners (which set policy.caller), so on the socket they are claims nobody legitimate
+  // makes: they get no person facts whatever the ancestry says (team-lead, 4 Oct: a bare deck label with no person session is refused every time, not only when the walk says outside).
+  if (!policy.caller && ["cli", "local"].includes(caller)) {
     // Inside a model: facts that make an agent chain. Anything but a DEFINITE outside (an unreadable table, a named server above such as tmux or ssh, a `docker exec`, no peer read) gives none: that call is a person only with a person session (LB-2).
     if (!ancestry || typeof ancestry.inside !== "boolean") return null;
     if (!ancestry.inside && ancestry.outside !== true) return null;
@@ -684,7 +686,8 @@ export async function asTaken(caller, socket, registry, thread, deps) {
     }));
     v = mine;
     taken.set(socket, mine);
-    mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+    // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": it is logged, never a person, and asked again on the next call.
+    mine.then(a => { if (!a.definite) { try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
   return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside, server: a.server };

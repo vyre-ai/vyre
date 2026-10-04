@@ -10,7 +10,8 @@ import { canReadPeers } from "../core/daemon/peer.js";
 
 const reg = { call: async () => ({ data: { pids: [], pgids: [], sids: [] } }), deps: {} };
 const k = { id: { owner: "per_" + "a".repeat(26) } };
-const LABELS = ["cli", "local", "deck", "mobile"];
+const LABELS = ["cli", "local"];
+const CLAIMS = ["deck", "mobile"];
 /** A fresh socket per measurement (asTaken caches per socket). */
 const measure = (/** @type {string} */ label, /** @type {any} */ result, /** @type {number | null} */ pid = 4242) => asTaken(label, /** @type {any} */ ({}), reg, undefined, { peerPid: async () => pid, processTable: () => new Map(), insideClaude: () => result, delayMs: 0 });
 const factsOf = (/** @type {string} */ label, /** @type {any} */ shell) => callerFacts(shell.caller, {}, null, k, false, null, { inside: shell.model === true, outside: shell.outside === true });
