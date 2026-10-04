@@ -381,6 +381,8 @@ async function startLocked(opts, root, p, release) {
     }
     registry.deps.moduleHost = kernel.moduleHost;
     registry.deps.kernelFor = kernel.kernelFor;
+    // The relay's peer stream for a paired device (the one remote path to this home's kernel): the relay module reads it from its ctx, per channel, so a door set after it started is used from the next channel on.
+    { const { createPeerDoor } = await import("./peer-door.js"); const door = createPeerDoor({ kernel, registry, people, callerFacts, log }); registry.deps.peerDoor = () => door; }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
     if (presence && typeof kernel.kernelFor === "function") {
       const gateKernel = kernel.kernelFor({ name: "presence-gate" });
