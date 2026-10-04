@@ -177,6 +177,17 @@ test("PA-1: creating a space is all or nothing in the kernel's registry too: a r
   assert.ok(!cancelled.error, JSON.stringify(cancelled.error));
   assert.deepEqual([hostedCount(), folders()], base, "cancel took the kernel's Space back");
   assert.ok(!(await deck("spaces.list")).data.some((/** @type {any} */ x) => x.id === wid), "and it is not listed");
+  // a creation whose kernel Space was taken back (a failed step retires it) is hosted again under the SAME id when the person resumes it, and finishes
+  const w2 = await deck("spaces.create", { name: "juno", home: { kind: "this-computer" } });
+  assert.ok(!w2.error, JSON.stringify(w2.error));
+  const jid = w2.data.space;
+  assert.deepEqual(await d.kernel.spaces.retire(jid), { retired: true });
+  assert.ok(!d.kernel.spaces.hosts(jid), "taken back");
+  const back = await deck("spaces.resume", { space: jid, confirmThisComputer: true });
+  assert.ok(!back.error, JSON.stringify(back.error));
+  assert.equal(back.data.status, "done", JSON.stringify(back.data));
+  assert.ok(d.kernel.spaces.hosts(jid), "hosted again under the same id");
+  assert.equal(back.data.space, jid);
   // the finished space still works
   assert.ok(!(await deck("spaces.get", { space: first.data.space })).error);
 });
