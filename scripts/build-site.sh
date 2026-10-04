@@ -154,6 +154,9 @@ if [ -f "$src/scripts/modules-manifest.mjs" ] && [ -f "$src/kernel/modules/relea
   # The web app's files (lib/app-build.js): the daemon serves a file of /app/ only when it matches this list, so it is signed with the rest (MW-5). No apps/app/dist, no list.
   if [ -f "$src/scripts/appbuild-manifest.mjs" ]; then node "$src/scripts/appbuild-manifest.mjs" "$unpacked" --release "$ver" --counter "$(node "$src/scripts/release-counter.mjs" "$ver")" --out "$out/appbuild.json" || exit 1; fi
   rm -rf "$unpacked"
+  # shell.json carries both lists as exact text (lib/release-shell.js): the one file every updater since 0.2 already fetches, verifies and publishes, so a server an OLD updater updates still receives
+  # the module list. modules.json and appbuild.json stay in the release and in SHA256SUMS: the embedded text must hash to those lines.
+  node "$src/scripts/shell-hashes.mjs" "$out" "$ver" --modules "$out/modules.json" $( [ -f "$out/appbuild.json" ] && echo "--appbuild $out/appbuild.json" ) || exit 1
 fi
 
 (

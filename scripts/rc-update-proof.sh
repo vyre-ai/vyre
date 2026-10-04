@@ -89,7 +89,10 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   sudo sh -c 'printf "update\n" >/var/lib/vyre-update/request/request' 2>/dev/null || true
   sudo env VYRE_DIR=/srv/vyre VYRE_BOX_URL=http://127.0.0.1:18182/ VYRE_RELEASES_API= "VYRE_RELEASE_KEY=$NEWPUB" VYRE_UPDATE_MIN_GAP=0 VYRE_UPDATE_WAIT=300 "$(command -v vyre)" update-from-request >"$WORK/update.log" 2>&1 || { tail -40 "$WORK/update.log"; fail "$1: the update to $NEWV failed"; }
   ready || fail "$1: the candidate did not come up after the update"
-  sleep 15
+  # A server an OLD updater updated starts the new image before that updater publishes the release's files: the daemon says "Finishing the update", takes the module list from the published
+  # shell.json when it arrives and restarts once by itself. Wait for that (bounded), never for a manual restart.
+  i=0; until vyre status 2>/dev/null | grep -q '[1-9][0-9]* modules running'; do i=$((i + 1)); [ $i -lt 75 ] || { vyre status | tail -4; fail "$1: the box never started its modules by itself after the update"; }; sleep 2; done
+  sleep 5
   [ "$(hostv)" = "$NEWV" ] || fail "$1: after the update the box holds $(hostv), not $NEWV"
   docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || fail "$1: after the update the kernel is not on (VYRE_KERNEL=1 is missing)"
   case "$2" in
