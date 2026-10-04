@@ -29,6 +29,10 @@ test("own-server session: every finished turn is sealed into the home's checkpoi
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const finished = async (/** @type {string} */ id, /** @type {number} */ n) => until(async () => (await d.registry.call("threads.get", { thread: id, limit: 500 }, "cli")).data.events.filter((/** @type {any} */ e) => e.type === "thread.finished").length >= n, `turn ${n}`);
+  // the daemon supplies ownServer to the runner module through the kernel's runnerHost: a merge that drops it fails here, not silently
+  const rh = d.kernel.kernelFor({ name: "runner" }).runnerHost();
+  assert.ok(rh.ownServer && typeof rh.ownServer.resolve === "function" && typeof rh.ownServer.port === "function", "the daemon supplies ports.ownServer to the runner");
+  assert.equal(typeof rh.identity, "function", "and runner's own { member, identity() } stands beside it");
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   await finished(r.data.id, 1);
