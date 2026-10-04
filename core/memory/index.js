@@ -30,7 +30,7 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
-import { scanRows, ledgerScan } from "./sealed.js";
+import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -1172,8 +1172,19 @@ export default {
     ctx.tool("memory.remember", {
       description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
       input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, extra = {}) => {
+        const { caller } = extra;
         await personalOnly(input, caller, "memory.remember");
+        // HD-8: a session or an agent is a model, and a model's words are not the person's. A prompt-injected session could plant "my accountant's account is X" at the
+        // person's own confidence 0.95. Only the person at a surface (or a device signed in) tells memory outright; anything else is kept as an untrusted, attributed write in the
+        // "you" room: found by an answer and labelled, never in the profile, the brief or a prompt line, never read as the person's instruction.
+        const w = whoNow();
+        if (!personWrites(caller, extra)) {
+          const txt = scrubbed(String(input.text ?? "").replace(/\s+/g, " ").trim().slice(0, 500));
+          if (!txt) throw Object.assign(new Error("remember needs the fact to keep, as text"), { code: "bad_input" });
+          const added = writes.add({ kind: "fact", project: "you", text: txt, subject: null, source_ref: null, untrusted: true, from: { kind: "agent", name: w && w.agent ? String(w.agent) : "session", provider: null, thread: null, seq: null } });
+          return { id: added.id, text: txt, facts: [], pending: true, note: "Kept as something a session said, not as your words: it stays out of your profile and every prompt until you tell memory yourself." };
+        }
         if (running) await running.catch(() => {});
         const r = personal.remember(String(input.text ?? ""), { room: typeof input.room === "string" && input.room ? input.room : null, who: caller ? plain(caller, 60) : null });
         ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
