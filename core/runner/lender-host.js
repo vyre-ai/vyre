@@ -17,17 +17,18 @@ export function createLenderHost(o) {
   const client = createLentClient({ invoke: o.invoke, device: o.deviceId, deviceKey: o.deviceKey });
   const pollMs = Math.max(60_000, o.pollMs || 60_000);
   let state = { spaceAllows: false, memberAccepts: false };
+  let cap = o.lenderCap;   // the lender's own choice, from the Offer the person accepted at the home (lent.status), or what the daemon was given
   const told = new Set();
   let timer = null;
   const refresh = async () => {
     let next;
     try { next = await o.invoke("lent.status", [{ device_key: o.deviceKey }]); } catch { return; }   // an unreachable home changes nothing; the lease's own expiry covers a long absence
-    const was = state; state = { spaceAllows: Boolean(next.spaceAllows), memberAccepts: Boolean(next.memberAccepts) };
+    cap = next.lenderCap || o.lenderCap; const was = state; state = { spaceAllows: Boolean(next.spaceAllows), memberAccepts: Boolean(next.memberAccepts) };
     if ((was.spaceAllows && !state.spaceAllows) || (was.memberAccepts && !state.memberAccepts)) for (const fn of told) { try { fn({ device: o.deviceId, reason: "withdrawn" }); } catch {} }
   };
   const ports = {
     device: o.deviceId,
-    ...(o.lenderCap ? { lenderCap: o.lenderCap } : {}),
+    get lenderCap() { return cap; },
     vault: {
       lease: async a => { const r = await client.vault.lease(a); await refresh(); return r; },
       renew: async a => { const r = await client.vault.renew(a); await refresh(); return r; },

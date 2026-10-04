@@ -479,11 +479,12 @@ export function createGrantsStore(cfg) {
     async offer(chain, o, opt = {}) {
       const issuer = person(chain);
       if (!o || !["space_allows", "member_accepts"].includes(o.side) || typeof o.member !== "string" || (o.side === "member_accepts" && (typeof o.device !== "string" || !o.device || typeof o.device_key !== "string" || !o.device_key || o.device_key.length > 200)) || (o.device != null && typeof o.device !== "string") || (o.device_key !== undefined && (typeof o.device_key !== "string" || o.device_key.length > 200))) throw new KernelError("bad_input", "an offer needs a side, a member and (to accept) one of the member's computers with its key");
+      if (o.network_cap !== undefined && (o.side !== "member_accepts" || !["provider", "internet"].includes(o.network_cap))) throw new KernelError("bad_input", "the lender's network cap is provider or internet, on the member's own acceptance");
       const d = await gate(chain, "grants.offer", urn("offer"), o, opt.presence);
       const m = { kind: "person", id: o.member, space: cfg.space };
       if (!memberOk(m)) throw new KernelError("not_found", "no such member");
       if (o.side === "space_allows" ? !isAdmin(issuer) : issuer.id !== o.member) throw new KernelError("not_allowed", o.side === "space_allows" ? "only an owner or an admin lets the Space's work run on a member's computer" : "only the member accepts work on their own computer");
-      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, device_key: o.device_key ?? null, status: "active", made_by: issuer.id, at: clock() });
+      const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side: o.side, offer: "compute", member: o.member, device: o.device ?? null, device_key: o.device_key ?? null, ...(o.side === "member_accepts" && o.network_cap ? { network_cap: o.network_cap } : {}), status: "active", made_by: issuer.id, at: clock() });
       offers.set(rec.id, rec);
       await note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
       return rec;
@@ -508,25 +509,31 @@ export function createGrantsStore(cfg) {
      * Lend one computer to this Space in ONE act (the first lend of a device, ruled 5 Oct): the Space's side (only when the caller is an owner or admin) and the member's own side, bound to the
      * computer's key, made under ONE presence proof that is bound to this compound input (member, device, key; the sides made follow from the caller's role). The proof covers nothing else and is spent
      * once. Withdrawing is `unlend`, which needs only the live session.
-     * @param {any} chain @param {{ member: string, device: string, device_key: string }} o @param {{ presence?: any }} [opt]
+     * @param {any} chain @param {{ member: string, device: string, device_key: string, network_cap?: "provider" | "internet" | null }} o @param {{ presence?: any }} [opt]
      * @returns {Promise<{ offers: any[] }>}
      */
     async lend(chain, o, opt = {}) {
       const issuer = person(chain);
       if (!o || typeof o.member !== "string" || typeof o.device !== "string" || !o.device || o.device.length > 200 || typeof o.device_key !== "string" || !o.device_key || o.device_key.length > 200) throw new KernelError("bad_input", "lending needs a member, a computer and its key");
       if (issuer.id !== o.member) throw new KernelError("not_allowed", "only the member lends their own computer");
+      // The lender's network limit is part of what the member signs: stated as `provider` or `internet`, or NOT stated (null), and the proof binds exactly that (reviewer-2 CAP-1).
+      if (o.network_cap !== undefined && o.network_cap !== null && !["provider", "internet"].includes(o.network_cap)) throw new KernelError("bad_input", "the lender's network limit is provider or internet");
+      const cap = o.network_cap ?? null;
       const both = isAdmin(issuer);
+      // A computer already lent with another limit is not silently kept at the old one: the member stops lending it and lends it again with the new limit, under a new proof (CAP-3).
+      { const had = [...offers.values()].find(x => x.status === "active" && x.side === "member_accepts" && x.member === o.member && x.device === o.device);
+        if (had && (had.network_cap ?? null) !== cap) throw new KernelError("not_allowed", "this computer is already lent with a different network limit: stop lending it, then lend it again with the new limit"); }
       // The member's own earlier lend of this very computer that THEY ended is still their grant: turning it on again takes the live session, not a fresh proof. Anything else that ended it (an owner's off, a
       // removal, a role change) leaves no such record, so the next lend is a first grant and takes the proof again.
       const prior = [...offers.values()].filter(x => x.side === "member_accepts" && x.status === "revoked" && x.member === o.member && x.device === o.device && x.device_key === o.device_key).sort((a, b) => (b.revoked_at || 0) - (a.revoked_at || 0))[0];
       const resume = Boolean(prior && prior.ended_by === issuer.id);
-      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key } }, opt.presence);
+      const d = await gate(chain, resume ? "grants.unoffer" : "grants.offer", urn("offer", "lend"), { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: cap } }, opt.presence);
       if (!memberOk({ kind: "person", id: o.member, space: cfg.space })) throw new KernelError("not_found", "no such member");
       /** @type {any[]} */ const made = [];
       for (const side of both ? ["space_allows", "member_accepts"] : ["member_accepts"]) {
         const have = [...offers.values()].find(x => x.status === "active" && x.side === side && x.member === o.member && x.device === o.device);
         if (have) { made.push(have); continue; }
-        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, status: "active", made_by: issuer.id, at: clock() });
+        const rec = freeze({ id: `of_${mintUuid(clock())}`, space: cfg.space, side, offer: "compute", member: o.member, device: o.device, device_key: side === "member_accepts" ? o.device_key : null, ...(side === "member_accepts" && cap ? { network_cap: cap } : {}), status: "active", made_by: issuer.id, at: clock() });
         offers.set(rec.id, rec);
         await note(chain, "offer.created", urn("offer", rec.id), { offer: rec }, d.decision);
         made.push(rec);
@@ -562,6 +569,13 @@ export function createGrantsStore(cfg) {
       const spaceAllows = memberOk({ kind: "person", id: q.member, space: cfg.space }) && [...offers.values()].some(o => live(o) && o.side === "space_allows" && (o.device === null || (o.device === q.device && keyOk(o))));
       const memberAccepts = [...offers.values()].some(o => live(o) && o.side === "member_accepts" && o.device === q.device && keyOk(o));
       return { spaceAllows, memberAccepts };
+    },
+    /** What the lender allows this member's computer to reach (`provider` or `internet`), from the member's own active acceptance; undefined when the acceptance names none (the Space's choice stands). */
+    capOf(/** @type {{ member: string, device: string }} */ q) {
+      // The tightest limit across every live acceptance for that computer: `provider` is tighter than `internet`, and an acceptance that states none never loosens one that does (CAP-2).
+      let cap;
+      for (const o of offers.values()) if (o.status === "active" && o.side === "member_accepts" && o.member === q.member && o.device === q.device) { if (o.network_cap === "provider") return "provider"; if (o.network_cap === "internet") cap = "internet"; }
+      return cap;
     },
     /** The active offer record for a side, member and computer (`device` null = the Space's any-computer offer), or null. Sync; it reads the store. */
     find(/** @type {{ side: "space_allows" | "member_accepts", member: string, device?: string | null }} */ q) {
