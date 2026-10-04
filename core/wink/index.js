@@ -213,7 +213,7 @@ export function createWink(inject = {}) {
       if (!t || t.error) { writeOffer(o.id, "closed", { why: "relay" }); throw fail("unavailable", relayWords(t && t.error)); }
       carried.delete(o.id);
       writeOffer(o.id, "joining", { pick: null });
-      if (phoneFlow) pairing.phone.codeSeed(seed, presence);
+      if (phoneFlow) pairing.phone.codeSeed(seed, { ...(presence || {}), keyId: (presence && presence.keyId) || `ack:${o.id}` }); // the owner's typed-back ack is the confirmation the paired session is granted on
       ctx.events.emit("wink.confirmed", { offer: o.id });
       return { ok: true };
     };
