@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { start } from "../core/daemon/index.js";
+import { start, callerFacts } from "../core/daemon/index.js";
 import { seams as linkSeams } from "../core/link/index.js";
 import { seams as fileSeams } from "../core/files/index.js";
 import { writeTranscripts } from "./fixtures/corpus.js";
@@ -121,8 +121,16 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
     const failed = d.registry.status().filter(m => ["link", "files"].includes(m.name) && m.state !== "running");
     assert.deepEqual(failed, [], `${n}: link and files are running`);
   }
-  const macCall = (tool, input = {}, caller = "cli", meta = {}) => mac.registry.call(tool, input, caller, meta);
-  const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, meta);
+  // With the kernel on, a call is the person's only by the facts the daemon's listener proves, never by its label (MH-1, LB-1): this stands in for the listener, for the person's own surfaces and for the
+  // owner's tailnet device, so these tests keep saying who is calling in one word.
+  const factsFor = (/** @type {any} */ d, /** @type {string} */ caller, /** @type {any} */ meta) => {
+    if (!d.kernel || (meta && meta.kernelFacts)) return meta;
+    if (["cli", "deck", "capsule"].includes(caller)) return { ...meta, kernelFacts: { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: false, capsule_verified: caller === "capsule" } };
+    if (caller.startsWith("tailnet:") && meta && meta.peer) { const f = callerFacts(caller, { caller, peer: meta.peer }, null, d.kernel, false, null); return f ? { ...meta, kernelFacts: f } : meta; }
+    return meta;
+  };
+  const macCall = (tool, input = {}, caller = "cli", meta = {}) => mac.registry.call(tool, input, caller, factsFor(mac, caller, meta));
+  const boxCall = (tool, input = {}, caller = "cli", meta = {}) => box.registry.call(tool, input, caller, factsFor(box, caller, meta));
   let code = null;
   const find = (await macCall("link.find")).data;
   assert.deepEqual(find.boxes.map(b => b.node), ["test-box"], "only the node that is the box is offered");
