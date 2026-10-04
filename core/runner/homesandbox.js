@@ -131,10 +131,12 @@ export function homeSeatbelt(o) {
     ...[...new Set(ok.flatMap(ancestors))].map(d => `(allow file-read-metadata (literal ${q(d)}))`),
     // The protected places are denied AGAIN after the allows, so no allowed folder can re-open them.
     ...[v, ...SECRET_DIRS.map(d => path.join(h, d))].map(d => `(deny file* (subpath ${q(d)}))`),
+    // (Name lookup stays allowed here, unlike the lent profile: a home session reaches its provider by name, and without the DNS services the real claude
+    // cannot resolve api.anthropic.com. Hosted Mac run 37165284079, ENOTFOUND.)
     // The way into other processes of the same user: their arguments and environment, signals, and the services that hold the
     // pasteboard, the keychain, Apple events and the window server (the same list the lent-computer profile denies).
     "(deny signal)", "(allow signal (target self) (target children))", "(deny process-info* (target others))", '(deny sysctl-read (sysctl-name "kern.procargs2"))',
-    '(deny mach-lookup (global-name "com.apple.dnssd.service") (global-name "com.apple.SystemConfiguration.DNSConfiguration") (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
+    '(deny mach-lookup (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (global-name "com.apple.secd") (global-name "com.apple.windowserver.active") (global-name "com.apple.lsd.open") (global-name "com.apple.coreservices.launchservicesd"))',
     `(allow network-outbound (remote unix-socket (path-literal ${q(sock)})))`,
     `(allow file-read-metadata (literal ${q(sock)}))`,
   ].join("\n") + "\n";
@@ -208,7 +210,7 @@ const conn=(t)=>new Promise(res=>{const s=typeof t==="number"?net.connect(t,"127
  // The connects run together: a refusal is instant, and a connect that would succeed does so at once, so a short timeout loses nothing.
  const [a,b,c,...ports]=await Promise.all([conn(P.personSocket),conn(P.otherSocket),conn(P.ownSocket),...P.daemonPorts.map(conn)]);
  out.personSocket=a;out.otherSocket=b;out.ownSocket=c;out.daemonPorts=ports;
- out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error")}}
+ out.writes=[];for(const d of P.writable){try{fs.mkdirSync(d,{recursive:true});const f=d+"/.vyre-selftest";fs.writeFileSync(f,"x");fs.readFileSync(f);fs.rmSync(f);out.writes.push("ok")}catch(e){out.writes.push(e.code||"error");(out.writeDetail=out.writeDetail||[]).push([e.code,e.syscall,e.path].join(" "))}}
  out.hosts=[];for(const h of P.hosts){const [host,port]=h.split(":");if(P.proxyPort){out.hosts.push(await new Promise(res=>{const s=net.connect(P.proxyPort,"127.0.0.1");let d=false,b="";const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>s.write("CONNECT "+host+":"+(port||443)+" HTTP/1.1\\r\\nHost: "+host+"\\r\\nProxy-Authorization: Basic "+Buffer.from("vyre:"+P.proxyToken).toString("base64")+"\\r\\n\\r\\n"));s.on("data",x=>{b+=x;if(b.includes("\\r\\n"))f(/ 200 /.test(b.split("\\r\\n")[0])?"connected":"refused")});s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}));continue}out.hosts.push(await new Promise(res=>{const s=net.connect(Number(port||443),host);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),4000)}))}
  out.noWrite=[];for(const d of (P.mustNotWrite||[])){try{fs.writeFileSync(d+"/.vyre-write-probe","x");fs.rmSync(d+"/.vyre-write-probe",{force:true});out.noWrite.push("WROTE")}catch(e){out.noWrite.push(e.code||"error")}}
  out.addrs=[];for(const [a,p] of (P.addrPorts||[])){out.addrs.push(await new Promise(res=>{const s=net.connect(p,a);let d=false;const f=v=>{if(!d){d=true;try{s.destroy()}catch{}res(v)}};s.on("connect",()=>f("connected"));s.on("error",e=>f(e.code||"error"));setTimeout(()=>f("timeout"),800)}))}
@@ -293,7 +295,7 @@ export async function selfTest(o) {
   if (res.vyreHome === "LISTED") failures.push("the Vyre home can be listed");
   if (res.ownSocket !== "connected") failures.push(`the session's own socket does not work (${res.ownSocket})`);
   // The other half of the proof: the provider's agent can still start and sign in.
-  (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w})`); });
+  (res.writes || []).forEach((w, i) => { if (w !== "ok") failures.push(`the agent cannot use ${probes.writable[i]} (${w}${res.writeDetail?.[i] ? ": " + res.writeDetail[i] : ""})`); });
   (res.hosts || []).forEach((h, i) => { if (h !== "connected") failures.push(`the agent cannot reach ${probes.hosts[i]} (${h})`); });
   if (agent && agent.code !== 0) failures.push(`the agent does not start inside the sandbox (exit ${agent.code}${agent.e2 ? ": " + agent.e2.trim().slice(0, 120) : ""})`);
   return { ok: failures.length === 0, failures, results: res, timings: { staleMs, probeMs } };
