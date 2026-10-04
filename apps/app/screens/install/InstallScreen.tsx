@@ -19,7 +19,9 @@ import { readProgress, writeProgress } from "../../src/state/setup-progress";
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
 import { ConnectClaude } from "../settings/ConnectClaude";
-import { addThisDevice, hadIdentity, recoverIdentity } from "../../src/identity/restore";
+import { hadIdentity, recoverIdentity } from "../../src/identity/restore";
+import { addDeviceToName, addSay } from "../../src/identity/add-device";
+import { payloadOf } from "../devices/real.js";
 import { recoveryKeyOptions } from "../../src/keys";
 import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
@@ -85,6 +87,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // A Mac's first run chooses where Vyre runs before the space is named; set when it did.
   const [macFlow, setMacFlow] = useState(false);
   const [who, setWho] = useState("team");
+  // Adding this device to a name by its long code: the three words this device derived, shown for the person to check on the other device.
+  const [addWords, setAddWords] = useState("");
   const [name, setName] = useState("");
   const [spaceName, setSpaceName] = useState(DATA.defaultSpaceName);
   const [addr, setAddr] = useState<string | null>(null);
@@ -135,6 +139,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
   const back = !first && step === startStep(start) ? null : backOf(step, { vps, have: !MOCK && !claimBlocked(), welcome: first && !lostKey, browser: dk === "web" && !canClaim, macFlow });
   // The empty states open Add your phone and Connect: when they end the person is back on Now, not on Spaces.
+  const startAdd = (payload: string) => {
+    setWrong(""); setAddWords(""); setStep("adding");
+    void addDeviceToName({ payload, deviceLabel: device, onWords: setAddWords })
+      .then((r) => { noId.current = false; setName(r.name); setStep(invite ? "invite" : "spaces"); })
+      .catch((e) => { setWrong(addSay((e as { code?: string }).code)); setStep("scan"); });
+  };
   const finish = () => router.replace((first || start === "phone" || start === "connect" ? "/u/now" : "/u/spaces") as never);
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
@@ -318,7 +328,16 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title={MOCK ? "Scan from your other device" : HAVE.scanTitle} sub={MOCK ? "Open Vyre on a device that has your name and scan this, or paste the long code on it." : HAVE.scanLine}>
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { try { setSession(claimBlocked() ? openPairing(c) : addThisDevice(c, { deviceLabel: device })); setStep("scanwords"); } catch (e) { setWrong(recoverRefusal((e as { code?: string }).code)); } }} />}
+        {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <>
+          <PairEntry onCode={(c: LongCode) => { if (claimBlocked()) { setSession(openPairing(c)); setStep("scanwords"); return; } startAdd(payloadOf(c)); }} />
+          {claimBlocked() ? null : <TypeCode redeem={(code, onAck) => addDeviceToName({ code, deviceLabel: device, onAck }).then((r) => { noId.current = false; setName(r.name); return {}; })} onDone={() => setStep(invite ? "invite" : "spaces")} />}
+        </>}
+      </Page>
+    );
+  } else if (step === "adding") {
+    body = (
+      <Page title="Check the three words" sub="Say yes on your other device only if it shows the same three words.">
+        {addWords ? <Card className="items-center"><Text mono strong size="title" className="text-center">{addWords}</Text></Card> : <Text tone="muted">Reaching your other device.</Text>}
       </Page>
     );
   } else if (step === "scanwords") {
