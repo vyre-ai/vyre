@@ -282,6 +282,8 @@ export default {
       const current = STEPS.find(k => steps[k] === "todo") || null;
       // The signed-in AI account's own display name, to prefill the person's name (editable; null when it says none).
       const accountName = await aiAccount().then(a => a.name).catch(() => null);
+      // The sign-in and owner-claim links are the person's: a model session that reads the status is not handed them.
+      if (!personOrPage(caller)) { tailscale.loginUrl = null; tailscale.claimUrl = null; }
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       // can: what this machine is actually able to do, for launch's cards to gate on rather than
       // guess from role/machine. relayJoin is false on darwin until vyre-core exists (see
@@ -384,7 +386,7 @@ export default {
     }
 
     ctx.tool("onboard.status", {
-      effect: "read", callers: ONBOARD_CALLERS, // read, but it carries the Tailscale sign-in link and the owner-claim link while setup is open
+      effect: "read", // a read open to every caller: the body keeps the person's name and the sign-in and claim links from a model
       description: "Where the onboarding stands: every step's state and what it needs.",
       input: obj(),
       run: async (_, { caller }) => status(caller),
@@ -761,7 +763,8 @@ export default {
     }
 
     ctx.tool("onboard.setup", {
-      effect: "write", callers: ONBOARD_CALLERS,
+      // Reading the step list is open to a model session (the name stays out of it); skip, unskip and pass check personOnly in the body.
+      effect: "write", callers: [...ONBOARD_CALLERS, "mcp", "harness"],
       description: "The setup step list the box holds: the ten steps in order, each done, current, skipped or todo, with the current step and whether setup is finished. skip puts one of ai, phone, computers or history aside to finish later (it stays listed as skipped), unskip takes it back, pass says the person has been through history. It never completes a step the box can see for itself.",
       input: obj({ skip: { type: "string", enum: [...SKIPPABLE] }, unskip: { type: "string", enum: [...SKIPPABLE] }, pass: { type: "string", enum: [...PASSABLE] } }),
       run: async (input, { caller }) => {
