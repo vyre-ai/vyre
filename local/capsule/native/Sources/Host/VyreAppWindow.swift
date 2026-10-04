@@ -269,6 +269,13 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
         return path
     }
 
+    /// The path and query to send to vyred for a page's request, or nil to refuse it. It works on the percent-encoded path (url.path is decoded, so %2e%2e would already read
+    /// as ".."), cleans it once, requires it to be the app's or the API's, and returns the same string it checked with the query appended.
+    static func forwardPath(_ url: URL) -> String? {
+        guard url.host == "box", let comps = URLComponents(url: url, resolvingAgainstBaseURL: false), let clean = cleanPath(comps.percentEncodedPath), allowed(clean) else { return nil }
+        return comps.percentEncodedQuery.map { clean + "?" + $0 } ?? clean
+    }
+
     /// What the page may reach: the app's own files and vyred's API.
     static func allowed(_ clean: String) -> Bool { clean == "/app" || clean.hasPrefix("/app/") || clean.hasPrefix("/v1/") }
 
@@ -279,6 +286,12 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
         guard isOurs(webView), let url = task.request.url, url.host == "box", !socket.isEmpty else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
+        // What is forwarded is exactly what was checked (forwardPath below); anything else is a 404 and never reaches the socket.
+        guard let path = Self.forwardPath(url) else {
+            task.didReceive(HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: ["content-type": "text/plain"]) ?? URLResponse(url: url, mimeType: nil, expectedContentLength: 0, textEncodingName: nil))
+            task.didFinish()
+            return
+        }
         let method = task.request.httpMethod ?? "GET"
         let body = BoxSchemeHandler.body(of: task.request)
         var headers: [String: String] = [:]

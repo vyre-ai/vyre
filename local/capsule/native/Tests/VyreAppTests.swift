@@ -41,6 +41,16 @@ let vyreAppSuite = Suite("vyre app window") { t in
         t.ok(!BoxSchemeHandler.allowed("/") && !BoxSchemeHandler.allowed("/theme.css") && !BoxSchemeHandler.allowed("/application"))
     }
 
+    t.test("the handler forwards exactly the checked path, and a traversal never reaches the socket") {
+        func f(_ s: String) -> String? { URL(string: s).flatMap { BoxSchemeHandler.forwardPath($0) } }
+        t.eq(f("vyreapp://box/v1/tools/chats.list?x=1&y=2"), "/v1/tools/chats.list?x=1&y=2")
+        t.eq(f("vyreapp://box/app/index.html"), "/app/index.html")
+        for bad in ["vyreapp://box/app/../v1/x", "vyreapp://box/app/%2e%2e/v1/x", "vyreapp://box/v1/%2E%2E/v1/x", "vyreapp://box/v1/streams/%2e%2e/tools/x", "vyreapp://box/app/a%2Fb",
+                    "vyreapp://box//v1/x", "vyreapp://box/", "vyreapp://box/theme.css", "vyreapp://other/app/x"] {
+            t.eq(f(bad), nil, bad)
+        }
+    }
+
     t.test("the page's bridge names every call the window answers") {
         for op in ["presence", "notify", "_reply", "_command", "onCommand", "socket", "_ws", "ws.open", "ws.send", "ws.close"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
     }
