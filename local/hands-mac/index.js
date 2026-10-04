@@ -37,7 +37,9 @@ const grantKey = (caller, meta) => {
   // The name alone is not enough: a module someone adds under a free name (apps, chrome) must not
   // pass. The loader sets firstParty only for modules the repo ships (reviewer-2).
   if (FIRST_PARTY.test(String(caller)) && meta && meta.firstParty === true) return null;
-  return [...PEOPLE, "mcp"].includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
+  // MH-1 (reviewer-2): an unnamed `mcp` is every model's shell, never the person inside vyred; the person's own Claude Code session holds a grant by name like any agent.
+  if (callerKind(caller) === "mcp") return `caller:mcp`;
+  return PEOPLE.includes(callerKind(caller)) ? null : `caller:${callerKind(caller)}`;
 };
 /** The person's own direct turn, which is what asks for an outward act (asking is approving). */
 const asked = caller => PEOPLE.includes(callerKind(caller)) && !agentClaim(caller);

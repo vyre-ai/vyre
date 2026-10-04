@@ -130,7 +130,7 @@ export async function createRuntime(o = {}) {
     // The module's own caller rules apply here as they do in Vyre: "mcp" is the model, and a tool listed
     // for the person's surfaces is not the model's to call (reviewer-2 M3).
     if (Array.isArray(def.callers) && !def.callers.includes(callerKind(caller))) throw Object.assign(new Error(`${name} is for the person, not for a model`), { code: "denied" });
-    return def.run(input || {}, { caller });
+    return def.run(input || {}, { caller, standalone: true });
   }
 
   /**

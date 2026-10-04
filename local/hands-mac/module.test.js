@@ -32,10 +32,10 @@ test("module: starts in the Registry, registers its tools, and act observes agai
   assert.equal(reg.status().find(m => m.name === "hands")?.state, "running");
   assert.deepEqual(reg.listTools().map(x => x.name).sort(), ["hands.act", "hands.commit", "hands.find", "hands.grant.add", "hands.grant.list", "hands.grant.remove", "hands.indicator", "hands.observe", "hands.pause", "hands.resume", "hands.stop"]);
 
-  const seen = await reg.call("hands.observe", {}, "mcp");
+  const seen = await reg.call("hands.observe", {}, "cli");
   assert.deepEqual(seen.data.elements[0].selector, { role: "AXButton", name: "7", path: "/0/0/7" });
 
-  const r = await reg.call("hands.act", { selector: seen.data.elements[0].selector, kind: "press" }, "mcp");
+  const r = await reg.call("hands.act", { selector: seen.data.elements[0].selector, kind: "press" }, "cli");
   assert.equal(r.data.verified, true, JSON.stringify(r));
   const cmds = f.calls.map(c => c.cmd);
   assert.deepEqual(cmds.slice(cmds.indexOf("act")), ["act", "snap"], "act did not re-observe");
