@@ -372,7 +372,8 @@ async function startLocked(opts, root, p, release) {
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
       let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
       if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
-      const kernelAgent = q.agent && !isAssistant ? q.agent : undefined;
+      // lib/kernel-session names a session for the agent it was started as and a plain session "session" (nobody's assistant), so the home's assistant must be named here as the Space's one assistant actor, not left to a default.
+      const kernelAgent = isAssistant ? "assistant" : (q.agent || undefined);
       const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
