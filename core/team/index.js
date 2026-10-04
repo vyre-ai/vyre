@@ -948,7 +948,7 @@ export default {
     ctx.tool("team.charter.revert", {
       description: "Make an older charter version the current one again, as a new version so the revert can be undone too.",
       input: { type: "object", required: ["version"], properties: { ...charterRef, version: { type: "integer" } } },
-      callers: CHARTER_CALLERS,
+      callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const old = charterRow(db.prepare("SELECT * FROM team_charters WHERE teammate = ? AND version = ?").get(tm.agent, Number(i.version)));
@@ -971,7 +971,7 @@ export default {
     ctx.tool("team.charter.draft", {
       description: "Write (or rewrite) a teammate's charter from what the project already knows: its brief, its role, the project's context and the teammate's notes, plus anything in from (a line or a conversation summary). Saved as a new version, and returned so the person can read and edit it. Nobody has to hand-write what a teammate is.",
       input: { type: "object", properties: { ...charterRef, from: { type: "string" } } },
-      callers: CHARTER_CALLERS,
+      callers: CHARTER_WRITERS,
       run: async (i, meta = {}) => {
         const tm = await charterTarget(i, meta, { write: true });
         const home = await projectHome(tm.project).catch(() => null);

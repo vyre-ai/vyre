@@ -78,8 +78,10 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_ALLOW_REAL_TRANSCRIPTS` | `1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests. | `core/config/dialogs.js` |
+| `VYRE_ANDROID_CERT_SHA256` | Not described yet. | `core/daemon/app.js` |
 | `VYRE_API_BASE_URL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
 | `VYRE_API_MODEL` | Not described yet. | `core/sessions/drivers/openrouter.js` |
+| `VYRE_APPLE_TEAM_ID` | Not described yet. | `core/daemon/app.js` |
 | `VYRE_BACKUP_SKIP_PROJECTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BACKUP_SKIP_TRANSCRIPTS` | Not described yet. | `core/cli/commands/up.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
@@ -122,6 +124,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/daemon/peer.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/sessions/spawn.js`, `core/switchboard/index.js`, `harness/lib/vyre.js`, `local/hands-chrome-mac/native-host/host.js`, `local/hands-chrome-mac/native-host/install.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_KERNEL` | Not described yet. | `core/daemon/index.js` |
+| `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |

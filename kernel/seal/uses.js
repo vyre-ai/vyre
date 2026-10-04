@@ -3,6 +3,8 @@
 // what happened ("used for Gmail, 3 times today") without any value. The ActionDefs below are the vault, Drive and sealing entries of the
 // action registry; the adapters register them with the kernel at install. Contract 6.1, 7.7; invariants 1 and 7.
 
+import crypto from "node:crypto";
+
 /** Registry entries (kernel/contracts/authorize.d.ts ActionDef). `sealed_ok` only where the sealing process runs the step model-free. */
 export const ACTIONS = Object.freeze([
   // A credential's effect is not the vault's risk (R5-4): filling a login is bound to the origin it was lent for, a read-only API call is a read,
@@ -41,8 +43,38 @@ const BAD = /(^|\/)\.{1,2}(\/|$)|%2e|%2f|%5c|%00|\\|[\u0000-\u001f\u007f]|\/\//i
 export function safePath(p) {
   const s = String(p ?? "");
   const winBad = s.split("/").some(x => /[. ]$/.test(x) || /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i.test(x));
-  if (!s || s.startsWith("/") || BAD.test(s) || s.normalize("NFKC") !== s || winBad) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
+  // A segment that starts or ends with whitespace is another name to a Drive read than the one an authorized prefix names (" Clients/A"): refused with the rest.
+  const edgeSpace = s.split("/").some(x => /^\s|\s$/.test(x));
+  if (!s || s.startsWith("/") || BAD.test(s) || s.normalize("NFKC") !== s || winBad || edgeSpace) throw Object.assign(new Error("bad_input"), { code: "bad_input" });
   return s;
+}
+/**
+ * The ONE canonical form of a request path, for every route check (a lent session's route, a Flow's connector, the vault's own rules): parse it as the URL parser will, refuse anything the
+ * parser or a server could read differently (a backslash, a tab, a space or any control character or NUL, an encoded slash, backslash, dot or NUL, an empty segment, dot segments before
+ * or after decoding, a double-encoded percent, a query or fragment, a form NFKC would change), decode percent-encoding exactly ONCE, and return the decoded path. Rules match this form and the
+ * request is sent as exactly this form. Throws `bad_input`; callers answer every refusal alike.
+ * @param {string} raw @returns {string}
+ */
+export function canonicalPath(raw) {
+  const bad = () => Object.assign(new Error("bad_input"), { code: "bad_input" });
+  const s = String(raw ?? "");
+  if (!s.startsWith("/") || /[?#\\\s\u0000-\u001f\u007f]|%(2e|2f|5c|00|25)|\/\//i.test(s)) throw bad();
+  let d;
+  try { d = decodeURIComponent(s); } catch { throw bad(); }
+  if (/[?#\\\s%\u0000-\u001f\u007f]|\/\//.test(d) || d.split("/").some(x => x === "." || x === "..") || d.normalize("NFKC") !== d) throw bad();
+  let seen; try { seen = new URL(`https://x.invalid${s}`).pathname; } catch { throw bad(); }
+  let back; try { back = decodeURIComponent(seen); } catch { throw bad(); }
+  if (back !== d) throw bad();
+  return d;
+}
+/**
+ * The binding of an approval to ONE request (SV-2): a hash of the connector, the method, the canonical path, the query and the body. The held decision carries it, the retry with an
+ * approval passes it back, and the vault recomputes it from the request it is about to send, so an approved id cannot release a different call. Throws `bad_input` on a path that is not canonical.
+ * @param {{ connector: string, method: string, path: string, query?: any, body?: any, headers?: any, upload?: any, saveTo?: any }} r @returns {string}
+ */
+export function requestBind(r) {
+  const canon = v => (v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]` : `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`);
+  return crypto.createHash("sha256").update(canon({ c: String(r.connector), m: String(r.method).toUpperCase(), p: canonicalPath(String(r.path).split(/[?#]/)[0]), q: r.query ?? null, b: r.body === undefined ? null : r.body, h: r.headers ? Object.fromEntries(Object.entries(r.headers).map(([k, v]) => [String(k).toLowerCase(), v])) : null, u: r.upload ?? null, s: r.saveTo ?? null })).digest("base64url");
 }
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
 export function segment(x) { const s = String(x ?? ""); if (!s || /[/\\%]|^\.+$|[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error("bad_input"), { code: "bad_input" }); return s; }
@@ -151,8 +183,8 @@ export function normalizeRoute(r) {
 }
 /** May this route do this? The path is checked as the kernel checks every path (no dot segments, encoded dots or slashes, backslashes). Deny wins, and the default is no. */
 export function routeAllows(def, method, path) {
-  const p = String(path ?? "").split(/[?#]/)[0], m = String(method ?? "").toUpperCase();
-  try { if (!p.startsWith("/")) return false; if (p !== "/") safePath(p.slice(1)); } catch { return false; }
+  const m = String(method ?? "").toUpperCase();
+  let p; try { p = canonicalPath(String(path ?? "").split(/[?#]/)[0]); } catch { return false; }
   if (def.deny.some(d => (d.method === "*" || d.method === m) && atPath(d.path, p))) return false;
   return def.allow.some(a => a.method === m && atPath(a.path, p));
 }

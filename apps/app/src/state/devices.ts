@@ -109,7 +109,7 @@ export function markDenied(): void {
 export async function setTrust(id: string, trusted: boolean): Promise<string | null> {
   const r = await call<{ id: string; trusted: boolean }>("relay.devices.trust", { id, trusted }).catch((e: Error) => ({ error: { code: "offline", message: e.message } }) as const);
   if (r.error) {
-    if (r.error.code === "presence_required") return "The box asks for presence to change trust. Do it from your Mac or phone.";
+    if (r.error.code === "presence_required") return "Your home asks for presence to change trust. Do it from your Mac or phone.";
     return r.error.message || r.error.code;
   }
   const list = get().devices;

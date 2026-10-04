@@ -2,6 +2,7 @@
 // Needs you as data (needs-model.ts): rows from the box's two lists, oldest first, kept live by
 // events, and the cache read back. Loaded through Node's type stripping, so skipped on a Node
 // without it.
+import "../../scripts/test-guard.mjs";
 
 import { test } from "node:test";
 import assert from "node:assert/strict";

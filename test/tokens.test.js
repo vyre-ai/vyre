@@ -92,7 +92,7 @@ test("tokens v2: the CSS has the Deck's names, both schemes, and the phone sizes
     "--fs-caption:", "--lh-display:", "--fs-label:", "--s-1:", "--s-16:", "--r-card:", "--r-sheet:", "--elev-1:", "--elev-3:", "--dur-4:", "--spring:", "--rail-w:", "--row-h:"])
     assert.ok(c.includes(name), name);
   assert.match(c, /--elev-2: 0 1px 0 var\(--edge-top\) inset, 0 8px 24px -8px rgba\(0,0,0,\.6\), 0 2px 6px rgba\(0,0,0,\.35\);/);
-  assert.match(c, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n  :root \{ --fs-body: 16px; --lh-body: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 26px; --fs-page: 28px; --lh-page: 34px; --control: 44px; --control-sm: 36px; --row-h: 64px; \}/);
+  assert.match(c, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n  :root \{ --fs-secondary: 15px; --lh-secondary: 20px; --fs-body: 16px; --lh-body: 22px; --fs-headline: 17px; --lh-headline: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 25px; --fs-page: 28px; --lh-page: 34px; --fs-display: 34px; --lh-display: 41px; --control: 44px; --control-sm: 36px; --row-h: 64px; \}/);
   assert.equal(cssV2(t), c, "stable output");
 });
 
