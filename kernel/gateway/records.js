@@ -8,6 +8,7 @@ import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { createAggregator } from "../store/query.js";
+import { exprNames } from "../expr/expr.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
 import { createIdem } from "../core/idem.js";
@@ -97,7 +98,7 @@ export function createRecords(cfg) {
     if (!def) return new Set();
     const role = roleOfChain(chain);
     // a removed field (`hidden: true`: its data is kept, nothing shows it) is hidden from everyone
-    return new Set(def.fields.filter((/** @type {any} */ f) => f.hidden === true || (f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role)))).map((/** @type {any} */ f) => f.name));
+    return new Set(def.fields.filter((/** @type {any} */ f) => f.hidden === true || (Array.isArray(f.hidden_from) && role !== undefined && f.hidden_from.includes(role)) || (f.kind === "sealed" && f.seal && f.seal.level === "human" && !(role && (f.seal.reveal_roles || []).includes(role)))).map((/** @type {any} */ f) => f.name));
   }
   const limitsOf = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ d) => ({ allow: allowList(d), hidden: (await hiddenFields(chain, type)) || new Set() });
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
@@ -118,6 +119,39 @@ export function createRecords(cfg) {
       }
     }
   }
+  const COMPUTED_KINDS = new Set(["number", "text", "boolean", "date", "datetime"]);
+  const OVER_FNS = new Set(["count", "sum", "min", "max", "avg"]);
+  /** A computed field names its kind, and either an expression over this type's other fields or a total over the records that link to it. */
+  async function checkComputed(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) for (const f of t.fields || []) {
+      if (f.computed === undefined) continue;
+      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}.${f.name} cannot be computed: ${why}`);
+      const c = f.computed;
+      if (!c || typeof c !== "object" || (c.expr === undefined) === (c.over === undefined)) throw bad("give either expr or over");
+      if (!COMPUTED_KINDS.has(f.kind)) throw bad(`a computed field is a ${[...COMPUTED_KINDS].join(", ")} field`);
+      if (c.expr !== undefined) {
+        let tree; try { tree = parseComputed(String(c.expr)); } catch (e) { throw bad(String(/** @type {any} */ (e).message)); }
+        for (const n of exprNames(tree)) {
+          const g = t.fields.find((/** @type {any} */ x) => x.name === n);
+          if (!g) throw bad(`the expression names ${n}, which is not a field of ${t.name}`);
+          if (g.kind === "sealed") throw bad(`${n} is sealed and cannot be used in an expression`);
+          if (g.computed) throw bad(`${n} is computed too: a computed field reads stored fields only`);
+        }
+      } else {
+        const o = c.over;
+        if (!o || typeof o.type !== "string" || typeof o.via !== "string" || !OVER_FNS.has(o.fn) || (o.fn !== "count" && typeof o.field !== "string")) throw bad("over is { type, via, fn: count|sum|min|max|avg, field (not for count) }");
+        let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* checked when the other type is read */ }
+        const other = [...defs, ...(diff.add_types || []), ...(diff.change_types || [])].find((/** @type {any} */ x) => x.name === o.type);
+        if (other) {
+          const via = other.fields.find((/** @type {any} */ x) => x.name === o.via);
+          if (!via || via.kind !== "link" || (via.to !== undefined && via.to !== t.name)) throw bad(`${o.type}.${o.via} must be a link to ${t.name}`);
+          const meas = o.field ? other.fields.find((/** @type {any} */ x) => x.name === o.field.split(".")[0]) : null;
+          if (o.field && !meas) throw bad(`${o.type} has no field ${o.field}`);
+          if (meas && (meas.kind === "sealed" || meas.computed)) throw bad(`${o.field} cannot be measured`);
+        }
+      }
+    }
+  }
   /** The definitions marked as roles. */
   async function roleTypes() {
     try { return (await store.types()).filter((/** @type {any} */ t) => t.role && typeof t.role.link === "string"); } catch (e) { throw mapError(e); }
@@ -129,6 +163,54 @@ export function createRecords(cfg) {
     const link = r.data[t.role.link];
     return { role: t.name, holder: link && link.urn, ...(stage !== undefined ? { stage } : {}), current: !r.deleted_at && !(stage !== undefined && (t.role.ended || []).includes(stage)), record: r };
   };
+
+  /** Computed fields (a field with `computed`): worked out when a record is read, never stored, never written, never filtered on. */
+  const exprFn = () => (cfg.expr === undefined ? defaultExpr : cfg.expr);
+  /** @type {Map<string, any>} */ const parsed = new Map();
+  const parseComputed = (/** @type {string} */ src) => { let n = parsed.get(src); if (!n) { const e = exprFn(); if (!e) throw new KernelError("unavailable", "no evaluator is wired for computed fields"); n = e.parseExpr(src); parsed.set(src, n); } return n; };
+  /**
+   * Add the computed values to shaped records. A computed field is left out for a caller who cannot see everything it is made from: an expression that reads a
+   * field hidden from them (or outside their field limit) shows nothing, and a total over other records counts only what the caller may read.
+   * @param {any} chain @param {string} type @param {{ rec: any, lim: { allow: Set<string> | null, hidden: Set<string> } }[]} items
+   */
+  async function withComputed(chain, type, items) {
+    if (!items.length) return [];
+    let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { return items.map(x => x.rec); }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    const cf = def ? def.fields.filter((/** @type {any} */ f) => f.computed) : [];
+    if (!cf.length) return items.map(x => x.rec);
+    const extra = items.map(() => ({}));
+    for (const f of cf) {
+      const seen = (/** @type {{ allow: Set<string> | null, hidden: Set<string> }} */ lim, /** @type {string} */ n) => !lim.hidden.has(n) && (!lim.allow || lim.allow.has(n));
+      if (f.computed.expr !== undefined) {
+        let tree, names; try { tree = parseComputed(f.computed.expr); names = [...exprNames(tree)]; } catch { continue; }
+        items.forEach((x, i) => { if (seen(x.lim, f.name) && names.every(n => seen(x.lim, n))) { try { /** @type {any} */ (extra[i])[f.name] = exprFn().evalExpr(tree, { values: x.rec.data, now: clock() }) ?? null; } catch { /* a value that cannot be worked out is absent */ } } });
+      } else if (f.computed.over) {
+        const o = f.computed.over;
+        const ok = items.map(x => seen(x.lim, f.name));
+        const urns = items.filter((_, i) => ok[i]).map(x => x.rec.urn);
+        if (!urns.length) continue;
+        let rows;
+        try {
+          const measure = o.fn === "count" && !o.field ? { fn: "count" } : { fn: o.fn, field: o.field };
+          const where = { field: o.via, op: "in", value: urns.map(u => ({ urn: u })) };
+          rows = await api.aggregate(chain, o.type, { filter: o.where ? { and: [o.where, where] } : where, group_by: [o.via], measures: [measure] });
+        } catch { continue; }
+        const key = o.fn === "count" && !o.field ? "count" : `${o.fn}:${o.field}`;
+        const by = new Map(rows.map((/** @type {any} */ r) => [r.group[o.via] && r.group[o.via].urn, r.values[key]]));
+        items.forEach((x, i) => { if (ok[i]) /** @type {any} */ (extra[i])[f.name] = by.has(x.rec.urn) ? by.get(x.rec.urn) : (o.fn === "count" ? 0 : null); });
+      }
+    }
+    return items.map((x, i) => (Object.keys(extra[i]).length ? Object.freeze({ ...x.rec, data: { ...x.rec.data, ...extra[i] } }) : x.rec));
+  }
+  /** A filter, sort, group or measure may not name a computed field: it has no stored value to compare. */
+  async function refuseComputed(/** @type {string} */ type, /** @type {any} */ spec) {
+    const heads = fieldHeads(spec);
+    if (!heads.size) return;
+    let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { return; }
+    const def = defs.find((/** @type {any} */ t) => t.name === type);
+    for (const f of def ? def.fields : []) if (f.computed && heads.has(f.name)) throw new KernelError("bad_input", `${f.name} is computed: it cannot be filtered, sorted, grouped or measured`);
+  }
 
   const isModel = (/** @type {any} */ chain) => hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
 
@@ -214,8 +296,13 @@ export function createRecords(cfg) {
       refuseOutside(lim.allow, input);
       // a removed field takes no new values (its data is kept, and a person can bring the field back)
       let defs; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read"); }
-      const gone = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []).filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
+      const fields = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []);
+      const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
+      for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
+      // a field hidden from the writer's role cannot be written either (it could not even be read back)
+      const role = roleOfChain(chain);
+      for (const f of fields) if (role !== undefined && Array.isArray(f.hidden_from) && f.hidden_from.includes(role) && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("field_not_allowed", `${f.name} is outside what this role may change`);
     }
     let before = null;
     if (getBefore) { try { before = await getBefore(); } catch (e) { throw mapError(e); } }
@@ -289,7 +376,8 @@ export function createRecords(cfg) {
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
       await checkRoles(diff);
       // A removed field is never required (new records could not be written without it); its data stays.
-      const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => f.hidden === true && f.required) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => (f.hidden === true && f.required ? { ...f, required: false } : f)) } : t;
+      await checkComputed(diff);
+      const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
       let res;
       try { res = await store.define(diff); } catch (e) { throw mapError(e); }
@@ -304,15 +392,19 @@ export function createRecords(cfg) {
       try { dec = await gate(chain, "records.read", u); } catch (e) { if (e instanceof KernelError && e.code === "not_found") return null; throw e; }
       let r;
       try { r = await store.get(type, id); } catch (e) { throw mapError(e); }
-      return r && r.id === id && r.type === type ? shape(chain, r, await limitsOf(chain, type, dec)) : null;
+      if (!(r && r.id === id && r.type === type)) return null;
+      const lim = await limitsOf(chain, type, dec);
+      return (await withComputed(chain, type, [{ rec: shape(chain, r, lim), lim }]))[0];
     },
 
     async query(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       await guardSealed(chain, type, spec);
+      await refuseComputed(type, spec);
       await countRead(chain, type);
       let cursor = spec.page.cursor, out = [], next;
+      /** @type {{ allow: Set<string> | null, hidden: Set<string> }[]} */ const lims = [];
       for (let pages = 0; pages < 10; pages++) {
         let p;
         try { p = await store.query(type, { ...spec, page: { limit: spec.page.limit, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
@@ -320,7 +412,7 @@ export function createRecords(cfg) {
         for (const r of p.rows) {
           if (r.type !== type) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
-          if (dec) out.push(shape(chain, r, { allow: allowList(dec), hidden: hiddenSet || new Set() }));
+          if (dec) { const lim = { allow: allowList(dec), hidden: hiddenSet || new Set() }; out.push(shape(chain, r, lim)); lims.push(lim); }
         }
         next = p.next_cursor;
         if (out.length || !next) break;
@@ -334,13 +426,14 @@ export function createRecords(cfg) {
         for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id))) { more = true; break; }
         if (!more) next = p.next_cursor;
       }
-      return { rows: out, ...(more ? { next_cursor: next } : {}) };
+      return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };
     },
 
     async aggregate(chain, type, spec) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       await guardSealed(chain, type, spec);
+      await refuseComputed(type, spec);
       await countRead(chain, type);
       // A store cannot hide rows from a total, so the gateway folds in only the rows it has itself allowed. It folds page by page and keeps
       // a small state per group, never the rows, so there is no row cap: a total over a million rows costs time, not memory.

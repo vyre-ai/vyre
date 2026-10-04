@@ -166,3 +166,30 @@ test("merge over Twenty: the dropped contact's unique phone moves to the kept on
   assert.equal((await R.get(c, "contact", a.id)).data.phone ?? null, null);
   assert.equal((await R.get(c, "participant", part.id)).data.contact.urn, b.urn);
 });
+
+test("computed fields over Twenty: a total over linked records, an expression, a hidden-from role, and a removed field keeps its data", async () => {
+  const { host } = await boot();
+  const c = host.ownerChain(), R = host.kernel.records;
+  await host.defineTypes([
+    { name: "client", label: "Client", fields: [
+      { name: "name", kind: "text", label: "Name", required: true },
+      { name: "since", kind: "date", label: "Since" },
+      { name: "fees", kind: "number", label: "Fees", computed: { over: { type: "case", via: "client", fn: "sum", field: "fee.amount" } } },
+      { name: "years", kind: "number", label: "Years", computed: { expr: "len(name)" } },
+      { name: "old", kind: "text", label: "Old" },
+    ] },
+    { name: "case", label: "Case", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "client", kind: "link", to: "client", label: "Client", required: true }, { name: "fee", kind: "money", label: "Fee" }] },
+  ]);
+  const a = await R.create(c, "client", { name: "Harlow", old: "keep me" }), b = await R.create(c, "client", { name: "Northwind" });
+  for (const [who, amt] of [[a, 300], [a, 200], [b, 50]]) await R.create(c, "case", { title: "x", client: { urn: who.urn }, fee: { amount: amt, currency: "USD" } });
+  const rows = (await R.query(c, "client", { sort: [{ field: "name", dir: "asc" }], page: { limit: 10 } })).rows;
+  assert.deepEqual(rows.map((r) => [r.data.name, r.data.fees, r.data.years]), [["Harlow", 500, 6], ["Northwind", 50, 9]]);
+  // remove a field softly: its data stays in Twenty
+  const def = (await host.kernel.records.define(c, { change_types: [{ name: "client", label: "Client", fields: [
+    { name: "name", kind: "text", label: "Name", required: true }, { name: "since", kind: "date", label: "Since" },
+    { name: "fees", kind: "number", label: "Fees", computed: { over: { type: "case", via: "client", fn: "sum", field: "fee.amount" } } },
+    { name: "years", kind: "number", label: "Years", computed: { expr: "len(name)" } }, { name: "old", kind: "text", label: "Old", hidden: true }] }] }));
+  assert.equal(def.applied, true);
+  assert.equal("old" in (await R.get(c, "client", a.id)).data, false);
+  await assert.rejects(() => R.update(c, "client", a.id, { old: "x" }, 1), { code: "bad_input" });
+});

@@ -59,6 +59,14 @@ export interface FieldDefinition {
   readonly unique?: boolean;
   /** Removed from view, data kept: nothing reads, writes, filters or searches it, and it is never required. Set it back to false and the data is there again. Deleting for good is a migration. */
   readonly hidden?: boolean;
+  /** Roles (owner, admin, manager, member, temp, or a Kit's own) that never see this field: not on a read, a list, a filter, a total or a search, and not writable by them. */
+  readonly hidden_from?: readonly string[];
+  /**
+   * Worked out when a record is read, never stored, never written, never filtered on; a number, text, boolean, date or datetime field. Either an Expression over this
+   * type's other stored fields (`days_since(last_contact)`), or a total over the records of another type that link here (`over`: `{ type: "matter", via: "client", fn: "sum",
+   * field: "fee.amount" }`, `where` an optional filter). A reader who cannot see everything it is made from gets no value.
+   */
+  readonly computed?: { readonly expr: string } | { readonly over: { readonly type: string; readonly via: string; readonly fn: 'count' | 'sum' | 'min' | 'max' | 'avg'; readonly field?: string; readonly where?: unknown } };
 }
 
 export interface TaskTemplateDef {
