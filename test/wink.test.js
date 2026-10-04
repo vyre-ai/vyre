@@ -1524,9 +1524,12 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   assert.ok(!typesVia.error && JSON.stringify(typesVia.data).includes("contact"), JSON.stringify(typesVia).slice(0, 200));
   assert.equal(typesVia.data.acted_in.id, id);
   const NOTE = { name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  const standInFile = path.join(server.paths.root, "dev-presence-stand-in");
+  fs.rmSync(standInFile); // the development stand-in off: only a real proof counts at the home
   const noProof = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } });
   assert.equal(noProof.error && noProof.error.code, "needs_presence", "a change of types with no proof is refused by the home");
-  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
+  fs.writeFileSync(standInFile, "");
+  const withProofHdr =  const withProofHdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ method: "stand-in" })).toString("base64url") };
   const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
   assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
   assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
