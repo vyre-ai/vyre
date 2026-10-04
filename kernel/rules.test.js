@@ -302,3 +302,23 @@ test("rules.get, rules.test, rules.disable and rules.enable: a rule can be read,
   assert.equal((await g.rules.list(owner)).rules[0].status, "active");
   await assert.rejects(() => g.rules.enable(owner, "rule_nope", switchProof("rules.enable", "rule_nope")), { code: "not_found" });
 });
+
+test("R4 on rules.enable and rules.disable: a switch whose event cannot be written leaves the rule as it was, and the caller is told", async () => {
+  let fail = false;
+  const base = createEventLog({ space: SPACE });
+  const log = { ...base, append: (...a) => { if (fail && a[1] && String(a[1].type).startsWith("rule.")) throw new Error("log refused"); return base.append(...a); } };
+  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 9), presence, log });
+  const owner = k.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: OWNER, path: "direct", session: "s" });
+  const g = k.gateway.grants;
+  const rule = await g.rules.set(owner, NEVER_REMOVE, { presence: proof("rules.set", normal(NEVER_REMOVE), `vyre://${SPACE}/rule/new`) });
+  const sw = (action, id) => ({ presence: proof(action, { id }, `vyre://${SPACE}/rule/${id}`) });
+  fail = true;
+  await assert.rejects(() => g.rules.disable(owner, rule.id, sw("rules.disable", rule.id)), /log refused/);
+  fail = false;
+  assert.equal((await g.rules.list(owner)).rules[0].status, "active", "still on: a rule is not turned off by a write that failed");
+  await g.rules.disable(owner, rule.id, sw("rules.disable", rule.id));
+  fail = true;
+  await assert.rejects(() => g.rules.enable(owner, rule.id, sw("rules.enable", rule.id)), /log refused/);
+  fail = false;
+  assert.equal((await g.rules.list(owner)).rules[0].status, "disabled", "still off");
+});
