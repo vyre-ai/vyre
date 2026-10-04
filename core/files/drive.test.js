@@ -259,6 +259,22 @@ test("drive: without drive:share the box says why and how to fix it, and never r
   assert.match(e.detail.fix, /drive:share/);
 });
 
+test("drive: a box with no Tailscale at all still answers files.drive.status (shared folders off, no error), and says the Space Drive's own state", async t => {
+  stoppers(t);
+  const prev = process.env.VYRE_TAILSCALE_BIN;
+  process.env.VYRE_TAILSCALE_BIN = path.join(tempHome(t), "no-such-tailscale");
+  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
+  const { work } = boxWorld(t);
+  const { reg } = await registry(t, { role: "box", cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work] } } });
+  const s = await ok(reg, "files.drive.status");
+  assert.equal(s.enabled, false);
+  assert.equal(s.tailnet, false);
+  assert.match(s.why, /no tailnet/);
+  assert.deepEqual(s.list, []);
+  assert.deepEqual(s.shares.map(x => x.shared), [false]);
+  assert.ok(s.space && "enabled" in s.space, "the Space Drive's own state is in the answer");
+});
+
 test("drive: with drive:share, status lists what is shared; share runs drive share on the real folder and audits", async t => {
   const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: LIST,
     whois: { "100.64.0.7": whoisJson(MAC_ID, "alex-mac", DRIVE_RW), "100.64.0.8": whoisJson(PHONE_ID, "alex-phone", {}) } });

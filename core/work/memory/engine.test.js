@@ -98,10 +98,13 @@ test("outcome 1 with the intersection: a person without write keeps the note as 
 test("outcome 2: an empty field becomes a quiet suggestion, summarised, accepted by a person with write; never a task", async t => {
   const w = await world(t);
   const rec = await matter(w);
+  w.engine.lines.ingest("s1", [{ seq: 4, role: "user", text: "the practice area is Bakery and they have 12 staff", at: 4 }]);
   const rs = await w.engine.facts.propose([fact(w, rec, "practice_area", "Bakery"), fact(w, rec, "size", "12 staff"), fact(w, rec, "practice_area", "Bakery")]);
   assert.deepEqual(rs.map(r => r.outcome), ["suggestion", "suggestion", "suggestion"]);
   assert.equal(rs[0].suggestion, rs[2].suggestion, "the same suggestion is kept once");
-  assert.deepEqual(await w.engine.facts.summary(w.as(w.bob), rec.urn), ["2 new facts from Tuesday's call"], "readers of the record see it");
+  // KW-3: the facts were drawn from the owner's own session. Bob may read the record but not that session, so he is shown none of them; the owner is.
+  assert.deepEqual(await w.engine.facts.summary(w.as(w.bob), rec.urn), [], "a reader of the record who may not read the cited session sees nothing");
+  assert.deepEqual(await w.engine.facts.summary(w.as(w.alex), rec.urn), ["2 new facts from Tuesday's call"]);
   assert.equal((await openTasks(w)).length, 0);
   const list = await w.engine.facts.suggestions(w.as(w.alex), rec.urn);
   await assert.rejects(w.engine.facts.accept(w.as(w.bob), list[0].id), /./, "bob has no write");
@@ -232,4 +235,13 @@ test("the ranker works with an embedder and without one", async t => {
   const a = await w.rig.create("matter", { note: "bakery lease" }), b = await w.rig.create("matter", { note: "estate plan" });
   await w.engine.index({ kind: "record", type: "matter", id: a.id }); await w.engine.index({ kind: "record", type: "matter", id: b.id });
   assert.equal((await w.engine.search(w.as(w.alex), "estate"))[0].source, b.urn);
+});
+
+test("KW-2: a fact that needs a task, proposed under the read-only viewer chain, is kept as the person's own suggestion and never thrown out of the pass", async t => {
+  const w = await world(t);
+  const rec = await matter(w, { size: "7" });
+  const viewerEngine = createMemoryEngine({ kernel: w.rig.kernel, db: open(path.join(tempHome(t), "kw2.db")), space: w.space, serviceChain: w.mem.serviceChain(),
+    chainFor: p => w.rig.k.chains.appendService(w.rig.k.chains.fromFacts({ kind: "viewer", person: p.id, vouched: true }), "memory", true), personChain: p => w.rig.person(p.id), ownerOf: () => w.alex });
+  const r = await viewerEngine.facts.propose([fact(w, rec, "size", "99 staff")]);
+  assert.equal(r[0].outcome, "private_suggestion");
 });

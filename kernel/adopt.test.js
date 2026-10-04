@@ -151,3 +151,45 @@ test("AO-3 boot repair: the process dies right after the owner.adopted marker; t
   assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, A, "space.json is rewritten from the log");
   assert.equal(k.log.read({ type: "owner.adopted" }).length, 1, "the marker is not written twice");
 });
+
+test("hosted Spaces: adoption reaches the kernel of a Space made before the claim, at the claim and at boot; a Space someone else owns is left alone", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  let d = await boot(root);
+  const old = d.kernel.id.owner;
+  const OTHER_OWNER = "per_eeeeeeeeeeeeeeeeeeeeeeeeee";
+  const mine = await d.kernel.spaces.host({ owner: old, name: "mine" });
+  const theirs = await d.kernel.spaces.host({ owner: OTHER_OWNER, name: "theirs" });
+  const roleIn = (/** @type {any} */ dd, /** @type {string} */ space, /** @type {string} */ p) => dd.kernel.spaces.hosted(space).kernel.grants.roleOf({ kind: "person", id: p, space });
+  assert.equal(roleIn(d, mine.space, old), "owner");
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  assert.equal(roleIn(d, mine.space, A), "owner", "the created Space took the identity at the claim");
+  assert.equal(roleIn(d, mine.space, old), null);
+  assert.equal(roleIn(d, theirs.space, OTHER_OWNER), "owner", "someone else's Space is left alone");
+  assert.equal(roleIn(d, theirs.space, A), null);
+  // its own kernel's person is the identity: a chain for the identity works there, the old id's does not
+  const me = mine.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-x", person: A, path: "direct", session: "s" });
+  await mine.gateway.records.define(me, { add_types: [{ name: "note", label: "Note", fields: [{ name: "title", kind: "text", label: "Title" }] }] });
+  assert.ok((await mine.gateway.records.create(me, "note", { title: "in the created space" })).urn);
+  const file = path.join(root, "kernel", "spaces", mine.space, "space.json");
+  assert.equal(JSON.parse(fs.readFileSync(file, "utf8")).owner, A, "its space.json follows");
+  await d.stop();
+  // a restart keeps it, and a Space made before the claim that missed it (file put back to the old owner, marker absent in its own log) is caught up at boot
+  d = await boot(root);
+  t.after(() => d.stop());
+  assert.equal(roleIn(d, mine.space, A), "owner");
+});
+
+test("hosted Spaces at boot: a restart after the home's adoption leaves a Space made before it with the identity as its owner", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  let d = await boot(root);
+  const old = d.kernel.id.owner;
+  const mine = await d.kernel.spaces.host({ owner: old, name: "late" });
+  // adopt in the HOME's kernel directly, then take the hosted Space back to its old state on disk and in its log by hosting a second Space the old way: a Space opened fresh next boot
+  await d.kernel.adoptOwner(A);
+  await d.stop();
+  d = await boot(root);
+  t.after(() => d.stop());
+  const k = d.kernel.spaces.hosted(mine.space).kernel;
+  assert.equal(k.grants.roleOf({ kind: "person", id: A, space: mine.space }), "owner", "the boot caught the Space up from the home's adoption");
+  assert.equal(k.grants.roleOf({ kind: "person", id: old, space: mine.space }), null);
+});

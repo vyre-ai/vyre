@@ -21,8 +21,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const adopts = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; if (tool === "spaces.owner.adopt") { adopts.push(input); return { data: { changed: true } }; } drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -43,7 +42,7 @@ function world(o = {}) {
   p.tools();
   const call = (name, input = {}, meta = {}) => tools.get(name).run(input, { caller: "device:x", ...meta });
   const fails = async (name, input, code) => { await assert.rejects(() => call(name, input), e => (code ? e.code === code : true) && (e.message || "")); };
-  return { p, call, drops, adopts, events, typed, finishes, minted, db, tools, fails };
+  return { p, call, drops, events, typed, finishes, minted, db, tools, fails };
 }
 const settle = () => new Promise(r => setTimeout(r, 200)); // 40 ms flaked on a loaded box (4 Oct)
 
@@ -722,11 +721,7 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.deepEqual(done.owner, { kind: "identity", id: ME });
   assert.equal(w.p.meta.get("owner").identity, ME);
   assert.equal(w.p.meta.get("adopter"), "device:app1");
-  const after = await atServer(w, "wink.server.pairing");
-  assert.equal(after.asking, false, "the question is closed");
-  assert.equal(after.paired, true, "once there is an owner the server says so, for the installer's closing line");
-  assert.equal(typeof after.owner, "string");
-  assert.ok(!/key|secret|authKey/i.test(JSON.stringify(after)), "a name in words only");
+  assert.equal((await atServer(w, "wink.server.pairing")).asking, false, "the question is closed");
 });
 
 test("Q-1: a second scanner is refused while one is asking, and cannot ride the first one's yes", async () => {
@@ -1326,21 +1321,6 @@ test("the old ring (relay.pair.ticket) is held for the same words: nothing is re
   assert.ok(w.drops.some(d => d[1].id === "ringphone2"), "one phone at a time");
   assert.equal((await w.call("wink.phone.pairing")).asking, false, "a ring phone that cannot show words is never asked about");
   assert.deepEqual(await w.call("wink.phone.pair.answer", { yes: true }), { answered: false });
-});
-
-test("ruling 7: a server adopted by an identity makes that identity its home owner (spaces.owner.adopt with the identity id), and the pair targets name the person it was given, not a first-start id", async () => {
-  const w = world();
-  await w.tools.get("wink.server.adopt").run({ owner: { kind: "identity", id: ME, name: "alex" }, identity: ME, peerSecret: "A".repeat(43) }, { caller: "device:home1" });
-  assert.deepEqual(w.adopts, [{ person: ME }]);
-  // a space target adopted with an identity does the same; a bad identity id calls nothing
-  const w2 = world();
-  await w2.tools.get("wink.server.adopt").run({ owner: { kind: "space", id: HARLOW }, identity: "per_evil", peerSecret: "A".repeat(43) }, { caller: "device:home1" });
-  assert.deepEqual(w2.adopts, []);
-  // the directory's label for an identity is the name it claimed, when one is given
-  const { kernelDirectory } = await import("./pairing.js");
-  const dir = kernelDirectory({ kernel: { grants: { roleOf: async () => "owner" } }, space: async () => HARLOW, name: () => "Harlow Legal", label: async id => (id === ME ? "alex" : null) });
-  assert.equal(await dir.label(ME), "alex");
-  assert.equal(await dir.label("per_other"), null);
 });
 
 test("wink.server.status: not owned before the pairing, then the space and the pairing device's name for the installer's last line; the server's own surfaces only", async () => {

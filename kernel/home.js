@@ -63,10 +63,13 @@ export async function bootHomeKernel(cfg) {
     if (fs.existsSync(id.keyFile)) { try { legacyKeys = [Buffer.from(fs.readFileSync(id.keyFile, "utf8").trim(), "hex")]; } catch { /* unreadable: nothing to verify against */ } }
   } else { log("kernel: DEVELOPER file key in use (VYRE_KERNEL_FILE_KEY=1); never the default, never for a real home"); key = fileKernelKey(id.dir); }
   /** The person claimed their identity: its id is the owner's id from now on, written beside the Space's own id so the next start reads it, and said once in the log. */
-  const adoptedOwner = (/** @type {string} */ to, /** @type {string} */ from) => {
+  /** @type {((to: string, from: string) => Promise<any>) | null} */ let hostedAdopt = null;
+  const adoptedOwner = async (/** @type {string} */ to, /** @type {string} */ from) => {
     id.owner = to;
     try { fs.writeFileSync(path.join(id.dir, "space.json"), JSON.stringify({ space: id.space, owner: to, made_at: id.made_at, previous_owner: from }), { mode: 0o600 }); } catch (e) { (cfg.log || (() => {}))(`kernel: the owner's id could not be written beside the Space (${/** @type {Error} */ (e).message}); it will be adopted again at the next start`); }
     (cfg.log || (() => {}))(`kernel: the owner is now the claimed identity ${to} (was ${from}), once`);
+    // every Space this home hosts, whose owner is that same person, takes the identity too
+    if (hostedAdopt) { try { await hostedAdopt(to, from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } }
   };
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
   // The home Space's own Drive (versions, conflicts, backups): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
@@ -188,5 +191,8 @@ export async function bootHomeKernel(cfg) {
   // refuses a hosted Space unless this boot is the developer file-key one.
   const spaces = createSpaceKernels({ root: cfg.root, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}) });
   await spaces.start();
+  hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
+  // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
+  { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
   return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

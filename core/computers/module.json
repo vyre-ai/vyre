@@ -4,6 +4,7 @@
   "roles": ["box"],
   "requires": [],
   "does": {
+    "reads": ["computers.get", "computers.list"],
     "tools": [
       {"name": "computers.list", "reach": "anyone"},
       {"name": "computers.rename", "reach": "person"},

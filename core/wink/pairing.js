@@ -680,18 +680,13 @@ export function createPairing(o) {
       },
     });
     ctx.tool("wink.server.pairing", {
-      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } (with { paired: true, owner, device? } once the server has an owner: a name in words) or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
+      description: "At the server: is a device asking to pair this server right now? Answers { asking: false } or { asking: true, name, choices, until, line }: `name` is who is asking, `choices` three sets of three words (one is what the app shows, two are decoys, in an order made fresh for this pairing), and `line` the question to put to the person (answer with wink.server.pair.answer). Only this server's own screen or terminal (the command line, the local console, the deck or the capsule) sees it: never a paired device, the tailnet, the relay, a module, a session, a hook or an agent, and never a model client (mcp or harness).",
       input: obj(),
       run: async (_, meta0 = {}) => {
         owner(meta0, "the pairing question");
         atServer(meta0);
         const a = askLive();
-        if (!a || a.state !== "waiting" || !a.words) {
-          // Once the server has an owner, say whose it is in words (the installer's closing line, "Connected to <space>"): a name only, never a key or a hand-over.
-          const cur = meta.get("owner");
-          const paired = cur && meta.get("adopter") ? { paired: true, owner: await ownerWords(cur), ...(meta.get("adopter_name") ? { device: meta.get("adopter_name") } : {}) } : {};
-          return { asking: false, ...paired, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
-        }
+        if (!a || a.state !== "waiting" || !a.words) return { asking: false, ...(meta.get("pair_to") ? { pairTo: meta.get("pair_to") } : {}) };
         return { asking: true, name: a.name, choices: a.choices, until: a.until, line: words("pairAsk", { name: a.name, choices: a.choices }) };
       },
     });
@@ -874,20 +869,15 @@ export function createPairing(o) {
       const first = !meta.get("owner") || !meta.get("adopter");
       meta.set("owner", { ...t, identity: ident, ...(ownerName ? { name: ownerName } : {}) });
       if (first) meta.set("adopter", caller);
-      // The device's own name for itself, sent in the pairing exchange, so the server can say "Finish setting up on your <device>" (letters, digits, spaces and a few marks only).
-      const dn = input.deviceName ? String(input.deviceName).replace(/[^\p{L}\p{N} ._'-]/gu, "").trim().slice(0, 48) : "";
-      if (first && dn) meta.set("adopter_name", dn);
       if (input.peerSecret && /^[A-Za-z0-9_-]{20,80}$/.test(String(input.peerSecret))) meta.set("peer_secret", String(input.peerSecret));
       const h = cleanHandover(input.handover);
       if (h) meta.set("handover", h);
       devices.setSelf({ identity: ident, name: String(ctx.config.name || "this server"), target: t });
-      // The server's own owner becomes the CLAIMED identity (its id; the name stays in the owner record), so records.me and the pair targets here name the person, not a first-start id (ruling 7).
-      if (/^per_[a-z2-7]{26}$/.test(ident) && ctx.call) { try { await ctx.call("spaces.owner.adopt", { person: ident }); } catch { /* no spaces module or no kernel: the owner record above still stands */ } }
       meta.del("pair_to");
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), deviceName: str, identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
+    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str }, ["kind", "id"]), identity: str, peerSecret: str, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str }) }, ["owner"]);
     ctx.tool("wink.server.adopt", {
       callers: ["web"],
       description: "On a server that was just paired: record who it belongs to, an identity or a space { kind, id }, and the identity that paired it. Called by the pairing app over the paired channel. On a server with no owner the person at the server must say yes first (the server shows who asks and three words; no answer in 5 minutes pairs nothing): the call answers { pending, words, until } until then, and call it again to hear the result; a server installed with a named identity (pairTo) takes only that identity and asks no one. After that it cannot be repeated over the paired channel; the person changes the owner on this box with wink.server.retarget (their own presence), and only the one that adopted it, or a screen on this box, may. Answers { owner }.",
@@ -925,7 +915,7 @@ export function createPairing(o) {
     /** Clears who owns this server: owner, adopter, the hand-over and the peer secret, and its own row. Its own keys stay. The one that adopted it loses its device here too. */
     const clearOwner = () => {
       const adopter = meta.get("adopter");
-      for (const k of ["owner", "adopter", "adopter_name", "handover", "peer_secret"]) meta.del(k);
+      for (const k of ["owner", "adopter", "handover", "peer_secret"]) meta.del(k);
       dropLater(adopter);
       db.prepare("UPDATE wink_devices SET removed_at = ?, sign_key = NULL WHERE id = 'self' AND removed_at IS NULL").run(now());
       ctx.events.emit("wink.server-released", {});
@@ -1212,7 +1202,7 @@ export function parseQr(s) {
  * The real directory: the kernel's grants store knows who holds which role in the space this box runs (work/kernel, kernel/grants/index.js:
  * `roleOf(actor)` and `isAdmin(actor)` on the store; the module surface may also offer `roles.isAdmin(person, space)`). PORT: until the kernel is
  * merged into this tree the call shape is the one above, and tests pass a fake with the same shape. One role is read here, never written.
- * @param {{ kernel: any, space: () => Promise<string>, name: () => string, label?: (identity: string) => Promise<string | null> | string | null }} o @returns {Directory}
+ * @param {{ kernel: any, space: () => Promise<string>, name: () => string }} o @returns {Directory}
  */
 export function kernelDirectory(o) {
   const k = o.kernel;
@@ -1227,7 +1217,7 @@ export function kernelDirectory(o) {
       else if (k && k.roles && typeof k.roles.isAdmin === "function") role = (await k.roles.isAdmin(identity, space)) ? "admin" : null;
       return role ? [{ space, name: o.name(), role }] : [];
     },
-    async label(identity) { return o.label ? (await o.label(identity)) || null : null; },
+    async label() { return null; },
   };
 }
 /** True when the kernel offers a way to read a role (any of the shapes kernelDirectory reads). @param {any} k */

@@ -30,7 +30,7 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
-import { scanRows } from "./sealed.js";
+import { scanRows, ledgerScan, scrubbed } from "./sealed.js";
 import { writeStore, register as registerWrites, passages as writePassages, relevantLines, quoted as quotedWrite } from "./write.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -338,7 +338,7 @@ export default {
     const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
-    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); };
+    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); }; // SHIM(legacy labels): the label side runs only with the kernel off
     /**
      * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
@@ -553,7 +553,7 @@ export default {
      * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
      */
     /** Whether the caller is an agent: the kernel chain has an agent hop (a label naming one, `agent:<name>`, only when the kernel is off). */
-    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); };
+    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); }; // SHIM(legacy labels): the label side runs only with the kernel off
     const ownerOnly = run => async (input, extra = {}) => {
       if (namesAgent(extra.caller)) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
@@ -1176,8 +1176,19 @@ export default {
     ctx.tool("memory.remember", {
       description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
       input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
-      run: async (input, { caller } = {}) => {
+      run: async (input, extra = {}) => {
+        const { caller } = extra;
         await personalOnly(input, caller, "memory.remember");
+        // HD-8: a session or an agent is a model, and a model's words are not the person's. A prompt-injected session could plant "my accountant's account is X" at the
+        // person's own confidence 0.95. Only the person at a surface (or a device signed in) tells memory outright; anything else is kept as an untrusted, attributed write in the
+        // "you" room: found by an answer and labelled, never in the profile, the brief or a prompt line, never read as the person's instruction.
+        const w = whoNow();
+        if (!personWrites(caller, extra)) {
+          const txt = scrubbed(String(input.text ?? "").replace(/\s+/g, " ").trim().slice(0, 500));
+          if (!txt) throw Object.assign(new Error("remember needs the fact to keep, as text"), { code: "bad_input" });
+          const added = writes.add({ kind: "fact", project: "you", text: txt, subject: null, source_ref: null, untrusted: true, from: { kind: "agent", name: w && w.agent ? String(w.agent) : "session", provider: null, thread: null, seq: null } });
+          return { id: added.id, text: txt, facts: [], pending: true, note: "Kept as something a session said, not as your words: it stays out of your profile and every prompt until you tell memory yourself." };
+        }
         if (running) await running.catch(() => {});
         const r = personal.remember(String(input.text ?? ""), { room: typeof input.room === "string" && input.room ? input.room : null, who: caller ? plain(caller, 60) : null });
         ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
@@ -1497,8 +1508,18 @@ export default {
     });
     ctx.tool("memory.sealscan", {
       description: "One look at what memory already holds that has the shape of a sealed value (an SSN, a card or bank number, an IBAN and the rest): which table and column, how many rows and which classes, never a value. It changes nothing; the person decides what to do. From now on such values are scrubbed on the way in.",
-      input: { type: "object", properties: {} },
-      run: async () => ({ found: scanRows(ctx.store.db), note: "Counts only. Nothing was changed. Matching a value that is sealed in a record today needs the sealing process's ledger, which memory does not hold." }),
+      input: { type: "object", properties: { ledger: { type: "boolean" }, max: { type: "integer", minimum: 1, maximum: 100 } } },
+      run: async ({ ledger, max } = {}, extra = {}) => {
+        const found = scanRows(ctx.store.db);
+        if (ledger !== true) return { found, note: "Counts only. Nothing was changed. Pass ledger: true to also ask the sealing process about candidate values, a few at a time." };
+        const k = ctx.kernel;
+        if (!k || typeof k.sealDetect !== "function") return { found, ledger: { available: false }, note: "Counts only. The sealing process is not reachable from here, so only the shape scan ran." };
+        // The chain is the asking person's own; a call with no person chain gets the shape scan only.
+        const chain = await k.chain(extra || {}).catch(() => null);
+        if (!chain || !chain.hops || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" || h.actor.kind === "agent")) return { found, ledger: { available: false }, note: "Counts only. The ledger match runs for the person themselves." };
+        const l = await ledgerScan(ctx.store.db, async v => (await k.sealDetect(chain, v)).match, { max });
+        return { found, ledger: { available: true, ...l }, note: "Counts only. Nothing was changed. A candidate is asked once a minute at most five times; run it again to go on." };
+      },
     });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",

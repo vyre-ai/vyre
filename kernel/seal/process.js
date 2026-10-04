@@ -15,6 +15,7 @@ import path from "node:path";
 import readline from "node:readline";
 import { CLASSES, hintOf, redact } from "./classes.js";
 import { compact, ledgerEntries } from "./normalise.js";
+import { devSwitch } from "../devbuild.js";
 import { Presence } from "./proof.js";
 import { SealStore } from "./store.js";
 
@@ -35,8 +36,8 @@ const need = (c, m) => { if (!c) throw err(m); };
 
 export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
-  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false }) {
-    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
+  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false, allowSoftware = false }) {
+    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, allowSoftware, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map(); this.leases = new Leases(this.store, now);
     // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
     const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
@@ -216,11 +217,11 @@ export class Sealer {
         const ctx = this.ctxOf(req.ctx);
         // A pinned person's enrolment first takes the current chain (V-1): a device removed since the last sync is gone, with its keys, before its bind is looked at.
         if (this.presence.pins.has(req.person)) { need(Array.isArray(req.ops), "needs_chain"); const s = await this.presence.sync({ person: req.person, ops: req.ops, ctx }); if (s.refused) throw err(s.refused); }
-        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
+        const r = this.presence.enrol({ ...req, ctx }); if (r.refused) throw err(r.refused); return { enrolled: true, attested: r.attested, event: { type: "presence.enrolled", method: req.signer === "software" ? "software" : r.attested ? "attested" : "unattested", person: req.person, key_id: req.key_id, signer: req.signer, attested: r.attested } }; }
       case "presence.revoke": { const why = this.presence.revoke(req.key_id, this.ctxOf(req.ctx), req.proof); if (why) throw err(why); return { revoked: true, event: { type: "presence.revoked", key_id: req.key_id } }; }
       // The one verifier for the kernel: a task approval (or any kernel act the person signs) is checked here, against the keys enrolled here,
       // and the proof is used up. The kernel supplies who is in the chain; only task and grant ops are accepted, so this is not a path to a seal op.
-      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^(task|grant)\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true }; }
+      case "presence.check": { const ctx = this.ctxOf(req.ctx); need(typeof req.act === "string" && /^(task|grant)\.[a-z_]+$/.test(req.act) && req.fields && typeof req.fields === "object", "bad_input"); const why = this.presence.refuse(req.proof, { op: req.act, space: ctx.space, fields: req.fields, ctx }); if (why) throw err(why === "no_proof" ? "needs_presence" : why); return { ok: true, method: this.presence.lastMethod }; }
       // The Space's checkpoint key: its public half on request, and signatures over checkpoints of this Space only.
       case "spacekey.pub": { const ctx = this.ctxOf(req.ctx); const k = this.spaceKey(ctx); return { key_id: k.key_id, pub: k.pub }; }
       case "spacekey.sign": {
@@ -307,8 +308,8 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
 }
 
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
-export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false } = {}) {
-  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested });
+export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false } = {}) {
+  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware });
   const rl = readline.createInterface({ input });
   rl.on("line", async line => {
     let req; try { req = JSON.parse(line); } catch { return; }
@@ -326,6 +327,6 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
-  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1" }); }
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: process.env.VYRE_SEAL_UNATTESTED === "1", allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
   catch (e) { process.stderr.write(`seal: ${e?.safe ? e.message : "internal error"}\n`); process.exit(70); }
 }
