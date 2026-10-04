@@ -9,6 +9,7 @@
 // link through ctx.call, so a box without the link module still answers with its own rows.
 
 import { HUMAN_ONLY } from "../presence/index.js";
+import { originClass, callerKind, agentClaim } from "./index.js";
 
 /** How Vyre's MCP server names a Vyre tool (harness/mcp/server.js): what MCP names cannot hold becomes "_". */
 const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
@@ -48,9 +49,14 @@ export async function wantsMacs(ctx, input, caller, meta) {
   const machines = input && input.machines;
   if (machines === "local") return false;
   const c = String(caller || "");
-  if (c.startsWith("module:")) return machines === "all";
+  // A module asks for the Macs only when it acts for the person: a module relaying a model's call (meta.origin names an assistant, an `mcp` session or the harness) gets the box's own rows, which is all that model gets itself.
+  if (c.startsWith("module:")) {
+    const o = String(originClass(meta || { caller }));
+    const model = o !== c && (agentClaim(o) !== null || ["mcp", "harness", "hook"].includes(callerKind(o)));
+    return machines === "all" && !model;
+  }
   if (ctx.kernel && typeof ctx.kernel.chain === "function") {
-    try { const ch = await ctx.kernel.chain(meta || { caller }); return Boolean(ch && Array.isArray(ch.hops) && ch.hops.length === 1 && ch.hops[0].actor && ch.hops[0].actor.kind === "person"); } catch { return false; }
+    try { const ch = await ctx.kernel.chain(meta || { caller }); return Boolean(ch && ch.viewer !== true && Array.isArray(ch.hops) && ch.hops.length === 1 && ch.hops[0].actor && ch.hops[0].actor.kind === "person"); } catch { return false; }
   }
   return PERSON.has(c) || TAILNET_PERSON.test(c); // SHIM(legacy labels): a build with no kernel
 }

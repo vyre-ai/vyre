@@ -55,3 +55,12 @@ test("with a kernel the person is the chain, never the label: a model sending `d
   }
   assert.equal(await wantsMacs(withChain(() => hops("person")), {}, "anything", { caller: "anything" }), true, "the chain decides, not the label");
 });
+
+test("a module acting for a model gets only the box's rows; for the person it gets the Macs'; a viewer chain never federates", async () => {
+  const box = { config: { role: "box" } };
+  assert.equal(await wantsMacs(box, { machines: "all" }, "module:link", { caller: "module:link" }), true, "a module acting for itself");
+  assert.equal(await wantsMacs(box, { machines: "all" }, "module:link", { caller: "module:link", origin: "cli" }), true, "a module acting for the person's cli");
+  for (const origin of ["mcp:thread:t", "mcp", "harness", "mcp:agent:kit", "cli:agent:kit"]) assert.equal(await wantsMacs(box, { machines: "all" }, "module:link", { caller: "module:link", origin }), false, `a module relaying ${origin}`);
+  const viewer = { config: { role: "box" }, kernel: { chain: async () => ({ viewer: true, hops: [{ actor: { kind: "person", id: "p" } }] }) } };
+  assert.equal(await wantsMacs(viewer, {}, "deck", { caller: "deck" }), false, "a room's viewer chain");
+});
