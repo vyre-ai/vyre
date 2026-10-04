@@ -404,7 +404,7 @@ test("spaces.host-here: this home's owner has its OWN kernel host a space (kerne
   await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "host-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, kernel: true, log: () => {} });
+  const d = await start({ root, kernel: true, presence: present, log: () => {} });
   t.after(() => d.stop());
   const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const r = await deck("spaces.host-here", { name: "servedhere" });
