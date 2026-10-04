@@ -5,12 +5,12 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 
 ## Done
 - Vault: RealVault.tsx, source.ts (calls over an injected `call`), real-model.ts, real.ts, test real.test.js (9 of 9 on the test box). Against the dev box (the dev box, via `vyre call`, the same tools the app calls): vault.list answered with an empty vault, vault.uses answered empty, vault.reveal and vault.put refused as human-only (no_terminal from the CLI). I could not seed an item: vault.put needs a person. So Reveal on a real item with a real proof is NOT yet seen.
+- Memory extras: RealExtras.tsx (RealAsk, map with Pin/Never offer, What you corrected with Undo), extras-source.ts, extras-model.ts, extras.ts, test extras.test.js (11 of 11 in screens/memory on the test box, with native-core's real-model test). Against the dev box via `vyre call`: memory.graph answered the empty floor plan in the shape the screen reads, memory.corrections [], memory.ask abstained with no answer. The dev box has no facts and memory.correct add is human-only from the CLI, so Pin, Undo and a real answer are NOT yet seen on real data.
 
 ## Doing
-- Memory graph, pins, corrections.
+- Flows start and a run's record.
 
 ## Next
-- Flows start and a run's record (native-core already has list, graph, card, approve, runs, pause).
 - Drive (files.drive.list and files.drive.read): the dev box answers not_available for share "projects" (the share is offered but not shared, Taildrive policy missing).
 
 ## Needs
