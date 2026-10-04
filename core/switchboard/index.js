@@ -864,11 +864,19 @@ export class Switchboard {
     // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
     if (o.resume && !this.restoreSteers(id)) this.resumeQueued(id);
     if (o.prompt) {
+      // The agent is running; the steps below can still be abandoned by the start limit (a slow memory or tag lookup), and an abandoned start must send nothing: its thread was stopped, and a send would resume it.
+      // VYRE_TEST_START_PAUSE_MS (tests only) slows each of these steps so a probe can make the limit fire inside them.
+      const pause = Number(process.env.VYRE_TEST_START_PAUSE_MS) || 0;
+      const slow = pause ? () => new Promise(r => setTimeout(r, pause)) : async () => {};
+      at("first prompt");
       // A person's own first words are heard like any turn of theirs: before any provider sees them.
       const said = crypto.randomUUID();
+      await slow();
       const heard = person ? await this.ingress(id, String(o.prompt), o.surface || "vyre", said, person.chips || [], person.pasted || []) : [];
       const note = heard.length ? tagNote(heard) : "";
-      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) });
+      await slow();
+      at("first prompt send");
+      if (o.surface) await this.send(id, o.prompt, o.surface, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}), cancelled: () => box.cancelled });
       else { this.write(id, o.prompt, { ...(person ? { uuid: said } : {}), ...(note ? { note } : {}) }); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.launched(id);
@@ -1867,7 +1875,10 @@ export class Switchboard {
     return run;
   }
 
-  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null } = {}) {
+  async sendOne(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null, note = "", author = undefined, kernelTurn = null, cancelled = undefined } = {}) {
+    // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
+    const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); };
+    given();
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -1902,6 +1913,7 @@ export class Switchboard {
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
+    given();
     if (!this.live.has(id)) {
       // An agent's thread comes back with the agent's own credentials and scope, which only the
       // agents module can give it; any other thread resumes as it was.
@@ -1910,6 +1922,7 @@ export class Switchboard {
         if (r.error) return { sent: false, note: `could not resume ${rec.agent}'s thread: ${r.error.message}` };
       } else await this.launch({ resume: id, ...(kernelTurn ? { kernelTurn } : {}) }); // a dormant thread comes back with THIS turn's chat and asker, never the thread's default session
     }
+    given();
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));

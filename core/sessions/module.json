@@ -210,6 +210,7 @@
       "prompt.changed",
       "model.changed",
       "mode.defaulted",
+      "account.changed",
       "usage.paused",
       "usage.resumed",
       "slot.taken",
