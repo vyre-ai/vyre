@@ -37,6 +37,7 @@ import { registryRules } from "../harness/rules.js";
 // redeem, tailnet via relay/client - into the kernel just for one constant.
 import { DEFAULT_RELAY } from "../../lib/relay-default.js";
 import { within } from "../../lib/within.js";
+import { modelLabel } from "../../lib/caller.js";
 import { createRemoteKernel } from "../../kernel/remote/client.js";
 import { winkTransport } from "../../kernel/remote/wink.js";
 
@@ -563,7 +564,9 @@ const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|link:|web:|se
  */
 export function socketCaller(req) {
   const label = String(req.headers["x-vyre-caller"] || "");
-  return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
+  if (!label || FORBIDDEN_LABEL.test(label)) return "anonymous";
+  // RC-1: a model's label carries no thread the client chose. `mcp:thread:<id>` is bare `mcp` here; route() rebuilds the thread part from what it verified. A named agent stays: route() checks its key.
+  return MODEL_LABEL.test(label) && !AGENT_CLAIM.test(label) ? /** @type {string} */ (modelLabel(label)) : label;
 }
 
 /** A model's own label: its tools' callers lists and the agent key already decide what it may do. */
@@ -977,6 +980,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
   }
+  // RC-1: a model's label is built here from what was verified above, never passed through as the client sent it.
+  if (!policy.caller && MODEL_LABEL.test(caller)) caller = /** @type {string} */ (modelLabel(caller, via));
   // A plain model caller (Claude Code through Vyre's MCP, no verified thread or agent): who it is, from the kernel, for the threads tools that
   // narrow it. Set here only, over anything a client could send: meta.peerSession "<claude pid>:<start>" and meta.peerCwd, null where unreadable.
   if (socket && !via.thread && !via.agent && MODEL_LABEL.test(caller)) {
