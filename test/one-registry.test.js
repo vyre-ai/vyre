@@ -406,7 +406,7 @@ test("spaces.host-here: this home's owner has its OWN kernel host a space (kerne
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "host-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const d = await start({ root, kernel: true, log: () => {} });
   t.after(() => d.stop());
-  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "cli" });
   const r = await deck("spaces.host-here", { name: "servedhere" });
   assert.ok(!r.error, JSON.stringify(r.error));
   assert.match(r.data.space, /^spc_[a-z2-7]{12}$/);
