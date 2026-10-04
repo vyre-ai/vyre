@@ -89,3 +89,49 @@ test("sqlite store scrub: a field sealed in place leaves no plain value in the c
   assert.equal(left, 0, `no copy of the sealed field's values remains on disk (found ${left})`);
   assert.ok(bytes.includes(`keep ${PLAIN} elsewhere`), "the other type's own value is still stored");
 });
+
+test("sqlite store counts: count by stage is read from kept counts and always equals the scan, through creates, edits, removes, restores, a restart, a rolled-back write and a changed definition", async () => {
+  const f = file();
+  const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }] };
+  let db = new DatabaseSync(f);
+  let s = createSqliteStore({ db });
+  await s.define({ add_types: [MATTER] });
+  const id = i => `0190c3f2-1111-4abc-8def-${String(i + 1).padStart(12, "0")}`;
+  const spec = { group_by: ["stage"], measures: [{ fn: "count" }] };
+  const kept = st => st.aggregate("matter", spec);
+  const scan = st => st.aggregate("matter", { ...spec, filter: { and: [] } });   // a filter takes the planner's GROUP BY, the reference
+  const same = async (st, what) => assert.deepEqual(await kept(st), await scan(st), what);
+  const stages = ["intake", "open", "closed", undefined];
+  for (let i = 0; i < 40; i++) await s.create("matter", id(i), { title: `M${i}`, ...(stages[i % 4] ? { stage: stages[i % 4] } : {}) });
+  const before = s.stats().aggregate_pushed;
+  await same(s, "built from the table on the first ask");
+  // maintained by every kind of write
+  for (let i = 0; i < 40; i += 3) { const r = await s.get("matter", id(i)); await s.update("matter", id(i), { stage: stages[(i + 1) % 3] }, r.version); }
+  for (let i = 1; i < 40; i += 5) { const r = await s.get("matter", id(i)); await s.remove("matter", id(i), r.version); }
+  await same(s, "after edits and removes");
+  for (let i = 1; i < 40; i += 10) await s.restore("matter", id(i));
+  for (let i = 40; i < 50; i++) await s.create("matter", id(i), { title: `N${i}`, stage: "open" });
+  await same(s, "after restores and creates");
+  assert.ok(s.stats().aggregate_pushed > before);
+  // a restart keeps the counts and they still agree
+  db.close(); db = new DatabaseSync(f); s = createSqliteStore({ db });
+  await same(s, "after a restart");
+  const r0 = await s.get("matter", id(2));
+  await s.update("matter", id(2), { stage: "closed" }, r0.version);
+  await same(s, "after a restart and a write");
+  // a write rolled back in a transaction leaves the counts as they were (they are part of it)
+  const want = JSON.stringify(await kept(s));
+  db.exec("BEGIN");
+  const r1 = await s.get("matter", id(3));
+  await s.update("matter", id(3), { stage: "closed" }, r1.version);
+  db.exec("ROLLBACK");
+  await s.undo("matter", id(3), r1);
+  assert.equal(JSON.stringify(await kept(s)), want, "a rolled-back write moved nothing");
+  await same(s, "after a rollback");
+  // a changed definition drops the counts and they are built again
+  await s.define({ change_types: [{ ...MATTER, fields: [...MATTER.fields, { name: "extra", kind: "text", label: "Extra" }] }] });
+  await same(s, "after the definition changed");
+  // anything but a plain count by one stage field is not answered from the counts
+  assert.deepEqual((await s.aggregate("matter", { group_by: ["stage"], measures: [{ fn: "count" }], filter: { field: "stage", op: "eq", value: "open" } })).map(g => g.group.stage), ["open"]);
+  db.close();
+});

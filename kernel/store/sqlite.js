@@ -20,6 +20,7 @@ const MIGRATION = `
   CREATE INDEX IF NOT EXISTS kernel_attrs_project ON kernel_attrs (json_extract(attrs, '$.project'), urn);
   CREATE INDEX IF NOT EXISTS kernel_attrs_owner ON kernel_attrs (json_extract(attrs, '$.owner'), urn);
   CREATE TABLE IF NOT EXISTS kernel_flags (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS kernel_counts (type TEXT NOT NULL, field TEXT NOT NULL, val TEXT NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (type, field, val)) WITHOUT ROWID;
 `;
 // The full-text index: one row per non-sealed text field of each live record (rowid = record rowid * 1024 + the field's position), holding the field's text lowered by the same JS call
 // the reference search uses. Trigram and case-sensitive, so a word of three or more characters is found exactly when the reference's substring test finds it, and a record's score
@@ -117,6 +118,52 @@ export function createSqliteStore(cfg) {
   const getRowid = db.prepare("SELECT rowid AS r FROM kernel_records WHERE type = ? AND id = ?");
   const getFlag = db.prepare("SELECT value FROM kernel_flags WHERE name = ?");
   const setFlag = db.prepare("INSERT INTO kernel_flags (name, value) VALUES (?, ?) ON CONFLICT(name) DO UPDATE SET value = excluded.value");
+  // ---- counts of a stage field (kernel_counts) ----
+  // "Count by stage" is the question a board asks all day. For a type's stage (and select) fields the store keeps a count per value, maintained inside the same transaction as every write
+  // (one upsert per write, two when the value changes), so the answer is a read of a few rows instead of a scan of the type. Built from the table the first time it is asked for, and dropped
+  // when the type's definition changes (it is built again at the next ask).
+  const COUNT_FIELD = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
+  /** @type {Set<string>} "type\u0000field" whose counts are built and kept */ const countsReady = new Set();
+  for (const r of /** @type {any[]} */ (db.prepare("SELECT name FROM kernel_flags WHERE name LIKE 'counts:%'").all())) { const [, t, f] = String(r.name).split(":"); if (t && f) countsReady.add(`${t}\u0000${f}`); }
+  const incCount = db.prepare("INSERT INTO kernel_counts (type, field, val, n) VALUES (?, ?, ?, 1) ON CONFLICT(type, field, val) DO UPDATE SET n = n + 1");
+  const decCount = db.prepare("UPDATE kernel_counts SET n = n - 1 WHERE type = ? AND field = ? AND val = ?");
+  const countFields = (/** @type {string} */ type) => ((defs.get(type) || {}).fields || []).filter((/** @type {any} */ f) => (f.kind === "stage" || f.kind === "select") && COUNT_FIELD.test(f.name)).map((/** @type {any} */ f) => f.name);
+  const valKey = (/** @type {any} */ v) => JSON.stringify(v === undefined ? null : v);
+  const countsReset = (/** @type {string} */ type) => {
+    db.prepare("DELETE FROM kernel_counts WHERE type = ?").run(type);
+    db.prepare("DELETE FROM kernel_flags WHERE name LIKE ?").run(`counts:${type}:%`);
+    for (const k of [...countsReady]) if (k.startsWith(`${type}\u0000`)) countsReady.delete(k);
+  };
+  const countsBuild = (/** @type {string} */ type, /** @type {string} */ field) => {
+    db.exec("SAVEPOINT kcounts");
+    try {
+      db.prepare("DELETE FROM kernel_counts WHERE type = ? AND field = ?").run(type, field);
+      db.prepare(`INSERT INTO kernel_counts (type, field, val, n) SELECT ?, ?, json_quote(json_extract(data, '$.${field}')), count(*) FROM kernel_records WHERE type = ? AND deleted_at IS NULL GROUP BY json_quote(json_extract(data, '$.${field}'))`).run(type, field, type);
+      setFlag.run(`counts:${type}:${field}`, "1");
+      db.exec("RELEASE kcounts");
+    } catch (e) { db.exec("ROLLBACK TO kcounts"); db.exec("RELEASE kcounts"); throw e; }
+    countsReady.add(`${type}\u0000${field}`);
+  };
+  /** Keep the built counts of a type right after one change entry (called inside the write's transaction). @param {any} e */
+  const countsApply = (e) => {
+    for (const f of countFields(e.type)) {
+      if (!countsReady.has(`${e.type}\u0000${f}`)) continue;
+      const after = e.after ? valKey(e.after[f]) : null, before = e.before ? valKey(e.before[f]) : null;
+      if (e.kind === "created" || e.kind === "restored") incCount.run(e.type, f, after);
+      else if (e.kind === "removed") decCount.run(e.type, f, after);
+      else if (e.kind === "updated" && before !== after) { if (before !== null) decCount.run(e.type, f, before); incCount.run(e.type, f, after); }
+    }
+  };
+  /** The count of each value of a type's stage field, when the question is exactly that; null otherwise. @param {string} type @param {any} spec */
+  const countsAnswer = (type, spec) => {
+    if (spec.attr_filter !== undefined || (spec.filter !== undefined && spec.filter !== null)) return null;
+    if (!Array.isArray(spec.group_by) || spec.group_by.length !== 1 || !Array.isArray(spec.measures) || spec.measures.length !== 1) return null;
+    const m = spec.measures[0], f = spec.group_by[0];
+    if (!m || m.fn !== "count" || m.field || typeof f !== "string" || !countFields(type).includes(f)) return null;
+    if (!countsReady.has(`${type}\u0000${f}`)) countsBuild(type, f);
+    const rows = /** @type {any[]} */ (db.prepare("SELECT val, n FROM kernel_counts WHERE type = ? AND field = ? AND n > 0").all(type, f));
+    return rows.map(r => ({ group: { [f]: JSON.parse(r.val) }, values: { count: Number(r.n) } })).sort((a, b) => (canonical(a.group) < canonical(b.group) ? -1 : 1));
+  };
   const FIELD_SLOTS = 1024;
   /** The text a record is searched by: one lowered string per non-sealed text field, with the field's position. A type with more fields than slots is not indexed (searched by scan). */
   const partsOf = (/** @type {any} */ r) => {
@@ -241,6 +288,8 @@ export function createSqliteStore(cfg) {
       },
       /** An aggregate as one GROUP BY statement (rows come back grouped; the groups are ordered here as the reference orders them), or null to stream the rows instead. */
       aggregateQuery(spec) {
+        const fast = countsAnswer(type, spec);
+        if (fast) { counts.pushed++; counts.agg++; return fast; }
         const plan = planAggregate({ type, def: defs.get(type), spec, ascii: field => isAscii(type, field) });
         if (!plan && spec.attr_filter !== undefined) throw Object.assign(new Error("this total cannot be answered under an attribute filter here"), { code: "unsupported" });
         if (!plan) { counts.fell++; return null; }
@@ -353,7 +402,7 @@ export function createSqliteStore(cfg) {
   const store = createMemoryStore({
     clock: cfg.clock, hook: cfg.hook, initial: { types, records: [], changes: [] }, backing: { table, changes },
     persist: (persistRef = {
-      type: (name, def) => { if (def) { const had = defs.get(name); putType.run(name, JSON.stringify(def)); defs.set(name, def); if (had && canonical(had) !== canonical(def)) ftsRestart(); } else { delType.run(name); defs.delete(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
+      type: (name, def) => { if (def) { const had = defs.get(name); putType.run(name, JSON.stringify(def)); defs.set(name, def); if (had && canonical(had) !== canonical(def)) countsReset(name); if (had && canonical(had) !== canonical(def)) ftsRestart(); } else { delType.run(name); defs.delete(name); countsReset(name); } for (const k of [...asciiOf.keys()]) if (k.startsWith(`${name}.`)) asciiOf.delete(k); },
       /**
        * A field was sealed in place: the values it held must not survive in the change log (before and after of every entry of the type), nor in the file's free pages or the write-ahead log
        * (`secure_delete` zeroes what an UPDATE frees, a VACUUM rewrites the file, and the log is truncated), nor in the full-text index (rebuilt without the field).
@@ -402,6 +451,7 @@ export function createSqliteStore(cfg) {
           putRec.run(r.type, r.id, r.version, JSON.stringify(r.data), r.created_at, r.updated_at, r.deleted_at ?? null);
           ftsSync(r);
           putChange.run(Number(e.cursor.slice(1)), JSON.stringify(e));
+          countsApply(e);
           db.exec("RELEASE kchange");
         } catch (err) { db.exec("ROLLBACK TO kchange"); db.exec("RELEASE kchange"); throw err; }
         pending = null;
