@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Platform, Share, View } from "react-native";
 import { WinkCode } from "../../src/ui/WinkCode";
+import { AckCode } from "./TypeCode";
 import { useRouter } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Divider, EmptyState, Field, Row, Segmented, Text, showToast } from "@vyre/ui";
@@ -70,7 +71,8 @@ export function RealInvite() {
         <Card className="max-w-read gap-s3">
           <Text strong>The invitation is ready</Text>
           <Card className="flex-row items-center gap-s3"><Text mono size="caption" className="flex-1">{made.link}</Text><Button size="sm" label="Copy link" onPress={() => { Clipboard.setStringAsync(made.link).catch(() => {}); showToast("Copied"); }} /></Card>
-          <WinkCode text={made.link} kind="join" space={card.name} typed={made.code} />
+          <WinkCode text={made.link} kind="join" space={card.name} typed={made.code} expires={made.codeExpires} />
+          {made.code && made.codeOffer ? <AckCode offer={made.codeOffer} onDone={() => showToast("Confirmed. They can join now.")} /> : null}
           <Text tone="muted">{made.line}</Text>
           <View className="flex-row flex-wrap gap-s2">
             <Button size="sm" label="Email it" onPress={() => {
