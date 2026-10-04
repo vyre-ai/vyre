@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { world, settle, ALEX } from "./testing/world.js";
 import { estateKit, SPACE } from "./testing/fixtures.js";
-import { KitManager, MemoryKitStore, installCard, diffKits, checkKit, kitParts } from "./kits.js";
+import { KitManager, MemoryKitStore, installCard, diffKits, checkKit, kitParts, kitHash } from "./kits.js";
 
 const mine = (w, type) => [...(w.kernel.tables.get(type) || new Map()).values()];
 
@@ -185,4 +185,20 @@ test("kits: the installed Kits and waiting proposals are records, so they surviv
   const listed = await new RecordsKitStore({ kernel: w.kernel, chain: sys }).list();
   assert.deepEqual(listed.map(r => [r.kit_id, r.status]), [["estate-planning", "installed"]]);
   assert.equal(await after.store.proposalByTask(p.task), null, "the proposal is gone once it is installed");
+});
+
+test("a type-less Kit is checked against the approved kit_hash too: swapping the stored Kit and its stored hash after the card was shown installs nothing", async () => {
+  const { w, kits, caller } = await kitWorld();
+  const plain = n => ({ format: 1, id: "plain-kit", version: 1, name: "Plain", description: "Templates only.", includes: { templates: Array.from({ length: n }, (_, i) => ({ name: `note${i}`, kind: "email", body: `Hello ${i}` })) } });
+  const shown = plain(1), swapped = plain(2);
+  const p = await kits.propose(shown, ALEX, caller);
+  assert.equal(p.ok, true, JSON.stringify(p));
+  await settle(w);
+  // the stored proposal record holds the Kit and its hash side by side: an attacker who can write it replaces both
+  const stored = await kits.store.getProposal(p.proposal);
+  await kits.store.putProposal({ ...stored, kit: swapped, hash: kitHash(swapped) });
+  w.kernel.completeTask(p.task, { outcome: "approved" });
+  await settle(w); await new Promise(r => setImmediate(r)); await settle(w);
+  assert.equal(mine(w, "template").length, 0, "nothing was installed from a Kit the owner never saw");
+  assert.ok(!(await kits.list()).some(k => k.kit_id === "plain-kit" && k.status === "installed"));
 });
