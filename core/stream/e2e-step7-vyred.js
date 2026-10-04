@@ -13,8 +13,6 @@ import { start } from "../daemon/index.js";
 import * as config from "../config/index.js";
 import { open } from "../store/index.js";
 import { homeIdentity } from "../../kernel/home.js";
-import net from "node:net";
-import { fileURLToPath } from "node:url";
 
 import { present } from "../../test/helpers.js";
 
@@ -30,23 +28,14 @@ const ALEX_ID = homeIdentity(root).owner;
 // carol is a REAL claimed identity (the real path for a second person's device, windows' member-device enrolment in core/spaces, the shape of test/one-registry.test.js): her name is claimed at a
 // stand-in names directory this harness starts (its storage kept in --state, so a restart of this harness keeps every claim), made by her own home on the same directory, and the Space finds
 // her identity list there.
-const { spawn } = await import("node:child_process");
-const { call: callTool } = await import("../daemon/client.js");
-const dirPort = await new Promise(res => { const n = net.createServer(); n.listen(0, "127.0.0.1", () => { const p = /** @type {any} */ (n.address()).port; n.close(() => res(p)); }); });
-const dirChild = spawn(process.execPath, [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "scripts", "standin-directory.mjs"), "--port", String(dirPort), "--state", path.join(root, "dir-state.bin"), "--claims-per-ip", "50"], { stdio: ["ignore", "pipe", "inherit"] });
-process.on("exit", () => { try { dirChild.kill("SIGTERM"); } catch { /* gone */ } });
-await new Promise((res, rej) => { dirChild.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); dirChild.on("exit", c => rej(new Error(`the stand-in directory exited early (${c})`))); });
+const { startDirectory, claimInHome } = await import("./testing/two-identities.js");
+const dirChild = await startDirectory({ state: path.join(root, "dir-state.bin") });
+const dirPort = dirChild.port;
 /** @type {{ chat?: string, carol?: { id: string, eid: string } }} */
 const carolState = state;
 if (!carolState.carol) {
-  const carolRoot = path.join(root, "carol-home");
-  fs.mkdirSync(carolRoot, { recursive: true });
-  fs.writeFileSync(path.join(carolRoot, "config.json"), JSON.stringify({ name: "carol-home", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${dirPort}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const carolDaemon = await start({ root: carolRoot, kernel: true, log: () => {} });
-  const made = /** @type {any} */ (await callTool("spaces.identity.create", { name: "carolwalk" }, { root: carolRoot, caller: "cli" }));
-  if (made.error) { console.error("carol: " + JSON.stringify(made.error)); process.exit(1); }
-  carolState.carol = { id: made.data.id, eid: made.data.eid };
-  await carolDaemon.stop();
+  const carol = await claimInHome({ root: path.join(root, "carol-home"), name: "carolwalk", directory: dirChild.url });
+  carolState.carol = { id: carol.id, eid: carol.eid };
   fs.writeFileSync(stateFile, JSON.stringify(carolState));
 }
 const carolId = carolState.carol;
