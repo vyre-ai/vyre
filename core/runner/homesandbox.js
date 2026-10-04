@@ -289,7 +289,10 @@ export async function selfTest(o) {
   const mustNotWrite = [...new Set([...(o.probes.mustNotWrite || []), ...(o.platform === "darwin" ? [path.dirname(process.execPath), "/private/tmp", "/usr/local/bin", "/opt/homebrew/bin", "/Applications"] : [])])].filter(d => fs.existsSync(d) && writableByUser(d) && !(o.workdirs || []).some(w => real(w).startsWith(real(d))) && !(o.temp && real(o.temp).startsWith(real(d))));
   // The daemon's ports on every address a machine has: loopback, ::1 and the LAN address. Only the ones the host itself can reach are probed.
   const addrPorts = [];
-  for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs(), ...ownV6()]) if (await hostConnectAddr(a, port)) addrPorts.push([a, port]);
+  // Together, not one by one: an address that drops the connect (a link-local v6 with no scope, a bridge) costs its whole timeout, and a machine with a dozen of them took over 30 s per session start.
+  const cand = []; for (const port of o.probes.daemonPorts) for (const a of ["::1", ...lanAddrs(), ...ownV6()]) cand.push([a, port]);
+  const reach = await Promise.all(cand.map(([a, port]) => hostConnectAddr(a, port)));
+  cand.forEach((c, i) => { if (reach[i]) addrPorts.push(c); });
   // macOS: what the profile must keep closed although its text could be wrong (reviewer-2): a launchd job started from inside, another app's preferences through the preferences daemon,
   // the person's per-user temp, and a direct connection to the internet. Each is tried from inside, never read off the profile text.
   const rnd = crypto.randomBytes(4).toString("hex");
