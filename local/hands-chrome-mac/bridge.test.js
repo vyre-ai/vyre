@@ -3,6 +3,7 @@
 // framing both ways, id matching, timeouts, no_extension, a second hello replacing the first,
 // stale socket cleanup, and redaction of everything on arrival.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

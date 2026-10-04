@@ -1,5 +1,6 @@
 // @ts-check
 // chrome_point: a point of a screenshot, mapped from the kept shot, classified by the text under it, and gated like chrome_act (and by a plan for what has no text).
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import point, { _resetRate } from "./extension/caps/point.js";

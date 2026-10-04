@@ -1,5 +1,6 @@
 // @ts-check
 // Sites against a fake box shaped like core/publish: groups of versions, the next step, held acts decided with the plan the person read, and the refusals.
+import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";

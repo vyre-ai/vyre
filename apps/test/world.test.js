@@ -3,6 +3,7 @@
 // JSON bodies, a device key made here and enrolled with a one-time code, and a Gate approval
 // signed with it. The world runs as its own process, as the apps' test runs start it.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

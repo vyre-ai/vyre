@@ -4,6 +4,7 @@
 // a fake tailscale that answers `status` and `funnel status` for hooks.status. The listener stays
 // off, so nothing listens; no route is ever published.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";

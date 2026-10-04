@@ -2,6 +2,7 @@
 // Memory's plain logic (deck/views/memory-data.js) and the shapes of its fixtures. The views
 // themselves are checked by screenshot (deck/test/shoot.js); this is what can run in node.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

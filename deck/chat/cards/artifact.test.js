@@ -2,6 +2,7 @@
 // The artifact card, the viewer and the /a/<id> route in the fake DOM, with a fake vyred behind
 // fetch. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../../test/fake-dom.js";

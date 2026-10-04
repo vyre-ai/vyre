@@ -22,12 +22,12 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
   /** @type {Map<string, any>} */ const servers = new Map();
-  const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { return o.kernel.spaces.for(space); } catch { return null; } })() : null));
+  const kernelOf = (/** @type {string} */ space) => (space === o.kernel.id.space ? o.kernel : (o.kernel.spaces && typeof o.kernel.spaces.for === "function" ? (() => { try { const h = o.kernel.spaces.for(space); return h && h.hosted === true ? h.kernel : null; } catch { return null; } })() : null));
   const serverFor = (/** @type {string} */ space) => {
     const k = kernelOf(space);
     if (!k) { servers.delete(space); return null; }
     let s = servers.get(space);
-    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, kernel: k }) }; servers.set(space, s); }
+    if (!s || s.k !== k) { s = { k, server: createRemoteServer({ space, home: o.kernel.id.space, kernel: k }) }; servers.set(space, s); }
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
@@ -45,7 +45,9 @@ export function createPeerDoor(o) {
     if (!facts) throw err("denied", "this device is not paired here any more");
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     /** @type {any} */ let proof;
-    if (body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
+    // PD-1: a tool that takes `proof` as a parameter of its own (a pairing's identity proof) keeps it in its input and gets nothing in meta; for any other tool `proof` is the owner's presence proof
+    const declared = (() => { try { const t = o.registry.tools && o.registry.tools.get(tool); return Boolean(t && t.input && t.input.properties && Object.hasOwn(t.input.properties, "proof")); } catch { return false; } })();
+    if (!declared && body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
     // the owner's proof rides input.proof: the registry's presence floor reads it as `proof`, and the kernel as `kernel_proof` (each checks its own shape; neither is trusted here)
     const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), kernelFacts: facts, ...(proof ? { proof, kernel_proof: proof } : {}) });
     if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));

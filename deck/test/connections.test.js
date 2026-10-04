@@ -4,6 +4,7 @@
 // that each action calls the right tool with the right input, that Remove asks first, and that a
 // value never reaches the page even when a reply carries one by mistake.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

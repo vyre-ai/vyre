@@ -15,6 +15,7 @@
 //   - G-MV4 has a partial one: the person sees every item, but the allowed revoke by an unnamed session is not repeated here
 //     (core/vault/module.test.js covers it).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

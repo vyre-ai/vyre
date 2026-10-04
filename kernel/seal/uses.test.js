@@ -1,6 +1,7 @@
 // @ts-check
 // The vault and Drive on the kernel's grants and events: decide, run once, record without a value; a refusal looks like absence; the summary
 // says what a credential was used for; today's audit rows and agent grants fold into the same shapes.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

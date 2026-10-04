@@ -3,6 +3,7 @@
 // Prints JSON lines. Targets: emit to client onFrame p95 <= 50 ms (budget 300 ms to a screen),
 // kill to first resumed frame <= 1 s.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";

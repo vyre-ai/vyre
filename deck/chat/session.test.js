@@ -4,6 +4,7 @@
 // after thread.finished (nothing twice), the raw view, and a question card driven by keys.
 // Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

@@ -1,5 +1,6 @@
 // @ts-check
 // Site knowledge on the device: what an op teaches, what may leave the browser, and the arrival path that never waits.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

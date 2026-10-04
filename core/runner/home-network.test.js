@@ -1,5 +1,6 @@
 // A home session's network (reviewer-2, Mac gap 3): the only way out is the per-session egress proxy in internet mode, public addresses only. The refusal matrix runs everywhere against
 // the real proxy; on a hosted Mac the same is proved from INSIDE the real seatbelt profile (a direct connection fails, the proxy works, the proxy refuses the LAN and loopback).
+import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";

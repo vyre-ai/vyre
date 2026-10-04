@@ -1,6 +1,7 @@
 // @ts-check
 // The .env scan: secrets counted by name and kind, never a value; templates and plain config are not offered.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,5 +1,6 @@
 // @ts-check
 // Recipes: a batch that worked, kept as data with no typed value in it, replayed as one batch with the same guards.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { toRecipe, fill } from "./extension/lib/recipes.js";

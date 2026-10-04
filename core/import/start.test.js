@@ -2,6 +2,7 @@
 // import.start / stop / cancel: the person's consent goes to the server through federation's
 // door, the plan's sessions go through federation's sender a batch at a time, and nothing is ever
 // deleted unless the person asks. The import module against a stand-in for core/sync.
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,6 +1,7 @@
 // @ts-check
 // The eval harness, on the fictional corpus and its labelled set.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

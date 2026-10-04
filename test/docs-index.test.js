@@ -4,6 +4,7 @@
 // rules run on a small fixture tree with a fake CLI, config and module, so each rule is shown
 // catching what it is for and leaving placeholders, examples and history alone.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

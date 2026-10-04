@@ -4,6 +4,7 @@
 // that the page is the browser's word, not the message's) and the HTTP contract of match, fill,
 // otp and save. No browser runs; the "page" is whatever executeScript is handed.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

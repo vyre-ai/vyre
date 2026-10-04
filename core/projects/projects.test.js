@@ -3,6 +3,7 @@
 // machine has, so each test moves it into its own temp folder: project homes have to be real
 // folders for their markers to be written.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

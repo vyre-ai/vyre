@@ -3,6 +3,7 @@
 // signed tickets between two vaults in one process, agent requests waiting for a person, and the
 // relay hardening on the owner's side. Every vault lives in a temp home with a file keystore.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

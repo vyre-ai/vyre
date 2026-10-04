@@ -1,6 +1,7 @@
 // End to end on the REAL gateway and tasks with records' Estate Kit: the tool surface, sealing, an outward act held and approved with a presence proof, the
 // situation, a teammate added under the adder's ceiling, the memory engine's authorized search and cited answer, and the Engineer's proposal approved by the admin.
 // Only the model (scripted) and the language compiler's adapter are stand-ins; everything the kernel decides is the kernel's.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { serverSay } from "../install/flow.js";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Text } from "@vyre/ui";
 import { Page } from "../places/Frame";
@@ -54,7 +55,7 @@ export function RealAdd({ kind, onBack, onDone }: { kind: DeviceKind; onBack: ()
     const s = serverSession(c, target);
     setSaid("");
     setBusy(true);
-    s.ready!().then(() => { if (live.current) setSession(s); }).catch((e: Error) => reset(e.message || COPY.ended)).finally(() => setBusy(false));
+    s.ready!().then(() => { if (live.current) setSession(s); }).catch((e: Error) => reset((e as { code?: string }).code ? serverSay(e) : e.message || COPY.ended)).finally(() => setBusy(false));
   };
   const showCode = () => {
     setBusy(true);

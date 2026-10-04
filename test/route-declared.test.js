@@ -2,6 +2,7 @@
 // The fetch-site rule (c): every raw route a module registers says whether it only reads or which writing methods it answers, and a
 // route answers only those. A GET can be made by any page the person opens, so one with a side effect must never answer GET.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

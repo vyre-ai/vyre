@@ -3,6 +3,7 @@
 // the desktop's `tailscale up` against a fake binary that writes down what it saw. Nothing here
 // reaches api.tailscale.com or a real tailscale.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

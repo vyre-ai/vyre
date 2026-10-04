@@ -6,6 +6,7 @@
 // as a script would; the one approve that needs a person runs in-process with a fake terminal
 // that types back the code vyred wrote.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";

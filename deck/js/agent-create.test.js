@@ -1,6 +1,7 @@
 // @ts-check
 // createAgent: ticking "Give it its own computer" ends with the agent having one, as the agent
 // page's "Give <name> a computer" button does.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createAgent } from "./agent-create.js";

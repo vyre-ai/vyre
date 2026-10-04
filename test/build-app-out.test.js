@@ -2,6 +2,7 @@
 // scripts/build-app-out.mjs: the hosted app's release step, with a throwaway key (never the real one). It
 // seals the loader and the app build, every folder verifies against the signing key, a tampered file or a
 // wrong key fails, and a real-key run refuses a key that is not the pinned one.
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";

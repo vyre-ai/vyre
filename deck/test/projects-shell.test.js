@@ -2,6 +2,7 @@
 // Projects is a shell (#47, #42): a project's page lists its chats and each opens in Chat, scoped to the project; the page never draws a
 // conversation or a start box of its own (the old copy did, with the wrong event fields). Sample world only.
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

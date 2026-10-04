@@ -2,6 +2,7 @@
 // The file and link preview chip in the fake DOM: what it shows, where a tap goes, what it
 // refuses to fetch, and previewsIn on a line of prose. Sample world only.
 
+import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { install, text, $, $$ } from "../../test/fake-dom.js";

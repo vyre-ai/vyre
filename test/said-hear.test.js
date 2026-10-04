@@ -4,6 +4,7 @@
 // are stored the way the vault does, and the real registry's "asked" gate decides the agent's calls.
 // No daemon, no network, no real model.
 
+import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

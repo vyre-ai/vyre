@@ -1,5 +1,6 @@
 // The Capsule's quick answer (Vyre Memory): the prompt's rules and the eval's grader, on fixed answers.
 // The live run (the model itself) is scripts/eval-iq-prompt.js --live, run by a person.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { composeIq, factsFrom, IQ_PROMPT, IQ_VERSION, IDK, TEMPERATURE } from "../../core/sessions/iq-prompt.js";

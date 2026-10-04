@@ -3,6 +3,7 @@
 // recording module is played by calling undo.record as "module:watchers", the label vyred gives a
 // built-in module; a fake home module could not call it at all (reach "modules" is Vyre's own).
 
+import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";

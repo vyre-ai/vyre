@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
@@ -365,4 +366,94 @@ test("KP-1: a passkey assertion must carry user verification, name this op, and 
   // a malformed passkey entry is refused at the shape
   await refused(C.makeGenesis({ kind: "person", entry: { ...pk.entry(), rp: "" }, nonce: "n-badrp1234", ts: T0, sign: pk.sign }).then(g => C.verifyChain([g], { now: T0 })), "bad_entry");
   await refused(C.makeGenesis({ kind: "person", entry: { ...pk.entry(), held: "web" }, nonce: "n-badrp1235", ts: T0, sign: pk.sign }).then(g => C.verifyChain([g], { now: T0 })), "bad_entry");
+});
+
+// NK-2: a phone's Ed25519 seed is a software key; its Secure Enclave key (Face ID) must also sign every list change.
+async function enclaveKey() {
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const pub = Buffer.from(publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const low = raw => { const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n; let s = 0n; for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]); if (s > n / 2n) { s = n - s; for (let i = 63; i >= 32; i--) { raw[i] = Number(s & 255n); s >>= 8n; } } return raw; };
+  const high = raw => { const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n; let s = 0n; for (let i = 32; i < 64; i++) s = (s << 8n) | BigInt(raw[i]); if (s <= n / 2n) { s = n - s; for (let i = 63; i >= 32; i--) { raw[i] = Number(s & 255n); s >>= 8n; } } return raw; };
+  const rawSig = m => crypto.sign("sha256", Buffer.from(m), { key: privateKey, dsaEncoding: "ieee-p1363" });
+  return { pub, esign: m => low(Buffer.from(rawSig(m))), esignHigh: m => high(Buffer.from(rawSig(m))), esignDer: m => crypto.sign("sha256", Buffer.from(m), privateKey) };
+}
+const phoneEntry = (k, enc) => ({ ...k.entry("device"), enclave: enc.pub });
+
+test("NK-2: the phone's seed alone cannot add, remove or replace-code; the seed plus its enclave signature can; another key's or another op's esig is refused; a non-list use needs only the seed", async () => {
+  const phone = await key("phone"), mac = await key("mac"), thief = await key("thief"), code = await key("paper"), enc = await enclaveKey(), other = await enclaveKey();
+  const g = await C.makeGenesis({ kind: "person", entry: phoneEntry(phone, enc), nonce: "n-nk2-0001", ts: T0, sign: phone.sign });
+  let w = { ops: [g], state: await C.verifyChain([g], { now: T0 }) };
+  const later = T0 + 48 * H;
+  const run = (body, signer, extra = {}, ts = later) => step(w, body, { ...signer, sign: signer.sign }, ts, extra);
+  const withEsig = async (body, esign, ts = later) => { const op = await C.makeOp(w.state, body, { by: phone.eid, ts, sign: phone.sign, esign }); return C.applyOp(w.state, op, { now: ts }); };
+  // the reviewer's probe: the seed alone
+  await refused(run({ type: "add", entry: thief.entry("device") }, phone), "needs_enclave");
+  await refused(run({ type: "add", entry: code.entry("code") }, phone), "needs_enclave");
+  await refused(run({ type: "remove", target: phone.eid }, phone), "needs_enclave");
+  // the seed plus the right enclave signature, raw or DER
+  const added = await withEsig({ type: "add", entry: code.entry("code") }, enc.esign);
+  assert.ok(added.entries.some(e => e.eid === code.eid));
+  // one op, one hash: the DER form and the high-s twin of the same signature are refused, not accepted as second valid ops
+  await assert.rejects(withEsig({ type: "add", entry: mac.entry("device") }, enc.esignDer), e => e.code === "needs_enclave");
+  await assert.rejects(withEsig({ type: "add", entry: mac.entry("device") }, enc.esignHigh), e => e.code === "needs_enclave");
+  // another key's esig, and an esig made for another op
+  await assert.rejects(withEsig({ type: "add", entry: thief.entry("device") }, other.esign), e => e.code === "needs_enclave");
+  const forOther = await C.makeOp(w.state, { type: "add", entry: mac.entry("device") }, { by: phone.eid, ts: later, sign: phone.sign, esign: enc.esign });
+  const swapped = await C.makeOp(w.state, { type: "add", entry: thief.entry("device") }, { by: phone.eid, ts: later, sign: phone.sign });
+  await refused(C.applyOp(w.state, { ...swapped, esig: forOther.esig }, { now: later }), "needs_enclave");
+  // a Mac key with no enclave and no held keeps signing alone (the lead's ruling decides if that stays)
+  w = { ...w, state: added };
+  w.ops = [...w.ops];
+  const addMac = await step({ ops: w.ops, state: added }, { type: "add", entry: mac.entry("device") }, { ...phone, sign: phone.sign }, later + H, {}).catch(e => e);
+  assert.equal(addMac.code, "needs_enclave", "the phone entry still needs its esig on a later op");
+  // the enclave key is part of the signed entry: a malformed one is refused at the shape
+  const bad = { ...phone.entry("device"), enclave: Buffer.alloc(33, 1).toString("base64url") };
+  await refused(C.makeGenesis({ kind: "person", entry: bad, nonce: "n-nk2-0002", ts: T0, sign: phone.sign }).then(x => C.verifyChain([x], { now: T0 })), "bad_entry");
+});
+
+test("NK-2: a device with no enclave key and no web hold (a Mac or a server) still changes the list alone (the lead rules whether that stays)", async () => {
+  const mac = await key("mac"), friend = await key("friend");
+  let w = await person(mac);
+  w = await step(w, { type: "add", entry: friend.entry("device") }, mac, T0 + 30 * H);
+  assert.ok(w.state.entries.some(e => e.eid === friend.eid));
+});
+
+test("NE-1: a passkey op's head does not depend on the assertion's signature bytes; an esig has one canonical form, so one op has one hash", async () => {
+  const pk = await passkey("alex's passkey"), friend = await key("friend");
+  const w = await person(pk);
+  const op = await C.makeOp(w.state, { type: "add", entry: friend.entry("device") }, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  // the high-s twin of the authenticator's signature: anyone can make it, and it verifies, so the head must not change with it
+  const env = JSON.parse(Buffer.from(op.sig, "base64url").toString());
+  const der = Buffer.from(env.s, "base64url");
+  const rLen = der[3], sOff = 4 + rLen + 2, sLen = der[4 + rLen + 1];
+  const n = 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551n;
+  let s = 0n; for (const b of der.subarray(sOff, sOff + sLen)) s = (s << 8n) | BigInt(b);
+  const twin = n - s;
+  const hex = twin.toString(16).padStart(64, "0");
+  let sb = Buffer.from(hex, "hex"); if (sb[0] & 0x80) sb = Buffer.concat([Buffer.from([0]), sb]);
+  const r = der.subarray(4, 4 + rLen);
+  const body = Buffer.concat([Buffer.from([2, r.length]), r, Buffer.from([2, sb.length]), sb]);
+  const twinDer = Buffer.concat([Buffer.from([0x30, body.length]), body]);
+  const twinOp = { ...op, sig: C.b64u(Buffer.from(JSON.stringify({ ...env, s: twinDer.toString("base64url") }))) };
+  const a = await C.applyOp(w.state, op, { now: T0 + 25 * H }), b = await C.applyOp(w.state, twinOp, { now: T0 + 25 * H });
+  assert.equal(a.head, b.head, "both forms are valid and give the same head");
+});
+
+test("NE-1 cares: a long garbage sig on an Ed25519 entry is refused (it can never be an accepted op whose hash ignores its sig); two different valid passkey signatures over one op give one head and cannot change what the op says", async () => {
+  const phone = await key("phone"), friend = await key("friend"), other = await key("other"), pk = await passkey("alex's passkey");
+  const w0 = await person(phone);
+  const op = await C.makeOp(w0.state, { type: "add", entry: friend.entry("device") }, { by: phone.eid, ts: T0 + 25 * H, sign: phone.sign });
+  const garbage = { ...op, sig: C.b64u(Buffer.alloc(200, 7)) };
+  await refused(C.applyOp(w0.state, garbage, { now: T0 + 25 * H }), "bad_signature");
+  // two different valid assertions over the same op: one head
+  const w = await person(pk);
+  const body = { type: "add", entry: friend.entry("device") };
+  const a = await C.makeOp(w.state, body, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  const b = await C.makeOp(w.state, body, { by: pk.eid, ts: T0 + 25 * H, sign: pk.sign });
+  assert.notEqual(a.sig, b.sig, "ECDSA signs differently each time");
+  const sa = await C.applyOp(w.state, a, { now: T0 + 25 * H }), sb = await C.applyOp(w.state, b, { now: T0 + 25 * H });
+  assert.equal(sa.head, sb.head);
+  // the signature still binds the content: another op's body under a's signature is refused
+  const swapped = { ...a, entry: other.entry("device") };
+  await refused(C.applyOp(w.state, swapped, { now: T0 + 25 * H }), "bad_signature");
 });
