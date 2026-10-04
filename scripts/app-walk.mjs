@@ -189,7 +189,7 @@ await step("settings: notifications, switch a kind and back", {}, async () => {
 });
 await step("settings: assistants", {}, async () => { await go("u/settings/assistants"); });
 await step("settings: AI accounts", {}, async () => { await go("u/settings/ai"); });
-await step("settings: account and recovery", { expect: [/Ways in/] }, async () => { await go("u/settings/account"); });
+await step("settings: account and recovery", { expect: [/ways in/i] }, async () => { await go("u/settings/account"); });
 await step("settings: account, make a new recovery code", { needs: "presence" }, async () => {});
 await step("settings: what my assistants can see", {}, async () => { await go("u/settings/seeing"); });
 await step("settings: privacy and sealing", {}, async () => { await go("u/settings/privacy"); });
