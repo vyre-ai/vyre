@@ -4,7 +4,7 @@
 // a sealed value (an SSN the person typed) is never in any answer or in the stored lines. Stand-ins, each labelled:
 //   SHIM(presence): `kernelPresence` accepts any proof for the owner's grants acts (a headless test has no hardware signer), as the other real-daemon suites do;
 //   SHIM(model): no model answers here; `work.know.search` is the retrieval an answer cites from, and it is what is asserted;
-//   a teammate's per-session read grant stands for the project-to-session link Recall does not make yet (capture passes no record, so a line's read gate is `vyre://<space>/session/<id>`).
+//   (the teammate's grant is on the PROJECT's record: Recall names the session's project when it captures, and the work module reads the session's lines under that record).
 // Run it on a test box, never on a person's Mac.
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -42,6 +42,7 @@ test("seed a session, a teammate in a later session recalls its decision from th
   const ownerMeta = { kernelFacts: callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false }) };
   const ask = (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta = ownerMeta, caller = "cli") => d.registry.call(tool, input, caller, meta);
 
+  assert.ok(!(await ask("projects.create", { name: "Harlow Legal", home: cwd })).error);
   const idx = await ask("recall.index", {});
   assert.ok(!idx.error, JSON.stringify(idx.error));
   // Space memory holds the session's lines now, scrubbed.
@@ -51,11 +52,11 @@ test("seed a session, a teammate in a later session recalls its decision from th
   assert.ok(hit, JSON.stringify(mine.data.hits.map((/** @type {any} */ h) => h.source)));
   assert.match(hit.snippet, /Vercel/);
 
-  // Two teammates, each a kernel agent actor; only juno is given the Harlow session (SHIM: the project-to-session link).
+  // Two teammates, each a kernel agent actor; only juno is given the Harlow PROJECT, and that covers its sessions.
   const space = d.kernel.id.space;
   const presence = () => ({ op: "x", fields: {}, n: Math.random() });
   for (const name of ["juno", "kit"]) await d.kernel.gateway.grants.addActor(owner, { kind: "agent", id: name, space }, { presence: presence() });
-  await d.kernel.gateway.grants.create(owner, { subject: { kind: "actor", actor: { kind: "agent", id: "juno", space } }, actions: ["records.read"], resource: { prefix: `vyre://${space}/session/${sid}` }, conditions: {}, source: "team", reason: "Harlow teammate" }, { presence: presence() });
+  await d.kernel.gateway.grants.create(owner, { subject: { kind: "actor", actor: { kind: "agent", id: "juno", space } }, actions: ["records.read"], resource: { prefix: `vyre://${space}/project/harlow-legal` }, conditions: {}, source: "team", reason: "Harlow teammate" }, { presence: presence() });
   const tokenOf = async (/** @type {string} */ agent) => (await d.kernel.surfaces.open(owner, { agent })).token;
   const juno = await ask("work.know.search", { query: "where is Harlow hosted and who owns the account" }, { token: await tokenOf("juno") }, "mcp:thread:t-juno");
   assert.ok(!juno.error, JSON.stringify(juno.error));

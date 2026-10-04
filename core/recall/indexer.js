@@ -52,7 +52,7 @@ export class Indexer {
    * @param {{ emit?: (type: string, payload: object, where?: object) => void, log?: (m: string) => void,
    *           onVector?: (item: { rid: number, session: string, seq: number, role: string, chunks: { off: number, v: Float32Array }[] }) => void,
    *           origin?: (session: string) => Promise<{ known?: boolean, human?: boolean } | null | undefined>,
-   *           capture?: (c: { session: string, rewritten: boolean, lines: { seq: number, role: string, text: string, at: number | null }[] }) => Promise<void>,
+   *           capture?: (c: { session: string, rewritten: boolean, cwd?: string | null, lines: { seq: number, role: string, text: string, at: number | null }[] }) => Promise<void>,
    *           accountsHome?: string | null }} [hooks]
    *   origin: the Switchboard's own record of a session (threads.origin). For a transcript under an
    *   account folder, whether it is a person's comes only from this, never from the transcript: no
@@ -262,7 +262,7 @@ export class Indexer {
         const lines = t.turns.slice(from).map(turn => ({ seq: turn.seq, role: turn.role, text: String(turn.text || "").slice(0, 20_000), at: turn.ts || null }));
         // One at a time, in the order the batches were indexed, and never holding up the pass (this method is synchronous).
         const cap = this.capture;
-        this.captured = (this.captured || Promise.resolve()).then(() => cap({ session: entry.id, rewritten, lines })).catch(e => this.log(`capture of ${entry.id.slice(0, 8)} failed: ${/** @type {Error} */ (e).message}`));
+        this.captured = (this.captured || Promise.resolve()).then(() => cap({ session: entry.id, rewritten, lines, cwd: t.cwd || null })).catch(e => this.log(`capture of ${entry.id.slice(0, 8)} failed: ${/** @type {Error} */ (e).message}`));
       }
     }
   }

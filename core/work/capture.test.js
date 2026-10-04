@@ -16,7 +16,7 @@ async function boot(t) {
   t.after(() => db.close());
   const tools = {};
   await mod.start({ tool: (n, d) => { tools[n] = d; }, store: { db }, kernel: { ...rig.kernel, chainFor: () => rig.ownerChain, serviceChain: () => mem.serviceChain(), chainForPerson: () => rig.withService(rig.ownerChain, "memory"), audienceFor: async () => ({ group: false }) } });
-  return { rig, tools, call: (n, i) => tools[n].run(i, { caller: "module:sessions" }) };
+  return { rig, db, tools, call: (n, i) => tools[n].run(i, { caller: "module:sessions" }) };
 }
 const LINES = [{ seq: 1, role: "user", text: "the court portal password changed on Tuesday", at: 1 }, { seq: 2, role: "assistant", text: "noted: portal password changed", at: 2 }, { seq: 3, role: "user", text: "client ssn is 123-45-6789", at: 3 }];
 
@@ -37,4 +37,13 @@ test("capture refuses a bad session id, ignores malformed lines, and is declared
   await assert.rejects(() => w.call("work.know.capture", { session: "../x", lines: LINES }), { code: "bad_input" });
   assert.equal((await w.call("work.know.capture", { session: "s2", lines: [{ seq: "x", role: "user", text: "a" }, { seq: 1, role: "root", text: "b" }, null] })).kept, 0);
   for (const name of ["work.know.capture", "work.know.forget"]) assert.equal(manifest.does.tools.find(x => x.name === name).reach, "modules");
+});
+
+test("capture with a project reads the session's lines under that project's record; a bad project name falls back to the session's own address", async t => {
+  const w = await boot(t);
+  await w.call("work.know.capture", { session: "sp", project: "harlow-legal", lines: LINES });
+  await w.call("work.know.capture", { session: "sq", project: "../x", lines: LINES });
+  const db = w.db;
+  assert.equal(db.prepare("SELECT record FROM memory_engine_lines WHERE session = 'sp' LIMIT 1").get().record, `vyre://${w.rig.space}/project/harlow-legal`);
+  assert.equal(db.prepare("SELECT record FROM memory_engine_lines WHERE session = 'sq' LIMIT 1").get().record, `vyre://${w.rig.space}/session/sq`);
 });
