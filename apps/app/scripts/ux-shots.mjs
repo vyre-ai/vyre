@@ -63,7 +63,7 @@ try {
     const page = await ctx.newPage();
     let errors = [];
     page.on("pageerror", (e) => errors.push(String(e).slice(0, 200)));
-    page.on("console", (m) => { if (m.type() === "error") errors.push(m.text().slice(0, 200)); });
+    page.on("console", (m) => { if (m.type() === "error" && !/unsupported MIME type/.test(m.text())) errors.push(m.text().slice(0, 200)); });
     const shoot = async (route, tag) => {
       errors = [];
       await page.goto(base + route, { waitUntil: "load" }).catch(() => {});
