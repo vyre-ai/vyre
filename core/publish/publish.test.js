@@ -16,7 +16,7 @@ import publishModule, { seams, buildctlArgs } from "./index.js";
 import { fakeKernelFor } from "../../test/fake-chain-kernel.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const SPACE = { id: "spc_a1b2c3d4e5f6", name: "harlow.vyre.run" };
+const SPACE = { id: "spc_abcdefghijkl", name: "harlow.vyre.run" };
 const STRIPE = "sk_live_FAKEFAKEFAKE1234";
 const SSN = "123-45-6789";
 const DRAFT = { name: "northwind", source: { kind: "repo", ref: "https://git.example.com/northwind.git#main" }, build: { image: "static" }, project: "bakery" };
@@ -282,7 +282,7 @@ test("publish: a secret granted to deployment A is absent from B, written 0400 f
   await b.ok("publish.preview", { deployment: a });
   await b.ok("publish.preview", { deployment: other });
   assert.equal(b.pf.seen[0].args.length, 2);
-  assert.match(b.pf.seen[0].args[1], /^id=STRIPE_KEY,src=.*\/publish\/spc_a1b2c3d4e5f6\/secrets\/dep_[0-9a-f]{16}\/STRIPE_KEY$/);
+  assert.match(b.pf.seen[0].args[1], /^id=STRIPE_KEY,src=.*\/publish\/spc_abcdefghijkl\/secrets\/dep_[0-9a-f]{16}\/STRIPE_KEY$/);
   assert.deepEqual(b.pf.seen[0].modes, ["400"]);
   assert.deepEqual(b.pf.seen[1].args, [], "B was granted nothing");
   assert.equal(fs.existsSync(path.join(b.publishRoot, "secrets", a, "STRIPE_KEY")), false, "the build file is removed after the build");

@@ -108,13 +108,25 @@ export async function createKernel(cfg) {
        * @param {string} person @param {string} [space] this Space only
        */
       ...(needs.membership === true && grantsStore ? { membership: async (/** @type {string} */ person, /** @type {string} */ space = cfg.space) => {
-        if (space !== cfg.space) throw new KernelError("not_found", "no such space here");
         if (typeof person !== "string" || !/^per_[A-Za-z0-9_-]{1,64}$/.test(person)) throw new KernelError("bad_input", "name one person");
-        const a = { kind: "person", id: person, space: cfg.space };
-        const role = grantsStore.roleOf(a) || null;
-        try { log.append(gateway.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${cfg.space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
+        // This Space, or another this home hosts (its own grants and its own log): the answer and the owner-visible note come from the Space asked about.
+        const h = space === cfg.space ? null : (spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null);
+        if (space !== cfg.space && !(h && h.kernel && h.kernel.grants)) throw new KernelError("not_found", "no such space here");
+        const store = h ? h.kernel.grants : grantsStore, slog = h ? h.kernel.log : log, sgw = h ? h.kernel.gateway : gateway;
+        const a = { kind: "person", id: person, space };
+        const role = store.roleOf(a) || null;
+        try { slog.append(sgw.serviceChain(m.name), { type: "membership.read", sv: 1, subject: `vyre://${space}/member/${person}`, data: { module: m.name, person, member: role !== null }, vis: "owner", red: "internal" }); } catch { /* the answer is a read; a log that cannot be written says so on the next write */ }
         return Object.freeze({ member: role !== null, role });
       } } : {}),
+      /**
+       * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
+       * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
+       * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
+       */
+      ...(needs.spaces === true ? { spaces: Object.freeze({
+        storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
+        host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
+      }) } : {}),
       /**
        * Sessions for a daemon (kernel/core/surfaces.js): the PERSON opens one under their own chain (`open(chain, { agent?, chat?, session?, thread?, ttl_ms? })` gives
        * `{ token, session, expires }`; the chat is checked and written into the token), `valid(token)` says whether it is still good (so a session socket can close when it
