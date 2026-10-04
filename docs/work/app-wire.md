@@ -90,3 +90,4 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - Devices lock section: built, reads presence.person.locked (only on work/wink-session); presence refusal now uses softwareKeyLine (ui-ux's note).
 ## Next
 - claimServerSpace: chat's hooks are on origin/work/chat-ui 4dfc06d25 (apps/app/src/real/claim-space.ts, makeSpaceOnPairedServer({ name, displayName?, acceptBuiltinStore? })). Call it from the create-space screen, show said(e) on refusal; keep rootPublic beside the space; server_too_old, needs_store_confirmation (Create and Cancel), presence_required on web as "Make this space in Vyre on your phone". Merge only the trunk, not chat-ui, so wait for it to land on trunk.
+- Queued (team-lead, 4 Oct): once windows' 3482f1bed is on trunk, the app passes `space` explicitly on every records, tasks, rules and files call and shows `acted_in.label` where it matters.
