@@ -1418,3 +1418,106 @@ test("the session strength is proven at each sign-in (the identity entry's encla
     await links.startPaired("srv");
     assert.equal((await links.signInStatus("srv", ask.id)).state, "none", "the card went with the device's sessions"); }
 });
+
+test("join end to end: a second identity's device previews and accepts an invite through the invitee door of a real server, on the real kernel; each refusal is the kernel's or the door's", { timeout: 180_000 }, async t => {
+  const { claimServerSpace } = await import("../apps/app/src/identity/claim-space.js");
+  const { startSealer } = await import("../kernel/seal/client.js");
+  const { signer: sealSigner, enrolDevice, tmp } = await import("../kernel/seal/testing.js");
+  const { proofRequest } = await import("../kernel/remote/proof.js");
+  const ident = await standinIdentity(t);
+  // the names directory and the module's clock run on real time here: the door checks a hello's time against the daemon's own clock
+  Object.defineProperty(ident.clock, "t", { get: () => Date.now(), set() {}, configurable: true });
+  // the server's kernel runs on a sealing process that takes one unattested software key (the owner's presence key for this test, enrolled the way the kernel suite does it)
+  const sealDir = tmp("join-e2e-seal");
+  const sealer = startSealer({ dir: sealDir, timeoutMs: 8000, dev: true, unattested: true });
+  t.after(async () => { await sealer.close().catch(() => {}); fs.rmSync(sealDir, { recursive: true, force: true }); });
+  const ownerSigner = sealSigner(ident.id);
+  await enrolDevice(sealer, ownerSigner);
+  const f = await pairFreshServer(t, { ident, kernelSealer: sealer });
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  const session = links.sessionFor("srv");
+  const st = f.ident.store;
+  const identity = { id: f.ident.id, name: "alex", eid: st.status().eid, ops: st.ops(), key: { sign: async m => new Uint8Array(await st.sign(Buffer.from(m))) } };
+  const ROUTE = { relay: f.w.status.url, route: f.done.route, box: f.done.box };
+  const made = await claimServerSpace({ identity, name: "harlow", displayName: "Harlow Legal", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (spacesHooks.fetch), now: () => f.ident.clock.t, route: ROUTE,
+    host: a => session.call("spaces.host-here", { ...a, proof: { key: "k1" } }) });
+  assert.ok(f.w.d.kernel.spaces.hosts(made.space));
+  // kit: a second real daemon with its own identity, in the same names directory (the module's fetch is the shared fake)
+  spacesHooks.stretch = { memoryKiB: 64, passes: 1 };
+  t.after(() => { spacesHooks.stretch = null; });
+  const k = await world(t, { kernel: true });
+  const kit = (await k.call("spaces.identity.create", { name: "kit", password: "four plain words here", deviceLabel: "Kit's laptop" })).data;
+  assert.match(String(kit && kit.id), /^per_/);
+  // alex's side: the invite is the hosted kernel's, made as the owner (the owner's own device and presence are the walk's step; the door is what is under test here)
+  const hosted = f.w.d.kernel.spaces.hosted(made.space);
+  const ownerChain = hosted.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-walk", person: f.owner.id, path: "direct" });
+  const rkFp = crypto.createHash("sha256").update(`vyre-space-fingerprint-v1\n${made.pin.id}\n${made.rootPublic}`).digest("hex").slice(0, 32);
+  const linkFor = async (to, extra = {}) => {
+    const inv = await (async () => { const body = { role: "member", invitee: to, ...extra }; const req = proofRequest(made.space, "inviteCreate", body); return hosted.gateway.grants.invites.create(ownerChain, body, { presence: ownerSigner.proof(ownerChain, req.op, req.fields) }); })();
+    return { id: inv.id, link: `https://harlow.vyre.run/join/${inv.id}.${Buffer.from(JSON.stringify({ chain: made.pin, rk: rkFp })).toString("base64url")}` };
+  };
+  const mine = await linkFor(kit.id);
+  const preview = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(!preview.error, JSON.stringify(preview.error));
+  assert.deepEqual([preview.data.role, preview.data.status], ["member", "pending"]);
+  // accept: the first call says what to sign; kit's own presence key (enrolled in the server's sealing process) signs it
+  const kitSigner = sealSigner(kit.id);
+  const first = await k.call("spaces.invites.accept", { link: mine.link });
+  assert.equal(first.data && first.data.needs_proof, true, JSON.stringify(first.error || first.data));
+  const inviteeChain = hosted.kernel.chains.fromFacts({ kind: "invitee", person: kit.id, vouched: true });
+  // a presence key the server's sealing process has never enrolled for this person proves nothing: the invitee's first proof to a server it never touched has no path yet (reported to windows and vault)
+  const unenrolled = await k.call("spaces.invites.accept", { link: mine.link }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });
+  if (process.env.WLOG) console.error("DBG unenrolled", JSON.stringify(unenrolled).slice(0, 400));
+  assert.ok(unenrolled.error, "a key the server was never told of proves nothing");
+  assert.equal(await sealer.health().then(h => h.needs_recovery.includes(kit.id)), false);
+  // all or nothing: an accept that does not finish (a damaged presence proof) leaves no key behind, so the sealing process still knows nothing of kit
+  const damaged = await k.call("spaces.invites.accept", { link: mine.link, presence_key: kitSigner.enrolment }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields, { tamper: true }) });
+  assert.ok(damaged.error, "a damaged proof does not join");
+  assert.equal(await sealer.presenceCheck({ chain: inviteeChain, op: first.data.request.op, fields: first.data.request.fields, proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) }), "unknown_key", "the key the failed accept enrolled was taken back");
+  // the invitee's first key on this server comes from the accept itself (RC1): the app names the presence key, kit's identity device signs over this invite, Space and key, the server reads kit's list from the
+  // directory, and its sealing process enrols the key inside the same accept. No fixture enrols anything.
+  const joined = await k.call("spaces.invites.accept", { link: mine.link, presence_key: kitSigner.enrolment }, SCREEN, { ...A, kernel_proof: kitSigner.proof(inviteeChain, first.data.request.op, first.data.request.fields) });
+  assert.ok(!joined.error, JSON.stringify(joined.error));
+  assert.equal(joined.data.joined, true);
+  // the server's kernel now has kit as a member, with the role the card showed
+  const member = await hosted.gateway.grants.members.get(ownerChain, kit.id);
+  assert.deepEqual([member.person, member.role], [kit.id, "member"]);
+  // ... and the invite is spent: the same link opens nothing, and the home's kernel says so (the door closes the stream; the card cannot be read)
+  const again = await k.call("spaces.invites.preview", { link: mine.link });
+  assert.ok(again.error, `a spent invite shows no card: ${JSON.stringify(again.data)}`);
+  // refusals with the kernel's own answers: an invite meant for someone else, and one that ran out
+  const other = await linkFor("per_" + "x".repeat(26));
+  assert.ok((await k.call("spaces.invites.preview", { link: other.link })).error, "an invite addressed to another person shows kit nothing");
+  const brief = await linkFor(kit.id, { valid_ms: 40 });
+  await new Promise(r => setTimeout(r, 120));
+  assert.ok((await k.call("spaces.invites.preview", { link: brief.link })).error, "an expired invite shows nothing");
+  // refusals at the door, from a raw invitee channel with a hello that is not kit's: nothing reaches the kernel but the preview of an invite the door never admits
+  const fresh = await linkFor(kit.id);
+  const crypt = nodeCrypto();
+  const open = async hello => {
+    const ks = keystore(t);
+    const keys = await clientDeviceKey({ keyStore: ks, crypto: crypt });
+    const r = await openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+    t.after(() => r.channel.close(1000, "done"));
+    const head = await new Promise(res => { const st = r.channel.open({ peer: "wink", space: "home", invitee: { channel: r.reply.invitee, ...hello(r.reply.invitee) } }); st.onhead = x => res({ status: x && x.status, st }); st.onreset = () => res({ status: 0, st }); });
+    const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+    const sess = peerSession(streamPipe(head.st), { first: 1 });
+    const call = () => sess.call("kernel.call", { v: 1, space: made.space, id: "x", ts: Date.now(), call: "grants.invites.get", args: [fresh.id] }, { timeoutMs: 4000 });
+    return { status: head.status, call };
+  };
+  const base = { space: made.space, invite: fresh.id, identity: kit.id, entry: "a".repeat(26), ts: Date.now(), nonce: crypto.randomBytes(12).toString("base64url"), sig: "A".repeat(86) };
+  for (const [why, hello] of Object.entries({
+    "a signature that is not the identity's": () => base,
+    "an identity the directory has never heard of": () => ({ ...base, identity: "per_" + "z".repeat(26) }),
+    "a stale hello": () => ({ ...base, ts: Date.now() - 10 * 60_000 }),
+    "an entry that is not on the identity's list": () => ({ ...base, entry: "b".repeat(26) }),
+  })) {
+    const r = await open(id => ({ ...hello(), channel: id }));
+    assert.equal(r.status, 200, `${why}: the door opens the stream and refuses every call`);
+    await assert.rejects(() => r.call(), e => e.code === "denied", why);
+  }
+  const hosted2 = f.w.d.kernel.spaces.hosted(made.space);
+  assert.equal((await hosted2.gateway.grants.invites.get(ownerChain, fresh.id)).status, "pending", "no refusal touched the invite");
+  assert.ok(f.w.logs.filter(l => /invitee .* refused \((bad_proof|unknown_identity|stale)\)/.test(l)).length >= 3, "the server logged why each hello was refused");
+});
