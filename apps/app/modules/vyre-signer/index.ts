@@ -6,7 +6,7 @@ import { requireNativeModule } from "expo";
 import { Platform } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import { sha256 } from "@noble/hashes/sha256";
-import { b64, b64url, fromB64url, keyIdOf, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
+import { b64, b64url, fromB64url, keyIdOf, lowS, p1363FromDer, proofBody, proofBytes, spkiFromXY, enrolClientData } from "./presence-proof.js";
 
 /** Signs every request's x-vyre-proof; no user auth. */
 export const PERSON = "vyre.person";
@@ -126,7 +126,14 @@ export async function appAttestSupported(): Promise<boolean> {
 export async function enrolAttestation(token: string): Promise<{ format: "apple-appattest"; key_id: string; attestation: string } | null> {
   if (!(await appAttestSupported())) return null;
   const k = await presenceKey();
-  const keyId = await native.appAttestGenerateKey!();
+  // A build signed without the App Attest entitlement (a sideloaded build on a personal team) reports the service as supported and then refuses the key: the presence key stays
+  // a Secure Enclave key, unattested, and no assertion is added to proofs. Only the missing entitlement and an unsupported device are treated so; any other failure still throws.
+  let keyId: string;
+  try { keyId = await native.appAttestGenerateKey!(); } catch (e) {
+    const m = String((e as { code?: string; message?: string })?.code ?? "") + " " + String((e as Error)?.message ?? "");
+    if (/ERR_APPATTEST|entitlement|not supported|DCError|serverUnavailable|featureUnsupported/i.test(m)) return null;
+    throw e;
+  }
   await SecureStore.setItemAsync(APPATTEST_KEY, keyId, ONLY_HERE);
   const attestation = b64(fromB64url(await native.appAttestAttest!(keyId, b64url(enrolClientData(token, k.spki)))));
   return { format: "apple-appattest", key_id: keyId, attestation };
@@ -166,11 +173,11 @@ export async function enclavePublic(): Promise<string> {
   return b64url(pt);
 }
 
-/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID, as r||s base64url: the `esig` of a list change. */
-export async function enclaveSign(message: Uint8Array, prompt: string): Promise<string> {
+/** The Enclave key's ECDSA P-256 SHA-256 signature over `message`, behind Face ID: the raw 64 bytes r||s with s in the low half, the one form the chain accepts as `esig` (NE-1). */
+export async function enclaveSign(message: Uint8Array, prompt: string): Promise<Uint8Array> {
   iosOnly();
   await ensureKey(HUMAN, { biometric: true });
-  return b64url(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
+  return lowS(p1363FromDer(fromB64url(await native.sign(HUMAN, new TextDecoder().decode(message), { prompt }))));
 }
 
 /** Forget every key of this phone's signer: the presence key, the person (request) key and the App Attest key id. */

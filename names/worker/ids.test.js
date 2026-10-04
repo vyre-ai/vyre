@@ -326,6 +326,28 @@ test("ids: the same newcomer rule holds for a person's record: a young device ca
   data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "c2FtZQ", thief) }));
 });
 
+test("ids: a key that was removed and put back is a newcomer again: it cannot repoint the record it once signed (a removal resets a key's age)", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const thief = await key("thief");
+  w.clock.t += HOUR;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  w.clock.t += 25 * HOUR;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "bW92ZWQ", thief) }));
+  // control: while it stays on the list it keeps going
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "c3RpbGw", thief) }));
+  // the phone removes it, then it is put back (the old key and the recovery code, say): it is a newcomer again
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "remove", target: thief.eid }, phone))] }));
+  w.clock.t += 1000;
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [await alex.accept(await alex.append({ type: "add", entry: thief.entry("device") }, phone))] }));
+  w.clock.t += 1000;
+  assert.equal(code(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "ZXZpbA", thief) })), "newcomer", "a re-added key cannot repoint the record");
+  // after 24 hours on the list again it is no newcomer
+  w.clock.t += 25 * HOUR;
+  data(await alex.post("/v1/ids/update", { name: "alex", ...alex.sealRecord("alex", "YmFjaw", thief) }));
+});
+
 test("ids: a young device may keep updating the space's record it signed itself (the phone that made the space this morning finishes setting it up)", async t => {
   const w = world(t), alex = await person(w), phone = alex.first;
   data(await alex.claim("alex"));
@@ -492,4 +514,18 @@ test("PT-1: certificates for a Space's names are DNS-01 only: the Space signs, t
   assert.equal(w.dns.at("_acme-challenge.harlow.vyre.run", "TXT").length, 0);
   // a challenge written for one Space is under that Space's label only, whatever the token says
   assert.deepEqual(w.dns.records.filter(r => r.type === "TXT").map(r => r.name), []);
+});
+
+test("ids: continuing one's own record needs a readable age: an unreadable or later `since` is not the same signer (fail closed)", async () => {
+  const { continuesOwnRecord } = await import("./ids.js");
+  const cur = { by: "e1", ts: 1000 };
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: 500 }), true);
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: 1000 }), true);
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: 1001 }), false, "put back after the record: a newcomer");
+  assert.equal(continuesOwnRecord(cur, { by: "e1", since: NaN }), false, "an unreadable age is not the same signer");
+  assert.equal(continuesOwnRecord(cur, { by: "e1" }), false, "no age at all is not the same signer");
+  assert.equal(continuesOwnRecord(cur, { by: "e2", since: 1 }), false);
+  assert.equal(continuesOwnRecord({ by: "o", via: "d1", ts: 1000 }, { by: "o", via: "d1", since: 5 }), true);
+  assert.equal(continuesOwnRecord({ by: "o", via: "d1", ts: 1000 }, { by: "o", via: "d2", since: 5 }), false);
+  assert.equal(continuesOwnRecord(null, { by: "e1", since: 1 }), false);
 });

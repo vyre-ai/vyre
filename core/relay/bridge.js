@@ -55,6 +55,7 @@ const fail = (s, status, code, message) => {
  * @param {import("./channel.js").Channel} channel
  * @param {{ handler: (req: any, res: any, caller: string, peer: any) => any, caller: string, peer: any,
  *   upgrade?: () => (req: any, socket: any, head: Buffer, caller: string) => void, log?: (m: string) => void,
+ *   oninvitee?: { opened: () => void, closed: () => void },
  *   invitees?: { acceptInvitee: (stream: any, who: { inviteeId: string }, head: any) => void }, perMin?: number,
  *   peers?: { space: string, allow: (deviceId: string) => boolean, accept: (stream: any, who: { via: "relay", deviceId: string, space: string }) => void,
  *     perMin?: number, open?: number, now?: () => number } }} o
@@ -162,7 +163,9 @@ export function bridge(channel, o) {
     u.stamps.push(now);
     u.open++;
     let released = false;
-    const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); };
+    const tell = /** @type {any} */ (o).oninvitee;
+    if (tell && typeof tell.opened === "function") { try { tell.opened(); } catch { /* the pool must not break the stream */ } }
+    const release = () => { if (released) return; released = true; u.open = Math.max(0, u.open - 1); if (tell && typeof tell.closed === "function") { try { tell.closed(); } catch { /* gone */ } } };
     for (const name of /** @type {const} */ (["onend", "onreset"])) {
       let hh = s[name];
       Object.defineProperty(s, name, { configurable: true, enumerable: true,

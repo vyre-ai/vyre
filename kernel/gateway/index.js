@@ -163,6 +163,43 @@ export function createGateway(cfg) {
     return { sealed_field: name, moved, erased_events: erased, task_texts_cleared: taskTextsCleared, task_texts_note: "Task texts that quote a value, in any spacing or case, were cleared whole, and so was every task about a changed record. Text typed anywhere else (a note, a message, another system) is not searched." };
   }
 
+  /**
+   * Forget one record for good: the erasure a person asks for (a client leaves, a law says so). In this order: (1) the text of every task that concerned it is emptied (`tasks.scrubTexts({ record })`, the
+   * tasks service's own call), (2) the store destroys the row and what it keeps of it (its snapshot, its change log data, Twenty's timeline), (3) every event about the record keeps its envelope and loses
+   * its data, (4) one `records.forgotten` event says it happened, with the counts and never a value. The caller's chain needs `records.define` (Customize: admin and owner) and `records.remove` on the record.
+   * Links held by other records stay and point at nothing. A database keeps dead pages until it is vacuumed (the operator's step).
+   */
+  async function forget(/** @type {any} */ chain, /** @type {{ type: string, id: string, presence?: any }} */ i) {
+    if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+    if (!i || typeof i.type !== "string" || typeof i.id !== "string") throw new KernelError("bad_input", "forget needs a type and an id");
+    if (typeof cfg.store.destroy !== "function") throw new KernelError("unavailable", "this store cannot destroy a record");
+    const u = `vyre://${cfg.space}/${i.type}/${i.id}`;
+    // Permanent, so a presence act: `records.define` is an admin act (a presence session or a signed proof, never inherited by a chain that holds an agent), and the proof rides here.
+    const dec = await gate(chain, "records.define", `vyre://${cfg.space}/definition/types`, i.presence ? { presence: i.presence } : {});
+    await gate(chain, "records.remove", u);
+    let there; try { there = await cfg.store.get(i.type, i.id, { include_deleted: true }); } catch (e) { throw new KernelError("unavailable", "the store could not read the record"); }
+    if (!there) throw new KernelError("not_found", "no such record");
+    // What the record holds that lives outside the store: sealed values (in the sealing process, by reference) and files (in Files, by id).
+    /** @type {string[]} */ const refs = []; let files = 0;
+    try {
+      const def = (await cfg.store.types()).find((/** @type {any} */ t) => t.name === i.type);
+      for (const f of (def && def.fields) || []) {
+        const v = there.data ? there.data[f.name] : undefined;
+        if (f.kind === "sealed" && v && typeof v === "object" && typeof v.ref === "string") refs.push(v.ref);
+        else if (f.kind === "file" && v && typeof v === "object" && typeof v.file === "string") files++;
+      }
+    } catch { /* the counts are best effort; the forget itself does not depend on them */ }
+    const tasks = cfg.tasks && typeof cfg.tasks.scrubTexts === "function" ? cfg.tasks.scrubTexts({ record: u }) : { cleared: 0 };
+    try { await cfg.store.destroy(i.type, i.id); } catch (e) { throw new KernelError("unavailable", "the store could not destroy the record; its tasks' text is already removed"); }
+    // Its sealed values are destroyed in the sealing process (overwritten, then removed); a value the process cannot drop is counted, never hidden.
+    let sealed_dropped = 0;
+    for (const ref of refs) { try { if (cfg.sealer && typeof cfg.sealer.drop === "function" && (await cfg.sealer.drop({ chain, ref })).dropped) sealed_dropped++; } catch { /* counted below */ } }
+    let erased = 0;
+    for (const e of cfg.log.read()) if (e.subject === u && !(e.data && e.data.erased === true)) { cfg.log.erase(e.seq); erased++; }
+    cfg.log.append(chain, { type: "records.forgotten", sv: 1, subject: u, data: { type: i.type, id: i.id, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files } }, { decision: dec.decision });
+    return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
+  }
+
   return Object.freeze({
     authorize: authorizer.authorize,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
@@ -191,7 +228,7 @@ export function createGateway(cfg) {
     ...(cfg.tasks ? { tasks: Object.freeze({ list: (/** @type {any} */ chain) => cfg.tasks.needsYou(chain) }), ask: groupTasks(cfg.tasks) } : {}),
     ...(cfg.door ? { model: Object.freeze({ call: (/** @type {any} */ i) => cfg.door.call(i) }) } : {}),
     records,
-    migrate: Object.freeze({ sealField }),
+    migrate: Object.freeze({ sealField, forget }),
     events: Object.freeze({ read, latestSeq: cfg.log.latestSeq, subscribe }),
     audit: Object.freeze({
       verify: async () => {

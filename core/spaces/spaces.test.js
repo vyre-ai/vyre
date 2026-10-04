@@ -197,6 +197,9 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const w = world(t);
   const d = await device(t);
   assert.equal((await d.call("spaces.create", { name: "harlow", home: { kind: "this-computer" } })).error?.code, "no_identity");
+  // with no claimed identity, acts on a space say so (no_identity), not "no such space"
+  assert.equal((await d.call("spaces.invites.create", { space: "spc_aaaaaaaaaaaa", role: "member" })).error?.code, "no_identity");
+  assert.equal((await d.call("spaces.members.set-role", { space: "spc_aaaaaaaaaaaa", person: "bob", role: "admin" })).error?.code, "no_identity");
   const alex = await d.ok("spaces.identity.create", { name: "alex" });
   const assess = await d.ok("spaces.assess-computer", { device: { name: "alex's laptop", alwaysOn: false } });
   assert.match(assess.warning, /unreachable while/);
@@ -914,6 +917,15 @@ test("a second person joins a space that lives on a server: the record carries t
   // and one that gives no proof at all
   attest.fn = async () => null;
   assert.equal((await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken })).error?.code, "server_not_proven");
+  // the home's door refusing this person (not their invite, spent, not admitted) is its own plain answer, not "cannot be reached"; a real outage stays unreachable (JE-1)
+  { const keep = hooks.inviteeSessionFor;
+    for (const [code, want, text] of [["denied", "not_for_you", /^This invite is not for you\.$/], ["unreachable", "unreachable", /reach|connect|server/i]]) {
+      hooks.inviteeSessionFor = async () => ({ call: async () => { throw Object.assign(new Error("closed"), { code }); } });
+      const r = await kitDev.call("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
+      assert.equal(r.error && r.error.code, want, `${code}: ${JSON.stringify(r).slice(0, 200)}`);
+      assert.match(r.error.message, text);
+    }
+    hooks.inviteeSessionFor = keep; }
   attest.fn = attestWith(heldPub, held);
   const card = await kitDev.ok("spaces.invites.preview", { link: made.link }, "cli", { token: kitToken });
   assert.deepEqual([card.role, card.status, card.invitee], ["member", "pending", kit.id]);

@@ -10,6 +10,7 @@ function door({ sessions = [], row = { kind: "app", removed: false } } = {}) {
   const seen = [];
   const registry = { call: async (tool, input, caller, meta) => {
     if (tool === "relay.device.info") return { data: row };
+    if (tool === "wink.device.record") return { data: { owner: "per_x" } };
     seen.push({ tool, input, caller, meta }); return { data: { ok: true } };
   } };
   const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
@@ -360,4 +361,26 @@ test("invitee door: accepting finishes the stream at once (no call is served ins
   assert.equal(ask.error.code, "needs_presence");
   const signed = await c2.call("kernel.call", { v: 1, space: SPACE, id: "r", ts: 1_000_000, call: "grants.invites.accept", args: [INVITE, {}], proof: { p: 1 } }, { timeoutMs: 3000 });
   assert.equal(signed.ok, true, "the signed retry rides the same stream");
+});
+
+test("invitee door: a silent stream is closed after the idle time, a presence ask gets the longer one, and a call keeps it alive", async () => {
+  const idle = async (opts, act) => {
+    const w = inviteeWorld({ limits: { idleMs: 150, presenceMs: 700, ...opts }, askPresence: opts.askPresence === true });
+    const c = await w.open(w.hello());
+    await act(w, c);
+    return { w, c };
+  };
+  const dead = async (w, c) => { await new Promise(r => setTimeout(r, 120)); return Promise.race([w.kcall(c, "grants.invites.get", [INVITE]).then(() => "answered", () => "refused"), new Promise(r => setTimeout(() => r("closed"), 1200))]); };
+  // silent from the start
+  let r = await idle({}, async () => {});
+  await new Promise(x => setTimeout(x, 400));
+  assert.notEqual(await Promise.race([r.w.kcall(r.c, "grants.invites.get", [INVITE]).then(() => "answered", () => "refused"), new Promise(x => setTimeout(() => x("closed"), 1000))]), "answered", "a stream that never speaks is closed");
+  // a call inside the window keeps it open
+  r = await idle({}, async (w, c) => { await w.kcall(c, "grants.invites.get", [INVITE]); await new Promise(x => setTimeout(x, 100)); await w.kcall(c, "grants.invites.get", [INVITE]); await new Promise(x => setTimeout(x, 100)); });
+  assert.equal((await r.w.kcall(r.c, "grants.invites.get", [INVITE])).ok, true, "calls inside the idle window keep the stream");
+  // after a presence ask it may be silent longer than the idle time, but not past the presence time
+  r = await idle({ askPresence: true }, async (w, c) => { assert.equal((await w.kcall(c, "grants.invites.accept", [INVITE, {}])).error.code, "needs_presence"); await new Promise(x => setTimeout(x, 350)); });
+  const signed = await r.c.call("kernel.call", { v: 1, space: SPACE, id: "r", ts: 1_000_000, call: "grants.invites.accept", args: [INVITE, {}], proof: { p: 1 } }, { timeoutMs: 3000 });
+  assert.equal(signed.ok, true, "the signed retry arrives inside the presence time, past the idle time");
+  void dead;
 });

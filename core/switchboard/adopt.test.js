@@ -30,7 +30,7 @@ test("sessions survive adoption: a thread started before is still listed, a kern
   const old = d.kernel.id.owner;
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
-  await d.kernel.kernelFor(spacesNeed).adoptOwner(A);
+  await d.kernel.kernelFor(spacesNeed).adoptOwner(A, old);
   assert.equal(d.kernel.id.owner, A);
   await d.stop();
   d = await start({ root, presence: present, log: () => {}, kernel: true });

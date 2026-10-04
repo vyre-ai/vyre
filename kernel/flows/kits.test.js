@@ -168,7 +168,7 @@ test("kits: removing needs the right to, and a Kit that is not installed is not 
 test("kits: the installed Kits and waiting proposals are records, so they survive a restart on the real kernel", async () => {
   const w = await world();
   const { RecordsKitStore } = await import("./kits.js");
-  const sys = w.kernel.sysChain();
+  const sys = w.kernel.moduleChain({ module: "flows", approver: ALEX }); // the Flows service acting for the owner, as the daemon's host holds it: the kernel keeps the Kits' rows to it and to owners and admins
   const store = new RecordsKitStore({ kernel: w.kernel, chain: sys });
   await store.define();
   const mk = s => new KitManager({ kernel: w.kernel, runner: w.runner, store: s, catalog: () => w.cat, chains: { forFlow: x => w.kernel.chainFor(x), forDoer: () => w.kernel.moduleChain({ module: "flows", approver: ALEX }) }, clock: () => w.clock.t, installerRole: () => "admin",
@@ -186,6 +186,27 @@ test("kits: the installed Kits and waiting proposals are records, so they surviv
   const listed = await new RecordsKitStore({ kernel: w.kernel, chain: sys }).list();
   assert.deepEqual(listed.map(r => [r.kit_id, r.status]), [["estate-planning", "installed"]]);
   assert.equal(await after.store.proposalByTask(p.task), null, "the proposal is gone once it is installed");
+});
+
+test("kits: the store reads a Kit's rows by the key they name, never the first row found: a planted row ahead of the real one is passed over, two rows for one key are refused", async () => {
+  const w = await world();
+  const { RecordsKitStore } = await import("./kits.js");
+  const sys = w.kernel.moduleChain({ module: "flows", approver: ALEX }); // the Flows service acting for the owner, as the daemon's host holds it: the kernel keeps the Kits' rows to it and to owners and admins
+  const store = new RecordsKitStore({ kernel: w.kernel, chain: sys });
+  await store.define();
+  // rows planted BEFORE the real ones: the key columns say the real ids, the bodies say something else
+  await w.kernel.records.create(sys, "kit-proposal", { proposal_id: "prop-1", task: "task-1", body: JSON.stringify({ id: "prop-evil", task: "task-evil", kit: { id: "evil" } }) });
+  await w.kernel.records.create(sys, "kit-install", { kit_id: "estate-planning", version: 9, hash: "x", status: "installing", by: "", at: 0, body: JSON.stringify({ kit_id: "other-kit", status: "installing", added: ["fake"] }) });
+  await store.putProposal({ id: "prop-1", task: "task-1", kit: { id: "estate-planning" }, hash: "h" });
+  await store.put({ kit_id: "estate-planning", version: 1, hash: "h", status: "installed", by: null, at: 1, added: ["real"] });
+  assert.equal((await store.getProposal("prop-1")).kit.id, "estate-planning", "the proposal whose body names prop-1");
+  assert.equal((await store.proposalByTask("task-1")).id, "prop-1");
+  assert.deepEqual((await store.get("estate-planning")).added, ["real"], "the ledger row whose body names the Kit");
+  assert.deepEqual((await store.list()).map(r => r.kit_id), ["estate-planning"], "a row whose body disagrees with its key is not listed");
+  // a second row that agrees with the key is an ambiguity: refused, not first-wins
+  await w.kernel.records.create(sys, "kit-proposal", { proposal_id: "prop-1", task: "task-1", body: JSON.stringify({ id: "prop-1", task: "task-1", kit: { id: "evil" } }) });
+  await assert.rejects(() => store.getProposal("prop-1"), /more than one kit-proposal record claims/);
+  await assert.rejects(() => store.proposalByTask("task-1"), { code: "ambiguous" });
 });
 
 test("a type-less Kit is checked against the approved kit_hash too: swapping the stored Kit and its stored hash after the card was shown installs nothing", async () => {

@@ -26,6 +26,7 @@ async function core(t, o = {}) {
   const socket = path.join(dir, "c.sock");
   const c = await startCore({ socket, dataDir: path.join(dir, "data"), ownerUid: uid, version: "test", dev: true, ...o });
   t.after(() => c.close());
+  c.presence.softwareOk = () => true; // these tests prove with a device key: a development-kind core takes it, a release-kind one never does (PW-1, 1ad4691e6; the release rule is in test/presence-strength.test.js)
   return { ...c, socket, dir };
 }
 

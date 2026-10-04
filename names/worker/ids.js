@@ -74,6 +74,17 @@ async function ownerOps(id) {
   return rec && rec.state !== "tombstone" ? rec.ops : null;
 }
 
+/**
+ * Does this signature continue what the record's current signer made? The same signer (the same device through the owner's list for a space, the same entry for a person) that has been on its list since it
+ * signed that record. A key put back after a removal has a newer `since`, and a `since` that cannot be read (not a finite number) is never "the same": the newcomer rule then applies (fail closed).
+ * @param {any} cur the record's current signature (`by`, `via`, `ts`) or null @param {any} sig the new one, with its `since`
+ */
+export function continuesOwnRecord(cur, sig) {
+  if (!cur) return false;
+  const sameSigner = cur.via ? sig.via === cur.via : !sig.via && sig.by === cur.by;
+  return sameSigner && Number.isFinite(sig.since) && sig.since <= cur.ts;
+}
+
 /** The mixin: methods the Directory gains. `this` is the Directory. */
 export const idOps = {
   /** @this {any} */
@@ -104,6 +115,21 @@ export const idOps = {
     const out = { by: String(r.by), via: r.via ? String(r.via) : undefined, ...(r.vseq !== undefined ? { vseq: r.vseq, vhead: r.vhead } : {}), ts: Number(r.ts), sig: r.sig };
     // Not stored: whether the signing device was a newcomer, for the caller's rule (a record update by a young device).
     Object.defineProperty(out, "young", { value: key.young === true, enumerable: false });
+    // When the signing key was last put on its list: a key that was removed and put back starts again from now (a removal resets its age).
+    let since = NaN;
+    try {
+      if (state.kind === "space") {
+        // the signing device is on the OWNER's list: its age is that entry's, on the owner's chain as it stands now
+        const ops = await ownerOps.call(this, String(r.by));
+        const owner = ops ? await C.verifyChain(ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS }) : null;
+        const dev = owner && r.via ? owner.entries.find((/** @type {any} */ e) => e.eid === String(r.via)) : null;
+        if (dev) since = Number(dev.since);
+      } else {
+        const e = state.entries.find((/** @type {any} */ x) => x.eid === String(r.by));
+        if (e) since = Number(e.since);
+      }
+    } catch { since = NaN; }
+    Object.defineProperty(out, "since", { value: since, enumerable: false });
     return out;
   },
 
@@ -199,7 +225,8 @@ export const idOps = {
     // A space's record says where its home is (route, home, root key), sealed, so what changed cannot be told here: a device under 24 hours old (a stolen one, added with a recovery code) must not
     // repoint a space. It may continue what it itself signed (the same device as the record's current signer), so a phone that made the space this morning can finish setting it up.
     // The same for a person's record (where their home or box is). Continuing means the same signer: the same device through the owner's list for a space, the same entry for a person.
-    const same = !!(rec.rec && (rec.rec.via ? sig.via === rec.rec.via : !sig.via && sig.by === rec.rec.by));
+    // ...and only while it has been on its list since it signed that record: a key that was removed and put back is a newcomer again, so an old compromised key cannot come back and repoint.
+    const same = continuesOwnRecord(rec.rec, sig);
     if (sig.young && !same) throw err(403, "newcomer", rec.kind === "space" ? "a sign-in under 24 hours old cannot change where a space lives" : "a sign-in under 24 hours old cannot change where your name points");
     if (rec.rec && sig.ts <= rec.rec.ts) throw err(400, "stale", "the record must be newer than the one it replaces and match the clock");
     Object.assign(rec, { sealed: b.sealed, rec: sig });

@@ -291,6 +291,9 @@ export async function createKernel(cfg) {
         return adoptNow(to, from);
       };
 
+      /** The identity that took this Space's owner place (claimed at the server's own screen or by a pairing), or null while the owner is still the first-start id. First owner wins: nothing else may become the owner. */
+      handle.ownerClaimed = () => { const a = grantsStore && typeof grantsStore.adopted === "function" ? grantsStore.adopted() : null; return a ? String(a.to) : null; };
+
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };
       handle.spaces = Object.freeze({
         host: (/** @type {any} */ o) => reg().host(o),

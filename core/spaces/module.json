@@ -156,6 +156,11 @@
     "effect": "read"
    },
    {
+    "name": "spaces.owner.claimed",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
     "name": "spaces.owner.adopt",
     "reach": "modules",
     "effect": "write"
@@ -218,6 +223,10 @@
    },
    {
     "name": "spaces.members.add", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.members.add-agent", "effect": "write",
     "reach": "person"
    },
    {
