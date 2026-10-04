@@ -77,8 +77,32 @@ async function run(label) {
   console.log(`  gateway process rss ${(process.memoryUsage().rss / 1048576).toFixed(0)} MB (was ${(before / 1048576).toFixed(0)}); sqlite file ${(fs.statSync(path.join(home, "kernel.db")).size / 1048576).toFixed(1)} MB`);
   if (kind === "twenty") console.log("  Twenty containers:\n    " + stats());
 }
+/** PROFILE=1: one person, one call at a time, where does the time go (gateway, store, Twenty requests)? Prints the median of 30 for each step and the Twenty requests each call made. */
+async function profile(label) {
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  const reqs = []; const gql = store.client.gql.bind(store.client);
+  store.client.gql = async (...a) => { const t = performance.now(); try { return await gql(...a); } finally { reqs.push([String((String(a[1]).match(/(?:query|mutation) (\w+)/) || [])[1]), performance.now() - t]); } };
+  const step = async (name, fn) => {
+    const ts = [], counts = [], inner = [];
+    for (let i = 0; i < 30; i++) { reqs.length = 0; const t = performance.now(); await fn(); ts.push(performance.now() - t); counts.push(reqs.length); inner.push(reqs.reduce((x, r) => x + r[1], 0)); }
+    console.log(`  ${name.padEnd(34)} p50 ${med(ts).toFixed(0).padStart(5)} ms   of which Twenty requests ${med(inner).toFixed(0).padStart(5)} ms in ${med(counts)} request(s)   [${[...new Set(reqs.map((r) => r[0]))].join(", ")}]`);
+  };
+  console.log(`\n== profile at ${contacts.length + matters.length} records, one caller, ${label}, box load ${load()} ==`);
+  await step("Twenty round trip (Health)", () => gql("metadata", "query Health { objects(paging: { first: 1 }) { edges { node { id } } } }"));
+  await step("store.get (matter)", () => store.get("matter", matters[rnd(matters.length)]));
+  await step("gateway get (matter)", () => R.get(chain(), "matter", matters[rnd(matters.length)]));
+  await step("store.query stage eq, sort fee, 20", () => store.query("matter", { filter: { field: "stage", op: "eq", value: "Drafting" }, sort: [{ field: "fee", dir: "desc" }], page: { limit: 20 } }));
+  await step("gateway list stage eq, sort fee, 20", () => R.query(chain(), "matter", { filter: { field: "stage", op: "eq", value: "Drafting" }, sort: [{ field: "fee", dir: "desc" }], page: { limit: 20 } }));
+  await step("store.query email eq", () => store.query("contact", { filter: { field: "email", op: "eq", value: `client${1 + rnd(seq)}@example.test` }, page: { limit: 5 } }));
+  await step("gateway update (matter)", async () => { const m = await R.get(chain(), "matter", matters[rnd(matters.length)]); await R.update(chain(), "matter", m.id, { practice_area: ["Estate"] }, m.version); });
+  await step("store.aggregate count by stage", () => store.aggregate("matter", { group_by: ["stage"], measures: [{ fn: "count" }] }));
+  await step("gateway aggregate count by stage", () => R.aggregate(chain(), "matter", { group_by: ["stage"], measures: [{ fn: "count" }] }));
+  await step("store.search contact word", () => store.search({ text: `Client ${1 + rnd(seq)}`, types: ["contact"], page: { limit: 10 } }));
+  await step("gateway search contact word", () => R.search(chain(), { text: `Client ${1 + rnd(seq)}`, types: ["contact"], page: { limit: 10 } }));
+  store.client.gql = gql;
+}
 try {
-  for (const n of sizes) { await seedTo(n); await run(`${n}`); }
+  for (const n of sizes) { await seedTo(n); if (process.env.PROFILE) await profile(`${n}`); if (process.env.PROFILE !== "only") await run(`${n}`); }
   console.log("\nlog verify:", JSON.stringify(await k.gateway.audit.verify()));
 } finally {
   if (kind === "twenty") { try { execFileSync("docker", ["compose", "-p", names(space).project, "down", "-v"], { cwd: spaceDir(home, space), stdio: "ignore" }); } catch {} }
