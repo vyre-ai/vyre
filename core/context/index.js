@@ -13,6 +13,7 @@
 // app, window or URL. Nothing here polls: it is idle until a surface reports or asks.
 
 import { ownerDevice } from "../modules/index.js";
+import { deviceIdOf } from "../../lib/caller.js";
 
 /** Fields a surface may report. Anything else in the input is ignored, except REFUSED. */
 export const FIELDS = ["project", "cwd", "thread", "view", "app", "window", "url", "tz", "localTime"];
@@ -191,9 +192,8 @@ export default {
       run: async (input, meta) => {
         if (stopped) throw fail("stopped", "context is stopping");
         const { surface, device: said, fields } = clean(input || {});
-        // A device paired through the relay is named by its caller; a report need not repeat it.
-        const paired = /^device:([a-z2-7]{16})$/.exec(String(meta && meta.caller));
-        const device = said || (paired ? paired[1] : null);
+        // A device paired through the relay is named by its caller; a report need not repeat it. The id is bookkeeping (which device), never a statement about who the person is.
+        const device = said || deviceIdOf(meta || {});
         const key = keyOf(surface, device);
         let rec = surfaces.get(key);
         const at = now();
