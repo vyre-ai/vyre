@@ -36,10 +36,13 @@ jobs:
           cache: npm
       - run: npm ci --no-audit --no-fund
       - if: ${{ runner.environment != 'github-hosted' }}
-        # --test-concurrency is not allowed in NODE_OPTIONS, so splice it into the package.json test command.
-        run: sh -c "$(node -p "require('./package.json').scripts.test.replace('node --test ', 'node --test --test-concurrency=2 ')")"
+        # --test-concurrency is not allowed in NODE_OPTIONS, so scripts/test-counts.mjs takes it from VYRE_TEST_CONCURRENCY.
+        run: VYRE_TEST_CONCURRENCY=2 npm test
       - if: ${{ runner.environment == 'github-hosted' }}
         run: npm test
+      - if: ${{ github.event_name == 'pull_request' && matrix.node == 24 }}
+        # A test count that fell must come with a deleted test( or it( in the diff (scripts/test-counts.mjs).
+        run: git fetch --no-tags --depth=1 origin ${{ github.base_ref }} && node scripts/test-counts.mjs diff origin/${{ github.base_ref }}
       - run: npm run eval:answer
       - run: npm run perf-check
   # Windows support (ADR 0037): the Windows-relevant tests on windows-latest (`npm run test:windows`,

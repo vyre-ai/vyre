@@ -28,7 +28,7 @@ jobs:
         if: always()
         env:
           VYRE_NO_WATCHDOG: ""
-        run: node --test --test-force-exit --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js
+        run: node --test --test-reporter=spec core/runner/homesandbox.test.js core/runner/mac-hosted.test.js core/runner/runner.test.js core/runner/hardening.test.js
       - name: the real claude inside the home sandbox (does it start with every write denied?)
         if: always()
         run: |
