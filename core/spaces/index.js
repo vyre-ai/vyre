@@ -768,7 +768,7 @@ export default {
           if (on) { if (!have) await offers.offer(k.chain, { ...at, ...(side === "member_accepts" ? { device_key: dev.eid } : {}) }, k.proof); }
           else if (have) await offers.unoffer(k.chain, have.id, k.proof);
         }
-      } catch (e) { throw plainKernelError(e); }
+      } catch (e) { ctx.log.warn(`lend: the kernel refused the offer: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); throw plainKernelError(e); }
       return true;
     };
     tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
