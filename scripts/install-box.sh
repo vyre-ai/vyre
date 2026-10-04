@@ -411,7 +411,7 @@ write_stack() {
       for f in $files; do [ -f "$TMP/$f" ] || get "$f"; done
       # The signed list of first-party modules (and shell.json) the release carries: checked against SHA256SUMS like every file, and placed for the box by
       # publish_signed_files once the wrapper is installed.
-      for f in modules.json shell.json; do
+      for f in modules.json shell.json appbuild.json; do
         if awk -v p="$f" '$2 == p || $2 == "*" p { x = 1 } END { exit !x }' "$TMP/SHA256SUMS"; then get "$f"; fi
       done
       fetch SHA256SUMS.sig "$TMP/SHA256SUMS.sig" 2>/dev/null || rm -f "$TMP/SHA256SUMS.sig"

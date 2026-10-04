@@ -755,7 +755,7 @@ update() {
     # A root run builds from its own copy of the verified source and takes the mode from root's record, never from this .env.
     if [ "$ROOT_RUN" = 1 ] || [ "${src%/}" = "${DIR%/}/src" ]; then BUILD_SRC=1; get vyre.tgz; fi
   fi
-  for f in $BOXF VERSION vyre release.json shell.json modules.json; do if listed "$f"; then get "$f"; fi; done
+  for f in $BOXF VERSION vyre release.json shell.json modules.json appbuild.json; do if listed "$f"; then get "$f"; fi; done
   VERSION=$(tr -d ' \n' 2>/dev/null <"$tmp/VERSION" || true)
   VERSION=${VERSION:-${TAG#v}}
   VERSION=${VERSION:-$(date -u +%Y%m%d%H%M%S)}
