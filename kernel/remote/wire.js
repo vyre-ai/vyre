@@ -32,3 +32,14 @@ export const INVITEE_CALLS = Object.freeze(new Set(["grants.invites.get", "grant
 
 export const pathOf = (/** @type {string} */ group, /** @type {string} */ name) => `${group}.${name}`;
 export const allCalls = () => Object.entries(CALLS).flatMap(([g, ns]) => ns.map(n => pathOf(g, n)));
+
+/**
+ * Presence over the wire (lead ruling, 4 Oct): an act that needs the owner's presence is asked with no proof first; the home answers `needs_presence` with a CHALLENGE
+ * `{ call, space, home, nonce, expires, args_hash, op?, fields?, payload_hash? }` (op, fields and payload_hash when the call is one a presence proof covers, kernel/remote/proof.js).
+ * The device signs it with its own presence key and resends the same call with `proof` (the kernel's PresenceProof, at most 4 KB) and `challenge` (the nonce) beside the args, never inside
+ * them. The home checks the nonce (its own, live, for this device, call and arguments, used once) and hands the proof to the kernel's one verifier, which checks the key, the role and the hash.
+ * The peer session alone is never presence and the home never signs for the person.
+ */
+export const MAX_PROOF_BYTES = 4096;
+export const CHALLENGE_TTL_MS = 2 * 60 * 1000;
+export const PRESENCE_CODES = Object.freeze(new Set(["needs_presence", "presence_required"]));
