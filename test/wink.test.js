@@ -1289,9 +1289,9 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   await sOwner.gateway.records.define(sOwner.kernel.chains.fromFacts({ kind: "device", device_key_id: "x0", person: server.kernel.id.owner, path: "direct", session: "s" }), { add_types: [CONTACT] }, { presence: { method: "stand-in" } });
   const rec = await rk.gateway.records.create(null, "contact", { name: "Jane", age: 40 });
   assert.equal(rec.data.name, "Jane");
-  const rows = await rk.gateway.records.query(null, "contact", {});
+  const rows = await rk.gateway.records.query(null, "contact", { limit: 50 });
   assert.ok(JSON.stringify(rows).includes("Jane"));
   // and the record is on the SERVER, not on the device
   const onServer = server.kernel.spaces.hosted(id);
-  assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", {})).includes("Jane"), "the record lives in the server's store");
+  assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", { limit: 50 })).includes("Jane"), "the record lives in the server's store");
 });
