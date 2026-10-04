@@ -233,6 +233,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <NameField label="Your Vyre name" value={name} onChange={setName} onRetry={retryName(name)} real={MOCK ? undefined : (me as ReturnType<typeof nameStatusReal>)} />
         <Button kind="primary" label={busy ? "Creating your name" : "Create my name"} disabled={me.state !== "ok" || busy}
           onPress={() => { if (MOCK) return setStep("recovery"); setBusy(true); setWrong(""); void createIdentity(me.slug, device).then((r) => { setRecovery(r.recoveryCode); setStep("recovery"); }).catch((e) => setWrong(said(e))).finally(() => setBusy(false)); }} />
+        {me.state === "taken" ? <Text size="caption" tone="muted">{"If this name is yours, scan from another device that has it. The key on this " + device + " cannot be rebuilt from the name."}</Text> : null}
         <Button kind="ghost" label="I already have a name, scan instead" onPress={() => setStep("scan")} />
       </Page>
     );
