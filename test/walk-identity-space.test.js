@@ -29,7 +29,7 @@ test("walk steps 2 and 3 on a real vyred against the stand-in directory, and BR-
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "walk-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` },
     modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
   const lines = /** @type {string[]} */ ([]);
-  const d = await start({ root, kernel: true, person: async () => ({ key: "walk-tty", tty: null }), log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ root, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => d.stop());
   const as = (/** @type {string} */ caller) => (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller });
   const deck = as("deck");
