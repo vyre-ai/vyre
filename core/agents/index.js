@@ -468,6 +468,7 @@ export default {
     });
 
     ctx.tool("agents.rollover", {
+      callers: ["cli", "local", "deck", "capsule", "module"], // the assistant rolls its day from an event, with no person as original caller; the body allows module:assistant and the person only
       description: "Start a fresh thread for an agent (the assistant's daily thread) and make it the agent's current one, optionally seeded with a first message. The old thread is left as it is, and work in it goes on. Refused while the current thread is working or holds a question.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, seed: { type: "string" } } },
       run: async (i, { caller }) => {

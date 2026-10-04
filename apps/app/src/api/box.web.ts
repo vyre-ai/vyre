@@ -7,7 +7,7 @@
 
 import { cursorStore, idbStore, lifecycle, over } from "@vyre/resilience/web.js";
 import { createPaths } from "@vyre/relay-client/paths.js";
-import { finishSignIn, startSignIn, webPerson } from "../auth/person.web";
+import { finishSignIn, hasToken, startSignIn, webPerson } from "../auth/person.web";
 import type { PersonSession } from "../auth/person";
 import { connection } from "../state/connection";
 import { relayCrypto, relayKeyStore, loadPairing, about } from "./relay";
@@ -37,8 +37,9 @@ export function boxName(): string {
 const b = makeBox(async () => {
   const origin = boxOrigin();
   const name = boxName();
-  person = crossOrigin() ? webPerson(origin, () => connection.signIn(true)) : null;
   const pairing = await loadPairing();
+  // A browser paired over the relay holds a person token from presence.person.start-paired (src/auth/paired.ts): every request, over the relay too, carries it and its signed proof.
+  person = crossOrigin() || (pairing && (await hasToken(origin))) ? webPerson(origin, () => connection.signIn(true)) : null;
   const direct = (paths?.length ? paths : [origin]).map((p) => ({ kind: "direct" as const, base: p }));
   const p = createPaths({
     paths: pairing ? [...direct, { kind: "relay" as const, ...pairing, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : direct,
