@@ -1065,6 +1065,8 @@ export class Presence {
         this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'session', ?, ?, ?)").run(r.id, r.hash, String(id), now);
       }
       this.db.prepare("DELETE FROM presence_people WHERE key_id = ?").run(String(id));
+      // PS-4: a grant for a device that the removed key confirmed is not left to be used for up to ten minutes.
+      try { this.db.prepare("DELETE FROM presence_pair_grants WHERE key_id = ?").run(String(id)); } catch { /* an older home without the table */ }
       this.db.prepare("INSERT OR REPLACE INTO presence_removed (id, kind, hash, key_id, removed) VALUES (?, 'key', NULL, ?, ?)").run(String(id), String(id), now);
     }
     return removed;
