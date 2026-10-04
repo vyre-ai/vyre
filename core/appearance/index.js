@@ -194,7 +194,7 @@ export default {
     ctx.tool("appearance.check", {
       effect: "read",
       description: "Check a proposed appearance value without saving it. The hub calls it as the settings module with { key, value, level, device? } before it stores appearance.theme or appearance.tokens; a direct caller gives { override } (a partial tokens.json). Returns ok, each problem by name (a group or key that may not change, a text pair under AA, the focus ring under 3:1, the attention colour reused, text under 12, a target under 44, an empty font, a preset that isn't installed), and a message naming them when it fails.",
-      input: { type: "object", properties: { override: {}, value: {}, key: { type: "string" } } },
+      input: { type: "object", properties: { override: {}, value: {}, key: { type: "string" }, level: { type: "string" }, device: { type: "string" } } },
       run: async i => {
         let problems;
         if ("override" in (i || {})) problems = checkOver(i.override).problems;
