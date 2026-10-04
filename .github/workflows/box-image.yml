@@ -7,6 +7,7 @@
 name: box-image
 on:
   push:
+    branches: ["main", "work/v0.3", "work/launch-*", "work/box*"]
   pull_request:
   workflow_dispatch:
 permissions:
