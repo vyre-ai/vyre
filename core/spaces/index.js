@@ -1465,6 +1465,11 @@ export default {
       const st = identity.status();
       return st.exists && st.id ? { id: st.id, name: st.name || null, label: st.name || null } : null;
     }, { internal: true });
+    // This computer's own entry on its identity's list, for the daemon's runner ({ deviceId, deviceKey }: the id the Offers name it by and its public key); null until an identity is claimed.
+    tool("spaces.identity.device", "This device's entry on its identity list: { deviceId, deviceKey }, or null when none is claimed. The public half only. For the daemon.", obj(), async () => {
+      const st = identity.status();
+      return st.exists && st.eid && st.publicKey ? { deviceId: st.eid, deviceKey: st.publicKey } : null;
+    }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
