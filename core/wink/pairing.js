@@ -500,7 +500,7 @@ export function createPairing(o) {
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
-          if (p.adopted) { const ch = channelOf(pd); if (ch) meta.set(`channel:${sid}`, ch); }
+          if (p.adopted) { const ch = channelOf(pd); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); } }
           if (!p.adopted) {
             // the server was not told: nothing is half-added, and the person is told what to do
             if (fresh) { devices.remove(fresh); p.device = null; }
@@ -988,6 +988,20 @@ export function createPairing(o) {
       run: async (input, meta0 = {}) => {
         if (String((meta0 && meta0.caller) || "") !== "module:presence") throw fail("denied", "the device record is for the presence module");
         return devices.record(String(input.id));
+      },
+    });
+    ctx.tool("wink.server.probe", {
+      effect: "read",
+      description: "Call a server this device paired, with a read-only system.info over the channel it paired on, and say whether the server still answers this device: { reachable, ... }. After wink.remove the server has let this device go, so it answers { reachable: false, code } here. For checking that a removed device is really refused.",
+      input: obj({ device: str }, ["device"]),
+      run: async (input, meta0 = {}) => {
+        owner(meta0, "probing a server");
+        const chan = meta.get(`probe:${String(input.device)}`);
+        if (!chan || !chan.route) return { reachable: false, code: "unknown", message: "this device never paired a server by that id" };
+        try {
+          const r = await Promise.race([callServer({ relay: String(chan.relay || ""), route: String(chan.route), box: String(chan.box || "") }, "system.info", {}), new Promise((_, rej) => { const h = setTimeout(() => rej(Object.assign(new Error("no answer in 8 seconds"), { remote: "timeout" })), 8000); if (h.unref) h.unref(); })]);
+          return { reachable: true, answered: Boolean(r) };
+        } catch (e) { return { reachable: false, code: String((/** @type {any} */ (e)).remote || (/** @type {any} */ (e)).code || "refused"), message: String((/** @type {Error} */ (e)).message || "").slice(0, 200) }; }
       },
     });
     ctx.tool("wink.server.paired", {

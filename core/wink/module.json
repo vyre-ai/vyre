@@ -257,6 +257,11 @@
         "reach": "modules"
       },
       {
+        "name": "wink.server.probe",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
         "name": "wink.server.paired",
         "reach": "modules"
       },

@@ -1408,3 +1408,15 @@ test("SP-1 exact ids: in production an owner id is per_ plus 26 base32 or spc_ p
   const w2 = world({ exactIds: true });
   assert.equal((await adoptAs(w2, "device:app1", { owner: { kind: "space", id: "spc_" + "a".repeat(12), name: "H" } })).owner.kind, "space");
 });
+
+test("wink.server.probe: a paired server answers; a server that let the device go answers refused; an unknown device says so", async () => {
+  let refuse = false;
+  const w = world({ callServer: async (_p, tool) => { if (refuse) throw Object.assign(new Error("the server answered 401"), { remote: "device_removed" }); return { tool }; } });
+  w.p.meta.set("probe:srv1", { relay: "ws://relay.test", route: "route1", box: "box1" });
+  assert.deepEqual(await w.call("wink.server.probe", { device: "srv1" }), { reachable: true, answered: true });
+  refuse = true;
+  const gone = await w.call("wink.server.probe", { device: "srv1" });
+  assert.equal(gone.reachable, false);
+  assert.equal(gone.code, "device_removed");
+  assert.equal((await w.call("wink.server.probe", { device: "nope" })).code, "unknown");
+});
