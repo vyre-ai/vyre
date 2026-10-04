@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(runner,sessions): own-server sealing found no transcript for a session in the packaged box: it ran as an account's uid and wrote its transcript in that account's HOME (<accounts home>/<uid>/.claude/projects), which `threads.own-transcript` never looked in, so no turn was sealed (found by the hosted packaged-boot run). Under the docker supervisor it now also looks in each account uid's folder by name (the accounts folder is entered, never listed).
+
 - fix(box): the box agent's home belongs to the agent's own group (1001), not the /work group (1002): an account's session working under /work joined 1002 and could read it (found by the confinement self-test on the hosted box); vyred reads it through group 1001 (spawner groups), and the spawner moves an older volume.
 - fix(runner): the box confinement self-test, reviewer-3 CF-1 to CF-4: a protected folder the session's uid can ENTER now counts as reached (the probe only tried read, write and list); the box's secrets folder, the spawner's folder and the key file are protected; the accounts folder is made 711 by the spawner and checked as "not listable"; EVERY project folder of the session is checked, not the first; and any TCP port something listens on in the box is reported (the session shares the box's network; the hosted run found one loopback listener that closes every connection and nobody has named yet), refused only where the box asks (`refuseListen`). "The wall" in the ruling is not probed (no firewall rule applies to session uids): it stays the container, the uid and the file modes. Tests: core/spawner/confine.test.js.
 
