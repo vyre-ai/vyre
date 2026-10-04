@@ -1,4 +1,6 @@
 // @ts-check
+// 0.3 order (ruling, 4 Oct): a server takes only pairing before it has an owner; sign-ins and names are set up from the owner's signed-in app session. The cases that reached the old loopback
+// first-run page with its cookie were removed (the page is gone from the server install); the guard that replaces them is core/onboard/owner-write.test.js.
 // The onboarding as a browser meets it: a real vyred in a temp home, the one-time link from the
 // socket, the loopback listener, the cookie, and only the onboarding tools behind it. Tailscale
 // and claude are fake binaries; nothing here reaches the real ones.
@@ -134,34 +136,6 @@ test("onboard: the loopback listener checks a WebSocket's Host and session, and 
   assert.equal(await up(`evil.example:${port}`, { "x-vyre-onboard": session }), 421, "a rebinding page's Host is refused");
   assert.equal(await up(`127.0.0.1:${port}`), 403, "no session");
   assert.equal(await up(`127.0.0.1:${port}`, { "x-vyre-onboard": session }), 404, "the onboarding page has no streams");
-});
-
-test("onboard: skipping and a bad token say why, a good token goes to the vault, and no zone token means the ts.net address", async t => {
-  const { root } = await box(t, { vault: { keystore: "file" } });
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session: cookie } = await redeem(url);
-  const skipped = await (await tool(base, cookie, "onboard.skip", { step: "you" })).json();
-  assert.equal(skipped.data.steps.you, "skipped");
-  assert.equal(skipped.data.current, "claude");
-  const bad = await (await tool(base, cookie, "onboard.claude", { kind: "api-key", token: "nope" })).json();
-  assert.match(bad.error.message, /does not look like/);
-  const fine = "sk-ant-api" + "0".repeat(40);
-  const stored = await (await tool(base, cookie, "onboard.claude", { mode: "api-key", key: fine })).json();
-  assert.ok(stored.data, JSON.stringify(stored.error));
-  assert.equal(stored.data.state, "done");
-  assert.equal(stored.data.signedIn, true);
-  assert.equal(stored.data.via, "api-key");
-  assert.ok(!JSON.stringify(stored).includes(fine), "the token never comes back");
-  const item = (await call("vault.list", {}, { root, caller: "cli" })).data.items.find(i => i.name === "anthropic-api-key");
-  assert.equal(item.origin, "module:onboard");
-  assert.deepEqual(item.grants ?? [], [], "no module is granted the sign-in: launchers read it through the credentials port");
-  const check = await (await tool(base, cookie, "onboard.name", { name: "alex" })).json();
-  // No zone token: the address is the ts.net one, so there is nothing on vyre.run to check.
-  assert.equal(check.data.valid, true);
-  assert.equal(check.data.available, true);
-  assert.equal(check.data.via, "ts.net");
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, undefined, "a check answers and saves nothing");
 });
 
 test("onboard: a new link voids the old unredeemed one; the owner arriving on the tailnet closes the door", async t => {
@@ -403,49 +377,6 @@ test("onboard: the box wizard's tools refuse on a machine that isn't a server", 
   assert.equal((await d.registry.call("onboard.machine", { machine: "solo" }, "cli")).data.machine, "solo");
 });
 
-test("onboard: reserve goes to ts.net without a zone token and says so when the tailnet has HTTPS off; with a token it is vyre.run", async t => {
-  const { root } = await box(t);
-  process.env.VYRE_TAILSCALE_BIN = fakeBin(fs.mkdtempSync(path.join(root, "ts-")), "tailscale", JSON.stringify({ BackendState: "Running", TUN: true,
-    Self: { HostName: "box", DNSName: "box.tail1.ts.net.", TailscaleIPs: ["100.64.0.9"], ID: "n1", UserID: 1 }, User: {}, CertDomains: [], OperatorUser: os.userInfo().username }));
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-
-  let r = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
-  assert.equal(r.via, "ts.net");
-  for (let i = 0; i < 50 && r.state !== "blocked"; i++) {
-    await new Promise(res => setTimeout(res, 20));
-    r = (await (await tool(base, session, "onboard.name", { action: "status" })).json()).data;
-  }
-  assert.equal(r.state, "blocked");
-  assert.equal(r.code, "https_off");
-  assert.equal(r.adminUrl, "https://login.tailscale.com/admin/dns");
-  assert.match(r.why, /^HTTPS certificates are turned off.*\.$/);
-  const again = (await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).data;
-  assert.equal(again.via, "ts.net", "check again is reserve again");
-
-  await freeZone(t);
-  assert.equal((await (await tool(base, session, "onboard.status")).json()).data.detail.name.via, "vyre.run");
-
-  // Step 1 skipped, though "kit" was typed (and checked) there first: a public name is never
-  // claimed until the person confirms it.
-  assert.equal((await (await tool(base, session, "onboard.name", { name: "kit", action: "check" })).json()).data.valid, true);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, undefined, "the check saved nothing");
-  const unasked = await (await tool(base, session, "onboard.name", { name: "kit", action: "reserve" })).json();
-  assert.match(unasked.error.message, /kit\.vyre\.run is a public name: confirm it first/);
-  assert.match((await (await tool(base, session, "onboard.name", { action: "reserve" })).json()).error.message, /pick a name first/);
-  const yes = await (await tool(base, session, "onboard.name", { name: "kit", action: "reserve", confirm: true })).json();
-  assert.ok(!yes.error, JSON.stringify(yes.error));
-  assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, "kit", "confirmed, so it is the name");
-  // The claim runs on in the background and saves config.json when it ends. The temp home is
-  // removed before vyred stops, so let it end first or its late write leaks the home.
-  for (let i = 0; i < 250; i++) {
-    const { phase } = (await call("names.status", {}, { root })).data || {};
-    if (phase !== "dns" && phase !== "certificate") break;
-    await new Promise(res => setTimeout(res, 20));
-  }
-});
-
 test("onboard: when tailscale cert itself refuses because HTTPS is off, the address step says so with the admin console link", async t => {
   const { root } = await box(t);
   const bins = fs.mkdtempSync(path.join(root, "ts-"));
@@ -501,84 +432,6 @@ test("onboard: a box already serving on ts.net keeps saying so once a zone token
 /** Can this machine run claude under a pty the way onboard.claude does? */
 const ptyMissing = (() => { try { execFileSync(ptyCommand("true")[0] === "script" ? "script" : "python3", ["--version"], { stdio: "ignore" }); return false; } catch { return "no pty helper (script or python3) here"; } })();
 
-test("onboard: the subscription sign-in runs `claude setup-token` under a pty; the code goes in, the token goes to the vault", { skip: ptyMissing }, async t => {
-  const { root } = await box(t, { vault: { keystore: "file" } });
-  const token = "sk-ant-oat01-" + "Zx9_".repeat(12);
-  // A fake claude that reads its prompt the way Claude Code's (Ink) does: the terminal in raw mode,
-  // a chunk of several characters is pasted text, Enter included, and only an Enter on its own
-  // submits. A refused code does not exit: it says "OAuth error" and waits for Enter to retry.
-  const bins = fs.mkdtempSync(path.join(root, "claude-"));
-  const fake = path.join(bins, "claude");
-  fs.writeFileSync(fake, `#!/usr/bin/env node
-if (process.argv[2] === "--version") { console.log("2.1.283 (Claude Code)"); process.exit(0); }
-process.stdout.write("\\x1b]8;id=a1;https://claude.com/cai/oauth/authorize?code=true&client_id=c1&state=s1\\x1b\\\\Sign in\\x1b]8;;\\x1b\\\\\\n");
-process.stdout.write("Paste code here if prompted > ");
-if (process.stdin.isTTY) process.stdin.setRawMode(true);
-let typed = "";
-process.stdin.on("data", d => {
-  const s = String(d);
-  if (s !== "\\r") { typed += s; return; }
-  if (typed === "good-code#s1") { process.stdout.write("\\nYour token: ${token}\\n"); process.exit(0); }
-  process.stdout.write("\\r\\nOAuth error: Request failed with status code 400\\r\\n Press Enter to retry.");
-  typed = "";
-});
-`, { mode: 0o755 });
-  process.env.VYRE_CLAUDE_BIN = fake;
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-
-  const started = await (await tool(base, session, "onboard.claude", { mode: "setup-token" })).json();
-  assert.equal(started.data.url, "https://claude.com/cai/oauth/authorize?code=true&client_id=c1&state=s1", JSON.stringify(started.error));
-  assert.equal(started.data.needsCode, true);
-  assert.equal(started.data.signedIn, false);
-  const asked = Date.now();
-  const wrong = await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "bad-code#s1" })).json();
-  assert.match(wrong.error.message, /did not accept that code \(OAuth error: Request failed with status code 400\)/);
-  assert.ok(Date.now() - asked < 10_000, "a refused code is said at once, not after the minute's wait");
-  assert.match((await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "good-code#s1" })).json()).error.message, /start it again/, "a used sign-in is gone");
-
-  await tool(base, session, "onboard.claude", { mode: "setup-token" });
-  // The code as Claude's callback page shows it, <code>#<state>, pasted whole.
-  const done = await (await tool(base, session, "onboard.claude", { mode: "setup-token", code: "good-code#s1" })).json();
-  assert.equal(done.data.signedIn, true, JSON.stringify(done.error));
-  assert.equal(done.data.via, "setup-token");
-  assert.equal(done.data.needsCode, false);
-  assert.ok(!JSON.stringify(done).includes(token), "the token never comes back");
-  const item = (await call("vault.list", {}, { root, caller: "cli" })).data.items.find(i => i.name === "claude-setup-token");
-  assert.ok(item, "the token is in the vault");
-  assert.deepEqual(item.grants ?? [], [], "the stored sign-in carries no module grant: launchers read it through the credentials port");
-  const events = fs.readdirSync(root, { recursive: true }).filter(f => /\.(jsonl|log|db)$/.test(String(f)));
-  for (const f of events) assert.ok(!fs.readFileSync(path.join(root, String(f))).includes(token), `${f} holds the token`);
-});
-
-test("onboard: finishing makes the assistant once, on every project, signed in with the Claude step's item", async t => {
-  const { root } = await box(t, { vault: { keystore: "file" } });
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  await tool(base, session, "onboard.you", { name: "Alex", assistant: "Mira Two" });
-  // The assistant exists from the moment it was named, with no Claude sign-in yet: no greeting, but it is there for the Agents page and Lumen.
-  const early = (await call("agents.list", {}, { root, caller: "cli" })).data.find(x => x.kind === "assistant");
-  assert.equal(early.name, "mira-two", "made at the You step, with no second click");
-  assert.equal(early.auth, "ambient", "no credentials yet: the machine's own Claude Code login");
-  const before = await (await tool(base, session, "onboard.finish")).json();
-  assert.equal(before.data.assistant.name, "mira-two");
-  assert.equal(before.data.assistant.thread, null, "no Claude sign-in yet, so nothing greets");
-  await tool(base, session, "onboard.claude", { mode: "api-key", key: "sk-ant-api" + "0".repeat(40) });
-  const done = await (await tool(base, session, "onboard.finish")).json();
-  assert.equal(done.data.ready, "Vyre is ready.");
-  assert.equal(done.data.assistant.name, "mira-two");
-  assert.equal(done.data.assistant.display, "Mira Two");
-  const agents = (await call("agents.list", {}, { root, caller: "cli" })).data;
-  const a = agents.find(x => x.kind === "assistant");
-  assert.equal(a.name, "mira-two");
-  assert.equal(a.projects, "*");
-  assert.equal(a.auth, "api-key", "an API key is the agent's API key, not read as a subscription token");
-  await tool(base, session, "onboard.finish");
-  assert.equal((await call("agents.list", {}, { root, caller: "cli" })).data.filter(x => x.kind === "assistant").length, 1, "finishing again makes no second assistant");
-});
-
 test("onboard: once finished with an address, vyre up gets the address, not another link", async t => {
   const { root } = await box(t, { vault: { keystore: "file" }, network: { onboardPort: 0, address: "https://alex.vyre.run" } });
   const first = (await call("onboard.link", {}, { root })).data;
@@ -589,32 +442,6 @@ test("onboard: once finished with an address, vyre up gets the address, not anot
   const after = (await call("onboard.link", {}, { root })).data;
   assert.equal(after.url, null);
   assert.equal(after.address, "https://alex.vyre.run");
-});
-
-test("onboard: finishing with an address hands over a one-time link to make the first passkey there", async t => {
-  const root = tempHome(t);
-  // The core presence module answers: no keys yet, and a fresh one-time code on request.
-  const link = /^https:\/\/alex\.vyre\.run\/onboard\/passkey#e=[A-Z0-9]{8}$/;
-  const cfg = path.join(root, "config.json");
-  const bins = fs.mkdtempSync(path.join(root, "bin-"));
-  const saved = process.env.VYRE_TAILSCALE_BIN;
-  process.env.VYRE_TAILSCALE_BIN = fakeBin(bins, "tailscale", "{}");
-  fs.writeFileSync(cfg, JSON.stringify({ role: "box", transcripts: [], network: { onboardPort: 0, address: "https://alex.vyre.run" } }));
-  const { start: boot } = await import("../core/daemon/index.js");
-  const d = await boot({ root, log: () => {} });
-  t.after(async () => { await d.stop(); if (saved === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = saved; });
-  assert.match((await call("onboard.passkey", {}, { root })).data.passkeyUrl, link, "before finishing too, without finishing");
-  assert.equal((await d.registry.call("onboard.status", {}, "cli")).data.finished, false);
-  assert.equal((await d.registry.call("onboard.passkey", {}, "tailnet:alex@example.com")).data.passkeyUrl, null);
-  const tailnet = await d.registry.call("onboard.finish", {}, "tailnet:alex@example.com");
-  assert.equal(tailnet.data.passkeyUrl, null, "never to a tailnet caller: a model on the Mac is one");
-  const r = await call("onboard.finish", {}, { root });
-  assert.ok(r.data, JSON.stringify(r.error));
-  assert.match(r.data.passkeyUrl, link);
-  // The code expired unused: `vyre up` on the box offers a fresh one, for as long as there is no passkey.
-  const again = (await call("onboard.link", {}, { root })).data;
-  assert.equal(again.url, null);
-  assert.match(again.passkeyUrl, link);
 });
 
 test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key and the commands, running only lock status", async t => {
@@ -752,33 +579,6 @@ test("onboard: join status and verify never need presence; tailscale connect and
   assert.equal(p.required("onboard.join", def, { action: "relay" }), true, "pairing a new device always does");
 });
 
-test("onboard: the named assistant is made at the You step, takes the Claude step's credentials later, and a failure is kept with a retry", async t => {
-  const { root } = await box(t, { vault: { keystore: "file" } });
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  const agents = async () => (await call("agents.list", {}, { root, caller: "cli" })).data;
-  // Somebody already holds the name: the step still succeeds, says why, and a retry makes it once the name is free.
-  assert.equal((await call("agents.create", { name: "kit", projects: [] }, { root, caller: "cli" })).error, undefined);
-  const you = await (await tool(base, session, "onboard.you", { name: "Alex", assistant: "Kit" })).json();
-  assert.equal(you.error, undefined, JSON.stringify(you));
-  assert.equal((await agents()).some(x => x.kind === "assistant"), false);
-  const status = (await (await tool(base, session, "onboard.status")).json()).data;
-  assert.equal(status.assistantState && status.assistantState.state, "failed", JSON.stringify({ you, status: Object.keys(status) }));
-  assert.match(status.assistantState.why, /already an agent kit/);
-  assert.equal((await call("agents.delete", { agent: "kit" }, { root, caller: "cli" })).error, undefined);
-  const retry = await (await tool(base, session, "onboard.assistant")).json();
-  assert.deepEqual([retry.data.state, retry.data.name, retry.data.why], ["made", "kit", null], JSON.stringify(retry));
-  assert.equal((await (await tool(base, session, "onboard.status")).json()).data.assistantState, null, "the failure is cleared");
-  // Once made, the Claude step hands it the Vault items; asking again makes nothing twice.
-  await tool(base, session, "onboard.claude", { mode: "api-key", key: "sk-ant-api" + "0".repeat(40) });
-  const made = (await agents()).filter(x => x.kind === "assistant");
-  assert.equal(made.length, 1);
-  assert.equal(made[0].auth, "api-key", "it took the Claude step's Vault item");
-  assert.equal((await (await tool(base, session, "onboard.assistant")).json()).data.state, "made");
-  assert.equal((await agents()).filter(x => x.kind === "assistant").length, 1);
-});
-
 test("onboard: the box holds the setup step list: skips and passes are kept, the name is the person and never the address, and the assistant retry is the same tool", async t => {
   const { root } = await box(t, { vault: { keystore: "file" } });
   const { url, port } = (await call("onboard.link", {}, { root })).data;
@@ -817,34 +617,6 @@ test("onboard: the box holds the setup step list: skips and passes are kept, the
   const retry = (await (await tool(base, session, "onboard.assistant", { retry: true })).json()).data;
   assert.equal(retry.state, "made");
   assert.equal((await setup()).data.assistant.display, "Kit");
-});
-
-test("onboard: only the person (their own surface or the setup page) changes the name, skips and the assistant, and only they are told the person's name", async t => {
-  const { root } = await box(t, { vault: { keystore: "file" } });
-  const { url, port } = (await call("onboard.link", {}, { root })).data;
-  const base = `http://127.0.0.1:${port}`;
-  const { session } = await redeem(url);
-  assert.equal((await (await tool(base, session, "onboard.you", { name: "Alex Smith", assistant: "Kit" })).json()).error, undefined);
-  for (const caller of ["mcp", "harness", "module:planner"]) {
-    for (const [name, input] of [["onboard.you", { name: "Mallory" }], ["onboard.skip", { step: "history" }], ["onboard.assistant", {}], ["onboard.setup", { skip: "ai" }], ["onboard.setup", { pass: "history" }]]) {
-      const r = await call(name, input, { root, caller });
-      assert.equal(r.error && r.error.code, "denied", `${caller} ${name}: ${JSON.stringify(r)}`);
-    }
-    // Reading the list is fine, but it does not hand over who the person is.
-    const stR = await call("onboard.status", {}, { root, caller });
-    const st = stR.data;
-    assert.ok(st, `${caller}: ${JSON.stringify(stR)}`);
-    assert.deepEqual([st.name, st.person, st.accountName], [null, null, null], `${caller} is not told the person's name`);
-    const sl = (await call("onboard.setup", {}, { root, caller })).data;
-    assert.deepEqual([sl.name, sl.accountName], [null, null]);
-  }
-  // The person's own surface, and the setup page, are told and may change them.
-  const mine = (await call("onboard.status", {}, { root, caller: "cli" })).data;
-  assert.deepEqual([mine.name, mine.person], ["Alex Smith", "Alex Smith"]);
-  assert.equal((await call("onboard.setup", { skip: "phone" }, { root, caller: "cli" })).error, undefined);
-  assert.equal((await (await tool(base, session, "onboard.setup", { skip: "computers" })).json()).error, undefined);
-  assert.equal((await (await tool(base, session, "onboard.status")).json()).data.name, "Alex Smith");
-  assert.equal((await call("onboard.you", { name: "Alex Smith", assistant: "Kit" }, { root, caller: "cli" })).error, undefined);
 });
 
 test("onboard: an address the setup page already claimed is never replaced by the person's name, and step 4 reads it instead of claiming again (#50)", async t => {
