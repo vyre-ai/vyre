@@ -9,6 +9,7 @@ import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
+import { personTypes } from "../../test/typed-line.js";
 
 const DASH = "\u2014";
 
@@ -112,6 +113,7 @@ async function learning(t, home = tempHome(t), extra = []) {
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   await reg.start([...core, ...extra], { role: "local" });
+  personTypes(reg);
   t.after(() => db.close());
   const lesson = async id => (await reg.call("learn.lessons", { status: "all" }, "cli")).data.find(l => l.id === id);
   const add = async text => (await reg.call("learn.add", { text }, "cli")).data;
@@ -318,6 +320,7 @@ test("learn: a draft the user edited to take out every em dash proposes a remind
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   await reg.start([...core, ...discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] })], { role: "local" });
+  personTypes(reg);
   t.after(() => db.close());
 
   await reg.call("gate.fire", { id: 8 });

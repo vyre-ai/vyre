@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":342,"tool":1177,"event":453,"config":254,"env":236,"screen":20,"concept":43},
+  "counts": {"command":342,"tool":1178,"event":452,"config":254,"env":236,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -92,7 +92,6 @@
     {"kind":"tool","name":"assistant.capabilities","definedIn":"core/assistant/index.js","page":"reference/tools.md#assistantcapabilities","module":"assistant","mentions":[{"page":"adr/0047-module-contract-v1.md","line":295,"anchor":"4-the-capability-manifest"}]},
     {"kind":"tool","name":"assistant.daily","definedIn":"core/assistant/index.js","page":"reference/tools.md#assistantdaily","module":"assistant","mentions":[]},
     {"kind":"tool","name":"assistant.glance","definedIn":"core/assistant/index.js","page":"reference/tools.md#assistantglance","module":"assistant","mentions":[]},
-    {"kind":"event","name":"assistant.glanced","definedIn":"core/assistant/index.js","page":"reference/events.md#assistant","module":"assistant","mentions":[]},
     {"kind":"tool","name":"assistant.log","definedIn":"core/assistant/index.js","page":"reference/tools.md#assistantlog","module":"assistant","mentions":[]},
     {"kind":"tool","name":"assistant.patterns","definedIn":"core/assistant/index.js","page":"reference/tools.md#assistantpatterns","module":"assistant","mentions":[{"page":"design/assistant.md","line":109,"anchor":"2a-built-this-round-011-items-1-to-3"}]},
     {"kind":"tool","name":"assistant.prompt.diff","definedIn":"core/assistant/index.js","page":"reference/tools.md#assistantpromptdiff","module":"assistant","mentions":[]},
@@ -1366,6 +1365,7 @@
     {"kind":"tool","name":"spaces.retire-here","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesretire-here","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.roles.names","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesrolesnames","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.self","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesself","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.server-of","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesserver-of","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.server.install","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesserverinstall","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.setup.claim","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacessetupclaim","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.setup.save","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacessetupsave","module":"spaces","mentions":[]},
