@@ -317,7 +317,9 @@ await step("setup: create a space on this computer, close partway, resume", { sk
   await click("Continue");
   await click("On this computer");
   await page.screenshot({ path: path.join(OUT, "setup-2-here.png") });
-  await click("Create it here", { settle: 4000 });
+  await click("Create it here", { settle: 1000 });
+  // Creating the space takes as long as the box takes: wait for the look step (up to 60 s) before judging.
+  await page.waitForFunction(() => /Give .* a look|did not finish|unreachable/.test(document.body.innerText), null, { timeout: 60_000 }).catch(() => {});
   await page.screenshot({ path: path.join(OUT, "setup-3-after-create.png") });
   const t3 = await text();
   if (!/Give .* a look/.test(t3)) throw new Error(`stopped after Create it here: ${t3.replace(/\s+/g, " ").slice(0, 300)}`);
