@@ -1,0 +1,57 @@
+{
+ "note": "proofBytes(proof) = UTF-8 of sorted-key JSON, no whitespace, of the proof WITHOUT `signature` and WITHOUT `assertion`. native-core's build must reproduce `bytes` exactly for each `proof`.",
+ "vectors": [
+  {
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_ab12cd34",
+    "payload_hash": "p_hash",
+    "decision": "task.decide",
+    "chain_hash": "c_hash",
+    "issued_at": 1800000000000,
+    "expires_at": 1800000060000,
+    "nonce": "n1"
+   },
+   "bytes": "{\"chain_hash\":\"c_hash\",\"decision\":\"task.decide\",\"expires_at\":1800000060000,\"issued_at\":1800000000000,\"key_id\":\"dk_ab12cd34\",\"nonce\":\"n1\",\"payload_hash\":\"p_hash\",\"signer\":\"secure_enclave\"}"
+  },
+  {
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_ab12cd34",
+    "payload_hash": "p_hash",
+    "decision": "task.decide",
+    "chain_hash": "c_hash",
+    "issued_at": 1800000000000,
+    "expires_at": 1800000060000,
+    "nonce": "n1",
+    "signature": "SIGSIGSIG",
+    "assertion": "QVNTRVJUSU9O"
+   },
+   "bytes": "{\"chain_hash\":\"c_hash\",\"decision\":\"task.decide\",\"expires_at\":1800000060000,\"issued_at\":1800000000000,\"key_id\":\"dk_ab12cd34\",\"nonce\":\"n1\",\"payload_hash\":\"p_hash\",\"signer\":\"secure_enclave\"}"
+  },
+  {
+   "proof": {
+    "signer": "secure_enclave",
+    "key_id": "dk_zz",
+    "payload_hash": "é\"quote\\slash",
+    "decision": "grant.create",
+    "chain_hash": "ch",
+    "issued_at": 1,
+    "expires_at": 2,
+    "nonce": "nn",
+    "extra": {
+     "b": 2,
+     "a": [
+      3,
+      1,
+      {
+       "z": 1,
+       "y": 2
+      }
+     ]
+    }
+   },
+   "bytes": "{\"chain_hash\":\"ch\",\"decision\":\"grant.create\",\"expires_at\":2,\"extra\":{\"a\":[3,1,{\"y\":2,\"z\":1}],\"b\":2},\"issued_at\":1,\"key_id\":\"dk_zz\",\"nonce\":\"nn\",\"payload_hash\":\"é\\\"quote\\\\slash\",\"signer\":\"secure_enclave\"}"
+  }
+ ]
+}
