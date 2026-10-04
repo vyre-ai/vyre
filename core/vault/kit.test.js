@@ -124,8 +124,8 @@ test("in a real vyred: who sees the people tools, and the kit is a person's tool
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
   const mcp = as("mcp"), cli = as("cli");
   const listed = (await request("GET", "/v1/tools", undefined, { root, caller: "mcp" })).data.map(x => x.name);
-  for (const n of ["vault.people", "vault.fingerprint", "vault.person.add"]) assert.ok(listed.includes(n), n);
-  for (const n of ["vault.kit", "vault.people.verify"]) assert.ok(!listed.includes(n), n);
+  for (const n of ["vault.fingerprint", "vault.person.add"]) assert.ok(listed.includes(n), n);
+  for (const n of ["vault.people", "vault.kit", "vault.people.verify"]) assert.ok(!listed.includes(n), n);
   assert.match((await mcp("vault.kit")).error.message, /not available to mcp/);
   assert.match((await cli("vault.kit")).error.message, /no Secret Key yet/);
   assert.match((await cli("vault.fingerprint")).data.fingerprint, /^([0-9A-Z]{4} ){4}[0-9A-Z]{4}$/);
