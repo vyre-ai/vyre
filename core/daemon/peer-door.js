@@ -15,7 +15,7 @@ const DEVICE = /^[a-z2-7]{16}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, now?: () => number, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -31,17 +31,20 @@ export function createPeerDoor(o) {
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
   const rowOf = async id => { try { const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data; return d && d.kind === "app" && d.removed === false ? d : null; } catch { return null; } };
   /** The person a device is: the facts the daemon proves for it (PH-1) name the home's owner, and only for a live app device. @param {string} id */
-  const factsOf = async id => { const row = await rowOf(id); return row ? o.callerFacts(`device:${id}`, { caller: `device:${id}`, peer: { kind: "device", stableId: id } }, null, o.kernel, false, row) : null; };
+  /** The device's own live paired session (it signed in with start-paired), or null: a call is the person's with a session and a device's own, with no person, without one. @param {string} id */
+  const sessionOf = id => { const now = (o.now || Date.now)(); try { const s = o.people ? o.people.list().find(x => x.node === id && x.paired && x.expires > now) : null; return s ? { id: String(s.id), kind: String(s.kind) } : null; } catch { return null; } };
+  const factsOf = async (/** @type {string} */ id, /** @type {any} */ person = null) => { const row = await rowOf(id); return row ? o.callerFacts(`device:${id}`, { caller: `device:${id}`, peer: { kind: "device", stableId: id } }, person ? { person } : null, o.kernel, false, row) : null; };
   const personOf = async (/** @type {string} */ id) => { const f = await factsOf(id); return f && typeof f.person === "string" ? f.person : null; };
 
   const asDevice = async (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => {
     const id = caller.slice(7);
-    const facts = await factsOf(id);
+    const person = sessionOf(id);
+    const facts = await factsOf(id, person);
     if (!facts) throw err("denied", "this device is not paired here any more");
     const body = input && typeof input === "object" && !Array.isArray(input) ? { ...input } : {};
     /** @type {any} */ let proof;
     if (body.proof && typeof body.proof === "object") { try { if (JSON.stringify(body.proof).length <= 4096) proof = body.proof; } catch { /* no proof */ } delete body.proof; }
-    const r = await o.registry.call(tool, body, caller, { kernelFacts: facts, ...(proof ? { kernel_proof: proof } : {}) });
+    const r = await o.registry.call(tool, body, caller, { ...(person ? { person } : {}), kernelFacts: facts, ...(proof ? { kernel_proof: proof } : {}) });
     if (r && r.error) throw err(String(r.error.code || "internal"), String(r.error.message || "the call failed"));
     return r ? r.data : null;
   };
