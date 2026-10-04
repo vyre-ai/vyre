@@ -3893,6 +3893,19 @@ export default {
         return sb.busyIn(String(dir));
       },
     });
+    // For the runner's own-server sealing (core/runner ports.ownServer.resolve): which transcript file a finished turn belongs to, and the provider's projects folder it sits under (`root`,
+    // which the seal pins the file to). Only the thread's own provider session, only Claude's layout (<root>/<project>/<session>.jsonl), and nothing for a session this Switchboard has no record of.
+    ctx.tool("threads.own-transcript", {
+      description: "The transcript file of a session this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. A session it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["session"], properties: { session: str } },
+      run: async i => {
+        const rec = sb.record(String(i.session));
+        if (!rec || (rec.provider || "claude") !== "claude") return null;
+        const t = findSession(sb.deps.transcripts || [], String(i.session));
+        if (!t) return null;
+        return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
+      },
+    });
     ctx.tool("threads.origin", {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },

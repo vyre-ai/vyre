@@ -26,15 +26,27 @@ export const CONSEQUENTIAL = [
 ];
 
 
-/** Names that only move, show or select: the one list a control must match to be observable (HD-6: an allow-list, so Authorize, Allow, Accept, Save, Continue, Grant, Enable, Apply, Order and Log in are consequential by omission). */
+/**
+ * HD-6/6b: a control is observable only when its WHOLE name is one the hands know to be harmless (a verb for moving, showing or selecting, alone or with a short fixed noun) and no word that
+ * grants, accepts, sends, saves or leaves appears anywhere in it. Passive roles (an entry, a tab, a row) are observable only when the name also passes the veto, because the page picks its
+ * own role. A page that hands the hands native facts (`submit`, `type`, `href`) is believed over its own words: a submit control, or a link that matches oauth, authorize, consent, checkout
+ * or delete, is consequential whatever it is called.
+ */
+const VERBS = "back|forward|next|previous|prev|up|down|left|right|home|top|bottom|go|go back|go forward|close|cancel|dismiss|hide|collapse|show|expand|open|view|preview|details|more|less|help|menu|search|filter|sort|refresh|reload|skip|scroll|select|focus|tab";
+const NOUNS = "page|tab|step|slide|item|result|results|menu|details|filters|sidebar|panel|list|all|more|less|section|image|photo|gallery|message|messages|folder|file|files";
 export const OBSERVABLE = [
-  /^(?:the\s+)?(?:back|forward|next|previous|prev|up|down|left|right|home|top|bottom|go|go back|go forward|go home)(?:\s+(?:page|tab|step|slide|item|result|button))?$/i,
-  /^(?:close|cancel|dismiss|hide|collapse|show|expand|open|view|preview|details|more|less|show more|show less|see more|see less|read more|learn more|help|menu|search|filter|sort|refresh|reload|skip|scroll|select|focus|tab|expand all|collapse all)(?:\s+[\w .\-]{0,40})?$/i,
-  /^\d{1,4}$/,                 // a page or tab number
+  new RegExp(`^(?:the\\s+)?(?:${VERBS})$`, "i"),
+  new RegExp(`^(?:${VERBS})\\s+(?:${NOUNS})$`, "i"),
+  new RegExp(`^(?:show|see|read|learn)\\s+(?:more|less)$`, "i"),
+  /^\d{1,4}$/,
   /^page\s+\d{1,4}$/i,
 ];
-/** Controls that hold a value or a place and do nothing by themselves: typing in them or moving between them is observable. */
-export const PASSIVE_ROLES = /^(?:entry|textbox|text field|text|searchbox|search field|combobox|combo box|tab|tab list|tabpanel|listbox|list box|option|list item|row|cell|column header|tree item|scroll bar|scrollbar|slider|label|heading|link-text)$/i;
+/** Words that make any name consequential, whatever comes before or after them. */
+export const VETO = /(?:^|[^a-z])(?:authori[sz]e|allow|accept|agree|grant|consent|continue|proceed|enable|apply|order|yes|ok|okay|connect|install|approve|confirm|send|log\s?in|login|sign|pay|buy|checkout|purchase|subscribe|delete|remove|submit|save|done|finish|complete|start|trust|unlock|share|invite|publish|post|merge|push|deploy|release|transfer|upgrade|activate|verify|reset|clear|erase|discard|revoke|disconnect|unsubscribe)/i;
+/** A link that leaves for a consent, sign-in, payment or deletion page. */
+export const RISKY_HREF = /oauth|authori[sz]e|consent|checkout|payment|delete|logout|signout|sign-out|billing|grant/i;
+/** Controls that hold a value or a place and do nothing by themselves; the page names the role, so this alone decides nothing. */
+export const PASSIVE_ROLES = /^(?:entry|textbox|text field|text|searchbox|search field|combobox|combo box|tab|tab list|tabpanel|listbox|list box|option|list item|row|cell|column header|tree item|scroll bar|scrollbar|slider|label|heading)$/i;
 
 /**
  * What kind of action is this?
@@ -53,6 +65,9 @@ export function of(ctl) {
   for (const re of CONSEQUENTIAL) {
     if (re.test(name)) return { consequential: true, why: JSON.stringify(name) + " looks like an action that cannot be undone by doing it again" };
   }
+  if (ctl && (ctl.submit === true || String(ctl.type || "").toLowerCase() === "submit")) return { consequential: true, why: JSON.stringify(name) + " submits a form" };
+  if (ctl && typeof ctl.href === "string" && RISKY_HREF.test(ctl.href)) return { consequential: true, why: JSON.stringify(name) + " leads to a consent, sign-in, payment or deletion page" };
+  if (VETO.test(name)) return { consequential: true, why: JSON.stringify(name) + " names an action that grants, accepts, sends or leaves" };
   if ((ctl && PASSIVE_ROLES.test(String(ctl.role || "").trim())) || OBSERVABLE.some(re => re.test(name))) return { consequential: false, why: "navigating, focusing or selecting" };
   return { consequential: true, why: JSON.stringify(name) + " is not a control the hands know to be harmless, so it is treated as one that matters" };
 }
