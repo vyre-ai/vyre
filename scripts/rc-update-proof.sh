@@ -60,8 +60,33 @@ docker exec -u 1000 vyre-vyre-1 sh -c 'echo rc-marker-1 > /home/vyre/.vyre/rc-ma
 # Reads. With the kernel on, personal memory is read only by a person (a device or a signed-in terminal): a CI server has no owner, so the host's `vyre call` is a plain cli and is refused ("no kernel chain"), which is the design.
 # A fact is then proven present by what the home's own database files hold (the same text, found in the files), which is where a lost record would show.
 home_has() { docker exec -u 1000 vyre-vyre-1 sh -c 'find /home/vyre/.vyre -type f \( -name "*.db" -o -name "*.db-wal" -o -name "*.sqlite*" \) -exec grep -la -- "$0" {} + 2>/dev/null | head -n 1' "$1" | grep -q .; }
+# DEV_KIND: a `vyre` call through docker exec is not a person until its terminal signs in, so a person-only call runs as the child of a signed-in terminal (signin-approve.mjs: `vyre signin`, the owner's software key signs the
+# card, then the call). enrol_owner is done once, the first time a person-only call is needed (the box is stopped to enrol, then started with the two developer switches that let its sealing process accept the software key).
+OWNER=0
+enrol_owner() {
+  [ "$OWNER" = 0 ] || return 0
+  img=$(docker inspect -f '{{.Config.Image}}' vyre-vyre-1)
+  docker stop vyre-vyre-1 >/dev/null || fail "could not stop the box to enrol the owner's key"
+  docker run --rm -u 1000 --volumes-from vyre-vyre-1 -v "$HERE/scripts/dev-enrol-software-key.mjs:/opt/vyre/scripts/dev-enrol-software-key.mjs:ro" -e VYRE_HOME=/home/vyre/.vyre --entrypoint node "$img" /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre >"$WORK/enrol.log" 2>&1 || { cat "$WORK/enrol.log"; fail "the owner's software key could not be enrolled"; }
+  grep -q '^VYRE_SEAL_DEV=1' /srv/vyre/vyre.env || printf 'VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\n' >>/srv/vyre/vyre.env
+  vyre up >"$WORK/up-owner.log" 2>&1 || { tail -20 "$WORK/up-owner.log"; fail "the box did not start with the developer switches"; }
+  ready || fail "the box did not come back with the owner's key"
+  sleep 10
+  OWNER=1
+}
+put_probes() { # the package carries no developer scripts: the signer and the sign-in probe are copied into the running box (as root, readable by the box user)
+  docker exec vyre-vyre-1 mkdir -p /opt/vyre/scripts || fail "could not make the scripts folder in the box"
+  docker cp "$HERE/scripts/dev-sign-proof.mjs" vyre-vyre-1:/opt/vyre/scripts/dev-sign-proof.mjs
+  docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
+}
+person_call() { # TOOL JSON: the call from a signed-in terminal inside the box; prints the call's answer
+  enrol_owner
+  put_probes
+  docker exec -u 1000 -e VYRE_HOME=/home/vyre/.vyre vyre-vyre-1 node /tmp/signin-approve.mjs /opt/vyre "$1" "$2" >"$WORK/person.out" 2>&1 || true
+  if grep -q '^RESULT:' "$WORK/person.out"; then sed '1,/^RESULT:/d' "$WORK/person.out"; else cat "$WORK/person.out"; fi
+}
 read_back() { # TEXT TOOL
-  rb=$(vyre call "$2" '{}' 2>&1 || true)
+  if [ "${DEV_KIND:-0}" = 1 ]; then rb=$(person_call "$2" '{}'); else rb=$(vyre call "$2" '{}' 2>&1 || true); fi
   printf '%s' "$rb" | grep -q "$1" && return 0
   [ "${DEV_KIND:-0}" != 1 ] || return 1 # an owned box reads through the product, no fallback
   printf '%s' "$rb" | grep -Eq 'no kernel chain|presence|sign ?in|not a signed-in person|denied' && home_has "$1"
@@ -128,6 +153,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
   if [ "${DEV_KIND:-0}" = 1 ]; then
     docker exec -u 1000 vyre-vyre-1 sh -c 'grep -q "development" /opt/vyre/lib/build-kind.js' || fail "$1: DEV_KIND=1 but the candidate is not development-kind"
     docker exec -u 1000 vyre-vyre-1 touch /home/vyre/.vyre/dev-presence-stand-in || fail "$1: could not place the owner stand-in"
+    enrol_owner # here, not inside person_call: that runs in a subshell, and a flag set there is lost (the key would be enrolled twice)
   fi
   # records' store line (/v1/health records_store, when this candidate carries it): an untouched box is on the built-in store by default and it answers.
   if [ "$2" = none ]; then
@@ -137,7 +163,7 @@ do_update() { # LABEL STORE: STORE is none (an untouched box: no VYRE_STORE appe
     esac
   fi
   # The records written before the update are read back, and the box is still on the store they live in (the built-in one: there is no status line for the store, so: no Twenty stack, and the data reads).
-  read_back Robin memory.me || { echo "--- memory.me:"; vyre call memory.me '{}' 2>&1 | head -5; fail "$1: the memory fact written before the update is not read back"; }
+  read_back Robin memory.me || { echo "--- memory.me:"; { [ "${DEV_KIND:-0}" = 1 ] && person_call memory.me '{}' || vyre call memory.me '{}' 2>&1; } | head -5; fail "$1: the memory fact written before the update is not read back"; }
   read_back 'retainer draft' planner.list || fail "$1: the planner note written before the update is not read back"
   [ "$(docker exec -u 1000 vyre-vyre-1 cat /home/vyre/.vyre/rc-marker 2>/dev/null)" = rc-marker-1 ] || fail "$1: the data written before the update is gone"
 }
@@ -145,7 +171,7 @@ do_update "2 update" none
 # A record written after the update is read back after a restart.
 # A record written after the update is read back after a restart. A release box in CI has no owner, so a plain terminal's write is refused (a person writes personal memory): there the facts written before the update
 # must survive the restart instead; the owned run writes and reads the new record through the product.
-wr=$(vyre call memory.remember '{"text":"My daughter is Lina"}' 2>&1 || true)
+if [ "${DEV_KIND:-0}" = 1 ]; then wr=$(person_call memory.remember '{"text":"My daughter is Lina"}'); else wr=$(vyre call memory.remember '{"text":"My daughter is Lina"}' 2>&1 || true); fi
 if printf '%s' "$wr" | grep -Eq 'denied|no kernel chain|caller_unknown'; then
   [ "${DEV_KIND:-0}" != 1 ] || { echo "$wr"; fail "2: the owner could not write a record after the update"; }
   say "2: a record cannot be written by a plain terminal on a release box (no owner in CI); the facts from before the update are checked after a restart instead"
@@ -171,14 +197,8 @@ say "4 ok: updated again with VYRE_STORE=auto kept, every module runs, records i
 # 5. (dev-owned run only) the owner's software key, `vyre signin` and a call after it: the whole presence path of a terminal on a box, with a signed proof made by the owner's key. The daemon is stopped to enrol (the sealing
 # process owns its folder), then started with the two developer switches that let its own sealing process accept the software key.
 if [ "${DEV_KIND:-0}" = 1 ]; then
-  img=$(docker inspect -f '{{.Config.Image}}' vyre-vyre-1)
-  docker stop vyre-vyre-1 >/dev/null || fail "5: could not stop the box to enrol the owner's key"
-  docker run --rm -u 1000 --volumes-from vyre-vyre-1 -e VYRE_HOME=/home/vyre/.vyre --entrypoint node "$img" /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre >"$WORK/enrol.log" 2>&1 || { cat "$WORK/enrol.log"; fail "5: the owner's software key could not be enrolled"; }
-  printf 'VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\n' >>/srv/vyre/vyre.env
-  vyre up >"$WORK/up5.log" 2>&1 || { tail -20 "$WORK/up5.log"; fail "5: the box did not start with the developer switches"; }
-  ready || fail "5: the box did not come back with the owner's key"
-  sleep 10
-  docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
+  enrol_owner # (normally done already by the person reads of step 2)
+  put_probes
   docker exec -u 1000 -e VYRE_HOME=/home/vyre/.vyre vyre-vyre-1 node /tmp/signin-approve.mjs /opt/vyre >"$WORK/signin.log" 2>&1 || { cat "$WORK/signin.log"; docker logs vyre-vyre-1 2>&1 | grep -Ei 'signin|presence|sealer|software' | tail -15; fail "5: the sign-in with the owner's signed proof did not work"; }
   cat "$WORK/signin.log"
   say "5 ok: the owner's software key signed vyre signin, and a person-only call answered after it"

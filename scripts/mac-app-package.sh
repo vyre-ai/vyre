@@ -51,6 +51,23 @@ sh "$here/mac-app/make-pins.sh" "$arch" "$setup/vyre-sudo-check"
 chmod 755 "$setup/install-mac-server.sh" "$setup/askpass" "$setup/vyre-sudo" "$setup/vyre-sudo-check"
 printf '{"node":"%s","arch":"%s","nodeSha256":"%s"}\n' "$nodev" "$na" "$want" > "$setup/setup.json"
 
+# The app's own version is the release's (build.sh stamps whatever package.json said when the app was compiled).
+plist="$stage/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion $version" "$plist" || { echo "could not stamp the version into $plist" >&2; exit 1; }
+# A prerelease is installed from its own tag's release assets (the rc channel): the installer reads this file beside itself. A stable release has none
+# and uses vyre.run/box. VYRE_APP_BOX_URL overrides (a rehearsal), and must end in a slash.
+case "$version" in *-*) boxurl="https://github.com/vyre-ai/vyre/releases/download/v$version/" ;; *) boxurl="" ;; esac
+boxurl="${VYRE_APP_BOX_URL:-$boxurl}"
+case "$boxurl" in ""|https://*/) ;; *) echo "VYRE_APP_BOX_URL must be an https URL ending in /" >&2; exit 2 ;; esac
+if [ -n "$boxurl" ]; then printf '%s\n' "$boxurl" > "$setup/box-url"; chmod 644 "$setup/box-url"; fi
+# The app's web build (apps/app, expo export -p web) rides inside the app, for the mode that talks to a server with no vyred of its own.
+if [ -n "${VYRE_APP_WEB_DIR:-}" ]; then
+  [ -f "$VYRE_APP_WEB_DIR/index.html" ] || { echo "VYRE_APP_WEB_DIR has no index.html: $VYRE_APP_WEB_DIR" >&2; exit 1; }
+  mkdir -p "$stage/Contents/Resources/app"
+  ditto "$VYRE_APP_WEB_DIR" "$stage/Contents/Resources/app"
+  find "$stage/Contents/Resources/app" -type l | grep -q . && { echo "the web build holds a symlink" >&2; exit 1; }
+fi
+
 signed=adhoc; notarized=no
 if [ -n "${APPLE_DEVELOPER_ID_P12:-}" ] && [ -n "${APPLE_DEVELOPER_ID_IDENTITY:-}" ]; then
   kc="$work/sign.keychain-db"
@@ -114,4 +131,4 @@ fi
 cp "$zip" "$out/Vyre-Lumen-${arch}.zip"; cp "$dmg" "$out/Vyre-Lumen-${arch}.dmg"
 echo "lumen app: signed=$signed notarized=$notarized gatekeeper=$gatekeeper"
 ( cd "$out" && shasum -a 256 Vyre-Lumen*.zip Vyre-Lumen*.dmg )
-printf 'arch=%s\nnode=%s\nsigned=%s\nnotarized=%s\ngatekeeper=%s\n' "$arch" "$nodev" "$signed" "$notarized" "$gatekeeper" > "$out/mac-app-$arch.status"
+printf 'arch=%s\nnode=%s\nversion=%s\nbox_url=%s\nweb_app=%s\nsigned=%s\nnotarized=%s\ngatekeeper=%s\n' "$arch" "$nodev" "$version" "${boxurl:-default}" "$([ -d "$stage/Contents/Resources/app" ] && echo yes || echo no)" "$signed" "$notarized" "$gatekeeper" > "$out/mac-app-$arch.status"
