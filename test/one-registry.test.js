@@ -66,7 +66,7 @@ test("a Space made through spaces.create is the kernel's Space (one id, a store 
   // with the development stand-in (a hand-made file in a development build) the person's proof is satisfied and the agent joins as an actor, and again is no error
   fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "walk\n");
   d.registry.deps.db.prepare("INSERT INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, ?, 'p', 1, 'app', 0, NULL)").run("dphonepaired00001", "phone");
-  const SI = { proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: made.id, path: "relay", session: "ps_1" } };
+  const SI = { proof: { method: "stand-in" }, kernel_proof: { method: "stand-in" }, kernelFacts: { kind: "device", device_key_id: "dphonepaired00001", person: made.id, path: "relay", session: "ps_1" } };
   const added = await d.registry.call("spaces.members.add-agent", { space, agent: "kit" }, "cli", SI);
   assert.ok(!added.error, JSON.stringify(added).slice(0, 300));
   assert.deepEqual(added.data.agent, { kind: "agent", id: "kit" });
