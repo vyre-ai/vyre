@@ -38,8 +38,10 @@ The user ran `/vyre $ARGUMENTS`.
   `memory_remember` with `{"text": "<fact>"}` and say in one line that it is remembered. If
   `memory_remember` is not offered, or refuses (a session scoped to some projects cannot teach
   personal facts), say so in one line and offer to make it a lesson with `/vyre lesson` instead.
-- `lesson <rule>`: call `learn_add` with `{"text": "<rule>"}`. Say in one line the lesson it
-  made and whether it is checked (a check means hooks enforce it) or a reminder.
+- `lesson <rule>`: call `learn_add` with `{"text": "<rule>"}`. From a session it makes a
+  PROPOSED lesson, not an active one: say in one line the rule it proposed and whether it would be
+  checked (hooks enforce it) or a reminder, and that it takes effect only when the user accepts
+  it with `vyre learn accept <id>` in their own terminal. Never say it is in force.
 - `lessons`: call `learn_lessons` and show each lesson on one line: its id, rule, level and its
   applied, caught and broken counts. Accepting, retiring or loosening one is the user's call, and
   you cannot do it: a proposed lesson is kept when the user answers a plain yes, and dropped on a

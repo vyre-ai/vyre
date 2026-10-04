@@ -5,7 +5,7 @@ import { Avatar, Button, Card, Chip, Divider, EmptyState, Row, Text, showToast, 
 import { Group, Page } from "../places/Frame";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { lendInfo, useDevices } from "./state";
-import { lendState, removeText } from "./wink.js";
+import { REINSTALL_LINE, lendState, removeText } from "./wink.js";
 import { MOCK, said } from "../../src/real/box";
 import { RealDeviceSpaces } from "./RealDeviceSpaces";
 
@@ -63,6 +63,7 @@ export function DeviceScreen() {
         </Group>
       ) : null}
       <Group title="Remove">
+        {d.device === "phone" ? <Text size="caption" tone="label">{REINSTALL_LINE}</Text> : null}
         <Text size="caption" tone="label">{removeText("Device", d.name)}</Text>
         <View className="flex-row"><Button kind="hold" label={`Remove ${d.name}`} onPress={() => { removeItem(d.id).then(() => { showToast(`${d.name} was removed.`); router.push("/u/settings/devices" as never); }).catch((e) => showToast(said(e))); }} /></View>
       </Group>
