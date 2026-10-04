@@ -711,7 +711,7 @@ test("Q-1: a first adoption by a paired device is a question at the server: who 
   assert.equal(q.choices.length, 3);
   assert.equal(new Set(q.choices).size, 3);
   assert.ok(q.choices.includes("amber coral app1"), "the right words are one of the three");
-  assert.match(q.line, /^Pair this server to Alex\? Pick the three words the app shows: 1\) .+ 2\) .+ 3\) .+$/);
+  assert.match(q.line, /^Pair this server to Alex \(per_aaaaaa\)\? Pick the three words the app shows: 1\) .+ 2\) .+ 3\) .+$/);
   assert.ok(w.events.some(e => e[0] === "wink.pair-asked" && e[1].choices.includes("amber coral app1") && e[1].words === undefined), "the event carries choices, never the right words");
   // asking again is the same ask, not a second owner
   assert.equal((await adoptAs(w, "device:app1")).pending, true);
