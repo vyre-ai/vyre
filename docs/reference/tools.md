@@ -5544,25 +5544,28 @@ A paired device's session gets a new secret, signed by the device's key. The old
 
 ### `presence.person.session-answer`
 
-The owner answers a device's sign-in ask from their own device, with their presence: yes lets that device sign in once, with the strength of this proof.
+The owner answers a device's card from their own device: yes carries the owner's signed yes (`proof`, over the exact request on the card) back to the device that asked.
 
 - Input:
   - `id` string, required
   - `yes` boolean, required
+  - `proof` object
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`
 - Needs a person present.
 
 ### `presence.person.session-ask`
 
-A paired device with no live session asks its owner's phone to let it sign in: { id, expires_in_s }. One open ask per device. The owner answers with presence.person.session-answer from their own device; then the device signs in as usual and its session has the approving proof's strength.
+A paired device that cannot sign a yes itself (a browser) asks its owner's phone for the yes one of the three moments needs (pair, vault, outward): { id, expires_in_s }. One open ask per device. The owner answers with presence.person.session-answer from their own device; the device reads the signed yes back with presence.person.session-status.
 
 - Input:
+  - `moment` one of "pair", "vault", "outward", required
   - `label` string
+  - `request` object
 - Callers: `device`, `relay`, `tailnet`
 
 ### `presence.person.session-pending`
 
-The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
+The sign-in asks still waiting for the owner, for their phone: { asks: [{ id, device, label, moment, request, asked_at }] }, newest first. An ask lasts 5 minutes, then it is gone (so one made while the app was closed is still there when it opens).
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`, `mobile`

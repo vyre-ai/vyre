@@ -203,9 +203,9 @@ test("gateway: an action that needs presence or approval does not run, and says 
   assert.equal(r.openIntents(), 0);
 });
 
-test("gateway: changing types is admin work: it needs a presence session, and the change is logged", async () => {
+test("gateway: changing types is admin work: a person does it with no presence session (ruling c328cd1), and the change is logged", async () => {
   const noSession = rig({ hasPresenceSession: () => false });
-  await assert.rejects(() => noSession.r.define(owner(), { add_types: [CONTACT] }), { code: "needs_presence" });
+  assert.equal((await noSession.r.define(owner(), { add_types: [CONTACT] })).applied, true, "no session needed");
   const { r, log } = rig();
   const res = await r.define(owner(), { add_types: [CONTACT] });
   assert.equal(res.applied, true);

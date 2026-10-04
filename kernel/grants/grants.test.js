@@ -643,17 +643,19 @@ test("lend (ruling 5 Oct): the first lend takes ONE proof bound to the compound 
   off();
 });
 
-test("lend (ruling 5 Oct): without a live person session even withdrawing is refused, and a model's chain cannot lend or withdraw", async () => {
+test("lend (ruling 5 Oct, one rule c328cd1): a person withdraws with no session, and a model's chain cannot lend or withdraw", async () => {
   const { g } = await rig(undefined, { session: false });
   const set = m => g.setRole(owner(), m, P.role(m));
   await set({ person: BOB, role: "member" });
   const b = { member: BOB, device: "dev_laptop", device_key: "KEY_B" };
   const pr = { presence: proof("grants.offer", { lend: { member: BOB, device: "dev_laptop", device_key: "KEY_B", network_cap: null } }, `vyre://${SPACE}/offer/lend`) };
   await g.offers.lend(personChain(BOB), b, pr);
-  await assert.rejects(() => g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" }), "no session and no proof: refused");
-  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true, "still lent");
   await assert.rejects(() => g.offers.unlend(agentChain("juno"), { member: BOB, device: "dev_laptop" }));
   await assert.rejects(() => g.offers.lend(agentChain("juno"), b, pr));
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, true, "a model's chain moved nothing");
+  // one permission rule (ruling c328cd1): the member's own chain withdraws with no session
+  await g.offers.unlend(personChain(BOB), { member: BOB, device: "dev_laptop" });
+  assert.equal(g.offers.active({ member: BOB, device: "dev_laptop", device_key: "KEY_B" }).memberAccepts, false, "withdrawn by the person");
 });
 
 test("lend (ruling 5 Oct): after the member's own off, on again needs only the live session; after anyone else's off, a removal or a role change it is a first grant and takes the proof again; a rebuild keeps the difference", async () => {

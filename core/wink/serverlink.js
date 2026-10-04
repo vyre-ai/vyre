@@ -128,9 +128,9 @@ export function createServerLinks(o) {
     if (r.status >= 300 || !j || j.error) throw err(String((j && j.error && j.error.code) || "denied"), String((j && j.error && j.error.message) || `the server answered ${r.status}`));
     return j.data;
   };
-  /** Ask the server's owner to let this device sign in from their phone (a device whose own key is software, such as a browser): { id, expires_in_s }. Then poll `signInStatus`, and on `approved` call `startPaired`: that session has the phone's strength. @param {string} sid @param {string} [label] */
-  const askSignIn = async (sid, label) => postOn(linkOf(sid))("presence.person.session-ask", label ? { label } : {});
-  /** @param {string} sid @param {string} id @returns {Promise<{ state: "waiting" | "approved" | "refused" | "none" | "timeout" }>} */
+  /** Ask the server's owner's PHONE for the yes one of the three moments needs, for a device that cannot sign it itself (a browser): `{ moment: "pair" | "vault" | "outward", request: { op, fields }, label? }` -> { id, expires_in_s }. Poll `signInStatus`; on `approved` it carries the phone's signed yes (once). @param {string} sid @param {{ moment: string, request?: any, label?: string }} card */
+  const askSignIn = async (sid, card) => postOn(linkOf(sid))("presence.person.session-ask", { moment: String(card && card.moment), ...(card && card.request ? { request: card.request } : {}), ...(card && card.label ? { label: card.label } : {}) });
+  /** @param {string} sid @param {string} id @returns {Promise<{ state: "waiting" | "approved" | "refused" | "none" | "timeout", proof?: any }>} */
   const signInStatus = async (sid, id) => postOn(linkOf(sid))("presence.person.session-status", { id });
 
   /** This device's sign-in to the server: pair-challenge, then start-paired with the key the server's owner confirmed. Holds the token. @param {string} sid */
