@@ -1191,6 +1191,10 @@ test("device-first, real daemon, relay and kernel: the pick leaves the device re
   const session = links.sessionFor("srv");
   const me = await session.call("records.me", {});
   assert.ok(JSON.stringify(me).includes(owner.id), `records.me answers the owner: ${JSON.stringify(me).slice(0, 200)}`);
+  // PD-2: the door reaches what a person's paired device may call and nothing else: tools that are for modules only are refused over the stream
+  for (const tool of ["spaces.identity.state", "relay.device.info", "presence.person.end-paired", "wink.server.handover", "spaces.owner.adopt"]) {
+    await assert.rejects(() => session.call(tool, { person: owner.id, id: done.device }), e => /denied|not_found|no_such_tool|not available|callers/i.test(`${e.code} ${e.message}`), `${tool} is refused over the peer door`);
+  }
   // and a kernel call over the same session is the kernel's own remote path
   const rk = links.remoteKernel("srv", w.d.kernel.id.space);
   const members = await rk.gateway.grants.members.list(null);
