@@ -62,7 +62,7 @@ function kernelProof(req) {
  * connect, so the uid is the daemon's own; Capsule calls wait for the code-signature check to be wired and get none), or a paired device or a signed-in owner device on a listener
  * (the listener established who it is; the person is the home's owner while a home has one). Set here only, never from anything a client sends; `ctx.kernel.chain(meta)` builds the chain
  * from it with the kernel's own builder, which refuses what does not hold. Null when there is nothing to prove.
- * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ inside: boolean } | undefined} [ancestry] what runs above the caller on the socket (a person's surface label gets facts only with this) @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
+ * @param {string} caller @param {any} policy @param {any} via @param {any} k the kernel @param {boolean} [capsuleVerified] the peer on this socket is the pinned Capsule binary @param {{ inside: boolean, outside?: boolean } | undefined} [ancestry] what runs above the caller on the socket (a person's surface label gets facts only with this) @param {{ kind: string, removed: boolean } | null} [device] the home's OWN row for a `device:<id>` caller (relay.device.info), never what the relay says about it
  */
 export function callerFacts(caller, policy, via, k, capsuleVerified = false, device = null, ancestry = undefined) {
   if (!k || !k.id) return null;
@@ -71,7 +71,9 @@ export function callerFacts(caller, policy, via, k, capsuleVerified = false, dev
   // LB-1: the label is only a claim on a socket any process under this uid can open, so a person's surface gets facts ONLY after the daemon measured what runs above the caller (`ancestry`, from
   // `above`): from under a Claude or a thread it is a model's (the builder then makes an agent chain, never a person), and with no measurement, or one that could not read the ancestry, there are none.
   if (!policy.caller && ["cli", "local", "deck", "mobile"].includes(caller)) {
+    // Inside a model: facts that make an agent chain. Anything but a DEFINITE outside (an unreadable table, a named server above such as tmux or ssh, a `docker exec`, no peer read) gives none: that call is a person only with a person session (LB-2).
     if (!ancestry || typeof ancestry.inside !== "boolean") return null;
+    if (!ancestry.inside && ancestry.outside !== true) return null;
     return { kind: "socket", surface: caller, uid: typeof process.getuid === "function" ? process.getuid() : 0, pid: 0, inside_model_process: ancestry.inside, capsule_verified: false };
   }
   // PH-1: a `device:<id>` is the owner's only if THIS home holds a row for it: paired (a gated pairing makes no row before its confirm), not removed, and an app device. A web browser (trusted or
@@ -674,13 +676,15 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
  * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
- * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
+ * here, but a label alone is never a person: `outside` is false for it, so callerFacts builds no person chain for it, and it is a person only with a person session (LB-2). The person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
  * @param {Parameters<typeof above>[3]} [deps] test seams for above()
- * @returns {Promise<{ caller: string, model: boolean }>}
+ * `outside` is true only when the ancestry was read to the top and nothing above the caller is a model or a named server: the one answer from which a surface's label may become a person's chain (callerFacts).
+ * An unreadable table, a peer not found, a named server above the caller (tmux, ssh, a terminal app) or a `docker exec` with no parent is NOT outside: such a call is a person only with a person session, never by its label (LB-2).
+ * @returns {Promise<{ caller: string, model: boolean, outside: boolean }>}
  */
 export async function asTaken(caller, socket, registry, thread, deps) {
-  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false };
+  if (MODEL_LABEL.test(caller) || caller === "anonymous") return { caller, model: false, outside: false };
   let v = taken.get(socket);
   // A peer vyred cannot read where it normally can (perl failed or timed out) is not taken on its
   // word: a surface's label then counts as a model's, so a stall never reopens the forged label.
@@ -690,14 +694,16 @@ export async function asTaken(caller, socket, registry, thread, deps) {
     const mine = above(socket, registry, undefined, deps).then(w => ({
       model: Boolean(w.inside || (w.nopid && canReadPeers)),
       definite: Boolean(!w.unreadable && (w.inside || (!w.unknown && !w.nopid))),
+      outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
     }));
     v = mine;
     taken.set(socket, mine);
     mine.then(a => { if (!a.definite && taken.get(socket) === mine) taken.delete(socket); }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
-  return (await v).model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+  const a = await v;
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false } : { caller, model: false, outside: a.outside };
 }
-/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean }>>} */
+/** @type {WeakMap<object, Promise<{ model: boolean, definite: boolean, outside: boolean }>>} */
 const taken = new WeakMap();
 
 /**
@@ -1015,8 +1021,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
     // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.
-    /** @type {{ inside: boolean } | undefined} */
-    const measured = socket && !policy.caller ? { inside: shell.model === true } : undefined; // not `ancestry`: that is the imported function used earlier in this handler (a const here put it in its dead zone)
+    /** @type {{ inside: boolean, outside: boolean } | undefined} */
+    const measured = socket && !policy.caller ? { inside: shell.model === true, outside: shell.outside === true } : undefined; // not `ancestry`: that is the imported function used earlier in this handler (a const here put it in its dead zone)
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });

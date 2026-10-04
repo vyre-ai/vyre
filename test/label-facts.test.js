@@ -24,7 +24,7 @@ test("callerFacts gives a person's-surface label nothing without the ancestry me
     assert.equal(callerFacts(label, {}, null, k, false, null, /** @type {any} */ ({})), null, "a measurement that says nothing");
     const inside = /** @type {any} */ (callerFacts(label, {}, null, k, false, null, { inside: true }));
     assert.equal(inside.inside_model_process, true, `${label}: under a model the builder is told so`);
-    const out = /** @type {any} */ (callerFacts(label, {}, null, k, false, null, { inside: false }));
+    const out = /** @type {any} */ (callerFacts(label, {}, null, k, false, null, { inside: false, outside: true }));
     assert.equal(out.kind, "socket"); assert.equal(out.inside_model_process, false);
   }
 });
