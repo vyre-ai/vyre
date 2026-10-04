@@ -10,7 +10,8 @@
     "ios": {
       "bundleIdentifier": "sh.vyre.app",
       "supportsTablet": true,
-      "associatedDomains": ["applinks:app.vyre.run"]
+      "associatedDomains": ["applinks:app.vyre.run"],
+      "entitlements": { "com.apple.developer.devicecheck.appattest-environment": "development" }
     },
     "android": {
       "package": "sh.vyre.app",
