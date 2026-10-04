@@ -10,6 +10,7 @@ const WHY = {
   no_signed_list: "this build has no signed module list to reset",
   no_presence_verifier: "this home cannot check your presence yet",
   needs_presence: "this needs your presence: approve it on your device",
+  no_proof: "this needs your presence: approve it on your device",
 };
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */

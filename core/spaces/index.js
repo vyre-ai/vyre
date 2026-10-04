@@ -24,6 +24,7 @@ import { idDirectory, DEFAULT_BASE } from "../../lib/identity/directory.js";
 import * as C from "../../kernel/identity/chain.js";
 import { createIdentityOps } from "./identity-ops.js";
 import { PASSWORD_MIN } from "./recovery.js";
+import { bindBytes } from "../../kernel/seal/wire.js";
 import { WORDS } from "../../relay/client/words.js";
 import { createCompute } from "../../lib/spaces/compute.js";
 import { createKernelMembers } from "./kernel-members-compat.js";
@@ -86,6 +87,8 @@ export default {
     const idops = createIdentityOps({ store: identity, dir, seen, now, emit: (t, p) => emit(t, p), stretch: hooks.stretch || undefined });
     const files = spaceFiles(root);
     const kv = kvStore(db);
+    // SHIM(legacy labels): the module-local membership store and every kernel-off path that reads it (mstore, membersFor, authorize/gate below the kernel branch, membershipOf, isMember)
+    // are deleted in the kernel default-on commit, with their tests rewritten onto a fake kernel handle. A Space the kernel hosts never reads it.
     const mstore = membershipStore(db);
     const rnames = roleNames(db);
     const spaces = spaceTable(db);
@@ -133,8 +136,17 @@ export default {
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
+    /** The spaces a device is enrolled in: an explicit list per device (the device's entry id on the person's list). A device with no list yet is enrolled in every space (nothing was ever chosen); the list is made the first time it is changed or at pairing. */
+    const enrolledList = async (/** @type {string} */ eid) => /** @type {string[]|null} */ ((await kv.get(`device-spaces/${eid}`)) || null);
+    const isEnrolled = async (/** @type {string} */ eid, /** @type {string} */ spaceId) => { const l = await enrolledList(eid); return l === null || l.includes(spaceId); };
+    /** Refuse a call that comes from a device that is not enrolled in this space. @param {string} spaceId @param {any} meta */
+    const notRemoved = async (spaceId, meta) => {
+      const dev = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : "";
+      if (dev && !(await isEnrolled(dev, spaceId))) throw refuse("This device is not enrolled in this space.", "device_removed");
+    };
     const gate = async (spaceId, action = "views.read", meta) => {
       const s = me();
+      await notRemoved(spaceId, meta);
       if (kernelHandle(spaceId)) {
         // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
         const m = await membershipOf(spaceId, /** @type {string} */ (s.id), meta).catch(() => null);
@@ -160,12 +172,13 @@ export default {
     // ---- the Space's own kernel decides roles and memberships when it hosts or can reach one (ctx.kernel.for(space)): nothing here is then an authority ----
     const K = ctx.kernel && typeof ctx.kernel.for === "function" ? ctx.kernel : null;
     const kernelHandle = (/** @type {string} */ id) => { if (!K) return null; try { return K.for(id) || null; } catch { return null; } };
-    const kctxOf = async (/** @type {any} */ meta) => ({ chain: await K.chain(meta), proof: K.proofFrom(meta) });
+    /** The caller's chain IN that Space (a hosted Space has its own key: the home's chain is not a member of it), and the proof beside the call. */
+    const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => ({ chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) });
     /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
     const members = async (id, meta) => {
       const h = kernelHandle(id);
       if (!h) return membersFor(id);
-      const k = await kctxOf(meta);
+      const k = await kctxOf(meta, id);
       return createKernelMembers({ space: id, handle: h, now, displayNames: rnames.load(id), reader: () => k });
     };
     /** A person's role in a space from the place that decides it. @param {string} id @param {string} person @param {any} [meta] */
@@ -173,6 +186,7 @@ export default {
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
     /** @type {Map<string, any>} */ const memberSvc = new Map();
+    // SHIM(legacy labels): the local-table members service, for a Space with no kernel.
     const membersFor = (/** @type {string} */ id) => {
       let m = memberSvc.get(id);
       if (!m) {
@@ -225,6 +239,18 @@ export default {
       await kv.put(pinKey, r.pin);
       await kv.put(`person-name/${r.id}`, label);
       return r.id;
+    };
+
+    /** The name a person chose for themselves (their identity card), as this device knows it: their own, or one it verified when they were added by name or joined. Null when not known here. @param {string} id */
+    const nameOf = async id => {
+      const st = identity.status();
+      if (st.exists && st.id === id && st.name) return `${st.name}.vyre.run`.replace(/(\.vyre\.run)+$/, ".vyre.run");
+      const n = /** @type {string|null} */ (await kv.get(`person-name/${id}`));
+      return n ? `${n}.vyre.run` : null;
+    };
+    const withName = async (/** @type {any} */ r) => {
+      if (r && typeof r === "object" && r.membership && typeof r.membership.person === "string") return { ...r, membership: { ...r.membership, name: await nameOf(r.membership.person) } };
+      return r && typeof r === "object" && typeof r.person === "string" ? { ...r, name: await nameOf(r.person) } : r;
     };
 
     // ---- a space's list of owners follows its owners ----
@@ -328,10 +354,12 @@ export default {
         async provisionWorkspace(/** @type {{ spaceId: string, name: string }} */ a) {
           const r = await ctx.call("records.workspace.create", { space: a.spaceId, name: a.name });
           if (r.error) {
-            if (r.error.code === "no_such_tool" || r.error.code === "not_available") {
+            // With the kernel hosting here every Space has its built-in store, so a refusal from the records tool is a failed step, not a warning; a space the kernel does not host has no store to attach, so it only warns.
+            if ((r.error.code === "no_such_tool" || r.error.code === "not_available" || r.error.code === "not_found") && !(K && K.spaces && typeof K.spaces.host === "function")) {
               warn(a.spaceId, { code: "records_driver_missing", message: "records driver not installed" });
               return { workspaceId: null };
             }
+            ctx.log.warn(`records.workspace.create refused: ${r.error.code}: ${r.error.message}`);
             throw new Error(r.error.message);
           }
           const id = (r.data && (r.data.workspaceId || r.data.id)) || null;
@@ -373,7 +401,15 @@ export default {
 
     // ---- tools ----
     /** Errors a person can read: ours and the libraries' carry a short lowercase code; anything else is logged and made plain. */
+    /** The claimed identity IS the kernel's owner (one person, ruled 4 Oct): the first call after the claim (or after a start that finds one) hands the kernel the identity's id, once. */
+    const adoptOwner = async () => {
+      if (!K || typeof K.adoptOwner !== "function") return;
+      let s; try { s = identity.status(); } catch { return; }
+      if (!s || !s.exists || !s.id || s.id === K.owner) return;
+      try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+    };
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
+      await adoptOwner();
       try { return await fn(i || {}, meta || {}); } catch (e) {
         const err = /** @type {any} */ (e);
         if (err && typeof err.code === "string" && /^[a-z][a-z0-9_.-]{1,40}$/.test(err.code) && typeof err.message === "string") throw err;
@@ -402,6 +438,9 @@ export default {
     // 1. identity: a permanent id and a signed list of who can speak for it (devices, a recovery code, optional recovery contacts)
     tool("spaces.identity.status", "This device's Vyre identity: its name, its permanent id and its place on the list. No key is ever shown.", obj(),
       async () => publicIdentity(identity.status()));
+
+    tool("spaces.identity.id", "This device's permanent identity id, or null when none is claimed yet. The one place the id is kept is this module; pairing and install read it here, never keep their own. For modules.", obj(),
+      async () => { const st = identity.status(); return { id: st.exists && !st.pending ? st.id : null }; }, { internal: true });
 
     tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
       obj({ name: str, password: str, deviceLabel: str }, ["name"]), async i => {
@@ -438,26 +477,50 @@ export default {
         };
       });
 
+    // ---- the sealing process's copy of the person's identity chain (R-8): `ctx.kernel.presence` carries the calls, the process checks everything itself (the chain, the pin, that the device was not barred,
+    // that the chain's person is the one named). After every change to the list this device sends the new chain (`sync`), best effort: a box with no sealing process simply has none to tell. ----
+    const presenceOf = () => (ctx.kernel && ctx.kernel.presence ? ctx.kernel.presence : null);
+    /** @param {any} meta */
+    const syncPresence = async meta => {
+      const P = presenceOf();
+      if (!P) return;
+      try { const st = identity.status(); if (st.exists && !st.pending) await P.sync({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), binds: [] }); } catch (e) { ctx.log.warn(`presence sync was not sent: ${/** @type {Error} */ (e).message}`); }
+    };
+    const needPresence = () => { const P = presenceOf(); if (!P) throw refuse("This computer has no sealing process running, so there is no presence to recover.", "unavailable"); return P; };
+    tool("spaces.presence.begin", "On a new device that has lost every presence key: ask the sealing process for the one-time token the recovery needs, for the key this device just made (its id and public key).",
+      obj({ key_id: str, spki: str }, ["key_id", "spki"]), async (i, meta) => {
+        const P = needPresence(), st = me();
+        return P.begin({ chain: await ctx.kernel.chain(meta), person: st.id, key_id: String(i.key_id), spki: String(i.spki) });
+      });
+    tool("spaces.presence.recover", "After taking your identity back (the recovery code, or two contacts): give the sealing process the new presence key, vouched for by this device's own key on your list. The process checks your list; the new key counts as a newcomer for 24 hours.",
+      obj({ key_id: str, spki: str, signer: str, token: str, attestation: obj() }, ["key_id", "spki", "signer", "token"]), async (i, meta) => {
+        const P = needPresence(), st = me();
+        const bind = { eid: /** @type {string} */ (st.eid), sig: b64u(await identity.sign(bindBytes(String(st.id), String(i.key_id), String(i.spki)))) };
+        return P.recover({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), bind, key_id: String(i.key_id), spki: String(i.spki), signer: String(i.signer), token: String(i.token), ...(i.attestation ? { attestation: i.attestation } : {}) });
+      });
+    tool("spaces.presence.sync", "Send the sealing process your current identity list, so a device you removed loses its presence key at once.", obj(), async (_i, meta) => { me(); needPresence(); await syncPresence(meta); return { ok: true }; });
+
     tool("spaces.identity.entries", "Who can speak for you: your devices, your recovery code and your recovery contacts, with which are new sign-ins (under 24 hours old).", obj(),
       async () => { me(); return { id: identity.status().id, entries: await idops.entries() }; });
     tool("spaces.identity.entry.add", "Add a device (its public key from pairing) or a recovery contact (the key the contact made for you). Signed by this device. A sign-in under 24 hours old cannot add a contact.",
-      obj({ kind: { type: "string", enum: ["device", "contact"] }, publicKey: str, label: str }, ["publicKey"]), async i => {
+      obj({ kind: { type: "string", enum: ["device", "contact"] }, publicKey: str, label: str }, ["publicKey"]), async (i, meta) => {
         me();
-        try { return await idops.addEntry({ kind: i.kind || "device", publicKey: i.publicKey, label: i.label }); } catch (e) { throw idFail(e); }
+        try { const r = await idops.addEntry({ kind: i.kind || "device", publicKey: i.publicKey, label: i.label }); await syncPresence(meta); return r; } catch (e) { throw idFail(e); }
       });
     tool("spaces.identity.entry.remove", "Take a device or contact off your list in one tap. Any older device can remove a newcomer. A sign-in under 24 hours old can remove only newer sign-ins.",
-      obj({ eid: str }, ["eid"]), async i => { me(); try { return await idops.removeEntry(String(i.eid)); } catch (e) { throw idFail(e); } });
+      obj({ eid: str }, ["eid"]), async (i, meta) => { me(); try { const r = await idops.removeEntry(String(i.eid)); await syncPresence(meta); return r; } catch (e) { throw idFail(e); } });
     tool("spaces.identity.code.replace", "Make a new recovery code (and optionally a new recovery password); the old code stops working. The code comes back in this reply only.",
       obj({ password: str }), async i => {
         me();
         try { return await idops.replaceCode({ password: passwordOf(i) }); } catch (e) { throw idFail(e); }
       });
     tool("spaces.identity.sync", "Check the directory for changes to your list: new sign-ins and removals (each is an alert), whether this device was removed, and whether the directory answered with a stale or different list.",
-      obj(), async () => { me(); try { return await idops.sync(); } catch (e) { throw idFail(e); } });
+      obj(), async (_i, meta) => { me(); try { const r = await idops.sync(); await syncPresence(meta); return r; } catch (e) { throw idFail(e); } });
     tool("spaces.identity.recover.code", "On a new device: take your identity back with the recovery code (and the recovery password if you set one). Works at once; the new sign-in is a newcomer for 24 hours.",
-      obj({ name: str, code: str, password: str, deviceLabel: str }, ["name", "code"]), async i => {
+      obj({ name: str, code: str, password: str, deviceLabel: str }, ["name", "code"]), async (i, meta) => {
         try {
           const r = await idops.recoverWithCode({ name: String(i.name).trim().toLowerCase().replace(/\.vyre\.run$/, ""), code: String(i.code), password: i.password === undefined ? "" : String(i.password), deviceLabel: i.deviceLabel ? String(i.deviceLabel) : undefined });
+          await syncPresence(meta);
           return publicIdentity(r.status);
         } catch (e) { throw idFail(e); }
       });
@@ -479,12 +542,13 @@ export default {
       obj({ request: obj() }, ["request"]), async i => { try { return await idops.approveRecovery(i.request); } catch (e) { throw idFail(e); } },
       { presence: { summary: (/** @type {any} */ i) => `Help ${i && i.request && i.request.name ? i.request.name : "someone"} get their Vyre identity back` } });
     tool("spaces.identity.recover.finish", "On the new device: put two contacts' approvals on the request and take your identity back.",
-      obj({ requestId: str, approvals: { type: "array", items: obj({ eid: str, sig: str }, ["eid", "sig"]) } }, ["requestId", "approvals"]), async i => {
+      obj({ requestId: str, approvals: { type: "array", items: obj({ eid: str, sig: str }, ["eid", "sig"]) } }, ["requestId", "approvals"]), async (i, meta) => {
         const pending = recoveries.get(String(i.requestId));
         if (!pending) throw refuse("That recovery is no longer waiting. Start again.", "not_found");
         try {
           const r = await idops.finishContactRecovery({ request: pending.request, key: pending.key, approvals: i.approvals });
           recoveries.delete(String(i.requestId));
+          await syncPresence(meta);
           return publicIdentity(r.status);
         } catch (e) { throw idFail(e); }
       });
@@ -518,7 +582,7 @@ export default {
 
     // 2. spaces
     tool("spaces.create", "Create a space and say where it will live: a server you have (the one command, then a code), a new server (DigitalOcean) or this computer. Runs step by step and can be resumed or cancelled.",
-      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["create", "cancel"] } }, ["name", "home"]), async i => {
+      obj({ name: str, displayName: str, home: HOME, headscale: { type: "boolean" }, storeChoice: { type: "string", enum: ["create", "cancel"] } }, ["name", "home"]), async (i, meta) => {
         const s = me();
         const label = String(i.name || "").trim().toLowerCase().replace(/\.vyre\.run$/, "");
         if (!label) throw refuse("Give the space a name.", "bad_name");
@@ -541,6 +605,8 @@ export default {
         spaces.insert({ id: spaceId, name: `${label}.vyre.run`, label, displayName: i.displayName ? String(i.displayName).slice(0, 80) : null, createdBy: /** @type {string} */ (s.id), status: "running", now: now() });
         spaces.patch(spaceId, { home: { kind: home.kind, ...(home.device ? { device: home.device } : {}) } }, now());
         const view = await flow.createSpace({ spaceId, name: label, displayName: i.displayName, personId: s.id, home, headscale: i.headscale === true }, { vpsToken: home.token });
+        // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
+        { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
       });
 
@@ -600,6 +666,63 @@ export default {
         return { space: row.id, setup: next, moved: true, from: cur.device };
       });
 
+    // ---- a device's spaces (the Access screen): which spaces a device of the person's reaches, and removing it from one without touching the others ----
+    const ownDeviceEid = (/** @type {any} */ meta) => (meta && meta.kernelFacts && meta.kernelFacts.kind === "device" && meta.kernelFacts.device_key_id) || String(me().eid);
+    const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta) => {
+      const eid = String(id || ownDeviceEid(meta));
+      const e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device");
+      if (!e) throw refuse("That is not one of your devices.", "not_found");
+      return e;
+    };
+    /** The ids of every space this person is in (finished or not), for the default list of a device. @param {any} s @param {any} meta */
+    const personSpaceIds = async (s, meta) => {
+      const ids = [];
+      for (const row of spaces.all()) { const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null); if (m || row.createdBy === s.id) ids.push(row.id); }
+      return ids;
+    };
+    tool("spaces.devices.spaces", "The spaces a device of yours can reach, each with your role there and whether this device is enrolled in it (`enrolled: false` is the space's \"Add to this device\"). Leave device out for the device you are on.",
+      obj({ device: str }), async (i, meta) => {
+        const s = me();
+        const dev = await deviceOf(i.device, meta);
+        const out2 = [];
+        for (const row of spaces.all()) {
+          if (row.status !== "done") continue;
+          const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+          if (!m && row.createdBy !== s.id) continue;
+          const enrolled = await isEnrolled(dev.eid, row.id);
+          out2.push({ space: row.id, name: row.name, label: row.label, displayName: row.displayName, role: m ? m.role : "owner", enrolled, removed: !enrolled });
+        }
+        return { device: { eid: dev.eid, label: dev.label || null, self: dev.eid === ownDeviceEid(meta) }, spaces: out2 };
+      });
+    /** Change the list: enrol (on) or remove (off) one space for a device. Enrolling one of the person's own devices asks for nothing more. */
+    const setEnrol = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ on) => {
+      const s = me();
+      const row = spaceOf(i.space);
+      const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+      if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
+      const dev = await deviceOf(i.device, meta);
+      const cur = (await enrolledList(dev.eid)) || await personSpaceIds(s, meta);
+      const next = on ? [...new Set([...cur, row.id])] : cur.filter(x => x !== row.id);
+      await kv.put(`device-spaces/${dev.eid}`, next);
+      if (next.length !== cur.length) emit(on ? "space.device-restored" : "space.device-removed", { space: row.id, device: dev.eid });
+      return { space: row.id, device: dev.eid, enrolled: on, removed: !on };
+    };
+    tool("spaces.devices.remove", "Remove one of your devices from one space. The space (and the kernel) refuse it from then on; your other spaces and the device's other access are untouched.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, false));
+    tool("spaces.devices.restore", "Enrol a device of yours in a space again (the same as spaces.devices.enrol).", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.enrol", "Enrol a device of yours in a space: \"Add to this device\", one tap, nothing more asked. Leave device out for the device you are on.", obj({ space: str, device: str }, ["space"]), (i, meta) => setEnrol(i, meta, true));
+    tool("spaces.devices.set", "Set the whole list of spaces a device is enrolled in, as pairing does: every space you are in comes pre-ticked and the person unticks the ones to leave out. Leave device out for the device you are on.",
+      obj({ device: str, spaces: { type: "array", items: str } }, ["spaces"]), async (i, meta) => {
+        const s = me();
+        const dev = await deviceOf(i.device, meta);
+        const mineIds = new Set(await personSpaceIds(s, meta));
+        const ids = [...new Set(i.spaces.map((/** @type {any} */ x) => spaceOf(x).id))].filter(x => mineIds.has(x));
+        await kv.put(`device-spaces/${dev.eid}`, ids);
+        emit("space.device-enrolment-set", { device: dev.eid, spaces: ids.length });
+        return { device: dev.eid, spaces: ids };
+      });
+    tool("spaces.devices.enrolled", "Whether a device is enrolled in a space (true when the device has no list yet). For the kernel and other modules, which refuse a device that is not.", obj({ device: str, space: str }, ["device", "space"]),
+      async i => ({ enrolled: await isEnrolled(String(i.device), spaceOf(i.space).id) }), { internal: true });
+
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
       const rows = [];
@@ -609,6 +732,7 @@ export default {
         if (!m && row.createdBy !== s.id) continue;
         // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
         if (row.status !== "done") continue;
+        if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
         out.push({ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
       return out;
@@ -617,6 +741,7 @@ export default {
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = me();
+      await notRemoved(row.id, meta);
       if (row.createdBy !== s.id) await gate(row.id, undefined, meta);
       const m = await members(row.id, meta);
       const all = await m.list();
@@ -694,14 +819,16 @@ export default {
       const row = spaceOf(i.space);
       await gate(row.id, undefined, meta);
       const m = await members(row.id, meta);
-      return { space: row.id, members: out((await m.list()).map((/** @type {any} */ r) => ({ ...r, role_label: m.roleLabel(r.role) }))), warnings: await m.warnings() };
+      const rows = [];
+      for (const r of await m.list()) rows.push({ ...r, role_label: m.roleLabel(r.role), name: await nameOf(String(r.person)) });
+      return { space: row.id, members: out(rows), warnings: await m.warnings() };
     });
     tool("spaces.members.add", "Add a person (their per_ id or their Vyre name) with a role. A temp member needs scope and an end date. Making an owner needs the person's approval on their device.",
       obj({ space: str, person: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" } }, ["space", "person", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
-        const r = out(await (await members(row.id, meta)).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        const r = out(await withName(await (await members(row.id, meta)).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence })));
         if (i.role === "owner") await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
@@ -710,7 +837,7 @@ export default {
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
-        const r = out(await (await members(row.id, meta)).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        const r = out(await withName(await (await members(row.id, meta)).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence })));
         await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
@@ -776,7 +903,7 @@ export default {
         const s = await gate(row.id, undefined, meta);
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
-          const k = await kctxOf(meta);
+          const k = await kctxOf(meta, row.id);
           const rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) });
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
@@ -789,16 +916,18 @@ export default {
       const row = spaceOf(i.space);
       await gate(row.id, undefined, meta);
       if (!kernelHandle(row.id)) throw refuse("Only an invite made through the space's kernel waits for confirmation.", "not_kernel");
-      return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta), String(i.id), String(i.words)));
+      return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta, row.id), String(i.id), String(i.words)));
     });
-    tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async i => {
+    tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async (i, meta) => {
       const row = spaceOf(i.space);
-      const s = await gate(row.id);
+      const s = await gate(row.id, undefined, meta);
+      if (kernelHandle(row.id)) return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.revoke(await kctxOf(meta, row.id), String(i.id)));
       return out(await invitesFor(row).revokeInvite({ actor: s.id, id: String(i.id) }));
     });
-    tool("spaces.invites.list", "Invites you made, or all you may manage as owner or admin. Never includes the link.", obj({ space: str }, ["space"]), async i => {
+    tool("spaces.invites.list", "Invites you made, or all you may manage as owner or admin. Never includes the link.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
-      const s = await gate(row.id);
+      const s = await gate(row.id, undefined, meta);
+      if (kernelHandle(row.id)) return { invites: out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.list(await kctxOf(meta, row.id))) };
       return { invites: out(await invitesFor(row).listInvites({ actor: s.id })) };
     });
 
@@ -859,7 +988,7 @@ export default {
       if (carried.rk && spaceFingerprint(r.id, r.payload.rootPublic) !== carried.rk) throw refuse("This invite could not be verified. Ask for a new one.", "forged");
       const h = kernelHandle(r.payload.id);
       if (!h) throw refuse("This device cannot reach that space yet.", "unreachable");
-      const k = await kctxOf(meta);
+      const k = await kctxOf(meta, r.payload.id);
       const card = await kernelMembers({ handle: h, now }).invites.get(k, invId);
       return { card, invId, spaceId: r.payload.id, handle: h, k, fingerprint: carried.rk || null };
     };
@@ -898,7 +1027,11 @@ export default {
         try { payload = JSON.parse(Buffer.from(String(i.token).split(".")[0], "base64url").toString("utf8")); } catch { throw refuse("That is not a valid invite.", "bad_input"); }
         const row = payload && typeof payload.sid === "string" ? spaces.get(payload.sid) : null;
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
-        return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
+        const joined = out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
+        // Keep the name they chose, but only once the directory says that name is theirs: it shows on the member list, so it is never taken from the invitee's say-so.
+        const label = typeof i.person.name === "string" ? i.person.name.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
+        if (label) { try { const r = await dir.resolve(label); if (r.ok && r.kind === "person" && r.id === i.person.id) await kv.put(`person-name/${i.person.id}`, label); } catch { /* the name stays unknown here */ } }
+        return joined;
       }, { callers: RELAY_DEVICE_CALLERS });
 
     // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
@@ -976,8 +1109,11 @@ export default {
       return { people: [...new Set(list.map((/** @type {any} */ m) => m.person))] };
     }, { internal: true });
 
-    tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. The kernel reads this on every invite card.", obj({ space: str }, ["space"]), async i => {
-      const row = spaceOf(i.space);
+    tool("spaces.label", "What a join card shows for a space the kernel hosts: its name and the four fingerprint words of its identity list and root key. With no space it answers for this home's own Space once it holds the root key. The kernel reads this on every invite card.", obj({ space: str }), async i => {
+      // The daemon asks with no space for this home's own Space: the one the kernel keeps here, once this module holds its root key (until then the card shows none).
+      const home = i.space ? null : spaces.all().find(r => K && r.id === K.space && r.status === "done");
+      if (!i.space && !home) throw refuse("This home's space has no root key here yet.", "not_found");
+      const row = home || spaceOf(i.space);
       const c = await chainOf(row.id);
       const k = files.keys.load(row.id);
       return { name: row.name, words: c && c.pin && k ? fingerprintWords(spaceFingerprint(c.pin.id, k.publicKey)) : null };
