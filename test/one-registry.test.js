@@ -71,6 +71,7 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
   t.after(() => { child.kill("SIGTERM"); });
   await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
   const cfg = (/** @type {string} */ root, /** @type {string} */ name) => fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name, transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const lines = /** @type {string[]} */ ([]);
   const agree = async (/** @type {string} */ root, /** @type {any} */ d, /** @type {string} */ label) => {
     const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
     const st = await deck("spaces.identity.status");
@@ -79,25 +80,25 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
     let me = await deck("records.me");
     for (let i = 0; i < 20 && !me.error && me.data.person !== st.data.id; i++) { await new Promise(r => setTimeout(r, 100)); me = await deck("records.me"); }
     assert.ok(!me.error, label + JSON.stringify(me.error));
-    assert.equal(me.data.person, st.data.id, `${label}: records.me is the identity`);
+    assert.equal(me.data.person, st.data.id, `${label}: records.me is the identity :: ${lines.filter(l => /owner|identity|adopt/i.test(l)).join(" ; ").slice(0, 600)}`);
     assert.equal(d.kernel.id.owner, st.data.id, `${label}: the kernel's owner is the identity`);
     const tg = await deck("wink.pair.targets");
     if (!tg.error) assert.ok(tg.data.targets.some((/** @type {any} */ x) => x.kind === "identity" && x.id === st.data.id), `${label}: pair targets name the identity`);
   };
   // fresh home: claim, then read at once
   const a = tempHome(t); cfg(a, "fresh-box");
-  const da = await start({ root: a, kernel: true, log: () => {} });
+  const da = await start({ root: a, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => da.stop());
   const casey = await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "deck" });
   assert.ok(!casey.error, JSON.stringify(casey.error));
   await agree(a, da, "fresh home");
   // existing home: claimed with the kernel off, then started with it on
   const b = tempHome(t); cfg(b, "existing-box");
-  const off = await start({ root: b, kernel: false, log: () => {} });
+  const off = await start({ root: b, kernel: false, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   const made = await call("spaces.identity.create", { name: "drew" }, { root: b, caller: "deck" });
   assert.ok(!made.error, JSON.stringify(made.error));
   await off.stop();
-  const on = await start({ root: b, kernel: true, log: () => {} });
+  const on = await start({ root: b, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => on.stop());
   await agree(b, on, "existing home");
   assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "deck" })).data.id, made.data.id, "the id did not change");

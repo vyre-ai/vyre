@@ -405,14 +405,14 @@ export default {
     /** Errors a person can read: ours and the libraries' carry a short lowercase code; anything else is logged and made plain. */
     /** The claimed identity IS the kernel's owner (one person, ruled 4 Oct): the first call after the claim (or after a start that finds one) hands the kernel the identity's id, once. */
     /** @type {Promise<void> | null} */ let adopting = null;
-    const adoptOwner = () => adopting || (adopting = (async () => {
-      try {
-        if (!K || typeof K.adoptOwner !== "function") return;
-        let s; try { s = identity.status(); } catch { return; }
-        if (!s || !s.exists || !s.id || s.id === K.owner) return;
-        try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
-      } finally { adopting = null; }
-    })());
+    const adoptOnce = async () => {
+      if (!K || typeof K.adoptOwner !== "function") return;
+      let s; try { s = identity.status(); } catch { return; }
+      if (!s || !s.exists || !s.id || s.id === K.owner) return;
+      try { await K.adoptOwner(s.id); } catch (e) { ctx.log.warn(`the kernel could not take your identity as its owner: ${String(/** @type {any} */ (e).message || e).slice(0, 160)}`); }
+    };
+    // single-flight: callers that arrive while one is running wait for it; the slot is cleared only AFTER the promise is stored (an early return must not leave a finished promise in it)
+    const adoptOwner = () => { if (adopting) return adopting; const p = adoptOnce(); adopting = p; const clear = () => { if (adopting === p) adopting = null; }; p.then(clear, clear); return p; };
     const guarded = (/** @type {(i: any, meta: any) => any} */ fn) => async (/** @type {any} */ i, /** @type {any} */ meta) => {
       await adoptOwner();
       try { const out = await fn(i || {}, meta || {}); await adoptOwner(); return out; } catch (e) { // after too: a call that claims or recovers the identity makes it the kernel's owner at once, not at the next call
