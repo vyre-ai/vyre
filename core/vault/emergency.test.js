@@ -271,7 +271,7 @@ test("emergency: through the module, the relay listener answers /v1/emergency an
   assert.equal(todos.length, 1);
   assert.equal(todos[0].input.list, "Vault");
   assert.equal((await juno.run("vault.emergency.status", { owner: "alex" })).state, "waiting");
-  const listed = (await alex.run("vault.emergency.list", {}, "mcp")).contacts;
+  const listed = (await alex.run("vault.emergency.list", {}, "cli")).contacts;
   assert.deepEqual(listed.map(c => [c.person, c.wait, c.state]), [["juno", "3d", "waiting"]]);
   assert.equal((await alex.run("vault.emergency.deny", { person: "juno" }, "mcp")).emergency.state, "denied");
   assert.deepEqual(await alex.run("vault.emergency.remove", { person: "juno" }, "mcp"), { removed: "juno" });

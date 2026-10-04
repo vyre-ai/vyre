@@ -117,7 +117,7 @@
         "effect": "read"
       },
       {
-        "name": "wink.server.status",
+        "name": "wink.server.status", "effect": "read",
         "reach": "person"
       },
       {
@@ -254,6 +254,10 @@
       },
       {
         "name": "wink.server.paired",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.paired",
         "reach": "modules"
       }
     ]
