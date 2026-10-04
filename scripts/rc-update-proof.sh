@@ -153,4 +153,20 @@ say "3 ok: rolled back to $OLDV, data intact"
 printf 'VYRE_STORE=auto\n' >>/srv/vyre/vyre.env
 do_update "4 second update" kept
 say "4 ok: updated again with VYRE_STORE=auto kept, every module runs, records intact"
+
+# 5. (dev-owned run only) the owner's software key, `vyre signin` and a call after it: the whole presence path of a terminal on a box, with a signed proof made by the owner's key. The daemon is stopped to enrol (the sealing
+# process owns its folder), then started with the two developer switches that let its own sealing process accept the software key.
+if [ "${DEV_KIND:-0}" = 1 ]; then
+  img=$(docker inspect -f '{{.Config.Image}}' vyre-vyre-1)
+  docker stop vyre-vyre-1 >/dev/null || fail "5: could not stop the box to enrol the owner's key"
+  docker run --rm -u 1000 --volumes-from vyre-vyre-1 -e VYRE_HOME=/home/vyre/.vyre --entrypoint node "$img" /opt/vyre/scripts/dev-enrol-software-key.mjs --home /home/vyre/.vyre >"$WORK/enrol.log" 2>&1 || { cat "$WORK/enrol.log"; fail "5: the owner's software key could not be enrolled"; }
+  printf 'VYRE_SEAL_DEV=1\nVYRE_SEAL_SOFTWARE=1\n' >>/srv/vyre/vyre.env
+  vyre up >"$WORK/up5.log" 2>&1 || { tail -20 "$WORK/up5.log"; fail "5: the box did not start with the developer switches"; }
+  ready || fail "5: the box did not come back with the owner's key"
+  sleep 10
+  docker cp "$HERE/scripts/packaged-probes/signin-approve.mjs" vyre-vyre-1:/tmp/signin-approve.mjs
+  docker exec -u 1000 -e VYRE_HOME=/home/vyre/.vyre vyre-vyre-1 node /tmp/signin-approve.mjs /opt/vyre >"$WORK/signin.log" 2>&1 || { cat "$WORK/signin.log"; docker logs vyre-vyre-1 2>&1 | grep -Ei 'signin|presence|sealer|software' | tail -15; fail "5: the sign-in with the owner's signed proof did not work"; }
+  cat "$WORK/signin.log"
+  say "5 ok: the owner's software key signed vyre signin, and a person-only call answered after it"
+fi
 echo "rc-update-proof: OK ($OLDV -> $NEWV -> $OLDV -> $NEWV)"
