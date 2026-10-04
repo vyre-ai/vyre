@@ -1716,7 +1716,7 @@ export default {
       const mine = [];
       for (const r of spaces.all()) if (r.status === "done" && (r.createdBy === s.id || await membershipRow(r.id, /** @type {string} */ (s.id)))) mine.push(r);
       const row = i.space ? mine.find(r => r.id === i.space || r.name === i.space || r.label === i.space) : mine.length === 1 ? mine[0] : null;
-      return row ? { person: s.id, space: { id: row.id, name: row.name } } : { person: s.id, space: null };
+      return { person: s.id, space: row ? { id: row.id, name: row.name } : null, spaces: mine.map(r => ({ id: r.id, name: r.name })) };
     }, { internal: true });
     tool("spaces.merge-list", "The spaces a person is in, one entry each: { space, name, color, link }, for a device that merges spaces itself. For modules.", obj({ person: str }, ["person"]), async i => {
       const p = String(i.person);

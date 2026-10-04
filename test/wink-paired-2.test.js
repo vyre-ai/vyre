@@ -1048,10 +1048,23 @@ test("an invitee on a development build joins in one accept: its own software ke
   // the joined space is kit's now: it is listed, and its records are reached through a member stream to the home (no invite, no pairing)
   const listed = await k.call("spaces.list");
   assert.ok(!listed.error && listed.data.some((/** @type {any} */ x) => x.id === made.space && x.member === true), JSON.stringify(listed).slice(0, 300));
-  const types = await import("../core/daemon/client.js").then(m => m.call("records.types", { space: made.space }, { root: k.root, caller: "cli" }));
+  // the home ends an invitee channel after its life (5 minutes in production; 1.2 s here): a member's next call reconnects with no error
+  seams.set(f.w.root, { ...(seams.get(f.w.root) || {}), inviteeTotalMs: 1200 });
+  t.after(() => { seams.delete(f.w.root); });
+  const asKit = (/** @type {string} */ tool, /** @type {any} */ input) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: k.root, caller: "cli" }));
+  const types = await asKit("records.types", { space: made.space });
   assert.ok(!types.error, JSON.stringify(types.error || types.data).slice(0, 400));
   assert.equal(types.data.acted_in.id, made.space);
   assert.equal(f.w.logs.filter(l => /peer door: member .* refused/.test(l)).length, 0, "the member was admitted");
+  const opened = () => f.w.logs.filter(l => /peer door: invitee .* opened a stream/.test(l)).length;
+  const before = opened();
+  await new Promise(r => setTimeout(r, 1800));
+  const later = await asKit("records.types", { space: made.space });
+  assert.ok(opened() > before, "the lapsed channel was really replaced by a new stream");
+  assert.ok(!later.error, `after the channel's life the next call reconnects: ${JSON.stringify(later.error)}`);
+  await new Promise(r => setTimeout(r, 1800));
+  const [x, y] = await Promise.all([asKit("records.types", { space: made.space }), asKit("records.types", { space: made.space })]);
+  assert.ok(!x.error && !y.error, `two calls at once after a lapse: ${JSON.stringify(x.error || y.error)}`);
   // a person who is NOT a member gets nothing from the member door, even holding a row that says otherwise: the home's kernel answers for membership
   const z = await world(t, { kernel: true });
   const zed = (await z.call("spaces.identity.create", { name: "zed", password: "four plain words here", deviceLabel: "Zed's laptop" })).data;
