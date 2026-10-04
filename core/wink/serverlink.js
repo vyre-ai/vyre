@@ -15,7 +15,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /**
  * @param {{ channelOf: (sid: string) => { relay: string, route: string, box: string } | null, connect: (o: any) => any, options?: any, name?: string,
- *   sign?: (message: string) => Promise<string> | string, log?: (m: string) => void, openMs?: number }} o
+ *   sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, log?: (m: string) => void, openMs?: number }} o
  *   channelOf: where the paired server is (relay, route and box, as pairing stored them); connect: the relay client's `connect`; options: its crypto and key store.
  */
 export function createServerLinks(o) {
@@ -51,6 +51,20 @@ export function createServerLinks(o) {
     try { return await l.opening; } finally { l.opening = null; }
   };
 
+  /**
+   * A call the server answers `presence_required` is signed by THIS device's own presence key over the tool and its input and sent once more with the proof in `input.proof`: the same proof shape a local
+   * act carries, made here and checked by the home. The server never signs for the person, and a device with no key of its own just gets the refusal.
+   * @param {any} session @param {string} tool @param {any} input @param {any} opt
+   */
+  async function callWithPresence(session, tool, input, opt) {
+    try { return await session.call(tool, input, opt); }
+    catch (e) {
+      if (!(e && e.code === "presence_required") || typeof o.proveTool !== "function" || (input && input.proof !== undefined)) throw e;
+      const { proof: _p, ...bare } = input && typeof input === "object" ? input : {};
+      return session.call(tool, { ...bare, proof: o.proveTool(tool, bare) }, opt);
+    }
+  }
+
   /** @param {string} sid */
   const sessionFor = sid => {
     linkOf(sid); // not_found now, not at the first call
@@ -58,7 +72,16 @@ export function createServerLinks(o) {
       /** @param {string} tool @param {any} [input] @param {any} [opt] */
       async call(tool, input = {}, opt = {}) {
         let session = await openPeer(sid);
-        try { return await session.call(tool, input, opt); }
+        // A call that needs the person and finds no live paired session (never started, or lapsed) signs this device in once and goes again: nobody signs in by hand. A refused grant answers the server's own reason.
+        const needsPerson = (/** @type {any} */ e) => e && (e.code === "person_session_required" || /sign in|person's own action|signed-in person/i.test(String(e.message || "")));
+        try {
+          try { return await callWithPresence(session, tool, input, opt); }
+          catch (e) {
+            if (!needsPerson(e) || typeof o.sign !== "function") throw e;
+            try { await startPaired(sid); } catch (se) { throw Object.assign(new Error(`this device could not sign in to the server: ${/** @type {Error} */ (se).message}`), { code: /** @type {any} */ (se).code || "denied" }); }
+            return await callWithPresence(session, tool, input, opt);
+          }
+        }
         catch (e) {
           // a stream that dropped between calls is made again once; a refusal from the server is the answer
           if (/** @type {any} */ (e).code === "unreachable" && (!session || session.closed)) { session = await openPeer(sid); return session.call(tool, input, opt); }
@@ -91,7 +114,7 @@ export function createServerLinks(o) {
     sessionFor,
     startPaired,
     /** A kernel for one Space the server hosts, over the same peer session: the kernel's own remote client. @param {string} sid @param {string} space */
-    remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }) }),
+    remoteKernel: (sid, space) => createRemoteKernel({ space, transport: winkTransport({ sessionFor: () => sessionFor(sid) }), ...(o.presenceSigner ? { signer: o.presenceSigner } : {}) }),
     token: (/** @type {string} */ sid) => (links.get(sid) ? links.get(sid)?.token : null),
     close() { for (const l of links.values()) { try { l.peer && l.peer.close("done"); } catch { /* closed */ } try { l.conn.close(); } catch { /* closed */ } } links.clear(); },
   };
