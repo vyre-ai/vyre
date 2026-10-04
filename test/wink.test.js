@@ -1246,3 +1246,48 @@ test("device-first, real daemon: the owner's device calls spaces.host-here on th
   assert.match(made.space, /^spc_[a-z2-7]{12}$/);
   assert.ok(w.d.kernel.spaces.hosts(made.space), "the space is hosted by the SERVER's kernel");
 });
+
+test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks the paired server over the peer session; the SERVER's kernel hosts the space, the device keeps only a row and reaches it through the remote kernel", async t => {
+  const f = await pairFreshServer(t);
+  const server = f.w.d;
+  const links = linksFor(t, f);
+  await links.startPaired("srv");
+  // the DEVICE: its own vyred with the spaces module, an identity, and the open peer session to the server as its way out
+  const names = await (async () => { const { spawn } = await import("node:child_process"); const port = 33000 + Math.floor(Math.random() * 2000); const child = spawn(process.execPath, [path.resolve("scripts/standin-directory.mjs"), "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] }); t.after(() => { child.kill("SIGTERM"); }); await new Promise(res => child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); })); return port; })();
+  const droot = tempHome(t);
+  fs.writeFileSync(path.join(droot, "config.json"), JSON.stringify({ name: "device-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${names}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const device = await start({ root: droot, kernel: true, presence: lenient, sessionFor: async () => links.sessionFor("srv"), log: () => {} });
+  const { hooks: spacesHooks } = await import("../core/spaces/index.js");
+  spacesHooks.sessionFor = async () => links.sessionFor("srv");
+  t.after(() => { spacesHooks.sessionFor = null; });
+  t.after(() => device.stop());
+  const dcall = (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {any} */ headers = {}) => import("../core/daemon/client.js").then(m => m.call(tool, input, { root: droot, caller: "cli", headers }));
+  const proofHeader = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify({ key: "k1" })).toString("base64url"), "x-vyre-presence": "passkey id=x" };
+  const me = (await dcall("spaces.identity.create", { name: "devalex" })).data;
+  assert.ok(me && me.id);
+  // the device knows the server as its paired server (its own record of it)
+  device.registry.deps.db.prepare("INSERT INTO wink_devices (id, identity, kind, name, owner_kind, owner_id, created) VALUES (?, ?, 'server', 'srv', 'identity', ?, 1)").run("srv", me.id, me.id);
+  const made = await dcall("spaces.create", { name: "harlowsrv", displayName: "Harlow Legal", home: { kind: "server", device: { id: "srv", name: "srv", alwaysOn: true }, confirmed: true } }, proofHeader);
+  assert.ok(!made.error, JSON.stringify(made.error));
+  assert.equal(made.data.status, "done", JSON.stringify(made.data));
+  const id = made.data.space;
+  assert.equal(server.kernel.spaces.hosts(id), true, "the SERVER's kernel hosts it");
+  assert.equal(device.kernel.spaces.hosts(id), false, "the device hosts nothing for it");
+  assert.ok(fs.existsSync(path.join(server.paths.root, "kernel", "spaces", id, "space.json")), "its files are on the server");
+  assert.ok(!fs.existsSync(path.join(droot, "kernel", "spaces", id)), "and not on the device");
+  assert.ok((await dcall("spaces.list")).data.some((/** @type {any} */ x) => x.id === id && x.hostedHere === undefined));
+  // the device reaches it through the kernel's remote client over the same peer session: members, then a type and a record
+  const rk = device.kernel.spaces.for(id);
+  assert.equal(rk.hosted, false);
+  const owners = await rk.gateway.grants.members.list(null);
+  assert.ok(Array.isArray(owners) && owners.length === 1 && owners[0].role === "owner", JSON.stringify(owners));
+  const { CONTACT } = await import("../kernel/conformance/suite.js");
+  await rk.gateway.records.define(null, { add_types: [CONTACT] }, { presence: { key: "k1" } }).catch(e => { throw new Error(`define over the wire: ${e.code} ${e.message}`); });
+  const rec = await rk.gateway.records.create(null, "contact", { name: "Jane", age: 40 });
+  assert.equal(rec.data.name, "Jane");
+  const rows = await rk.gateway.records.query(null, "contact", {});
+  assert.ok(JSON.stringify(rows).includes("Jane"));
+  // and the record is on the SERVER, not on the device
+  const onServer = server.kernel.spaces.hosted(id);
+  assert.ok(JSON.stringify(await onServer.gateway.records.query(onServer.kernel.chains.fromFacts({ kind: "device", device_key_id: "x1", person: server.kernel.id.owner, path: "direct", session: "s" }), "contact", {})).includes("Jane"), "the record lives in the server's store");
+});
