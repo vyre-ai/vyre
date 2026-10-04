@@ -36,6 +36,7 @@ import { memorySeen, idDirectory } from "../lib/identity/directory.js";
 import { fileIdentityStore } from "../core/spaces/identity.js";
 import { createIdentityOps } from "../core/spaces/identity-ops.js";
 import { hooks as spacesHooks } from "../core/spaces/index.js";
+import { acceptMessage } from "../lib/spaces/invites.js";
 
 // The short typed code is off in a release build; these tests exercise it, so they turn the development flag on (the daemon reads it at call time).
 process.env.VYRE_WINK_TYPED_CODE = "1";
@@ -1427,10 +1428,10 @@ test("sessionFor signs the device in by itself when a call needs the person (no 
 
 
 test("a computer's own device key makes the owner's proof for an act that needs presence over the peer wire: REAL presence on the server checks the key it enrolled at pairing", async t => {
-  // the server accepts a software key's proof only on a development build behind the software signer's switch (vault's rule), marked method software
-  const savedSw = process.env.VYRE_SEAL_SOFTWARE;
+  // the server takes a software key as presence only on a development build behind this switch; this test sets it itself (and puts it back) so it does not depend on the shell or on test order
+  const softSaved = process.env.VYRE_SEAL_SOFTWARE;
   process.env.VYRE_SEAL_SOFTWARE = "1";
-  t.after(() => { if (savedSw === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = savedSw; });
+  t.after(() => { if (softSaved === undefined) delete process.env.VYRE_SEAL_SOFTWARE; else process.env.VYRE_SEAL_SOFTWARE = softSaved; });
   const devKey = deviceKey(path.join(tempHome(t), "dev.json"));
   const f = await pairFreshServer(t, { kind: "computer", presenceStorage: "software", devKey, realPresence: true });
   assert.equal(f.done.session, true, "a first pairing on a real presence module still grants the session");
@@ -1627,8 +1628,14 @@ test("a box-less client makes its first space on a paired server: the server hos
   const serverKey = privateKeyOf(fs.readFileSync(path.join(f.w.d.paths.root, "spaces", made.space, "root.key"), "utf8").trim());
   const payload = Buffer.from(JSON.stringify({ id: "inv_" + "0".repeat(32), space: "harlow.vyre.run", sid: made.space, role: "owner" })).toString("base64url");
   const forged = `${payload}.${crypto.sign(null, Buffer.from(payload), serverKey).toString("base64url")}`;
-  const redeemed = await f.w.d.registry.call("spaces.invites.redeem", { token: forged, person: { id: "per_" + "z".repeat(26) }, proof: "x" }, "tailnet");
+  // the person's side is well formed (a real key, a real signature over the accept message), so the refusal can only come from the token: the key's signature makes no invite
+  const joiner = crypto.generateKeyPairSync("ed25519");
+  const joinerPub = joiner.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const joinerId = "per_" + "z".repeat(26);
+  const joinProof = crypto.sign(null, acceptMessage("inv_" + "0".repeat(32), "harlow.vyre.run", joinerId), joiner.privateKey).toString("base64url");
+  const redeemed = await f.w.d.registry.call("spaces.invites.redeem", { token: forged, person: { id: joinerId, publicKey: joinerPub }, proof: joinProof }, "tailnet");
   assert.ok(redeemed.error, "a token signed by the space's server key is not an invite");
+  assert.ok(!["bad_proof", "bad_input"].includes(redeemed.error.code), `the refusal is about the token, not the person's proof: ${JSON.stringify(redeemed.error)}`);
   const hosted = f.w.d.kernel.spaces.hosted(made.space);
   await assert.rejects(() => hosted.gateway.grants.invites.get(hosted.kernel.chains.fromFacts({ kind: "invitee", person: "per_" + "z".repeat(26), vouched: true }), "inv_" + "0".repeat(32)), e => e.code === "not_found");
   // a refused host call claims nothing in the directory
