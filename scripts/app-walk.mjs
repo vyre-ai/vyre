@@ -11,6 +11,7 @@
 // Exit 0 when nothing FAILED. Prints one line per step and writes <out>/report.json and one PNG per step.
 
 import fs from "node:fs";
+import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -125,7 +126,7 @@ const has = (k) => !world[k].error;
 const spaceNames = has("spaces") && Array.isArray(world.spaces.data) ? world.spaces.data.map((s) => s.displayName || s.label || s.name) : [];
 
 // ---- the walk ----
-let browser = await chromium.launch();
+let browser = await chromium.launch({ args: [...CHROME_SAFE] });
 let ctx = await browser.newContext({ viewport: { width: WIDTH, height: 900 }, colorScheme: "dark", serviceWorkers: "block" });
 let page = await ctx.newPage();
 // The stand-in names directory (testbox3) sends no CORS headers yet (windows' fix 489ea442f is not on it), so a browser cannot read its answer. The walk adds the header on the way back;

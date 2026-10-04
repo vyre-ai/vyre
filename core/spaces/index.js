@@ -25,6 +25,7 @@ import {
   createSpaceFlow, assessThisComputer, planMoveHome, PAIRING_DEFAULTS, INSTALL_COMMAND, PAIR_PROMPT,
 } from "../../lib/spaces/homes.js";
 import { SPACE_ID_RE } from "../../lib/spaces/home-unit.js";
+import { within } from "../../lib/within.js";
 import { idDirectory, DEFAULT_BASE } from "../../lib/identity/directory.js";
 import * as C from "../../kernel/identity/chain.js";
 import { createIdentityOps } from "./identity-ops.js";
@@ -256,7 +257,7 @@ export default {
       // hung 90 s on a stale server-hosted row). No answer in time is "unknown", and the caller falls back to what this device itself knows.
       if (h.hosted !== false) return ask();
       const ms = typeof hooks.remoteMs === "number" ? hooks.remoteMs : 4000;
-      return Promise.race([ask().catch(() => null), new Promise(res => { const t = setTimeout(() => res(null), ms); if (t.unref) t.unref(); })]);
+      return within(ask().catch(() => null), ms, null);
     };
 
     // ---- members and invites, one instance per space (their own queues keep one change at a time) ----
