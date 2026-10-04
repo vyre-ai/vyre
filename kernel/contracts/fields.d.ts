@@ -81,6 +81,11 @@ export interface TypeDefinition {
   readonly stages?: readonly StageDef[];
   /** Expression strings in the Expression language, validated, never code. */
   readonly rules?: readonly { readonly name?: string; readonly require: string }[];
+  /**
+   * Marks the type as a role: what a contact or an organization is to the Space (prospect, client, ambassador). `link` names the one required link field
+   * (to `contact` or `organization`) that says who holds it. `ended` lists the stages that mean the role is over (it stays a record, it is just not current).
+   */
+  readonly role?: { readonly link: string; readonly ended?: readonly string[] };
 }
 
 /** How a field is shown. */

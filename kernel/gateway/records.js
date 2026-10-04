@@ -101,6 +101,34 @@ export function createRecords(cfg) {
   const limitsOf = async (/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ d) => ({ allow: allowList(d), hidden: (await hiddenFields(chain, type)) || new Set() });
   const refuseOutside = (/** @type {Set<string> | null} */ allow, /** @type {any} */ data) => { if (allow) for (const k of Object.keys(data || {})) if (!allow.has(k)) throw new KernelError("field_not_allowed", `${k} is outside what this access allows`); };
 
+  /** A role type points at one contact or organization through one required link, and names stages that already exist. */
+  async function checkRoles(/** @type {any} */ diff) {
+    for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
+      if (t.role === undefined) continue;
+      const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name} cannot be a role: ${why}`);
+      if (!t.role || typeof t.role.link !== "string") throw bad("it needs role.link, the field that names who holds it");
+      const f = (t.fields || []).find((/** @type {any} */ x) => x.name === t.role.link);
+      if (!f || f.kind !== "link" || (f.to !== "contact" && f.to !== "organization")) throw bad(`${t.role.link} must be a link to a contact or an organization`);
+      if (f.required !== true) throw bad(`${t.role.link} must be required, so a role never exists without its holder`);
+      if (t.role.ended !== undefined) {
+        const sf = (t.fields || []).find((/** @type {any} */ x) => x.kind === "stage");
+        const names = (t.stages || []).map((/** @type {any} */ s) => s.name).concat(sf && sf.options ? sf.options : []);
+        if (!Array.isArray(t.role.ended) || !t.role.ended.every((/** @type {any} */ e) => names.includes(e))) throw bad("role.ended names stages the type does not have");
+      }
+    }
+  }
+  /** The definitions marked as roles. */
+  async function roleTypes() {
+    try { return (await store.types()).filter((/** @type {any} */ t) => t.role && typeof t.role.link === "string"); } catch (e) { throw mapError(e); }
+  }
+  /** A role record with its holder and whether the role is still going. */
+  const hold = (/** @type {any} */ t, /** @type {any} */ r) => {
+    const sf = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
+    const stage = sf ? r.data[sf.name] : undefined;
+    const link = r.data[t.role.link];
+    return { role: t.name, holder: link && link.urn, ...(stage !== undefined ? { stage } : {}), current: !r.deleted_at && !(stage !== undefined && (t.role.ended || []).includes(stage)), record: r };
+  };
+
   const isModel = (/** @type {any} */ chain) => hasKind(chain, "agent") || chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && sinks.has(h.actor.id));
 
   /**
@@ -248,10 +276,11 @@ export function createRecords(cfg) {
     return rec;
   }
 
-  return {
+  const api = {
     async define(chain, diff) {
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`);
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
+      await checkRoles(diff);
       let res;
       try { res = await store.define(diff); } catch (e) { throw mapError(e); }
       if (res.applied) log.append(chain, { type: "types.defined", sv: 1, subject: `vyre://${space}/definition/types`, data: { changes: res.changes } }, { decision: d.decision });
@@ -328,12 +357,30 @@ export function createRecords(cfg) {
       for (const t of spec.types || []) checkType(t);
       let p;
       try { p = await store.search(spec); } catch (e) { throw mapError(e); }
+      const words = String(spec.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      /** does some word appear in a text field this caller may read (a hit with no stored text to check is kept: nothing to leak) */
+      const matchesWithin = async (/** @type {any} */ h, /** @type {Set<string> | null} */ al, /** @type {Set<string>} */ hid, /** @type {string[]} */ ws) => {
+        let rec, defs;
+        try { rec = await store.get(h.type, h.id); defs = typeof store.types === "function" ? await store.types() : []; } catch { return false; }
+        const def = defs.find((/** @type {any} */ t) => t.name === h.type);
+        if (!rec || !def) return false;
+        for (const f of def.fields) {
+          if (f.kind === "sealed" || hid.has(f.name) || (al && !al.has(f.name))) continue;
+          const v = rec.data[f.name];
+          const texts = typeof v === "string" ? [v] : Array.isArray(v) ? v.filter((/** @type {any} */ x) => typeof x === "string") : [];
+          if (texts.some(t => ws.some(w => t.toLowerCase().includes(w)))) return true;
+        }
+        return false;
+      };
       const rows = [];
       for (const h of p.rows) {
         const dec = await check(chain, "records.read", urn(h.type, h.id));
         if (!dec) continue;
         // A snippet is text from some field: it is shown only when the access has no field limit and no field is hidden from this chain.
-        const limited = allowList(dec) !== null || ((await hiddenFields(chain, h.type)) || new Set([1])).size > 0;
+        const al = allowList(dec), hid = (await hiddenFields(chain, h.type)) || new Set([1]);
+        const limited = al !== null || hid.size > 0;
+        // A caller with a field limit may only find a record by text in a field it may read: a hit that came from a field outside the limit is an oracle on that field.
+        if (limited && !(await matchesWithin(h, al, hid, words))) continue;
         const { snippet: _s, ...bare } = h;
         rows.push(limited ? bare : h);
       }
@@ -421,5 +468,45 @@ export function createRecords(cfg) {
       }
     },
     versionHash,
+
+    /**
+     * Role records (a type marked `role: { link }`): what a contact or organization is to the Space. Both calls go through `query`, so every row is checked
+     * for the caller one by one; a holder the caller cannot read has no roles to show. The link field is the only index they need.
+     */
+    async roles(chain, holder, o = {}) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const parts = String(holder).split("/");
+      if (parts.length !== 5 || parts[0] !== "vyre:" || parts[2] !== space || !TYPE_NAME.test(parts[3]) || !isUuid(parts[4])) throw new KernelError("bad_input", "a holder is a record urn");
+      if (!(await allowed(chain, "records.read", holder))) return [];
+      const out = [];
+      for (const t of await roleTypes()) {
+        const to = t.fields.find((/** @type {any} */ f) => f.name === t.role.link)?.to;
+        if (to && to !== parts[3]) continue;
+        let cursor;
+        for (let pages = 0; pages < 20; pages++) {
+          const p = await api.query(chain, t.name, { filter: { field: t.role.link, op: "eq", value: { urn: holder } }, page: { limit: 100, ...(cursor ? { cursor } : {}) } });
+          for (const r of p.rows) out.push(hold(t, r));
+          if (!p.next_cursor) break;
+          cursor = p.next_cursor;
+        }
+      }
+      const rows = o.include_ended === false ? out.filter(x => x.current) : out;
+      return rows.sort((a, b) => Number(b.current) - Number(a.current) || b.record.updated_at - a.record.updated_at);
+    },
+
+    /** The holders of one role, optionally at one stage: a page of role records, each naming its holder. Ended roles are left out unless asked for. */
+    async holders(chain, spec) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      checkType(spec.role);
+      const t = (await roleTypes()).find((/** @type {any} */ x) => x.name === spec.role);
+      if (!t) throw new KernelError("bad_input", `${spec.role} is not a role type`);
+      const sf = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
+      const and = [];
+      if (spec.stage !== undefined) { if (!sf) throw new KernelError("bad_input", `${spec.role} has no stage`); and.push({ field: sf.name, op: "eq", value: spec.stage }); }
+      else if (spec.include_ended !== true && sf && (t.role.ended || []).length) and.push({ not: { field: sf.name, op: "in", value: t.role.ended } });
+      const p = await api.query(chain, t.name, { ...(and.length ? { filter: and.length === 1 ? and[0] : { and } } : {}), page: spec.page });
+      return { rows: p.rows.map((/** @type {any} */ r) => hold(t, r)), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
+    },
   };
+  return api;
 }

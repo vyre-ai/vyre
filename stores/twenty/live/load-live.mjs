@@ -40,7 +40,7 @@ const stages = ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Close
 const rnd = (n) => Math.floor(Math.random() * n);
 const contacts = [], matters = [];
 let seq = 0;
-async function addContact() { const i = ++seq; const c = await R.create(chain(), "contact", { full_name: `Client ${i} Rivera`, email: `client${i}@example.test`, phone: `555${String(i).padStart(7, "0")}`, stripe_customer: `cus_${i}` }); contacts.push(c.id); return c; }
+async function addContact() { const i = ++seq; const c = await R.create(chain(), "contact", { name: `Client ${i} Rivera`, email: `client${i}@example.test`, phone: `555${String(i).padStart(7, "0")}`, stripe_customer: `cus_${i}` }); contacts.push(c.id); return c; }
 async function addMatter() { const c = contacts[rnd(contacts.length)]; const i = ++seq; const m = await R.create(chain(), "matter", { title: `Estate plan ${i}`, client: { urn: `vyre://${SPACE}/contact/${c}` }, plan: ["Will", "Trust", "Both"][rnd(3)], fee: { amount: 1500 + rnd(8000), currency: "USD" }, stage: stages[rnd(6)], engagement_signed: true, stripe_payment: `pi_${i}` }); matters.push(m.id); return m; }
 async function seedTo(n) {
   const t = Date.now(), start = contacts.length + matters.length;

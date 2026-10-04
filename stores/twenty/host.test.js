@@ -49,10 +49,10 @@ test("a record is created, read and updated through kernel.records with authoriz
   const { host } = await boot();
   await host.installKit(kit);
   const c = host.ownerChain();
-  const rec = await host.kernel.records.create(c, "contact", { full_name: "Sam Rivera", email: "sam@example.test" });
+  const rec = await host.kernel.records.create(c, "contact", { name: "Sam Rivera", email: "sam@example.test" });
   assert.equal(rec.version, 1);
   assert.equal(rec.urn, `vyre://${SPACE}/contact/${rec.id}`);
-  assert.equal((await host.kernel.records.get(c, "contact", rec.id)).data.full_name, "Sam Rivera");
+  assert.equal((await host.kernel.records.get(c, "contact", rec.id)).data.name, "Sam Rivera");
   const up = await host.kernel.records.update(c, "contact", rec.id, { phone: "555 0100" }, 1);
   assert.equal(up.version, 2);
   await assert.rejects(() => host.kernel.records.update(c, "contact", rec.id, { phone: "x" }, 1), { code: "version_conflict" });
@@ -66,7 +66,7 @@ test("a chain with no grant is refused and a model never holds the owner's autho
   const agent = host.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 1, pid: 1, inside_model_process: true });
   const got = await host.kernel.records.query(agent, "contact", { page: { limit: 5 } }).then((p) => p.rows.length, (e) => e.code);
   assert.ok(got === 0 || typeof got === "string", "an agent with no grant sees nothing");
-  await assert.rejects(() => host.kernel.records.create(agent, "contact", { full_name: "No" }), (e) => typeof e.code === "string");
+  await assert.rejects(() => host.kernel.records.create(agent, "contact", { name: "No" }), (e) => typeof e.code === "string");
   assert.equal(host.log.read({ type: "contact.created" }).length, 0);
 });
 
@@ -74,7 +74,7 @@ test("a sealed field holds only a reference in Twenty and in the log", async () 
   const { host, store } = await boot();
   await host.installKit(kit);
   const ref = { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 };
-  const rec = await host.kernel.records.create(host.ownerChain(), "contact", { full_name: "Pat", ssn: ref });
+  const rec = await host.kernel.records.create(host.ownerChain(), "contact", { name: "Pat", ssn: ref });
   const ev = host.log.read({ type: "contact.created" })[0];
   assert.deepEqual(ev.data.after.ssn, { sealed: true, changed: true });
   assert.deepEqual((await store.get("contact", rec.id)).data.ssn, ref);
@@ -87,7 +87,7 @@ test("template, playbook and team-member records round trip, with actors and lin
   const owner = { actor: { kind: "person", id: "per_owner", space: SPACE } };
   const bot = { actor: { kind: "agent", id: "research", space: SPACE } };
   const matter = await host.kernel.records.create(c, "matter", { title: "Estate plan for Sam" });
-  const tpl = await host.kernel.records.create(c, "template", { name: "welcome", kind: "email", body: "Dear {{client.full_name}}" });
+  const tpl = await host.kernel.records.create(c, "template", { name: "welcome", kind: "email", body: "Dear {{client.name}}" });
   const back = await host.kernel.records.get(c, "team-member", (await host.kernel.records.create(c, "team-member", { name: "Alex", actor: owner, kind: "person", role: "attorney", project: { urn: matter.urn } })).id);
   assert.deepEqual(back.data.actor, owner);
   assert.deepEqual(back.data.project, { urn: matter.urn });

@@ -441,6 +441,63 @@ test("fields: a grant with row predicates and a field allow-list still refuses f
   assert.equal((await r.query(agent(), "contact", { filter: { field: "name", op: "eq", value: "Jane" }, page: { limit: 5 } })).rows.length, 1, "an allowed field still filters");
 });
 
+test("search: a caller with a field limit cannot find a record by text in a field outside the limit", async () => {
+  const grants = [G(), G({ subject: { kind: "actor", actor: actor("agent", "kit") }, actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/contact/*`, fields: ["name"] } })];
+  const { r } = await withType(rig({ grants, members: ["agent:kit"] }));
+  await r.create(owner(), "contact", { name: "Jane Harlow", status: "closed" });
+  assert.equal((await r.search(agent(), { text: "harlow", page: { limit: 5 } })).rows.length, 1, "an allowed field finds it");
+  assert.equal((await r.search(agent(), { text: "closed", page: { limit: 5 } })).rows.length, 0, "a field outside the limit does not");
+  assert.equal((await r.search(owner(), { text: "closed", page: { limit: 5 } })).rows.length, 1, "the unlimited owner still does");
+});
+
+// ---- roles: what a contact is to the Space ----
+const roleType = (name, extra = {}) => ({ name, label: name, role: { link: "contact", ended: ["Ended"] }, fields: [
+  { name: "contact", kind: "link", to: "contact", label: "Contact", required: true },
+  { name: "stage", kind: "stage", label: "Stage", options: ["New", "Active", "Ended"] },
+  { name: "note", kind: "text", label: "Note" },
+], stages: [{ name: "New" }, { name: "Active" }, { name: "Ended" }], ...extra });
+
+test("roles: a role type needs its link, required, to a contact or organization, and ended stages that exist", async () => {
+  const { r } = await withType(rig());
+  const bad = async (t, why) => assert.rejects(() => r.define(owner(), { add_types: [t] }), { code: "bad_input" }, why);
+  await bad({ ...roleType("prospect"), role: {} }, "no link named");
+  await bad({ ...roleType("prospect"), fields: roleType("x").fields.filter(f => f.name !== "contact") }, "link field missing");
+  await bad({ ...roleType("prospect"), fields: roleType("x").fields.map(f => (f.name === "contact" ? { ...f, required: false } : f)) }, "link not required");
+  await bad({ ...roleType("prospect"), fields: roleType("x").fields.map(f => (f.name === "contact" ? { ...f, to: "matter" } : f)) }, "links to something else");
+  await bad({ ...roleType("prospect"), role: { link: "contact", ended: ["Gone"] } }, "ended stage that does not exist");
+  await r.define(owner(), { add_types: [roleType("prospect")] });
+});
+
+test("roles: roles of a contact and holders of a role at a stage, current first, only what the caller may read", async () => {
+  const hidden = new Set();
+  const attrs = urn => ({ project: hidden.has(urn) ? "p9" : "p1" });
+  const g = G({ resource: { prefix: `vyre://${SPACE}/*`, where: [{ attr: "project", op: "eq", value: "p1" }] } });
+  const ownerAll = G({ actions: ["records.create", "records.define"] });
+  const { r } = await withType(rig({ grants: [ownerAll, g], attrs }));
+  await r.define(owner(), { add_types: [roleType("prospect"), roleType("client"), roleType("ambassador")] });
+  const jane = await r.create(owner(), "contact", { name: "Jane" }), bob = await r.create(owner(), "contact", { name: "Bob" });
+  const mk = (type, c, stage) => r.create(owner(), type, { contact: { urn: c.urn }, stage });
+  const p1 = await mk("prospect", jane, "Ended"), c1 = await mk("client", jane, "Active"), a1 = await mk("ambassador", jane, "New");
+  const pb = await mk("prospect", bob, "New"), cb = await mk("client", bob, "Active");
+  const mine = await r.roles(owner(), jane.urn);
+  assert.deepEqual(mine.map(x => [x.role, x.current]).sort(), [["ambassador", true], ["client", true], ["prospect", false]]);
+  assert.equal(mine.at(-1).current, false, "ended roles come last");
+  assert.ok(mine.every(x => x.holder === jane.urn));
+  assert.deepEqual((await r.roles(owner(), jane.urn, { include_ended: false })).map(x => x.role).sort(), ["ambassador", "client"]);
+  const act = await r.holders(owner(), { role: "client", stage: "Active", page: { limit: 10 } });
+  assert.deepEqual(act.rows.map(x => x.holder).sort(), [jane.urn, bob.urn].sort());
+  assert.deepEqual((await r.holders(owner(), { role: "prospect", page: { limit: 10 } })).rows.map(x => x.holder), [bob.urn], "ended prospects are left out");
+  assert.equal((await r.holders(owner(), { role: "prospect", include_ended: true, page: { limit: 10 } })).rows.length, 2);
+  await assert.rejects(() => r.holders(owner(), { role: "contact", page: { limit: 1 } }), { code: "bad_input" }, "a plain type is not a role");
+  // a role record the caller may not read is not listed, and a holder the caller may not read has no roles to show
+  hidden.add(c1.urn);
+  assert.deepEqual((await r.roles(owner(), jane.urn)).map(x => x.role).sort(), ["ambassador", "prospect"]);
+  assert.equal((await r.holders(owner(), { role: "client", stage: "Active", page: { limit: 10 } })).rows.length, 1);
+  hidden.add(bob.urn);
+  assert.deepEqual(await r.roles(owner(), bob.urn), []);
+  void p1; void a1; void pb; void cb;
+});
+
 // ---- stage gates ----
 import { parseExpr, evalExpr } from "../../records/language/expr.js";
 const DEAL = { name: "deal", label: "Deal", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "signed", kind: "boolean", label: "Signed" }, { name: "stage", kind: "stage", label: "Stage", options: ["Intake", "Drafting", "Done"] }],

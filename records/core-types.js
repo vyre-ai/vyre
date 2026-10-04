@@ -69,4 +69,75 @@ export const EVENT = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
+/**
+ * One person, once (team/0.3/DESIGN-contacts-comms.md). A contact never changes type: what a person is to the Space (prospect, client, ambassador) is a role,
+ * a record type marked `role` that links here. `email` and `phone` are the person's main address and number, each unique in the Space, which is what stops a
+ * second record for the same person and how a message finds its contact; any others go in `other_emails` and `other_phones` (not unique: a list cannot be).
+ * Addresses are written lower case and numbers in E.164 by whatever writes them.
+ */
+export const CONTACT = {
+  name: "contact", label: "Contact", icon: "IconUser",
+  fields: [
+    text("name", "Name", { required: true }),
+    text("email", "Email", { unique: true }),
+    text("phone", "Phone", { unique: true }),
+    f("emails", "other_emails", "Other emails"),
+    f("phones", "other_phones", "Other phones"),
+    text("job_title", "Job title"),
+    f("link", "organization", "Organization", { to: "organization" }),
+    f("address", "address", "Address"),
+    f("rich_text", "notes", "Notes"),
+  ],
+};
+
+/** A firm or company, once. `domain` is unique so a message from anyone at that domain can be tied to it. */
+export const ORGANIZATION = {
+  name: "organization", label: "Organization", icon: "IconBuilding",
+  fields: [
+    text("name", "Name", { required: true }),
+    text("domain", "Domain", { unique: true }),
+    f("url", "website", "Website"),
+    text("phone", "Phone"),
+    f("address", "address", "Address"),
+    f("rich_text", "notes", "Notes"),
+  ],
+};
+
+export const COMMUNICATION_KINDS = ["email", "meeting", "call", "text", "letter", "chat"];
+export const PARTICIPANT_AS = ["from", "to", "cc", "bcc", "attendee", "organizer", "caller", "callee"];
+
+/**
+ * Everything said to or by someone: an email, a meeting, a call, a text, a letter, a chat. `source_key` is the connector and its own id for the item
+ * ("gmail:18f3a..."), unique, so logging the same message twice makes one record. `mailbox` says whose inbox or calendar it came through (who may see it
+ * follows that). `body` is kept only where the Space chose to keep full text; `excerpt` and `original_url` (back to the original) are the default. Who was on it:
+ * the `participant` records. What it concerns: `record`.
+ */
+export const COMMUNICATION = {
+  name: "communication", label: "Communication", icon: "IconMessage",
+  fields: [
+    choice("kind", "Kind", COMMUNICATION_KINDS, { required: true }),
+    choice("direction", "Direction", ["inbound", "outbound", "internal"]),
+    f("datetime", "at", "When", { required: true }),
+    text("subject", "Subject"),
+    text("excerpt", "Excerpt"),
+    f("rich_text", "body", "Full text"),
+    f("url", "original_url", "Link to the original"),
+    text("thread", "Thread"),
+    text("source_key", "Connector and its id", { unique: true }),
+    text("mailbox", "Mailbox or calendar"),
+    f("link", "record", "Concerns"),
+  ],
+};
+
+/** One person on one communication, and how they were on it. Many contacts per communication and many communications per contact. `address` is what the message said (the email or number), kept when no contact matched. */
+export const PARTICIPANT = {
+  name: "participant", label: "Participant", icon: "IconUsers",
+  fields: [
+    f("link", "communication", "Communication", { to: "communication", required: true }),
+    f("link", "contact", "Contact", { to: "contact" }),
+    text("address", "Address as written"),
+    choice("how", "How", PARTICIPANT_AS, { required: true }),
+  ],
+};
+
+export const CORE_TYPES = Object.freeze([CONTACT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
