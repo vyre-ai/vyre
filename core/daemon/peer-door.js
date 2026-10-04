@@ -20,7 +20,7 @@ const DEVICE = /^[a-z2-7]{16}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -61,13 +61,17 @@ export function createPeerDoor(o) {
   // ---- the invitee door (lead, 4 Oct: DESIGN-spaces-first.md "How a second person reaches a space to join it") ----
   // A person who is not a member of a space opens `{ peer: "wink", space: "home", invitee: { space, invite, identity, entry, name?, ts, nonce, sig } }` on a relay channel that said `invitee` in its hello
   // (it made no device row). The door admits it only when ALL of these hold: the hello is fresh (2 minutes) and its nonce is new; the identity's entry resolves from the names directory and its signature over this
-  // box's own id, the space, the invite, the identity, the entry, the time and the nonce checks out (so a hello cannot be replayed at another box); the space is one this home hosts; and the space's kernel
+  // box's own id, the space, the invite, the identity, the entry, the time, the nonce and the channel's own key id checks out (so a hello cannot be replayed at another box); the space is one this home hosts; and the space's kernel
   // shows the invite as unexpired and unused, and, if it is addressed to one identity, to this one. What the stream may then do is `grants.invites.get` and `grants.invites.accept` for THAT invite, nothing else:
-  // no registry tool, no other kernel call, no person session. A wrong, spent or other-identity token closes the stream. Accepting ends it. Rates are held per invite, per identity and per channel.
+  // no registry tool, no other kernel call, no person session. A wrong, spent or other-identity token closes the stream. Accepting ends it. Rates are held per invite and per identity (counted only for a hello whose signature verified, so naming someone cannot lock them out), per channel, and per box for directory lookups, with a miss remembered for a minute.
   const HELLO_WINDOW_MS = 120_000;
-  /** @type {Map<string, number>} nonce -> expiry */ const nonces = new Map();
+  const MISS_MAX = 2000, MISS_MS = 60_000;
+  /** @type {Map<string, number>} nonce -> expiry (insertion order is expiry order, so the oldest is always first) */ const nonces = new Map();
   /** @type {Map<string, number[]>} */ const uses = new Map();
-  const lim = { perInvite: 30, perIdentity: 60, perMinute: 60_000, ...(o.inviteeLimits || {}) };
+  /** @type {Map<string, number>} "identity/entry/name" -> when the directory last had no such entry (negative cache) */ const misses = new Map();
+  /** @type {number[]} when the directory was last asked on behalf of any invitee channel (the box-wide cap) */ let lookups = [];
+  const lim = { perInvite: 30, perIdentity: 60, perMinute: 60_000, perBox: 120, nonceMax: 5000, perChannel: /** @type {number | undefined} */ (undefined), ...(o.inviteeLimits || {}) };
+  const perChannel = lim.perChannel ?? lim.perIdentity;
   const over = (/** @type {string} */ key, /** @type {number} */ max, /** @type {number} */ now) => {
     const a = (uses.get(key) || []).filter(t => now - t < lim.perMinute);
     uses.set(key, a);
@@ -76,28 +80,44 @@ export function createPeerDoor(o) {
     if (uses.size > 5000) for (const [k, v] of uses) if (!v.length || now - v[v.length - 1] > lim.perMinute) uses.delete(k);
     return false;
   };
-  const helloMessage = (/** @type {string} */ box, /** @type {any} */ h) => Buffer.from(`vyre-invitee-hello-v1\n${box}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}`, "utf8");
-  /** Checks one invitee hello and says why not, or answers { identity }. @param {any} h @param {string} inviteeId */
+  /** Drops the oldest entries of an insertion-ordered map until it holds at most `max`. @param {Map<any, any>} m @param {number} max */
+  const trim = (m, max) => { while (m.size > max) { const k = m.keys().next().value; m.delete(k); } };
+  // The signed hello names the box, the space, the invite, the identity, its entry, the time, the nonce and the channel's own key id, so it cannot be replayed at another box or carried onto another channel
+  const helloMessage = (/** @type {string} */ box, /** @type {any} */ h) => Buffer.from(`vyre-invitee-hello-v2\n${box}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`, "utf8");
+  /**
+   * Checks one invitee hello and says why not, or answers { identity }. The order is the defence: shape and freshness cost nothing; the directory is asked only inside a box-wide cap and never twice for
+   * an entry it just said it did not know; the signature is checked next; and only a hello that VERIFIED is counted against its invite and its identity, so nobody can use up a victim's allowance
+   * by naming them. A channel's own allowance is its own key's, so spending it hurts no one else. @param {any} h @param {string} inviteeId
+   */
   const checkHello = async (h, inviteeId) => {
     const now = (o.now || Date.now)();
     if (!h || typeof h !== "object" || Array.isArray(h)) return { why: "bad_input" };
     const str = (/** @type {any} */ v, /** @type {RegExp} */ re) => typeof v === "string" && re.test(v);
-    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^inv_[0-9a-f]{32}$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
+    if (!str(h.space, /^spc_[a-z2-7]{12,26}$/) || !str(h.invite, /^inv_[0-9a-f]{32}$/) || !str(h.identity, /^per_[a-z2-7]{26}$/) || !str(h.entry, /^[a-z2-7]{26}$/) || !str(h.nonce, /^[A-Za-z0-9_-]{16,64}$/) || !str(h.channel, /^[a-z2-7]{16}$/) || !Number.isFinite(h.ts) || !str(h.sig, /^[A-Za-z0-9_-]{80,100}$/)) return { why: "bad_input" };
     if (h.name !== undefined && !str(h.name, /^[a-z0-9.-]{3,253}$/)) return { why: "bad_input" };
+    if (h.channel !== inviteeId) return { why: "wrong_channel" };
     if (Math.abs(now - Number(h.ts)) > HELLO_WINDOW_MS) return { why: "stale" };
-    for (const [n, exp] of nonces) if (exp <= now) nonces.delete(n);
+    for (const [n, exp] of nonces) { if (exp > now) break; nonces.delete(n); }
     if (nonces.has(h.nonce)) return { why: "replayed" };
-    if (over(`i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now) || over(`d:${inviteeId}`, lim.perIdentity, now)) return { why: "rate_limited" };
+    if (over(`d:${inviteeId}`, perChannel, now)) return { why: "rate_limited" };
     if (typeof o.identityEntry !== "function" || typeof o.boxId !== "function") return { why: "cannot_check" };
     let box = null;
     try { box = await o.boxId(); } catch { box = null; }
     if (!box) return { why: "cannot_check" };
+    const missKey = `${h.identity}/${h.entry}/${h.name || ""}`;
+    const missed = misses.get(missKey);
+    if (missed !== undefined && now - missed < MISS_MS) return { why: "unknown_identity" };
+    lookups = lookups.filter(t => now - t < lim.perMinute);
+    if (lookups.length >= lim.perBox) return { why: "rate_limited" };
+    lookups.push(now);
     /** @type {any} */ let entry = null;
     try { entry = await o.identityEntry(h.identity, h.entry, h.name); } catch { return { why: "cannot_check" }; }
-    if (!entry || typeof entry.pub !== "string" || entry.alg === "webauthn-es256" || entry.held === "web") return { why: "unknown_identity" };
+    if (!entry || typeof entry.pub !== "string" || entry.alg === "webauthn-es256" || entry.held === "web") { misses.delete(missKey); misses.set(missKey, now); trim(misses, MISS_MAX); return { why: "unknown_identity" }; }
     if (!verifyDevice(entry.pub, helloMessage(box, h), h.sig)) return { why: "bad_proof" };
+    if (over(`i:${h.invite}`, lim.perInvite, now) || over(`p:${h.identity}`, lim.perIdentity, now)) return { why: "rate_limited" };
+    if (nonces.has(h.nonce)) return { why: "replayed" };
     nonces.set(h.nonce, now + 2 * HELLO_WINDOW_MS);
-    if (nonces.size > 5000) nonces.clear();
+    trim(nonces, lim.nonceMax);
     return { identity: h.identity };
   };
   /** A kernel request for one of the two invitee calls on this invite, as the invitee. @param {string} space @param {string} call @param {any[]} args @param {number} now */

@@ -79,8 +79,8 @@ function inviteeWorld({ status = "pending", entry = true, addressedTo = null, li
   const d = createPeerDoor({ kernel, registry, people: { list: () => [] }, now: () => clock, callerFacts: () => null, serverFor: space => (space === SPACE ? server : null), boxId: async () => BOX,
     identityEntry: async (identity, eid) => (entry && identity === PERSON && eid === "e".repeat(26) ? { pub: Buffer.from(raw).toString("base64url") } : null), ...(limits ? { inviteeLimits: limits } : {}) });
   const hello = (over = {}) => {
-    const h = { space: SPACE, invite: INVITE, identity: PERSON, entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), ...over };
-    const msg = Buffer.from(`vyre-invitee-hello-v1\n${over.box || BOX}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}`);
+    const h = { space: SPACE, invite: INVITE, identity: PERSON, entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, ...over };
+    const msg = Buffer.from(`vyre-invitee-hello-v2\n${over.box || BOX}\n${h.space}\n${h.invite}\n${h.identity}\n${h.entry}\n${h.ts}\n${h.nonce}\n${h.channel}`);
     if (!h.sig) h.sig = crypto.sign(null, msg, key.privateKey).toString("base64url");
     delete h.box;
     return h;
@@ -133,6 +133,7 @@ test("invitee door: a bad proof, a stale or replayed hello, an unknown identity,
     "an expired invite": () => [inviteeWorld({ status: "expired" }), null],
     "an invite meant for another identity": () => [inviteeWorld({ addressedTo: "per_" + "x".repeat(26) }), null],
     "a space this home does not host": () => { const w = inviteeWorld(); return [w, w.hello({ space: "spc_" + "n".repeat(12) })]; },
+    "a hello signed for another channel": () => { const w = inviteeWorld(); return [w, w.hello({ channel: "aaaabbbbccccdddd" })]; },
     "a malformed invite id": () => { const w = inviteeWorld(); return [w, w.hello({ invite: "inv_nope" })]; },
   };
   for (const [why, make] of Object.entries(cases)) {
@@ -159,4 +160,41 @@ test("invitee door: rates are held per invite and per identity", async () => {
   let refused2 = 0;
   for (let i = 0; i < 4; i++) { const c = await w2.open(w2.hello()); try { await w2.kcall(c, "grants.invites.get", [INVITE]); } catch { refused2++; } }
   assert.equal(refused2, 2, "and the third for one identity");
+});
+
+test("invitee door: junk hellos naming a victim do not spend the victim's allowance, and a missed entry is remembered", async () => {
+  const w = inviteeWorld({ limits: { perInvite: 100, perIdentity: 2, perChannel: 1000 } });
+  for (let i = 0; i < 6; i++) { const c = await w.open(w.hello({ sig: "A".repeat(86) })); await assert.rejects(() => w.kcall(c, "grants.invites.get", [INVITE]), e => e.code === "denied"); }
+  const ok = await w.open(w.hello());
+  assert.equal((await w.kcall(ok, "grants.invites.get", [INVITE])).ok, true, "the real person still gets in after six forgeries naming them");
+});
+
+test("invitee door: directory lookups from invitee channels are capped box-wide and an unknown entry is asked once a minute", async () => {
+  let asked = 0;
+  const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
+  let clock = 1_000_000;
+  const d = createPeerDoor({ kernel, registry: { call: async () => ({ data: null }) }, people: { list: () => [] }, now: () => clock, callerFacts: () => null, serverFor: () => null, boxId: async () => BOX,
+    identityEntry: async () => { asked++; return null; }, inviteeLimits: { perBox: 3, perChannel: 1000 } });
+  const open = async head => {
+    const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() {}, reset() {} };
+    const c = { ondata() {}, onclose() {}, buffered: () => 0, write: b => queueMicrotask(() => s.ondata(new Uint8Array(b))), end() {}, destroy() {} };
+    d.acceptInvitee(s, { inviteeId: INVITEE }, head);
+    return peerSession(c, { first: 1 });
+  };
+  const hello = n => ({ space: SPACE, invite: INVITE, identity: "per_" + n.toString().padStart(26, "q").replace(/[0189]/g, "q"), entry: "e".repeat(26), ts: clock, nonce: crypto.randomBytes(12).toString("base64url"), channel: INVITEE, sig: "A".repeat(86) });
+  const go = async h => { const c = await open(h); await c.call("kernel.call", { v: 1, space: SPACE, id: "x", ts: clock, call: "grants.invites.get", args: [INVITE] }, { timeoutMs: 3000 }).catch(() => {}); };
+  for (let i = 0; i < 5; i++) await go(hello(2));
+  assert.equal(asked, 1, "the same unknown entry is asked of the directory once");
+  for (let i = 0; i < 8; i++) await go(hello(i + 2 + 100));
+  assert.ok(asked <= 3, `the box-wide cap holds (${asked})`);
+});
+
+test("invitee door: the nonce store drops the oldest first instead of forgetting every nonce", async () => {
+  const w = inviteeWorld({ limits: { perInvite: 1e6, perIdentity: 1e6, perChannel: 1e6, nonceMax: 3 } });
+  const hs = [];
+  for (let i = 0; i < 5; i++) { const h = w.hello(); hs.push(h); const c = await w.open(h); assert.equal((await w.kcall(c, "grants.invites.get", [INVITE])).ok, true); }
+  const newest = await w.open(hs[4]);
+  await assert.rejects(() => w.kcall(newest, "grants.invites.get", [INVITE]), e => e.code === "denied", "a recent nonce is still remembered");
+  const oldest = await w.open(hs[0]);
+  assert.equal((await w.kcall(oldest, "grants.invites.get", [INVITE])).ok, true, "only the oldest ones were dropped");
 });
