@@ -74,7 +74,7 @@ export class Proposals {
       title: title.slice(0, 200), output: { kind: "decision" }, source: "manual", form,
       ...(doerChain ? { doer: { kind: "service", id: "flows", space: approver.space }, checker: approver } : { doer: approver }),
     }, { idem });
-    if (doerChain) for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: `${title.replace(/\?$/, "")} is waiting for your yes` }]]) {
+    if (doerChain) for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: `${title.replace(/\?$/, "")} is waiting for your yes`, proposal_hash: form.proposal_hash }]]) {
       try { await (step === "start" ? this.k.ask.start(doerChain, task.id) : this.k.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
     }
     return { ok: true, task: task.id, what: form.what, approver: approver.id, ...(by ? { by } : {}) };
