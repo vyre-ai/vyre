@@ -180,8 +180,9 @@ export default {
     const remoteCall = async (/** @type {string} */ device, /** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ meta) => {
       // ONE remote path (lead's ruling): the Wink peer wire to the paired server, as a session `{ call(tool, input) }` that a port supplies (`hooks.sessionFor(device)`, the daemon's wiring of the open
       // joinPeer session); the owner's proof rides in the input's `proof` for the SERVER's registry to verify. Until a port is wired, the Wink module's `wink.server.call` tool is tried.
-      if (typeof hooks.sessionFor === "function") {
-        let session; try { session = await hooks.sessionFor(device); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
+      const sessionForFn = typeof hooks.sessionFor === "function" ? hooks.sessionFor : typeof ctx.sessionFor === "function" ? ctx.sessionFor : null;
+      if (sessionForFn) {
+        let session; try { session = await sessionForFn(device); } catch { throw refuse("The server could not be reached. Nothing was made.", "server_unreachable"); }
         if (!session || typeof session.call !== "function") throw refuse("The server could not be reached. Nothing was made.", "server_unreachable");
         let pr; try { pr = await session.call(tool, { ...input, ...(meta && meta.kernel_proof ? { proof: meta.kernel_proof } : {}) }); } catch (e) { throw refuse(String(/** @type {any} */ (e).message || "The server did not do that. Nothing was made.").slice(0, 160), String(/** @type {any} */ (e).code || "server_refused")); }
         if (!pr || pr.ok === false) throw refuse(pr && pr.error && pr.error.message ? String(pr.error.message).slice(0, 160) : "The server did not do that. Nothing was made.", (pr && pr.error && pr.error.code) || "server_refused");
@@ -1464,6 +1465,11 @@ export default {
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {
       const st = identity.status();
       return st.exists && st.id ? { id: st.id, name: st.name || null, label: st.name || null } : null;
+    }, { internal: true });
+    // This computer's own entry on its identity's list, for the daemon's runner ({ deviceId, deviceKey }: the id the Offers name it by and its public key); null until an identity is claimed.
+    tool("spaces.identity.device", "This device's entry on its identity list: { deviceId, deviceKey }, or null when none is claimed. The public half only. For the daemon.", obj(), async () => {
+      const st = identity.status();
+      return st.exists && st.eid && st.publicKey ? { deviceId: st.eid, deviceKey: st.publicKey } : null;
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
