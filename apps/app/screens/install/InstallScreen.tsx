@@ -15,6 +15,7 @@ import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
 import { ConnectClaude } from "../settings/ConnectClaude";
 import { addThisDevice, hadIdentity, recoverIdentity } from "../../src/identity/restore";
+import { recoveryKeyOptions } from "../../src/keys";
 import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
 import { acceptInvite, checkName, claimSetup, createIdentity, createSpace, kitChoices, listSpaces, previewInvite, proposeKitFor, readIdentity, resumeSpace, saveSetup } from "../../src/real/install";
@@ -263,7 +264,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           const bad = recoverCheck({ name: recName, code: recCode });
           if (bad) { setWrong(bad.say); return; }
           setBusy(true); setWrong("");
-          void recoverIdentity({ name: nameOf(recName), code: recCode, password: recPass || undefined, deviceLabel: device })
+          void recoveryKeyOptions().then((k) => recoverIdentity({ name: nameOf(recName), code: recCode, password: recPass || undefined, deviceLabel: device, ...k }))
             .then((r) => { setName(r.name); setRecCode(""); setRecPass(""); setLostKey(false); noId.current = false; showToast(successToast(r.name)); setStep(invite ? "invite" : "spaces"); })
             .catch((e) => setWrong(recoverRefusal((e as { code?: string }).code)))
             .finally(() => setBusy(false));

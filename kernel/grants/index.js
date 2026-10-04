@@ -663,7 +663,8 @@ export function createGrantsStore(cfg) {
       if (sha256(canonical(seen)) !== inv.hash) throw new KernelError("contents_differ", "that is not what was approved");
       if (inv.needs_confirm && !inv.confirmed) throw new KernelError("needs_confirmation", "the person who invited you has not yet confirmed your fingerprint words");
       if (!cfg.presence) throw new KernelError("unavailable", "no presence verifier is wired");
-      if (await cfg.presence.check({ chain, op: "grant.accept", fields: { invite: id, hash: inv.hash, person: me.id }, proof: a.proof }) !== null) throw new KernelError("needs_presence", "accepting needs your confirmation on this device");
+      const why = await cfg.presence.check({ chain, op: "grant.accept", fields: { invite: id, hash: inv.hash, person: me.id }, proof: a.proof });
+      if (why !== null) throw Object.assign(new KernelError("needs_presence", "accepting needs your confirmation on this device"), { detail: { reason: /^[a-z][a-z0-9_]{1,40}$/.test(String(why)) ? String(why) : "refused" } });
       // Single use: taken before the membership is applied, so a second accept (concurrent or later) finds it used.
       invites.set(id, freeze({ ...inv, status: "used", used_by: me.id, used_at: clock() }));
       try {

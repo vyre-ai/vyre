@@ -84,3 +84,10 @@ Connect the 0.3 app's Vault, Memory (graph, pins, corrections), Flows (start, a 
 - native-core: a nav entry to /u/calendar, "today" on Now from `today()` in screens/calendar/logic.js, adapter TOOLS renamed to platform's records.* names.
 - platform and kernel-2: register rules.list/set/propose/accept/dismiss/remove as gateway tools (and say where a refusal carries decision.rule), or tell me the real names.
 - sessions and platform: how the Engineer agent is created and granted, and where its proposals land (CHAT.md, 4 Oct).
+
+## 4 Oct (resume) status
+- Walk on awbox pinned to trunk 68a816050: 27 pass, 1 honest, 5 skip, 1 fail (vault Reveal: vault.put presence_required from the sshd leader). Setup and recovery screens pass. Results in team/0.2/CHAT.md. devbox now says trunk is 9f7e91594; re-pin awbox to it before the next walk.
+- Devices lock section: built, reads presence.person.locked (only on work/wink-session); presence refusal now uses softwareKeyLine (ui-ux's note).
+## Next
+- claimServerSpace: chat's hooks are on origin/work/chat-ui 4dfc06d25 (apps/app/src/real/claim-space.ts, makeSpaceOnPairedServer({ name, displayName?, acceptBuiltinStore? })). Call it from the create-space screen, show said(e) on refusal; keep rootPublic beside the space; server_too_old, needs_store_confirmation (Create and Cancel), presence_required on web as "Make this space in Vyre on your phone". Merge only the trunk, not chat-ui, so wait for it to land on trunk.
+- Queued (team-lead, 4 Oct): once windows' 3482f1bed is on trunk, the app passes `space` explicitly on every records, tasks, rules and files call and shows `acted_in.label` where it matters.

@@ -83,3 +83,26 @@ test("a start that blocks before the agent is spawned fails the thread at its st
   }
   assert.ok(!(await d.registry.call("system.echo", { text: "x" }, "cli")).error, "the daemon still answers");
 });
+
+for (const surface of ["deck", undefined]) {
+  test(`a start the limit gives up on during its first prompt sends nothing and never respawns the stopped thread (${surface ? "surface" : "module"} start)`, { timeout: 60_000 }, async t => {
+    // the limit (2 s) fires while the start is slowed after the spawn (test seam VYRE_TEST_START_PAUSE_MS): the abandoned start must not send, which would resume the thread it stopped
+    const runs = path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-runs-")), "runs");
+    t.after(() => fs.rmSync(path.dirname(runs), { recursive: true, force: true }));
+    const bin = script(t, `echo x >> '${runs}'\nexec sleep 300`);
+    const saved = process.env.VYRE_TEST_START_PAUSE_MS;
+    process.env.VYRE_TEST_START_PAUSE_MS = "3000";
+    t.after(() => { if (saved === undefined) delete process.env.VYRE_TEST_START_PAUSE_MS; else process.env.VYRE_TEST_START_PAUSE_MS = saved; });
+    const { d, work } = await rig(t, { bin, sandboxOff: true });
+    const r = await d.registry.call("threads.start", { cwd: work, prompt: "hi", ...(surface ? { surface } : {}) }, "cli");
+    assert.equal(r.error && r.error.code, "start_timeout", JSON.stringify(r));
+    assert.match(String(r.error.message), /first prompt/);
+    await new Promise(res => setTimeout(res, 5000)); // the abandoned start's pauses end here
+    const rows = (await d.registry.call("threads.list", {}, "cli")).data;
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, "stopped", "the thread stays stopped");
+    const n = fs.existsSync(runs) ? fs.readFileSync(runs, "utf8").trim().split("\n").length : 0;
+    assert.equal(n, 1, "the agent was spawned once, never again by the abandoned start");
+    assert.ok(!(await d.registry.call("system.echo", { text: "x" }, "cli")).error, "the daemon still answers");
+  });
+}

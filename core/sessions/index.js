@@ -26,6 +26,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { isPerson } from "../../lib/caller.js";
+import { callerKind } from "../modules/index.js";
 import { Routes, ROUTES_MIGRATION } from "./routes.js";
 import { usesSpawner } from "./spawn.js";
 import { grokProvider } from "./drivers/grok.js";
@@ -380,6 +381,12 @@ export default {
       const p = th && th.data && th.data.thread && th.data.thread.project;
       return p ? String(p) : null;
     };
+    // A provider account signing in or out is announced as account.changed (the onboarding module's assistant check listens): { provider, account, signed_in, why }. Announced only when the
+    // account's usability changed, never for a label or scope edit, and never carrying anything of the credential.
+    const accountChanged = (/** @type {any} */ row, /** @type {boolean} */ signedIn, /** @type {string} */ why) => {
+      if (!row) return;
+      try { ctx.events.emit("account.changed", { provider: String(row.provider), account: String(row.id), signed_in: signedIn, why }); } catch { /* an emit never fails the call */ }
+    };
     tool("sessions.accounts.add", `Add an account: a label, its kind, and for an api-key or setup-token the vault item that already holds its credential (add it in the Vault first and grant it to threads; this never touches its value). kind login has no vault item: the provider's own sign-in fills that account's private home. scope is { projects: "*"|[slugs], agents: "*"|[names] }, default "*" (every project and agent may use it until it is bound narrower). is_default makes it the provider's pick when nothing else resolves. Each account runs as its own user on a server, so one account's sign-in is unreadable from another's.`,
       { type: "object", required: ["provider", "label"], properties: { provider: str, label: str, kind: { type: "string", enum: ACCOUNT_KINDS }, vault_item: str,
         scope: { type: "object", properties: { projects: {}, agents: {} } }, is_default: { type: "boolean" } } },
@@ -392,7 +399,11 @@ export default {
           const project = await requestProject(meta);
           i = { ...i, scope: { projects: project ? [project] : [], agents: i.scope && i.scope.agents !== undefined ? i.scope.agents : "*" }, is_default: false, pending: true };
         }
-        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); return accounts.add(i);
+        if (i.kind !== "login" && i.vault_item && (await vaultHas(String(i.vault_item))) === false) throw Object.assign(new Error(`the vault has no item ${i.vault_item}; add the credential there first`), { code: "bad_input" }); 
+        const added = accounts.add(i);
+        // A key or setup-token account the person adds is usable at once; a login is announced when its sign-in ends, a pending one when the person finishes it (bind).
+        if (i.kind !== "login" && !i.pending) accountChanged(await added, true, "added");
+        return added;
       }, ASSISTANT);
 
     // ---- signing in (each provider's own login, run as the account; Vyre never sees the token)
@@ -446,6 +457,7 @@ export default {
         if (put.error) throw Object.assign(new Error(put.error.code === "no_such_tool" ? "the Vault is not running on this machine" : "the Vault would not take the key"), { code: "bad_input" });
         const label = String(i.label || "").trim().slice(0, 60) || `${k.label} (${new URL(base).host})`;
         const row = await accounts.add({ provider: k.provider, label, kind: "api-key", vault_item: item, ...(k.custom ? { base_url: base } : {}), ...(i.model ? { model: String(i.model).slice(0, 100) } : {}) });
+        accountChanged(row, true, "key");
         return { account: row.id, provider: row.provider, label: row.label, checked: true, host: new URL(base).host, ...(row.model ? { model: row.model } : {}) };
       });
     tool("sessions.accounts.signin", `Sign an account in with its provider's own login (Codex --device-auth, Grok Build's device code, Claude's login), no token pasted or copied. Start: { provider, label? } makes a login account (or { account } for one that exists) and answers { flow, step: "code", url, code } to show; the person approves on any browser. Then { flow } says waiting, done or failed; for a login that wants a code back ({ step: "url", paste: true }) send { flow, code }. The token is written by the provider's own command into that account's private home; Vyre never reads it.`,
@@ -469,7 +481,7 @@ export default {
             ...(byPerson ? {} : { scope: { projects: project ? [project] : [], agents: "*" }, pending: true }) });
         }
         const account = row;
-        try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
+        try { return await signins.start({ provider, account, onDone: ok => { if (ok) { accounts.markSignedIn(account.id); accountChanged(accounts.row(account.id), true, "signed_in"); ctx.call("threads.providers.learn", { provider, account: account.id }).catch(() => {}); } else if (created && accounts.row(account.id) && !accounts.row(account.id).signed_in_at) accounts.remove(account.id); } }); }
         catch (e) { if (created) accounts.remove(account.id); throw e; }
       }, ASSISTANT);
 
@@ -479,6 +491,7 @@ export default {
         if (!isPerson(meta || {})) throw Object.assign(new Error("removing an account is the person's own, on their own surface"), { code: "denied" });
         const row = accounts.row(String(i.id));
         const out = accounts.remove(i.id);
+        if (row && !row.pending) accountChanged(row, false, "removed");
         // A key this module vaulted goes with its account (the Vault refuses to delete anything else of ours).
         if (row && row.kind === "api-key" && /^ai-key-/.test(String(row.vault_item || ""))) await ctx.call("vault.delete", { name: row.vault_item }).catch(() => {});
         return out;
@@ -488,7 +501,12 @@ export default {
       { type: "object", required: ["id"], properties: { id: str, project: str, agent: str, is_default: { type: "boolean" } } },
       async (i, meta) => {
         askedOnly(meta, "Binding an account", { assistant: true });
-        if (isPerson(meta || {})) return accounts.bind({ ...i, confirm: true });
+        if (isPerson(meta || {})) {
+          const was = accounts.row(String(i.id)), bound = accounts.bind({ ...i, confirm: true });
+          const now = await bound;
+          if (was && was.pending && now && !now.pending && !(now.kind === "login" && now.signed_in_at == null)) accountChanged(now, true, "confirmed");
+          return bound;
+        }
         // Not a person's surface: only to the project the request came from, never "*", an agent or a default; it never finishes a pending account.
         const project = await requestProject(meta);
         if (!project || i.project !== project || i.agent || i.is_default) throw Object.assign(new Error("outside a person's surface an account is bound only to the project the request came from; a wider scope is set from the person's own surface"), { code: "denied" });
