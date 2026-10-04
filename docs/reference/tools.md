@@ -11576,6 +11576,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
   - `handover` object
@@ -11691,6 +11692,7 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `id` string, required
     - `kind` "identity" or "space", required
     - `name` string
+    - `vyre` string
   - `deviceKind` one of "phone", "computer", "web"
   - `deviceName` string
   - `handover` object
