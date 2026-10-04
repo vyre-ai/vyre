@@ -18,7 +18,7 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
-  "vault.provider.status": "reads which provider sign-in tokens are stored and when each was added, never a value",
+  "vault.provider.status": "returns which provider tokens are stored and when each was added, never a value; the person's own assistant chains only, and guests, anonymous, plain mcp and named agents without the grant stay refused",
   "artifacts.activity.log": "records that an interactive artifact navigated away, a log line for the Deck",
   "artifacts.mention.search": "the # picker's artifact titles, names and ids only",
   "bridges.get": "reads one share the person's Space is part of; the bridges module takes the person from the verified caller",

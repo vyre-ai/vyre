@@ -1,6 +1,6 @@
-// The signed module list (kernel/modules/release-list.js buildModuleList) is keyed by module name, so two module folders with one name make a release that cannot be built and a list that
-// could be read two ways. This fails at build time on a duplicate name. The one known duplicate is named in scripts/packaged-boot-known.txt (launch's file; this test and that file
-// agree on the folder), with a line saying who rules on it; the exception goes stale loudly, so deleting the duplicate removes the line.
+// The signed module list (kernel/modules/release-list.js buildModuleList) is keyed by module name. Two module folders may share a name only for different machines (disjoint roles, platform's
+// ruling 665ef8511: the box's chrome and the Mac's chrome); this fails at build time on two that overlap, which would make the list ambiguous. Folders in scripts/packaged-boot-known.txt
+// (launch's file) are set aside, and that exception goes stale loudly.
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -11,6 +11,10 @@ import { buildModuleList } from "../kernel/modules/release-list.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const KNOWN = path.join(REPO, "scripts", "packaged-boot-known.txt");
+
+/** The machines a folder's module runs on, as buildModuleList reads them (a module with no roles is for the box and local). */
+const rolesOf = /** @type {Map<string, string[]>} */ (new Map());
+const rolesFor = (/** @type {any} */ m) => (Array.isArray(m.roles) ? m.roles : ["box", "local"]);
 
 /** Module folders (relative to root) by manifest name, scanned the way buildModuleList scans. @param {string} root @returns {Map<string, string[]>} */
 export function namesIn(root) {
@@ -23,6 +27,7 @@ export function namesIn(root) {
       if (!fs.existsSync(mj)) continue;
       const name = String(JSON.parse(fs.readFileSync(mj, "utf8")).name);
       out.set(name, [...(out.get(name) || []), `${top}/${d}`]);
+      rolesOf.set(`${top}/${d}`, rolesFor(JSON.parse(fs.readFileSync(mj, "utf8"))));
     }
   }
   return out;
@@ -32,7 +37,10 @@ export function namesIn(root) {
 export const knownFolders = file => (fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#")) : []);
 
 /** Duplicate names, ignoring folders listed as known. @param {Map<string, string[]>} names @param {string[]} known @returns {[string, string[]][]} */
-export const duplicates = (names, known) => [...names].map(([n, dirs]) => /** @type {[string, string[]]} */ ([n, dirs.filter(d => !known.includes(d))])).filter(([, dirs]) => dirs.length > 1);
+export const duplicates = (names, known) => [...names].map(([n, dirs]) => /** @type {[string, string[]]} */ ([n, dirs.filter(d => !known.includes(d))])).filter(([, dirs]) => dirs.length > 1 && overlap(dirs));
+
+/** Two folders sharing a name are allowed only for different machines (disjoint roles), the rule buildModuleList applies. @param {string[]} dirs */
+const overlap = dirs => dirs.some((a, i) => dirs.slice(i + 1).some(b => { const ra = rolesOf.get(a) || [], rb = rolesOf.get(b) || []; return !ra.length || !rb.length || ra.some(r => rb.includes(r)); }));
 
 test("no two module folders share a manifest name (the signed module list is never ambiguous)", () => {
   const known = knownFolders(KNOWN), names = namesIn(REPO);
@@ -56,9 +64,14 @@ test("the duplicate check sees what buildModuleList refuses, and sees nothing in
     assert.deepEqual(duplicates(namesIn(root), []), []);
     assert.doesNotThrow(() => buildModuleList(root, { counter: 1, release: "0.0.1" }));
     mod("modules/beta", "beta");
+    assert.deepEqual(duplicates(namesIn(root), []).length, 1);
     const dup = duplicates(namesIn(root), []);
     assert.deepEqual(dup, [["beta", ["local/beta-mac", "modules/beta"]]]);
     assert.throws(() => buildModuleList(root, { counter: 1, release: "0.0.1" }), /two modules are named beta/);
     assert.deepEqual(duplicates(namesIn(root), ["local/beta-mac"]), [], "a folder listed as known is set aside");
+    const roles = (/** @type {string} */ dir, /** @type {string[]} */ r) => { const f = path.join(root, dir, "module.json"); fs.writeFileSync(f, JSON.stringify({ ...JSON.parse(fs.readFileSync(f, "utf8")), roles: r })); };
+    roles("local/beta-mac", ["local"]); roles("modules/beta", ["box"]);
+    assert.deepEqual(duplicates(namesIn(root), []), [], "disjoint roles may share a name");
+    assert.doesNotThrow(() => buildModuleList(root, { counter: 1, release: "0.0.1" }));
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
