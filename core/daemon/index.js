@@ -19,7 +19,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, kernelWanted, kernelOffRefusal } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, kernelWanted, kernelOffRefusal } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -154,7 +154,7 @@ async function startLocked(opts, root, p, release) {
     coreHolder.link = c ? coreLink(c) : null;
     if (c) log(`presence: keys and proofs are vyre-core's (${c.socket})`);
   }
-  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, network: () => cfg.network || {} });
+  const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.machine, standIn: () => !isPackaged(opts.packageRoot) && fs.existsSync(path.join(root, "dev-presence-stand-in")), network: () => cfg.network || {} });
   // Who is the person over the network, not only their device (core/presence/person.js).
   const people = new PersonSessions({ db });
   const started = Date.now();
