@@ -199,11 +199,7 @@ export default {
           let typedBy = false;
           if (ctx.kernel && typeof ctx.kernel.chain === "function") {
             const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
-            const h = c && Array.isArray(c.hops) && c.hops.length === 1 ? c.hops[0] : null;
-            // The hook of a person's own Claude Code reaches vyred as the surface `harness`, which the daemon has no facts for (only cli and local get them), so the chain is the module's own service hop: fail-closed, a plain yes could never count.
-            // It counts here only on that bare hop (caller harness, no agent name, no thread, checked above) and still needs the transcript line below, the same two proofs the kernel-off build asked for. Any other non-person hop stays refused.
-            const bareHarness = Boolean(h && h.actor && h.actor.kind === "service" && h.actor.id === "harness" && caller === "harness");
-            typedBy = Boolean(h && h.actor && (h.actor.kind === "person" || bareHarness) && c.viewer !== true && c.delegated !== true && !c.room);
+            typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
           } else typedBy = !agentName(caller) && modelKey(caller) === "caller:harness"; // SHIM(legacy labels): the kernel-off build
           if (typedBy) {
             const claimed = await ask("threads.claimed", { session: String(session) });
