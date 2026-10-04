@@ -1737,7 +1737,11 @@ admin() {
       word="wipe"
       echo "This destroys everything on this server: every Space's records store and its keys, the vault and its keys, the sealing key, the database backups and the previous release kept for a rollback, then starts a new, empty Vyre with no owner. It cannot be undone."
       ;;
-    *) die "vyre admin wipe | purge-space SPACE | fscrypt-enable" ;;
+    anchor-reset)
+      word="anchor-reset"
+      echo "This lets Vyre start after a restore from backup. The server keeps a note, outside its database, of how far its record log had got; a database put back from an older copy is shorter than that note, and Vyre refuses to start rather than run on a log that may have been rewritten. Resetting the note accepts the restored log as it is: entries made after the copy you restored are gone for good, and from now on nothing checks them. Your phone is asked to approve it, and the reset is written into the log."
+      ;;
+    *) die "vyre admin wipe | purge-space SPACE | fscrypt-enable | anchor-reset" ;;
   esac
   printf 'To go on, type exactly: %s\n> ' "$word"
   IFS= read -r typed || die "nothing was typed; nothing was done"
@@ -1768,6 +1772,17 @@ admin() {
       done
       compose up -d >/dev/null 2>&1 || die "the wipe is done but the daemon did not start; run: vyre up"
       say "wiped. Vyre is running again, new and empty, with no owner. Pair a device to claim it."
+      ;;
+    anchor-reset)
+      # Offline: the daemon is stopped, then scripts/admin-anchor-reset.mjs (kernel and vault own it) starts only the sealing process from a one-off container of the same image, asks the
+      # owner's phone for the presence proof of `anchor.reset`, resets the anchor, writes the sealed event and exits non-zero on any refusal (a bad or replayed proof changes nothing).
+      set_root_run; prepare_run
+      compose run --rm --no-deps -T --entrypoint test vyre -f /opt/vyre/scripts/admin-anchor-reset.mjs >/dev/null 2>&1 || die "this release has no anchor-reset step (scripts/admin-anchor-reset.mjs in the image); nothing was changed"
+      compose stop vyre >/dev/null 2>&1 || die "the daemon could not be stopped; nothing was changed"
+      if compose run --rm --no-deps --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
+      compose up -d >/dev/null 2>&1 || die "the daemon did not start; run: vyre up"
+      [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again and will refuse again until it is"
+      say "the anchor is reset and Vyre is running again."
       ;;
     purge-space)
       set_root_run

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(0.3, onboard): HD-1 onboard.claude, .name, .tailscale, .finish and .history are reach person (no presence: setup runs before any owner exists). system.build is reach person.
+- feat(0.3, box): `sudo vyre admin anchor-reset` (AN-1), offline, with a consequence line; the wrapper half. It runs scripts/admin-anchor-reset.mjs from kernel and vault and refuses plainly while that script is not in the image. A container whose config says machine device or solo now stops with a plain error (box-only units were silently off); packaged-boot checks it.
 - fix(0.3, build): DP-1 the release stamp cannot fail open. `scripts/stamp-build-kind.mjs` (run by build-site.sh) stops the build unless lib/build-kind.js says release afterwards; kernel/devbuild.js and the stamp share the two lines in lib/build-kind-text.js; packaged-boot checks the packed tree and the running image say release and honour no developer switch. ci: node runs in five shards; heavy workflows run only on main, work/v0.3, work/launch-* and their owners' branches or by dispatch.
 - fix(0.3, cli): `vyre up` on a box waits (up to a minute) for `onboard.link` when the daemon answers before its modules have all started, instead of ending the install with "no tool onboard.link" (update-refusals J2b hit it on the full signed module list).
 - fix(0.3, box): `vyre uninstall` removes the Space helper's units (path, service and the watcher) and keeps the wrapper until they are gone; found on a real box, where the watcher kept running after the wrapper was deleted.
