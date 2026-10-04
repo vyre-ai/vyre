@@ -453,7 +453,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
         const st = await driveStatus();
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         if (scope.all) return st;
         const mine = p => within(p, scope.folders);
         return { ...st, shares: st.shares.filter(s => mine(s.path)), list: st.list.filter(s => mine(s.path)) };
@@ -476,7 +476,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Where one of this box's VyreDrive shares is reached on the tailnet, for a device that has no Vyre of its own to ask (a Windows PC's Vyre app): the WebDAV address, the Windows network path for it, the share's access, and whether the box is sharing it now. The owner and the owner's own devices only.",
       input: { type: "object", required: ["share"], properties: { share: { type: "string" } } },
       run: async ({ share }, meta = {}) => {
-        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("only the owner's own devices ask where a share is", "denied");
+        if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("only the owner's own devices ask where a share is", "denied");
         known(String(share));
         const st = await status();
         const node = st && st.Self && String(st.Self.DNSName || "").replace(/\.$/, "");
@@ -537,7 +537,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       description: "Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding. A tailnet-wide security report, not a per-folder read: never an agent (Vyre Drive step 5), same as share/unshare/access above.",
       input: { type: "object", properties: {} },
       run: async (input, meta = {}) => {
-        if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
+        if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("an agent cannot audit VyreDrive's tailnet policy; that is for the owner");
         return audit();
       },
     });
@@ -568,7 +568,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         if (!q) throw refuse("q is required", "bad_input");
         limit = Math.min(500, Math.max(1, Number(limit) || 50));
         kinds = kinds && kinds.length ? kinds : undefined;
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         const map = shares();
         let names = Object.keys(map);
         if (share) {
@@ -712,7 +712,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         description: what,
         input: tool === "files.drive.measure" ? { type: "object", required: ["path"], properties: { path: { type: "string" } } } : { type: "object", properties: {} },
         run: async (input, meta = {}) => {
-          if (!(await reach(ctx, meta && meta.caller)).all) throw refuse("an agent looks at the box's folders with files.dirs, not through the Mac", "denied");
+          if (!(await reach(ctx, meta && meta.caller, meta)).all) throw refuse("an agent looks at the box's folders with files.dirs, not through the Mac", "denied");
           return forward(tool, input);
         },
       });
@@ -812,7 +812,7 @@ export function drive(ctx, { role, guard: g, roots }) {
       run: async ({ path: p }, meta = {}) => {
         const want = String(p);
         if (!path.posix.isAbsolute(want) || want.includes("\0") || want.split("/").includes("..")) return { local: null };
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         // Reviewer H1: checking the SHARE against the grant (an overlap either direction) was
         // not enough when the share is broader than the grant (a share of /work, a grant of only
         // /work/harlow-site) — every path under that share, including a sibling project's,
@@ -837,7 +837,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         q: { type: "string" }, limit: { type: "integer" }, share: { type: "string" },
         kinds: { type: "array", items: { type: "string" } } } },
       run: async (input, meta = {}) => {
-        const scope = await reach(ctx, meta && meta.caller);
+        const scope = await reach(ctx, meta && meta.caller, meta);
         if (!scope.all) throw refuse("an agent searches this Mac's own files only, not the box directly; use files.search", "denied");
         return forward("files.drive.search", input);
       },

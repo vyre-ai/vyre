@@ -39,7 +39,7 @@ export function browse(ctx, { g, folder, shares, tagged = () => null }) {
     if (!Object.prototype.hasOwnProperty.call(map, String(share))) throw nope();
     rel = String(rel || "").replace(/^\/+/, "");
     if (rel.includes("\0") || rel.split(/[\\/]+/).includes("..") || path.isAbsolute(rel)) throw refuse("path must be inside the share, with no ..", "bad_input");
-    const scope = await reach(ctx, meta && meta.caller);
+    const scope = await reach(ctx, meta && meta.caller, meta);
     const raw = path.join(map[share], rel);
     // A file the person tagged in a chat is readable in that chat, one file and nothing around it.
     const tag = !scope.all && file && meta && meta.thread ? tagged(String(meta.thread), String(share), rel.replace(/\/+$/, "")) : null;
