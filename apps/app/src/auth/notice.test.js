@@ -17,7 +17,7 @@ test("a failed renewal says why in the words for its kind, never the server's te
   assert.equal(failureOf("timeout"), "unreachable");
   assert.equal(failureOf("anything else"), "other");
   assert.match(renewWords("unreachable"), /Cannot reach your server right now. You stay signed in; this will retry\./);
-  assert.match(renewWords("denied"), /could not sign in again.*locked after wrong answers, it unlocks by itself in 15 minutes.*removed, pair it again from your phone/);
+  assert.match(renewWords("denied"), /could not sign in again.*locked after failed sign-ins, it unlocks by itself in 15 minutes.*removed, pair it again from your phone/);
   assert.doesNotMatch(renewWords("denied"), /Sign in again from your phone/);
   assert.match(renewWords("other"), /pair this device again from your phone/);
   assert.equal(sessionNotice(S({ renewFailed: "unreachable" }))?.tone, "plain");

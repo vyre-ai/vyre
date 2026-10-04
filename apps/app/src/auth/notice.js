@@ -28,7 +28,7 @@ export const subscribe = (f) => { subs.add(f); return () => { subs.delete(f); };
 /** The words for a failed renewal. Never the server's own text. @param {RenewFailure} kind */
 export function renewWords(kind) {
   if (kind === "unreachable") return "Cannot reach your server right now. You stay signed in; this will retry.";
-  if (kind === "denied") return "This device could not sign in again. If it is locked after wrong answers, it unlocks by itself in 15 minutes. If it was removed, pair it again from your phone.";
+  if (kind === "denied") return "This device could not sign in again. If it was locked after failed sign-ins, it unlocks by itself in 15 minutes. If it was removed, pair it again from your phone.";
   return "Signing in again did not work. If it keeps happening, pair this device again from your phone.";
 }
 
