@@ -2,6 +2,7 @@
 // pipeline, History, Domain, Secrets and the last build's log. Going live, approving and going back are held acts: the box answers with the plan, the person reads it,
 // and publish.decide carries their presence. Nothing here is sample.
 import { useCallback, useEffect, useState } from "react";
+import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, Field, IconTile, Row, Segmented, Sheet, StageSteps, Switch, Tabs, Text, showToast } from "@vyre/ui";
@@ -109,7 +110,7 @@ export function RealSite() {
         {st?.sealed_check ? <Text size="caption" tone="label">{`Sealed-value check: ${st.sealed_check}.`}</Text> : null}
         {hold && held ? (
           <AskCard title={hold.title} why={hold.lines.join(" ")}
-            actions={[{ label: busy ? "Deciding" : "Approve with Face ID", kind: "primary", icon: "faceid", onPress: busy ? () => {} : () => decideHeld(true) }, { label: "Not now", kind: "ghost", onPress: () => decideHeld(false) }]} />
+            actions={[{ label: busy ? "Deciding" : presenceText("Approve with Face ID"), kind: "primary", icon: "faceid", onPress: busy ? () => {} : () => decideHeld(true) }, { label: "Not now", kind: "ghost", onPress: () => decideHeld(false) }]} />
         ) : next ? (
           <View className="self-start"><Button kind="primary" label={busy ? "Working" : next.label} disabled={busy} onPress={() => step(next.tool, cur)} /></View>
         ) : <Banner>{cur.stage === "Production" ? `Version ${cur.version} is live.` : `Nothing to do for version ${cur.version}.`}</Banner>}

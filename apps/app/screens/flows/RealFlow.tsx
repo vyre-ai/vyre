@@ -1,5 +1,6 @@
 // One Flow from the real vyred: its canvas, the version waiting for approval (with the kernel's card and a real Face ID or fingerprint), and its runs painted over the canvas.
 import { useEffect, useState } from "react";
+import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { AskCard, Banner, Button, Card, Chip, Divider, EmptyState, FlowCanvas, Row, Text, haptic, showToast } from "@vyre/ui";
@@ -81,7 +82,7 @@ export function RealFlow({ id }: { id: string }) {
       {waiting && card ? (
         <Sec title="Waiting for your approval">
           <AskCard title={`Approve version ${card.version}`} why={card.changes.length ? card.changes.join(" ") : "Nothing runs until you approve this exact version."}
-            actions={[{ label: busy ? "Approving" : "Approve with Face ID", kind: "primary", icon: "faceid", onPress: busy ? () => {} : approve }]} />
+            actions={[{ label: busy ? "Approving" : presenceText("Approve with Face ID"), kind: "primary", icon: "faceid", onPress: busy ? () => {} : approve }]} />
           <Block label="See as code">{card.text}</Block>
         </Sec>
       ) : null}

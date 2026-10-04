@@ -12,14 +12,15 @@ export function presenceName(): string {
   const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
   return /Mac/.test(ua) ? "Touch ID" : /Windows/.test(ua) ? "Windows Hello" : "your passkey";
 }
-const say = (t?: string) => (t ? t.replace(/Face ID/g, presenceName()) : t);
+/** Text with "Face ID" said the way this device says it. */
+export const presenceText = <T extends string | undefined>(t: T): T => (t ? (t.replace(/Face ID/g, presenceName()) as T) : t);
 
 export function FaceIdSheet({ ask, onClose }: { ask: FaceAsk | null; onClose: () => void }) {
   return (
-    <Sheet open={!!ask} onClose={onClose} title={say(ask?.title)}>
-      <Text tone="muted">{say(ask?.body)}</Text>
+    <Sheet open={!!ask} onClose={onClose} title={presenceText(ask?.title)}>
+      <Text tone="muted">{presenceText(ask?.body)}</Text>
       <View className="flex-row gap-s2">
-        <Button kind="primary" icon="faceid" label={say(ask?.label ?? "Approve with Face ID")} onPress={() => { const a = ask; onClose(); haptic.approve(); a?.onApprove(); }} />
+        <Button kind="primary" icon="faceid" label={presenceText(ask?.label ?? "Approve with Face ID")} onPress={() => { const a = ask; onClose(); haptic.approve(); a?.onApprove(); }} />
         <Button kind="ghost" label="Cancel" onPress={onClose} />
       </View>
     </Sheet>
