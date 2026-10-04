@@ -82,3 +82,32 @@ export async function askPhone(call, o) {
     await sleep(o.pollMs ?? 2000);
   }
 }
+
+
+/** Is this refusal an act held for the owner's yes? The server answers code "held" with detail.approval, the id of the approval the phone's list shows (design 6e03707). @param {any} error */
+export const heldApproval = (error) => (error && error.code === "held" && error.detail && typeof error.detail.approval === "string" ? { id: String(error.detail.approval), line: typeof error.detail.line === "string" ? error.detail.line : "" } : null);
+
+/**
+ * A held act: the browser carries no proof. It waits while the phone answers the approval, then reads what the server did: `approvals.status` gives { state: "waiting" | "done" | "refused" | "timeout" | "none", result?, error? }.
+ * Resolves { result } when the server ran the act, or { ended } (how the ask ended); an act that failed after the yes rejects with the server's code.
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
+ * @param {{ id: string, onWaiting?: () => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
+ * @returns {Promise<{ result: any } | { ended: "refused" | "none" | "timeout" }>}
+ */
+export async function waitHeld(call, o) {
+  const sleep = o.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+  const now = o.now ?? Date.now;
+  o.onWaiting?.();
+  const start = now();
+  for (;;) {
+    if (o.signal?.stopped) return { ended: "none" };
+    const s = await call("approvals.status", { id: o.id });
+    if (s.state === "done" || s.state === "approved") {
+      if (s.error) throw Object.assign(new Error(String(s.error.message || "")), { code: String(s.error.code || "error") });
+      return { result: s.result };
+    }
+    if (s.state === "refused" || s.state === "none" || s.state === "timeout") return { ended: s.state };
+    if (now() - start > (o.limitMs ?? 300_000)) return { ended: "timeout" };
+    await sleep(o.pollMs ?? 2000);
+  }
+}

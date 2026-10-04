@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { AppState, Platform, View } from "react-native";
 import { Button, Card, Divider, Row, Text, showToast } from "@vyre/ui";
-import { call, listen } from "../../src/api/box";
+import { call } from "../../src/api/box";
 import { phoneSigner } from "../../src/real/phone-signer";
 import { proofHeader } from "../../src/real/approvals.js";
-import { ASK_BODY, ALLOW, DONT_ALLOW, answerSession, askFacts, askTitle, sessionRefusal, withPending, type SessionAsk } from "../../src/real/session-asks.js";
 import { answerRefusal, approveCard, askedLine, cardsFrom, factLines, refuseCard, type Pending } from "../../src/real/phone-approve.js";
 
 const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelProof?: string }) => {
@@ -19,35 +18,16 @@ export function PhoneApprovals() {
   const [cards, setCards] = useState<Pending[]>([]);
   const [canSign, setCanSign] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
-  const [asks, setAsks] = useState<SessionAsk[]>([]);
-  const answer = async (a: SessionAsk, yes: boolean) => {
-    setBusy(a.id);
-    try {
-      const me = yes ? await ask("records.me", {}).catch(() => null) : null;
-      const person = typeof me?.person === "string" ? me.person : me?.person?.id ?? "";
-      const space = typeof me?.space === "string" ? me.space : me?.space?.id ?? "";
-      showToast(await answerSession(a, yes, ask, { signer: await phoneSigner(), person, space }));
-      setAsks((l) => l.filter((x) => x.id !== a.id));
-    }
-    catch (e) { const code = (e as { code?: string }).code; showToast(sessionRefusal(code)); if (code === "expired" || code === "none" || code === "not_found") setAsks((l) => l.filter((x) => x.id !== a.id)); }
-    finally { setBusy(""); }
-  };
-  const load = useCallback(() => {
-    ask("approvals.pending", {}).then((a) => setCards(cardsFrom(a))).catch(() => setCards([]));
-    // Browser sign-in asks made while the app was closed (presence.person.session-pending); a box without the tool gives nothing.
-    ask("presence.person.session-pending", {}).then((a) => setAsks((l) => withPending(l, a, Date.now()))).catch(() => {});
-  }, []);
+  const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setCards(cardsFrom(a))).catch(() => setCards([])); }, []);
   useEffect(() => {
     if (Platform.OS === "web") return;
     load();
     void phoneSigner().then((s) => setCanSign(!!s));
     const t = setInterval(load, 60_000);
-    // A new ask says so by event (presence.session-asked): read the list now rather than at the next minute.
-    const off = listen((e) => { if ((e as { type?: string }).type === "presence.session-asked") load(); });
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") load(); });
-    return () => { clearInterval(t); off(); sub.remove(); };
+    return () => { clearInterval(t); sub.remove(); };
   }, [load]);
-  if (Platform.OS === "web" || (!cards.length && !asks.length)) return null;
+  if (Platform.OS === "web" || !cards.length) return null;
   const approve = async (c: Pending) => {
     setBusy(c.id);
     try {
@@ -64,17 +44,6 @@ export function PhoneApprovals() {
     <View className="gap-s2 px-s4 pb-s3">
       <Text size="caption" strong tone="label">Waiting for your approval</Text>
       <Card flush>
-        {asks.map((a, i) => (
-          <View key={a.id}>{i ? <Divider /> : null}
-            <Row title={askTitle(a)} sub={ASK_BODY} />
-            {askFacts(a).length ? <View className="gap-s1 px-s4 pb-s1">{askFacts(a).map((l) => <Text key={l} size="caption" tone="label" mono>{l}</Text>)}</View> : null}
-            <View className="flex-row gap-s2 px-s4 pb-s3 pt-s1">
-              <Button kind="primary" size="sm" icon="faceid" label={busy === a.id ? "Waiting" : ALLOW} disabled={!!busy} onPress={() => void answer(a, true)} />
-              <Button kind="ghost" size="sm" label={DONT_ALLOW} disabled={!!busy} onPress={() => void answer(a, false)} />
-            </View>
-          </View>
-        ))}
-        {asks.length && cards.length ? <Divider /> : null}
         {cards.map((c, i) => (
           <View key={c.id}>{i ? <Divider /> : null}
             <Row title={c.title} sub={c.body || "Approving makes this change. Nothing changes until you do."} />

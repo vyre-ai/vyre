@@ -4,7 +4,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { payloadHash as kernelHash } from "./payload-hash.js";
-import { ACTS, askPhone, endLine, phoneRoute, proofHeader } from "./approvals.js";
+import { ACTS, askPhone, endLine, heldApproval, phoneRoute, proofHeader, waitHeld } from "./approvals.js";
 
 /** @param {any[]} statuses */
 function box(statuses, tamper = "") {
@@ -60,4 +60,28 @@ test("only acts the kernel's proof table covers take the phone route, and the pr
 test("AP-1 on the asking side: a proof request or an ask whose hash is not the hash of its fields is refused", async () => {
   await assert.rejects(askPhone(box([{ state: "waiting" }], "request").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
   await assert.rejects(askPhone(box([{ state: "waiting" }], "ask").call, { tool: "rules.enable", input: { id: "r" }, space: "spc_abcdefghijkl", ...FAST }), (/** @type {any} */ e) => e.code === "hash_mismatch");
+});
+
+test("a held act: the approval id and line are read from the refusal", () => {
+  assert.deepEqual(heldApproval({ code: "held", detail: { approval: "ap_1", line: "Send the draft" } }), { id: "ap_1", line: "Send the draft" });
+  assert.equal(heldApproval({ code: "held" }), null);
+  assert.equal(heldApproval({ code: "needs_presence", detail: { approval: "x" } }), null);
+  assert.equal(heldApproval(null), null);
+});
+
+test("waiting on a held act ends with the server's result, a no, or a timeout, and carries no proof", async () => {
+  const calls = [];
+  const states = [{ state: "waiting" }, { state: "waiting" }, { state: "done", result: { sent: true } }];
+  let i = 0;
+  const call = async (t, input) => { calls.push([t, input]); return states[Math.min(i++, states.length - 1)]; };
+  assert.deepEqual(await waitHeld(call, { id: "ap_1", sleep: async () => {}, pollMs: 0 }), { result: { sent: true } });
+  assert.deepEqual(calls[0], ["approvals.status", { id: "ap_1" }]);
+  assert.deepEqual(await waitHeld(async () => ({ state: "refused" }), { id: "a", sleep: async () => {} }), { ended: "refused" });
+  let t = 0;
+  assert.deepEqual(await waitHeld(async () => ({ state: "waiting" }), { id: "a", sleep: async () => {}, now: () => (t += 200_000), limitMs: 300_000 }), { ended: "timeout" });
+  assert.deepEqual(await waitHeld(async () => ({ state: "waiting" }), { id: "a", signal: { stopped: true } }), { ended: "none" });
+});
+
+test("an act that failed after the yes rejects with the server's code", async () => {
+  await assert.rejects(waitHeld(async () => ({ state: "done", error: { code: "conflict", message: "m" } }), { id: "a" }), (e) => e.code === "conflict");
 });
