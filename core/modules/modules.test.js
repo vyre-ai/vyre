@@ -838,6 +838,34 @@ test("modules: an invalid added copy found first never stops the first party mod
   assert.ok([...reg.modules.keys()].some(k => k.startsWith("gate@")), "the broken copy is reported under name@dir");
 });
 
+test("modules v1: an outward: true tool on reach hook or modules is held for every caller but you, and never runs", async t => {
+  const mod = { name: "oven", version: "0.1.0", apiVersion: 1, description: "Northwind Bakery's oven.", roles: ["box", "local"],
+    does: { tools: [
+      { name: "oven.notify", summary: "tell the supplier the oven broke", reach: "modules", outward: true },
+      { name: "oven.till", summary: "the till's webhook sends a receipt", reach: "hook", outward: true },
+    ] } };
+  const src = `export default { async start(ctx) { globalThis.__ovenRan = []; for (const n of ["oven.notify", "oven.till"]) ctx.tool(n, { effect: "write", input: { type: "object" }, run: async () => { globalThis.__ovenRan.push(n); return { ran: n }; } }); return { async stop() {} }; } };`;
+  const hold = `export default { async start(ctx) { globalThis.__cards = []; ctx.tool("approvals.hold", { input: { type: "object" }, run: async (input, meta) => { if (meta.caller !== "module:registry") throw new Error("denied"); const id = "ap_card" + globalThis.__cards.length + "oven"; globalThis.__cards.push({ id, ...input }); return { id, line: "held" }; } }); return { async stop() {} }; } };`;
+  assert.deepEqual(validate(mod, { firstParty: true }), [], "the manifest rule leaves `true` alone at these reaches");
+  const reg = await registry(t, [["oven", mod, src], ["notes", good, notesSrc], ["approvals", { version: "0.1.0", does: { tools: [{ name: "approvals.hold", reach: "modules" }] } }, hold]], { builtIn: true });
+  assert.equal(reg.modules.get("oven").state, "running", reg.modules.get("oven").error);
+  // a first-party module (the same stand-in the bakery test uses): reach modules is open to it only
+  reg.modules.set("mail", { ...reg.modules.get("notes"), dir: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail") });
+  // a module with nobody behind it (a timer, a start, a direct call) and a module acting for an agent: held
+  for (const [c, meta] of [["module:mail", {}], ["module:mail", { origin: "mcp:agent:kit" }], ["module:mail", { origin: "harness" }]]) {
+    const r = await reg.call("oven.notify", { to: "supplier" }, c, meta);
+    assert.equal(r.error && r.error.code, "held_for_approval", `${c} ${JSON.stringify(meta)}`);
+  }
+  // a module acting for you is you
+  assert.equal((await reg.call("oven.notify", { to: "supplier" }, "module:mail", { origin: "cli" })).data.ran, "oven.notify");
+  // the webhook route's caller is not you: held, and the callers that cannot reach a hook tool at all never get that far
+  const h = await reg.call("oven.till", { receipt: "r1" }, "hook");
+  assert.equal(h.error && h.error.code, "held_for_approval", "hook");
+  for (const c of ["mcp", "mcp:agent:kit", "tailnet-guest:juno"]) assert.ok((await reg.call("oven.till", { receipt: "r1" }, c)).error, c);
+  assert.deepEqual(globalThis.__ovenRan, ["oven.notify"], "only your own call ran");
+  assert.equal(globalThis.__cards.length, 4, "each held call is a card");
+});
+
 test("modules v1: an asked tool runs for a model only when vault.said.match says the person asked, and fails closed", async t => {
   // A stand-in vault: it matches the tool "bakery.target" in thread t-1 only, and records what it was asked.
   /** @type {any} */ (globalThis).__said = [];
