@@ -58,14 +58,44 @@ test("a proof is refused with no nonce, another call's nonce, a used nonce and a
   assert.equal((await device.call("grants.setRole", [role, { presence: good(late.payload_hash), challenge: late.nonce }]).then(() => null, e => e)).code, "bad_challenge", "an expired nonce");
 });
 
-test("a caller's own options object keeps its other options beside the proof", async () => {
+test("PW-4: only a proof and its challenge may travel as options: another option is refused, so a proof is never aimed at a data argument", async () => {
   const { device, transport } = await rig();
-  const ch = await (async () => (await device.call("grants.setRole", [role]).then(() => null, e => e)).challenge)();
-  await device.call("grants.setRole", [role, { presence: { payload_hash: ch.payload_hash, nonce: "o1" }, challenge: ch.nonce, reason: "x" }]).catch(() => null);
-  const sent = transport.sent[transport.sent.length - 1];
-  assert.deepEqual(sent.args, [role, { reason: "x" }]);
-  assert.equal(sent.opts, 1);
-  assert.equal(sent.proof.nonce, "o1");
+  const ch = (await device.call("grants.setRole", [role]).then(() => null, e => e)).challenge;
+  await assert.rejects(() => device.call("grants.setRole", [role, { presence: { payload_hash: ch.payload_hash, nonce: "o1" }, challenge: ch.nonce, reason: "x" }]), { code: "bad_input" });
+  assert.ok(transport.sent.every(r => !r.opts), "no request names an options index");
+  // and the server appends the proof as its own trailing option even if a request asks for another place
+  const r = await transport.send(SPACE, { v: 1, space: SPACE, id: "rq_x", ts: Date.now(), call: "grants.setRole", args: [role], proof: { payload_hash: ch.payload_hash, nonce: "o2" }, challenge: ch.nonce, opts: 0 });
+  assert.ok(r.ok || r.error.code !== "bad_challenge");
+});
+
+test("PW-2: the client signs only a challenge for the call, space, arguments and act it asked: a forged challenge gets no signature", async () => {
+  const forged = [
+    ch => ({ ...ch, call: "grants.revoke" }),
+    ch => ({ ...ch, space: "spc_zzzzzzzzzzzz" }),
+    ch => ({ ...ch, args_hash: "x".repeat(43) }),
+    ch => ({ ...ch, payload_hash: "y".repeat(43) }),
+    ch => ({ ...ch, fields: { resource: "vyre://spc_aaaaaaaaaaaa/member/per_evil", input_hash: "z" } }),
+  ];
+  for (const f of forged) {
+    let signed = 0;
+    const { server } = await rig();
+    // a home that forges its challenge on the way back
+    const transport = { async send(space, request) { const r = await server.serve(JSON.parse(JSON.stringify(request)), { device_key_id: "dev_owner", person: OWNER, path: "wink" }); return r.ok === false && r.error.challenge ? { ...r, error: { ...r.error, challenge: f(r.error.challenge) } } : r; } };
+    const device = createRemoteKernel({ space: SPACE, transport, clock, signer: async ch => { signed++; return { presence: { payload_hash: ch.payload_hash, nonce: "n" + Math.random() } }; } });
+    const e = await device.gateway.grants.setRole({}, role).then(() => null, x => x);
+    assert.equal(signed, 0, "the signer was never called for a forged challenge");
+    assert.ok(e && /presence/.test(e.code), "the call fails with the home's own refusal");
+  }
+});
+
+test("PW-3: one device asking again and again cannot invalidate another device's live challenge", async () => {
+  const { server, device } = await rig();
+  const ch = (await device.gateway.grants.setRole({}, role).then(() => null, x => x)).challenge;
+  const t2 = createMemoryTransport({ servers: { [SPACE]: server }, peer: { device_key_id: "dev_noisy", person: OWNER, path: "wink" } });
+  const noisy = createRemoteKernel({ space: SPACE, transport: t2, clock });
+  for (let i = 0; i < 2000; i++) await noisy.call("grants.setRole", [{ person: BOB, role: "member" }]).catch(() => null);
+  const r = await device.call("grants.setRole", [role, { presence: { payload_hash: ch.payload_hash, nonce: "late" }, challenge: ch.nonce }]).then(() => null, e => e);
+  assert.ok(!r || r.code !== "bad_challenge", "the owner's device challenge is still live");
 });
 
 test("another device cannot use a challenge issued to the owner's device", async () => {
