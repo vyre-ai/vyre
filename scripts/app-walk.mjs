@@ -65,7 +65,11 @@ function forward(req, res) {
 }
 const server = http.createServer((req, res) => {
   if (req.url.startsWith("/v1")) return forward(req, res);
-  const p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+  let p = decodeURIComponent(req.url.split("?")[0]).replace(/^\/app/, "") || "/";
+  // the box generates /app/sw.js from precache.json at serve time; the walk has no service worker, so an empty one stands in (it was served as index.html, a MIME error)
+  if (p === "/sw.js") { res.writeHead(200, { "content-type": "text/javascript" }); return res.end("// walk: no service worker\n"); }
+  // a lazy chunk is asked for relative to the page (/app/u/now/_expo/...): the file is dist/_expo/... whatever the page depth
+  const asset = /\/((?:_expo|assets)\/.*)$/.exec(p); if (asset) p = "/" + asset[1];
   let f = path.join(DIST, p);
   if (!f.startsWith(DIST) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(DIST, "index.html");
   res.writeHead(200, { "content-type": TYPES[path.extname(f)] || "application/octet-stream" });
