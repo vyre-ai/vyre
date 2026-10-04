@@ -1,4 +1,5 @@
 // The owner's approval of a Kit's install card is the presence for that install and nothing else (the lead's ruling, 5 Oct): kernel/tasks/kit-apply.js, records.define with a waiver.
+import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createKernel } from "../index.js";
