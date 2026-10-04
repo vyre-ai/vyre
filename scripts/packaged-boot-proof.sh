@@ -97,6 +97,8 @@ echo "$st"
 check_modules
 # A migration that fails on a module takes its tools away while the daemon stays up: the log says so.
 ! docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' || { docker logs vyre-vyre-1 2>&1 | grep -Ei 'migration .* failed' | head -5; echo "a migration failed at boot"; soft; }
+# A fresh install never needs the duplicate-column repair either.
+! docker logs vyre-vyre-1 2>&1 | grep -qE 'migration .* v[0-9]+: column already present, treated as applied' || { docker logs vyre-vyre-1 2>&1 | grep -E 'column already present' | head -3; echo "a fresh install needed the duplicate-column migration repair"; soft; }
 # A root-run update passes the daemon only the settings it checks (box/vyre prepare_run). Run one as root (`sudo vyre up` recreates the container from root's own env file), then the
 # kernel must still be on and the same modules must run: a box must not fall back to kernel off after its first update.
 sudo -n vyre up >"$WORK/rootrun.log" 2>&1 || { tail -20 "$WORK/rootrun.log"; echo "the root-run up failed"; exit 1; }
