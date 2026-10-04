@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import readline from "node:readline";
 import { CLASSES, hintOf, redact } from "./classes.js";
 import { compact, ledgerEntries } from "./normalise.js";
@@ -306,7 +307,7 @@ export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop"
  * kernel/seal/buildkind.test.js pins that this equals devbuild's answer for every stamp. `root` is for that test.
  * @param {string | undefined} value @param {string} [root]
  */
-export function devSwitch(value, root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..")) {
+export function devSwitch(value, root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..")) {
   if (value !== "1") return false;
   let text = ""; try { text = fs.readFileSync(path.join(root, "lib", "build-kind.js"), "utf8"); } catch { return false; }
   return /export const BUILD_KIND = "development";/.test(text) && !fs.existsSync(path.join(root, "SHA256SUMS.sig"));
