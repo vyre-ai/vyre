@@ -707,16 +707,6 @@ export async function asTaken(caller, socket, registry, thread, deps) {
 const taken = new WeakMap();
 
 /**
- * The ancestry callerFacts takes for a socket call, from asTaken's answer. `outside` is the daemon's own measurement. DEVELOPMENT ONLY: with the hand-made stand-in file (`standIn`, which is false in a
- * release-kind build, see devStandIn) a call that is not inside a model counts as outside too, so a CLI at a terminal over ssh is the signed-in owner on a dev box and can seed and walk it. A caller
- * inside a model has already been relabelled `mcp` and never gets person facts, stand-in or not.
- * @param {{ model: boolean, outside?: boolean }} shell @param {boolean} standIn @returns {{ inside: boolean, outside: boolean }}
- */
-export function surfaceAncestry(shell, standIn) {
-  return { inside: shell.model === true, outside: shell.outside === true || (standIn === true && shell.model !== true) };
-}
-
-/**
  * The login the person on the socket is typing in, as a key ("ttys003#812@<start>"), or null. Null
  * from under a `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a
  * double-forked or setsid'd process has none, and `script` or expect ptys are not logins. The key
@@ -1032,7 +1022,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // LB-1: a person's-surface label on the socket is a person only after the ancestry measurement `asTaken` made above (a model's shell was relabelled and never reaches here as a surface label);
     // `callerFacts` itself takes that measurement as input and gives nothing without it, so no new call path can build a person from the label alone.
     /** @type {{ inside: boolean, outside: boolean } | undefined} */
-    const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true) : undefined; // not `ancestry`: that is the imported function used earlier in this handler (a const here put it in its dead zone)
+    const measured = socket && !policy.caller ? { inside: shell.model === true, outside: shell.outside === true } : undefined; // not `ancestry`: that is the imported function used earlier in this handler (a const here put it in its dead zone)
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
     const result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
