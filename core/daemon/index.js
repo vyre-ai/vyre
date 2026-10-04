@@ -986,7 +986,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       // Claude Code on this computer (core/pluginagent): an agent the person granted once, with no thread of its own. Its key is checked the same way, and the daemon stamps its kernel token below.
       const plug = key ? await registry.call("pluginagent.vouch", { agent: said[1], key }, "module:vyred").catch(() => null) : null;
       if (!(plug && plug.data && plug.data.ok === true)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
-      Object.assign(via, { agent: said[1] }); pluginAgent = said[1];
+      // Not a thread's agent: its calls are a model's own (`mcp`), and what it is comes from the kernel token vyred stamps, never from the label.
+      pluginAgent = said[1];
     }
   } else if (req.headers["x-vyre-agent-key"]) {
     // An agent's key on a caller that names no agent: something inside an agent's thread (its

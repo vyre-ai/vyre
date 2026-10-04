@@ -7,10 +7,26 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
 import { tempHome, present } from "../../test/helpers.js";
+
+const SERVER = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "harness", "mcp", "server.js");
+/** The plugin's own MCP server (the real entry), spoken to over stdio until `want` replies arrive. */
+async function mcp(/** @type {string} */ home, /** @type {any[]} */ msgs, /** @type {number} */ want) {
+  const env = { ...process.env, VYRE_HOME: home }; delete env.VYRE_SOCKET; delete env.VYRE_AGENT;
+  const p = spawn(process.execPath, [SERVER], { env });
+  const replies = new Map(), waiting = new Map(); let buf = "";
+  p.stdout.on("data", c => { buf += c; for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.set(m.id, m); waiting.get(m.id)?.(m); } });
+  for (const m of msgs) { const a = "id" in m && new Promise(r => waiting.set(m.id, r)); p.stdin.write(JSON.stringify(m) + "\n"); if (a) await a; if (replies.size >= want) break; }
+  p.kill();
+  return replies;
+}
+const INIT = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "0" } } };
+const LIST = { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} };
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
@@ -32,9 +48,14 @@ test("grant once: ask, approve, then the plugin's calls are that agent's, with i
   assert.ok(everywhere.length >= 1);
 
   // 1. A bare model: files an ask, is not granted, reads nothing of the person's memory.
-  const asked = await call("pluginagent.ask", { computer: "Alex's MacBook" }, { root, caller: "mcp" });
-  assert.equal(asked.data && asked.data.state, "waiting", JSON.stringify(asked));
-  assert.equal((await call("pluginagent.ask", { computer: "Alex's MacBook" }, { root, caller: "mcp" })).data.id, asked.data.id, "the same ask is not filed twice");
+  // The plugin's own server asks, once, by itself, the first time it runs here.
+  await mcp(root, [INIT, LIST], 2);
+  await new Promise(r => setTimeout(r, 500));
+  const waiting = (await call("pluginagent.pending", {}, opts)).data || [];
+  assert.equal(waiting.length, 1, "the plugin filed one ask: " + JSON.stringify(waiting));
+  await mcp(root, [INIT, LIST], 2); await new Promise(r => setTimeout(r, 500));
+  assert.equal(((await call("pluginagent.pending", {}, opts)).data || []).length, 1, "the same ask is not filed twice");
+  const asked = { data: { id: waiting[0].id } };
   assert.equal((await call("pluginagent.status", {}, { root, caller: "mcp" })).data.granted, false);
   const bare = await call("memory.profile", {}, { root, caller: "mcp" });
   assert.ok(bare.error || !JSON.stringify(bare.data || "").includes("Jordan"), "a bare mcp reads no personal memory");
@@ -62,6 +83,11 @@ test("grant once: ask, approve, then the plugin's calls are that agent's, with i
   assert.equal(rem.data && rem.data.pending, true, JSON.stringify(rem).slice(0, 200));
   assert.ok(!JSON.stringify((await call("memory.profile", {}, opts)).data).includes("Mallory"), "it never writes as the person");
   assert.ok((await call("memory.pin", { node: "Dana Reyes" }, as)).error, "it cannot steer the whole graph");
+
+  // 3b. Through the plugin's actual MCP server: once granted it needs no prompt and no env, only the home's key file.
+  const via = await mcp(root, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "memory_profile", arguments: {} } }], 2);
+  const reply = via.get(2).result;
+  assert.ok(!reply.isError && JSON.stringify(reply).includes("Jordan"), "the plugin's own server reads personal memory as the granted agent: " + JSON.stringify(reply).slice(0, 200));
 
   // 4. Refusals: a wrong key, a label naming another agent with this key, a key with no label, a client-sent kernel token.
   assert.equal((await call("memory.profile", {}, { ...as, headers: { "x-vyre-agent-key": "nope" } })).error.code, "denied");
