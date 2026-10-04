@@ -253,7 +253,7 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
 
 // /vyre remember, then a question, from the user's own Claude Code session (bare "mcp"), through
 // the copied plugin's MCP server. An agent's session is refused both.
-test("memory: the user's own session remembers a fact and is answered from it; an agent's session is refused", async t => {
+test("memory: the user's own session's remember is kept pending, not as the person's fact; an agent's session is refused", async t => {
   const { cache, env } = install(t, { withVyre: true });
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
@@ -264,12 +264,16 @@ test("memory: the user's own session remembers a fact and is answered from it; a
     call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
   const names = own.get(2).result.tools.map(x => x.name);
   for (const n of ["memory_remember", "memory_answer"]) assert.ok(names.includes(n), n);
-  assert.ok(out(own, 3).facts.length > 0, "the fact is kept at once");
+  // HD-8: a session is a model, and a model's words are not the person's. It is kept as an untrusted, attributed note, pending until the person tells memory themselves.
+  const kept = out(own, 3);
+  assert.equal(kept.pending, true);
+  assert.deepEqual(kept.facts, []);
   // A fresh server, as the next question would be: the answer comes from vyred, not the process.
   const ask = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT,
     call(2, "memory_answer", { q: "who is my wife" }), call(3, "memory_answer", { q: "who is my wife", project_cwds: ["/home/alex/Work/harlow-site"] })], 3);
-  assert.equal(out(ask, 2).answer, "Your wife is Jordan.");
-  assert.equal(out(ask, 3).answer, "Your wife is Jordan.", "from inside a project folder too");
+  // The session's note is not the person's fact: the answer does not state it as theirs.
+  assert.notEqual(out(ask, 2).answer, "Your wife is Jordan.");
+  assert.notEqual(out(ask, 3).answer, "Your wife is Jordan.", "nor from inside a project folder");
   const agent = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root, VYRE_AGENT: "kit" }, [INIT,
     call(2, "memory_remember", { text: "My brother is Max." }), call(3, "memory_answer", { q: "who is my wife" })], 3);
   for (const id of [2, 3]) {

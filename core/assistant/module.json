@@ -56,7 +56,6 @@
   "watches": {
     "emits": [
       "assistant.briefed",
-      "assistant.glanced",
       "assistant.rolled",
       "push.proactive"
     ]
