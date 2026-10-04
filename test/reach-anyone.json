@@ -1525,10 +1525,6 @@
    "module": "vault",
    "reason": "callers list in code (capsule, cli, deck, local): no model caller; presence proof required"
   },
-  "vault.account.unlock-phone": {
-   "module": "vault",
-   "reason": "callers list is the paired device only; the vault password and Face ID are checked in the body and by the presence floor"
-  },
   "vault.agent.grant": {
    "module": "vault",
    "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
