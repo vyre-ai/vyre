@@ -12,10 +12,13 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import readline from "node:readline";
 import { CLASSES, hintOf, redact } from "./classes.js";
 import { compact, ledgerEntries } from "./normalise.js";
 import { Presence } from "./proof.js";
+import { appAttestVerifier, devSwitch } from "./appattest.js";
+export { devSwitch };
 import { SealStore } from "./store.js";
 
 export const HUMAN_SURFACES = new Set(["deck", "capsule", "mobile"]);
@@ -35,8 +38,8 @@ const need = (c, m) => { if (!c) throw err(m); };
 
 export class Sealer {
   /** @param {{ dir: string, master: Buffer, sinks?: Record<string,string>, now?: () => number }} o */
-  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false, allowSoftware = false }) {
-    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, allowSoftware, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
+  constructor({ dir, master, sinks = {}, now = Date.now, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null }) {
+    this.store = new SealStore(dir, master); this.sinks = sinks; this.now = now; this.presence = new Presence(now, { verifiers, allowUnattested, allowSoftware, appattest, file: path.join(dir, "presence.json"), custody: this.store }); this.allowUnattested = allowUnattested;
     this.sessions = new Map(); this.lookups = new Map(); this.leases = new Leases(this.store, now);
     // Filled text does not last: swept at start and every hour (a day at most, ten minutes after a delivery), so a restart loses no deadline.
     const sweep = () => { this.store.sweep("derived", 86_400_000); this.store.sweepDelivered(600_000); };
@@ -300,18 +303,6 @@ export function custodyNote(profile = process.env.VYRE_SEAL_PROFILE || "desktop"
   if (platform === "win32") return "Sealed data on this PC is only as protected as this PC's own Windows account: any program running as you can read the key file.";
   return "The sealing key is a file inside your Vyre folder, private to you. Vyre's own sessions are sandboxed away from it and your disk's encryption protects it at rest; root, or a program running as you outside Vyre's sandbox, can read it.";
 }
-/**
- * Is an environment developer switch honoured here? Exactly "1" AND not a packaged build. Self-contained (this process imports no kernel code beyond kernel/seal): it reads the build stamp
- * lib/build-kind.js as TEXT, the same rule as kernel/devbuild.js isPackaged (a missing or unreadable stamp, anything but "development", or a carried SHA256SUMS.sig means packaged);
- * kernel/seal/buildkind.test.js pins that this equals devbuild's answer for every stamp. `root` is for that test.
- * @param {string | undefined} value @param {string} [root]
- */
-export function devSwitch(value, root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..")) {
-  if (value !== "1") return false;
-  let text = ""; try { text = fs.readFileSync(path.join(root, "lib", "build-kind.js"), "utf8"); } catch { return false; }
-  return /export const BUILD_KIND = "development";/.test(text) && !fs.existsSync(path.join(root, "SHA256SUMS.sig"));
-}
-
 export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop", dev = devSwitch(process.env.VYRE_SEAL_DEV), uid = process.getuid?.() ?? -1, agentUids = process.env.VYRE_AGENT_UIDS } = {}) {
   if (dev || profile === "desktop") return;
   const agents = agentUids ? agentUids.split(",").map(Number) : Array.from({ length: 64 }, (_, i) => 2000 + i);
@@ -322,8 +313,8 @@ export function hostCheck({ profile = process.env.VYRE_SEAL_PROFILE || "desktop"
 export const unattestedAllowed = (env, root) => devSwitch(env.VYRE_SEAL_UNATTESTED, root);
 
 /** Serve requests on stdin and stdout. Anything unexpected is a generic code: the message of an exception may hold input, so it is never sent. */
-export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false } = {}) {
-  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware });
+export function serve({ dir, master = (hostCheck(), fileMaster(dir)), sinks = {}, input = process.stdin, output = process.stdout, verifiers = {}, allowUnattested = false, allowSoftware = false, appattest = null } = {}) {
+  const sealer = new Sealer({ dir, master, sinks, verifiers, allowUnattested, allowSoftware, appattest });
   if (allowSoftware) process.stderr.write("seal: software presence keys are accepted (development build); every use is method software\n");
   const rl = readline.createInterface({ input });
   rl.on("line", async line => {
@@ -342,6 +333,10 @@ if (process.argv[1] && process.argv[1].endsWith("kernel/seal/process.js") && pro
   process.stdin.on("end", () => process.exit(0)); process.stdin.on("close", () => process.exit(0));
   let verifiers = {};
   if (process.env.VYRE_SEAL_VERIFIERS) verifiers = (await import(process.env.VYRE_SEAL_VERIFIERS)).default;
-  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE) }); }
+  try { serve({ dir: process.env.VYRE_SEAL_DIR, sinks: JSON.parse(process.env.VYRE_SEAL_SINKS || "{}"), verifiers, allowUnattested: devSwitch(process.env.VYRE_SEAL_UNATTESTED), allowSoftware: devSwitch(process.env.VYRE_SEAL_SOFTWARE), appattest: (() => {
+    // App Attest: the test root, the development environment and extra app ids exist only under the process's own devSwitch (AA-1, AA-2); a release-kind build ignores all three variables.
+    const dev = devSwitch(process.env.VYRE_SEAL_APPATTEST_DEV);
+    return appAttestVerifier({ dev, testRootPem: dev && process.env.VYRE_SEAL_APPATTEST_ROOT ? fs.readFileSync(process.env.VYRE_SEAL_APPATTEST_ROOT, "utf8") : null, extraAppIds: dev && process.env.VYRE_SEAL_APPATTEST_APPS ? process.env.VYRE_SEAL_APPATTEST_APPS.split(",") : [] });
+  })() }); }
   catch (e) { process.stderr.write(`seal: ${e?.safe ? e.message : "internal error"}\n`); process.exit(70); }
 }

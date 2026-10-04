@@ -101,7 +101,7 @@ test("guests: a guest never approves, never proves presence, never pairs, and a 
     assert.equal(r.error && r.error.code, "denied", tool);
   }
   const pair = await d.registry.call("link.pair.request", { name: "sams-laptop" }, guest, {});
-  assert.match(pair.error.message, /from the device, over the tailnet/);
+  assert.match(pair.error.message, /from the device, over the tailnet|is not available to/);
   // x-vyre-caller over the listener is ignored, and over the socket a guest's label is anonymous.
   const { socketCaller } = await import("../core/daemon/index.js");
   assert.equal(socketCaller({ headers: { "x-vyre-caller": guest } }), "anonymous");
@@ -137,7 +137,7 @@ test("agent nodes: the node's agent must also bring that same agent's key", asyn
   assert.deepEqual([m.peer.kind, m.peer.agent, m.peer.stableId, m.peer.login], ["agent", "kit", "nKIT", null]);
   // An agent's node is not one of the owner's devices: it cannot pair.
   const pair = await call(KIT_IP, "link.pair.request", { name: "kit" }, { "x-vyre-agent-key": "kit-key" });
-  assert.match(pair.error.message, /from the device, over the tailnet/);
+  assert.match(pair.error.message, /from the device, over the tailnet|is not available to/);
 });
 
 test("agent nodes: without a resolver's answer, the node is refused as a tagged node", async t => {

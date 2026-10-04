@@ -13,6 +13,8 @@ import { canonical, flowHash } from "./schema.js";
 import { compileFlow } from "./compile.js";
 import { ROLE_BUNDLES } from "../contracts/index.js";
 import { newId } from "./store.js";
+import { taskIdOf } from "./stages.js";
+import { canonical as kcanonical, sha256 as ksha } from "../core/canonical.js";
 
 export const KIT_FORMAT = 1;
 const NAME_RE = /^[a-z][a-z0-9_-]{0,63}$/;
@@ -45,6 +47,9 @@ export function kitParts(kit) {
 }
 
 export const kitHash = (/** @type {any} */ kit) => flowHash(kit);
+/** What the kernel's approved-Kit waiver is bound to (kernel/tasks/kit-apply.js): the Kit's id, version, content hash and the type definitions it defines, byte for byte. @param {any} kit */
+export const waiverKit = kit => ({ id: kit.id, version: kit.version, hash: kitHash(kit), types: kitParts(kit).filter(x => x.kind === "type").map(x => x.def) });
+export const waiverHash = (/** @type {any} */ kit) => ksha(kcanonical(waiverKit(kit)));
 
 /** @param {any} kit @param {import('./compile.js').Catalog} cat @returns {{ ok: boolean, errors: { path: string, message: string }[], cat: import('./compile.js').Catalog }} */
 export function checkKit(kit, cat) {
@@ -251,8 +256,9 @@ export class KitManager {
    */
   async propose(kit, approver, callerChain) {
     const cat = await this.catalogFn();
-    const d = await this.k.authorize({ chain: callerChain, action: "kits.install", resource: `vyre://${cat.space}/kit/${kit.id}` });
-    if (d.effect === "deny") throw Object.assign(new Error("you may not install Kits here"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
+    // Asking is `kits.propose` (a write: an assistant narrowed from the person may ask); the install itself is `kits.install` (admin), checked below when the approved task is applied.
+    const d = await this.k.authorize({ chain: callerChain, action: "kits.propose", resource: `vyre://${cat.space}/kit/${kit.id}` });
+    if (d.effect === "deny") throw Object.assign(new Error("you may not ask for Kits here"), { code: d.reason === "no_grant" ? "not_found" : d.reason });
     const installed = await this.store.get(kit.id);
     const card = installCard(kit, cat);
     if (!card.ok) return { ok: false, errors: card.errors, card };
@@ -269,7 +275,7 @@ export class KitManager {
     const task = await this.k.ask.request(this.#chain(cat, kit.id, approver), {
       title: installed ? `Update ${kit.name} to version ${kit.version}?` : `Install ${kit.name}?`, output: { kind: "decision" }, source: "manual",
       ...(doerChain ? { doer: { kind: "service", id: "flows", space: cat.space }, checker: approver } : { doer: approver }),
-      form: { kind: "kit_install", proposal: id, card, diff },
+      form: { kind: "kit_install", proposal: id, kit_hash: waiverHash(kit), card, diff },
     }, { idem: `kit:${kit.id}:${kit.version}:${kitHash(kit)}` });
     if (doerChain) for (const [step, arg] of [["start"], ["complete", { answer: "yes", reason: `${kit.name} version ${kit.version} is waiting for your yes` }]]) {
       try { await (step === "start" ? this.k.ask.start(doerChain, task.id) : this.k.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
@@ -282,15 +288,20 @@ export class KitManager {
   async onEvent(env) {
     if (!/^task\./.test(env.type)) return null;
     // The kernel's own task events carry only the subject: the task id is its last segment, and the outcome is read from the task, not from the event.
-    const id = (env.data && (env.data.task || env.data.id)) || (typeof env.subject === "string" && /\/task\/[^/]+$/.test(env.subject) ? env.subject.slice(env.subject.lastIndexOf("/") + 1) : null);
+    const id = taskIdOf(env);
     if (!id) return null;
     const p = await this.store.proposalByTask(id);
     if (!p) return null;
-    const cat = this.catalogFn();
+    const cat = await this.catalogFn();
     const row = await this.k.ask.get(this.#chain(cat, p.kit.id, p.approver), id);
     if (!row || row.state !== "done") return null;
     if (row.outcome !== "approved") { await this.store.delProposal(p.id); return { declined: p.kit.id }; }
-    return this.apply(p.id);
+    try { return await this.apply(p.id); }
+    catch (e) {
+      // A Kit that is not the one that was approved is dropped, said plainly, and never retried.
+      if (e && /** @type {any} */ (e).code === "hash_mismatch") { await this.store.delProposal(p.id); return { refused: p.kit.id, reason: /** @type {Error} */ (e).message }; }
+      throw e;
+    }
   }
 
   /** Apply an approved proposal. Idempotent per step: a crash mid-way resumes from the ledger. @param {string} proposalId */
@@ -301,6 +312,18 @@ export class KitManager {
     const kit = p.kit;
     if (kitHash(kit) !== p.hash) throw Object.assign(new Error("the Kit changed after it was approved"), { code: "hash_mismatch" });
     const chain = this.#chain(cat, kit.id, p.approver);
+    // The stored Kit and its stored hash sit in one proposal record, so they prove nothing against each other. What the owner approved is the task's FORM (the kernel's proof covers its hash), and
+    // that form names the Kit by kit_hash: every Kit, with types or without, is checked against it before anything changes (the kernel's waiver repeats the check for the types).
+    if (p.task) {
+      const row = await this.k.ask.get(chain, p.task).catch(() => null);
+      const f = row && row.form;
+      if (!row || row.state !== "done" || row.outcome !== "approved" || !f || f.kind !== "kit_install" || f.kit_hash !== waiverHash(kit)) throw Object.assign(new Error("this Kit is not the one that was approved"), { code: "hash_mismatch" });
+      if (row.payload && row.payload.form_hash && ksha(kcanonical(f)) !== row.payload.form_hash) throw Object.assign(new Error("the approval does not cover this card"), { code: "hash_mismatch" });
+    }
+    // The install is the approver's act: the kernel decides `kits.install` for their chain before anything changes (a person who is no longer an admin installs nothing). The ledger row below, a
+    // record write the kernel logs, comes before any definition, so an install that stops half way is on the record and resumes from it.
+    const may = await this.k.authorize({ chain, action: "kits.install", resource: `vyre://${cat.space}/kit/${kit.id}` });
+    if (may.effect === "deny") throw Object.assign(new Error("the approver may not install Kits here"), { code: may.reason === "no_grant" ? "not_found" : may.reason });
     const prior = await this.store.get(kit.id);
     const parts = kitParts(kit);
     const row = prior && prior.status === "installing" ? prior : { kit_id: kit.id, version: kit.version, hash: p.hash, status: "installing", by: p.approver, at: this.now(), kit, from: prior ? prior.kit : null, added: /** @type {any[]} */ ([]), flows: /** @type {Record<string, string>} */ ({}), refs: /** @type {Record<string, any>} */ ({}) };
@@ -313,7 +336,15 @@ export class KitManager {
       const old = prior ? new Set(kitParts(prior.kit).filter(x => x.kind === "type").map(x => x.name)) : new Set();
       const add = types.filter(t => !old.has(t.name) && !cat.types[t.name]);
       const change = types.filter(t => old.has(t.name) || cat.types[t.name]);
-      await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) });
+      // The kernel's approved-Kit waiver (kernel/tasks/kit-apply.js): the owner's approval of THIS task, which signed the form's kit_hash, stands for the admin presence the type definitions ask
+      // for, once. A resumed install whose types are already defined (the ledger says so) asks for nothing, so a spent approval never blocks the rest.
+      // Whether the types still need defining comes from the LIVE catalog, never from the ledger row alone (a row is a record some chains can write): a type that does not exist is defined under a fresh waiver.
+      const live = (await this.catalogFn()).types || {};
+      // An install that is not a resume (a first install or an update) always defines; a resumed one defines only what is still missing.
+      const need = !(prior && prior.status === "installing") || types.some(t => !live[t.name]);
+      const waiver = need && this.k.kits && p.task ? await this.k.kits.begin({ chain, task: p.task, kit: waiverKit(kit) }) : undefined;
+      if (need) await this.k.records.define(chain, { ...(add.length ? { add_types: add } : {}), ...(change.length ? { change_types: change } : {}) }, waiver ? { waiver } : undefined);
+      if (waiver && this.k.kits) await this.k.kits.end(waiver);
       for (const t of types) if (!row.added.includes(`type:${t.name}`)) row.added.push(`type:${t.name}`);
     }
     for (const part of parts) {
@@ -356,7 +387,7 @@ export class KitManager {
 
   /** The types a Kit's roles and views are stored as, made once when the first one is installed (the kernel's type names are lowercase with hyphens). @param {any} chain @param {string} type */
   async #ensureDefType(chain, type) {
-    if (this.catalogFn().types[type]) return;
+    if ((await this.catalogFn()).types[type]) return;
     try { await this.k.records.define(chain, { add_types: [{ name: type, label: type === "def-role" ? "Role definition" : "View definition", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] }] }); }
     catch (e) { if (!e || !["already_exists", "conflict", "bad_input"].includes(/** @type {any} */ (e).code)) throw e; }
   }

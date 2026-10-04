@@ -17,10 +17,10 @@ test("memory.sealscan {ledger:true} on a real daemon: a sealed value with no cla
   t.after(async () => { await sealer.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const d = await start({ root: tempHome(t), log: () => {}, kernel: true, kernelSealer: sealer });
   t.after(() => d.stop());
-  const facts = callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false });
+  const facts = callerFacts("cli", {}, {}, d.kernel, false, null, { inside: false, outside: true });
   const owner = d.kernel.chains.fromFacts(facts);
   await sealer.api.put({ chain: owner, record: `vyre://${d.kernel.id.space}/patient/p_1`, field: "mrn", class: "medical", value: "MRN-5589120", hint_allowed: false });
-  const call = (input, caller = "cli", tool = "memory.sealscan") => d.registry.call(tool, input, caller, { ...(callerFacts(caller, {}, {}, d.kernel, false, null, { inside: false }) ? { kernelFacts: callerFacts(caller, {}, {}, d.kernel, false, null, { inside: false }) } : {}) });
+  const call = (input, caller = "cli", tool = "memory.sealscan") => d.registry.call(tool, input, caller, { ...(callerFacts(caller, {}, {}, d.kernel, false, null, { inside: false, outside: true }) ? { kernelFacts: callerFacts(caller, {}, {}, d.kernel, false, null, { inside: false, outside: true }) } : {}) });
   const w = await call({ project: "you", kind: "note", text: "Chart note: MRN-5589120 came in with a referral; their order 7788990 shipped" }, "cli", "memory.write");
   assert.ok(!w.error, JSON.stringify(w.error));
   const shape = await call({}); 

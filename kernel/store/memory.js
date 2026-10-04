@@ -16,18 +16,18 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
  * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
  * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
- * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, values(): Iterable<any>, searchTop?(words: string[], n: number, after?: { score: number, id: string }): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
+ * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, drop(id: string): void, values(): Iterable<any>, searchTop?(words: string[], n: number, after?: { score: number, id: string }): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
 function mapTable() {
   /** @type {Map<string, any>} */ const m = new Map();
-  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, delete: id => { m.delete(id); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
+  return { get: id => m.get(id), has: id => m.has(id), set: (id, r) => { m.set(id, r); }, drop: id => { m.delete(id); }, values: () => [...m.values()], candidates: () => [...m.values()], searchCandidates: () => [...m.values()] };
 }
 
 /**
  * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void,
  *   initial?: { types: any[], records: any[], changes: any[] },
- *   backing?: { table(type: string): Table, changes: { readonly length: number, push(e: any): void, slice(from: number, to: number): any[] } },
+ *   backing?: { table(type: string): Table, changes: { readonly length: number, push(e: any): void, pop?(): void, slice(from: number, to: number): any[] } },
  *   persist?: { type(name: string, def: any | null): void, record(r: any): void, change(e: any): void } }} [cfg]
  *   hook: tests throw from it to simulate a crash or an outage. initial and persist make the store durable (kernel/store/sqlite.js): the state it starts from, and a
  *   write-through for every change, called after the in-memory change is made.
@@ -37,8 +37,8 @@ export function createMemoryStore(cfg = {}) {
   /** @type {Map<string, any>} */ const types = new Map();
   /** @type {Map<string, Table>} */ const rows = new Map();
   const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
-  /** @type {{ readonly length: number, push(e: any): void, slice(from: number, to: number): any[] }} */
-  const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
+  /** @type {{ readonly length: number, push(e: any): void, pop?(): void, slice(from: number, to: number): any[] }} */
+  const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, pop: () => { a.pop(); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   if (cfg.initial) {
     for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
     for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
@@ -203,6 +203,17 @@ export function createMemoryStore(cfg = {}) {
       note("removed", r);
       return clone(r);
     },
+    /**
+     * Take back the last write to a record that was made inside a unit of work whose database transaction was rolled back (the gateway's event for it was refused): memory goes back to what
+     * the database holds. `previous` is the row before the write (a clone), null for a create. The write must be the newest change.
+     * @param {string} type @param {string} id @param {any} previous
+     */
+    async undo(type, id, previous) {
+      const t = table(type), cur = t.get(id);
+      if (cur && !cur.deleted_at) indexSet(type, cur, false);
+      if (previous) { const r = clone(previous); t.set(id, r); if (!r.deleted_at) indexSet(type, r, true); } else t.drop(id);
+      if (changes.pop) changes.pop();
+    },
     async restore(type, id) {
       touch("restore", [type, id]);
       const r = table(type).get(id);
@@ -297,7 +308,7 @@ export function createMemoryStore(cfg = {}) {
     },
     /**
      * Destroy one record for good (the gateway's `forget`): its row, its index entries and what the change log holds of it. The log keeps an entry's envelope (type, id, kind, version, time)
-     * and loses its data, so the cursors still line up. A table that cannot delete a row has it blanked (data emptied, kept as a tombstone in the bin); `cfg.persist.destroy` does the same on disk.
+     * and loses its data, so the cursors still line up. A table that cannot drop a row has it blanked (data emptied, kept as a tombstone in the bin); `cfg.persist.destroy` does the same on disk.
      */
     async destroy(type, id) {
       touch("destroy", [type, id]);
@@ -305,7 +316,7 @@ export function createMemoryStore(cfg = {}) {
       if (!r) throw fail("not_found", `no ${type} ${id}`);
       if (!r.deleted_at) indexSet(type, r, false);
       for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type && e.id === id) { delete e.before; delete e.after; e.erased = true; }
-      if (typeof t.delete === "function") t.delete(id);
+      if (typeof t.drop === "function") t.drop(id);
       else { r.data = {}; r.deleted_at = r.deleted_at || clock(); r.version += 1; r.updated_at = clock(); t.set(id, r); if (cfg.persist) cfg.persist.record(clone(r)); }
       if (cfg.persist && typeof cfg.persist.destroy === "function") cfg.persist.destroy(type, id);
     },

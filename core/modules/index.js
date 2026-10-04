@@ -290,7 +290,7 @@ function checkCredentials(list) {
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!(name === "credentialsPort" && module === "vault")) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -422,6 +422,8 @@ export const KNOWN_LABELS = new Set([...SURFACE_LABELS, "mcp", "harness", "hook"
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
+/** The caller classes that stand for the person on a module hop: their own surfaces and devices, and nothing else: no pre-owner exception (a server with no owner takes only pairing). */
+const ORIGIN_PERSON = Object.freeze([...PERSON_CALLERS]);
 
 /**
  * The once-only registry default (reviewer-2's group D audit, the lead's ruling 4 Oct): a tool that changes state and declares no `callers` list is the person's own surfaces and modules
@@ -430,7 +432,7 @@ const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "s
  */
 const READ_VERBS = new Set(["get", "list", "status", "show", "read", "search", "find", "info", "check", "peek", "tail", "whoami", "me", "describe", "explain", "preview", "count", "has", "query", "history", "view", "inspect", "doctor", "detect", "lookup", "resolve", "verify", "stats", "summary", "ls", "cat", "available", "enabled", "tools", "types", "url", "version", "health", "ping", "events", "log", "logs", "whois", "targets", "pending", "mine", "current", "overview"]);
 /** The tools a module hop must not reach on behalf of a model: credentials, names, grants and devices. */
-const ORIGIN_CHECKED = Object.freeze([/^vault\.(put|get|release|fetch|import|export|pass\.|account\.|agent\.|emergency\.)/, /^names\.claim$/, /^grants\./, /^spaces\.devices\./, /^spaces\.(create|invites?\.|members?\.|roles?\.)/]);
+const ORIGIN_CHECKED = Object.freeze([/^vault\.(put|get|release|fetch|import|export|pass\.|account\.|agent\.|emergency\.)/, /^names\.claim$/, /^grants\./, /^spaces\.devices\./, /^spaces\.(create|host-here|retire-here|invites?\.|members?\.|roles?\.)/]);
 /** The caller class a call came from, past any module hops: `meta.origin` when a module relayed it, else the caller itself. For a tool with an explicit callers list that wants to check it. @param {any} meta */
 export const originClass = (meta) => (meta && (meta.origin || meta.caller)) || "unknown";
 export const effectOf = (/** @type {string} */ name, /** @type {any} */ declared, /** @type {string} */ reach = "anyone") => (declared === "read" || declared === "write" ? declared : reach === "person" && READ_VERBS.has(String(name).split(".").pop() || "") ? "read" : "write");
@@ -1069,13 +1071,21 @@ export class Registry {
         list: () => [...this.providers.keys()],
       },
       ...(kernelHandle ? { kernel: kernelHandle } : {}),
+      // The home's peer door for a paired device's stream, set by the daemon (core/daemon/peer-door.js); only the relay module bridges it.
+      // This device's open peer session to a server it paired (`sessionFor(serverId)` -> { call, close }) and the kernel's remote client over it, handed up by the wink module; only the modules that
+      // reach a paired server's kernel are given them (spaces: where a space is hosted; runner: lending), late-bound because wink starts after them.
+      ...(["spaces", "runner"].includes(m.name) ? {
+        sessionFor: (/** @type {string} */ id) => { const f = (/** @type {any} */ (this.deps)).winkSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id); },
+        remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
+      } : {}),
+      ...(m.name === "relay" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
       // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
       // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.
       provide: (/** @type {string} */ name, /** @type {any} */ value) => provideOnce(this.deps, m.name, name, value),
       // What only the daemon can hand a module comes by DECLARATION, not by a name: a first-party module lists it under needs.daemon and gets exactly that on ctx. kernelSession is the
       // maker of a Vyre-started session's kernel credential, sandbox the confined spawner for those sessions (the runner's home sandbox, composed by the daemon because core/sessions
       // cannot import core/runner), flowsHost the Flows assembly (core/daemon/flows-host.js).
-      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "tunnelEnd", "personSessions"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
+      ...Object.fromEntries((Array.isArray(m.needs && m.needs.daemon) ? m.needs.daemon : []).filter((/** @type {string} */ n) => ["kernelSession", "kernelThreads", "sandbox", "flowsHost", "credentials", "modulesListReset", "modulesListResetPayload", "dataStores", "devStandIn", "cliSigninPayload", "cliSigninCheck", "cliSessions", "tunnelEnd"].includes(n) && this.deps[n]).map((/** @type {string} */ n) => [n, this.deps[n]])),
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -1102,7 +1112,7 @@ export class Registry {
         this.tools.set(name, { module: m.name, description: def.description || "", input: def.input || { type: "object" }, run: def.run, effect, defaulted, effectDeclared: Boolean(declaredEffect),
           internal: Boolean(def.internal) || reach === "modules",
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
-          callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...PERSON_CALLERS] : null,
+          callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
           reach, outward: (e && e.outward) || null, target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name) });
       },
@@ -1171,9 +1181,6 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     // `origin` is set only by a module's own ctx.call (the caller class the running call came from); nothing a client sends is ever one.
     if (!String(caller).startsWith("module:")) delete meta.origin;
-    // `terminalKey`: the login terminal the daemon measured for this call (core/daemon atTerminal), null for a model's shell; only the daemon's own `terminal` argument sets it, never anything in meta.
-    delete meta.terminalKey;
-    { const tk = typeof terminal === "string" ? terminal : terminal && typeof terminal === "object" && typeof terminal.key === "string" ? terminal.key : null; if (tk) meta.terminalKey = tk; }
     // A tool the registry defaulted to person-only is reached by a module only when the module is acting FOR a person (the call it relays came from one): a module with no origin (a timer, a start,
     // a direct call) is not that person, and must have its tool declare `callers: ["module"]` to be allowed (RG-2). The daemon's own calls (module:vyred) are the daemon.
     const hop = def.defaulted && String(caller).startsWith("module:") && caller !== "module:vyred";
@@ -1244,7 +1251,7 @@ export class Registry {
     }
     // The tools that hand out credentials, names, access or devices check the ORIGINAL caller on a module hop whatever their callers list says (a module relaying for an agent is not the person).
     // Owners of other tools read `meta.origin` themselves (`originClass(meta)`); a loader door call (vault.fetch for a tool's own credential) is its own check.
-    if (!door && String(caller).startsWith("module:") && meta.origin && ORIGIN_CHECKED.some(re => re.test(tool)) && !callerAllowed([...PERSON_CALLERS], meta.origin)) {
+    if (!door && String(caller).startsWith("module:") && meta.origin && ORIGIN_CHECKED.some(re => re.test(tool)) && !callerAllowed(ORIGIN_PERSON, meta.origin)) {
       return { error: { code: "denied", message: `${tool} is the person's own: a module acting for ${callerKind(meta.origin)} callers may not use it` } };
     }
     const problems = checkInput(def.input, input);

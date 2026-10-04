@@ -11,72 +11,72 @@
     "tools": [
       {
         "name": "publish.create",
-        "reach": "anyone",
+        "reach": "anyone", "effect": "write",
         "projectArg": "project"
       },
       {
         "name": "publish.preview",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.plan",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "read"
       },
       {
         "name": "publish.status",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "read"
       },
       {
         "name": "publish.list",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "read"
       },
       {
         "name": "publish.approve",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.publish",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.rollback",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.domain.add",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.domain.verify",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.secret.grant",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.secret.revoke",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.edge",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "write"
       },
       {
         "name": "publish.flow",
-        "reach": "anyone"
+        "reach": "anyone", "effect": "read"
       },
       {
         "name": "publish.decide",
-        "reach": "person"
+        "reach": "person", "effect": "write"
       },
       {
         "name": "publish.retire",
-        "reach": "person"
+        "reach": "person", "effect": "write"
       },
       {
         "name": "publish.domain.remove",
-        "reach": "person"
+        "reach": "person", "effect": "write"
       }
     ]
   },

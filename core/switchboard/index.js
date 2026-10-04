@@ -714,6 +714,11 @@ export class Switchboard {
       id = rec.id;
       if (rec.archived) throw Object.assign(new Error(`${rec.name || String(id).slice(0, 8)} is archived: unarchive it to continue`), { code: "archived" });
       if (this.live.has(id)) { if (o.prompt) this.write(id, o.prompt); return this.launched(id); }
+      // A session whose process was KILLED (it ended failed, not stopped) may have a torn transcript tail and an unfinished turn: when the runner seals this home's sessions per turn, put the file back to
+      // exactly the last sealed turn before `claude --resume` reads it. Only a crashed thread, and only while no process of it runs (checked above); no runner, an unsealed session or any refusal changes nothing.
+      if ((rec.canonical_status === "failed" || rec.status === "failed" || this.states.get(id) === "failed") && (rec.provider || "claude") === "claude") {
+        try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: id })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
+      }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
@@ -3460,7 +3465,7 @@ export default {
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
-        if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
+        if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
@@ -3501,7 +3506,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
+        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
@@ -3528,7 +3533,8 @@ export default {
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
-      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); });
+      async (i, { caller }) => { guard(caller, "take a session's keyboard"); return sb.lease(i.thread, surfaceOf(i, caller)); },
+      ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"]); // a module may take it for a person's screen (computers.takeover), which an assistant may ask for; a model never takes it directly
 
     tool("threads.release", "Give the keyboard back. Releasing a lease you do not hold changes nothing.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
@@ -3540,7 +3546,7 @@ export default {
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
         const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
-        if (!wantsMacs(ctx, i, caller)) return own;
+        if (!(await wantsMacs(ctx, i, caller, meta))) return own;
         // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
         // so a surface that reconnects has one list to reconcile from. What answering one takes is
         // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
@@ -3563,7 +3569,7 @@ export default {
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
         // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
-        if (!a && !thread && wantsMacs(ctx, {}, caller)) {
+        if (!a && !thread && (await wantsMacs(ctx, {}, caller, meta))) {
           const mac = await answerOnMac(i, caller, peer, meta);
           if (mac) return mac;
         }
@@ -3890,6 +3896,19 @@ export default {
         const dir = i.cwd || (i.thread ? sb.must(String(i.thread)).cwd : null);
         if (!dir) throw Object.assign(new Error("give a folder or a thread"), { code: "bad_input" });
         return sb.busyIn(String(dir));
+      },
+    });
+    // For the runner's own-server sealing (core/runner ports.ownServer.resolve): which transcript file a finished turn belongs to, and the provider's projects folder it sits under (`root`,
+    // which the seal pins the file to). Only the thread's own provider session, only Claude's layout (<root>/<project>/<session>.jsonl), and nothing for a session this Switchboard has no record of.
+    ctx.tool("threads.own-transcript", {
+      description: "The transcript file of a session this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. A session it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["session"], properties: { session: str } },
+      run: async i => {
+        const rec = sb.record(String(i.session));
+        if (!rec || (rec.provider || "claude") !== "claude") return null;
+        const t = findSession(sb.deps.transcripts || [], String(i.session));
+        if (!t) return null;
+        return { session: String(i.session), file: t.file, root: path.dirname(path.dirname(t.file)), ...(rec.cwd ? { cwd: String(rec.cwd) } : {}) };
       },
     });
     ctx.tool("threads.origin", {

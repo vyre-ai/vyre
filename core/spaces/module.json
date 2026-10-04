@@ -10,7 +10,7 @@
  "does": {
   "tools": [
    {
-    "name": "spaces.identity.status",
+    "name": "spaces.identity.status", "effect": "read",
     "reach": "person"
    },
    {
@@ -18,103 +18,103 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.identity.create",
+    "name": "spaces.identity.create", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.resolve",
+    "name": "spaces.identity.resolve", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.alias",
+    "name": "spaces.identity.alias", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.alias.add",
+    "name": "spaces.identity.alias.add", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.entries",
+    "name": "spaces.identity.entries", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.entry.add",
+    "name": "spaces.identity.entry.add", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.entry.remove",
+    "name": "spaces.identity.entry.remove", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.code.replace",
+    "name": "spaces.identity.code.replace", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.sync",
+    "name": "spaces.identity.sync", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.code",
+    "name": "spaces.identity.recover.code", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.contact.key",
+    "name": "spaces.identity.contact.key", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.begin",
+    "name": "spaces.identity.recover.begin", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.approve",
+    "name": "spaces.identity.recover.approve", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.identity.recover.finish",
+    "name": "spaces.identity.recover.finish", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.create",
+    "name": "spaces.create", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.list",
+    "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.get",
+    "name": "spaces.get", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.status",
+    "name": "spaces.status", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.presence.begin",
+    "name": "spaces.presence.begin", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.presence.recover",
+    "name": "spaces.presence.recover", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.presence.sync",
+    "name": "spaces.presence.sync", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.spaces",
+    "name": "spaces.devices.spaces", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.list",
+    "name": "spaces.devices.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.lend",
+    "name": "spaces.devices.lend", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.lend.status",
+    "name": "spaces.devices.lend.status", "effect": "read",
     "reach": "person"
    },
    {
@@ -128,6 +128,21 @@
     "effect": "read"
    },
    {
+    "name": "spaces.retire-here",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
+    "name": "spaces.server-of",
+    "reach": "modules",
+    "effect": "read"
+   },
+   {
+    "name": "spaces.host-here",
+    "reach": "person",
+    "effect": "write"
+   },
+   {
     "name": "spaces.admin-list",
     "reach": "modules",
     "effect": "read"
@@ -138,19 +153,19 @@
     "effect": "write"
    },
    {
-    "name": "spaces.devices.remove",
+    "name": "spaces.devices.remove", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.restore",
+    "name": "spaces.devices.restore", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.enrol",
+    "name": "spaces.devices.enrol", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.devices.set",
+    "name": "spaces.devices.set", "effect": "write",
     "reach": "person"
    },
    {
@@ -158,63 +173,63 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.setup.save",
+    "name": "spaces.setup.save", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.setup.claim",
+    "name": "spaces.setup.claim", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.resume",
+    "name": "spaces.resume", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.cancel",
+    "name": "spaces.cancel", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.code.submit",
+    "name": "spaces.code.submit", "effect": "write",
     "reach": "anyone", "callers": ["device", "module"]
    },
    {
-    "name": "spaces.server.install",
+    "name": "spaces.server.install", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.move.plan",
+    "name": "spaces.move.plan", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.assess-computer",
+    "name": "spaces.assess-computer", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.members.list",
+    "name": "spaces.members.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.members.add",
+    "name": "spaces.members.add", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.set-role",
+    "name": "spaces.members.set-role", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.remove",
+    "name": "spaces.members.remove", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.extend",
+    "name": "spaces.members.extend", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.members.transfer",
+    "name": "spaces.members.transfer", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.roles.names",
+    "name": "spaces.roles.names", "effect": "write",
     "reach": "person"
    },
    {
@@ -226,39 +241,39 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.invites.create",
+    "name": "spaces.invites.create", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.confirm",
+    "name": "spaces.invites.confirm", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.revoke",
+    "name": "spaces.invites.revoke", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.list",
+    "name": "spaces.invites.list", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.preview",
+    "name": "spaces.invites.preview", "effect": "read",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.accept",
+    "name": "spaces.invites.accept", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.invites.redeem",
+    "name": "spaces.invites.redeem", "effect": "write",
     "reach": "anyone", "callers": ["device", "module"]
    },
    {
-    "name": "spaces.compute.allow",
+    "name": "spaces.compute.allow", "effect": "write",
     "reach": "person"
    },
    {
-    "name": "spaces.compute.accept",
+    "name": "spaces.compute.accept", "effect": "write",
     "reach": "person"
    },
    {
@@ -286,6 +301,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.label",
     "reach": "modules"
    },
@@ -298,7 +317,7 @@
     "reach": "modules"
    },
    {
-    "name": "spaces.compute.status",
+    "name": "spaces.compute.status", "effect": "read",
     "reach": "person"
    },
    {

@@ -45,7 +45,9 @@ test("daemon: with the kernel on, the home has a Space, a first owner and a modu
   t.after(() => d.stop());
   assert.equal(d.kernel.fresh, false);
   assert.deepEqual(d.kernel.id, id);
-  assert.equal(d.kernel.log.latestSeq(), events, "the owner and the log came back from the home's database");
+  // the log came back from the home's database: everything written before the stop is still there, in order (a start may append its own events: a module installing as a service, a membership read)
+  assert.ok(d.kernel.log.latestSeq() >= events, "the owner and the log came back from the home's database");
+  assert.equal(d.kernel.log.read({ since: 0 }).slice(0, events).length, events);
 });
 
 test("daemon: an added module is refused while the supervisor cannot prove its sandbox, and sandboxed when it can", { timeout: 90_000, skip: !linux }, async t => {
@@ -56,15 +58,15 @@ test("daemon: an added module is refused while the supervisor cannot prove its s
   const row = d.registry.status().find(m => m.name === "zz-added");
   assert.ok(row, "the module was found");
   assert.equal(row.state, "running", JSON.stringify(row));
-  assert.deepEqual((await d.registry.call("zz-added.ping", {})).data, { pong: true });
+  assert.deepEqual((await d.registry.call("zz-added.ping", {}, "cli")).data, { pong: true });
 });
 
 test("ctx.kernel: a first-party module gets the kernel handle with exactly the actions its manifest declared; a module from outside gets none", { timeout: 60_000 }, async t => {
   const root = tempHome(t), fp = path.join(root, "modules");
   writeModule(fp, "zz-fp", { does: { tools: [{ name: "zz-fp.make", reach: "anyone" }, { name: "zz-fp.peek", reach: "anyone" }] }, needs: { kernel: { actions: ["records.read", "records.create"], prefixes: ["contact/*"] } } }, `
     export default { async start(ctx) {
-      ctx.tool("zz-fp.make", { run: async ({ name }) => { const r = await ctx.kernel.records.create(ctx.kernel.serviceChain(), "contact", { name }); return { id: r.id }; } });
-      ctx.tool("zz-fp.peek", { run: async () => ({ has: Object.keys(ctx.kernel).sort() }) });
+      ctx.tool("zz-fp.make", { effect: "read", run: async ({ name }) => { const r = await ctx.kernel.records.create(ctx.kernel.serviceChain(), "contact", { name }); return { id: r.id }; } });
+      ctx.tool("zz-fp.peek", { effect: "read", run: async () => ({ has: Object.keys(ctx.kernel).sort() }) });
       return {};
     } };`);
   const d = await start({ root, log: () => {}, kernel: true, firstPartyRoots: [fp] });
@@ -76,7 +78,7 @@ test("ctx.kernel: a first-party module gets the kernel handle with exactly the a
   const made = await d.registry.call("zz-fp.make", { name: "From a module" });
   assert.ok(made.data && made.data.id, JSON.stringify(made));
   assert.equal((await d.kernel.gateway.records.get(owner, "contact", made.data.id)).data.name, "From a module");
-  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "canonicalPerson", "chain", "chainIn", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "owner", "presence", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerPorts", "serviceChain", "sessions", "space", "tasks"]);
+  assert.deepEqual((await d.registry.call("zz-fp.peek", {})).data.has, ["acceptProofRequest", "audienceFor", "audit", "authorize", "canonicalPerson", "chain", "chainIn", "chats", "drive", "events", "for", "grants", "leases", "limits", "model", "offersPort", "owner", "presence", "proofChainHash", "proofFrom", "proofRequest", "records", "runnerHost", "runnerPorts", "serviceChain", "sessions", "space", "tasks"]);
 });
 
 test("ctx.kernel: a module that is not first party has no kernel handle", { timeout: 60_000, skip: !linux }, async t => {
@@ -85,7 +87,7 @@ test("ctx.kernel: a module that is not first party has no kernel handle", { time
   const d = await start({ root, log: () => {}, kernel: true });
   t.after(() => d.stop());
   assert.equal(d.registry.status().find(m => m.name === "zz-out").state, "running");
-  assert.equal((await d.registry.call("zz-out.peek", {})).data.kernel, "undefined");
+  assert.equal((await d.registry.call("zz-out.peek", {}, "cli")).data.kernel, "undefined");
 });
 
 
@@ -171,7 +173,7 @@ test("the daemon's edge carries x-vyre-kernel-proof to the tool as meta.kernel_p
   const { call } = await import("../core/daemon/client.js");
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "zz-edge", { does: { tools: [{ name: "zz-edge.peek", reach: "anyone" }] } }, `
-    export default { async start(ctx) { ctx.tool("zz-edge.peek", { run: async (i, meta) => ({ kernel_proof: meta.kernel_proof ?? null, proof: meta.proof ?? null }) }); return {}; } };`);
+    export default { async start(ctx) { ctx.tool("zz-edge.peek", { effect: "read", run: async (i, meta) => ({ kernel_proof: meta.kernel_proof ?? null, proof: meta.proof ?? null }) }); return {}; } };`);
   const d = await start({ root, log: () => {}, kernel: false });
   t.after(() => d.stop());
   const proof = { op: "grant.create", signer: "secure_enclave", key_id: "k1", payload_hash: "ph", signature: "sig" };
@@ -211,7 +213,7 @@ test("R1/R2: the daemon sets meta.token only from a session token the kernel's o
   const fp = path.join(root, "modules");
   fs.mkdirSync(fp, { recursive: true });
   writeModule(fp, "zz-tok", { does: { tools: [{ name: "zz-tok.peek", reach: "anyone" }] } }, `
-    export default { async start(ctx) { ctx.tool("zz-tok.peek", { run: async (i, meta) => {
+    export default { async start(ctx) { ctx.tool("zz-tok.peek", { effect: "read", run: async (i, meta) => {
       const cc = globalThis.__vyreCC, inside = cc() && cc().token || null;
       setTimeout(() => { globalThis.__vyreLate.push(cc() && cc().token || null); }, 20);
       return { meta: meta.token ?? null, inside };

@@ -104,9 +104,23 @@ check_modules
 # A box is a server: the daemon reports machine server, so no server module is switched off by a wrong config.
 docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/config.json 2>/dev/null' | grep -q '"machine": *"\(device\|solo\|local\)"' && { echo "the box's config says it is not a server"; exit 1; }
 vyre status | grep -q ' box' || { echo "vyre status does not say this is a box"; exit 1; }
+# No first-run page on a server (0.3): nothing listens on the onboarding port inside the container, and the compose publishes nothing on the host.
+for port in 7300 7301; do
+  docker exec -u 1000 vyre-vyre-1 node -e 'const s=require("net").connect({host:process.argv[1],port:Number(process.argv[2])});s.on("connect",()=>{console.log("LISTENING");process.exit(0)});s.on("error",()=>process.exit(1))' 127.0.0.1 "$port" | grep -q LISTENING && { echo "something listens on port $port inside the box: a server has no setup page"; exit 1; }
+done
+docker ps --format '{{.Ports}}' --filter name=vyre-vyre-1 | grep -q 7300 && { echo "the box publishes the onboarding port on the host"; exit 1; }
 # DP-1 on the running image: the container's build is a release build, and a dev-presence-stand-in file in its home does not make it a development one.
 docker exec -u 0 vyre-vyre-1 grep -qx 'export const BUILD_KIND = "release";' /opt/vyre/lib/build-kind.js || { echo "the image's lib/build-kind.js does not say release"; exit 1; }
 docker exec -u 0 vyre-vyre-1 node --input-type=module -e 'const d = await import("/opt/vyre/kernel/devbuild.js"); if (!d.isPackaged() || d.devSwitch("1")) process.exit(1)' || { echo "the running image honours a developer switch"; exit 1; }
+
+# DP-1 and the software signer: a REAL sealing process from a release-kind tree refuses a software presence key even with the variable and the dev flag set. The probe runs on a COPY of the
+# image's tree (kernel/seal/testing.js and test/scratch.mjs are not shipped and are added to the copy only), so the signed tree under test is not touched.
+docker exec -u 1000 vyre-vyre-1 sh -c 'rm -rf /tmp/probe && mkdir /tmp/probe && cp -a /opt/vyre/lib /opt/vyre/kernel /opt/vyre/package.json /tmp/probe/ && mkdir /tmp/probe/test'
+docker cp "$HERE/kernel/seal/testing.js" vyre-vyre-1:/tmp/probe/kernel/seal/testing.js
+docker cp "$HERE/test/scratch.mjs" vyre-vyre-1:/tmp/probe/test/scratch.mjs
+docker cp "$HERE/scripts/packaged-probes/software-release.mjs" vyre-vyre-1:/tmp/software-release.mjs
+docker exec -u 1000 vyre-vyre-1 node /tmp/software-release.mjs /tmp/probe || { echo "a release-kind build accepted a software key (or the probe could not run)"; exit 1; }
+docker exec -u 1000 vyre-vyre-1 rm -rf /tmp/probe /tmp/software-release.mjs
 
 # MW-5: the web app build is signed too. /app/ answers 200 from the signed build, and one changed file under it is refused (503, app_build_changed) by the daemon that serves it.
 sock=$(docker exec -u 1000 vyre-vyre-1 sh -c 'ls /home/vyre/.vyre/*.sock 2>/dev/null | head -n 1')

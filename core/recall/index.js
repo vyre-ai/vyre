@@ -323,6 +323,7 @@ export default {
     const agentField = { agent: { type: "string" } };
 
     ctx.tool("recall.search", {
+      effect: "read",
       description: "Search every Claude Code session on this machine for turns about something. Returns the best turns with their session's name, title and folder.",
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
@@ -331,7 +332,7 @@ export default {
         per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
       } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, ...q } = input;
         // sessions widens a scope, so only a module or the person's own surface may name them: a
         // model's scope is its folders (the MCP server holds an agent to its projects' folders).
@@ -348,18 +349,19 @@ export default {
           const e = q.hybrid === false || !any ? null : await embedder();
           return scoped((await search(db, q, e, dense)).hits);
         };
-        if (!wantsMacs(ctx, input, caller)) return here();
+        if (!(await wantsMacs(ctx, input, caller, meta))) return here();
         // On the box, for the person: the Macs' best turns too, by score, capped at the limit.
         const [own, answers] = await Promise.all([here(), askMacs(ctx, "recall.search", q)]);
         return mergeRows(ctx, own, answers, { rows: scoped, compare: (a, b) => b.score - a.score, limit: Math.max(1, Math.min(100, q.limit || 10)) });
       },
     });
     ctx.tool("recall.related", {
+      effect: "read",
       description: "1 to 3 of a project's own past sessions relevant to what the person is about to say, for chat's \"From your past sessions\" hint while they type. Each hit is one turn (its own session, seq, role, ts, name, cwd and a short snippet), the person's own or the assistant's; chat/native-core render the reason sentence and the link. Owner surfaces only, and only inside a real, mapped project: project_cwds must name at least one folder that is actually a project's; an ad-hoc or unmapped folder gets no hint rather than the whole corpus.",
       input: { type: "object", required: ["project_cwds", "text"], properties: {
         project_cwds: stringArray, text: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 3 } } },
       callers: OWNERS_ONLY,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         // Never an agent (OWNERS_ONLY already refuses one at the gate); reach() with no agent
         // still runs, so a caller kind that slips past OWNERS_ONLY some day is refused here too,
         // the same way recall.search's does.
@@ -380,12 +382,13 @@ export default {
       },
     });
     ctx.tool("recall.thread", {
+      effect: "read",
       description: "One session and its turns, in order. Takes a session id or an unambiguous prefix of one.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, machines,
         source: { type: "string", enum: ["box", "mac"] }, ...agentField } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, agent, ...q } = input;
         const r = await reach(agent, caller);
         // A scoped agent reads a session only inside its granted projects' folders: not by naming
@@ -405,7 +408,7 @@ export default {
           if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
           return like[0].id;
         };
-        if (!wantsMacs(ctx, input, caller)) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return gate(thread(db, { ...q, session: resolveScoped(q.session) }));
         // On the box, for the person: the box's own session first. A session the box does not
         // have, or one the caller says is on the Mac, is asked of the Macs, and the first that
         // has it answers. Its turns go back to the caller and are never stored here.
@@ -423,6 +426,7 @@ export default {
       },
     });
     ctx.tool("recall.transcript", {
+      effect: "read",
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" }, machines,
@@ -430,9 +434,9 @@ export default {
       // A person's surfaces only: tool output can hold anything the session read, so it is never
       // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, source, ...q } = input;
-        if (!wantsMacs(ctx, input, caller)) return transcript(q);
+        if (!(await wantsMacs(ctx, input, caller, meta))) return transcript(q);
         // On the box, for the person: a session the box does not have, or one the caller says is
         // on the Mac, is read from the Macs, as recall.thread does. The blocks go back to the
         // caller and are never stored here.
@@ -479,6 +483,7 @@ export default {
     // The same people as recall.transcript: the text of every turn goes by, redacted.
     const own = ["cli", "local", "deck", "capsule", "module"];
     ctx.tool("recall.watch", {
+      effect: "write",
       description: "Follow one session live: each completed turn arrives as a session.turn event (thread = the session id) and session.state says whether a reply is under way. from is a turn id to replay after first; without it, only new turns. Call again with the same watch id to renew it: a watch nobody renews ends after 3 minutes, and one whose session is quiet for 30 minutes ends too.",
       input: { type: "object", required: ["session"], properties: {
         session: { type: "string" }, from: { type: "string" }, watch: { type: "string" } } },
@@ -486,32 +491,36 @@ export default {
       run: async input => watches.watch(input),
     });
     ctx.tool("recall.unwatch", {
+      effect: "write",
       description: "Stop following a session (a watch id from recall.watch).",
       input: { type: "object", required: ["watch"], properties: { watch: { type: "string" } } },
       callers: own,
       run: async input => watches.unwatch(input),
     });
     ctx.tool("recall.sessions", {
+      effect: "read",
       description: "Indexed sessions, newest first, optionally only those in or under a folder, since a time, started by a person, or with the given ids.",
       input: { type: "object", properties: {
         cwd: { type: "string" }, since: { type: "number" }, human: { type: "boolean" }, limit: { type: "integer" }, ids: stringArray, machines, ...agentField } },
       callers: READERS,
-      run: async (input, { caller } = {}) => {
+      run: async (input, meta = {}) => { const caller = meta.caller;
         const { machines: _, agent, ...q } = input;
         const r = await reach(agent, caller);
         if (!r.all && q.cwd && !within(q.cwd, r.folders)) throw denied(`${r.agent} is not granted ${q.cwd}`);
         // ids can name any session (the box's cross-project resolve for a Mac's picked ones): a
         // scoped agent's own list still narrows to what it is granted, never all of them.
         const scoped = rows => r.all ? rows : rows.filter(row => within(row.cwd, r.folders));
-        if (!wantsMacs(ctx, input, caller)) return scoped(sessions(db, q));
+        if (!(await wantsMacs(ctx, input, caller, meta))) return scoped(sessions(db, q));
         // On the box, for the person: the Macs' sessions too, newest first, capped at the limit.
         const [own, answers] = await Promise.all([sessions(db, q), askMacs(ctx, "recall.sessions", q)]);
         return mergeRows(ctx, scoped(own), answers, { rows: scoped, compare: (a, b) => (b.ended || 0) - (a.ended || 0), limit: Math.max(1, Math.min(1000, q.limit || 50)) });
       },
     });
     ctx.tool("recall.forget", {
+      effect: "write",
       internal: true,
       description: "Forget these sessions outright: turns, vectors and rows. For memory, when a device's synced sessions are revoked; the files are already gone.",
+      callers: ["module"],
       input: { type: "object", required: ["sessions"], properties: { sessions: stringArray } },
       run: async ({ sessions: ids }) => {
         const n = indexer.forget(ids.map(String)); dense.invalidate();
@@ -540,11 +549,14 @@ export default {
       },
     });
     ctx.tool("recall.index", {
+      effect: "write",
       description: "Index new and changed transcripts now. Returns what the pass did.",
+      callers: own,
       input: { type: "object", properties: {} },
       run: async () => pass(),
     });
     ctx.tool("recall.status", {
+      effect: "read",
       description: "How much is indexed, when the last pass ran, and whether search can rank by meaning.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -563,7 +575,9 @@ export default {
     });
 
     ctx.tool("recall.setup", {
+      effect: "write",
       description: "Install the search model now (the library and its weights, once) and load it, so search ranks by meaning. Resolves when it is ready or has failed, and says which.",
+      callers: ["cli", "local", "deck", "capsule"],
       input: { type: "object", properties: {} },
       run: async () => {
         if (opts.vectors === false) return { ready: false, why: vec.why };
@@ -576,7 +590,9 @@ export default {
     });
 
     ctx.tool("recall.eval", {
+      effect: "read",
       description: "Measure search against a labelled set: MRR and recall for keyword, dense and hybrid, and whether nonsense clears the dense floor.",
+      callers: own,
       input: { type: "object", required: ["queries"], properties: {
         queries: { type: "array", items: { type: "object", required: ["q", "answers"], properties: { q: { type: "string" }, answers: { type: "array" } } } },
         nonsense: stringArray, k: { type: "integer" } } },

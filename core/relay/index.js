@@ -600,7 +600,7 @@ export default {
       // reachable only from inside this device's own Noise channel and never as a tool.
       const handler = (req, res, caller, p) => (req.method === "POST" && req.url === JOIN_PATH ? tailnetKey(id, res) : routed(req, res, caller, p));
       const peers = peersFor(ctx);
-      bridge(channel, { handler, caller: label, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers ? { peers } : {}) });
+      bridge(channel, { handler, caller: label, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m), ...(peers && !limited ? { peers } : {}) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
@@ -1336,6 +1336,8 @@ export default {
     });
 
     ctx.tool("relay.setup.status", {
+      // the four check words of a pairing in progress: the person's surfaces, the owner's devices (the setup page) and modules; never a model session
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module"],
       description: "Where the setup session is: none, waiting for the page, paired, or contested (another server used the code first), whether the relay holds the offer, whether the one pairing ticket is made, when the hour ends, and the four check words the page shows too.",
       input: obj(),
       run: async (_, meta = {}) => { owner(meta.caller, meta, "the setup status"); return setupStatus(); },

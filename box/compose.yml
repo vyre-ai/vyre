@@ -19,11 +19,6 @@ services:
   vyre:
     image: ${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}
     restart: unless-stopped
-    ports:
-      # The onboarding page, on host loopback only. Reach it with
-      # ssh -N -L 7300:127.0.0.1:7300 <user>@<host>
-      # The same number on both sides: the page checks its Host header against the port it binds.
-      - "127.0.0.1:7300:7300"
     networks:
       vyre:
         aliases:
@@ -52,9 +47,6 @@ services:
     environment:
       - VYRE_HOME=/home/vyre/.vyre
       - VYRE_SUPERVISOR=docker
-      # Binds the onboarding listener to this alias on the vyre network, where Docker delivers
-      # the published port.
-      - VYRE_ONBOARD_HOST=vyred
       # The kernel's sealing process (kernel/seal) runs the server profile on a box: vyred is uid 1000, outside the agents' range
       # (2000 to 2063), and its sealing folder is 0700 under that uid, so no agent session can read it.
       - VYRE_SEAL_PROFILE=server

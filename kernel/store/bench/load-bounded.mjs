@@ -24,7 +24,7 @@ const kit = compile(fs.readFileSync(new URL("../../../records/kits/estate-planni
 const SPACE = "spc_loadtest0001", OWNER = "per_owner", space = "loadtest";
 
 let store; const stats = () => "";
-const k = await bootKernel({ db: (() => { const d = new DatabaseSync(path.join(home, "kernel.db")); if (process.env.BENCH_WAL !== "0") d.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL"); return d; })(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), ...(store ? { store } : {}) });
+const k = await bootKernel({ db: (() => { const d = new DatabaseSync(path.join(home, "kernel.db")); if (process.env.BENCH_WAL !== "0") d.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = " + (process.env.SYNC || "NORMAL") + ""); return d; })(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), ...(store ? { store } : {}) });
 const chain = () => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
 const R = k.gateway.records;
 await R.define(chain(), { add_types: kit.types });

@@ -20,6 +20,7 @@ import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.j
 import { claudeHome } from "../config/index.js";
 import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
 import { withinOrThrow } from "../../lib/within.js";
+import { isOwnerDevice } from "../../lib/caller.js";
 import { settingTo } from "../../lib/said/setting.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -72,7 +73,7 @@ export const isPerson = (caller, meta) => {
   const c = String(caller);
   if (/(?:^|[\s:])agent:/.test(c)) return false;
   if (PEOPLE.includes(c)) return true;
-  return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+  return isOwnerDevice({ caller: c }) && Boolean(meta && meta.person);
 };
 
 /**
@@ -88,7 +89,7 @@ export const asPerson = caller => {
   if (PEOPLE.includes(c)) return c;
   // The owner's own Deck over the tailnet or the relay (it has a person session, or the registry
   // would have refused the call) is the Deck. Nothing else is a person, and never passes as one.
-  if (/^tailnet:(?!agent:)[^\s:]+$/.test(c) || /^device:[a-z2-7]{16}$/.test(c)) return "deck";
+  if (isOwnerDevice({ caller: c })) return "deck";
   throw Object.assign(new Error(`${c} is not a person's surface`), { code: "denied" });
 };
 
@@ -177,7 +178,7 @@ export default {
         const v = JSON.parse(String(r.value)), sc = String(r.scope);
         if (sc === "account") h.account[r.key] = v;
         else if (sc.startsWith("project:")) (h.projects[sc.slice(8)] ||= {})[r.key] = v;
-        else if (sc.startsWith("device:")) (h.devices[sc.slice(7)] ||= {})[r.key] = v;
+        else if (sc.slice(0, sc.indexOf(":") + 1) === "device:") (h.devices[sc.slice(sc.indexOf(":") + 1)] ||= {})[r.key] = v; // a settings SCOPE ("device:<id>"), not a caller label
       }
       return h;
     };
@@ -318,7 +319,7 @@ export default {
       let device = i.device == null || i.device === "" ? null : String(i.device);
       if (device && !DEVICE.test(device)) throw Object.assign(new Error("device is a device's id"), { code: "bad_input" });
       const caller = String((meta && meta.caller) || "");
-      const own = !device && /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(caller) && (await personCall(meta));
+      const own = !device && isOwnerDevice({ caller }) && (await personCall(meta));
       if (own) device = caller;
       const session = i.session == null || i.session === "" ? null : String(i.session);
       if (session && !THREAD.test(session)) throw Object.assign(new Error("session is a thread's id"), { code: "bad_input" });
@@ -397,6 +398,7 @@ export default {
     };
 
     ctx.tool("settings.schema", {
+      effect: "read",
       description: "Every setting the running modules declare: key, owning module, group, label, type and choices (a module may name them at run time), the levels it may be set at (account, project, device, session), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm. hub says where the hub file is and its rev.",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -506,6 +508,7 @@ export default {
     const LEVEL = { type: "string", enum: ["account", "project", "device", "session"] };
 
     ctx.tool("settings.set", {
+      effect: "write",
       description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing, with confirm naming what it widens or loosens. No confirm step and no proof: every change is logged (settings.changes) and can be undone (settings.undo). Returns the value now in effect.",
       input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: LEVEL, ...where,
         preview: { type: "boolean" }, confirm: { type: "boolean" } } },
@@ -517,6 +520,7 @@ export default {
     });
 
     ctx.tool("settings.reset", {
+      effect: "write",
       description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Logged and undoable like settings.set.",
       input: { type: "object", required: ["key"], properties: { key: str, level: LEVEL, ...where, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE,
@@ -554,6 +558,7 @@ export default {
 
     // Undo one change: the value before it comes back at the same level, with no prompt (C25).
     ctx.tool("settings.undo", {
+      effect: "write",
       description: "Undo one settings change (its id from settings.changed or settings.changes): the value before it comes back at the same level. No confirm and no proof.",
       input: { type: "object", required: ["change"], properties: { change: str } },
       callers: PEOPLE,
@@ -573,6 +578,7 @@ export default {
 
     // Recent changes, newest first: what the Deck shows as "Changed by <who>, <when>" with Undo.
     ctx.tool("settings.changes", {
+      effect: "read",
       description: "Recent settings changes, newest first: {id, key, level, target, by, said, at, undone}. Give key for one setting's history.",
       input: { type: "object", properties: { key: str, limit: { type: "number" } } },
       run: async (i) => {

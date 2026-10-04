@@ -72,7 +72,7 @@ test("a space made on this computer says it sleeps", () => {
 
 test("setup carries on after the home: look, members, connectors, kit, done", () => {
   assert.equal(AFTER_HOME, "look");
-  assert.deepEqual(["look", "members", "connectors", "kit"].map(nextSetup), ["members", "connectors", "kit", "done"]);
+  assert.deepEqual(["look", "members", "ai", "connectors", "kit"].map(nextSetup), ["members", "ai", "connectors", "kit", "done"]);
   assert.equal(backOf("members"), "look");
   assert.equal(backOf("look"), null);
 });
@@ -94,4 +94,20 @@ test("other devices and the server say the same thing in plain words", () => {
   assert.equal(setupElsewhere("iPhone"), "Setup in progress on your iPhone");
   assert.equal(setupElsewhere("this computer"), "Setup in progress on this computer");
   assert.equal(connectedLine("Northwind", "iPhone"), "Connected to Northwind. Finish setting up on your iPhone.");
+});
+
+test("a pairing that fails says what to do on the server", async () => {
+  const { serverSay, SERVER_FAILED } = await import("./flow.js");
+  assert.equal(serverSay({ code: "ticket_used" }), SERVER_FAILED.used);
+  assert.equal(serverSay(new Error("The pairing ran out of time")), SERVER_FAILED.expired);
+  assert.equal(serverSay(new Error("Failed to fetch")), SERVER_FAILED.unreachable);
+  assert.equal(serverSay(new Error("rejected")), SERVER_FAILED.rejected);
+  assert.equal(serverSay(new Error("x")), SERVER_FAILED.ended);
+});
+
+test("the identity refusals of a pairing say what happened and that nothing was paired", async () => {
+  const { serverSay, SERVER_FAILED } = await import("./flow.js");
+  assert.equal(serverSay(new Error("identity could not be checked right now")), SERVER_FAILED.unchecked);
+  assert.equal(serverSay(new Error("this was not them")), SERVER_FAILED.notThem);
+  assert.equal(serverSay(new Error("the directory is unreachable")), SERVER_FAILED.directory);
 });

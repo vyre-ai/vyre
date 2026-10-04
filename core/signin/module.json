@@ -1,53 +1,13 @@
 {
   "name": "signin",
   "version": "0.1.0",
-  "description": "`vyre signin`, the daemon half: the command line asks, the paired phone approves with Face ID, and the terminal gets a person session made for exactly that terminal.",
-  "roles": [
-    "box",
-    "local"
-  ],
+  "description": "The command line's sign-in: `vyre signin` asks the owner's phone to approve, and on a yes that one terminal login holds a person session until it signs out or goes unused for 30 days.",
+  "roles": ["box", "local"],
   "requires": [],
-  "needs": {
-    "kernel": {
-      "actions": [],
-      "presence": true
-    },
-    "daemon": [
-      "personSessions"
-    ]
-  },
-  "does": {
-    "tools": [
-      {
-        "name": "signin.ask",
-        "reach": "person"
-      },
-      {
-        "name": "signin.pending",
-        "reach": "person"
-      },
-      {
-        "name": "signin.answer",
-        "reach": "person"
-      },
-      {
-        "name": "signin.status",
-        "reach": "person"
-      },
-      {
-        "name": "signin.out",
-        "reach": "person"
-      }
-    ]
-  },
-  "watches": {
-    "emits": []
-  },
-  "shows": {
-    "cli": []
-  },
-  "teaches": {
-    "tips": []
-  },
+  "needs": { "kernel": { "actions": [] }, "daemon": ["cliSigninPayload", "cliSigninCheck", "cliSessions", "devStandIn"] },
+  "does": { "tools": [{ "name": "signin.ask", "effect": "write", "reach": "person" }, { "name": "signin.pending", "effect": "read", "reach": "person" }, { "name": "signin.answer", "effect": "write", "reach": "person" }, { "name": "signin.status", "effect": "read", "reach": "person" }, { "name": "signin.end", "effect": "write", "reach": "person" }, { "name": "signin.dev", "effect": "write", "reach": "person" }] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
   "settings": []
 }

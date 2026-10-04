@@ -41,6 +41,8 @@
   --fs-title: 18px; --lh-title: 24px;
   --fs-page: 24px; --lh-page: 30px;
   --fs-display: 32px; --lh-display: 38px;
+  --fs-control: 14px; --lh-control: 20px;
+  --fs-micro: 11px; --lh-micro: 14px;
   --fs-label: 11px;
   /* space: a 4 grid */
   --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px; --s-12: 48px; --s-16: 64px;
@@ -95,5 +97,5 @@
 
 /* Phone: larger body, read and title, 44 px controls and 64 px rows (design-system.md, type table). */
 @media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
-  :root { --fs-secondary: 15px; --lh-secondary: 20px; --fs-body: 16px; --lh-body: 22px; --fs-headline: 17px; --lh-headline: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 25px; --fs-page: 28px; --lh-page: 34px; --fs-display: 34px; --lh-display: 41px; --control: 44px; --control-sm: 36px; --row-h: 64px; }
+  :root { --fs-secondary: 15px; --lh-secondary: 20px; --fs-body: 16px; --lh-body: 22px; --fs-headline: 17px; --lh-headline: 22px; --fs-read: 17px; --lh-read: 25px; --fs-title: 20px; --lh-title: 25px; --fs-page: 28px; --lh-page: 34px; --fs-display: 34px; --lh-display: 41px; --fs-control: 15px; --lh-control: 20px; --control: 44px; --control-sm: 36px; --row-h: 64px; }
 }

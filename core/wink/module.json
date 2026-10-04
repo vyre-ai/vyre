@@ -28,178 +28,224 @@
       },
       {
         "name": "wink.code.open",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.code.status",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.code.ack",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.cancel",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.invite",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.approve",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.decline",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.share",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.access",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.offers",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.remove",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.card",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.pair.targets",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.pair.server",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.pair.status",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.server.code",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.confirm",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.pairing",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
-        "name": "wink.server.status",
+        "name": "wink.server.status", "effect": "read",
         "reach": "person"
       },
       {
         "name": "wink.server.pair.answer",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.adopt",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.retarget",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.release",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.reset.begin",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.reset.confirm",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.device.key",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.relay.apply",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.phone.open",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.phone.scan",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.phone.pairing",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.phone.pair.answer",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.phone.wait",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.offer.set",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.storage.discover",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.storage.pick",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.storage.pair",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.storage.card",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.storage.offers",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.storage.status",
-        "reach": "person"
+        "reach": "person",
+        "effect": "read"
       },
       {
         "name": "wink.storage.remove",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.storage.bridge",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.storage.bridge.accept",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.storage.bridge.drive",
-        "reach": "person"
+        "reach": "person",
+        "effect": "write"
       },
       {
         "name": "wink.server.handover",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.server.owned",
         "reach": "modules"
       },
       {
@@ -212,6 +258,10 @@
       },
       {
         "name": "wink.server.paired",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.paired",
         "reach": "modules"
       }
     ]
