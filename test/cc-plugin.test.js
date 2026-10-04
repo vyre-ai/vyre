@@ -239,6 +239,7 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
   for (const n of ["planner_add", "planner_list", "planner_agenda"]) assert.ok(names.includes(n), n);
   assert.equal(replies.get(1).result.instructions.includes("planner_add"), true, "Claude is told to make a promised reminder real");
   assert.equal(replies.get(1).result.instructions.includes("only this session's project"), true, "Claude says plainly that it is not granted yet");
+  assert.equal(/Access/.test(replies.get(1).result.instructions), false, "no screen is named that the request may not live on");
   const out = id => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
   const rem = out(3);
   assert.equal(rem.kind, "reminder");

@@ -5359,7 +5359,7 @@ Change an item: title, body, list, priority, pinned, tags, project, thread, pare
 
 ### `pluginagent.ask`
 
-Claude Code on this computer asks, once, to read the person's memory and their projects' sessions. Files a request for the person to approve; changes nothing else. Answers { state: 'granted' | 'waiting' }.
+Claude Code on this computer asks, once, to read the person's memory and the sessions of their projects. Files a request for the person to approve; changes nothing else. Answers { state: 'granted' | 'waiting' }.
 
 - Input:
   - `computer` string
