@@ -354,7 +354,12 @@ export function createWink(inject = {}) {
       adopted = true;
       const g = await grants();
       const identity = await owner1();
-      for (const x of await g.list({ status: "active", source: "wink:W" })) {
+      /** @type {any[]} */ let legacy;
+      // An event handler has no running call to build the kernel chain from, so the kernel refuses the list. That is the only error taken here, once, in one plain line: a server made by this build has no
+      // legacy grants to adopt, and the pairing never waits on it (the device is registered first). Any other error still propagates.
+      try { legacy = await g.list({ status: "active", source: "wink:W" }); }
+      catch (e) { if (/kernel-built chain/.test(String(/** @type {Error} */ (e).message))) { ctx.log("wink: legacy device grants were not looked for (an event has no chain to ask the kernel with); a server made by this build has none"); return; } throw e; }
+      for (const x of legacy) {
         const sub = x.subject.kind === "actor" ? x.subject.actor : null;
         if (!sub || sub.kind !== "device" || !x.actions.includes("space.act")) continue;
         const who = String(x.reason || "").split(", ");
@@ -362,7 +367,7 @@ export function createWink(inject = {}) {
         await g.revoke(x.id, "devices belong to your identity now");
       }
     };
-    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await adoptLegacy(); await registerDevice(e.payload || e); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
+    const offPaired = ctx.events.on("device.paired", async (/** @type {any} */ e) => { try { await registerDevice(e.payload || e); await adoptLegacy(); } catch (err) { ctx.log(`wink: device registration failed: ${/** @type {Error} */ (err).message}`); } });
     const offRemoved = ctx.events.on("device.removed", async (/** @type {any} */ e) => {
       const p = e.payload || e;
       try {

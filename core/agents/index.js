@@ -391,10 +391,14 @@ export default {
       input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, text: { type: "string" }, surface: { type: "string" }, wait: { type: "boolean" },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: { type: "string" }, id: { type: "string" }, name: { type: "string" } } }, description: "The # tags the composer picked, from a person's own surface only (as threads.send): each is resolved for the agent's thread." },
         pasted: { type: "array", maxItems: 20, items: { type: "string" }, description: "The spans of the text the person pasted: a #Name inside one tags nothing." } } },
+      // Callable by a model session too (the assistant asks its agents; a plain session may ask within its own project): who actually may is decided in the body (modelMay, HD-9).
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"],
       run: async (i, meta0) => {
         const { caller } = meta0;
         guard(caller, "talk to other agents");
         if (!modelMay(meta0, { sessionOk: true })) throw Object.assign(new Error("an unidentified caller cannot talk to agents"), { code: "denied" });
+        // An unnamed model session (mcp or harness, no agent behind it) is no one's agent and asks nobody: it has no grants of its own to ask under.
+        if (!isPerson(caller) && !meta0.firstParty && !meta0.agent && /^(?:mcp|harness)(?::|$)/.test(String(caller || ""))) throw Object.assign(new Error("an unnamed model session asks no agent: it has no agent grants of its own to act under"), { code: "denied" });
         // HD-9: a model's words go out as this module, which skips the thread scope checks, so a session may not use them to reach a wider agent than itself: the assistant (every project)
         // is the person's and the verified assistant's to ask, and an agent only reaches agents whose projects are within its own grant.
         if (!isPerson(caller) && !meta0.firstParty && meta0.agentKind !== "assistant") {

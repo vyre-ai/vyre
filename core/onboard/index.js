@@ -523,6 +523,7 @@ export default {
           // The person disconnects the AI account: both sign-in items leave the vault (a missing one is fine) and the step reads as not signed in. Assistants on it stop and ask. The account itself is not touched.
           for (const name of Object.values(VAULT_ITEM)) await call("vault.delete", { name }).catch(() => null);
           save({ onboard: { claude: null } });
+          ctx.events.emit("onboard.claude-changed", { signedIn: false });
           return stepOf("claude", caller);
         }
         if (mode === "setup-token" && !key && !token) {
@@ -538,6 +539,7 @@ export default {
           }
           await call("vault.put", { name: VAULT_ITEM[kind], kind: VAULT_KIND[kind], description: VAULT_ABOUT[kind], value: t });
           save({ onboard: { claude: kind } });
+          ctx.events.emit("onboard.claude-changed", { signedIn: true });
           await ensureAssistant();
         }
         return { ...(await stepOf("claude", caller)), url: null, needsCode: signin.active() };
@@ -822,11 +824,20 @@ export default {
     const retry = setTimeout(() => { if (ob().assistant) ensureAssistant({ fallbackName: false }).catch(() => {}); }, 3000);
     if (typeof retry.unref === "function") retry.unref();
     // 0.3: the owner arrives by pairing and nothing names the assistant, so it is made once there is an owner and a signed-in AI account (default name Juno), and until then Now says so.
-    const ready = () => assistantWhenReady({ tryCall, call, signedInOutside: () => Boolean(ob().claude), hasOwner: () => Boolean(ob().person), ensure: ensureAssistant, state: () => ob().assistantState,
-      setState: s => save({ onboard: { assistantState: s } }) }).catch(e => ctx.log("onboard: the assistant check failed: " + /** @type {Error} */ (e).message));
-    const readyFirst = setTimeout(() => { void ready(); }, 4000);
-    const readyEvery = setInterval(() => { void ready(); }, 60_000);
-    for (const t of [readyFirst, readyEvery]) if (typeof t.unref === "function") t.unref();
-    return { async stop() { clearTimeout(readyFirst); clearInterval(readyEvery); clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
+    // Checked once at start and when something it depends on changes, never on a timer: the owner is adopted or seen, an AI account is connected or disconnected (onboard.claude, or any
+    // provider's sign-in, which sessions announces as account.changed).
+    let checking = false, again = false;
+    const ready = async () => {
+      if (checking) { again = true; return; }
+      checking = true;
+      try { await assistantWhenReady({ tryCall, call, signedInOutside: () => Boolean(ob().claude), hasOwner: async () => Boolean(ob().person) || Boolean(await isOwned().catch(() => false)), ensure: ensureAssistant, state: () => ob().assistantState,
+        setState: s => save({ onboard: { assistantState: s } }) }); }
+      catch (e) { ctx.log("onboard: the assistant check failed: " + /** @type {Error} */ (e).message); }
+      finally { checking = false; if (again) { again = false; void ready(); } }
+    };
+    const readyFirst = setTimeout(() => { void ready(); }, 3000);
+    if (typeof readyFirst.unref === "function") readyFirst.unref();
+    const offReady = ["owner.adopted", "owner.seen", "owner.changed", "onboard.claude-changed", "account.changed"].map(type => ctx.events.on(type, () => { void ready(); }));
+    return { async stop() { clearTimeout(readyFirst); for (const o of offReady) if (typeof o === "function") o(); clearTimeout(retry); if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

@@ -253,6 +253,15 @@ export class PersonSessions {
     return { expires: now + GRANT_TTL, challenge };
   }
 
+  /** Whether a device holds a pairing grant or a live paired session now: a renewal never replaces either. @param {string} device */
+  holds(device) {
+    this.prune();
+    const now = this.now();
+    if (this.db.prepare("SELECT 1 FROM presence_pair_grants WHERE device = ?").get(String(device || ""))) return true;
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT last_used, max FROM presence_people WHERE node = ? AND paired = 1").all(String(device || "")));
+    return rows.some(r => Math.min(r.last_used + IDLE, r.max) > now);
+  }
+
   /**
    * The challenge for a device's grant, for the device to sign. A device with no grant gets a
    * random one of the same shape, so nothing says whether a grant exists.
