@@ -1780,7 +1780,7 @@ admin() {
         MSG=""; sp_fw_del "$nm" >/dev/null 2>&1 || true
         rm -rf -- "${d:?}"
       done
-      compose run --rm --no-deps -T --entrypoint node vyre /opt/vyre/scripts/admin-wipe.mjs || die "the vault and sealing wipe failed; the daemon is stopped. Nothing was started. Fix the line above and run this again."
+      compose run --rm --no-deps -T -u vyre --entrypoint node vyre /opt/vyre/scripts/admin-wipe.mjs || die "the vault and sealing wipe failed; the daemon is stopped. Nothing was started. Fix the line above and run this again."
       # What the host kept: database backups (they hold keys) and the releases set aside for a rollback.
       for f in "$UPD_PRIV/backups" "$UPD_PRIV/release.prev" "$UPD_PRIV/release.bad" "$UPD_PRIV/src.prev" "$SRCDIR.prev" "$BOXPREV"; do
         [ -e "$f" ] || [ -L "$f" ] || continue
@@ -1791,6 +1791,8 @@ admin() {
       say "wiped. Vyre is running again, new and empty, with no owner. Pair a device to claim it."
       ;;
     anchor-reset)
+      # `-u vyre` on both one-off runs: the service runs as 0:0 with every capability dropped but SETUID/SETGID (its entrypoint drops to vyre), so a one-off `--entrypoint node` is root without DAC_OVERRIDE and
+      # cannot read the vyre-owned home (0700): the script said "no Vyre home" (found on a real --from install, testbox6, 5 Oct).
       # Offline: the daemon is stopped, then scripts/admin-anchor-reset.mjs (kernel-2's) starts ONLY the sealing process from a one-off container of the same image and prints one request line.
       # The owner's device signs that request (a proof made after the line was printed: the sealing process takes none older, and one lives under a minute) and the signed proof comes back as
       # one line on this terminal's input. A refused, expired or replayed proof changes nothing; the script exits non-zero and the daemon is started again either way.
@@ -1798,7 +1800,7 @@ admin() {
       pf=$(compose run --rm --no-deps -T --entrypoint test vyre -f /opt/vyre/scripts/admin-anchor-reset.mjs 2>&1) || die "this release has no anchor-reset step (scripts/admin-anchor-reset.mjs in the image), or the image could not be run: $pf; nothing was changed"
       compose stop vyre >/dev/null 2>&1 || die "the daemon could not be stopped; nothing was changed"
       echo "Vyre will print one request line. Approve it on your device, then paste the proof your device gives back and press Enter. It is good for under a minute."
-      if compose run --rm --no-deps -i --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
+      if compose run --rm --no-deps -i -u vyre --entrypoint node vyre /opt/vyre/scripts/admin-anchor-reset.mjs --home /home/vyre/.vyre; then rs=0; else rs=1; fi
       compose up -d >/dev/null 2>&1 || die "the daemon did not start; run: vyre up"
       [ "$rs" = 0 ] || die "the anchor was not reset (see the line above); Vyre was started again and will refuse again until it is"
       say "the anchor is reset and Vyre is running again."
