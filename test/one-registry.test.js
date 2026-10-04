@@ -216,3 +216,35 @@ test("a Space this home hosted with the first-start owner (made before the claim
   const members = await stale.gateway.grants.members.list(chain);
   assert.deepEqual(members.map((/** @type {any} */ m) => [m.person, m.role]), [[made.data.id, "owner"]], "the hosted Space's owner is the identity, the old id is gone");
 });
+
+test("lend: a module record that says the first grant was given is not consent the kernel honours (backup restore, revoked offers): on again asks the kernel and gets a plain refusal; and a device whose list leaves the space out is refused", async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const port = await freePort();
+  const child = spawn(process.execPath, [SCRIPT, "--port", String(port)], { stdio: ["ignore", "pipe", "inherit"] });
+  t.after(() => { child.kill("SIGTERM"); });
+  await new Promise((res, rej) => { child.stdout.on("data", d => { if (String(d).includes("stand-in names directory")) res(null); }); child.on("exit", c => rej(new Error(`the stand-in exited early (${c})`))); });
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "lend2-box", transcripts: [], vault: { keystore: "file" }, names: { directory: `http://127.0.0.1:${port}` }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, kernel: true, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const deck = (/** @type {string} */ tool, /** @type {any} */ input = {}) => call(tool, input, { root, caller: "deck" });
+  const made = (await deck("spaces.identity.create", { name: "alex" })).data;
+  const a = (await deck("spaces.create", { name: "lendb", home: { kind: "this-computer", confirmed: true } })).data;
+  const b = (await deck("spaces.create", { name: "lendc", home: { kind: "this-computer", confirmed: true } })).data;
+  // the module's own record claims a first grant was given for space A; the kernel has no offer at all
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(path.join(root, "vyre.db"));
+  t.after(() => { try { db.close(); } catch { /* closed */ } });
+  db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`lend/${a.space}/${made.eid}`, JSON.stringify({ lent: false, device: made.eid, first_grant_at: 1, allowed_by: made.id, at: 1 }));
+  const r = await deck("spaces.devices.lend", { space: a.space, device: made.eid, on: true });
+  assert.ok(r.error, "no silent success: the kernel holds no consent");
+  assert.equal(r.error.code, "presence_required", JSON.stringify(r.error));
+  const hosted = d.kernel.spaces.hosted(a.space);
+  assert.deepEqual(hosted.gateway.grants.offers.active({ member: made.id, device: made.eid, device_key: made.eid }), { spaceAllows: false, memberAccepts: false });
+  // a device whose list leaves space B out cannot be lent into B
+  assert.ok(!(await deck("spaces.devices.set", { device: made.eid, spaces: [a.space] })).error);
+  const nb = await deck("spaces.devices.lend", { space: b.space, device: made.eid, on: true });
+  assert.equal(nb.error && nb.error.code, "device_removed", JSON.stringify(nb));
+});
