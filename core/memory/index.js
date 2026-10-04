@@ -586,6 +586,7 @@ export default {
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
+        // SHIM(legacy labels): the label branch runs only with the kernel off
         const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
