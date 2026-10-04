@@ -35,7 +35,8 @@ for (const ROLE of ["local", "box"]) test(`own-server session on a ${ROLE}: ever
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "first", surface: "deck" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   await finished(r.data.id, 1);
-  await d.registry.call("threads.send", { thread: r.data.id, text: "second", surface: "deck" }, "cli");
+  const sent = await d.registry.call("threads.send", { thread: r.data.id, text: "second", surface: "deck" }, "cli");
+  assert.ok(sent && !sent.error, "threads.send: " + JSON.stringify(sent));
   await finished(r.data.id, 2);
   const host = (await import("../core/daemon/ownserver-host.js")).createOwnServerHost({ kernel: d.kernel, registry: d.registry, root, log: () => {} });
   const cp = await until(async () => { const c = await host.port(d.kernel.id.space).getCheckpoint(r.data.id).catch(() => null); return c && c.turn >= 2 ? c : null; }, `two sealed turns (${logs.filter(m => /runner|seal/i.test(m)).join(" | ")})`);
