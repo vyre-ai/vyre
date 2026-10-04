@@ -422,8 +422,8 @@ export const KNOWN_LABELS = new Set([...SURFACE_LABELS, "mcp", "harness", "hook"
 
 /** Who may call a reach "person" tool: the person's own surfaces, and the owner's own devices (callerAllowed). */
 const PERSON_CALLERS = Object.freeze([...SURFACE_LABELS, "tailnet", "device", "space", "agent"]);
-/** The caller classes that stand for the person on a module hop: their own surfaces and devices, and the first-run page the daemon serves on the loopback (`onboard`: a label only that listener assigns, FORBIDDEN over the socket), where no owner exists yet. */
-const ORIGIN_PERSON = Object.freeze([...PERSON_CALLERS, "onboard"]);
+/** The caller classes that stand for the person on a module hop: their own surfaces and devices, and nothing else: no pre-owner exception (a server with no owner takes only pairing). */
+const ORIGIN_PERSON = Object.freeze([...PERSON_CALLERS]);
 
 /**
  * The once-only registry default (reviewer-2's group D audit, the lead's ruling 4 Oct): a tool that changes state and declares no `callers` list is the person's own surfaces and modules
