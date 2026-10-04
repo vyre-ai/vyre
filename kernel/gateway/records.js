@@ -470,6 +470,108 @@ export function createRecords(cfg) {
     versionHash,
 
     /**
+     * Merge two records of one type that turned out to be one (two contacts for one person). `drop` goes to the bin, `keep` keeps everything either held: an
+     * empty field takes the other's value, lists are joined, and a different value in a unique field (the other email) goes into the companion list
+     * `other_<field>s` when the type has one, else it is reported in `conflicts` and the kept record's value stands. Every record that linked to `drop` links to
+     * `keep` instead. Sealed values stay with the dropped record (a sealed reference belongs to the record it was put on) and are named in `sealed_left`. It all
+     * goes through this gateway's own update and remove (each checked for the caller, versioned and logged); a failure part-way puts back what was done. One
+     * `records.merged` event says what moved so `unmerge` can undo it.
+     */
+    async merge(chain, type, keepId, dropId) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      checkType(type); checkId(keepId); checkId(dropId);
+      if (keepId === dropId) throw new KernelError("bad_input", "a record cannot be merged into itself");
+      const keepUrn = urn(type, keepId), dropUrn = urn(type, dropId);
+      const dk = await gate(chain, "records.update", keepUrn);
+      await gate(chain, "records.remove", dropUrn);
+      let keep, drop, defs;
+      try { keep = await store.get(type, keepId); drop = await store.get(type, dropId); defs = await store.types(); } catch (e) { throw mapError(e); }
+      if (!keep || !drop || keep.deleted_at || drop.deleted_at) throw new KernelError("not_found", "no such record");
+      const def = defs.find((/** @type {any} */ t) => t.name === type);
+      if (!def) throw new KernelError("unknown_type", `no type ${type}`);
+      const LISTS = new Set(["multi_choice", "emails", "phones", "urls"]);
+      /** @type {Record<string, any>} */ const patch = {}, conflicts = {};
+      const sealed_left = [];
+      const present = (/** @type {any} */ v) => v !== undefined && v !== null && !(Array.isArray(v) && !v.length);
+      const join = (/** @type {any[]} */ a, /** @type {any[]} */ b) => { const seen = new Set(a.map(x => canonical(x))); return [...a, ...b.filter(x => !seen.has(canonical(x)))]; };
+      const addTo = (/** @type {string} */ name, /** @type {any[]} */ vals) => { const cur = patch[name] ?? keep.data[name] ?? []; const j = join(cur, vals); if (j.length !== cur.length) patch[name] = j; };
+      for (const f of def.fields) {
+        const kv = keep.data[f.name], dv = drop.data[f.name];
+        if (f.kind === "sealed") { if (present(dv)) sealed_left.push(f.name); continue; }
+        if (!present(dv)) continue;
+        if (!present(kv)) { patch[f.name] = dv; continue; }
+        if (LISTS.has(f.kind)) { addTo(f.name, dv); continue; }
+        if (canonical(kv) === canonical(dv)) continue;
+        const comp = def.fields.find((/** @type {any} */ x) => x.name === `other_${f.name}s` && LISTS.has(x.kind));
+        if (comp) addTo(comp.name, [dv]); else conflicts[f.name] = dv;
+      }
+      // Every record that links to `drop`, read from the store (the caller may not see all of them, and none may be left pointing at the bin).
+      /** @type {{ type: string, id: string, field: string, version: number }[]} */ const relink = [];
+      for (const t of defs) for (const lf of t.fields.filter((/** @type {any} */ x) => x.kind === "link" && (x.to === type || x.to === undefined))) {
+        let cursor;
+        do {
+          let pg;
+          try { pg = await store.query(t.name, { filter: { field: lf.name, op: "eq", value: { urn: dropUrn } }, page: { limit: 200, ...(cursor ? { cursor } : {}) } }); } catch (e) { throw mapError(e); }
+          for (const r of pg.rows) if (r.type === t.name && !(t.name === type && r.id === dropId)) relink.push({ type: t.name, id: r.id, field: lf.name, version: r.version });
+          cursor = pg.next_cursor;
+        } while (cursor);
+      }
+      for (const x of relink) if (!(await allowed(chain, "records.update", urn(x.type, x.id)))) throw new KernelError("not_allowed", "this merge would change records you may not change");
+      /** @type {(() => Promise<any>)[]} */ const undo = [];
+      const done = [];
+      try {
+        const removed = await api.remove(chain, type, dropId, drop.version);
+        undo.push(() => api.restore(chain, type, dropId));
+        for (const x of relink) {
+          // a record linking through two fields shows up twice: take its version from the store each time
+          const cur = await store.get(x.type, x.id);
+          const upd = await api.update(chain, x.type, x.id, { [x.field]: { urn: keepUrn } }, cur.version);
+          undo.push(() => api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, upd.version));
+          done.push({ type: x.type, id: x.id, field: x.field });
+        }
+        let kept = keep;
+        if (Object.keys(patch).length) {
+          const upd = await api.update(chain, type, keepId, patch, keep.version);
+          undo.push(() => api.update(chain, type, keepId, Object.fromEntries(Object.keys(patch).map(k => [k, keep.data[k] ?? null])), upd.version));
+          kept = upd;
+        }
+        const keep_before = Object.fromEntries(Object.keys(patch).map(k => [k, keep.data[k] ?? null]));
+        const ev = log.append(chain, { type: "records.merged", sv: 1, subject: keepUrn, data: { type, keep: keepId, drop: dropId, patched: keep_before, merged: Object.fromEntries(Object.keys(patch).map(k => [k, patch[k]])), relinked: done, conflicts: Object.keys(conflicts), sealed_left, dropped_version: removed.version }, vis: "subject", red: "internal" }, { decision: dk.decision });
+        return { keep: await api.get(chain, type, keepId), dropped: dropUrn, relinked: done.length, conflicts, sealed_left, merge_id: ev.id };
+      } catch (e) {
+        for (const u of undo.reverse()) { try { await u(); } catch { /* best effort: the log shows what is where */ } }
+        throw e;
+      }
+    },
+
+    /** Undo a merge by its `merge_id`: the kept record gets its old values back where nobody has changed them since, the dropped record comes back, and what was relinked points at it again. */
+    async unmerge(chain, mergeId) {
+      if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
+      const ev = log.read({ type: "records.merged" }).find((/** @type {any} */ e) => e.id === mergeId);
+      if (!ev) throw new KernelError("not_found", "no such merge");
+      if (log.read({ type: "records.unmerged" }).some((/** @type {any} */ e) => e.corr === mergeId)) throw new KernelError("invalid", "this merge was already undone");
+      const m = ev.data, keepUrn = urn(m.type, m.keep), dropUrn = urn(m.type, m.drop);
+      const dk = await gate(chain, "records.update", keepUrn);
+      let keep;
+      try { keep = await store.get(m.type, m.keep); } catch (e) { throw mapError(e); }
+      if (!keep) throw new KernelError("not_found", "no such record");
+      // fields still holding what the merge put there go back; ones someone edited since stay as they are
+      const back = {}, edited = [];
+      for (const [k, v] of Object.entries(m.merged)) { if (canonical(keep.data[k] ?? null) === canonical(v)) back[k] = m.patched[k] ?? null; else edited.push(k); }
+      if (Object.keys(back).length) await api.update(chain, m.type, m.keep, back, keep.version);
+      const restored = await api.restore(chain, m.type, m.drop);
+      let relinked = 0;
+      for (const x of m.relinked) {
+        let cur;
+        try { cur = await store.get(x.type, x.id); } catch { continue; }
+        if (!cur || cur.deleted_at || !cur.data[x.field] || cur.data[x.field].urn !== keepUrn) continue;
+        await api.update(chain, x.type, x.id, { [x.field]: { urn: dropUrn } }, cur.version); relinked++;
+      }
+      log.append(chain, { type: "records.unmerged", sv: 1, subject: keepUrn, corr: mergeId, data: { type: m.type, keep: m.keep, drop: m.drop, relinked, edited_since: edited } }, { decision: dk.decision });
+      return { keep: await api.get(chain, m.type, m.keep), restored: restored.urn, relinked, edited_since: edited };
+    },
+
+    /**
      * Role records (a type marked `role: { link }`): what a contact or organization is to the Space. Both calls go through `query`, so every row is checked
      * for the caller one by one; a holder the caller cannot read has no roles to show. The link field is the only index they need.
      */

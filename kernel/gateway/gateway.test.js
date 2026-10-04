@@ -6,6 +6,7 @@ import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 import { isUuid, timeOf, mintUuid } from "../core/ids.js";
 import { CONTACT } from "../conformance/suite.js";
+import { CONTACT as CONTACT_CORE, ORGANIZATION as ORG_CORE, PARTICIPANT as PARTICIPANT_CORE } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
@@ -496,6 +497,53 @@ test("roles: roles of a contact and holders of a role at a stage, current first,
   hidden.add(bob.urn);
   assert.deepEqual(await r.roles(owner(), bob.urn), []);
   void p1; void a1; void pb; void cb;
+});
+
+test("merge: two contacts that are one person become one, everything moves, the log says so, and unmerge puts it all back", async () => {
+  const { r, log } = await rig();
+  await r.define(owner(), { add_types: [CONTACT_CORE, ORG_CORE, PARTICIPANT_CORE, roleType("client")] });
+  const org = await r.create(owner(), "organization", { name: "Harlow Legal", domain: "harlow.test" });
+  const a = await r.create(owner(), "contact", { name: "Jane Doe", email: "jane@harlow.test", other_emails: ["j@old.test"] });
+  const b = await r.create(owner(), "contact", { name: "J. Doe", email: "jane@gmail.test", phone: "+15550100", organization: { urn: org.urn }, other_emails: ["j@old.test", "jd@x.test"], notes: "second" });
+  const role = await r.create(owner(), "client", { contact: { urn: b.urn }, stage: "Active" });
+  const part = await r.create(owner(), "participant", { communication: { urn: `vyre://${SPACE}/communication/${mintUuid()}` }, contact: { urn: b.urn }, how: "to" });
+  await assert.rejects(() => r.merge(owner(), "contact", a.id, a.id), { code: "bad_input" });
+  const res = await r.merge(owner(), "contact", a.id, b.id);
+  assert.equal(res.relinked, 2);
+  assert.deepEqual(res.conflicts, { name: "J. Doe" }, "a different name is reported and the kept one stands; the other email had a place to go");
+  const m = (await r.get(owner(), "contact", a.id)).data;
+  assert.equal(m.name, "Jane Doe", "the kept record's own value stands");
+  assert.deepEqual([m.phone, m.organization.urn, m.notes], ["+15550100", org.urn, "second"], "empty fields take the other's value");
+  assert.deepEqual(m.other_emails.sort(), ["j@old.test", "jane@gmail.test", "jd@x.test"], "lists join and the other main email is kept");
+  assert.equal(await r.get(owner(), "contact", b.id), null, "the dropped record is in the bin");
+  assert.equal((await r.get(owner(), "client", role.id)).data.contact.urn, a.urn);
+  assert.equal((await r.get(owner(), "participant", part.id)).data.contact.urn, a.urn);
+  assert.deepEqual((await r.roles(owner(), a.urn)).map(x => x.role), ["client"]);
+  assert.equal(log.read({ type: "records.merged" }).length, 1);
+  assert.equal(log.read({ type: "records.merged" })[0].data.drop, b.id);
+  // undo
+  const back = await r.unmerge(owner(), res.merge_id);
+  assert.equal(back.relinked, 2);
+  const a2 = (await r.get(owner(), "contact", a.id)).data;
+  assert.deepEqual([a2.phone ?? null, a2.organization ?? null, a2.notes ?? null, a2.other_emails], [null, null, null, ["j@old.test"]]);
+  assert.equal((await r.get(owner(), "contact", b.id)).data.email, "jane@gmail.test");
+  assert.equal((await r.get(owner(), "client", role.id)).data.contact.urn, b.urn);
+  await assert.rejects(() => r.unmerge(owner(), res.merge_id), { code: "invalid" }, "once");
+});
+
+test("merge: a record that links to the dropped one and may not be changed stops the merge before anything moves", async () => {
+  const grants = [
+    G({ actions: ["records.define"] }),
+    G({ actions: ["records.read", "records.create", "records.update", "records.remove"], resource: { prefix: `vyre://${SPACE}/contact/*` } }),
+    G({ actions: ["records.read", "records.create"], resource: { prefix: `vyre://${SPACE}/client/*` } }),
+  ];
+  const { r } = await rig({ grants });
+  await r.define(owner(), { add_types: [CONTACT_CORE, ORG_CORE, roleType("client")] });
+  const a = await r.create(owner(), "contact", { name: "A", email: "a@x.test" }), b = await r.create(owner(), "contact", { name: "B", phone: "+1555" });
+  await r.create(owner(), "client", { contact: { urn: b.urn } });
+  await assert.rejects(() => r.merge(owner(), "contact", a.id, b.id), { code: "not_allowed" });
+  assert.equal((await r.get(owner(), "contact", b.id)).data.name, "B", "the dropped record is still there");
+  assert.equal((await r.get(owner(), "contact", a.id)).version, 1, "the kept record is untouched");
 });
 
 // ---- stage gates ----

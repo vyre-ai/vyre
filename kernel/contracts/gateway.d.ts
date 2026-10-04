@@ -35,6 +35,14 @@ export interface RecordsApi {
   roles(chain: Chain, holder: Urn, opts?: { readonly include_ended?: boolean }): Promise<readonly RoleHold[]>;
   /** The holders of one role type, optionally at one stage (ended roles left out unless `include_ended`). */
   holders(chain: Chain, spec: { readonly role: string; readonly stage?: string; readonly include_ended?: boolean; readonly page: { readonly limit: number; readonly cursor?: string } }): Promise<Page<RoleHold>>;
+  /**
+   * Merge two records of one type that are one (two contacts for one person): `drop` goes to the bin, `keep` takes what it lacked, links to `drop` move to `keep`.
+   * Sealed values stay with the dropped record (`sealed_left`); different values are reported in `conflicts` (a unique field's other value goes to `other_<field>s` when the type has it).
+   * Checked and logged through the record calls; one `records.merged` event with `merge_id`.
+   */
+  merge(chain: Chain, type: string, keep: RecordId, drop: RecordId): Promise<{ readonly keep: GatewayRecord | null; readonly dropped: Urn; readonly relinked: number; readonly conflicts: Readonly<Record<string, FieldValue>>; readonly sealed_left: readonly string[]; readonly merge_id: string }>;
+  /** Undo a merge: fields the merge set go back unless edited since, the dropped record is restored, links point at it again. Once per merge. */
+  unmerge(chain: Chain, merge_id: string): Promise<{ readonly keep: GatewayRecord | null; readonly restored: Urn; readonly relinked: number; readonly edited_since: readonly string[] }>;
 }
 
 /** A role record seen from its holder. `current` is false for a removed record or one in an ended stage. */

@@ -123,3 +123,46 @@ test("a unique field: the gateway refuses the second record cleanly, writes no e
   assert.equal(host.log.read({ type: "account.created" }).length, 1, "a refused write writes no event");
   assert.equal(host.log.verify().ok, true);
 });
+
+test("contacts and roles over Twenty: one person once, a role is a record that links to the contact, the two role queries answer", async () => {
+  const { host } = await boot();
+  await host.defineCore();
+  const c = host.ownerChain(), R = host.kernel.records;
+  const role = (name) => ({ name, label: name, role: { link: "contact", ended: ["Ended"] }, stages: [{ name: "New" }, { name: "Active" }, { name: "Ended" }],
+    fields: [{ name: "contact", kind: "link", to: "contact", label: "Contact", required: true }, { name: "stage", kind: "stage", label: "Stage", options: ["New", "Active", "Ended"] }] });
+  await host.defineTypes([role("prospect"), role("client")]);
+  const jane = await R.create(c, "contact", { name: "Jane Doe", email: "jane@example.test", phone: "+15550100" });
+  await assert.rejects(() => R.create(c, "contact", { name: "Jane Again", email: "jane@example.test" }), { code: "unique_violation" }, "a second record for the same address is refused");
+  const bob = await R.create(c, "contact", { name: "Bob Roe", email: "bob@example.test" });
+  const link = (x) => ({ urn: x.urn });
+  await R.create(c, "prospect", { contact: link(jane), stage: "Ended" });
+  await R.create(c, "client", { contact: link(jane), stage: "Active" });
+  await R.create(c, "prospect", { contact: link(bob), stage: "New" });
+  assert.deepEqual((await R.roles(c, jane.urn)).map((x) => [x.role, x.current]), [["client", true], ["prospect", false]], "current first");
+  assert.deepEqual((await R.holders(c, { role: "prospect", page: { limit: 10 } })).rows.map((x) => x.holder), [bob.urn], "ended prospects are not holders");
+  assert.deepEqual((await R.holders(c, { role: "client", stage: "Active", page: { limit: 10 } })).rows.map((x) => x.holder), [jane.urn]);
+  // a communication with two contacts on it: the participant records tie it to both, and each contact finds it
+  const mail = await R.create(c, "communication", { kind: "email", direction: "inbound", at: "2026-10-01T09:00:00.000Z", subject: "Hello", source_key: "gmail:abc" });
+  await assert.rejects(() => R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:abc" }), { code: "unique_violation" }, "the same message is logged once");
+  for (const [who, how] of [[jane, "from"], [bob, "to"]]) await R.create(c, "participant", { communication: link(mail), contact: link(who), how });
+  const onJane = await R.query(c, "participant", { filter: { field: "contact", op: "eq", value: link(jane) }, page: { limit: 10 } });
+  assert.deepEqual(onJane.rows.map((p) => p.data.communication.urn), [mail.urn]);
+});
+
+test("merge over Twenty: the dropped contact's unique phone moves to the kept one, links follow, unmerge gives the phone back", async () => {
+  const { host } = await boot();
+  await host.defineCore();
+  const c = host.ownerChain(), R = host.kernel.records;
+  const a = await R.create(c, "contact", { name: "Jane Doe", email: "jane@example.test" });
+  const b = await R.create(c, "contact", { name: "Jane Doe", email: "jane2@example.test", phone: "+15550100" });
+  const mail = await R.create(c, "communication", { kind: "email", at: "2026-10-01T09:00:00.000Z", source_key: "gmail:1" });
+  const part = await R.create(c, "participant", { communication: { urn: mail.urn }, contact: { urn: b.urn }, how: "from" });
+  const res = await R.merge(c, "contact", a.id, b.id);
+  const kept = (await R.get(c, "contact", a.id)).data;
+  assert.deepEqual([kept.phone, kept.other_emails], ["+15550100", ["jane2@example.test"]]);
+  assert.equal((await R.get(c, "participant", part.id)).data.contact.urn, a.urn);
+  await R.unmerge(c, res.merge_id);
+  assert.equal((await R.get(c, "contact", b.id)).data.phone, "+15550100", "the dropped contact has its phone back");
+  assert.equal((await R.get(c, "contact", a.id)).data.phone ?? null, null);
+  assert.equal((await R.get(c, "participant", part.id)).data.contact.urn, b.urn);
+});
