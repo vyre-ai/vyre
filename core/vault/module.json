@@ -57,6 +57,7 @@
       { "name": "vault.unlock-passphrase", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.create", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.unlock", "effect": "write", "reach": "anyone" },
+      { "name": "vault.account.unlock-phone", "effect": "write", "reach": "anyone" },
       { "name": "vault.account.lock", "effect": "write", "reach": "person" },
       { "name": "vault.people", "effect": "read", "reach": "anyone" },
       { "name": "vault.person.add", "effect": "write", "reach": "anyone" },
