@@ -673,7 +673,7 @@ const bakeryV1 = () => ({
 const bakeryBuiltIn = () => { const m = bakeryV1(); m.does.tools.push({ name: "bakery.own", summary: "the person's own", reach: "person" }); return m; };
 const bakerySrc = `export default { async start(ctx) {
   for (const name of ctx.name === "bakery" ? ["bakery.orders", "bakery.target", "bakery.flour", "bakery.sync", "bakery.hook", ...(globalThis.__bakeryOwn ? ["bakery.own"] : [])] : []) {
-    ctx.tool(name, { input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
+    ctx.tool(name, { effect: "read", input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
   }
   return { async stop() {} };
 } };`;
