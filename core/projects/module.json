@@ -4,6 +4,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": {
+    "reads": ["projects.list"],
     "tools": [
       { "name": "projects.list", "reach": "anyone", "effect": "read" }, { "name": "projects.create", "reach": "anyone", "effect": "write" }, { "name": "projects.history", "reach": "anyone", "effect": "write", "projectArg": "project" }, { "name": "projects.rename", "reach": "anyone", "effect": "write", "projectArg": "project" }, { "name": "projects.archive", "reach": "anyone", "effect": "write", "projectArg": "project" }, { "name": "projects.add-threads", "reach": "person", "effect": "write", "projectArg": "project" }, { "name": "projects.remove-threads", "reach": "person", "effect": "write", "projectArg": "project" }, { "name": "projects.add-workspace", "effect": "write" },
       { "name": "projects.watchers.add", "reach": "person", "effect": "write" }, { "name": "projects.watchers.remove", "reach": "person", "effect": "write" },

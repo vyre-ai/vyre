@@ -1,41 +1,226 @@
 {
   "name": "glass",
   "version": "0.1.0",
-  "roles": ["box"],
+  "roles": [
+    "box"
+  ],
   "requires": [],
-  "does": { "tools": [
-      {"name": "glass.targets", "reach": "person", "effect": "read"},
-      {"name": "glass.open", "reach": "person", "effect": "write"},
-      {"name": "glass.close", "reach": "person", "effect": "write"},
-      {"name": "glass.take", "reach": "person", "effect": "write"},
-      {"name": "glass.release", "reach": "person", "effect": "write"},
-      {"name": "glass.files.list", "reach": "anyone", "effect": "read"},
-      {"name": "glass.files.stat", "reach": "anyone", "effect": "read"},
-      {"name": "glass.files.preview", "reach": "anyone", "effect": "read"},
-      {"name": "glass.files.download", "reach": "anyone", "effect": "read"},
-      {"name": "glass.files.upload", "reach": "anyone", "effect": "write"},
-      {"name": "glass.files.move", "reach": "anyone", "effect": "write"},
-      {"name": "glass.files.mkdir", "reach": "anyone", "effect": "write"},
-      {"name": "glass.files.trash", "reach": "anyone", "effect": "write"}
-    ] },
-  "watches": { "emits": [
-    "glass.opened", "glass.closed", "glass.taken", "glass.released",
-    "file.uploaded", "file.moved", "file.trashed", "file.created"
-  ] },
-  "shows": { "deck": ["route:/glass/:target"], "capsule": ["open-glass"], "cli": ["glass"] },
+  "does": {
+    "reads": [
+      "glass.files.list",
+      "glass.files.preview"
+    ],
+    "tools": [
+      {
+        "name": "glass.targets",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "glass.open",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "glass.close",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "glass.take",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "glass.release",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "glass.files.list",
+        "reach": "anyone"
+      },
+      {
+        "name": "glass.files.stat",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "glass.files.preview",
+        "reach": "anyone"
+      },
+      {
+        "name": "glass.files.download",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "glass.files.upload",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "glass.files.move",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "glass.files.mkdir",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "glass.files.trash",
+        "reach": "anyone",
+        "effect": "write"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "glass.opened",
+      "glass.closed",
+      "glass.taken",
+      "glass.released",
+      "file.uploaded",
+      "file.moved",
+      "file.trashed",
+      "file.created"
+    ]
+  },
+  "shows": {
+    "deck": [
+      "route:/glass/:target"
+    ],
+    "capsule": [
+      "open-glass"
+    ],
+    "cli": [
+      "glass"
+    ]
+  },
   "needs": {},
   "teaches": {
     "tips": [
-      {"id": "open", "text": "Press Open Glass on an agent's page, or go to `/glass/kit`, to watch kit's screen live.", "surfaces": ["deck", "glass"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "/glass/kit", "docs": "using/glass.md#watch-kits-screen"},
-      {"id": "take-over", "text": "Press `T` in Glass to take kit's keyboard; kit pauses until you hand it back.", "surfaces": ["glass"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "T", "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"},
-      {"id": "hand-back", "text": "Press `Ctrl+Enter` to hand the keyboard back; a note of up to 280 characters goes into kit's thread.", "surfaces": ["glass"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "Ctrl+Enter", "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"},
-      {"id": "sign-in-private", "text": "Use Sign in privately, not Take over, for a password: kit can't see the page while you type.", "surfaces": ["glass"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/glass.md#sign-in-to-a-site-in-kits-chrome"},
-      {"id": "handback-wait", "text": "Pick Off, 2, 5 or 15 minutes in Settings, Network, Glass hand-back to set when an idle take-over ends.", "surfaces": ["deck", "glass"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call computers.handback.set '{\"minutes\":15}'", "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"},
-      {"id": "box-files", "text": "Open `/glass/box` to browse the box's own chosen folders; it has files and no screen.", "surfaces": ["deck", "glass"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "/glass/box", "docs": "using/glass.md#browse-and-move-files"},
-      {"id": "upload", "text": "Open the Files tab and drop files onto the list to upload them into kit's open folder.", "surfaces": ["glass"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/glass.md#browse-and-move-files"},
-      {"id": "capsule-glass", "text": "Type `glass kit` in the Capsule to open kit's screen without going through the Deck.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "glass kit", "docs": "using/glass.md#watch-kits-screen"},
-      {"id": "trash", "text": "Trash in Glass moves a file to `.vyre-trash`, so a file trashed by mistake can come back out.", "surfaces": ["glass"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/glass.md#browse-and-move-files"},
-      {"id": "rest", "text": "Close Glass without worry: kit's computer rests a minute after nobody watches, then wakes where it left off.", "surfaces": ["glass"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/glass.md#watch-kits-screen"}
+      {
+        "id": "open",
+        "text": "Press Open Glass on an agent's page, or go to `/glass/kit`, to watch kit's screen live.",
+        "surfaces": [
+          "deck",
+          "glass"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "/glass/kit",
+        "docs": "using/glass.md#watch-kits-screen"
+      },
+      {
+        "id": "take-over",
+        "text": "Press `T` in Glass to take kit's keyboard; kit pauses until you hand it back.",
+        "surfaces": [
+          "glass"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "T",
+        "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"
+      },
+      {
+        "id": "hand-back",
+        "text": "Press `Ctrl+Enter` to hand the keyboard back; a note of up to 280 characters goes into kit's thread.",
+        "surfaces": [
+          "glass"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "key": "Ctrl+Enter",
+        "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"
+      },
+      {
+        "id": "sign-in-private",
+        "text": "Use Sign in privately, not Take over, for a password: kit can't see the page while you type.",
+        "surfaces": [
+          "glass"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/glass.md#sign-in-to-a-site-in-kits-chrome"
+      },
+      {
+        "id": "handback-wait",
+        "text": "Pick Off, 2, 5 or 15 minutes in Settings, Network, Glass hand-back to set when an idle take-over ends.",
+        "surfaces": [
+          "deck",
+          "glass"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre call computers.handback.set '{\"minutes\":15}'",
+        "docs": "using/glass.md#take-the-keyboard-then-hand-it-back"
+      },
+      {
+        "id": "box-files",
+        "text": "Open `/glass/box` to browse the box's own chosen folders; it has files and no screen.",
+        "surfaces": [
+          "deck",
+          "glass"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "/glass/box",
+        "docs": "using/glass.md#browse-and-move-files"
+      },
+      {
+        "id": "upload",
+        "text": "Open the Files tab and drop files onto the list to upload them into kit's open folder.",
+        "surfaces": [
+          "glass"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "docs": "using/glass.md#browse-and-move-files"
+      },
+      {
+        "id": "capsule-glass",
+        "text": "Type `glass kit` in the Capsule to open kit's screen without going through the Deck.",
+        "surfaces": [
+          "capsule"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "glass kit",
+        "docs": "using/glass.md#watch-kits-screen"
+      },
+      {
+        "id": "trash",
+        "text": "Trash in Glass moves a file to `.vyre-trash`, so a file trashed by mistake can come back out.",
+        "surfaces": [
+          "glass"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/glass.md#browse-and-move-files"
+      },
+      {
+        "id": "rest",
+        "text": "Close Glass without worry: kit's computer rests a minute after nobody watches, then wakes where it left off.",
+        "surfaces": [
+          "glass"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/glass.md#watch-kits-screen"
+      }
     ]
   }
 }

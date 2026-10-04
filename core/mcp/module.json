@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": ["vault", "gate"],
-  "does": { "tools": ["mcp.servers", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "mcp.restart", "mcp.tools", "mcp.call", "mcp.grant", "mcp.release"] },
+  "does": { "reads": ["mcp.tools"], "tools": ["mcp.servers", "mcp.add", "mcp.update", "mcp.remove", "mcp.test", "mcp.restart", "mcp.tools", "mcp.call", "mcp.grant", "mcp.release"] },
   "watches": { "emits": ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed", "mcp.called", "mcp.held"] },
   "shows": { "deck": ["settings:connections"], "cli": ["connect"] },
   "needs": { "vault": ["per-connection"] },

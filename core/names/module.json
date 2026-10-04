@@ -1,20 +1,173 @@
 {
   "name": "names",
   "version": "0.1.0",
-  "roles": ["box"],
+  "roles": [
+    "box"
+  ],
   "requires": [],
-  "does": { "tools": [{ "name": "names.status", "effect": "read", "reach": "anyone" }, { "name": "names.check", "effect": "read", "reach": "anyone" }, { "name": "names.claim", "effect": "write", "reach": "anyone" }, { "name": "names.recover", "effect": "write", "reach": "person" }, { "name": "names.recover.code", "reach": "modules" }, { "name": "names.domain.check", "effect": "read", "reach": "person" }, { "name": "names.domain.serve", "effect": "write", "reach": "person" }, { "name": "names.fallback", "effect": "write", "reach": "anyone" }, { "name": "names.release", "effect": "write", "reach": "person" }, { "name": "names.connect", "effect": "write", "reach": "anyone" }, { "name": "names.owner", "effect": "write", "reach": "anyone" }, { "name": "names.claim-code", "reach": "modules" }] },
-  "watches": { "emits": ["name.claimed", "name.recovered", "name.recovery-pending", "name.recovery-cancelled", "name.moved", "name.released", "certificate.issued", "certificate.failed", "domain.ready", "domain.failed", "owner.seen", "owner.changed"] },
-  "shows": { "cli": ["name"] },
-  "needs": { "vault": ["cloudflare-vyre-token"] },
+  "does": {
+    "reads": [
+      "names.check",
+      "names.status"
+    ],
+    "tools": [
+      {
+        "name": "names.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "names.check",
+        "reach": "anyone"
+      },
+      {
+        "name": "names.claim",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "names.recover",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "names.recover.code",
+        "reach": "modules"
+      },
+      {
+        "name": "names.domain.check",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "names.domain.serve",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "names.fallback",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "names.release",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "names.connect",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "names.owner",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "names.claim-code",
+        "reach": "modules"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "name.claimed",
+      "name.recovered",
+      "name.recovery-pending",
+      "name.recovery-cancelled",
+      "name.moved",
+      "name.released",
+      "certificate.issued",
+      "certificate.failed",
+      "domain.ready",
+      "domain.failed",
+      "owner.seen",
+      "owner.changed"
+    ]
+  },
+  "shows": {
+    "cli": [
+      "name"
+    ]
+  },
+  "needs": {
+    "vault": [
+      "cloudflare-vyre-token"
+    ]
+  },
   "teaches": {
     "tips": [
-      {"id": "address", "text": "Run `vyre name` to print your box's address and the login it serves.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre name", "docs": "using/tailscale.md#know-your-boxs-address"},
-      {"id": "not-owner", "text": "Sign a device in to Tailscale as the box's owner if it gets `403 not_owner`; a tagged device never can be.", "surfaces": ["deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/tailscale.md#connect-a-device"},
-      {"id": "retry-cert", "text": "Run `vyre name ts.net` to retry the certificate once HTTPS Certificates are on in Tailscale's DNS page.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre name ts.net", "docs": "using/tailscale.md#if-the-address-has-no-certificate"},
-      {"id": "owner", "text": "Run `vyre owner` to see which Tailscale login the box serves, or `vyre owner <login>` to set it.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre owner", "docs": "using/tailscale.md#connect-a-device"},
-      {"id": "check-name", "text": "Run `vyre name check alex` to see whether alex.vyre.run is free before you claim it.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre name check <name>"},
-      {"id": "no-password", "text": "Open your box's address from any device on your tailnet: there is no Vyre password, Tailscale says who you are.", "surfaces": ["deck", "phone"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/tailscale.md"}
+      {
+        "id": "address",
+        "text": "Run `vyre name` to print your box's address and the login it serves.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre name",
+        "docs": "using/tailscale.md#know-your-boxs-address"
+      },
+      {
+        "id": "not-owner",
+        "text": "Sign a device in to Tailscale as the box's owner if it gets `403 not_owner`; a tagged device never can be.",
+        "surfaces": [
+          "deck",
+          "phone"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "docs": "using/tailscale.md#connect-a-device"
+      },
+      {
+        "id": "retry-cert",
+        "text": "Run `vyre name ts.net` to retry the certificate once HTTPS Certificates are on in Tailscale's DNS page.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre name ts.net",
+        "docs": "using/tailscale.md#if-the-address-has-no-certificate"
+      },
+      {
+        "id": "owner",
+        "text": "Run `vyre owner` to see which Tailscale login the box serves, or `vyre owner <login>` to set it.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre owner",
+        "docs": "using/tailscale.md#connect-a-device"
+      },
+      {
+        "id": "check-name",
+        "text": "Run `vyre name check alex` to see whether alex.vyre.run is free before you claim it.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "vyre name check <name>"
+      },
+      {
+        "id": "no-password",
+        "text": "Open your box's address from any device on your tailnet: there is no Vyre password, Tailscale says who you are.",
+        "surfaces": [
+          "deck",
+          "phone"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "docs": "using/tailscale.md"
+      }
     ]
   }
 }

@@ -4,7 +4,7 @@
   "description": "Is a newer Vyre out: one daily look at the releases, one answer every surface draws its Update card from.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["update.status", "update.check", "update.apply"] },
+  "does": { "reads": ["update.check", "update.status"], "tools": ["update.status", "update.check", "update.apply"] },
   "watches": { "emits": ["update.available", "update.requested"] },
   "shows": { "cli": [] },
   "needs": {},

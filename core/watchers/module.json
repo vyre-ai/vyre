@@ -4,6 +4,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": {
+    "reads": ["watchers.list", "watchers.logs"],
     "tools": [
       { "name": "watchers.list", "effect": "read", "reach": "anyone", "projectArg": "project" },
       { "name": "watchers.test", "effect": "write", "reach": "anyone", "projectArg": "project" },

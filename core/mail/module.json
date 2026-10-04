@@ -10,6 +10,7 @@
     "gate"
   ],
   "does": {
+    "reads": ["mail.read", "mail.search"],
     "tools": [
       { "name": "mail.accounts", "reach": "anyone", "effect": "read" },
       { "name": "mail.map", "reach": "anyone", "effect": "write" },

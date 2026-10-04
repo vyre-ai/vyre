@@ -5,6 +5,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": {
+    "reads": ["undo.list"],
     "tools": [
       { "name": "undo.record", "summary": "record an action with the inverse its module declared", "reach": "modules" },
       { "name": "undo.list", "summary": "list what was done on the person's behalf, newest first", "reach": "anyone", "effect": "read" },

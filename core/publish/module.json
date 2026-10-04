@@ -7,6 +7,7 @@
   ],
   "requires": [],
   "does": {
+    "reads": ["publish.domain.verify", "publish.list", "publish.preview", "publish.status"],
     "tools": [
       {
         "name": "publish.create",

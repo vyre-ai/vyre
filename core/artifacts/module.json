@@ -6,6 +6,7 @@
   "roles": ["box"],
   "requires": [],
   "does": {
+    "reads": ["artifacts.get", "artifacts.list", "artifacts.media.read", "artifacts.public.status", "artifacts.search"],
     "tools": [
       { "name": "artifacts.create", "summary": "make an artifact (a doc, report, page, dashboard, diagram, deck or small app)", "reach": "anyone", "effect": "write", "projectArg": "project" },
       { "name": "artifacts.update", "summary": "save a new version of an artifact", "reach": "anyone", "effect": "write" },
