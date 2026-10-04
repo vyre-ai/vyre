@@ -35,7 +35,7 @@ export default {
     const keyPath = () => path.join(root, KEY_FILE);
 
     ctx.tool("pluginagent.ask", {
-      description: "Claude Code on this computer asks, once, to read the person's memory and their projects' sessions. Files a request for the person to approve; changes nothing else. Answers { state: 'granted' | 'waiting' }.",
+      description: "Claude Code on this computer asks, once, to read the person's memory and the sessions of their projects. Files a request for the person to approve; changes nothing else. Answers { state: 'granted' | 'waiting' }.",
       input: obj({ computer: { type: "string", maxLength: 80 } }),
       callers: [...PEOPLE, "mcp", "harness"],
       run: async (/** @type {any} */ input) => {
@@ -59,21 +59,21 @@ export default {
       run: async () => {
         const a = current();
         return a ? { granted: true, agent: String(a.agent), computer: String(a.computer) }
-          : { granted: false, say: "Claude Code can read only this session's project until you let it read your memory and your projects' sessions. Approve it in Vyre (Access), or run: vyre call pluginagent.grant" };
+          : { granted: false, say: "Claude Code can read only this session's project until you allow it in Vyre." };
       },
     });
 
     ctx.tool("pluginagent.pending", {
       description: "What is waiting for the person: [{ id, computer, asked_at, sentence }].",
       input: obj(), callers: PEOPLE,
-      run: async () => open().map(a => ({ id: String(a.id), computer: String(a.computer), asked_at: Number(a.asked_at), sentence: `Let Claude Code on ${a.computer} read your memory and your projects' sessions` })),
+      run: async () => open().map(a => ({ id: String(a.id), computer: String(a.computer), asked_at: Number(a.asked_at), sentence: `Let Claude Code on ${a.computer} read your memory and the sessions of your projects` })),
     });
 
     ctx.tool("pluginagent.grant", {
       description: "The person lets Claude Code on a computer read their memory and every project's sessions, once. Registers the agent, adds it to the Space (a kernel act that needs the person's presence) and writes its key where only this OS user can read it. It never becomes the person.",
       input: obj({ id: { type: "string", maxLength: 40 }, computer: { type: "string", maxLength: 80 } }),
       callers: PEOPLE,
-      presence: { summary: async (/** @type {any} */ i) => `Let Claude Code on ${clean(i && i.computer) } read your memory and your projects' sessions` },
+      presence: { summary: async (/** @type {any} */ i) => `Let Claude Code on ${clean(i && i.computer) } read your memory and the sessions of your projects` },
       run: async (/** @type {any} */ input, /** @type {any} */ meta) => {
         if (current()) throw refuse("Claude Code on this computer is already granted; revoke it first to start over", "conflict");
         const ask = input && input.id ? db.prepare("SELECT * FROM pluginagent_asks WHERE id = ?").get(String(input.id)) : null;

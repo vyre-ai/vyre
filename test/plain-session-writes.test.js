@@ -54,7 +54,7 @@ test("a plain model session reaches no write or outward tool but the listed ones
   assert.deepEqual(open, [], "listed as refused for a plain session, but it was not");
   // Nothing may be left for review without an owner: the number only shrinks.
   const review = Object.entries(allowed).filter(([, v]) => /** @type {any} */ (v).class === "review").map(([n]) => n);
-  assert.ok(review.length <= 5, "tools waiting for an owner's decision: " + review.join(", "));
+  assert.ok(review.length === 0, "tools waiting for an owner's decision: " + review.join(", "));
 });
 
 test("a plain model session acts on no thread that is not its own: stop, interrupt, send, archive, delete, fork, watch, switch, unarchive on another's thread are refused and the thread is untouched", { timeout: 300_000 }, async t => {
@@ -85,4 +85,31 @@ test("a plain model session acts on no thread that is not its own: stop, interru
   const after = (await d.registry.call("threads.get", { thread: id }, "cli")).data.thread;
   assert.equal(after.status, before.status, "the thread was not stopped, archived or changed");
   assert.deepEqual(open, [], "a plain session got through to another's thread");
+});
+
+test("a plain session's file and key acts: files.fetch and github.project.local-init only inside its own folder, vault.generate and vault.ssh.generate only when asked", { timeout: 300_000 }, async t => {
+  const root = fs.realpathSync(tempHome(t));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box" }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  t.after(() => d.stop());
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(root, "proj-")));
+  const elsewhere = path.join(root, "elsewhere.txt");
+  fs.writeFileSync(elsewhere, "not yours");
+  assert.ok(!(await d.registry.call("projects.create", { name: "One", home }, "cli")).error);
+  for (const caller of ["mcp", "harness"]) {
+    const init = await d.registry.call("github.project.local-init", { project: "one" }, caller, {});
+    assert.equal(init.error && init.error.code, "denied", `${caller} local-init: ${JSON.stringify(init)}`);
+    const fetchOut = await d.registry.call("files.fetch", { path: elsewhere }, caller, {});
+    assert.equal(fetchOut.error && fetchOut.error.code, "denied", `${caller} files.fetch: ${JSON.stringify(fetchOut)}`);
+    const inOwn = await d.registry.call("files.fetch", { path: elsewhere }, caller, { peerCwd: root });
+    assert.ok(!inOwn.error || inOwn.error.code !== "denied", `${caller} may fetch inside its own folder: ${JSON.stringify(inOwn)}`);
+    const out = await d.registry.call("files.fetch", { path: elsewhere }, caller, { peerCwd: home });
+    assert.equal(out.error && out.error.code, "denied", `${caller} files.fetch from another folder`);
+    for (const [tool, input] of [["vault.generate", { name: "n" }], ["vault.ssh.generate", { name: "k" }]]) {
+      const r = await d.registry.call(tool, input, caller, {});
+      assert.ok(r.error && ["not_asked", "denied", "held_unavailable"].includes(r.error.code), `${caller} ${tool}: ${JSON.stringify(r).slice(0, 160)}`);
+    }
+  }
+  const mine = await d.registry.call("github.project.local-init", { project: "one" }, "mcp", { peerCwd: home });
+  assert.ok(!mine.error || mine.error.code !== "denied", "inside the project's own folder it is allowed: " + JSON.stringify(mine).slice(0, 160));
 });

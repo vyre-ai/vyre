@@ -26,6 +26,7 @@ import { drop } from "./drop.js";
 import { drive } from "./drive.js";
 import { registerSpaceDrive } from "./space-drive.js";
 import { dirs } from "./dirs.js";
+import { isPlainModel, sessionFolder, insideFolder } from "../../lib/own-folder.js";
 
 const run = promisify(execFile);
 const KIB = 1024, MIB = 1024 * KIB, GIB = 1024 * MIB;
@@ -392,6 +393,10 @@ export default {
       run: async ({ path: p, source, offset, length }, meta = {}) => {
         const caller = meta.caller;
         if (role === "local" && source === "mac") throw new Error("already on this Mac");
+        // A plain model session (no agent behind it) brings a file only from inside the folder it runs in, and never one from the box (the lead's ruling, 4 Oct).
+        if (isPlainModel(meta)) {
+          if (target(source) === "box" || !insideFolder(String(p), await sessionFolder(ctx, meta))) throw Object.assign(new Error("a session brings only files from inside its own project folder"), { code: "denied" });
+        }
         const scope = await reach(ctx, caller, meta);
         if (target(source) === "box") {
           // See files.search: an agent's identity does not survive the hop, so pulling from the

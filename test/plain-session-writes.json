@@ -94,16 +94,16 @@
    "why": "refused in the body for a plain session: a model session may only act on its own agent's computer; it names no agent"
   },
   "files.fetch": {
-   "class": "review",
-   "why": "brings a box file to the Mac: files owner to confirm a plain session may not name any path"
+   "class": "own",
+   "why": "only a file inside the session's own project folder, never one from the box (proved in the third test)"
   },
   "gate.request": {
    "class": "held",
    "why": "the way a model asks for an outward act: it is held for the person"
   },
   "github.project.local-init": {
-   "class": "review",
-   "why": "makes a project folder a git repo: github owner to confirm"
+   "class": "own",
+   "why": "only for the project folder the session runs in (proved in the third test)"
   },
   "github.project.pr.merge": {
    "class": "refused",
@@ -466,8 +466,8 @@
    "why": "taking access away, of the caller's own surface"
   },
   "vault.generate": {
-   "class": "review",
-   "why": "stores a generated secret: vault owner to confirm"
+   "class": "refused",
+   "why": "reach asked: a model mints a secret only when the person's own words asked for it"
   },
   "vault.grant": {
    "class": "held",
@@ -490,8 +490,8 @@
    "why": "presence floor"
   },
   "vault.request": {
-   "class": "review",
-   "why": "an HTTP call with a vault credential: vault owner to confirm it needs a grant for this surface"
+   "class": "held",
+   "why": "the person's ask by nature: every call from a plain session, a read too, is held at the Gate and runs only when the person answers"
   },
   "vault.revoke": {
    "class": "own",
@@ -502,8 +502,8 @@
    "why": "locking is always allowed"
   },
   "vault.ssh.generate": {
-   "class": "review",
-   "why": "a plain session stores a new SSH key in the vault with no presence: vault owner to hold it or list why"
+   "class": "refused",
+   "why": "reach asked: a model mints a key only when the person's own words asked for it"
   },
   "watchers.create": {
    "class": "refused",

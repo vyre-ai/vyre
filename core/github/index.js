@@ -15,6 +15,7 @@ import { connector } from "./connect.js";
 import { MIGRATIONS, store, projectStore, forOne, commitIdentity } from "./accounts.js";
 import { prNumber, openPrsForBranch, prView, prMerge, prReview, prOpen, prStatus, prComments, issueList, issueGet } from "./pr.js";
 import { searchMentions, resolveMention, parseId } from "./mentions.js";
+import { isPlainModel, sessionFolder, insideFolder } from "../../lib/own-folder.js";
 import { safeSegment, cloneRepo, worktreeAdd, sessionEnv, worktreeRemove, originFullName, folderGitState, sanitizeRemoteUrl, defaultBranchOf, pushSession, localInit, sessionHistory, sessionUndo, sessionRedo } from "./git.js";
 
 const str = { type: "string" };
@@ -827,6 +828,8 @@ export default {
         checkModuleCaller("github.project.local-init", meta, MODULE_CALLERS["github.project.local-init"]);
         const row = await projectRow(project);
         if (!row) throw fail(`no project named ${project}`, "not_found");
+        // A plain model session makes a folder a repo only when it runs inside that project's folder (the lead's ruling, 4 Oct).
+        if (isPlainModel(meta) && !insideFolder(String(await sessionFolder(ctx, meta) || ""), row.home)) throw fail("a session sets up version history only for the project folder it runs in", "denied");
         const out = await localInit(row.home);
         if (!out.already) ctx.events.emit("github.local-init", { project, branch: out.branch });
         return out;

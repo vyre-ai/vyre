@@ -559,7 +559,9 @@ export class ApiRequests {
       throw bad(`${name} is not available to ${agentName ? `the agent ${agentName}` : "this project"}: give it access in the credential's scope (projects and agents)`, "denied");
     }
 
-    if (plan.kind === "read") return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
+    // A plain model session (no agent, no project behind it, not the assistant, not tagged) is the person's ask by nature: even a read is held for the person to answer, and nothing runs until they do (4 Oct ruling).
+    const plainModel = isModel && !agentName && !(/** @type {any} */ (meta).project) && /** @type {any} */ (meta).agentKind !== "assistant" && !tagged;
+    if (plan.kind === "read" && !plainModel) return { ...(await this.execute(plan, { who: watcher ? `${caller}/${watcher}` : caller })), kind: "read" };
 
     // A watcher has no card to wait behind: it runs reads and is refused anything outward.
     if (watcher) {
