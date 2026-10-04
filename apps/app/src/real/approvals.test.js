@@ -69,20 +69,20 @@ test("a held act names its moment and request, nothing else counts", () => {
   assert.equal(heldAsk(null), null);
 });
 
-test("asking for the yes: ask, poll, and return the approval id for one retry, with no proof carried", async () => {
+test("asking for the yes: ask, poll, and return the card id for one retry, with no proof carried", async () => {
   const calls = [];
-  const states = [{ state: "waiting" }, { state: "approved" }];
+  const states = [{ state: "waiting" }, { state: "approved", card: "ap_1" }];
   let i = 0;
-  const call = async (t, input) => { calls.push([t, input]); return t === "approvals.ask" ? { id: "ap_1", line: "Vyre on browser wants to reveal a secret" } : states[Math.min(i++, 1)]; };
+  const call = async (t, input) => { calls.push([t, input]); return t === "presence.person.session-ask" ? { id: "ap_1" } : states[Math.min(i++, 1)]; };
   let said = "";
-  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, onWaiting: (l) => { said = l; } }), { approval: "ap_1" });
-  assert.deepEqual(calls[0], ["approvals.ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }]);
-  assert.deepEqual(calls[1], ["approvals.status", { id: "ap_1" }]);
-  assert.match(said, /wants to reveal/);
+  assert.deepEqual(await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, sleep: async () => {}, pollMs: 0, onWaiting: (l) => { said = l; } }), { card: "ap_1" });
+  assert.deepEqual(calls[0], ["presence.person.session-ask", { moment: "vault", request: { op: "vault.reveal", fields: {} } }]);
+  assert.deepEqual(calls[1], ["presence.person.session-status", { id: "ap_1" }]);
+  assert.equal(said, "");
 });
 
 test("a no, a timeout and Stop waiting end it without an approval", async () => {
-  const ask = (state) => async (t) => (t === "approvals.ask" ? { id: "a" } : { state });
+  const ask = (state) => async (t) => (t === "presence.person.session-ask" ? { id: "a" } : { state });
   const o = { moment: "outward", request: { op: "mail.send", fields: {} }, sleep: async () => {} };
   assert.deepEqual(await askYes(ask("refused"), o), { ended: "refused" });
   assert.deepEqual(await askYes(ask("timeout"), o), { ended: "timeout" });
