@@ -1,45 +1,40 @@
 // @ts-check
-// What the person is told about their sign-in on this device: the browser would not keep it (so it ends with the tab), it ends soon (a 30-day session), or it has ended. One small shared
-// state, no storage of its own for anything secret; the expiry time is a number the box already gave. Pure helpers plus a tiny store a screen subscribes to.
+// What the person is told about their sign-in on this device. A paired device renews its own session with its key (wink-2, work/wink-session), so nothing is said while that works: no
+// "ends in N days", no "sign in again". A notice appears only when a renewal FAILED, or when the browser will not keep the sign-in. The server refuses a failed renewal with one answer
+// whatever the reason (`denied`, so the box tells nobody whether a device is locked, removed or wrong), so the words cover that case honestly; server text is never rendered.
 
-const DAY = 86_400_000;
-/** Warn this long before the session ends. */
-export const SOON_MS = 3 * DAY;
-
-/** @typedef {{ storageRefused: boolean, expires: number | null, ended: boolean }} NoticeState */
+/** @typedef {"denied" | "unreachable" | "other"} RenewFailure */
+/** @typedef {{ storageRefused: boolean, renewFailed: RenewFailure | null }} NoticeState */
 /** @type {NoticeState} */
-let state = { storageRefused: false, expires: null, ended: false };
+let state = { storageRefused: false, renewFailed: null };
 /** @type {Set<() => void>} */
 const subs = new Set();
 const set = (/** @type {Partial<NoticeState>} */ p) => { state = { ...state, ...p }; for (const f of [...subs]) f(); };
 
 export const noteStorageRefused = () => { if (!state.storageRefused) set({ storageRefused: true }); };
-/** The box's `expires` (ms epoch) for the session it just gave. A later one replaces it and ends any "ended" state. @param {number} ms */
-export const noteExpires = (ms) => { if (Number.isFinite(ms) && ms > 0) set({ expires: ms, ended: false }); };
-export const noteEnded = () => set({ ended: true });
-export const clearNotice = () => set({ expires: null, ended: false });
+
+/** What kind of failure a refused renewal was, from the error's code alone. @param {string | undefined} code @returns {RenewFailure} */
+export const failureOf = (code) => (code === "denied" ? "denied" : code === "offline" || code === "unreachable" || code === "timeout" ? "unreachable" : "other");
+
+/** A renewal failed: keep what kind. An unreachable server is not a refusal of the device, so it only says it will retry. @param {string | undefined} code */
+export const noteRenewFailed = (code) => set({ renewFailed: failureOf(code) });
+/** A session was renewed (or a new one made): the failure notice goes away. */
+export const noteRenewed = () => { if (state.renewFailed !== null) set({ renewFailed: null }); };
+export const clearNotice = () => set({ renewFailed: null });
 export const snapshot = () => state;
 /** @param {() => void} f */
 export const subscribe = (f) => { subs.add(f); return () => { subs.delete(f); }; };
 
-/** What to say, most urgent first, or null. @param {NoticeState} s @param {number} now @returns {{ tone: "warn" | "plain", text: string } | null} */
-export function sessionNotice(s, now) {
-  if (s.ended || (s.expires !== null && s.expires <= now)) return { tone: "warn", text: "Your sign-in on this device has ended. Sign in again from your phone." };
-  if (s.expires !== null && s.expires - now <= SOON_MS) {
-    const days = Math.max(1, Math.ceil((s.expires - now) / DAY));
-    return { tone: "warn", text: `Your sign-in on this device ends in ${days} ${days === 1 ? "day" : "days"}. Sign in again from your phone before then.` };
-  }
-  if (s.storageRefused) return { tone: "plain", text: "This browser will not keep your sign-in, so it ends when you close this tab. Allow site storage to stay signed in." };
-  return null;
+/** The words for a failed renewal. Never the server's own text. @param {RenewFailure} kind */
+export function renewWords(kind) {
+  if (kind === "unreachable") return "Cannot reach your server right now. You stay signed in; this will retry.";
+  if (kind === "denied") return "This device could not sign in again. It may be locked after wrong answers, or it may have been removed. Your phone can lift a lock or pair this device again.";
+  return "Signing in again did not work. Your phone can pair this device again.";
 }
 
-/**
- * Why a renewal of a lapsed paired session did not go through, in words (wink-2, work/wink-session): the device renews itself with presence.person.pair-challenge and
- * start-paired signed by the same key it paired with. Three wrong answers lock it for 15 minutes, and a removed device has nothing to renew.
- * @param {string | undefined} code @param {string} [message]
- */
-export function renewRefusal(code, message) {
-  if (code === "locked" || code === "rate_limited" || code === "device_locked") return "Sign in again from your phone. This device is locked for 15 minutes after wrong answers; your phone can lift it.";
-  if (code === "device_removed" || code === "not_found") return "This device was removed. Pair it again from your phone.";
-  return message || "Signing in again did not work. Sign in again from your phone.";
+/** What to say, or null. A failed renewal first, then the storage notice. @param {NoticeState} s @returns {{ tone: "warn" | "plain", text: string } | null} */
+export function sessionNotice(s) {
+  if (s.renewFailed) return { tone: s.renewFailed === "unreachable" ? "plain" : "warn", text: renewWords(s.renewFailed) };
+  if (s.storageRefused) return { tone: "plain", text: "This browser will not keep your sign-in, so it ends when you close this tab. Allow site storage to stay signed in." };
+  return null;
 }
