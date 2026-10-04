@@ -185,7 +185,7 @@ AH=/home/acct/$AU
 tid=$(vyre call threads.start '{"cwd":"/work/sealwork","prompt":"first","surface":"deck"}' 2>&1 | sed -n 's/.*"id": *"\([^"]*\)".*/\1/p' | head -n 1)
 [ -n "$tid" ] || { echo "a session could not be started on the box (is its sandbox refusing?)"; vyre call threads.start '{"cwd":"/work/sealwork","prompt":"first","surface":"deck"}' 2>&1 | tail -5; exit 1; }
 sealed() { docker exec -u 1000 vyre-vyre-1 sh -c 'cat /home/vyre/.vyre/checkpoints/*/CURRENT 2>/dev/null' | grep -o '"turn":[0-9]*' | grep -o '[0-9]*' | sort -n | tail -n 1; }
-i=0; until [ "$(sealed)" = 1 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 1 was not sealed (sealed: $(sealed))"; docker exec -u 1000 vyre-vyre-1 sh -c 'tail -5 /home/vyre/.vyre/logs/*.log'; exit 1; }; sleep 1; done
+i=0; until [ "$(sealed)" = 1 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 1 was not sealed (sealed: $(sealed))"; echo "--- thread:"; vyre call threads.get "{\"thread\":\"$tid\"}" 2>&1 | grep -E '"(status|canonical_status|stopped_reason|turns|confined_by|account)"' ; echo "--- log:"; docker exec -u 1000 vyre-vyre-1 sh -c 'grep -hE "threads|runner|spawn|sandbox|seal|ownserver" /home/vyre/.vyre/logs/*.log | tail -25' | cut -c1-300; echo "--- account home:"; docker exec -u 0 vyre-vyre-1 ls -la /home/acct 2>&1 | head -5; docker exec -u $AU vyre-vyre-1 sh -c "ls -laR $AH/.claude 2>&1 | head -20; HOME=$AH /usr/local/bin/claude --version 2>&1 | head -3"; exit 1; }; sleep 1; done
 sleep 3
 vyre call threads.send "{\"thread\":\"$tid\",\"text\":\"second\",\"surface\":\"deck\"}" >/dev/null 2>&1
 i=0; until [ "$(sealed)" = 2 ]; do i=$((i + 1)); [ $i -lt 40 ] || { echo "turn 2 was not sealed (sealed: $(sealed))"; exit 1; }; sleep 1; done
