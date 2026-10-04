@@ -1539,6 +1539,15 @@ test("SERVER-HOSTED SPACE end to end: a device daemon with a spaces module asks 
   const defined = await dcall("records.define", { space: id, diff: { add_types: [NOTE] } }, withProofHdr);
   assert.ok(!defined.error, JSON.stringify(defined).slice(0, 300));
   assert.ok(JSON.stringify((await dcall("records.types", { space: id })).data).includes("note"), "the type the device defined is on the server");
+  // inviting another person to a space on the server is an outward yes: the home sends a one-use challenge, the device's tool hands it back as a request to sign, and the same call with the proof (carrying `home` and `challenge`) makes the link
+  const invAsk = await dcall("spaces.invites.create", { space: id, role: "member" });
+  assert.ok(!invAsk.error && invAsk.data.needs_proof === true && invAsk.data.request.challenge && invAsk.data.request.home, JSON.stringify(invAsk).slice(0, 300));
+  const signedFor = { method: "stand-in", home: invAsk.data.request.home, challenge: invAsk.data.request.challenge };
+  const invDone = await dcall("spaces.invites.create", { space: id, role: "member" }, { "x-vyre-kernel-proof": Buffer.from(JSON.stringify(signedFor)).toString("base64url") });
+  assert.ok(!invDone.error && /\/join\/inv_/.test(invDone.data.link), JSON.stringify(invDone).slice(0, 300));
+  // a proof made for another challenge makes nothing
+  const stale = await dcall("spaces.invites.create", { space: id, role: "member" }, { "x-vyre-kernel-proof": Buffer.from(JSON.stringify(signedFor)).toString("base64url") });
+  assert.ok(stale.error, "the spent challenge makes no second invite");
   const stranger = await import("../core/daemon/client.js").then(m => m.call("records.list", { space: id, type: "contact" }, { root: droot, caller: "tailnet-guest:mallory@example.com" }));
   assert.ok(stranger.error, "a caller that is not the signed-in person is refused");
   // and the record is on the SERVER, not on the device

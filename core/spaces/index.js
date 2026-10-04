@@ -236,7 +236,12 @@ export default {
     const kctxOf = async (/** @type {any} */ meta, /** @type {string} */ space) => {
       // A space the SERVER hosts is reached through a RemoteKernel: the chain argument never leaves this device (the server mints the chain from the peer it proved), so none is built here.
       const h = space ? kernelHandle(space) : null;
-      if (h && h.hosted === false) return { chain: null, proof: K.proofFrom(meta) };
+      if (h && h.hosted === false) {
+        // A proof the person's device made for the home's challenge carries `home` and `challenge` (kernel/core/presence.js remoteBinding): it goes beside the call with the challenge it answers, as the remote client takes it.
+        const kp = meta && meta.kernel_proof;
+        const answers = kp && typeof kp === "object" && typeof kp.challenge === "string" && kp.challenge ? { presence: kp, challenge: kp.challenge } : K.proofFrom(meta);
+        return { chain: null, proof: answers };
+      }
       return { chain: space && typeof K.chainIn === "function" ? await K.chainIn(space, meta) : await K.chain(meta), proof: K.proofFrom(meta) };
     };
     /** The members service for a space: the kernel's (under the caller's chain and proof) when there is one, else the local table's. @param {string} id @param {any} [meta] */
@@ -1417,7 +1422,14 @@ export default {
         if (kernelHandle(row.id)) {
           // The Space's kernel makes the invite (a grant act under the admin's own proof) and holds it; the link carries only its id and this device's pin.
           const k = await kctxOf(meta, row.id);
-          const rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) });
+          /** @type {any} */ let rec;
+          try { rec = await kernelMembers({ handle: kernelHandle(row.id), now }).invites.create(k, { role: i.role, ...(i.scope ? { scope: i.scope } : {}), ...(i.expires ? { expires: i.expires } : {}), ...(i.to ? { invitee: await personRef(i.to) } : {}), ...(i.ttlDays ? { valid_ms: Number(i.ttlDays) * DAY } : {}) }); }
+          catch (e) {
+            // A space on a server: the home asks for the person's yes on THIS invite with a one-use challenge. The person's device signs it (Touch ID or its own key) and the same call comes back with that proof, which carries `home` and `challenge`.
+            const ch = /** @type {any} */ (e) && /** @type {any} */ (e).code === "presence_required" ? /** @type {any} */ (e).challenge : null;
+            if (!ch || typeof ch.nonce !== "string") throw e;
+            return { needs_proof: true, request: { space: row.id, op: ch.op, fields: ch.fields, payload_hash: ch.payload_hash, home: ch.home, challenge: ch.nonce, expires: ch.expires } };
+          }
           const pin = await invitePin(row);
           const token = `${rec.id}.${b64u(Buffer.from(JSON.stringify(pin)))}`;
           return { id: rec.id, link: `https://${row.name}/join/${token}`, token, needs_confirm: rec.needs_confirm === true, valid_until: rec.valid_until };
