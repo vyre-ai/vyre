@@ -1106,3 +1106,15 @@ test("modules: the agents relay check lets threads.send through and throws for e
     assert.throws(() => checkAgentsRelay(tool, "deck"), new RegExp(`agents may not call ${tool.replace(".", "\\.")} as deck: it relays a person to threads\\.send and threads\\.release only`), tool);
   }
 });
+
+test("modules: the device, space and agent classes are list entries only; a bare word or a look-alike is never a caller", () => {
+  const dev = "device:abcdefghijklmnop";
+  assert.equal(callerAllowed(["cli", "device"], dev), true, "a device entry admits a paired device");
+  assert.equal(callerAllowed(["cli", "tailnet"], dev), true, "as a tailnet entry already did");
+  assert.equal(callerAllowed(["cli", "device"], "tailnet:alex@example.com"), false, "a device entry is the paired device label only");
+  assert.equal(callerAllowed(["cli"], dev), false);
+  for (const bare of ["device", "space", "agent", "tailnet"]) assert.equal(callerAllowed(["cli", "tailnet", "device", "space", "agent"], bare), false, bare);
+  for (const c of ["Device:abcdefghijklmnop", "device :abcdefghijklmnop", "device:", "device:abc", "device:abcdefghij​klmnop", "dev​ice:abcdefghijklmnop", "space:alex@harlow", "space:", "agent:kit", "agent:", "mcp:agent:kit"]) {
+    assert.equal(callerAllowed(["cli", "tailnet", "device", "space", "agent"], c), false, JSON.stringify(c));
+  }
+});

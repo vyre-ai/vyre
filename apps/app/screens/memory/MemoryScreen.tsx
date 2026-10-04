@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, showToast, markRef, spaceRef, type IconName } from "@vyre/ui";
+import { Avatar, Banner, Button, Card, Chip, Composer, Divider, EmptyState, Field, Icon, IconButton, Menu, Row, Segmented, Sheet, SpaceMark, Text, allowsMock, showToast, markRef, spaceRef, type IconName } from "@vyre/ui";
 import { Footnote, Frame } from "../places/Frame";
 import { SPACES, useScope } from "../places/scope";
 import { memoryRepo, SUBJECTS, type Fact } from "./data";
+import { editReal, forgetReal, loadReal, undoReal } from "./real";
 import { answer, edit, forget, group, restore, visible } from "./logic.js";
 
 const SRC_ICON: Record<Fact["src"]["kind"], IconName> = { record: "records", file: "file", chat: "chat", email: "mail", flow: "flows" };
@@ -25,21 +26,28 @@ function GroupHead({ mark, name, count }: { mark: ReturnType<typeof markRef>; na
 export default function MemoryScreen() {
   const scope = useScope((s) => s.scope);
   const router = useRouter();
-  const [facts, setFacts] = useState<Fact[]>(() => memoryRepo.facts());
+  const real = !allowsMock();
+  const [facts, setFacts] = useState<Fact[]>(() => (real ? [] : memoryRepo.facts()));
+  const [subjects, setSubjects] = useState<Record<string, string>>(SUBJECTS);
+  const [load, setLoad] = useState<{ state: "loading" | "ready" | "error"; say?: string }>({ state: real ? "loading" : "ready" });
+  useEffect(() => {
+    if (!real) return;
+    loadReal().then((r) => { setFacts(r.facts); setSubjects(r.subjects); setLoad({ state: "ready" }); }).catch((e) => setLoad({ state: "error", say: e instanceof Error ? e.message : "Memory did not answer." }));
+  }, [real]);
   const [mode, setMode] = useState<Fact["kind"]>("person");
   const [q, setQ] = useState("");
   const [asked, setAsked] = useState("Jane");
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
-  const [undo, setUndo] = useState<{ fact: Fact; index: number } | null>(null);
+  const [undo, setUndo] = useState<{ fact: Fact; index: number; cid?: number | null } | null>(null);
   const [cite, setCite] = useState<Fact | null>(null);
 
   const shown = useMemo(() => visible(facts, scope), [facts, scope]);
   const sections = useMemo(() => group(shown, mode), [shown, mode]);
-  const ans = useMemo(() => (asked ? answer(facts, SUBJECTS, asked, scope) : null), [facts, asked, scope]);
-  const sealed = memoryRepo.sealed().filter((s) => scope === "all" || s.space === scope);
+  const ans = useMemo(() => (asked ? answer(facts, subjects, asked, scope) : null), [facts, asked, scope]);
+  const sealed = (real ? [] : memoryRepo.sealed()).filter((s) => scope === "all" || s.space === scope);
   const open = (s: Fact["src"]) => (s.target ? router.push(`/u/${s.target}` as never) : showToast(`Opened ${s.label}.`));
   const ask = (text: string) => { setQ(text); setAsked(text); };
-  const notIncluded = ans?.kind === "ok" ? memoryRepo.sealed().find((s) => s.subject === ans.name && (scope === "all" || s.space === scope)) : undefined;
+  const notIncluded = ans?.kind === "ok" ? (real ? [] : memoryRepo.sealed()).find((s) => s.subject === ans.name && (scope === "all" || s.space === scope)) : undefined;
 
   const row = (f: Fact) => {
     const isEdit = editing?.id === f.id;
@@ -48,7 +56,7 @@ export default function MemoryScreen() {
         <View key={f.id} className="gap-s2 p-s4">
           <Field label="Fact" value={editing.text} onChangeText={(text) => setEditing({ id: f.id, text })} />
           <View className="flex-row gap-s2">
-            <Button kind="primary" size="sm" label="Save" onPress={() => { setFacts((xs) => edit(xs, f.id, editing.text)); setEditing(null); showToast("Saved. Assistants recall the new wording."); }} />
+            <Button kind="primary" size="sm" label="Save" onPress={() => { const text = editing.text; (real ? editReal(f.id, text) : Promise.resolve()).then(() => { setFacts((xs) => edit(xs, f.id, text)); setEditing(null); showToast("Saved. Assistants recall the new wording."); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not save.")); }} />
             <Button kind="ghost" size="sm" label="Cancel" onPress={() => setEditing(null)} />
           </View>
         </View>
@@ -69,7 +77,7 @@ export default function MemoryScreen() {
             </View>
           </View>
         }
-        end={<Menu trigger={<IconButton icon="more" label="More about this fact" />} items={[{ label: "Edit", onPress: () => setEditing({ id: f.id, text: f.text }) }, { label: "Forget", danger: true, onPress: () => { const r = forget(facts, f.id); setFacts(r.facts); setUndo(r.undo); } }]} />} />
+        end={<Menu trigger={<IconButton icon="more" label="More about this fact" />} items={[{ label: "Edit", onPress: () => setEditing({ id: f.id, text: f.text }) }, { label: "Forget", danger: true, onPress: () => { const r = forget(facts, f.id); (real ? forgetReal(f.id) : Promise.resolve(null)).then((cid) => { setFacts(r.facts); setUndo(r.undo ? { ...r.undo, cid } : null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); } }]} />} />
     );
   };
 
@@ -100,7 +108,7 @@ export default function MemoryScreen() {
         <Banner>
           <View className="flex-row flex-wrap items-center gap-s3">
             <Text className="min-w-0 flex-1">Forgot one fact. It is gone from Memory and from what assistants recall.</Text>
-            <Button size="sm" label="Undo" onPress={() => { setFacts((xs) => restore(xs, undo)); setUndo(null); }} />
+            <Button size="sm" label="Undo" onPress={() => { const u = undo; (real && u.cid != null ? undoReal(u.cid) : Promise.resolve()).then(() => { setFacts((xs) => restore(xs, u)); setUndo(null); }).catch((e) => showToast(e instanceof Error ? e.message : "That did not work.")); }} />
           </View>
         </Banner>
       ) : null}
@@ -110,11 +118,11 @@ export default function MemoryScreen() {
       {sections.length ? sections.map((s) => (
         <View key={s.key}>
           <GroupHead
-            mark={mode === "space" ? spaceRef(SPACES[s.sp as "mine"].name) : mode === "project" ? markRef("project", SUBJECTS[s.subj] ?? s.subj) : markRef("person", SUBJECTS[s.subj] ?? s.subj, s.subj)}
-            name={mode === "space" ? SPACES[s.sp as "mine"].name : SUBJECTS[s.subj] ?? s.subj} count={s.facts.length} />
+            mark={mode === "space" ? spaceRef(SPACES[s.sp as "mine"].name) : mode === "project" ? markRef("project", subjects[s.subj] ?? s.subj) : markRef("person", subjects[s.subj] ?? s.subj, s.subj)}
+            name={mode === "space" ? SPACES[s.sp as "mine"].name : subjects[s.subj] ?? s.subj} count={s.facts.length} />
           <Card flush>{s.facts.map((f, i) => <View key={f.id}>{i ? <Divider /> : null}{row(f)}</View>)}</Card>
         </View>
-      )) : <Card><EmptyState title="Nothing here yet" body={`No ${mode} facts in this space.`} /></Card>}
+      )) : <Card><EmptyState title={load.state === "loading" ? "Loading Memory" : load.state === "error" ? "Memory did not answer" : "Nothing here yet"} body={load.state === "error" ? (load.say ?? "Try again in a moment.") : load.state === "loading" ? "Asking your Vyre." : real ? "Nothing is remembered yet. Facts appear as your assistants learn them." : `No ${mode} facts in this space.`} /></Card>}
 
       {sealed.length ? (
         <Footnote icon="sealed">{`Sealed fields are never read into Memory: ${sealed.map((s) => `${s.subject} has ${s.labels.length}`).join(", ")}. Assistants see "SSN on file, sealed" and nothing more.`}</Footnote>

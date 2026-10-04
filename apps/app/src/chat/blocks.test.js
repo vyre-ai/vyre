@@ -87,3 +87,14 @@ test("a cited field: a field-ref is never a value; a field is a value, a sealed 
   assert.deepEqual([sealed.state, sealed.cls, sealed.value], ["sealed", "ssn", ""]);
   assert.ok(!JSON.stringify(sealed).includes("r_SECRET"));
 });
+
+test("the room note: a terminal or diff block keeps the server's line, a block without one has none, and the app never makes one", () => {
+  const NOTE = "visible to everyone in this chat";
+  const term = /** @type {any} */ (normalizeBlock({ block: "terminal", command: "ls", output: "a", exit: 0, note: NOTE }));
+  assert.equal(term.note, NOTE);
+  const diff = /** @type {any} */ (normalizeBlock({ block: "files", files: [{ path: "a.md", op: "edit", diff: "+x" }], note: NOTE }));
+  assert.deepEqual([diff.block, diff.note], ["diff", NOTE]);
+  assert.ok(!("note" in /** @type {any} */ (normalizeBlock({ block: "terminal", command: "ls", output: "a", exit: 0 }))), "a one-person chat's block has no note");
+  assert.ok(!("note" in /** @type {any} */ (normalizeBlock({ block: "terminal", command: "ls", output: "a", note: 5 }))), "only a string is a note");
+  assert.equal(/** @type {any} */ (normalizeBlock({ block: "terminal", command: "x", output: "", note: "y".repeat(500) })).note.length, 120);
+});

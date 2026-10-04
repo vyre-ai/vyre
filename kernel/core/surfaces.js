@@ -10,7 +10,7 @@ import { mintId } from "./ids.js";
 const MAX_TTL = 24 * 3600 * 1000;
 const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64url");
 
-/** @param {{ space: string, chains: any, door?: any, isAdmin?: (person: string) => boolean, clock?: () => number }} cfg the chain builder is what seals and checks a token: this holds no key */
+/** @param {{ space: string, chains: any, door?: any, isAdmin?: (person: string) => boolean, chatMember?: (person: string, chat: string) => boolean, clock?: () => number }} cfg the chain builder is what seals and checks a token: this holds no key */
 export function createSurfaces(cfg) {
   const clock = cfg.clock || Date.now;
   /** @type {Set<string>} */ const revoked = new Set();
@@ -19,15 +19,21 @@ export function createSurfaces(cfg) {
   const api = {
     /**
      * The person opens a session for a daemon (and, for an assistant's session, names the assistant). @param {any} chain
-     * @param {{ agent?: string, session?: string, thread?: string, ttl_ms?: number }} [o] @returns {{ token: string, session: string, expires: number }}
+     * @param {{ agent?: string, session?: string, thread?: string, ttl_ms?: number, chat?: string }} [o] @returns {{ token: string, session: string, expires: number }}
      */
     async open(chain, o = {}) {
-      if (!isChain(chain) || !isExactlyPerson(chain)) throw new KernelError("chain_not_person", "only a person opens a session for a daemon");
+      if (!isChain(chain) || !isExactlyPerson(chain) || chain.delegated === true) throw new KernelError("chain_not_person", "only a person acting directly opens a session for a daemon: a session's own chain cannot mint another");
+      // A session's chat is written into its token here, by the kernel, once the opener is checked to be in that chat; there is no later step that could point it elsewhere.
+      let chat = null;
+      if (o.chat !== undefined && o.chat !== null) {
+        if (typeof o.chat !== "string" || !cfg.chatMember || !cfg.chatMember(chain.hops[0].actor.id, o.chat)) throw new KernelError("not_found", "no such chat");
+        chat = o.chat;
+      }
       const session = o.session || mintId("ses", clock());
       const exp = clock() + Math.min(o.ttl_ms ?? 3600_000, MAX_TTL);
       openers.set(session, chain.hops[0].actor.id);
       if (openers.size > 5000) openers.delete(openers.keys().next().value);
-      const body = b64(JSON.stringify({ v: 1, space: cfg.space, person: chain.hops[0].actor.id, agent: o.agent || null, session, thread: o.thread || null, exp }));
+      const body = b64(JSON.stringify({ v: 1, space: cfg.space, person: chain.hops[0].actor.id, agent: o.agent || null, session, thread: o.thread || null, chat, exp }));
       return { token: `${body}.${await cfg.chains.sealToken(body)}`, session, expires: exp };
     },
     /**
@@ -36,7 +42,7 @@ export function createSurfaces(cfg) {
      */
     revoke(/** @type {string} */ session, /** @type {any} */ by) {
       if (by !== undefined) {
-        const me = isChain(by) && isExactlyPerson(by) ? by.hops[0].actor.id : null;
+        const me = isChain(by) && isExactlyPerson(by) && by.delegated !== true ? by.hops[0].actor.id : null;
         if (!me || !(openers.get(String(session)) === me || (cfg.isAdmin && cfg.isAdmin(me)))) throw new KernelError("not_found", "no such session");
       }
       revoked.add(String(session));
@@ -53,12 +59,16 @@ export function createSurfaces(cfg) {
     },
     /** The session a presented token is for (checked like `chainFor`): what a chat binding and a room are keyed by, never a name a caller says. @param {string} token */
     async sessionOf(token) { return (await api.verify(token)).session; },
-    /** The chain for a presented token, or a refusal that says nothing about why. @param {string} token */
-    async chainFor(token) {
+    /**
+     * The chain for a presented token, or a refusal that says nothing about why. `noChat` leaves the session's chat out of the chain: the same agent, session and grants, read as the
+     * person's own and not as the room's common view (what `{{field:...}}` resolution wants), and never wider than the session itself. @param {string} token @param {{ noChat?: boolean }} [o]
+     */
+    async chainFor(token, o = {}) {
       const t = await api.verify(token);
+      const chat = o.noChat === true ? undefined : t.chat || undefined;
       return t.agent
-        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, vouched: true })
-        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, vouched: true });
+        ? cfg.chains.fromFacts({ kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, chat, from_token: true, vouched: true })
+        : cfg.chains.fromFacts({ kind: "session_person", person: t.person, session: t.session, chat, from_token: true, vouched: true });
     },
     /** The model door for a session: `call(token, input)` and, when the door has one, `stream(token, input)`. The chain is the session's, never the caller's. */
     model: Object.freeze({

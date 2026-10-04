@@ -164,6 +164,7 @@ test("runner: a run started by outside content is tainted, and its outward step 
   const sends = [];
   w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
   const w2 = await world({ ports: { call: async (c, a, r, input) => { sends.push(input); return { sent: true }; } } });
+  w2.kernel.rules.push({ match: i => i.action === "email.send" && !i.approval, effect: "allow", reason: "a standing yes" }); // authorize allows (the real kernel asks for every outward act otherwise)
   const { id } = await install(w2, flowOf([{ id: "m", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com", body: "hi" } }]));
   w2.kernel.inbound("payment.received", { n: 1 }, "member");
   await settle(w2);
@@ -183,6 +184,7 @@ test("runner: a run started by outside content is tainted, and its outward step 
 test("runner: a model-drafted Flow with a destination read from records asks on every run", async () => {
   const sends = [];
   const w = await world({ ports: { call: async (c, a, r, input) => { sends.push(input.to); return {}; } } });
+  w.kernel.rules.push({ match: i => i.action === "email.send" && !i.approval, effect: "allow", reason: "a standing yes" });
   const flow = flowOf([{ id: "m", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: { expr: "trigger.email" }, body: "hi" } }], { authorship: "model" });
   await install(w, flow);
   w.kernel.inbound("payment.received", { email: "x@example.com" });

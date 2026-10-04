@@ -56,7 +56,7 @@ export const FIELD_KINDS = f([
 ]);
 export const SEAL_CLASSES = f(["us-ssn", "us-itin", "us-ein", "card", "bank-account", "routing-number", "iban", "passport", "tax-id", "medical", "free"]);
 export const STORE_ERROR_CODES = f([
-  "not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused",
+  "not_found", "version_conflict", "invalid", "unknown_type", "unknown_field", "unsupported", "unavailable", "id_mismatch", "sealed_value_refused", "unique_violation",
 ]);
 
 export const IDENTITY_KINDS = f(["user", "space", "device", "agent", "project", "session", "task"]);

@@ -23,6 +23,12 @@ export const CALLERS = Object.freeze([
   { id: "onboard", caller: () => "onboard" },
   { id: "anonymous", caller: () => "anonymous" },
   { id: "unknown", caller: () => "unknown" },
+  // An assistant PROVEN by the daemon: the call arrived on a session's own socket (or a vouched key), so `meta.thread` is bound. Appended last so no row's order changes.
+  { id: "session:mcp:agent:kit", caller: () => "mcp:agent:kit", meta: { thread: "t1", agent: "kit" } },
+  { id: "session:harness:agent:kit", caller: () => "harness:agent:kit", meta: { thread: "t1", agent: "kit" } },
+  // The labels the Wink network issues (TAILSCALE-removal step 2): a visiting person in a Space, and an agent's own label. Appended last so no row's order changes.
+  { id: "space:alex@harlow", caller: () => "space:alex@harlow" },
+  { id: "agent:kit", caller: () => "agent:kit" },
 ]);
 
 /** Meta states: the person's session, a presence proof, an asked-for match, a named project. */
@@ -46,6 +52,8 @@ export const GENERATED_CALLERS = Object.freeze((() => {
   for (const t of ["tailnet-guest:", "tailnet-guest:a", "tailnet-guest:a@b", "Tailnet-Guest:a", "tailnet-guest: a", "tailnet:", "tailnet:a", "tailnet:agent:", "tailnet:agent:kit", "tailnet:agent:kit:x", "tailnet:owner@example.com"]) out.add(t);
   for (const d of ["device:", "device:abcdefghijklmnop", "device:ABCDEFGHIJKLMNOP", "device:abc", "device:abcdefghijklmnopq", "device: abcdefghijklmnop", "device:abcdefghijklmnop:x", "Device:abcdefghijklmnop"]) out.add(d);
   for (const a of ["cli:agent:Kit", "mcp:agent:k\u00efit", "harness:agent:a b", "agent:kit", ":agent:kit", "cli:agent:kit:more", "cli:AGENT:kit"]) out.add(a);
+  for (const sp of ["space:alex@harlow", "space:", "space:alex", "space:@harlow", "space:alex@", "Space:alex@harlow", "space :alex@harlow", "space:alex@harlow:agent:kit", "space:al\u200bex@harlow"]) out.add(sp);
+  for (const d of ["device :abcdefghijklmnop", "device:abcdefghij\u200bklmnop"]) out.add(d);
   return [...out].map((c, i) => ({ id: `g${i}:${JSON.stringify(c)}`, caller: () => c }));
 })());
 

@@ -17,7 +17,8 @@
 
 import { acceptKey, encodeFrame, FrameParser } from "../../lib/ws.js";
 import { heartbeatFrame, resetFrame } from "./protocol.js";
-import { forViewer, forViewerAsync, hasRefs } from "./viewer.js";
+import { forViewer, forViewerAsync, hasRefs, hiddenFrame } from "./viewer.js";
+import { kindOf, startOf } from "./frame.js";
 
 export const HEARTBEAT_MS = 25_000;
 export const MAX_BUFFERED = 1024 * 1024;
@@ -82,7 +83,24 @@ export function serve(log, conn, opts = {}) {
       const r = log.since(sent);
       if (r.reset) { send(resetFrame(log.session, sent > log.head ? "ahead" : "behind", r.head)); shut(); return false; }
       if (!r.frames.length) break;
-      for (const f of r.frames) { if (closed) return false; sent = f.cur; send(f); }
+      // A viewer's floor is the cursor of their own join: what came before it is not sent. Who joined and who left still are (the roster, marked quiet, so no
+      // marker is drawn for them); every other frame below it becomes one cursor-only placeholder per run, so the client's cursor stays gapless and holds nothing.
+      const fl = opts.viewer && Number(opts.viewer.floor) > 1 ? Number(opts.viewer.floor) : 0;
+      /** @type {null | { from: number, to: number, time: number }} */ let run = null;
+      const flush = () => { if (run) { const h = hiddenFrame(log.session, run.to, run.to - run.from + 1, run.time); run = null; send(h); } };
+      for (const f of r.frames) {
+        if (closed) return false;
+        sent = f.cur;
+        if (fl && f.cur < fl) {
+          const k = kindOf(f);
+          if (k === "participant-joined" || k === "participant-left") { flush(); send({ ...f, data: { ...f.data, quiet: true } }); }
+          else run = run ? { from: run.from, to: f.cur, time: f.time } : { from: startOf(f), to: f.cur, time: f.time };
+          continue;
+        }
+        flush();
+        send(f);
+      }
+      flush();
     }
     if (!closed && sent > log.head) { send(resetFrame(log.session, "ahead", log.head)); shut(); return false; }
     return !closed;

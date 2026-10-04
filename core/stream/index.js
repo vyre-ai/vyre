@@ -25,7 +25,7 @@ export * from "./protocol.js";
 export { whoAnswers, mentionedIn } from "./routing.js";
 export { createDoorAdapter, pipeDoor, drainDoor } from "./door-adapter.js";
 export { createGroups } from "./group.js";
-export { render, forViewer, forViewerAsync, resolveRefs, hasRefs, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
+export { render, forViewer, forViewerAsync, hiddenFrame, resolveRefs, hasRefs, mayView, assertAskerCanRead, canRead, placeholder, cutData } from "./viewer.js";
 export { createPresence, presenceFor, PRESENCE_MS } from "./presence.js";
 export { createReadMarkers } from "./readmarks.js";
 
@@ -48,7 +48,7 @@ export default {
     const logs = new Logs({ db: ctx.store && ctx.store.db, maxFrames: cfg.maxFrames, maxBytes: cfg.maxBytes, ...(cfg.retainHours !== undefined ? { retainMs: Number(cfg.retainHours) * 3600_000 } : {}) });
     /** @type {Map<string, ReturnType<typeof createAdapter>>} */
     const adapters = new Map();
-    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string, caller: string, device: string, viewer: { id: string, roles: string[] } }>} */
+    /** @type {Map<string, { session: string, expires: number, from: number|null, person: string, caller: string, device: string, viewer: import("./viewer.js").Viewer & { id: string, roles: string[] } }>} */
     const tickets = new Map();
     const sockets = new Set();
 
@@ -104,7 +104,11 @@ export default {
       const r = await k.records.get(chain, m[1], m[2]);
       const data = r && typeof r === "object" ? (r.data ?? r) : null;
       if (!data || typeof data !== "object" || !(field in data)) return null;
-      return { kind: typeof data[field] === "object" && data[field] !== null ? "object" : "text", value: data[field] };
+      // Draw what the kernel returned for this viewer: a value, or (sealed) the sealed shape, which the viewer module turns into a chip with no ref. A field the viewer may not read is
+      // not in `data` at all. No roles of ours here: the kernel already decided.
+      const v = data[field];
+      const kind = v && typeof v === "object" ? (typeof v.sealed === "string" ? "sealed" : typeof v.amount === "number" && typeof v.currency === "string" ? "money" : "object") : typeof v === "number" ? "number" : typeof v === "boolean" ? "boolean" : "text";
+      return { kind, value: v };
     };
 
     const groups = ctx.store && ctx.store.db ? createGroups({ ctx, logs, db: ctx.store.db }) : null;
@@ -130,8 +134,11 @@ export default {
         const session = String(i.session || "");
         if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
         // Who may read it comes first: nothing below runs, and no log or set entry is made, for a session the caller may not read.
-        const { viewer: who0, chain } = await access.read(session, meta, i);
-        const who = { ...who0, resolve: resolverFor(who0, chain) };
+        const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
+        // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
+        if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
+        // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
+        const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
         if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
         else if (seeding.has(session)) await seeding.get(session);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
@@ -172,16 +179,14 @@ export default {
     const kernelGate = async (i, meta) => {
       const session = String((i && i.session) || "");
       if (!groups || !/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) return;
+      const kernelOn = Boolean(ctx.kernel && ctx.kernel.chats);
       const kc = await access.chat(session, meta);
-      if (!kc) return;
+      // The kernel is on: a chat is the kernel's, and a call that carries no session of its own cannot speak in one (the 0.2 group path is closed).
+      if (!kc) { if (kernelOn) throw Object.assign(new Error("a call needs the person's own session"), { code: "person_session_required" }); return; }
       if (!kc.chat) throw Object.assign(new Error("no such session"), { code: "not_found" });
-      const people = new Set(kc.chat.people.map((/** @type {string} */ p) => `person:${p}`));
-      const bots = new Set((kc.chat.assistants || []).map((/** @type {string} */ a) => `assistant:${a}`));
-      for (const spec of [...(i.people || []), ...(i.assistants || [])]) {
-        const id = typeof spec === "string" ? spec : spec && spec.id;
-        if (!people.has(id) && !bots.has(id)) throw Object.assign(new Error("people and assistants of a chat are added with the kernel's chat change, by a person in it"), { code: "bad_input" });
-      }
-      groups.mirror(session, [...people], meta, `person:${kc.person}`);
+      // Nobody joins by a call: people and assistants are the kernel's list, changed by a person in the chat acting directly (the kernel's chats.change), never by a send.
+      if ((Array.isArray(i.people) && i.people.length) || (Array.isArray(i.assistants) && i.assistants.length)) throw Object.assign(new Error("people and assistants of a chat are added with the kernel's chat change, by a person in it"), { code: "bad_input" });
+      await groups.mirror(session, { people: [...kc.chat.people], assistants: [...(kc.chat.assistants || [])] }, meta, `person:${kc.person}`, kc.chain);
     };
 
     const tool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {string} */ method) => ctx.tool(name, {

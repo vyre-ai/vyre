@@ -31,16 +31,23 @@ async function world(t) {
   for (const [p, role] of [[BOB, "manager"], [CAROL, "member"], [ADA, "member"]]) { const r = { person: p, role }; await g.setRole(owner, r, { presence: proof("grants.role", r, `vyre://${SPACE}/member/${p}`) }); }
   const kit = { kind: "agent", id: "kit", space: SPACE };
   await g.addActor(owner, kit, { presence: proof("grants.role", { actor: kit }, `vyre://${SPACE}/member/kit`) });
+  const juno = { kind: "agent", id: "juno", space: SPACE };
+  await g.addActor(owner, juno, { presence: proof("grants.role", { actor: juno }, `vyre://${SPACE}/member/juno`) });
   const dev = (/** @type {string} */ person, /** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: id, person, path: "direct" });
   const chains = { owner, bob: dev(BOB, "d-b"), carol: dev(CAROL, "d-c"), ada: dev(ADA, "d-a") };
   /** @type {Record<string, string>} */ const tokens = {};
   for (const [n, c] of Object.entries(chains)) tokens[n] = (await k.surfaces.open(c, {})).token;
   tokens.adaKit = (await k.surfaces.open(chains.ada, { agent: "kit" })).token;
+  tokens.adaJuno = (await k.surfaces.open(chains.ada, { agent: "juno" })).token;
+  tokens.carolKit = (await k.surfaces.open(chains.carol, { agent: "kit" })).token;
 
   const p = config.ensure(tempHome(t));
   const db = open(p.db);
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "box" }, paths: p, log: () => {}, kernelFor: k.kernelFor });
+  // CH-7: a chain made from a session token is delegated and cannot open another session; the stream opens each assistant's session from the call's chain, so here a token stands for the person's own direct chain.
+  const direct = new Map(Object.entries(tokens).map(([n, tok]) => [tok, /** @type {any} */ (chains)[n]]).filter(([, c]) => c));
+  const kernelFor = (/** @type {any} */ m) => { const h = k.kernelFor(m); return Object.freeze({ ...h, chain: async (/** @type {any} */ meta) => (meta && direct.get(meta.token)) || h.chain(meta) }); };
+  const reg = new Registry({ db, events, config: { role: "box" }, paths: p, log: () => {}, kernelFor });
   const fake = fs.mkdtempSync(path.join(SCRATCH, "vyre-stream-kernel-"));
   t.after(() => fs.rmSync(fake, { recursive: true, force: true }));
   fakeThreads(fake);
@@ -55,7 +62,9 @@ async function world(t) {
   const port = /** @type {any} */ (s.address()).port;
   t.after(async () => { s.closeAllConnections(); s.close(); await reg.stop(); db.close(); });
   const as = (/** @type {string} */ who) => (/** @type {string} */ tool, /** @type {any} */ input) => reg.call(tool, input, "deck", { token: tokens[who] });
-  return { k, chains, as, reg, port, stream: () => reg.modules.get("stream")?.handle };
+  // An assistant's own session: the daemon stamps `cli:agent:<name>` from the session's socket, binds the call to its thread (the claim is proven only then, reviewer-2 R-1) and carries that session's token (core/daemon, L-1), so the registry's reach rule and the kernel's chain both see what a real session sends.
+  const asst = (/** @type {string} */ who, name = "kit") => (/** @type {string} */ tool, /** @type {any} */ input) => reg.call(tool, input, `cli:agent:${name}`, { token: tokens[who], thread: `thr_${name}` });
+  return { k, chains, as, asst, reg, port, stream: () => reg.modules.get("stream")?.handle };
 }
 const codeOf = (/** @type {any} */ r) => (r.error ? r.error.code : "ok");
 const ok = (/** @type {any} */ r) => { assert.ok(!r.error, r.error && `${r.error.code} ${r.error.message}`); return r.data; };
@@ -129,4 +138,28 @@ test("per-role filtering through the real stream: a manager and a member in one 
   assert.deepEqual(mem.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), mgr.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), "same cursors for both");
   // the shared frame in the log is never mutated: a late viewer still gets the ref resolved for them
   assert.equal(log.read(0).find((/** @type {any} */ f) => f.type === "session.text-done" && f.data.message === "m9").data.blocks[0].block, "field-ref");
+});
+
+test("an assistant reads what its person reads and nothing else (the user's rule: only the kernel's chats.read decides)", async t => {
+  const w = await world(t);
+  const C = w.k.gateway.grants.chats;
+  const mine = await C.create(w.chains.ada, { people: [], assistants: ["kit"] });
+  const group = await C.create(w.chains.ada, { people: [CAROL], assistants: ["kit"] });
+  const other = await C.create(w.chains.bob, { people: [OWNER], assistants: ["kit"] });
+  const carolOnly = await C.create(w.chains.carol, { people: [], assistants: ["kit"] });
+  // ada's assistant opens the chat ada is alone in, and a group ada is in: through the registry's reach rule, as a real session calls it
+  for (const c of [mine, group]) { const r = ok(await w.asst("adaKit")("stream.open", { session: c.id })); assert.equal(r.viewer, `person:${ADA}`, "it reads as the person it acts for"); }
+  // a chat between others is not found (not denied: existence is not leaked)
+  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { session: other.id })), "not_found");
+  // naming another person does nothing: the identity is the session's chain, and the chat is not ada's
+  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { session: other.id, as: `person:${BOB}` })), "not_found");
+  assert.equal(codeOf(await w.asst("adaKit")("stream.open", { session: carolOnly.id, as: `person:${CAROL}` })), "not_found");
+  // `as` on a chat ada is in cannot make the assistant someone else either
+  assert.equal(ok(await w.asst("adaKit")("stream.open", { session: group.id, as: `person:${CAROL}` })).viewer, `person:${ADA}`);
+  // an assistant that is not listed in the chat is refused, though its person is in it
+  assert.equal(codeOf(await w.asst("adaJuno", "juno")("stream.open", { session: mine.id })), "not_found");
+  // carol's assistant cannot read ada's own chat, and reads carol's
+  assert.equal(codeOf(await w.asst("carolKit")("stream.open", { session: mine.id })), "not_found");
+  assert.equal(codeOf(await w.asst("carolKit")("stream.open", { session: carolOnly.id })), "ok");
+  assert.equal(w.stream().logs.has(other.id), false, "a refused id makes no log");
 });

@@ -28,3 +28,9 @@ Working-copy sync is confirmed as intended. Wink encrypts the transport. The Spa
 
 ## Changed contracts
 None.
+
+## The session kernel credential (lib/kernel-session.js)
+- vyred holds each session's kernel token; the session's own socket (core/daemon/threadsock.js) stamps `x-vyre-kernel-session` on every call and drops any the client sent. The harness gets a socket path only: no env var, file or tool argument carries the token.
+- Every token has a model hop. A thread with no named assistant runs as the default assistant, `agent:assistant`, which the kernel adds to every new Space at its start (kernel/grants/index.js bootstrap) with read and task-work grants only. A Space made before that needs one `grants.addActor` for it, or unnamed threads fail with `not_a_member`.
+- A token is renewed before it expires; after a failed renewal past its life the socket refuses the call (401 `no_session`).
+- This is half of the boundary. It is not one until the sandbox rules D-1 to D-3 keep a session off vyred's main socket (platform and runner).

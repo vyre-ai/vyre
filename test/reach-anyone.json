@@ -393,6 +393,66 @@
    "module": "files",
    "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
   },
+  "flows.card": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.code": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.compile-text": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.define": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.get": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.graph": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.card": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.list": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.propose": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.list": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.retry": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.run": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.runs": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.simulate": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.start": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
   "gate.approve": {
    "module": "gate",
    "reason": "callers list in code (capsule, cli, deck, local, module, tailnet): no model caller; presence proof required"
@@ -828,6 +888,14 @@
   "network.tailscale.status": {
    "module": "network",
    "reason": "the positive callers check allowed() in the tool (the person's own surfaces, devices and session); read-only"
+  },
+  "network.wink.status": {
+   "module": "network",
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the work is the Wink module's wink.network.status, reach modules and callable only as module:network (core/network/wink.test.js)"
+  },
+  "network.wink.whois": {
+   "module": "network",
+   "reason": "read-only; readers() in the tool refuses a guest and an anonymous caller; the answer comes from the identity list and the connections the node host admitted, never from a tag or host name a peer sets (core/network/wink.test.js)"
   },
   "planner.add": {
    "module": "planner",

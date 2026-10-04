@@ -46,7 +46,7 @@ export default {
       description: "Whether this computer can run a space's sessions, and what is running here.",
       input: obj(),
       run: async () => {
-        const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform);
+        const why = unavailable(seam.platform) || workspaceUnavailable(seam.platform, { base: ctx.paths.root + "/runner" });
         return { ready: !why && !!ports(), why: why || (ports() ? "" : "the space's vault and sync are not connected yet"), spaces: [...runners].map(([space, r]) => { const { dir, ...rest } = r.status(); return { space, ...rest }; }) };
       },
     });
@@ -63,7 +63,7 @@ export default {
         const p = ports(); const r = forSpace(space);
         const spec = await p.spec({ space, session });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
-        const h = await r.start({ session, resume: Boolean(resume), command: spec.command, args: spec.args, env: spec.env, routes: spec.routes, readOnly: spec.readOnly, labels: spec.labels });
+        const h = await r.start({ session, resume: Boolean(resume), command: spec.command, args: spec.args, env: spec.env, routes: spec.routes, readOnly: spec.readOnly, labels: spec.labels, network: spec.network });
         return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
       },
     });

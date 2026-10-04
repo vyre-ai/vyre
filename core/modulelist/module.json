@@ -1,0 +1,13 @@
+{
+  "name": "modules",
+  "version": "0.1.0",
+  "description": "The owner's reset of the accepted first-party module list, for a deliberate downgrade (rollback to an older release): one presence-gated tool over the kernel's own reset.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "needs": { "kernel": { "actions": [] }, "daemon": ["modulesListReset"] },
+  "does": { "tools": [{ "name": "modules.list.reset", "reach": "person" }] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "teaches": { "tips": [] },
+  "settings": []
+}

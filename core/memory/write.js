@@ -12,6 +12,7 @@
 
 import crypto from "node:crypto";
 import { contentWords } from "./iq/retrieve.js";
+import { scrubbed } from "./sealed.js";
 
 /** The person's own room. */
 export const YOU = "you";
@@ -131,7 +132,7 @@ export function writeStore({ db, now = () => Date.now() }) {
           return { id: String(same.id), linked: true, fresh: true };
         }
         const id = `mw_${crypto.randomBytes(8).toString("hex")}`;
-        q.insert.run(id, w.kind, w.text, w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
+        q.insert.run(id, w.kind, scrubbed(w.text), w.subject ?? null, w.source_ref ?? null, w.from.kind, w.from.name, w.from.provider ?? null,
           w.from.thread ?? null, Number.isInteger(w.from.seq) ? w.from.seq : null, w.untrusted ? 1 : 0, t, t);
         q.addLink.run(id, w.project, t);
         return { id, linked: false, fresh: true };
@@ -287,7 +288,7 @@ export function register(ctx, { store, reach, personWrites, ownSession, reader, 
     return { r, slugs: r.all ? null : new Set(r.slugs || []), you: r.all ? person : Boolean(r.assistant) };
   };
   const tag = w => `${w.from_kind}:${w.from_name}`;
-  const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet"];
+  const WHO = ["cli", "local", "deck", "capsule", "mcp", "harness", "module", "tailnet", "device", "space", "agent"];
 
   const writeDef = {
     callers: WHO,

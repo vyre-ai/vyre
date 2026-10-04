@@ -2,7 +2,8 @@
 // health: how the connection to one tailnet peer is doing. Direct or relayed, how fast, and when
 // the two last shook hands.
 //
-// Two reads of the tailscale CLI answer it: `status --json` for the peer's path and handshake,
+// With a `ctx` the answer comes from the Wink node: network.wink.status through ctx.call (its per-space link, path and latency), one read, cached the same way.
+// Without one (the old reader, kept only until the Mac side moves over) two reads of the tailscale CLI answer it: `status --json` for the peer's path and handshake,
 // and one `ping` for latency (and for the path the ping took, which is the truer answer when the
 // two differ). Both are cheap, but a surface that asks on every repaint would still run them
 // constantly, so each peer's answer is kept for a minute and callers that ask at the same moment
@@ -85,11 +86,29 @@ export function peerFromStatus(status, { stableId, ip } = {}) {
 export const unknown = (why, at) => ({ path: "unknown", relay: null, latencyMs: null, lastHandshake: null, online: false, checkedAt: at, cached: false, why });
 
 /**
- * A checker with a per-peer cache. `run` is names/tailscale.js run (tests pass a fake).
- * @param {{ run?: (args: string[], opts?: { timeout?: number }) => Promise<{ code: number, out: string, err: string }>,
+ * One peer's health from network.wink.status: the space whose id is the key (a link to a home), else the space that has the key among its connected peers, else the
+ * one space this machine has when only one. Same shape as the CLI reader's.
+ * @param {any} st the answer of network.wink.status @param {{ stableId?: string|null, ip?: string|null }} which @param {number} at @returns {Health}
+ */
+export function fromWink(st, { stableId, ip }, at) {
+  const spaces = (st && Array.isArray(st.spaces)) ? st.spaces : [];
+  const key = String(stableId || ip || "");
+  const row = spaces.find((/** @type {any} */ s) => s.id === key) || spaces.find((/** @type {any} */ s) => (s.peerList || []).some((/** @type {any} */ p) => p.eid === key)) || (spaces.length === 1 ? spaces[0] : null);
+  if (!row) return unknown("that device is not connected to a space here", at);
+  const peer = (row.peerList || []).find((/** @type {any} */ p) => p.eid === key) || null;
+  const online = row.state === "connected" || row.state === "relayed" || Boolean(peer);
+  if (!online) return unknown(row.why || (row.state === "joining" ? "the link is still coming up" : "the link to this space is down"), at);
+  const via = peer ? peer.via : row.path;
+  const path = /** @type {Path} */ (via === "direct" || via === "relay" ? via : row.state === "relayed" ? "relay" : "direct");
+  return { path, relay: null, latencyMs: peer ? null : typeof row.latencyMs === "number" ? row.latencyMs : null, lastHandshake: peer ? peer.since : row.since ?? null, online: true, checkedAt: at, cached: false };
+}
+
+/**
+ * A checker with a per-peer cache. `ctx` makes it read the Wink node; `run` is names/tailscale.js run (tests pass a fake).
+ * @param {{ ctx?: { call: (tool: string, input?: any) => Promise<any> }, run?: (args: string[], opts?: { timeout?: number }) => Promise<{ code: number, out: string, err: string }>,
  *   now?: () => number, ttl?: number }} [opts]
  */
-export function createHealth({ run = tsRun, now = Date.now, ttl = 60_000 } = {}) {
+export function createHealth({ ctx, run = tsRun, now = Date.now, ttl = 60_000 } = {}) {
   /** @type {Map<string, { at: number, value: Health }>} */
   const cache = new Map();
   /** @type {Map<string, Promise<Health>>} */
@@ -97,6 +116,10 @@ export function createHealth({ run = tsRun, now = Date.now, ttl = 60_000 } = {})
 
   /** @param {{ ip?: string|null, stableId?: string|null }} which @returns {Promise<Health>} */
   async function fresh({ ip, stableId }) {
+    if (ctx) {
+      const r = await ctx.call("network.wink.status", { ping: true });
+      return fromWink(r && typeof r === "object" && "data" in r ? r.data : r, { ip, stableId }, now());
+    }
     const s = await run(["status", "--json"], { timeout: 5000 });
     if (s.code === 127) return unknown("Tailscale is not installed here", now());
     let status;
@@ -169,8 +192,6 @@ export function describe(h) {
 /** The click that would help, from what went wrong. Null when nothing a person can do. */
 function fixFor(why) {
   const w = String(why || "");
-  if (/not installed/.test(w)) return { action: "install-tailscale", label: "Install Tailscale" };
-  if (/^Tailscale is /.test(w)) return { action: "open-tailscale", label: "Open Tailscale" };
   if (/not paired|pair again|no longer knows/.test(w)) return { action: "pair", label: "Pair with your server" };
   if (/say which node/.test(w)) return null;
   return { action: "retry", label: "Check again" };
@@ -184,10 +205,10 @@ export function toReach(h, since) {
   const up = Boolean(h.online) && (h.path === "direct" || h.path === "relay" || h.path === "peer-relay") && typeof h.latencyMs === "number";
   if (up) {
     const p = /** @type {Path} */ (h.path);
-    return { reach: "direct", why: `Connected over your Tailscale network (${describe(h)}).`, since,
+    return { reach: "direct", why: `Connected to your server (${describe(h)}).`, since,
       tailnet: { path: p, latencyMs: /** @type {number} */ (h.latencyMs) } };
   }
-  const why = h.why || "Your server does not answer over Tailscale.";
+  const why = h.why || "Your server does not answer.";
   const fix = fixFor(why);
   return { reach: "none", why, ...(fix ? { fix } : {}), since,
     ...(h.path && h.path !== "unknown" ? { tailnet: { path: h.path, latencyMs: h.latencyMs ?? null } } : {}) };

@@ -5,5 +5,5 @@
   "control": "The control is the egress firewall (K6 and the host): the box lets only the gateway reach provider hosts. This list is a smoke test that catches the honest mistake in review.",
   "door_clients": [],
   "retrofit_pending": ["core/sessions/index.js", "core/sessions/drivers/openrouter.js", "local/voice/providers.js"],
-  "not_inference": { "core/vault/rotate.js": "rotates a provider API key; sends no prompt" }
+  "not_inference": { "core/vault/rotate.js": "rotates a provider API key; sends no prompt", "lib/agent-sandbox.js": "names each provider's sign-in and API hosts for the sandbox's egress allow-list and the self-test; it sends nothing itself" }
 }

@@ -10,7 +10,7 @@ import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "task", "note", "file", "template", "playbook", "team-member"]);
+export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member"]);
 /** Roles every Space has. */
 export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
 

@@ -51,6 +51,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/cli -> local/voice` | talk.js | `vyre voice`, push-to-talk from a terminal until the native Lumen has voice | ctx.call |
 | `core/daemon -> core/harness` | rules.js | the kernel runs the security floor on every call's input; the floor belongs in the kernel | lib |
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
+| `core/daemon -> core/runner` | homesandbox.js, sandbox.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/files -> core/link` | transport.js | Mac to box file transfer over the tailnet transport | lib |
 | `core/files -> core/names` | tailscale.js | runs the tailscale CLI (Taildrive) | lib |
