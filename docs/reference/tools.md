@@ -71,7 +71,8 @@ Remove an agent's record and its spend. Refused while one of its threads is runn
 
 - Input:
   - `agent` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+  - `id` string: The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted
+- Callers: `capsule`, `cli`, `deck`, `device`, `local`
 
 ### `agents.history`
 

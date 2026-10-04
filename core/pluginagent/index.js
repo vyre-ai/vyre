@@ -15,6 +15,7 @@ export const MIGRATIONS = [
   `CREATE TABLE pluginagent_asks (id TEXT PRIMARY KEY, computer TEXT NOT NULL, asked_at INTEGER NOT NULL, state TEXT NOT NULL);
    CREATE TABLE pluginagent_agents (agent TEXT PRIMARY KEY, computer TEXT NOT NULL, key_hash TEXT NOT NULL, created_at INTEGER NOT NULL);`,
   `CREATE TABLE pluginagent_state (k TEXT PRIMARY KEY, v TEXT NOT NULL);`,
+  `ALTER TABLE pluginagent_agents ADD COLUMN agent_id TEXT`,
 ];
 /** What the plugin agent is given, exactly (the card says the same words): reads of memory and recall, the sessions of the person's projects, and one write that lands as a pending suggestion. */
 export const ALLOWED = Object.freeze(new Set([
@@ -113,12 +114,13 @@ export default {
         }
         const made = await ctx.call("agents.create", { name: agent, projects: "*", personal: true });
         if (made && made.error) throw refuse(String(made.error.message || "the agent could not be made"), String(made.error.code || "failed"));
+        const agentId = made && made.data && made.data.id ? String(made.data.id) : null;
         const key = crypto.randomBytes(32).toString("base64url");
         const file = keyPath();
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, JSON.stringify({ agent, key }), { mode: 0o600 });
         fs.chmodSync(file, 0o600);
-        db.prepare("INSERT INTO pluginagent_agents (agent, computer, key_hash, created_at) VALUES (?,?,?,?)").run(agent, computer, hash(key), now());
+        db.prepare("INSERT INTO pluginagent_agents (agent, computer, key_hash, created_at, agent_id) VALUES (?,?,?,?,?)").run(agent, computer, hash(key), now(), agentId);
         db.prepare("UPDATE pluginagent_asks SET state = 'granted' WHERE state = 'waiting'").run();
         setState("off", null);
         try { ctx.events.emit("pluginagent.granted", { agent, computer }); } catch { /* an event never decides */ }
@@ -139,7 +141,8 @@ export default {
         const k = ctx.kernel && ctx.kernel.grants && typeof ctx.kernel.grants.removeActor === "function" ? ctx.kernel : null;
         if (k) { try { await k.grants.removeActor(await k.chain(meta), { kind: "agent", id: String(a.agent), space: k.space }, k.proofFrom(meta) || {}); } catch { /* not an actor (any more): nothing to remove */ } }
         // The person's own act (revoke needs presence): the delete runs as the caller who revoked, not as this module, so agents.delete's person-only rule is what decides.
-        const gone = await ctx.call("agents.delete", { agent: String(a.agent) }, { as: meta.caller });
+        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as: meta.caller, ...(meta.person ? { person: meta.person } : {}) });
+        // not_found: that agent (or one with that id) is already gone, or the name is someone else's agent now: not ours to delete.
         if (gone && gone.error && gone.error.code !== "not_found") throw refuse(`Claude Code's reach is off, but its agent could not be removed: ${gone.error.message}`, String(gone.error.code || "failed"));
         try { ctx.events.emit("pluginagent.revoked", { agent: String(a.agent) }); } catch { /* an event never decides */ }
         return { revoked: true, agent: String(a.agent) };
