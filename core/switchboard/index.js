@@ -3465,7 +3465,7 @@ export default {
         guard(caller, "type into sessions");
         { const rec = sb.record(i.thread); await spendGate(caller, rec && rec.provider); }
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
-        if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
+        if ((await wantsMacs(ctx, {}, caller, meta)) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
@@ -3506,7 +3506,7 @@ export default {
         const { caller } = meta;
         guard(caller, "list sessions");
         const { machines: _, ...q } = i;
-        if (!wantsMacs(ctx, i, caller)) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
+        if (!(await wantsMacs(ctx, i, caller, meta))) { const rows = sb.list(q); if (!Array.isArray(rows)) return rows; const ok = await Promise.all(rows.map(r => sessionMay(meta, r && r.id, false))); return rows.filter((_, k) => ok[k]); }
         // On the box, for the person: the Macs' threads too, newest first, each labelled with its machine.
         const answers = await askMacs(ctx, "threads.list", q);
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
@@ -3546,7 +3546,7 @@ export default {
         guard(caller, "read questions");
         const { machines: _, ...q } = i;
         const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
-        if (!wantsMacs(ctx, i, caller)) return own;
+        if (!(await wantsMacs(ctx, i, caller, meta))) return own;
         // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
         // so a surface that reconnects has one list to reconcile from. What answering one takes is
         // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
@@ -3569,7 +3569,7 @@ export default {
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
         // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
-        if (!a && !thread && wantsMacs(ctx, {}, caller)) {
+        if (!a && !thread && (await wantsMacs(ctx, {}, caller, meta))) {
           const mac = await answerOnMac(i, caller, peer, meta);
           if (mac) return mac;
         }

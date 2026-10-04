@@ -784,6 +784,12 @@ const SYSTEM_DIRS = ["/usr/", "/bin/", "/sbin/", "/Applications/", "/System/", "
 /** @param {any} server */
 export function isLoginServer(server) {
   const exe = server && typeof server.exe === "string" ? server.exe : "";
+  if (exe === "uid0") {
+    // vyred runs as the login user and the kernel hides /proc/<pid>/exe of a root process from it, so the walk records "uid0" with the process's comm and command line. A root-owned sshd or login
+    // is named by both, and the uid is the kernel's word that it is root's: a user process called sshd has its own uid, and tmux, screen and a daemonized shell are never uid 0.
+    const cmd = typeof server.cmd === "string" ? server.cmd : "";
+    return server.uid === 0 && LOGIN_SERVERS.has(String(server.comm || "")) && /^(?:\S*\/)?(?:sshd|login)(?::|\s|$)/.test(cmd);
+  }
   return Boolean(exe) && server.uid === 0 && LOGIN_SERVERS.has(path.basename(exe)) && SYSTEM_DIRS.some(d => exe.startsWith(d));
 }
 
@@ -802,7 +808,13 @@ export function isLoginServer(server) {
  */
 async function atTerminal(socket, registry, presence, standIn = false) {
   // The development stand-in (a hand-made file in a development build) is the one thing that replaces this guard; a real build never passes it.
-  if (!standIn && await fromClaude(socket, registry)) return null;
+  if (!standIn) {
+    // The login the person types in is a NAMED server at the top of an ancestry vyred can read (an ssh login, tmux, an app's terminal): such a chain is `unknown` to the walk, which is why a
+    // plain fromClaude refused the real `vyre signin` over ssh. The terminal key below still needs a login `who` lists (or tmux clients that are), and the sign-in itself waits for the owner's
+    // phone, so a named server is enough here; a model's shell (inside), an unreadable chain with no server, and no peer at all are still refused.
+    const who = await above(socket, registry);
+    if (who.nopid || who.inside || (who.unknown && !who.server)) return null;
+  }
   const pid = await peerPid(socket);
   if (!pid || !presence || typeof presence.who !== "function") return null;
   const logins = await presence.who();
