@@ -674,7 +674,7 @@ export default {
         // The device that made the space is enrolled in it; the person's other devices see it as "Add to this device".
         { const eid = ownDeviceEid(meta), l = await enrolledList(eid); if (l !== null && !l.includes(spaceId)) await kv.put(`device-spaces/${eid}`, [...l, spaceId]); }
         return sync(spaceId, view);
-      });
+      }, { presence: { summary: (/** @type {any} */ i) => `Make the space ${i && i.name} on your server`, when: (/** @type {any} */ i) => Boolean(i && i.home && i.home.kind === "server" && i.home.device) } });
 
     // A Space made before the kernel hosted them has a module-local id (spc_ plus 16 hex) that the kernel's registry does not know. This build makes none (spaces.create hosts in the kernel first) and
     // 0.3 is the first release with Spaces, so there is nothing to move; if one is found anyway it is said once, never mapped or deleted in silence.
