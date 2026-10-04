@@ -228,6 +228,7 @@ test("create a space on this computer end to end: key, name, owner, unit files, 
   const members = await d.ok("spaces.members.list", { space: done.space });
   assert.equal(members.members[0].person, alex.id);
   assert.equal(members.members[0].role, "owner");
+  assert.equal(members.members[0].name, "alex.vyre.run", "a member shows the name they chose");
   assert.equal(d.of("space.create-done").length, 1);
   assert.ok(d.of("member.added").some(e => e.person === alex.id && e.role === "owner"));
 
@@ -398,6 +399,7 @@ test("members through the tools: admins cannot touch owners, the last owner stay
   const asOwner = await add({ person: bo.id, role: "owner" }, { proof: "touch" });
   assert.ok(!asOwner.error, JSON.stringify(asOwner.error));
   assert.equal(asOwner.data.membership.role, "owner");
+  assert.equal(asOwner.data.membership.name, null, "a person this device has no verified name for shows no name, never a guess");
 
   // Act as the admin: the same home, another person.
   await actAs(d, "juno-device");
@@ -880,7 +882,7 @@ test("space creation asks the kernel which store it would use: a server too smal
       storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
       host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
-  const d = await device(t, { kernelFor: () => kernel });
+  const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
   // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
@@ -955,5 +957,27 @@ test("setup in progress: kept with the space, claimed by another device of the p
   assert.equal((await d.ok("spaces.setup.save", { space, setup: null }, "cli", laptop)).setup, null);
   assert.equal((await d.ok("spaces.get", { space })).setup, null);
   assert.equal((await d.call("spaces.setup.claim", { space }, "cli", laptop)).error?.code, "no_setup");
+  void w;
+});
+
+test("a device's spaces: the Access screen lists them, a space can remove one device without touching the others, and the removed device is refused there", async t => {
+  const w = world(t);
+  const d = await device(t);
+  const me = await d.ok("spaces.identity.create", { name: "alex" });
+  const a = await d.ok("spaces.create", { name: "harlow", home: { kind: "this-computer", confirmed: true } });
+  const b = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
+  const eid = me.eid;
+  const asDevice = { kernelFacts: { kind: "device", device_key_id: eid } };
+  const mine = await d.ok("spaces.devices.spaces", {}, "cli", asDevice);
+  assert.deepEqual([mine.device.self, mine.spaces.map(x => [x.label, x.removed]).sort()], [true, [["harlow", false], ["northwind", false]]]);
+  assert.equal((await d.call("spaces.devices.spaces", { device: "nope" })).error?.code, "not_found");
+  assert.equal((await d.ok("spaces.devices.remove", { space: a.space, device: eid })).removed, true);
+  assert.deepEqual((await d.ok("spaces.devices.spaces", { device: eid })).spaces.map(x => [x.label, x.removed]).sort(), [["harlow", true], ["northwind", false]]);
+  assert.equal((await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error?.code, "device_removed");
+  assert.ok(!(await d.call("spaces.get", { space: b.space }, "cli", asDevice)).error, "the other space is untouched");
+  assert.deepEqual((await d.ok("spaces.list", {}, "cli", asDevice)).map(x => x.label), ["northwind"]);
+  assert.ok(!(await d.call("spaces.get", { space: a.space })).error, "the person's own socket still reaches it");
+  assert.equal((await d.ok("spaces.devices.restore", { space: a.space, device: eid })).removed, false);
+  assert.ok(!(await d.call("spaces.get", { space: a.space }, "cli", asDevice)).error);
   void w;
 });

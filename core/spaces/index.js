@@ -133,8 +133,16 @@ export default {
     const authorize = createRoleAuthorize({ membership: (space, person) => mstore.get(space, person), now });
     const REASONS = /** @type {Record<string, string>} */ ({ not_a_member: "You are not a member of this space.", expired: "Your access to this space has ended.", no_grant: "Your role cannot do that.", chain_not_person: "Only a person can do that." });
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
+    /** Devices this space has removed (the device's entry id on the person's list), kept per space. A removed device is refused here and shown as removed on the Access screen; its other spaces are untouched. */
+    const barredIn = async (/** @type {string} */ spaceId) => /** @type {string[]} */ ((await kv.get(`device-bar/${spaceId}`)) || []);
+    /** Refuse a call that comes from a device this space removed. @param {string} spaceId @param {any} meta */
+    const notRemoved = async (spaceId, meta) => {
+      const dev = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : "";
+      if (dev && (await barredIn(spaceId)).includes(dev)) throw refuse("This device was removed from this space.", "device_removed");
+    };
     const gate = async (spaceId, action = "views.read", meta) => {
       const s = me();
+      await notRemoved(spaceId, meta);
       if (kernelHandle(spaceId)) {
         // The kernel's answer: a member (and, for temp, one whose time has not run out) is let in; what they may DO is the kernel's to decide on each call.
         const m = await membershipOf(spaceId, /** @type {string} */ (s.id), meta).catch(() => null);
@@ -225,6 +233,18 @@ export default {
       await kv.put(pinKey, r.pin);
       await kv.put(`person-name/${r.id}`, label);
       return r.id;
+    };
+
+    /** The name a person chose for themselves (their identity card), as this device knows it: their own, or one it verified when they were added by name or joined. Null when not known here. @param {string} id */
+    const nameOf = async id => {
+      const st = identity.status();
+      if (st.exists && st.id === id && st.name) return `${st.name}.vyre.run`.replace(/(\.vyre\.run)+$/, ".vyre.run");
+      const n = /** @type {string|null} */ (await kv.get(`person-name/${id}`));
+      return n ? `${n}.vyre.run` : null;
+    };
+    const withName = async (/** @type {any} */ r) => {
+      if (r && typeof r === "object" && r.membership && typeof r.membership.person === "string") return { ...r, membership: { ...r.membership, name: await nameOf(r.membership.person) } };
+      return r && typeof r === "object" && typeof r.person === "string" ? { ...r, name: await nameOf(r.person) } : r;
     };
 
     // ---- a space's list of owners follows its owners ----
@@ -328,10 +348,12 @@ export default {
         async provisionWorkspace(/** @type {{ spaceId: string, name: string }} */ a) {
           const r = await ctx.call("records.workspace.create", { space: a.spaceId, name: a.name });
           if (r.error) {
-            if (r.error.code === "no_such_tool" || r.error.code === "not_available") {
+            // With the kernel hosting here every Space has its built-in store, so a refusal from the records tool is a failed step, not a warning; a space the kernel does not host has no store to attach, so it only warns.
+            if ((r.error.code === "no_such_tool" || r.error.code === "not_available" || r.error.code === "not_found") && !(K && K.spaces && typeof K.spaces.host === "function")) {
               warn(a.spaceId, { code: "records_driver_missing", message: "records driver not installed" });
               return { workspaceId: null };
             }
+            ctx.log.warn(`records.workspace.create refused: ${r.error.code}: ${r.error.message}`);
             throw new Error(r.error.message);
           }
           const id = (r.data && (r.data.workspaceId || r.data.id)) || null;
@@ -402,6 +424,9 @@ export default {
     // 1. identity: a permanent id and a signed list of who can speak for it (devices, a recovery code, optional recovery contacts)
     tool("spaces.identity.status", "This device's Vyre identity: its name, its permanent id and its place on the list. No key is ever shown.", obj(),
       async () => publicIdentity(identity.status()));
+
+    tool("spaces.identity.id", "This device's permanent identity id, or null when none is claimed yet. The one place the id is kept is this module; pairing and install read it here, never keep their own. For modules.", obj(),
+      async () => { const st = identity.status(); return { id: st.exists && !st.pending ? st.id : null }; }, { internal: true });
 
     tool("spaces.identity.create", "Make this device's key and your identity, and claim your Vyre name (for example alex.vyre.run). The recovery code comes back in this reply only: show it to the person once and never keep a copy. A recovery password is optional (four or more words is best); with one, the paper alone is not enough.",
       obj({ name: str, password: str, deviceLabel: str }, ["name"]), async i => {
@@ -600,6 +625,41 @@ export default {
         return { space: row.id, setup: next, moved: true, from: cur.device };
       });
 
+    // ---- a device's spaces (the Access screen): which spaces a device of the person's reaches, and removing it from one without touching the others ----
+    const ownDeviceEid = (/** @type {any} */ meta) => (meta && meta.kernelFacts && meta.kernelFacts.kind === "device" && meta.kernelFacts.device_key_id) || String(me().eid);
+    const deviceOf = async (/** @type {any} */ id, /** @type {any} */ meta) => {
+      const eid = String(id || ownDeviceEid(meta));
+      const e = (await idops.entries()).find((/** @type {any} */ x) => x.eid === eid && x.kind === "device");
+      if (!e) throw refuse("That is not one of your devices.", "not_found");
+      return e;
+    };
+    tool("spaces.devices.spaces", "The spaces a device of yours reaches, each with your role there and whether the space has removed this device. Leave device out for the device you are on.",
+      obj({ device: str }), async (i, meta) => {
+        const s = me();
+        const dev = await deviceOf(i.device, meta);
+        const out2 = [];
+        for (const row of spaces.all()) {
+          if (row.status !== "done") continue;
+          const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+          if (!m && row.createdBy !== s.id) continue;
+          out2.push({ space: row.id, name: row.name, label: row.label, displayName: row.displayName, role: m ? m.role : "owner", removed: (await barredIn(row.id)).includes(dev.eid) });
+        }
+        return { device: { eid: dev.eid, label: dev.label || null, self: dev.eid === ownDeviceEid(meta) }, spaces: out2 };
+      });
+    const setBar = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {boolean} */ bar) => {
+      const s = me();
+      const row = spaceOf(i.space);
+      const m = await membershipOf(row.id, /** @type {string} */ (s.id), meta).catch(() => null);
+      if (!m && row.createdBy !== s.id) throw refuse("You are not a member of this space.", "not_a_member");
+      const dev = await deviceOf(i.device, meta);
+      const cur = await barredIn(row.id);
+      const next = bar ? [...new Set([...cur, dev.eid])] : cur.filter(x => x !== dev.eid);
+      if (next.length !== cur.length) { await kv.put(`device-bar/${row.id}`, next); emit(bar ? "space.device-removed" : "space.device-restored", { space: row.id, device: dev.eid }); }
+      return { space: row.id, device: dev.eid, removed: bar };
+    };
+    tool("spaces.devices.remove", "Remove one of your devices from one space. The space refuses it from then on; your other spaces and the device's other access are untouched.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setBar(i, meta, true));
+    tool("spaces.devices.restore", "Let a device you removed from a space reach it again.", obj({ space: str, device: str }, ["space", "device"]), (i, meta) => setBar(i, meta, false));
+
     tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer.", obj(), async (_i, meta) => {
       const s = me();
       const rows = [];
@@ -609,6 +669,7 @@ export default {
         if (!m && row.createdBy !== s.id) continue;
         // A space is listed once it has its home. One still being made (or whose server step failed) is not a space yet: its steps are spaces.status and spaces.resume.
         if (row.status !== "done") continue;
+        if (await notRemoved(row.id, meta).then(() => false, () => true)) continue;
         out.push({ id: row.id, name: row.name, label: row.label, displayName: row.displayName, status: row.status, home: row.home, role: m ? m.role : null, aliases: row.aliases, workspaceId: row.workspaceId, warnings: row.warnings, createdAt: row.createdAt, setup: await setupView(row, s) });
       }
       return out;
@@ -617,6 +678,7 @@ export default {
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
       const s = me();
+      await notRemoved(row.id, meta);
       if (row.createdBy !== s.id) await gate(row.id, undefined, meta);
       const m = await members(row.id, meta);
       const all = await m.list();
@@ -694,14 +756,16 @@ export default {
       const row = spaceOf(i.space);
       await gate(row.id, undefined, meta);
       const m = await members(row.id, meta);
-      return { space: row.id, members: out((await m.list()).map((/** @type {any} */ r) => ({ ...r, role_label: m.roleLabel(r.role) }))), warnings: await m.warnings() };
+      const rows = [];
+      for (const r of await m.list()) rows.push({ ...r, role_label: m.roleLabel(r.role), name: await nameOf(String(r.person)) });
+      return { space: row.id, members: out(rows), warnings: await m.warnings() };
     });
     tool("spaces.members.add", "Add a person (their per_ id or their Vyre name) with a role. A temp member needs scope and an end date. Making an owner needs the person's approval on their device.",
       obj({ space: str, person: str, role: { type: "string", enum: ROLE_IDS }, scope: { type: "array", items: str }, expires: { type: "number" } }, ["space", "person", "role"]),
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
-        const r = out(await (await members(row.id, meta)).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        const r = out(await withName(await (await members(row.id, meta)).addMember({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence })));
         if (i.role === "owner") await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
@@ -710,7 +774,7 @@ export default {
       async (i, meta) => {
         const row = spaceOf(i.space);
         const s = await gate(row.id, undefined, meta);
-        const r = out(await (await members(row.id, meta)).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence }));
+        const r = out(await withName(await (await members(row.id, meta)).setRole({ actor: s.id, person: await personRef(i.person), role: i.role, scope: i.scope, expires: i.expires, presence: meta.presence })));
         await syncOwners(row, PERSON_RE.test(String(i.person)) ? undefined : String(i.person).toLowerCase().replace(/\.vyre\.run$/, ""), meta);
         return r;
       }, { presence: { summary: (/** @type {any} */ i) => `Make ${i && i.person} an owner of ${i && i.space}`, when: ownerGrant } });
@@ -898,7 +962,11 @@ export default {
         try { payload = JSON.parse(Buffer.from(String(i.token).split(".")[0], "base64url").toString("utf8")); } catch { throw refuse("That is not a valid invite.", "bad_input"); }
         const row = payload && typeof payload.sid === "string" ? spaces.get(payload.sid) : null;
         if (!row || row.name !== payload.space) throw refuse("This invite is for a different space than the one it points to.", "wrong_space");
-        return out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
+        const joined = out(await invitesFor(row).acceptInvite({ token: String(i.token), person: i.person, proof: String(i.proof) }));
+        // Keep the name they chose, but only once the directory says that name is theirs: it shows on the member list, so it is never taken from the invitee's say-so.
+        const label = typeof i.person.name === "string" ? i.person.name.trim().toLowerCase().replace(/\.vyre\.run$/, "") : "";
+        if (label) { try { const r = await dir.resolve(label); if (r.ok && r.kind === "person" && r.id === i.person.id) await kv.put(`person-name/${i.person.id}`, label); } catch { /* the name stays unknown here */ } }
+        return joined;
       }, { callers: RELAY_DEVICE_CALLERS });
 
     // 5a. what other modules (bridges, publish) ask of spaces: who is a member, who is acting, which spaces a person is in. Modules only, never a person or a model.
