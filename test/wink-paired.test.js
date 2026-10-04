@@ -934,6 +934,16 @@ test("M1 invites to a space on its server: the home's one-use challenge is answe
   spacesHooks.buildRoot = undefined;
   const made1 = await dcall("spaces.invites.create", { space: id, role: "member" });
   assert.ok(!made1.error && /\/join\/inv_/.test(made1.data.link), `dev kind: ${JSON.stringify(made1).slice(0, 400)}`);
+  // a sealed value from M1 goes to the SERVER's sealing process (the record keeps only the reference)
+  const PERSON = { name: "person", label: "Person", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "ssn", kind: "sealed", label: "SSN", seal: { level: "ai", class: "us-ssn" } }] };
+  const def = await dcall("records.define", { space: id, diff: { add_types: [PERSON] } });
+  assert.ok(!def.error, String(JSON.stringify(def.error)));
+  const rec = await dcall("records.create", { space: id, type: "person", data: { name: "Jane" } });
+  assert.ok(!rec.error, String(JSON.stringify(rec.error)));
+  const urn = `vyre://${id}/person/${rec.data.record.id}`;
+  const put = await dcall("records.seal-put", { urn, field: "ssn", value: "123-45-6789", class: "us-ssn" });
+  assert.ok(!put.error, String(JSON.stringify(put.error)));
+  assert.ok(!JSON.stringify(put.data).includes("123-45-6789"), "the value is not in the record");
   // and the home knows the invite
   const invs = await server.kernel.spaces.hosted(id).gateway.grants.invites.list(server.kernel.spaces.hosted(id).kernel.chains.fromFacts({ kind: "device", device_key_id: "x", person: ident.id, path: "direct", session: "s" }), {}).catch(() => null);
   if (invs) assert.ok(JSON.stringify(invs).includes(made1.data.id), "the home holds the invite");
