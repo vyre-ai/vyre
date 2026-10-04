@@ -1,4 +1,5 @@
 // @ts-check
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createGroup, parseWho, authorLabel, avatarStack, unreadDivider, presenceLine, askAudience, fanoutKeep, textMentions, sealedNoteSeen, markSealedNoteSeen, sealedNoteText } from "./group.js";

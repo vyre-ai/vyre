@@ -1,3 +1,4 @@
+import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { badgeLabel, badgeText, elapsed, nextTick } from "./status-words.js";

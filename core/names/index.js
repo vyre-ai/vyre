@@ -83,7 +83,7 @@ export default {
     const steward = (/** @type {string[]} */ modules) => (/** @type {any} */ meta) => {
       const c = String((meta && meta.caller) || "");
       const ok = !(meta && meta.agent) && agentClaim(c) === null
-        && (c.startsWith("module:") ? modules.includes(c.slice(7)) : SURFACES.includes(c) || ownerDevice(c));
+        && (c.startsWith("module:") ? modules.includes(c.slice(7)) : SURFACES.includes(c) || ownerDevice(c) || /^setup:[a-z2-7]{16}$/.test(c));
       if (!ok) throw Object.assign(new Error("changing the box's name or owner is the person's own"), { code: "denied" });
     };
     const ownerOnly = steward([]), setupSteps = steward(["onboard", "launch"]), adoptsOwner = steward(["network"]);

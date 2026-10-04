@@ -1,10 +1,10 @@
 // The Store as React sees it. The one switch is deck/ui/store.js (mock now, the gateway adapter later); screens call useStore() and
 // useStoreQuery(), never the mock. Shared with the Deck: the domain is one copy (ui-primitives.md section 1).
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getStore, setStore } from "../../../deck/ui/store.js";
+import { allowsMock, getStore, setStore } from "../../../deck/ui/store.js";
 import type { Store } from "../../../deck/ui/contracts.js";
 
-export { setStore };
+export { allowsMock, setStore };
 export type { Store };
 
 export function useStore(): Store {

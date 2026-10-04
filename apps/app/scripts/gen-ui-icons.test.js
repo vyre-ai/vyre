@@ -1,5 +1,6 @@
 // @ts-check
 // gen-ui-icons.mjs's pure pieces: the fragment parser, the alias table, the generated module.
+import "./test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";

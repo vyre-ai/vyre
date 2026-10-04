@@ -6,6 +6,8 @@ export type AccessItem = {
   id: string; kind: AccessKind; name: string; allows: string; since: string; last: string;
   /** Devices only: phone, computer or server. */
   device?: "phone" | "computer" | "server";
+  /** Devices only: the key that signs for this device is kept in software, not in secure hardware (the vault's paired session reports it; tailnet provides the field). */
+  software?: boolean;
   family: AvatarFamily;
 };
 export const SPACE_NAMES: Record<string, string> = { mine: "Mine", harlow: "Harlow Legal" };
@@ -14,7 +16,7 @@ export function loadAccess(): AccessItem[] {
   return [
     { id: "d1", kind: "Device", device: "computer", family: "device", name: "Alex's Mac", allows: "Opens your projects and your vault, and uses your computers.", since: "12 Aug", last: "Now" },
     { id: "d2", kind: "Device", device: "phone", family: "device", name: "Alex's iPhone", allows: "Does everything you can, until you remove it. Face ID approves each send and payment.", since: "12 Aug", last: "2 min ago" },
-    { id: "d3", kind: "Device", device: "server", family: "device", name: "nova", allows: "Runs your spaces and keeps working when your computer sleeps.", since: "21 Aug", last: "Now" },
+    { id: "d3", kind: "Device", device: "server", family: "device", name: "nova", software: true, allows: "Runs your spaces and keeps working when your computer sleeps.", since: "21 Aug", last: "Now" },
     { id: "p1", kind: "Person", family: "person", name: "Chris Park", allows: "Owner of Harlow Legal. Reads and adds to Intake and Billing.", since: "20 Aug", last: "Today" },
     { id: "p2", kind: "Person", family: "person", name: "Dana Reyes", allows: "Temp on Harlow Legal. Reads one project.", since: "3 Sep", last: "Yesterday" },
     { id: "a1", kind: "Assistant", family: "assistant", name: "juno", allows: "Your assistant. Reads what you can. Cannot send, pay or read the Vault without asking.", since: "12 Aug", last: "Now" },

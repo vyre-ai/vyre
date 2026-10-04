@@ -372,12 +372,13 @@ export async function register({ ctx, vault }) {
 
   ctx.tool("vault.ssh.generate", {
     description: "Generate an SSH key in vyred and store it; returns only the public key and fingerprint. A new name only.",
-    input: obj({ name: str, type: { type: "string", enum: SSH_TYPES }, comment: str }, ["name"]),
-    callers: ["cli", "local", "mcp"],
-    run: async ({ name, type = "ed25519", comment }, { caller }) => {
+    input: obj({ name: str, type: { type: "string", enum: SSH_TYPES }, comment: str, description: str }, ["name"]),
+    // The Deck's "new ssh key" form calls it too.
+    callers: ["cli", "local", "deck", "capsule", "mcp"],
+    run: async ({ name, type = "ed25519", comment, description }, { caller }) => {
       if (!NAME.test(String(name))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
       if (vault.row(name)) throw new Error(`${name} already exists; generate into a new name`);
-      return { key: await storeKey(name, generateKey(type, comment || name), caller, "ssh-generate") };
+      return { key: await storeKey(name, generateKey(type, comment || description || name), caller, "ssh-generate") };
     },
   });
 

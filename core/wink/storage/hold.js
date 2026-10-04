@@ -1,4 +1,5 @@
 // @ts-check
+import { deviceIdOf } from "../../../lib/caller.js";
 // The connection a drive's device holds open to its home, and the home's side of it.
 //
 // A drive's device sits behind a home or office router, so the space's home can never dial it. The device dials out instead and keeps the connection
@@ -25,7 +26,7 @@ export function createHolds(o = {}) {
   /** @type {Map<string, any[]>} */ const sessions = new Map();
   /** @type {Map<string, Array<() => void>>} */ const waiting = new Map();
   /** When each session last answered (or was admitted). @type {WeakMap<any, number>} */ const seen = new WeakMap();
-  const idOf = (/** @type {string} */ caller) => String(caller).replace(/^device:/, "");
+  const idOf = (/** @type {string} */ caller) => deviceIdOf(caller) || String(caller);
   const openOne = (/** @type {string} */ id) => { const l = (sessions.get(id) || []).filter(s => !s.closed); if (l.length) sessions.set(id, l); else sessions.delete(id); return l.length ? l[l.length - 1] : null; };
 
   /** The host's `serveHome({ onSession })`: a device's session was admitted. @param {string} caller @param {any} session */

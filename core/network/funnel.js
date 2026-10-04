@@ -206,6 +206,7 @@ export async function startFunnel(ctx, { exec = tsRun, now = Date.now, guard = (
   });
 
   ctx.tool("network.funnel.status", {
+    effect: "write",
     description: "The public share path on Tailscale Funnel: off, on with the public base URL, or needs-consent with the Tailscale link the person follows once (the funnel attribute, HTTPS certificates). Reading it while consent is pending checks again, at most every five seconds. The owner's.",
     input: { type: "object", properties: {} },
     run: async (_, meta = {}) => {

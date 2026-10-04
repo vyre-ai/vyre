@@ -108,8 +108,16 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): stops sharing a folder over VyreDrive, which only takes access away"
  },
  {
+  "tool": "files.drive.upload",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts a file in the Space drive under the caller's own chain; the kernel decides who may, and a version, never an overwrite"
+ },
+ {
   "tool": "files.drive.url",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: makes a link)"
+ },
+ {
+  "tool": "files.drive.versions",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a drive file's versions the caller may read; the kernel decides"
  },
  {
   "tool": "files.mentions.search",
@@ -162,6 +170,10 @@
  {
   "tool": "flows.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Flows of a Space; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; proposes a Flow for the person to approve: nothing runs, nothing is installed, until a person approves it; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.retry",
@@ -268,14 +280,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the guests from other tailnets the box serves and their tools"
  },
  {
-  "tool": "network.wink.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads how the person's network looks from this machine: signed in, link, path, storage devices, clock; read-only and secret-free; callers are the person's surfaces, devices and modules, and a guest or anonymous caller is refused in the tool"
- },
- {
-  "tool": "network.wink.whois",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads who the connected device at an address or with a device id is, from the identity list; read-only and secret-free; same callers as the status read"
- },
- {
   "tool": "planner.settings",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads and sets the planner's zone and escalation timing, the person's own preferences"
  },
@@ -304,6 +308,46 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): removes watchers from a project"
  },
  {
+  "tool": "records.actors",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the Space's people and assistants the caller may see; the kernel decides what shows"
+ },
+ {
+  "tool": "records.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): writes a record under the caller's own chain; an assistant's chain is narrowed by the kernel and a sealed value goes through a placeholder"
+ },
+ {
+  "tool": "records.events",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads events the caller may see; the kernel decides"
+ },
+ {
+  "tool": "records.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain; the kernel decides"
+ },
+ {
+  "tool": "records.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists records under the caller's own chain; the kernel decides every row"
+ },
+ {
+  "tool": "records.me",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says who the caller is in the Space; no data"
+ },
+ {
+  "tool": "records.seal-put",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts a sealed value through the sealing process: the kernel and the sealer decide, never the module"
+ },
+ {
+  "tool": "records.sees-as",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): shows what a person or an assistant would see of a record; reads only"
+ },
+ {
+  "tool": "records.types",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the record types; the kernel hides what the caller may not see"
+ },
+ {
+  "tool": "records.update",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): edits a record under the caller's own chain; the kernel decides"
+ },
+ {
   "tool": "relay.devices.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the devices paired through the relay, their names and last seen"
  },
@@ -314,6 +358,22 @@
  {
   "tool": "relay.devices.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames a paired device, a label"
+ },
+ {
+  "tool": "rules.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one standing rule in plain words"
+ },
+ {
+  "tool": "rules.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the Space's standing rules the caller may see"
+ },
+ {
+  "tool": "rules.propose",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): proposes a rule: no effect until the owner accepts"
+ },
+ {
+  "tool": "rules.test",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): tries a rule against an act, without changing anything"
  },
  {
   "tool": "sessions.mention.search",
@@ -406,6 +466,26 @@
  {
   "tool": "system.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames this server's display name, a label and not the vyre.run address"
+ },
+ {
+  "tool": "tasks.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one task the caller may read"
+ },
+ {
+  "tool": "tasks.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists tasks the caller may read; the kernel decides each"
+ },
+ {
+  "tool": "tasks.move",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): starts, flags or skips a task; the kernel decides by the caller's role"
+ },
+ {
+  "tool": "tasks.request",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): asks for a task under the caller's own chain; the kernel decides who may"
+ },
+ {
+  "tool": "tasks.submit",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): hands in a doer's work for a check; the kernel decides"
  },
  {
   "tool": "team.duties.run-now",

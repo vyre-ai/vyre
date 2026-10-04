@@ -34,7 +34,7 @@ export function createFlowsHost(o) {
     // The host acts for the Space's owner only for housekeeping (defining its own record types); everything a person's Flow does runs under that person's chain.
     const owner = () => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: ownerOf(), path: "direct", session: "flows-host" });
     const personChain = (/** @type {string} */ id) => k.chains.fromFacts({ kind: "device", device_key_id: "flows-host", person: id, path: "direct" });
-    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "events.read", "tasks.request", "tasks.read"], prefixes: ["*"] } } });
+    const sh = k.kernelFor({ name: "flows", needs: { kernel: { actions: ["records.read", "records.create", "records.update", "records.remove", "events.read", "tasks.request", "tasks.read", "tasks.work"], prefixes: ["*"] } } });
     const flowsChain = () => k.chains.appendService(owner(), "flows", true);
     // The module's service grant is written asynchronously; any call through the handle's records waits for it, so wait here before anything runs under the service chain.
     await sh.records.query(sh.serviceChain(), "def_flow", { page: { limit: 1 } }).catch(() => {});
@@ -47,12 +47,14 @@ export function createFlowsHost(o) {
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
       forModule: (/** @type {any} */ x) => k.chains.forModule({ ...x, approver: personChain(x.approver.id) }),
+      // The Flows service as the doer of a task it puts in front of a person to check (a Kit's install card, an assistant's proposal, a held act): the approver, narrowed to service:flows.
+      forDoer: (/** @type {any} */ x) => k.chains.forModule({ module: "flows", approver: personChain(x.approver.id) }),
     };
     const catalog = async () => {
       const types = Object.fromEntries((await k.store.types()).map((/** @type {any} */ t) => [t.name, t]));
       const actions = Object.fromEntries(gw.actions().map((/** @type {any} */ a) => [a.action, { risk: a.risk, ...(a.label ? { label: a.label } : {}) }]));
       const tz = (o.tzFor && o.tzFor(space)) || "UTC";
-      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: {} };
+      return { space, types, actions, tz, roles: ["owner", "admin", "manager", "member"], teammates: ["assistant"], templates: [], connectors: o.connectors ? await o.connectors().catch(() => ({})) : {} };
     };
     const roleHolders = async (/** @type {string} */ role) => {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
@@ -64,7 +66,7 @@ export function createFlowsHost(o) {
       service: async (/** @type {{ chain: any, connector: string, request: any, idem?: string, approval?: string }} */ q) => {
         if (!gw.leases) throw Object.assign(new Error("this home has no vault forward"), { code: "unavailable" });
         const r = q.request || {};
-        return gw.leases.forward(q.chain, { connector: q.connector, method: r.method || "GET", path: r.path || "/", ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}) });
+        return gw.leases.forward(q.chain, { connector: q.connector, method: r.method || "GET", path: r.path || "/", ...(r.query ? { query: r.query } : {}), ...(r.headers ? { headers: r.headers } : {}), ...(r.body !== undefined ? { body: r.body } : {}), ...(r.upload ? { upload: r.upload } : {}), ...(r.saveTo ? { saveTo: r.saveTo } : {}), ...(q.idem ? { idem: q.idem } : {}), ...(q.approval ? { approval: q.approval } : {}), ...(q.bind ? { bind: q.bind } : {}) });
       },
     };
 
@@ -78,7 +80,13 @@ export function createFlowsHost(o) {
     }
 
     const emit = (/** @type {string} */ type, /** @type {any} */ data) => { if (/error|failed/.test(type)) log(`flows ${space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); };
-    const flows = createFlows({ kernel, chains, catalog, store, clock, emit, ports });
+    // An assistant's proposals (the Engineer's) become tasks for an owner or an admin; the change is applied only after the kernel has the approver's yes, as the approver (kernel/flows/proposals.js).
+    const proposals = {
+      chain: flowsChain,
+      isAdmin: async (/** @type {any} */ who) => (await roleHolders("owner")).concat(await roleHolders("admin")).some((/** @type {any} */ a) => a.id === who.id),
+      applyTypes: async (/** @type {any} */ approver, /** @type {any} */ diff) => gw.records.define(personChain(approver.id), diff),
+    };
+    const flows = createFlows({ kernel, chains, catalog, store, clock, emit, ports, proposals });
     const stages = createStages({ kernel: { ask: gw.ask, records: gw.records }, catalog, hook: true, ports: { roles: ports.roles }, clock, emit,
       chain: () => k.chains.appendService(owner(), "flows", true) });
 

@@ -2,25 +2,358 @@
   "name": "relay",
   "version": "0.1.0",
   "description": "A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": {"tools": [{"name": "relay.status", "reach": "anyone"}, {"name": "relay.enable", "reach": "person"}, {"name": "relay.apply", "reach": "modules"}, {"name": "relay.disable", "reach": "person"}, {"name": "relay.pair.start", "reach": "anyone"}, {"name": "relay.pair.first", "reach": "anyone"}, {"name": "relay.pair.ticket", "reach": "person"}, {"name": "relay.pair.window.open", "reach": "anyone"}, {"name": "relay.pair.window.renew", "reach": "anyone"}, {"name": "relay.pair.window.ping", "reach": "anyone"}, {"name": "relay.pair.window.close", "reach": "anyone"}, {"name": "relay.pair.window.confirm", "reach": "anyone"}, {"name": "relay.pair.window.reject", "reach": "anyone"}, {"name": "relay.ticket.mint", "reach": "modules"}, {"name": "relay.pair.pending.confirm", "reach": "modules"}, {"name": "relay.code.alloc", "reach": "modules"}, {"name": "relay.code.release", "reach": "modules"}, {"name": "relay.code.reply", "reach": "modules"}, {"name": "relay.join", "reach": "person"}, {"name": "relay.devices.list", "reach": "person"}, {"name": "relay.devices.rename", "reach": "person"}, {"name": "relay.devices.remove", "reach": "person"}, {"name": "relay.devices.drop", "reach": "modules"}, {"name": "relay.devices.trust", "reach": "person"}, {"name": "relay.devices.ask-trust", "reach": "person"}, {"name": "relay.devices.path", "reach": "person"}, {"name": "relay.devices.node", "reach": "modules"}, {"name": "relay.device.presence", "reach": "modules"}, {"name": "relay.device.info", "reach": "modules"}, {"name": "relay.web.release", "reach": "person"}, {"name": "relay.web.pin", "reach": "person"}, {"name": "relay.devices.tailnet", "reach": "modules"}, {"name": "relay.devices.bind", "reach": "modules"}, {"name": "relay.tailnet.status", "reach": "anyone"}, {"name": "relay.setup.begin", "reach": "modules"}, {"name": "relay.setup.end", "reach": "modules"}, {"name": "relay.setup.status", "reach": "anyone"}, {"name": "relay.setup.claim-token", "reach": "person"}, {"name": "relay.setup.claim", "reach": "person"}, {"name": "relay.route.id", "reach": "modules"}, {"name": "relay.route.sign", "reach": "modules"}]},
-  "watches": {"emits": ["pairing-window.opened", "pairing-window.renewed", "pairing-window.closed", "pairing.requested", "pairing.rejected", "pairing.pending", "relay.code-asked", "relay.invite-redeemed", "relay.connected", "relay.disconnected", "device.paired", "device.trust-asked", "device.removed", "device.moved", "relay.paired", "device.joined", "tailnet.tried", "tailnet.revoke-failed", "setup.paired", "setup.contested", "setup.ended", "device.renamed"]},
-  "shows": { "deck": [], "capsule": [], "cli": [] },
-  "needs": { "vault": ["tailscale-mint-oauth"] },
+  "does": {
+    "reads": [
+      "relay.setup.status",
+      "relay.status",
+      "relay.tailnet.status"
+    ],
+    "tools": [
+      {
+        "name": "relay.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "relay.enable",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.apply",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.disable",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.start",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.first",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.ticket",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.window.open",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.window.renew",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.window.ping",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.window.close",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.window.confirm",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.pair.window.reject",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "relay.ticket.mint",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.pair.pending.confirm",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.code.alloc",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.code.release",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.code.reply",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.join",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.list",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "relay.devices.rename",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.remove",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.drop",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.devices.trust",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.ask-trust",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.path",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.node",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.device.presence",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.device.info",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.web.release",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "relay.web.pin",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.devices.tailnet",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.devices.bind",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.tailnet.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "relay.setup.begin",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.setup.end",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.setup.status",
+        "reach": "anyone"
+      },
+      {
+        "name": "relay.setup.claim-token",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.setup.claim",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "relay.route.id",
+        "reach": "modules"
+      },
+      {
+        "name": "relay.route.sign",
+        "reach": "modules"
+      }
+    ]
+  },
+  "watches": {
+    "emits": [
+      "pairing-window.opened",
+      "pairing-window.renewed",
+      "pairing-window.closed",
+      "pairing.requested",
+      "pairing.rejected",
+      "pairing.pending",
+      "relay.code-asked",
+      "relay.invite-redeemed",
+      "relay.connected",
+      "relay.disconnected",
+      "device.paired",
+      "device.trust-asked",
+      "device.removed",
+      "device.moved",
+      "relay.paired",
+      "device.joined",
+      "tailnet.tried",
+      "tailnet.revoke-failed",
+      "setup.paired",
+      "setup.contested",
+      "setup.ended",
+      "device.renamed"
+    ]
+  },
+  "shows": {
+    "deck": [],
+    "capsule": [],
+    "cli": []
+  },
+  "needs": {
+    "vault": [
+      "tailscale-mint-oauth"
+    ]
+  },
   "teaches": {
     "tips": [
-      {"id": "pair", "text": "Run `vyre relay pair` and scan the QR code with your phone's camera to reach the box without Tailscale.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay pair", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "status", "text": "Run `vyre relay` to see whether the relay is on and connected, and how many devices are paired.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "devices", "text": "Run `vyre relay devices` to see which paired devices are connected, and whether through the relay or direct.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay devices", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "trust", "text": "Run `vyre relay trust <id>` to give a browser paired from the web app its full powers; `--off` limits it again.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay trust <id>", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "remove", "text": "Run `vyre relay remove <id>` for a lost phone: it is unpaired and its open connections close.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre relay remove <id>", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "pin", "text": "Run `vyre relay pin <release>` to hold the web app at one build, and `vyre relay unpin` to follow the newest.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre relay pin <release>", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "rename", "text": "Run `vyre relay rename <id> alex iphone` so the device list says which phone is which.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre relay rename <id> <name>", "docs": "reference/cli.md#vyre-relay"},
-      {"id": "off", "text": "Run `vyre relay off` to stop the relay; paired devices stay paired for when you run `vyre relay on`.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre relay off", "docs": "reference/cli.md#vyre-relay"}
+      {
+        "id": "pair",
+        "text": "Run `vyre relay pair` and scan the QR code with your phone's camera to reach the box without Tailscale.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre relay pair",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "status",
+        "text": "Run `vyre relay` to see whether the relay is on and connected, and how many devices are paired.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre relay",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "devices",
+        "text": "Run `vyre relay devices` to see which paired devices are connected, and whether through the relay or direct.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre relay devices",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "trust",
+        "text": "Run `vyre relay trust <id>` to give a browser paired from the web app its full powers; `--off` limits it again.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre relay trust <id>",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "remove",
+        "text": "Run `vyre relay remove <id>` for a lost phone: it is unpaired and its open connections close.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "on-use",
+        "since": "0.1.0",
+        "command": "vyre relay remove <id>",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "pin",
+        "text": "Run `vyre relay pin <release>` to hold the web app at one build, and `vyre relay unpin` to follow the newest.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "discovery",
+        "trigger": "never-used",
+        "since": "0.1.0",
+        "command": "vyre relay pin <release>",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "rename",
+        "text": "Run `vyre relay rename <id> alex iphone` so the device list says which phone is which.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "first-use",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "command": "vyre relay rename <id> <name>",
+        "docs": "reference/cli.md#vyre-relay"
+      },
+      {
+        "id": "off",
+        "text": "Run `vyre relay off` to stop the relay; paired devices stay paired for when you run `vyre relay on`.",
+        "surfaces": [
+          "cli"
+        ],
+        "level": "power",
+        "trigger": "idle",
+        "since": "0.1.0",
+        "command": "vyre relay off",
+        "docs": "reference/cli.md#vyre-relay"
+      }
     ]
   },
   "settings": [
-    {"key": "relay.web_expiry_days", "group": "devices", "label": "Web links through the relay last (days)", "type": "int", "min": 1, "max": 365, "default": 30, "levels": ["account"], "apply": "live", "store": {"config": "relay.web_expiry_days"}}
+    {
+      "key": "relay.web_expiry_days",
+      "group": "devices",
+      "label": "Web links through the relay last (days)",
+      "type": "int",
+      "min": 1,
+      "max": 365,
+      "default": 30,
+      "levels": [
+        "account"
+      ],
+      "apply": "live",
+      "store": {
+        "config": "relay.web_expiry_days"
+      }
+    }
   ]
 }

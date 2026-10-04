@@ -75,6 +75,8 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault)) {
     assert.ok((await tool("vault.put", { name, kind: name === "anthropic-api-key" ? "api-key" : "secret", fields: { value } })).data);
+    // The provider sign-in items are never granted to a module (vault.launcherOnly): the session launcher reads them through the credentials port the daemon holds. Any other item is still a grant.
+    if (name === "claude-setup-token" || name === "anthropic-api-key") continue;
     assert.equal((await tool("vault.grant", { name, module: "threads" })).data.grant.status, "active");
   }
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };

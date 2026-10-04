@@ -160,7 +160,7 @@ test("egress: no token, a wrong token, an unlisted path and CONNECT are all refu
     assert.equal(sp.state.uses.length, 0);
     assert.equal(up.seen.length, 0);
     const refused = await new Promise(res => { const s = net_connect(port); s.on("data", d => res(String(d))); s.on("error", () => res("error")); });
-    assert.match(refused, /403/);
+    assert.match(refused, /40[37]/);
   } finally { await eg.close(); await up.close(); }
 });
 

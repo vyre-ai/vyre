@@ -10,13 +10,14 @@
     "mcp"
   ],
   "does": {
+    "reads": ["connectors.list"],
     "tools": [
       "connectors.catalog",
       "connectors.list",
       "connectors.connect",
       "connectors.connect.finish",
       "connectors.connect.cancel",
-      "connectors.disconnect", { "name": "connectors.scope", "reach": "person" },
+      "connectors.disconnect", { "name": "connectors.scope", "reach": "person", "effect": "write" },
       "connectors.calendar.today",
       "connectors.mention.search",
       "connectors.mention.resolve",

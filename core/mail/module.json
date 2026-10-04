@@ -10,15 +10,16 @@
     "gate"
   ],
   "does": {
+    "reads": ["mail.read", "mail.search"],
     "tools": [
-      { "name": "mail.accounts", "reach": "anyone" },
-      { "name": "mail.map", "reach": "anyone" },
-      { "name": "mail.test", "reach": "anyone" },
-      { "name": "mail.send", "reach": "anyone" },
-      { "name": "mail.search", "reach": "anyone" },
-      { "name": "mail.read", "reach": "anyone" },
-      { "name": "mail.find", "reach": "anyone" },
-      { "name": "mail.compose", "reach": "anyone" },
+      { "name": "mail.accounts", "reach": "anyone", "effect": "read" },
+      { "name": "mail.map", "reach": "anyone", "effect": "write" },
+      { "name": "mail.test", "reach": "anyone", "effect": "write" },
+      { "name": "mail.send", "reach": "anyone", "effect": "write" },
+      { "name": "mail.search", "reach": "anyone", "effect": "read" },
+      { "name": "mail.read", "reach": "anyone", "effect": "read" },
+      { "name": "mail.find", "reach": "anyone", "effect": "read" },
+      { "name": "mail.compose", "reach": "anyone", "effect": "write" },
       { "name": "mail.release", "reach": "modules" }
     ]
   },

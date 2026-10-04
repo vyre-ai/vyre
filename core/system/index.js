@@ -2,11 +2,14 @@
 // system — the smallest real module. It proves the contract end to end (a manifest, a tool, an
 // event) and answers "what is this machine running".
 
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { build } from "../daemon/build.js";
 import { hostedOrigins, save as saveConfig } from "../config/index.js";
 import { friendlyDeviceName, cleanLabel } from "../../lib/devicename.js";
 import { fingerprint8, toBase64url } from "../../lib/identity.js";
+import { PKG_ROOT } from "../../kernel/devbuild.js";
 
 // Both fingerprints, or null for either if owner.id is missing or malformed (lib/identity
 // itself owns the shape check, so this doesn't keep its own copy of that regex). Any process
@@ -22,6 +25,7 @@ function ownerFingerprints(id) {
 export default {
   async start(ctx) {
     ctx.tool("system.info", {
+      effect: "read",
       description: "What this machine is running: Vyre version and the commit it was built from, role, host and platform, the owner's name as onboarding saved it and their fingerprint8 (a short, stable, non-secret fingerprint of owner.id, base64url, for a surface's avatar), the assistant's name (which every surface uses to label replies; null: surfaces say \"Vyre\") and its own fingerprint8 (same formula, kind \"assistant\", also base64url), and network.origins: the other sites (Vyre's hosted app) that may call this box from the owner's browser ([] when off).",
       input: { type: "object", properties: {} },
       run: async () => {
@@ -39,7 +43,18 @@ export default {
           network: { origins: hostedOrigins(ctx.config.network) } };
       },
     });
+    ctx.tool("system.build", {
+      description: "The release's signed record of the web app this daemon serves at /app/: appbuild.json (the sha256 of every file of the build), the signed SHA256SUMS that lists it, and SHA256SUMS.sig. A client (the Mac window) verifies the signature with the release key and the list's own hash, then checks every file it is served. A development build has none.",
+      input: { type: "object", properties: {} },
+      run: async () => {
+        /** @param {string} f */
+        const read = f => { const p = path.join(PKG_ROOT, f); const st = fs.lstatSync(p); if (!st.isFile() || st.size > 8_000_000) throw new Error("not a plain file"); return fs.readFileSync(p, "utf8"); };
+        try { return { appbuild: read("appbuild.json"), sums: read("SHA256SUMS"), sig: read("SHA256SUMS.sig").trim() }; }
+        catch { throw Object.assign(new Error("this build carries no signed record of the app (a development build)"), { code: "no_build" }); }
+      },
+    });
     ctx.tool("system.rename", {
+      effect: "write",
       description: "Rename this server: its display name, a label the person chooses (not its vyre.run address). It is shown wherever this machine appears, and a phone sees it when pairing. An empty name goes back to the default.",
       input: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
       run: async ({ name }) => {
@@ -53,6 +68,7 @@ export default {
     });
 
     ctx.tool("system.echo", {
+      effect: "read",
       description: "Returns what it was given. For checking that tools and the rules path work.",
       input: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
       run: async ({ text }) => ({ text }),

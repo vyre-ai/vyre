@@ -63,3 +63,14 @@ test("start() asks before it touches the home: the refusal comes before config.e
   const refusal = src.indexOf("kernelOffRefusal(kernelOn", at), ensure = src.indexOf("config.ensure(root)", at), lock = src.indexOf("acquire(root)", at);
   assert.ok(refusal > at && refusal < ensure && refusal < lock, "start refuses a packaged kernel-off start first");
 });
+
+import { unattestedAllowed } from "./seal/process.js";
+test("a software signer (no attestation) is taken only in a development build asked for it with VYRE_SEAL_UNATTESTED=1; a release-kind build refuses it", () => {
+  const dev = make("development"), rel = make("release"), signed = make("development", true);
+  assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, dev), true);
+  assert.equal(unattestedAllowed({}, dev), false, "not asked for");
+  assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "true" }, dev), false, "only exactly 1");
+  assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, rel), false, "a release stamp ignores it");
+  assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, signed), false, "a carried release signature too");
+  assert.equal(unattestedAllowed({ VYRE_SEAL_UNATTESTED: "1" }, make(null)), false, "no stamp means packaged");
+});

@@ -312,7 +312,7 @@ function raw(socketPath, pathname, payload, headers) {
 test("daemon: vyred checks presence, so a forged caller cannot run a human-only tool, and a Capsule signature can", async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "held", { does: { tools: ["held.release"] } },
-    `export default { async start(ctx) { ctx.tool("held.release", { presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
+    `export default { async start(ctx) { ctx.tool("held.release", { effect: "read", presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const sock = d.paths.socket;
@@ -364,7 +364,7 @@ test("daemon: the presence challenge route refuses what it cannot start", async 
 test("daemon: every non-person call passes the floor's rules, not only Claude Code's hook (SPEC 5.3)", async t => {
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.echo"] } }, `export default { async start(ctx) {
-    ctx.tool("probe.echo", { input: { type: "object", properties: { path: { type: "string" }, command: { type: "string" } } }, run: async input => ({ got: input }) });
+    ctx.tool("probe.echo", { effect: "read", input: { type: "object", properties: { path: { type: "string" }, command: { type: "string" } } }, run: async input => ({ got: input }) });
     return { async stop() {} };
   } };`);
   const d = await start({ root, log: () => {} });
