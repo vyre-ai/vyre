@@ -383,3 +383,13 @@ test("cors: the name availability check answers any origin like resolve (no cred
   for (let i = 0; i < 9; i++) { const p = await person(w); const r = await raw(w, "POST", "/v1/ids/claim", { origin: "https://app.vyre.run", body: { name: `limit${i}x`, ops: p.ops, ...p.sealRecord(`limit${i}x`, "c2VhbGVk") } }); results.push(r.status === 200 ? "ok" : code(r)); }
   assert.equal(results.filter(x => x === "ok").length, 8, JSON.stringify(results));
 });
+
+test("CO-1: the live config pins APP_ORIGINS to exactly one https origin, and no dev or wildcard origin", async () => {
+  const fs = await import("node:fs"), url = await import("node:url"), path = await import("node:path");
+  const toml = fs.readFileSync(path.join(path.dirname(url.fileURLToPath(import.meta.url)), "wrangler.toml"), "utf8");
+  const m = /^APP_ORIGINS\s*=\s*"([^"]*)"/m.exec(toml);
+  assert.ok(m, "APP_ORIGINS is set in [vars]");
+  assert.match(m[1], /^https:\/\/[a-z0-9.-]+$/);
+  assert.ok(!/localhost|127\.0\.0\.1|\*|,/.test(m[1]), m[1]);
+  assert.equal(m[1], "https://app.vyre.run");
+});
