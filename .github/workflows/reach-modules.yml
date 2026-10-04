@@ -3,6 +3,7 @@ name: reach-modules
 on:
   workflow_dispatch:
   push:
+    branches: ["main", "work/v0.3", "work/launch-*", "work/platform*", "work/kernel*"]
     paths: ["core/tips/**", "core/update/**", "core/vitals/**", "core/system/**", "core/about/**", "core/statusline/**", "core/onboard/**", "core/import/**", "test/reach-explicit.test.js", "test/reach-allowlist.json", ".github/workflows/reach-modules.yml"]
 permissions:
   contents: read
