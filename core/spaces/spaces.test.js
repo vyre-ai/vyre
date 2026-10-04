@@ -1130,3 +1130,16 @@ test("spaces.admin-list gives the pairing module the finished spaces a person ow
   assert.deepEqual([other.spaces, other.identity], [[], null]);
   void w;
 });
+
+test("spaces.identity.name-of: this device's own claimed name, a verified name the home knows, else null (never an unchecked claim)", async t => {
+  const w = world(t);
+  const { d, alex } = await harlow(t, w);
+  assert.equal((await d.ok("spaces.identity.name-of", { id: alex.id }, "module:wink")).name, "alex.vyre.run");
+  const stranger = person().id;
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger }, "module:wink")).name, null);
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger, claimed: "alex.vyre.run" }, "module:wink")).name, null, "a claimed name that the directory does not resolve to this id is not shown");
+  d.db.prepare("INSERT INTO spaces_kv (key, value) VALUES (?, ?)").run(`person-name/${stranger}`, JSON.stringify("kit"));
+  assert.equal((await d.ok("spaces.identity.name-of", { id: stranger }, "module:wink")).name, "kit.vyre.run");
+  assert.equal((await d.call("spaces.identity.name-of", { id: alex.id }, "cli")).error?.code !== undefined, true, "modules only");
+  void w;
+});
