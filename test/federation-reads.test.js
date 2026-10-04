@@ -54,7 +54,8 @@ test("federation reads: the person on the box reads both machines, every row lab
   const mac = (await s.macCall("projects.catalog", { limit: 100 })).data;
   assert.ok(mac.total > 1 && mac.total < 100, `the Mac has its own sessions: ${mac.total}`);
 
-  for (const caller of ["deck", "cli", "capsule", `tailnet:${OWNER}`]) {
+  // with the kernel on, a tailnet node is not a person by its label (the built-in network replaces it); the person's own surfaces carry the listener's facts (test/link-harness.js)
+  for (const caller of ["deck", "cli", "capsule", ...(s.box.kernel ? [] : [`tailnet:${OWNER}`])]) {
     const c = await asBox(s, "projects.catalog", { limit: 100 }, caller);
     assert.deepEqual(c.sources, [{ source: "box", machine: "testbox", ok: true, total: 1 }, { source: "mac", machine: "test-mac", ok: true, total: mac.total }], caller);
     assert.equal(c.total, 1 + mac.total);
@@ -207,7 +208,7 @@ test("federation reads: recall.transcript reads a Mac session as blocks from the
   assert.ok(tr.blocks.length > 0);
   assert.deepEqual(tr.blocks, mac.blocks, "the Mac's own blocks, as the Mac reads them");
   // The same from the owner's phone over the tailnet.
-  assert.equal((await asBox(s, "recall.transcript", { session: MAC_ID }, `tailnet:${OWNER}`)).source, "mac");
+  assert.equal((await asBox(s, "recall.transcript", { session: MAC_ID }, s.box.kernel ? "deck" : `tailnet:${OWNER}`)).source, "mac");
   // The box's own session is the box's, labelled.
   const own = await asBox(s, "recall.transcript", { session: BOX_ID });
   assert.deepEqual([own.source, own.session.id], ["box", BOX_ID]);
