@@ -70,6 +70,18 @@ export function kernelMembers({ handle, now = Date.now }) {
       create: (/** @type {any} */ k, /** @type {{ role: string, scope?: string[], expires?: number, invitee?: string, valid_ms?: number }} */ i) => run(async () => grants().invites.create(need(k).chain, i, k.proof)),
       /** The inviter confirms the invitee's fingerprint words (admin and owner invites wait for this). */
       confirm: (/** @type {any} */ k, /** @type {string} */ id, /** @type {string} */ words) => run(async () => grants().invites.confirm(need(k).chain, id, { words }, k.proof)),
+      /** Cancel an invite (its issuer, or a manager and above). Needs the kernel's `invites.revoke(chain, id, proof)`. */
+      revoke: (/** @type {any} */ k, /** @type {string} */ id) => run(async () => {
+        const g = grants();
+        if (typeof g.invites.revoke !== "function") throw Object.assign(new Error("This space's kernel cannot cancel an invite yet."), { code: "unavailable", own: true });
+        return g.invites.revoke(need(k).chain, id, k.proof);
+      }),
+      /** The invites the caller may see: their own, or all of them for a manager and above. Needs the kernel's `invites.list(chain)`; never carries a link or a hash. */
+      list: (/** @type {any} */ k) => run(async () => {
+        const g = grants();
+        if (typeof g.invites.list !== "function") throw Object.assign(new Error("This space's kernel cannot list invites yet."), { code: "unavailable", own: true });
+        return g.invites.list(need(k).chain);
+      }),
       /** The join card: what the invite offers, from the kernel. */
       get: (/** @type {any} */ k, /** @type {string} */ id) => run(async () => grants().invites.get(need(k).chain, id)),
       /** The invitee accepts under their own chain and their own proof, over exactly what they were shown. */

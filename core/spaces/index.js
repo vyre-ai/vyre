@@ -906,14 +906,16 @@ export default {
       if (!kernelHandle(row.id)) throw refuse("Only an invite made through the space's kernel waits for confirmation.", "not_kernel");
       return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.confirm(await kctxOf(meta), String(i.id), String(i.words)));
     });
-    tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async i => {
+    tool("spaces.invites.revoke", "Cancel an invite so its link stops working.", obj({ space: str, id: str }, ["space", "id"]), async (i, meta) => {
       const row = spaceOf(i.space);
-      const s = await gate(row.id);
+      const s = await gate(row.id, undefined, meta);
+      if (kernelHandle(row.id)) return out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.revoke(await kctxOf(meta), String(i.id)));
       return out(await invitesFor(row).revokeInvite({ actor: s.id, id: String(i.id) }));
     });
-    tool("spaces.invites.list", "Invites you made, or all you may manage as owner or admin. Never includes the link.", obj({ space: str }, ["space"]), async i => {
+    tool("spaces.invites.list", "Invites you made, or all you may manage as owner or admin. Never includes the link.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);
-      const s = await gate(row.id);
+      const s = await gate(row.id, undefined, meta);
+      if (kernelHandle(row.id)) return { invites: out(await kernelMembers({ handle: kernelHandle(row.id), now }).invites.list(await kctxOf(meta))) };
       return { invites: out(await invitesFor(row).listInvites({ actor: s.id })) };
     });
 
