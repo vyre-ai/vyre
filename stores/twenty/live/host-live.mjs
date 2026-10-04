@@ -34,7 +34,7 @@ const tkit = Date.now(); const inst = await host.installKit(kit); lap(`kit insta
 
 // kernel.records.* on real Twenty
 const c = host.ownerChain();
-const sam = await host.kernel.records.create(c, "contact", { full_name: "Pat Harlow", email: "pat@example.test", ssn: { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
+const sam = await host.kernel.records.create(c, "contact", { name: "Pat Harlow", email: "pat@example.test", ssn: { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
 const up = await host.kernel.records.update(c, "contact", sam.id, { phone: "555 0100" }, sam.version);
 console.log(`kernel.records: contact v${sam.version} -> v${up.version}; log verify=${host.log.verify().ok}`);
 const denied = await host.kernel.records.get(host.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 1, pid: 1, inside_model_process: true }), "contact", sam.id).then((r) => (r ? "SEEN" : "absent"), (e) => `refused:${e.code}`);
@@ -60,8 +60,8 @@ console.log(`contacts for this customer: ${contacts.length} | matters for this p
 
 // a little load: 150 contacts and a query over them
 const tl = Date.now();
-for (let i = 0; i < 150; i += 10) await Promise.all(Array.from({ length: 10 }, (_, j) => host.kernel.records.create(c, "contact", { full_name: `Load ${i + j}`, email: `load${i + j}@example.test` })));
-const page = await host.kernel.records.query(c, "contact", { filter: { field: "full_name", op: "contains", value: "Load 1" }, page: { limit: 50 } });
+for (let i = 0; i < 150; i += 10) await Promise.all(Array.from({ length: 10 }, (_, j) => host.kernel.records.create(c, "contact", { name: `Load ${i + j}`, email: `load${i + j}@example.test` })));
+const page = await host.kernel.records.query(c, "contact", { filter: { field: "name", op: "contains", value: "Load 1" }, page: { limit: 50 } });
 lap(`150 contacts written through the gateway and queried (${page.rows.length} rows) in ${((Date.now() - tl) / 1000).toFixed(1)}s`);
 console.log("memory under load:\n  " + stats(space));
 console.log("containers:", oom(space));

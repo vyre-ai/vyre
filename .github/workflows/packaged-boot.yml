@@ -1,0 +1,29 @@
+# The packaged box, end to end (scripts/packaged-boot-proof.sh): build the release package with a throwaway key, install it with the real installer, and check that with the
+# kernel on and no development variable every listed module runs and a tampered module file is refused. It runs on every push to the release lines, so a package that cannot boot
+# (a folder missing from package.json "files", two modules with one name) is caught the day it is made. The real release key is never here.
+name: packaged-boot
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches: ["work/rc-*", "work/v0.3", "work/launch-03"]
+permissions:
+  contents: read
+concurrency:
+  group: packaged-boot-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  proof:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build, install and check the packaged box
+        run: sh scripts/packaged-boot-proof.sh
+      - name: Diagnostics
+        if: failure()
+        run: |
+          tail -60 "$RUNNER_TEMP/packaged-boot/install.log" 2>/dev/null || true
+          docker logs vyre-vyre-1 2>&1 | tail -60 || true

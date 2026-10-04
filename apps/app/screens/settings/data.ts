@@ -46,6 +46,4 @@ export const RECORD_COUNTS: Record<string, number> = { contact: 124, matter: 38,
 export const VERSION = "0.3";
 export const CREDITS = [
   { name: "Twenty", line: "The business-records engine behind Vyre's own gateway. Its server is AGPL-3.0 and its SDK packages are MIT." },
-  { name: "Instrument Sans", line: "Open Font License 1.1" },
-  { name: "JetBrains Mono", line: "Open Font License 1.1" },
 ];

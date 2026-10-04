@@ -1105,6 +1105,12 @@ export class Vault {
     return { row, config: normalizeApiCredential(raw), secret: fields.secret };
   }
 
+  /** The names of the api-credential items: names only, for the connector list a Flow sees. @returns {Promise<string[]>} */
+  async apiCredentialNames() {
+    await this.key();
+    return /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items WHERE kind = 'api-credential' ORDER BY name").all()).filter(r => this.rowOk("vault_items", r)).map(r => String(r.name));
+  }
+
   /**
    * A provider's session sign-in token, for the session launcher and nothing else (the credentials port in index.js is the one caller; no tool returns it). The items are the
    * ones core/onboard already makes and sessions already chooses between (LAUNCHER_ITEMS); this reads whichever the provider has. @param {string} provider @returns {Promise<string | null>}

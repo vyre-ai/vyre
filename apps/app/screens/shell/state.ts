@@ -13,5 +13,5 @@ export const useSpaces = create<S>((set) => ({
   space: "all",
   looks: DEFAULT_LOOKS,
   setShowing: (space) => set({ space }),
-  setLook: (id, patch) => set((s) => ({ looks: { ...s.looks, [id]: { ...s.looks[id], ...patch } } })),
+  setLook: (id, patch) => set((s) => ({ looks: { ...s.looks, [id]: { ...(s.looks[id] ?? DEFAULT_LOOKS.mine), ...patch } } })),
 }));

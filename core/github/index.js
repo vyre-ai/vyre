@@ -80,6 +80,17 @@ function checkModuleCaller(tool, meta, allowed) {
  * and an agent with no grant recorded are unaffected; a project outside the grant reads as if it
  * did not exist (M-G3).
  */
+/**
+ * HD-7: a model's call (mcp, harness, an agent) pushes, undoes or redoes ITS OWN session's branch only: the session it names is the thread the daemon verified for the call. The
+ * project grant says which repos; this says which session, so one session cannot push or roll back (and interrupt) another's work. A person's own call and a module's are not held to it.
+ * @param {string} session @param {any} meta
+ */
+function ownSession(session, meta) {
+  const caller = String((meta && meta.caller) || "");
+  if (!/^(?:mcp|harness)(?::|$)/.test(caller) && !/(?:^|[\s:])agent:\S/.test(caller)) return;
+  if (!(meta && typeof meta.thread === "string" && meta.thread && meta.thread === String(session))) throw fail("a session pushes and undoes its own branch only", "denied");
+}
+
 function inGrant(project, meta) {
   const g = meta && meta.granted;
   // A claimed agent (mcp:agent:<name>, or any label carrying an agent claim) always arrives with a
@@ -579,6 +590,7 @@ export default {
       callers: PEOPLE_AND_AGENTS,
       run: async ({ project, session, allow_secret }, meta = {}) => {
         inGrant(project, meta);
+        ownSession(session, meta);
         // The secret scan is the person's to override: their own call, or an agent's call the Gate
         // marked asked (their own words said "push it anyway"). An agent alone cannot lift it.
         const override = Boolean(allow_secret) && (!isModelCaller(meta) || Boolean(meta.asked));
@@ -839,6 +851,7 @@ export default {
       callers: [...PEOPLE_AND_AGENTS, "module"],
       run: async ({ project, session, to }, meta = {}) => {
         inGrant(project, meta);
+        ownSession(session, meta);
         checkModuleCaller("github.session.undo", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) throw fail(`${project} has no git repo`, "not_found");
@@ -865,6 +878,7 @@ export default {
       callers: [...PEOPLE_AND_AGENTS, "module"],
       run: async ({ project, session, n }, meta = {}) => {
         inGrant(project, meta);
+        ownSession(session, meta);
         checkModuleCaller("github.session.redo", meta, SESSION_ONLY);
         const repo = await repoOf(project);
         if (!repo) throw fail(`${project} has no git repo`, "not_found");

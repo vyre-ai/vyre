@@ -171,3 +171,15 @@ test("BL-1: a database made with plain filter columns is migrated to generated o
   assert.equal(log.read({ type: "grant.created" }).length, old.read({ type: "grant.created" }).length, "the lying column was dropped, the JSON answers");
   for (const c of /** @type {any[]} */ (db.prepare("PRAGMA table_xinfo(kernel_events)").all())) if (["type", "subject", "corr", "actor", "ref"].includes(c.name)) assert.notEqual(c.hidden, 0, c.name);
 });
+
+test("a read by type prefix is a range on the type index (a LIKE with ESCAPE scans every row and parses every event at boot), and matches exactly the types under the prefix", () => {
+  const db = new DatabaseSync(":memory:");
+  const log = createSqliteEventLog({ db, space: SPACE, clock, window: { events: 5, bytes: 1_000_000 } });
+  for (const type of ["grant.created", "grant.revoked", "grants.created", "grantz.updated", "member.set", "gran.updated", "grant.narrowed"]) log.append(owner(), { type, sv: 1, subject: `vyre://${SPACE}/x/${type}`, data: {} });
+  for (let i = 0; i < 10; i++) log.append(owner(), { type: "contact.updated", sv: 1, subject: `vyre://${SPACE}/contact/${i}`, data: {} });
+  assert.deepEqual(log.read({ type: "grant.*" }).map(e => e.type), ["grant.created", "grant.revoked", "grant.narrowed"]);
+  assert.deepEqual(log.read({ type: "member.*" }).map(e => e.type), ["member.set"]);
+  assert.deepEqual(log.read({ type: "grant.created" }).map(e => e.type), ["grant.created"]);
+  const plan = db.prepare("EXPLAIN QUERY PLAN SELECT event FROM kernel_events WHERE space = ? AND seq > ? AND type >= ? AND type < ? ORDER BY seq LIMIT ?").all(SPACE, 0, "grant.", "grant/", 10).map(r => r.detail).join(" | ");
+  assert.match(plan, /kernel_events_type/, plan);
+});

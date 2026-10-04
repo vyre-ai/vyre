@@ -4,10 +4,11 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": {
+    "reads": ["projects.list"],
     "tools": [
       { "name": "projects.list", "reach": "anyone" }, { "name": "projects.create", "reach": "anyone" }, { "name": "projects.history", "reach": "anyone", "projectArg": "project" }, { "name": "projects.rename", "reach": "anyone", "projectArg": "project" }, { "name": "projects.archive", "reach": "anyone", "projectArg": "project" }, { "name": "projects.add-threads", "reach": "person", "projectArg": "project" }, { "name": "projects.remove-threads", "reach": "person", "projectArg": "project" }, { "name": "projects.add-workspace" },
       { "name": "projects.watchers.add", "reach": "person" }, { "name": "projects.watchers.remove", "reach": "person" },
-      { "name": "projects.catalog", "reach": "anyone" }, { "name": "projects.of", "reach": "anyone", "cwdArg": "cwd" }, { "name": "projects.threads", "reach": "anyone", "projectArg": "project" }, { "name": "projects.context", "reach": "anyone", "projectArg": "project", "cwdArg": "cwd" }, { "name": "projects.move", "reach": "person" },
+      { "name": "projects.catalog", "reach": "anyone" }, { "name": "projects.of", "reach": "anyone", "effect": "read", "cwdArg": "cwd" }, { "name": "projects.threads", "reach": "anyone", "projectArg": "project" }, { "name": "projects.context", "reach": "anyone", "projectArg": "project", "cwdArg": "cwd" }, { "name": "projects.move", "reach": "person" },
       { "name": "projects.access.grant", "reach": "anyone" }, { "name": "projects.access.revoke" }, { "name": "projects.access.check", "reach": "anyone" }, { "name": "projects.access.list", "reach": "anyone" }, { "name": "projects.access.migrate", "reach": "anyone" }, { "name": "projects.access.clear", "reach": "modules" }, { "name": "projects.reach", "reach": "modules" }
     ]
   },
