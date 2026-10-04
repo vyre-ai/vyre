@@ -164,7 +164,7 @@ export function createGateway(cfg) {
   return Object.freeze({
     authorize: authorizer.authorize,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
-    ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, end: cfg.kitApply.end }) } : {}),
+    ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     ...(drive ? { drive } : {}),
     ...(leases ? { leases } : {}),
     /** The action registry as the authorizer holds it (a Map of ActionDef): tasks read the risk of an action from here. */
