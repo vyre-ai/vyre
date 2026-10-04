@@ -14,6 +14,6 @@ export function onPhoneFor(tool) {
   if (/^(grants|spaces\.roles|spaces\.members)\./.test(t)) return "Change who can use this in Vyre on your phone.";
   if (/^wink\./.test(t)) return "Pair it in Vyre on your phone.";
   if (/^onboard\./.test(t)) return "Connect it in Vyre on your phone.";
-  if (/drive\.restore/.test(t)) return "Restore it in Vyre on your phone.";
+  // No restore control exists in the app yet (the space Drive has no screen): this file names an action only when a control for it exists.
   return ON_PHONE;
 }
