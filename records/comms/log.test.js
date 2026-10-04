@@ -5,7 +5,7 @@ import { createMemoryStore } from "../../kernel/store/memory.js";
 import { createEventLog } from "../../kernel/core/events.js";
 import { createChainBuilder } from "../../kernel/core/chain.js";
 import { CORE_TYPES } from "../core-types.js";
-import { logCommunication, findContact, timelineOf, normalizeEmail, normalizePhone } from "./log.js";
+import { logCommunication, findContact, addContactPoint, timelineOf, normalizeEmail, normalizePhone } from "./log.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
@@ -74,4 +74,21 @@ test("who may see a communication follows the attributes it was logged with: a g
   const bobChain = chains.fromFacts({ kind: "device", device_key_id: "d-bob", person: "per_bob", path: "direct" });
   assert.deepEqual((await kernel.records.query(bobChain, "communication", { page: { limit: 10 } })).rows.map(r => r.data.source_key), ["gmail:shared"]);
   assert.equal((await kernel.records.query(bobChain, "participant", { page: { limit: 10 } })).rows.length, 1, "and only that one's participants");
+});
+
+test("contact points: a further address is found, unique across main addresses and points, and a message to it logs on that contact", async () => {
+  const { kernel } = await rig(), R = kernel.records;
+  const jane = await R.create(owner(), "contact", { name: "Jane Doe", email: "jane@harlow.test" });
+  const bob = await R.create(owner(), "contact", { name: "Bob Roe", email: "bob@harlow.test" });
+  const a = await addContactPoint(kernel, owner(), jane.urn, " Jane.D@Old.Test ", "old work");
+  assert.equal(a.created, true);
+  assert.equal((await addContactPoint(kernel, owner(), jane.urn, "jane.d@old.test")).created, false, "a repeat for the same contact is the same point");
+  assert.equal((await addContactPoint(kernel, owner(), bob.urn, "jane.d@old.test")).taken_by, jane.urn, "another contact's point is refused");
+  assert.equal((await addContactPoint(kernel, owner(), bob.urn, "jane@harlow.test")).taken_by, jane.urn, "another contact's main address is refused");
+  assert.equal((await addContactPoint(kernel, owner(), jane.urn, "+1 555 0199")).created, true, "a phone number too");
+  assert.equal((await findContact(kernel, owner(), "JANE.D@old.test")).urn, jane.urn);
+  assert.equal((await findContact(kernel, owner(), "+15550199")).urn, jane.urn);
+  await assert.rejects(() => R.create(owner(), "contact_point", { contact: { urn: bob.urn }, kind: "email", address: "jane.d@old.test" }), { code: "unique_violation" }, "the store enforces it too");
+  const r = await logCommunication(kernel, owner(), { kind: "email", at: "2026-10-04T09:00:00.000Z", source_key: "gmail:pt", people: [{ address: "Jane.D@Old.Test", how: "from" }] });
+  assert.equal(r.participants[0].contact, jane.urn);
 });

@@ -17,8 +17,8 @@ export function normalizePhone(a) {
 const kindOf = (a) => (String(a).includes("@") ? "email" : "phone");
 
 /**
- * The contact a handle belongs to, by the unique main email or phone, or null. Addresses held only in a contact's `other_emails` or `other_phones` are not
- * searched here (a list cannot be indexed, and Twenty cannot filter one): add the address as the main one, or merge the contacts.
+ * The contact a handle belongs to, by the unique main email or phone, then by a contact point (one record per further address), or null. The legacy
+ * `other_emails` and `other_phones` lists are not searched (a list cannot be indexed, and Twenty cannot filter one): new writers use `addContactPoint`.
  * @param {{ records: any }} kernel @param {any} chain @param {string} address @returns {Promise<{ urn: string, id: string } | null>}
  */
 export async function findContact(kernel, chain, address) {
@@ -27,7 +27,31 @@ export async function findContact(kernel, chain, address) {
   if (!value) return null;
   const page = await kernel.records.query(chain, "contact", { filter: { field: kind, op: "eq", value }, page: { limit: 1 } });
   const r = page.rows[0];
-  return r ? { urn: r.urn, id: r.id } : null;
+  if (r) return { urn: r.urn, id: r.id };
+  // not a main address: a contact point holds it
+  const pt = (await kernel.records.query(chain, "contact_point", { filter: { field: "address", op: "eq", value }, page: { limit: 1 } })).rows[0];
+  const u = pt && pt.data.contact && pt.data.contact.urn;
+  return u ? { urn: u, id: u.split("/").pop() } : null;
+}
+
+/**
+ * Give a contact one more way to be reached. The address is unique in the Space across main addresses and points: it is refused (`taken_by`) when it is another
+ * contact's main email or phone or another contact's point, and a repeat for the same contact returns the point already there.
+ * @param {{ records: any }} kernel @param {any} chain @param {string} contactUrn @param {string} address @param {string} [label]
+ * @returns {Promise<{ point?: any, taken_by?: string, created: boolean }>}
+ */
+export async function addContactPoint(kernel, chain, contactUrn, address, label) {
+  const kind = kindOf(address);
+  const value = kind === "email" ? normalizeEmail(address) : normalizePhone(address);
+  if (!value) throw Object.assign(new Error("an address or number is needed"), { code: "bad_input" });
+  const owner = await findContact(kernel, chain, value);
+  if (owner && owner.urn !== contactUrn) return { taken_by: owner.urn, created: false };
+  const have = (await kernel.records.query(chain, "contact_point", { filter: { field: "address", op: "eq", value }, page: { limit: 1 } })).rows[0];
+  if (have) return { point: have, created: false };
+  const main = await kernel.records.get(chain, "contact", contactUrn.split("/").pop());
+  if (main && main.data[kind] === value) return { created: false };
+  try { return { point: await kernel.records.create(chain, "contact_point", { contact: { urn: contactUrn }, kind, address: value, ...(label ? { label } : {}) }), created: true }; }
+  catch (e) { if (e && e.code === "unique_violation") { const o = await findContact(kernel, chain, value); return { taken_by: o ? o.urn : undefined, created: false }; } throw e; }
 }
 
 /**

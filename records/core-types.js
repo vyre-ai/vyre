@@ -103,6 +103,23 @@ export const ORGANIZATION = {
   ],
 };
 
+export const POINT_KINDS = ["email", "phone"];
+
+/**
+ * One address or number a contact is reached at, one record each. `address` is unique in the Space (lower case email, E.164 phone), so an address held as a
+ * second or third way to reach someone is as unique as the main one and a message finds its contact by one lookup. The contact's main `email` and `phone` stay
+ * on the contact; `addContactPoint` in records/comms/log.js refuses an address that is another contact's main one. Merging relinks the points like any link.
+ */
+export const CONTACT_POINT = {
+  name: "contact_point", label: "Contact point", icon: "IconAt",
+  fields: [
+    f("link", "contact", "Contact", { to: "contact", required: true }),
+    choice("kind", "Kind", POINT_KINDS, { required: true }),
+    text("address", "Address or number", { required: true, unique: true }),
+    text("label", "Label"),
+  ],
+};
+
 export const COMMUNICATION_KINDS = ["email", "meeting", "call", "text", "letter", "chat"];
 export const PARTICIPANT_AS = ["from", "to", "cc", "bcc", "attendee", "organizer", "caller", "callee"];
 
@@ -140,4 +157,4 @@ export const PARTICIPANT = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
