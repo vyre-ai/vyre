@@ -1,6 +1,51 @@
+import { useEffect, useRef } from "react";
 import { Pressable, View } from "react-native";
+import Animated, { Easing, interpolateColor, useAnimatedStyle, useSharedValue, withSequence, withTiming } from "react-native-reanimated";
 import { cn } from "../lib/cn";
 import { Text } from "./Text";
+import { motion } from "../motion/tokens";
+import { useReducedMotion } from "../motion/useReducedMotion";
+import { useUiTheme } from "../theme";
+
+type BarState = "done" | "current" | "next";
+
+/**
+ * One segment of the strip (motion.md 3.4, stage advance). It draws still on first paint. When the stage moves on: the segment that becomes current fills from
+ * its left edge over 360 ms in-out in the accent, then pulses its height once (3 to 4); the one that becomes done changes accent to ok over 160 ms. Reduced
+ * motion: the colours swap in a 160 ms crossfade, no fill and no pulse.
+ */
+function Bar({ state }: { state: BarState }) {
+  const { color } = useUiTheme();
+  const reduced = useReducedMotion();
+  const was = useRef<BarState>(state);
+  const fill = useSharedValue(state === "next" ? 0 : 1);
+  const ok = useSharedValue(state === "done" ? 1 : 0);
+  const lift = useSharedValue(1);
+  useEffect(() => {
+    const from = was.current;
+    was.current = state;
+    if (from === state) return;
+    const inOut = Easing.bezier(0.4, 0, 0.2, 1);
+    if (state === "current") {
+      ok.value = 0;
+      if (reduced) { fill.value = withTiming(1, { duration: motion.duration.state }); return; }
+      fill.value = 0;
+      fill.value = withTiming(1, { duration: motion.duration.sheet, easing: inOut }, (done) => { if (done) lift.value = withSequence(withTiming(1.35, { duration: 120 }), withTiming(1, { duration: 160 })); });
+    } else if (state === "done") {
+      fill.value = 1;
+      ok.value = withTiming(1, { duration: motion.duration.state });
+    } else {
+      fill.value = withTiming(0, { duration: motion.duration.state }); ok.value = 0;
+    }
+  }, [state]);
+  const fillStyle = useAnimatedStyle(() => ({ width: `${fill.value * 100}%`, backgroundColor: interpolateColor(ok.value, [0, 1], [color.accent, color.ok]) }));
+  const barStyle = useAnimatedStyle(() => ({ transform: [{ scaleY: lift.value }] }));
+  return (
+    <Animated.View className="h-s1 overflow-hidden rounded-full bg-edge-strong" style={barStyle}>
+      <Animated.View style={[{ height: "100%" }, fillStyle]} />
+    </Animated.View>
+  );
+}
 
 /**
  * An ordered stage strip: done, current, to come. Used by records, projects and Flows. Each step is a mark and a word, so colour is never the only signal.
@@ -11,7 +56,7 @@ export function StageSteps({ stages, current, onSelect, strip }: { stages: strin
     <View accessibilityRole="list" className={strip ? "flex-row gap-s2" : "flex-row gap-s1"} style={strip ? { gap: 6 } : undefined}>
       {stages.map((s, i) => {
         const state = i < current ? "done" : i === current ? "current" : "next";
-        const bar = <View className={cn("h-s1 rounded-full", state === "done" ? "bg-ok" : state === "current" ? "bg-accent" : "bg-edge-strong")} />;
+        const bar = <Bar state={state} />;
         const body = (
           <View className="min-w-0 flex-1 gap-s1">
             {bar}

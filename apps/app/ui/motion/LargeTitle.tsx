@@ -45,12 +45,12 @@ export function LargeTitleScreen({ title, sub, actions, onRefresh, children, own
         onRefresh={async () => { setRefreshing(true); try { await onRefresh(); } finally { setRefreshing(false); } }} />
     : undefined;
   const head = own ? null : (
-    <View className="flex-row flex-wrap items-end gap-s3">
-      <View className="min-w-menu flex-1 gap-s1">
+    <View className="flex-row items-end gap-s3">
+      <View className="min-w-0 flex-1 gap-s1">
         <Text size="page" strong accessibilityRole="header">{title}</Text>
         {sub ? <Text size="caption" tone="label">{sub}</Text> : null}
       </View>
-      {actions ? <View className="flex-row flex-wrap items-center gap-s2">{actions}</View> : null}
+      {actions ? <View className="flex-none flex-row flex-wrap items-center justify-end gap-s2">{actions}</View> : null}
     </View>
   );
   // Plain style objects, not classes: a className on an animated ScrollView does not reach its content container.
