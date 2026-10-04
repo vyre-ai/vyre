@@ -64,6 +64,7 @@ async function world(t, opt = {}) {
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
+  if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
@@ -1973,4 +1974,47 @@ test("after the adopter lets a server go, its device is dropped at the relay: th
   const crypt = nodeCrypto();
   const keys = await clientDeviceKey({ keyStore: f.ks, crypto: crypt });
   await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys, hello: { v: 1 }, crypto: crypt, WebSocket: globalThis.WebSocket }), /removed|not a paired|closed|refused/i, "the old key reaches nothing");
+});
+
+
+// ---- IV-5 (reviewer-3): invitee channels have a pool and a life of their own ----
+test("invitee channels: 40 strangers holding channels never take the slots the owner's paired phone needs, and an idle invitee channel is closed", async t => {
+  process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
+  const w = await world(t, { kernel: true, seam: { inviteeIdleMs: 600 } });
+  const crypt = nodeCrypto();
+  const minted = await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF);
+  const ksPhone = keystore(t);
+  const paired = await pairTicket(fromBase64url(minted.data.ticket), { relay: w.status.url, name: "Alex's phone", crypto: crypt, keyStore: ksPhone });
+  const offer = (await resolveTicket(fromBase64url((await w.d.registry.call("relay.pair.ticket", {}, "cli", PROOF)).data.ticket), { relay: w.status.url, crypto: crypt })).offer;
+  const route = offer.route, box = Buffer.from(offer.box);
+  const held = [];
+  let refused = 0, admitted = 0;
+  for (let i = 0; i < 40; i++) {
+    const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+    try {
+      const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+      held.push(r.channel); admitted++;
+    } catch { refused++; }
+  }
+  t.after(() => { for (const c of held) { try { c.close(1000, "done"); } catch { /* closed */ } } });
+  await new Promise(r => setTimeout(r, 300));
+  const stillOpen = held.filter(c => c.closed !== true).length;
+  assert.ok(stillOpen <= 8, `the invitee pool is 8 (${stillOpen} of ${admitted} held open)`);
+  void refused;
+  // the owner's paired phone still connects while all of them are held
+  const conn = connect({ relay: w.status.url, route: paired.route, box: paired.box, name: "Alex's phone", crypto: crypt, keyStore: ksPhone, WebSocket: globalThis.WebSocket });
+  t.after(() => conn.close());
+  await Promise.race([conn.ready(), new Promise((_, rej) => setTimeout(() => rej(new Error("the paired phone could not connect")), 8000))]);
+  // idle ones are closed by the box (no stream opened inside the idle window)
+  await new Promise(r => setTimeout(r, 1500));
+  assert.ok(held.every(c => c.closed === true), "every idle invitee channel was closed");
+  // a channel whose stream ends (a refused hello ends it) is closed at once too
+  const keys = await clientDeviceKey({ keyStore: keystore(t), crypto: crypt });
+  const r = await openChannel({ relay: w.status.url, route, box, keys, hello: { v: 1, invitee: true }, crypto: crypt, WebSocket: globalThis.WebSocket });
+  const st = r.channel.open({ peer: "wink", space: "home", invitee: { space: "spc_" + "a".repeat(12), invite: "inv_" + "b".repeat(32), identity: "per_" + "c".repeat(26), entry: "d".repeat(26), ts: Date.now(), nonce: "n".repeat(20), channel: r.reply.invitee, sig: "s".repeat(86) } });
+  await new Promise(res => { st.onhead = () => res(undefined); st.onreset = () => res(undefined); });
+  const { peerSession, streamPipe } = await import("../core/wink/node/peer-wire.js");
+  await assert.rejects(() => peerSession(streamPipe(st), { first: 1 }).call("kernel.call", { v: 1, space: "spc_" + "a".repeat(12), id: "x", ts: Date.now(), call: "grants.invites.get", args: ["inv_" + "b".repeat(32)] }, { timeoutMs: 3000 }), e => e.code === "denied");
+  await until(async () => r.channel.closed === true, 4000);
 });
