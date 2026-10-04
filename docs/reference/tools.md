@@ -5085,7 +5085,7 @@ Checks <name>.vyre.run and saves it; reserve serves this machine at its address 
 
 ### `onboard.passkey`
 
-A one-time link to make the first passkey at this box's address, while none exists. Only to the loopback session or the box's terminal.
+Not available: a server is paired to your Vyre app first. Always answers that.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `device`, `local`, `mobile`, `module`, `onboard`, `tailnet`
