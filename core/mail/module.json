@@ -15,7 +15,7 @@
       { "name": "mail.accounts", "reach": "anyone", "effect": "read" },
       { "name": "mail.map", "reach": "anyone", "effect": "write" },
       { "name": "mail.test", "reach": "anyone", "effect": "write" },
-      { "name": "mail.send", "reach": "anyone", "effect": "write" },
+      { "name": "mail.send", "outward": true, "reach": "anyone", "effect": "write" },
       { "name": "mail.search", "reach": "anyone", "effect": "read" },
       { "name": "mail.read", "reach": "anyone", "effect": "read" },
       { "name": "mail.find", "reach": "anyone", "effect": "read" },

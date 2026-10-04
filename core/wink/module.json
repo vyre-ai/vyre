@@ -47,7 +47,7 @@
         "effect": "write"
       },
       {
-        "name": "wink.invite",
+        "name": "wink.invite", "outward": true,
         "reach": "person",
         "effect": "write"
       },

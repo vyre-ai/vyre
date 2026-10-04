@@ -292,7 +292,7 @@ await step("recovery: a phone with no name says Welcome back, takes a code, and 
   try {
     await pg.goto(`${CLAIM_BASE}/u/install`, { waitUntil: "domcontentloaded" });
     await pg.waitForTimeout(3000);
-    await pg.getByText("I already have a name", { exact: true }).first().click();
+    await pg.getByText("I already have Vyre", { exact: true }).first().click();
     await pg.waitForTimeout(800);
     let t = await text2();
     if (!/Welcome back/.test(t) || !/Add this phone from another device/.test(t) || !/Use my recovery code/.test(t)) throw new Error(`no Welcome back with both rows: ${t.slice(0, 200)}`);
