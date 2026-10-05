@@ -150,3 +150,21 @@ export function restorePasskeyKey(kept, o = {}) {
     keep: () => kept,
   }));
 }
+
+/** The fixed front of a P-256 SubjectPublicKeyInfo: the key's own 65-byte uncompressed point follows. */
+const SPKI_P256 = Uint8Array.from([0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00]);
+
+/**
+ * The presence key a passkey-claimed browser offers in its pairing hello: the passkey itself, as a P-256 SPKI (base64url), alg -7, signer "webauthn_platform" and the site it is for. The box enrols it as the
+ * device's presence key (unattested), and a yes from it is a WebAuthn assertion over the proof's bytes.
+ * @param {{ kind?: string, rp?: string, publicKey?: string } | null | undefined} kept what keep() gave
+ * @returns {{ public_key: string, key: string, alg: -7, storage: "hardware", signer: "webauthn_platform", rp: string } | null}
+ */
+export function passkeyPresenceKey(kept) {
+  if (!kept || kept.kind !== "passkey" || typeof kept.rp !== "string" || typeof kept.publicKey !== "string") return null;
+  const pub = unb64(kept.publicKey);
+  if (!pub || pub.length !== 65 || pub[0] !== 4) return null;
+  const spki = new Uint8Array(SPKI_P256.length + 65); spki.set(SPKI_P256, 0); spki.set(pub, SPKI_P256.length);
+  const key = b64u(spki);
+  return { public_key: key, key, alg: -7, storage: "hardware", signer: "webauthn_platform", rp: kept.rp };
+}
