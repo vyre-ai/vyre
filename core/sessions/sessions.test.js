@@ -12,7 +12,7 @@
 // timeout under concurrency-4 contention; two files parallelize instead of raising the ceiling.
 
 import "../../scripts/mac-test-guard.mjs";
-import { test } from "node:test";
+import { test as nodeTest } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -35,6 +35,10 @@ import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
 import { FAKE, TINI, SDK, noSdk, until, boot, terminalSession } from "./testing/boot.js";
+
+// Every test here boots a daemon and drives real child processes, so one that waits on something that never comes (seen on a busy box: the file sat until node's file timeout, with nothing to say which
+// test) is cut at two minutes and fails BY NAME, its after-hooks still running to stop what it started.
+const test = (/** @type {string} */ name, /** @type {any} */ opts, /** @type {any} */ fn) => (typeof opts === "function" ? nodeTest(name, { timeout: 120_000 }, opts) : nodeTest(name, { timeout: 120_000, ...opts }, fn));
 // The module harness here has no inference door: providers run on the legacy direct path. The door path is lib/door-bridge.test.js.
 process.env.VYRE_LEGACY_DIRECT_MODEL = "1";
 
