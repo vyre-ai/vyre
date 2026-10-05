@@ -1346,3 +1346,66 @@ test("spaces.identity.devices: the id and key-agreement point of a device of a p
   assert.deepEqual((await d.ok("spaces.identity.devices", { person: "not a person" })), { devices: [] });
   void alex;
 });
+
+test("a vyred device keeps a P-256 agreement key: its entry carries the point at create and at add, the private scalar is in no reply, and ecdh matches an independent ECDH", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t);
+  const made = await d.ok("spaces.identity.create", { name: "agreealex" });
+  const store = fileIdentityStore(d.space);
+  const point = store.agree();
+  assert.match(point, /^[A-Za-z0-9_-]{87}$/, "a raw uncompressed P-256 point");
+  // at create: the genesis entry (the one signed list every verifier reads) carries the point
+  const genesis = store.ops()[0];
+  assert.equal(genesis.entry.agree, point);
+  const st = (await d.ok("spaces.identity.state", { person: made.id }, "module:wink")).entries.find(e => e.eid === made.eid);
+  assert.equal(st.agree, point);
+  // at add: a device added from pairing brings its own point, and it goes onto its entry
+  const key = fileIdentityStore(d2.space).newDeviceKey();
+  w.clock.t += 2 * 3_600_000;
+  await d.ok("spaces.identity.enrol", { publicKey: key.publicKey, agree: key.agree, label: "second" }, "module:wink");
+  const after = (await d.ok("spaces.identity.state", { person: made.id }, "module:wink")).entries.find(e => e.eid === key.eid);
+  assert.equal(after.agree, key.agree);
+  // no reply and no status holds the private scalar
+  const scalar = JSON.parse(fs.readFileSync(path.join(d.space, "identity.json"), "utf8")).agreePrivate;
+  assert.ok(scalar && scalar.length >= 42);
+  assert.ok(!JSON.stringify(store.status()).includes(scalar) && !JSON.stringify(made).includes(scalar));
+  // ecdh: first-party files, an ephemeral peer point in, the raw shared secret out, equal to what the peer computes with this device's public point
+  const peer = crypto.createECDH("prime256v1"); peer.generateKeys();
+  const r = await d.ok("spaces.identity.ecdh", { epk: peer.getPublicKey().toString("base64url") }, "module:files");
+  assert.equal(r.secret, peer.computeSecret(Buffer.from(point, "base64url")).toString("base64url"));
+  assert.ok(!JSON.stringify(r).includes(scalar));
+  assert.equal((await d.call("spaces.identity.ecdh", { epk: "AAAA" }, "module:files")).error?.code, "bad_point");
+});
+
+test("spaces.identity.ecdh is for first-party files only: another module, the cli, an agent and a surface are refused", async t => {
+  world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "agreebob" });
+  const peer = crypto.createECDH("prime256v1"); peer.generateKeys();
+  const epk = peer.getPublicKey().toString("base64url");
+  for (const caller of ["module:wink", "module:memory", "module:filesx", "cli", "agent:kit", "surface:capsule"]) {
+    const r = await d.call("spaces.identity.ecdh", { epk }, caller);
+    assert.ok(r.error, `${caller} must be refused`);
+    assert.equal(r.data, undefined, caller);
+  }
+});
+
+test("an identity made before the agreement key gets one on first start without a new signing key: ensureAgree adds the scalar, is stable, and ecdh works from then on", async t => {
+  world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "agreecarl" });
+  const file = path.join(d.space, "identity.json");
+  const rec = JSON.parse(fs.readFileSync(file, "utf8"));
+  const before = rec.publicKey;
+  delete rec.agreePrivate; // an identity made before the key existed
+  fs.writeFileSync(file, JSON.stringify(rec) + "\n", { mode: 0o600 });
+  const store = fileIdentityStore(d.space);
+  assert.equal(store.agree(), null);
+  assert.throws(() => store.ecdh(crypto.createECDH("prime256v1").generateKeys()), { code: "no_agree_key" });
+  const pt = store.ensureAgree();
+  assert.match(pt, /^[A-Za-z0-9_-]{87}$/);
+  assert.equal(store.ensureAgree(), pt, "stable: asked twice, the same key");
+  assert.equal(store.agree(), pt);
+  assert.equal(store.status().publicKey, before, "the signing key is untouched");
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+});

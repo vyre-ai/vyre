@@ -95,12 +95,12 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
     },
     entries: async () => view(await stateNow()),
     /** Add a device (its public key came from pairing) or a recovery contact (its approval key came from the contact). */
-    async addEntry({ kind = "device", publicKey, label }) {
+    async addEntry({ kind = "device", publicKey, label, agree }) {
       if (kind !== "device" && kind !== "contact") throw refuse("Add a device or a recovery contact.", "bad_kind");
       const pub = Buffer.from(String(publicKey), "base64url");
       if (pub.length !== 32) throw refuse("That is not a device key.", "bad_key");
       const eid = keyId(pub);
-      const r = await change({ type: "add", entry: { eid, kind, pub: String(publicKey) } });
+      const r = await change({ type: "add", entry: { eid, kind, pub: String(publicKey), ...(kind === "device" && agree ? { agree: String(agree) } : {}) } });
       if (label && typeof store.setLabel === "function") store.setLabel(eid, String(label)); // the name stays on this device: the public list holds keys only
       emit("identity.entry-added", { name: nameOf(), eid, kind, seq: r.state.seq, at: now() });
       return { eid, seq: r.state.seq };
@@ -153,7 +153,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const ck = codeKey(code, password, stretch);
       if (!r.state.entries.some(e => e.kind === "code" && e.eid === ck.eid)) throw refuse("That code (or password) is not the one for this name.", "wrong_code");
       const key = store.newDeviceKey();
-      const op = await C.makeOp(r.state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey } }, { by: ck.eid, ts: Math.max(now(), r.state.ts), sign: ck.sign });
+      const op = await C.makeOp(r.state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(key.agree ? { agree: key.agree } : {}) } }, { by: ck.eid, ts: Math.max(now(), r.state.ts), sign: ck.sign });
       let next;
       try { next = await C.applyOp(r.state, op, ctx()); await dir.append(name, [op]); } catch (e) { throw refuse(plain(e), /** @type {any} */ (e).code || "failed"); }
       store.join(key, [...r.ops, op], name);
@@ -169,7 +169,7 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
       const r = await dir.resolve(name);
       if (!r.ok || r.kind !== "person") throw refuse(r.ok ? "That name does not belong to a person." : r.why, "not_found");
       const key = store.newDeviceKey();
-      const op = await C.makeOp(r.state, { type: "recover", entry: { eid: key.eid, kind: "device", pub: key.publicKey } }, { ts: Math.max(now(), r.state.ts) });
+      const op = await C.makeOp(r.state, { type: "recover", entry: { eid: key.eid, kind: "device", pub: key.publicKey, ...(key.agree ? { agree: key.agree } : {}) } }, { ts: Math.max(now(), r.state.ts) });
       return { request: { name, op }, key, contacts: r.state.entries.filter(e => e.kind === "contact").length };
     },
     /** On a contact's device, after the person approved with Face ID: sign the request if this device holds a contact key for that identity. */

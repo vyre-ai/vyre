@@ -1810,6 +1810,14 @@ export default {
       const entries = st && Array.isArray(st.entries) ? st.entries : [];
       return { devices: entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").map((/** @type {any} */ e) => ({ device: String(e.eid), agree: String(e.agree) })) };
     }, { effect: "read" });
+    // This device's key-agreement step: ECDH between its agreement key (the `agree` point on its identity entry) and a peer's ephemeral public point. Only the 32-byte shared secret returns, never the private scalar.
+    // First-party only: `files` unwraps a chat key with it. A module that is not on the list, an agent and a surface are refused (a secret that opens a wrapped key is not for them).
+    tool("spaces.identity.ecdh", "ECDH with this device's key-agreement key: the shared secret for a peer's ephemeral public point (base64url, 65-byte uncompressed P-256). For first-party modules only.", obj({ epk: str }, ["epk"]), async (i, meta) => {
+      onlyModules(meta, ["files"]);
+      const epk = Buffer.from(String(i.epk || ""), "base64url");
+      if (epk.length !== 65 || epk[0] !== 4) throw refuse("That is not a P-256 point.", "bad_point");
+      try { return { secret: identity.ecdh(epk).toString("base64url") }; } catch (e) { throw refuse(/** @type {any} */ (e).code === "no_agree_key" ? "This device has no agreement key yet." : "That is not a P-256 point.", /** @type {any} */ (e).code || "failed"); }
+    }, { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
       if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
@@ -1836,9 +1844,9 @@ export default {
       return found;
     }, { internal: true });
     // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
-    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str }, ["publicKey"]), async i => {
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str }, ["publicKey"]), async i => {
       me();
-      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label }); } catch (e) { throw idFail(e); }
+      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label, ...(i.agree ? { agree: String(i.agree) } : {}) }); } catch (e) { throw idFail(e); }
     }, { internal: true });
     // The device's own signer for the transport's proof: only the transport's own message, never anything else.
     tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {
