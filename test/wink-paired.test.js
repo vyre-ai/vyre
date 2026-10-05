@@ -1165,6 +1165,7 @@ test("the My Cloud upgrade end to end: a space made on the person's server has a
   for (const n of ["one", "two", "three"]) { const r = await dcall("records.create", { space: home, type: "note", data: { title: n, body: `body ${n}` } }); assert.ok(!r.error, JSON.stringify(r.error)); ids.push(r.data.record.id); }
   const plan = await dcall("spaces.upgrade.plan", { to: id });
   assert.ok(!plan.error, JSON.stringify(plan.error));
+  assert.ok(plan.data.counts, JSON.stringify(plan).slice(0, 400));
   assert.equal(plan.data.counts.records.note, 3);
   // one approval: with none the device is asked for it, bound to this exact plan
   const asked = await dcall("spaces.upgrade.run", { to: id, plan_hash: plan.data.hash });
