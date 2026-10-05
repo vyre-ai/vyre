@@ -7,7 +7,7 @@ import http from "node:http";
 import path from "node:path";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { spawn } from "node:child_process";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";

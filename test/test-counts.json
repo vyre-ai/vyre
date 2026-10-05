@@ -159,7 +159,7 @@
  "core/daemon/peer-identity.test.js": 2,
  "core/dockerproxy/proxy.test.js": 21,
  "core/event-catalog/event-catalog.test.js": 3,
- "core/events/events.test.js": 9,
+ "kernel/bus.test.js": 9,
  "core/files/dirs.test.js": 8,
  "core/files/drop.test.js": 17,
  "core/files/files.test.js": 26,

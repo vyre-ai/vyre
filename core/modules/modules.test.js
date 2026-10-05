@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
 import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const good = { name: "notes", version: "0.1.0", does: { tools: ["notes.add"] }, watches: { emits: ["note.added"] } };

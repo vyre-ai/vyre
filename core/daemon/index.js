@@ -18,7 +18,7 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { assertDaemonHost } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";

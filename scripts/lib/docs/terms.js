@@ -57,7 +57,7 @@ export const CONCEPTS = [
   { name: "Deck", page: "using/deck.md", match: /\bDeck\b/, code: "deck/index.html" },
   { name: "enforcement", page: "using/learning.md#enforcement", match: /\benforce(?:s|d|ment)?\b/i, code: "core/harness/rules.js" },
   { name: "escalation", page: "using/learning.md#escalation", match: /\bescalat(?:e|es|ed|ion|ions)\b/i, code: "core/learn/index.js" },
-  { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "core/events/index.js" },
+  { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "kernel/bus.js" },
   { name: "floor", page: "concepts/floor.md", match: /\bfloor\b/i },
   { name: "Gate", page: "using/deck.md#approve-or-change-a-held-draft", match: /\bGate\b/, code: "core/gate/index.js" },
   { name: "Glass", page: "using/glass.md", match: /\bGlass\b/, code: "deck/glass/index.js" },

@@ -12,7 +12,7 @@ Each part of Vyre is independently modular. A part talks to another part only th
 registry (`ctx.call`, tools) and events. It never imports another part's files. A part can be
 switched off without breaking the rest.
 
-- **The kernel** is `core/config`, `core/store`, `core/events`, `core/modules`, `core/presence`
+- **The kernel** is `core/config`, `core/store`, `core/modules`, `core/presence`
   and `core/daemon`. Any part may import it.
 - **A part** is `core/<name>` (a folder, or a single file such as `core/quiet.js`),
   `local/<name>` or `modules/<name>`.

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { discover, Registry, validate } from "../../core/modules/index.js";
 import { Presence } from "../../core/presence/index.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { fakeExec, fakeApp } from "./fake.js";
 

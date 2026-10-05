@@ -8,7 +8,7 @@ import path from "node:path";
 import { distill, atStop, atTool, weakens, invalid, reply, CODE } from "./checks.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { personTypes } from "../../test/typed-line.js";
 

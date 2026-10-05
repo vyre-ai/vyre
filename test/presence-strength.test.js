@@ -9,7 +9,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { Presence, SESSIONABLE, inputHash } from "../core/presence/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome } from "./helpers.js";
 
 /** @param {any} t @param {any} [opts] */

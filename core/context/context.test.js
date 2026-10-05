@@ -9,7 +9,7 @@ import path from "node:path";
 import { stripUrl, clean } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const INTERVAL = 60;

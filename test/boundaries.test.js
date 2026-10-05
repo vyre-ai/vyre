@@ -21,7 +21,7 @@ import path from "node:path";
 import { SCRATCH } from "./scratch.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
-const KERNEL = new Set(["config", "store", "events", "modules", "presence", "daemon"].map(n => "core/" + n));
+const KERNEL = new Set(["config", "store", "modules", "presence", "daemon"].map(n => "core/" + n));
 const TREES = ["core", "local", "modules", "lib"];
 
 /**

@@ -11,7 +11,7 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { MEDIA, mediaFormatOf, parseRange, MAX_MEDIA } from "./media.js";

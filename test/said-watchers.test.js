@@ -14,7 +14,7 @@ import { matches } from "../lib/said/match.js";
 import { createTarget, presetTarget } from "../core/watchers/targets.js";
 import { Registry, discover } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome, writeModule } from "./helpers.js";
 
 const CARDS = [{ name: "inbox-mail", hash: "aaaa1111bbbb", title: "Important mail", state: "draft" }, { name: "repo-watch", hash: "cccc2222dddd", state: "draft" }];
