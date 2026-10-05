@@ -1189,3 +1189,8 @@ test("an owner's paired device with no person session is refused on a tool that 
   assert.ok(!(await reg.call("zzwho.me", {}, "cli", {})).error, "a local surface needs no session");
   assert.ok(!(await reg.call("zzwho.open", {}, device, {})).error, "an open tool is unchanged");
 });
+
+test("modules: the name \"kernel\" is reserved, because the kernel's own service hop may write a kernel-owned field", () => {
+  const problems = validate({ name: "kernel", version: "1.0.0", description: "x", does: { tools: [] } }, { firstParty: true });
+  assert.ok(problems.some((p) => /reserved for the kernel/.test(p)), problems.join("; "));
+});

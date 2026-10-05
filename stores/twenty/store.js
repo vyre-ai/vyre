@@ -256,6 +256,7 @@ export class TwentyStore {
     const audit = await this.#auditSwitch();
     const cur = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
     /** @type {Map<string, any>} */ const objs = new Map(cur.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
+    /** Types whose table order and stored views are written once every type is made (one read of the Records' objects). @type {{ p: any, def: any, was: any }[]} */ const looks = [];
     /** @param {any} def @param {boolean} mustExist */
     const apply = async (def, mustExist) => {
       const known = this.plans.get(def.name);
@@ -297,16 +298,7 @@ export class TwentyStore {
           if (f.options.some((o) => !exVals.has(o.value))) { await this.client.gql("metadata", "mutation UpdField($i: UpdateOneFieldMetadataInput!) { updateOneField(input: $i) { id } }", { i: { id: ex.id, update: { options: f.options } } }); changes.push(`changed field ${def.name}.${f.vyre}`); }
         }
       }
-      // The Records' own copy of how the type is shown (stores/twenty/views.js): the field order of its table, and its stored views (new, changed or gone).
-      {
-        const all = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
-        const o = all.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
-        if (o) {
-          const target = { id: o.id, fields: new Map(o.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node.id])) };
-          await syncFieldOrder(this.client, target, p);
-          if ((def.views && def.views.length) || (known && known.def.views && known.def.views.length)) for (const c of await syncViews(this.client, target, p, this.space, known ? known.def : undefined)) changes.push(c);
-        }
-      }
+      looks.push({ p, def, was: known ? known.def : undefined });
       // the definition changed in a way that needs no schema change (a flag such as hidden, hidden_from, computed or a role mark): it is still a change
       if (known && canonical(known.def) !== canonical(def) && !changes.some((c) => c.endsWith(` ${def.name}`) || c.includes(` ${def.name}.`))) changes.push(`changed type ${def.name}`);
       this.plans.set(def.name, p);
@@ -314,6 +306,17 @@ export class TwentyStore {
     try {
       for (const t of diff.add_types ?? []) await apply(t, false);
       for (const t of diff.change_types ?? []) await apply(t, true);
+      // The Records' own copy of how each type is shown (stores/twenty/views.js): the field order of its table and its stored views (new, changed or gone).
+      if (looks.length) {
+        const all = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
+        const byName = new Map(all.objects.edges.map((/** @type {any} */ e) => [e.node.nameSingular, e.node]));
+        for (const { p, def, was } of looks) {
+          const o = /** @type {any} */ (byName.get(p.singular)); if (!o) continue;
+          const target = { id: o.id, fields: new Map(o.fields.edges.map((/** @type {any} */ e) => [e.node.name, e.node.id])) };
+          await syncFieldOrder(this.client, target, p);
+          if ((def.views && def.views.length) || (was && was.views && was.views.length)) for (const c of await syncViews(this.client, target, p, this.space, was)) changes.push(c);
+        }
+      }
       for (const name of diff.remove_types ?? []) {
         const p = this.plans.get(name); if (!p) continue;
         const live = await this.query(name, { page: { limit: 1 }, include_deleted: false });

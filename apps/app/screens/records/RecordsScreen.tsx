@@ -1,10 +1,10 @@
 import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { BoardView, Button, CalendarView, Card, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
+import { BoardView, Button, CalendarView, Card, DashboardView, EmptyState, Icon, Menu, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Tabs, Text, filterWords, showToast, storedViewsOf, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewRows, viewsOf } from "@vyre/ui";
 
-type ViewKind = "list" | "board" | "calendar";
-const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar" };
+type ViewKind = "list" | "board" | "calendar" | "dashboard";
+const LABEL: Record<ViewKind, string> = { list: "List", board: "Board", calendar: "Calendar", dashboard: "Dashboard" };
 
 /** /u/records/<type>: every record of one type, as a list, a board or a calendar, drawn from the type's definition. Nothing here knows Contact or Matter. */
 export function RecordsScreen({ type }: { type: string }) {
@@ -35,7 +35,7 @@ export function RecordsScreen({ type }: { type: string }) {
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
   // One scope-style control, with icons only on a phone.
-  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
+  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
   return (
     <LargeTitleScreen title={vd.plural} own onRefresh={reload}>
@@ -59,6 +59,7 @@ export function RecordsScreen({ type }: { type: string }) {
       ) : null}
       {shown === "list" ? <ListView def={def} rows={rows} env={env} onOpen={openRec} lead={switcher} view={viewName} noFilter={cleared} /> : switcher}
       {shown === "board" ? <BoardView def={def} rows={rows} env={env} onOpen={openRec} onMove={move} view={viewName} noFilter={cleared} /> : null}
+      {shown === "dashboard" ? <DashboardView def={def} rows={rows} onOpen={openRec} now={env.now} /> : null}
       {shown === "calendar" ? <CalendarView def={def} rows={rows} env={env} onOpen={openRec} view={viewName} noFilter={cleared} /> : null}
     </LargeTitleScreen>
   );

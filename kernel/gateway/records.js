@@ -8,10 +8,10 @@ import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { createAggregator } from "../store/query.js";
-import { exprNames } from "../expr/expr.js";
+import { exprNames } from "../../lib/expr/expr.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
-import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../expr/conditions.js";
+import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/expr/conditions.js";
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
@@ -25,6 +25,8 @@ export const RECORD_ACTIONS = Object.freeze([
   { action: "records.define", resource_type: "definition", risk: "admin", label: "change types", gloss: "Add or change the kinds of record and their fields." },
 ].map(a => Object.freeze(a)));
 
+/** The chain's acting (last) hop is the kernel's own service: the only writer of a field the kernel owns. A kernel hop earlier in the chain, with anyone acting after it, is not. @param {any} chain */
+export const actsAsKernel = (chain) => { const h = chain && chain.hops && chain.hops[chain.hops.length - 1]; return Boolean(h && h.actor.kind === "service" && h.actor.id === "kernel"); };
 const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
 /** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
 const INTENT_MAX_AGE = 24 * 3600 * 1000;
@@ -302,6 +304,14 @@ export function createRecords(cfg) {
    * fields (never a sealed one), and a stage set is picked by the record's other fields, never by its stage.
    */
   async function checkShape(/** @type {any} */ diff) {
+    // a field the kernel owns stays the kernel's: a change to a type cannot take `owned_by` off it, or an owner could then set a task's status by hand
+    if ((diff.change_types || []).length) {
+      let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
+      for (const t of diff.change_types) {
+        const was = defs.find((/** @type {any} */ d) => d.name === t.name);
+        for (const f of (was && was.fields) || []) if (f.owned_by !== undefined && !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name && x.owned_by === f.owned_by)) throw new KernelError("bad_input", `${t.name}.${f.name} is kept by the kernel: a change cannot take that away`);
+      }
+    }
     for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
       const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}: ${why}`);
       const fields = t.fields || [];
@@ -563,7 +573,7 @@ export function createRecords(cfg) {
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
       // a field owned by the kernel (a task's status) is written only by the kernel's own service: the type says so, this is where it is kept to
-      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name) && !chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && h.actor.id === "kernel")) throw new KernelError("field_not_allowed", `${f.name} is kept by Vyre itself: it changes when the work does, not by hand`);
+      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name) && !actsAsKernel(chain)) throw new KernelError("field_not_allowed", `${f.name} is kept by Vyre itself: it changes when the work does, not by hand`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
       const role = roleOfChain(chain);

@@ -8,7 +8,7 @@
 // shape is written (`area == "PI" and stage != "Closed"`, `empty(due)`, `not empty(due)`, `fee >= 100`, a date `<` or `>`) and anything else is kept in the
 // definition only: the app still applies it, the Records' copy of the view simply shows the rows the filter would not narrow. `viewsPlan` says which.
 import { createHash } from "node:crypto";
-import { parseExpr } from "../../kernel/expr/expr.js";
+import { parseExpr } from "../../lib/expr/expr.js";
 import { optionValue } from "./plan.js";
 
 const KIND = { list: "TABLE", board: "KANBAN", calendar: "CALENDAR" };

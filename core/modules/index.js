@@ -215,6 +215,8 @@ export function validate(m, { firstParty = false } = {}) {
   // (string tool entries, a missing description) warns through addedWarnings(), never fails.
   if (!firstParty) out.push(...addedCheck(m).problems);
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
+  // the kernel's own service hop is the one that may write a kernel-owned field (a task's status): no module takes that name
+  if (String(m.name) === "kernel") out.push('name "kernel" is reserved for the kernel itself');
   if (!/^\d+\.\d+\.\d+/.test(String(m.version || ""))) out.push(`version "${m.version}" must be semver`);
   if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local", "mac", "windows"].includes(r)))) out.push("roles must be a list of box, local, mac and windows");
   if (m.requires && !Array.isArray(m.requires)) {
