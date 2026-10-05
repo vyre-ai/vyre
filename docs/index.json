@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1243,"event":459,"config":254,"env":250,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1244,"event":459,"config":254,"env":250,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -922,6 +922,7 @@
     {"kind":"tool","name":"planner.add","definedIn":"core/planner/index.js","page":"reference/tools.md#planneradd","module":"planner","mentions":[{"page":"using/planner.md","line":119,"anchor":"let-your-agents-use-it"},{"page":"using/planner.md","line":123,"anchor":"let-your-agents-use-it"},{"page":"adr/0020-claude-code-plugin.md","line":116,"anchor":"addendum-27-sep-2026-the-session-knows-the-user"},{"page":"adr/0025-planner.md","line":96,"anchor":"contract"},{"page":"adr/0028-vault-everywhere.md","line":224,"anchor":"4-rotation-reminders-through-the-planner"},{"page":"adr/0028-vault-everywhere.md","line":236,"anchor":"4-rotation-reminders-through-the-planner"}]},
     {"kind":"event","name":"planner.added","definedIn":"core/planner/index.js","page":"reference/events.md#planner","module":"planner","mentions":[{"page":"adr/0025-planner.md","line":112,"anchor":"contract"}]},
     {"kind":"tool","name":"planner.agenda","definedIn":"core/planner/index.js","page":"reference/tools.md#planneragenda","module":"planner","mentions":[{"page":"adr/0020-claude-code-plugin.md","line":119,"anchor":"addendum-27-sep-2026-the-session-knows-the-user"},{"page":"adr/0025-planner.md","line":97,"anchor":"contract"},{"page":"adr/0025-planner.md","line":126,"anchor":"contract"},{"page":"adr/0029-resilience.md","line":143,"anchor":"r6-alarms-ring-even-when-the-box-is-out-of-reach"}]},
+    {"kind":"tool","name":"planner.bin","definedIn":"core/planner/index.js","page":"reference/tools.md#plannerbin","module":"planner","mentions":[]},
     {"kind":"tool","name":"planner.calendar.create","definedIn":"core/planner/index.js","page":"reference/tools.md#plannercalendarcreate","module":"planner","mentions":[{"page":"using/planner.md","line":129,"anchor":"calendar-events"},{"page":"adr/0025-planner.md","line":78,"anchor":"decision"},{"page":"adr/0025-planner.md","line":98,"anchor":"contract"},{"page":"adr/0025-planner.md","line":124,"anchor":"contract"},{"page":"adr/0025-planner.md","line":130,"anchor":"contract"}]},
     {"kind":"tool","name":"planner.calendar.sync","definedIn":"core/planner/index.js","page":"reference/tools.md#plannercalendarsync","module":"planner","mentions":[{"page":"adr/0025-planner.md","line":98,"anchor":"contract"},{"page":"adr/0025-planner.md","line":123,"anchor":"contract"}]},
     {"kind":"event","name":"planner.changed","definedIn":"core/planner/index.js","page":"reference/events.md#planner","module":"planner","mentions":[{"page":"adr/0025-planner.md","line":113,"anchor":"contract"}]},
