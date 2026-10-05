@@ -1,5 +1,5 @@
 // @ts-check
-// The lender's end of the lent-computer wire (docs/work/runner.md): the runner's three ports over the kernel's remote call. `invoke(call, args)` is the kernel remote client's
+// The lender's end of the lent-computer wire (team/archive/work-journals/runner.md): the runner's three ports over the kernel's remote call. `invoke(call, args)` is the kernel remote client's
 // transport (kernel/remote/client.js: Wink, the relay, or the in-memory stand-in in tests); the chain never leaves this computer, the home reads who is calling from the transport.
 // Nothing here writes a key or a secret to disk. Files cross in numbered base64 chunks, transcripts in batches that fit one request.
 import crypto from "node:crypto";

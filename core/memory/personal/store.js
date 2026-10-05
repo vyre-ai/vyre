@@ -1,5 +1,5 @@
 // @ts-check
-// personal/store: personal facts over memory's store (docs/work/memory-iq.md).
+// personal/store: personal facts over memory's store (team/archive/work-journals/memory-iq.md).
 //
 // Two layers, like the graph. Claims are what one turn said, kept per (session, seq), so a new
 // turn costs one extraction and a rewritten transcript costs dropping one session's rows.

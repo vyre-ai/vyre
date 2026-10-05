@@ -99,7 +99,7 @@ bin/vyre call system.echo '{"text":"hi"}'
 bin/vyre down
 ```
 
-Write a module: [docs/MODULES.md](docs/MODULES.md). What each team is building now: [docs/work/](docs/work/).
+Write a module: [docs/MODULES.md](docs/MODULES.md).
 
 ## License
 

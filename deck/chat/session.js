@@ -624,7 +624,7 @@ export function mountSession(container, opts) {
       can: () => CAPS.has("threads.rewind"),
       codeOk: () => CAPS.has(REWIND_CODE),
       onClose: closeRewind,
-      // native-core's contract (docs/work/native-core.md, "Fork from here"): threads.fork's answer
+      // native-core's contract (team/archive/work-journals/native-core.md, "Fork from here"): threads.fork's answer
       // is a thread record (`.id`, not `.thread` - checked against core/switchboard/index.js's
       // record()), so this opens exactly the way a new session from openHref does; the original
       // thread's own view is left untouched (no rewinding/patch() here, unlike onChoose above).

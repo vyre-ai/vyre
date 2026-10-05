@@ -14,7 +14,7 @@ import { tempHome } from "../../test/helpers.js";
 
 const SPACE = "spc_harlow000001";
 
-async function rig(t, { ask = false } = {}) {
+async function rig(t, { ask = false, fullWindow = false } = {}) {
   const google = fakeGoogle({ mailbox: "alex@harlow.test" });
   const w = await world();
   t.after(() => w.stopListening());
@@ -25,22 +25,31 @@ async function rig(t, { ask = false } = {}) {
     w.kernel.rules.push({ match: i => i.action === "service.call" && !i.approval, effect: "ask", reason: "outward" });
     w.kernel.rules.push({ match: i => { if (i.action === "service.call" && i.approval) { checked.push(i.approval); binds.push(i.bind); return true; } return false; }, effect: "allow", reason: "approved" });
   } else w.kernel.rules.push({ match: i => i.action === "service.call", effect: "allow", reason: "a standing yes" });
-  const sent = [];
+  const sent = [], all = [];
+  let throttle = 0;
   const api = async (account, req) => {
     assert.equal(account, "home");
+    all.push(`${req.method} ${req.path}`);
+    if (req.method === "POST" && throttle > 0) { throttle--; return { status: 429, body: {} }; }
     const url = new URL(`https://www.googleapis.com${req.path}${req.query ? "?" + new URLSearchParams(Object.entries(req.query).map(([k, v]) => [k, String(v)])) : ""}`);
     if (req.method !== "GET") sent.push({ method: req.method, path: req.path, body: req.body });
     const out = google.handle({ method: req.method, url, headers: { ...(req.headers || {}), authorization: `Bearer ${TOKEN}` }, body: req.body === undefined ? undefined : JSON.stringify(req.body) });
     return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
   };
-  const sync = createCalendarSyncHost({ root: tempHome(t), log: () => {}, everyMs: 3_600_000, firstMs: 3_600_000 });
+  const root = tempHome(t);
+  if (fullWindow) { // the declared 600 per minute are all used up, until a moment from now
+    const fsm = await import("node:fs");
+    fsm.mkdirSync(`${root}/calendar-sync`, { recursive: true });
+    fsm.writeFileSync(`${root}/calendar-sync/${SPACE}.google-home.json`, JSON.stringify({ sent_at: Array.from({ length: 600 }, () => Date.now() - 59_700) }));
+  }
+  const sync = createCalendarSyncHost({ root, log: () => {}, everyMs: 3_600_000, firstMs: 3_600_000 });
   t.after(() => sync.stop());
   const owner = () => w.kernel.chainFor({ flow: "calendar-sync", approver: ALEX, tainted: false, space: SPACE });
   const chains = { forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) };
   const h = sync.attach({ space: SPACE, gw: w.kernel, chains, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id, subscribe: cb => w.kernel.onEvent(cb, "calendar-sync"), google: { accounts: async () => [{ name: "home" }], api } });
   const events = async () => (await w.kernel.records.query(owner(), "event", { page: { limit: 100 } })).rows;
   const tasks = async () => { await w.kernel.idle(); return w.kernel.tasks.filter(x => /Calendar:/.test(x.title)); };
-  return { google, w, h, sent, checked, binds, events, tasks, owner };
+  return { google, w, h, sent, all, checked, binds, events, tasks, owner, root, throttleNext: (/** @type {number} */ n) => { throttle = n; } };
 }
 
 test("by default it finds the connected Google account, pulls the outside calendar in, and an outside change comes in on the next look", async t => {
@@ -193,7 +202,7 @@ test("a connected Google account with a different name is synced the same way: e
   assert.ok((await rows()).some(r => r.data.title === "Closing call" && r.data.external_id));
 });
 
-test("an event only on the person's own calendar (nobody invited) is written to a Google account without asking; one that invites people is held", async t => {
+test("outward comes from the declaration alone: an event with nobody invited is held for a yes just like one that invites people, and nothing is sent without it", async t => {
   const google = fakeGoogle({ mailbox: "alex@harlow.test" });
   const w = await world();
   t.after(() => w.stopListening());
@@ -213,10 +222,26 @@ test("an event only on the person's own calendar (nobody invited) is written to 
   await w.kernel.records.create(owner(), "event", { title: "Focus time", starts_at: "2026-10-07T09:00:00.000Z", source: "vyre" });
   await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", people: ["sam@rivera.test"], source: "vyre" });
   const out = await h.runNow();
-  assert.deepEqual([out["google-work"].pushed.inserted, out["google-work"].pushed.held], [1, 1], JSON.stringify(out));
-  assert.equal(sent.length, 1); assert.equal(sent[0].body.summary, "Focus time");
-  assert.equal(sent[0].body.attendees, undefined, "nobody was invited");
+  assert.deepEqual([out["google-work"].pushed.inserted, out["google-work"].pushed.held], [0, 2], JSON.stringify(out));
+  assert.equal(sent.length, 0, "nothing was sent: an event write is outward whoever is invited");
+  await w.kernel.idle();
+  const ts = w.kernel.tasks.filter(x => /Calendar:/.test(x.title));
+  assert.equal(ts.length, 2, "one held change per event, each waiting for the owner's yes");
 });
+
+test("a write that goes out is read back and compared with what was sent, and a mismatch stops it", async t => {
+  const { google, w, h, sent, all, events, tasks, owner } = await rig(t, { ask: true });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", source: "vyre" });
+  await h.runNow();
+  const ts = await tasks();
+  w.kernel.completeTask(ts[0].id, { outcome: "approved" });
+  for (let i = 0; i < 50 && google.events.size < 1; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.equal(sent.length, 1);
+  const post = all.findIndex(c => c.startsWith("POST /calendar/v3/calendars/primary/events"));
+  assert.ok(post >= 0 && all.slice(post + 1).some(c => /^GET \/calendar\/v3\/calendars\/primary\/events\/[0-9a-f]+/.test(c)), `the new event was read back after the write: ${JSON.stringify(all.slice(post))}`);
+  assert.equal((await events())[0].data.calendar, "google-home", "and it matched, so the record is tied to the outside id");
+});
+
 
 test("a change to an event pulled from Google that has guests is still asked about: the pull keeps the attendees as people, so the patch invites", async t => {
   const { google, w, h, sent, events, tasks, owner } = await rig(t, { ask: true });
@@ -229,4 +254,41 @@ test("a change to an event pulled from Google that has guests is still asked abo
   assert.equal(out["google-home"].pushed.held, 1, JSON.stringify(out));
   assert.equal(sent.length, 0, "nothing was patched without a yes");
   assert.equal((await tasks()).length, 1);
+});
+
+test("an approved write that has to wait is not lost: a 429 after the yes keeps it, and the next look sends it once, without asking the kernel for the yes again", async t => {
+  const { google, w, h, sent, all, checked, events, tasks, owner, throttleNext } = await rig(t, { ask: true });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", source: "vyre" });
+  await h.runNow();
+  const ts = await tasks();
+  throttleNext(1);
+  w.kernel.completeTask(ts[0].id, { outcome: "approved" });
+  for (let i = 0; i < 50 && !all.some(c => c.startsWith("POST")); i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.ok(all.some(c => c.startsWith("POST")), "the write was tried");
+  assert.equal(sent.length, 0, "and the service answered 429, so nothing was made");
+  assert.equal(google.events.size, 0);
+  assert.deepEqual(checked, [ts[0].id], "the yes was spent once");
+  // the next look sends the same request without asking the kernel for the yes again
+  const out = await h.runNow();
+  assert.equal(google.events.size, 1, JSON.stringify(out));
+  assert.deepEqual(checked, [ts[0].id], "the yes was not asked for twice");
+  assert.equal((await events())[0].data.calendar, "google-home");
+  await h.runNow();
+  assert.equal(google.events.size, 1, "once");
+});
+
+test("a full rate window is noticed before the yes is spent: the approval waits unspent, and when the window opens the write goes out once with it", async t => {
+  const { google, w, h, sent, checked, tasks, owner } = await rig(t, { ask: true, fullWindow: true });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", source: "vyre" });
+  await h.runNow();
+  const ts = await tasks();
+  w.kernel.completeTask(ts[0].id, { outcome: "approved" });
+  for (let i = 0; i < 10; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.equal(sent.length, 0, "the window is full: nothing is sent");
+  assert.deepEqual(checked, [], "and the yes has not been spent");
+  await new Promise(r => setTimeout(r, 450));
+  await h.runNow();
+  assert.equal(google.events.size, 1, "the window opened and it went out");
+  assert.deepEqual(checked, [ts[0].id], "with the one yes, spent once");
+  assert.equal(sent.length, 1);
 });

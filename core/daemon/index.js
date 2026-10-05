@@ -242,6 +242,7 @@ async function startLocked(opts, root, p, release) {
   // The kernel is ON unless this is a development build started with VYRE_KERNEL=0 (or opts.kernel false). When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
+  let basicDevice = false;
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
@@ -254,6 +255,9 @@ async function startLocked(opts, root, p, release) {
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
     const { storeMode } = await import("../../stores/twenty/space-store.js");
     const isServerInstall = config.isServer(cfg.machine);
+    // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
+    /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
+    if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; basicDevice = true; }
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
       storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true });
@@ -341,7 +345,7 @@ async function startLocked(opts, root, p, release) {
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}), ...(basic ? { basic } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
       // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
@@ -370,8 +374,9 @@ async function startLocked(opts, root, p, release) {
         return out.data;
       },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
-      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
-    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (basic ? null : (await flowsHost.attach(space, k, meta.owner)).stages) });
+    // Flows, Kits, roles and views need a server: a Basic device attaches no flows host, so none of their record types is defined and nothing fails at boot.
+    stages = basic ? null : (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
     // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
     if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
@@ -539,7 +544,8 @@ async function startLocked(opts, root, p, release) {
   registry.deps.credentials = (/** @type {string} */ provider) => (registry.deps.credentialsPort ? registry.deps.credentialsPort.credentials(provider) : Promise.resolve(undefined));
   // A box's container is the server: a config that says "device" or "solo" there would switch off every box-only module without a word, so it stops here with the reason.
   if (process.env.VYRE_SUPERVISOR === "docker" && !config.isServer(cfg.machine)) throw new Error(`this is a server's container but its config says machine "${cfg.machine}", which turns off every server module; set "machine": "server" in the home's config.json and start again`);
-  await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules });
+  // A Basic device holds no planner records (the planner and tasks need a server, records/basic-types.js), so the planner does not start there.
+  await registry.start(discover(moduleRoots(root), { firstPartyRoots }), { role: cfg.machine, ...cfg.modules, ...(basicDevice ? { disable: [...new Set([...((cfg.modules && cfg.modules.disable) || []), "planner"])] } : {}) });
   if (reopenLater) reopenLater();
   // The session launcher's way to a provider sign-in token: the vault provided it to the registry once, at its own start (`ctx.provide`, core/modules/index.js), so no import of the vault is needed here.
   // It goes to the sandbox the Switchboard reads per session (`lib/agent-sandbox.js` calls `credentials(provider)`). Where the vault did not start (a Mac whose vault is vyre-core's) there is none.
@@ -864,7 +870,7 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
  * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
  * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
- * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * proved its session), for every tool: a label is only a claim (team/archive/work-journals/e2e.md, the team
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here, but a label alone is never a person: `outside` is false for it, so callerFacts builds no person chain for it, and it is a person only with a person session (LB-2). The person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]

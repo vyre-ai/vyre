@@ -49,7 +49,7 @@ the site itself still has no build step. `scripts/gen-og.sh` draws the social ca
   (Capsule, Glass, memory, the vault) and says they only ever talk to each other through the same
   open door a person's own module would use. New feature line, "Build your own": `vyre module
   new` scaffolds a real one (tool, setting, Now card, tested in minutes): real per ADR 0033/
-  `docs/work/platform.md` (`vyre module new/list/check` are P1, done), not overclaiming the P3
+  `team/archive/work-journals/platform.md` (`vyre module new/list/check` are P1, done), not overclaiming the P3
   `add`/`remove`/`update` verbs that aren't shipped yet.
 
 ### OS-aware install tab, robots.txt, sitemap.xml (2026-09-28)

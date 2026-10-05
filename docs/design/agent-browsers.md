@@ -127,7 +127,7 @@ warm). Both belong in the settings hub (`docs/adr/0035-settings-hub.md`), each m
 its own per that ADR.
 
 **Real numbers, not estimates.** Before the settings copy claims anything ("uses about N MB
-idle"), measure it on testbox the way `docs/work/glass-live.md`'s perf-checks already do (CPU p95,
+idle"), measure it on testbox the way `team/archive/work-journals/glass-live.md`'s perf-checks already do (CPU p95,
 RSS mean/max, idle and active, host load noted) for: headless Chrome idle with zero contexts, one
 context idle, one context active (a real page loaded, chrome.snapshot polling), and a desktop
 idle/active for comparison. This needs the level-2 code built first; it is a build-phase task, not

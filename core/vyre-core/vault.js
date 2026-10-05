@@ -1,5 +1,5 @@
 // @ts-check
-// vyre-core's vault, phase 2a (ADR 0040 section 6, docs/work/vyre-core-plan.md): the vault's own
+// vyre-core's vault, phase 2a (ADR 0040 section 6, team/archive/work-journals/vyre-core-plan.md): the vault's own
 // store and crypto (core/vault/vault.js, used as it is) in core's db and data dir, with core's own
 // key in a file only _vyre can read. Never the login keychain: _vyre can't reach it, and a model
 // can.
