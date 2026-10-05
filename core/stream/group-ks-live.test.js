@@ -317,7 +317,7 @@ test("V3: the stream does not hold, retry or queue: the Switchboard queues anoth
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL], assistants: ["assistant"] });
   const watcher = await b.watch("bob", chat.id);
-  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONGER, to: ["assistant:assistant"], cwd: w.work })).error);
   await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
   /** @type {any[]} */ const sends = [];
   const real = b.reg.call.bind(b.reg);
