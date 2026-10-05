@@ -261,3 +261,12 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
   session_expired), else "maybe" (exited or closed mid-call, timeout, network). The registry passes
   detail through; the Gate returns it on a failed approval. Tested in core/mcp/hub.test.js.
 - TO_KEYS gains conversation_id (557421d).
+
+## Platform gaps 0.2.9, items 5 to 8 (5 Oct 2026, work/connectors-029)
+- A connector is a declaration: `records/connectors/format.js` (checkDeclaration, toCredentialConfig, declarationParts, serviceOf, buildRequest, parseResponse, readbackRequest, compareReadback). `kind` alone says outward (change, send, spend, delete); read and draft are not. Shipped: stripe, gmail, google-calendar (`records/connectors/index.js`). Stripe's webhook events come from its declaration.
+- Vault: `service` in an api-credential keeps draft, idempotency, rate and ops, and vault.service.catalog hands them to Flows. `vault.service.forward` adds the declared idempotency header (derived from the idem key) on outward calls. Rate and Retry-After were already the vault's.
+- Poll watchers: `watchers.preset { kind: "connector", connector, poll, credential, vars }` (core/watchers/connector-preset.js). One generic loop, read only, the plan is data in watch.js. `watcher.json` takes `memory: false`.
+- Log communications: `records/comms/log-flow.js`, native steps only. `connectors.logging` returns the recipe (watcher input and stored Flow) and writes nothing.
+- Credentials: `connectors.declared`, `connectors.declare` (a person's own); OAuth declarations are api presets (`gmail-api`, `google-calendar-api`) whose sign-in makes the connector credential.
+- Tools `records.roles`, `records.holders`.
+- Known gaps: the Space's own calendar sync (records/calendar/sync.js) is still not started by anything and does not use the declaration; one Google sign-in makes one credential per host (a Flow reaches a credential's first exact host), so Gmail and Calendar are two credentials; Gmail `drafts.create` is classed as a read by the vault so it runs without a hold, by design.
