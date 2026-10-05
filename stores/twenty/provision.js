@@ -116,8 +116,6 @@ ${envBlock(o.golden || o.migrated ? ['DISABLE_DB_MIGRATIONS: "true"'] : [], mem?
     depends_on:
       db: { condition: service_healthy }
       redis: { condition: service_healthy }${o.golden ? "\n      restore: { condition: service_completed_successfully }" : ""}
-    # The first start migrates an empty database (182 steps, 4 minutes on 4 cores and longer on a small server) before the server listens at all: those failed checks are not failures, or `up --wait` gives up at
-    # 400 s on a slow host, the helper stops the Space mid-migration, and every retry is cut off the same way (#91, #90). Time spent in `start_period` never counts, and the first success ends it.
     healthcheck: { test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 80, start_period: 900s }
   worker:
     image: \${TWENTY_IMAGE_REF:-${image}}

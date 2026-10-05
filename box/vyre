@@ -1386,7 +1386,7 @@ sp_golden() {
     [ -n "$cid" ] || return 1
     timeout 120 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker cp "$cid:$p" "$gd/golden.dump.new" >/dev/null 2>&1; cprc=$?
     timeout 60 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker rm -f "$cid" >/dev/null 2>&1 || true
-    [ "$cprc" = 0 ] && [ -s "$gd/golden.dump.new" ] || { rm -f "$gd/golden.dump.new"; return 1; }
+    if [ "$cprc" != 0 ] || [ ! -s "$gd/golden.dump.new" ]; then rm -f "$gd/golden.dump.new"; return 1; fi
     chmod 444 "$gd/golden.dump.new" && mv -f "$gd/golden.dump.new" "$gd/golden.dump" && printf '%s\n' "$img" >"$gd/image-id" || return 1
   fi
   pw=$(sp_rnd)
@@ -1527,7 +1527,10 @@ sp_up() {
   if [ -f "$SP_PRIV/spaces/$n/golden" ]; then
     mv -f "$SP_PRIV/spaces/$n/golden" "$SP_PRIV/spaces/$n/migrated"; sp_gen "$n" || true
     # the restore step is over: the admin password and the dump path leave root's copy of the Space's secrets (the daemon has the password; the compose file no longer names either)
-    t=$(mktemp "$SP_PRIV/spaces/$n/secrets.XXXXXX") && grep -v -e '^ADMIN_PASSWORD=' -e '^GOLDEN_DUMP=' "$SP_PRIV/spaces/$n/secrets.env" >"$t"; chmod 600 "$t" && mv -f "$t" "$SP_PRIV/spaces/$n/secrets.env" || rm -f "$t"
+    t=$(mktemp "$SP_PRIV/spaces/$n/secrets.XXXXXX") || t=""
+    if [ -n "$t" ]; then
+      if grep -v -e '^ADMIN_PASSWORD=' -e '^GOLDEN_DUMP=' "$SP_PRIV/spaces/$n/secrets.env" >"$t" && chmod 600 "$t"; then mv -f "$t" "$SP_PRIV/spaces/$n/secrets.env"; else rm -f "$t"; fi
+    fi
   fi
   MSG="the store is up and the agents are firewalled from it"
 }
