@@ -46,7 +46,7 @@ export function stepWords(/** @type {DeviceKind} */ kind, /** @type {number} */ 
   const noun = kind === "server" ? "server" : kind === "phone" ? "phone" : "computer";
   if (!showsRing(kind)) {
     return [
-      "The server printed a QR code and a long code. Scan the QR, or paste the long code. A short typed code is not accepted.",
+      "The server printed a QR code and a long code. Scan the QR, or paste the long code.",
       "The server shows who is asking and the same three words. Confirm only if they match.",
       "Both screens say done. Nothing was configured.",
     ][step];

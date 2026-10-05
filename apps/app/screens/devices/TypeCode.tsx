@@ -18,7 +18,7 @@ import { RC } from "../shell/rc";
 export type Typed = { invite?: { link: string; space?: string } };
 
 /** A typed invite code redeemed over the relay by the client library (relay/client/join.js): a device with no box of its own can do it. Rejects with the words to show. */
-export async function redeemInvite(code: string, onAck: (ack: string) => void): Promise<Typed> {
+export async function redeemInvite(code: string, onAck: (ack: string, expires?: number) => void): Promise<Typed> {
   const r = await redeemInviteCode({ relay: relayUrl(), input: code, onAck });
   if (!r.ok) throw new Error(inviteReasonSay(r.reason));
   return { invite: { link: r.link, ...(r.space ? { space: r.space } : {}) } };
@@ -28,8 +28,8 @@ export async function redeemInvite(code: string, onAck: (ack: string) => void): 
  * A browser or phone with no box pairs to the person's server by the code the phone's Devices, Add a device screen shows (relay/client/join.js joinWithCode). The ack typed back on the phone is the
  * yes; the pairing is kept so this device reaches that server.
  */
-export async function redeemPairing(code: string, onAck: (ack: string) => void): Promise<Typed> {
-  const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s) => { if (s.state === "ack" && s.code) onAck(s.code); },
+export async function redeemPairing(code: string, onAck: (ack: string, expires?: number) => void): Promise<Typed> {
+  const r = await joinWithCode({ relay: relayUrl(), input: code, name: about.kind === "web" ? "Vyre in a browser" : "Vyre on this phone", onState: (s: { state: string; code?: string; expires?: number }) => { if (s.state === "ack" && s.code) onAck(s.code, typeof s.expires === "number" ? s.expires : undefined); },
     pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), deviceKind: about.kind === "web" ? "web" : "phone", keyStorage: "software" } });
   if (!r.ok) throw new Error(inviteReasonSay(r.reason === "closed" ? "refused" : r.reason));
   await afterPaired(r.paired);
@@ -40,11 +40,11 @@ export async function redeemPairing(code: string, onAck: (ack: string) => void):
  * "Type the code" on the second device: the code the first device shows (WINK-NNPP-PPPP), then the ack code to type back on that device, then it carries on. `redeem` does the work and calls
  * `onAck` with the code to show; nothing is joined until it resolves.
  */
-type TypeCodeProps = { redeem: (code: string, onAck: (ack: string) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void };
+type TypeCodeProps = { redeem: (code: string, onAck: (ack: string, expires?: number) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void };
 /** The short two-sided typed code, and nothing at all while it is switched off (RC.typedCode): a release build shows no field, no scan and no ack box. */
 export function TypeCode(p: TypeCodeProps) { return RC.typedCode ? <TypeCodeOn {...p} /> : null; }
 
-function TypeCodeOn({ redeem, initial = "", onDone }: { redeem: (code: string, onAck: (ack: string) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void }) {
+function TypeCodeOn({ redeem, initial = "", onDone }: { redeem: (code: string, onAck: (ack: string, expires?: number) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void }) {
   const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [say, setSay] = useState("");
@@ -74,7 +74,8 @@ function TypeCodeOn({ redeem, initial = "", onDone }: { redeem: (code: string, o
     if (!c.ok || c.kind !== "typed") { setSay(redeemSay("bad_input")); return; }
     setBusy(true); setSay("");
     try {
-      const t = await redeem(c.code, (a) => { if (live.current) { setAck(a); setUntil(Date.now() + 10 * 60_000); } });
+      // The code's own end is the server's to say (it travels with the ack); when it says none, no time is claimed.
+      const t = await redeem(c.code, (a, expires) => { if (live.current) { setAck(a); setUntil(typeof expires === "number" ? expires : null); } });
       if (live.current) onDone(t);
     } catch (e) {
       if (!live.current) return;
