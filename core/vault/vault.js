@@ -1397,6 +1397,16 @@ export class Vault {
   }
 
   /**
+   * Is this item granted to this module (and, for a watcher, to exactly that watcher)? The one check: `release` asks it before it hands a value over, and a caller that only needs the answer
+   * (a watcher reading through a service the vault does not hold the token of) asks it through `vault.granted`. A grant to the module as a whole is not a grant to a watcher.
+   * @param {{ name: string, module: string, watcher?: string, project?: string }} q
+   */
+  granted({ name, module, watcher = "", project }) {
+    return this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, module, watcher)
+      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
+  }
+
+  /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
@@ -1412,8 +1422,7 @@ export class Vault {
     const who = watcher ? `${caller}/${watcher}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
-    const g = this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher)
-      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
+    const g = this.granted({ name, module: mod, watcher, project });
     if (!g) {
       this.audit("release", name, who, false, "no grant");
       throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);
