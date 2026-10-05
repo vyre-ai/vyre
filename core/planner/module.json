@@ -179,7 +179,7 @@
               "label": "Updated (ms)"
             },
             {
-              "name": "deleted_at",
+              "name": "removed_at",
               "kind": "datetime",
               "label": "Deleted"
             },
@@ -293,7 +293,7 @@
               "label": "Updated (ms)"
             },
             {
-              "name": "deleted_at",
+              "name": "removed_at",
               "kind": "datetime",
               "label": "Deleted"
             },
