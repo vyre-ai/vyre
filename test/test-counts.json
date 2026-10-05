@@ -269,6 +269,7 @@
  "core/planner/parse.test.js": 16,
  "core/planner/planner.test.js": 27,
  "core/planner/gate.test.js": 2,
+ "core/planner/legacy.test.js": 3,
  "core/planner/records.test.js": 16,
  "core/planner/time.test.js": 4,
  "core/presence/hello-fixture.test.js": 3,

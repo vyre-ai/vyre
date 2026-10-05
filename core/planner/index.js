@@ -14,6 +14,7 @@ import { zoneFrom } from "../../lib/time/index.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
 import { cloudGate } from "../../lib/cloud-gate.js";
+import { MIGRATIONS as LEGACY_MIGRATIONS, importLegacy } from "./legacy.js";
 import { isPerson } from "../../lib/caller.js";
 
 /**
@@ -66,6 +67,11 @@ export default {
     const parser = await loadParser(ctx.log);
     const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how) });
     if (K) await st.load();
+    // An upgraded box still has the planner's old tables: their list stays registered (a module's migration list is append-only), and what is in them moves into Records once.
+    if (ctx.store && ctx.store.migrate) {
+      ctx.store.migrate(LEGACY_MIGRATIONS);
+      if (K) await importLegacy(ctx.store.db, item => st.create(item), now, ctx.log);
+    }
 
     // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
     // zone data (about 8 MB of RSS), which an idle planner never needs.
