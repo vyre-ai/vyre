@@ -93,7 +93,7 @@ export async function createKernel(cfg) {
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
     room: roomPort,
-    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
+    space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), approvedPeek: (/** @type {any} */ q) => tasks.approvedAct(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
     sealer: cfg.sealer, unit: cfg.unit, door: cfg.door, onStageEnter: cfg.onStageEnter, stageTasks: cfg.stageTasks, checkpointKey: cfg.checkpointKey, templates: cfg.templates, destinations: cfg.destinations,
     actions: cfg.actions, attrs: attrsOf, canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id), sinks: cfg.sinks, drive: cfg.drive, resolveCredential: cfg.resolveCredential, forwardCredential: cfg.forwardCredential, routeAction: cfg.routeAction,
