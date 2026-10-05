@@ -516,7 +516,7 @@ test("a chat's history leaves one device and comes back on another: its logged f
   assert.equal(runB.thread.chat, chat);
   assert.ok(runB.events.some(e => e.type === "thread.text"), "the run's events came with it");
   // again: left as it is
-  const twice = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work");
+  const twice = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members, fresh: true }, "module:work");
   assert.equal(twice.data.frames, 0);
   assert.equal((await B.d.registry.call("threads.import-chat", { chat, runs: th.runs, events: th.events }, "module:work")).data.runs, 0);
   // the tool the other end calls: it reads the chunks and the manifest the move carried in the chat's own folder, as the person, checks each, and puts it back in order; it carries on where it stopped
