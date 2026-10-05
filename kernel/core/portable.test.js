@@ -53,7 +53,7 @@ test("mintUuid writes the same bytes as before: time, version, variant and the r
 });
 
 test("the page cursor is the same base64url text as before and pages the same", () => {
-  const rows = [{ id: "a", fields: { n: 1 } }, { id: "b", fields: { n: 2 } }, { id: "c", fields: { n: 2 } }, { id: "d", fields: { n: 3 } }];
+  const rows = [{ id: "a", data: { n: 1 } }, { id: "b", data: { n: 2 } }, { id: "c", data: { n: 2 } }, { id: "d", data: { n: 3 } }];
   const sort = [{ field: "n", dir: "asc" }];
   const c = encodeCursor(rows[1], sort);
   assert.equal(c, Buffer.from(JSON.stringify([2, "b"])).toString("base64url"));
