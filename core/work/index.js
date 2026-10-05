@@ -195,7 +195,7 @@ export default {
       callers: ["module"],
       input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } } } },
       run: async (i, extra) => {
-        await knowProof(extra, "project.move_started", i);
+        engineOf(); await knowProof(extra, "project.move_started", i);
         const k = kernelOf();
         const allowed = new Set(await linkedClosure({ records: k.records, chain: k.serviceChain("work") }, String(i.project)));
         const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
@@ -208,7 +208,7 @@ export default {
       callers: ["module"],
       input: { ...knowMove, properties: { ...knowMove.properties, rows: { type: "array", items: { type: "object" } }, map: { type: "object" }, from_space: { type: "string" } } },
       run: async (i, extra) => {
-        await knowProof(extra, "project.move_in", i);
+        engineOf(); await knowProof(extra, "project.move_in", i);
         const k = kernelOf();
         const r = importKnow(ctx.store.db, Array.isArray(i.rows) ? i.rows : [], { map: i.map && typeof i.map === "object" ? i.map : {}, from: String(i.from_space || ""), to: k.space });
         for (const s of r.sessions) { try { await engineOf().index({ kind: "lines", session: s }); } catch { /* indexed by the next sweep */ } }
@@ -220,7 +220,7 @@ export default {
       callers: ["module"],
       input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } }, receipt: { type: "object" } } },
       run: async (i, extra) => {
-        await knowProof(extra, "project.move_started", i);
+        engineOf(); await knowProof(extra, "project.move_started", i);
         const k = kernelOf();
         const allowed = new Set(await linkedClosure({ records: k.records, chain: k.serviceChain("work") }, String(i.project)));
         const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
