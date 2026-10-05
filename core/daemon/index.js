@@ -1409,6 +1409,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
   // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
   // then the Deck answers as before.
+  // The pre-app pages live in web/ (plain pages the app signs in through), in both modes; a file web/ does not hold falls through.
+  if (req.method === "GET" && !url.pathname.startsWith("/v1/") && serveWeb(res, url.pathname, cfg)) return;
   if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
@@ -1477,6 +1479,30 @@ const ROOT_BOX = /^\/(onboard|person|release|css|js|vendor|fonts|theme\.css|icon
 
 /** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
 const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
+
+/**
+ * The pre-app pages (web/): the owner wizard, the device and passkey pages and the person's sign-in, with the code, styles, fonts and
+ * vendor files they load. Plain files, the same address in both modes. True when this answered; false when web/ holds no such file, so the
+ * Deck (or, at the root, the app) answers as before. A folder with an index.html serves it (the build stamped in), a folder without one is not a file.
+ * @param {any} res @param {string} pathname @param {any} cfg
+ */
+export function serveWeb(res, pathname, cfg) {
+  const dir = path.join(REPO, "web");
+  let rel;
+  try { rel = decodeURIComponent(pathname); } catch { return false; }
+  let file = path.resolve(dir, "." + path.posix.normalize(rel));
+  if (!file.startsWith(dir + path.sep)) return false;
+  // Tests and sample data live beside the pages in the repo and are never served.
+  if (path.relative(dir, file).split(path.sep).some(seg => seg === "test" || seg === "fixtures") || /\.test\.m?js$/.test(file)) return false;
+  let page = false;
+  try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); page = true; } } catch { return false; }
+  let buf;
+  try { buf = fs.readFileSync(file); } catch { return false; }
+  if (page || path.basename(file) === "index.html") buf = Buffer.from(htmlWithBuild(buf.toString("utf8")));
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...deckHeaders(cfg) });
+  res.end(buf);
+  return true;
+}
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that

@@ -182,6 +182,13 @@ test("the signed list covers every code file the daemon serves for the Deck", as
       if (/\.(m?js|css|html)$/.test(e.name) && !/\.test\.m?js$/.test(e.name) && rel !== "/sw.js" && !listed.has(rel)) missing.push(rel);
     }
   })(DECK, "");
+  (function walk(dir, base) {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const rel = base + "/" + e.name;
+      if (e.isDirectory()) { if (!SKIP.has(e.name)) walk(path.join(dir, e.name), rel); continue; }
+      if (/\.(m?js|css|html)$/.test(e.name) && !/\.test\.m?js$/.test(e.name) && !listed.has(rel)) missing.push(rel);
+    }
+  })(path.join(DECK, "..", "web"), "");
   assert.deepEqual(missing, []);
   for (const must of ["/vault/client.js", "/views/vault.js", "/views/settings-keys.js", "/js/pair-scan.js", "/onboard/passkey/passkey.js", "/onboard/passkey", "/onboard/passkey/", "/onboard/passkey/index.html", "/person/signin/signin.js", "/glass/util.js", "/", "/index.html".replace("/index.html", "/")]) assert.ok(listed.has(must), must);
 });

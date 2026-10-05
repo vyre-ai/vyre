@@ -39,7 +39,7 @@ const twin = (p) => (p === "/" ? ["/index.html"] : p.endsWith("/index.html") && 
 
 /** The real files served as code (URL paths), "/" for index.html included, no twins. @param {string} [repo] */
 function realCode(repo = REPO) {
-  return [...new Set([...walk(path.join(repo, "deck"), "").map((r) => "/" + r), "/", ...ROOT_FILES.map((f) => "/" + f)])].sort();
+  return [...new Set([...walk(path.join(repo, "deck"), "").map((r) => "/" + r), ...(fs.existsSync(path.join(repo, "web")) ? walk(path.join(repo, "web"), "").map((r) => "/" + r) : []), "/", ...ROOT_FILES.map((f) => "/" + f)])].sort();
 }
 
 /** Every code path the daemon serves for the Deck, addresses that serve the same file included: what the worker holds a signed shell to. @param {string} [repo] */
@@ -56,7 +56,12 @@ export function shellPaths(repo = REPO) {
   return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).filter((p) => p !== "/sw.js");
 }
 
-const fileOf = (/** @type {string} */ repo, /** @type {string} */ p) => (ROOT_FILES.includes(p.slice(1)) ? path.join(repo, p.slice(1)) : path.join(repo, "deck", p === "/" ? "index.html" : p.slice(1)));
+/** web/ (the pre-app pages, ahead of the Deck at the same address) first, then the repo-root files, then deck/. */
+const fileOf = (/** @type {string} */ repo, /** @type {string} */ p) => {
+  const web = path.join(repo, "web", p.slice(1));
+  if (p !== "/" && fs.existsSync(web) && fs.statSync(web).isFile()) return web;
+  return ROOT_FILES.includes(p.slice(1)) ? path.join(repo, p.slice(1)) : path.join(repo, "deck", p === "/" ? "index.html" : p.slice(1));
+};
 
 /**
  * Every served code file (js, mjs, css, html) plus every precached shell file (images and fonts), with its sha256.

@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(web): the pre-app pages (the owner wizard, /onboard/device, the passkey page, /person/signin) and the files they load (js, css, fonts, vendor) move from deck/ to web/, plain pages the box serves at the same addresses in both modes (core/daemon serveWeb: web/ first, tests and fixtures never served, the build stamped into each page). scripts/shell-hashes.mjs signs web/ too, the test-count globs and the docs-shot paths follow (5 daemon tests over the box's own socket, 40 moved).
 - feat(app): the chat tools sheet (apps/app/screens/chat-tools, the Deck's composer and session tools ported): Fork this chat, Effort, Thinking, Mode, Send now, Carry on here, Mention someone, Running here (Stop a task), Context used, Transcript, Go back (undo and redo a chat's changes); pull request merge and review, team ask, artifact versions and links as source calls; and a Shared page at /u/shared listing artifacts with a public link. The chat opens the sheet with `<ChatToolsSheet>` (11 tests).
 - feat(app): the dashboard view (sum, count by, funnel, recent) on a record type's page, from the type's view definition; `apps/app/ui/views/view-defs.js` is now the app's own copy of the view definitions.
 - feat(app): Vault has a Held fields tab (the sealed fields of records, Reveal with presence, grouped by record, never a value in the list) and Share (vault.grant: a module or assistant by name, optional project, use only).

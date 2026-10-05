@@ -14,7 +14,8 @@ import { fileURLToPath } from "node:url";
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const REPO = path.resolve(DECK, "..");
-const read = (/** @type {string} */ f) => fs.readFileSync(path.join(DECK, f), "utf8");
+// The pre-app pages (onboard/...) live in web/, the Deck's own files in deck/.
+const read = (/** @type {string} */ f) => fs.readFileSync(fs.existsSync(path.join(DECK, f)) ? path.join(DECK, f) : path.join(DECK, "..", "web", f), "utf8");
 
 test("tokens: every page links tokens.css, then deck.css, then config's theme.css", () => {
   for (const page of ["index.html", "onboard/index.html", "onboard/passkey/index.html"]) {

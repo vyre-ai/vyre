@@ -11,7 +11,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (/** @type {string} */ f) => fs.readFileSync(path.join(DECK, f), "utf8");
+// The pre-app pages (onboard/...) live in web/, the Deck's own files in deck/.
+const read = (/** @type {string} */ f) => fs.readFileSync(fs.existsSync(path.join(DECK, f)) ? path.join(DECK, f) : path.join(DECK, "..", "web", f), "utf8");
 const noComments = (/** @type {string} */ css) => css.replace(/\/\*[\s\S]*?\*\//g, "");
 /** Every rule whose selector list names sel (a class selector as written, e.g. ".btn-sm"). */
 const rules = (/** @type {string} */ css, /** @type {string} */ sel) => {
