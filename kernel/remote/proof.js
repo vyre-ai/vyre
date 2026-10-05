@@ -49,6 +49,20 @@ const CALLS = {
 /** The presence op a gated action is proved under: grants.invite -> grant.invite, rules.set -> grant.rule_set. The one list of how an action becomes an op (scripts/dev-sign-proof.mjs uses it too). @param {string} action */
 export const opOf = action => (String(action).startsWith("rules.") ? `grant.rule_${String(action).split(".")[1]}` : `grant.${String(action).split(".")[1]}`);
 
+/**
+ * The proof request a wire call is covered by, or null: a grants call by its short name (`grants.invites.create` is `inviteCreate`), a project move by its own (`moves.out` is `moveOut`,
+ * `moves.outMany` is `moveOutMany`). The one place the server and the client agree on it. @param {string} call
+ */
+export const proofNameOf = (call) => {
+  const c = String(call);
+  if (c === "moves.out") return "moveOut";
+  if (c === "moves.outMany") return "moveOutMany";
+  if (!c.startsWith("grants.")) return null;
+  const alias = /** @type {Record<string, string>} */ ({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm" })[c];
+  const short = alias || c.split(".").slice(1).join(".");
+  return Object.hasOwn(CALLS, short) ? short : null;
+};
+
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
 
