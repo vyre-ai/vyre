@@ -58,7 +58,7 @@ test("without a person nothing is granted: a project.reach grant is a person's o
   assert.ok(noPerson.error, "no person, no grant");
   const noProof = await call("projects.access.grant", { project: "northwind", agent: "kit" }, { kernelFacts: SI_FACTS });
   assert.ok(!noProof.error, "the person's own call needs no proof for an agent's reach: " + JSON.stringify(noProof.error));
-  assert.equal(await granted(call, "northwind", "kit"), false);
+  assert.equal(await granted(call, "northwind", "kit"), true, "the person's own call made it");
 });
 
 test("an agent's projects list is kept in step with its grants, '*' is one grant on every project (later ones too), and deleting the agent takes them away", { timeout: 180_000 }, async t => {
