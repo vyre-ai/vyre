@@ -99,5 +99,5 @@ test("the typed code is hidden and refused in a release build, on Windows too: o
   assert.match(html, /<section id="typed" hidden>/, "the typed path is hidden by default");
   assert.match(read("../app/ui/first-run.js"), /s\.typed_code\) document\.getElementById\("typed"\)\.hidden = false/, "shown only when the shell says so");
   assert.ok(!/typed-go|WINK-7K4Q/.test(html.replace(/<section id="typed" hidden>[\s\S]*?<\/section>/, "")), "nothing about the typed code outside the hidden section");
-  assert.ok(!/VYRE_TYPED_CODE/.test(read("../../../.github/workflows/capsule-win.yml")), "the release workflow never sets it");
+  assert.ok(!/VYRE_TYPED_CODE/.test(read("../../../../.github/workflows/capsule-win.yml")), "the release workflow never sets it");
 });
