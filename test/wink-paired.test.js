@@ -975,7 +975,8 @@ test("typed pair, real daemon and relay: addThisDevice by code with its presence
   assert.equal(started.status, 200, JSON.stringify(started));
   // a person-session call from that device
   const me = await w.d.registry.call("wink.access", {}, `device:${done.device}`, { person: { id: started.body.data.id }, peer: { stableId: done.device, node: done.device } });
-  assert.ok(!me.error || me.error.code !== "presence_required", JSON.stringify(me.error));
+  assert.ok(!me.error, `the session answers: ${JSON.stringify(me.error)}`);
+  assert.ok(me.data.devices.some(d => d.id === done.device), "the owner's device list, read with the typed-paired device's own session, holds that device");
 });
 
 test("a link to a server that was removed and paired again is made afresh: forget lets go of the old connection and the next call connects to where the pairing now says the server is", async () => {
