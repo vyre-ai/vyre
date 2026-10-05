@@ -94,18 +94,18 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
   const w = {
     k, events, clock, timers, fired, acked, logs, google, handle, owner, tier: /** @type {any} */ (null), agents: [{ name: "assistant", kind: "assistant" }, { name: "juno", kind: "agent", projects: "*" }, { name: "kit", kind: "agent", projects: "*" }],
     settled: () => handle.calendar.settled(),
-    async call(name, input = {}, caller = "cli") {
+    async call(name, input = {}, caller = "cli", more = {}) {
       const def = tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
       if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${name} is not for ${caller}` } };
       const facts = ["cli", "local", "deck", "capsule"].includes(caller) ? { kernelFacts: FACTS } : {};
       const as = /^mcp:agent:([a-z]+)$/.exec(caller);
       const chain = as ? { kernelChain: k.chains.fromFacts({ kind: "agent_session", agent: as[1], session: "s", thread: "t", vouched: true }) } : {};
-      try { return { data: await def.run(input, { caller, ...facts, ...chain }) }; }
+      try { return { data: await def.run(input, { caller, ...facts, ...chain, ...more }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
-    async ok(name, input = {}, caller = "cli") {
-      const r = await w.call(name, input, caller);
+    async ok(name, input = {}, caller = "cli", more = {}) {
+      const r = await w.call(name, input, caller, more);
       assert.ok(!r.error, `${name}: ${JSON.stringify(r.error)}`);
       return r.data;
     },

@@ -292,3 +292,25 @@ test("records: a to-do changed on its task record in the app (words, list, prior
   assert.equal(got.at, T0 + 2 * HOUR);
   assert.equal(got.next_fire, T0 + 2 * HOUR, "its ring follows the new due time");
 });
+
+test("records: a personal alarm follows the person: the zone of the device in hand moves the planner's zone and the alarm's next ring, unless they turned that off", async t => {
+  const w = await world(t, { tz: "Asia/Karachi" });
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Wake", wall: "07:00" });
+  const karachi = alarm.next_fire;
+  // The phone says it is in Los Angeles: the alarm is now 07:00 there.
+  await w.ok("planner.list", {}, "deck", { zone: "America/Los_Angeles" });
+  assert.equal((await w.ok("planner.settings", {})).timezone, "America/Los_Angeles");
+  const la = (await w.ok("planner.get", { item: alarm.id })).item.next_fire;
+  assert.notEqual(la, karachi, "the same wall time is another instant");
+  const { localParts } = await import("../../lib/time/index.js");
+  assert.deepEqual([localParts(la, "America/Los_Angeles").hour, localParts(la, "America/Los_Angeles").minute], [7, 0]);
+  // A zone that is not one is not believed; an agent's call is not a device; a shell on a server is the server's zone.
+  await w.ok("planner.list", {}, "deck", { zone: "Mars/Olympus" });
+  await w.ok("planner.list", {}, "mcp:agent:kit", { zone: "Asia/Tokyo" });
+  assert.equal((await w.ok("planner.settings", {})).timezone, "America/Los_Angeles");
+  // Turned off, travel is not followed.
+  await w.ok("planner.settings", { follow_device: false });
+  await w.ok("planner.list", {}, "deck", { zone: "Europe/London" });
+  assert.equal((await w.ok("planner.settings", {})).timezone, "America/Los_Angeles");
+  assert.equal((await w.ok("planner.settings", {})).follow_device, false);
+});

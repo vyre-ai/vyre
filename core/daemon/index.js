@@ -6,6 +6,7 @@
 // nowhere else. Networking over Tailscale is layered on later by the names module; the socket
 // is always the local way in and never leaves the machine.
 
+import { ZONE_HEADER, zoneFrom } from "../../lib/time/index.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import { execFile } from "node:child_process";
@@ -1291,7 +1292,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     /** @type {{ inside: boolean, outside?: boolean } | undefined} */
     const measured = socket && !policy.caller ? surfaceAncestry(shell, typeof registry.deps.devStandIn === "function" && registry.deps.devStandIn() === true, cliSession) : undefined; // not `ancestry`: that is the imported function used earlier in this handler
     const facts = callerFacts(caller, policy, via, kernelOf ? kernelOf() : null, capsuleOk, deviceRow, measured);
-    let result = await registry.call(name, input, caller, { ...via, ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
+    // The zone the calling device says it is in, only if it is a real one: tools read it as `meta.zone` (lib/time personZone); nothing a module passes can set it.
+    const deviceZone = typeof req.headers[ZONE_HEADER] === "string" ? zoneFrom(req.headers[ZONE_HEADER], "") : "";
+    let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
