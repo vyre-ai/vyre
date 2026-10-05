@@ -192,7 +192,7 @@ export default {
         // the Work engine's own lines: this module's tools, in each Space (the own Space through ctx.call, the other through its handle)
         const kn = { export: mem(from, "work.know.move-export"), import: mem(to, "work.know.move-import"), forget: mem(from, "work.know.move-forget") };
         const know = Object.values(kn).every(Boolean) ? kn : undefined;
-        const done = await runMove({ from, to, plan, ports: { state, save, move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(from.gw.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => from.gw.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        const done = await (async () => { try { return await runMove({ from, to, plan, ports: { state, save, onStep: (/** @type {string} */ n) => { if (process.env.VYRE_MOVE_TRACE) console.log("step", n); }, move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(from.gw.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => from.gw.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } }); } catch (e) { if (process.env.VYRE_MOVE_TRACE) console.log("trace", /** @type {Error} */ (e).stack); throw e; } })();
         if (!done.left_behind.length) db.prepare("DELETE FROM work_moves WHERE key = ?").run(key);
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
       },
