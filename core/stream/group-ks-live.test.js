@@ -279,7 +279,7 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   assert.ok(!repliesOf(watcher.frames).some(r => r.includes("SECRET") && r.includes("ok, continue")), "never merged into carol's turn");
 });
 
-test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", { todo: "OPEN with sessions: the Switchboard ends the previous turn's kernel session when the next asker's opens, and a reply still being closed by the stream is cut (not_found); see team/0.2/CHAT.md, chat to sessions, 4 Oct" }, async t => {
+test("V2: two people's waiting messages are two turns, in arrival order, each under its own asker", async t => {
   const w = await world(t);
   const b = await world0(w, t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
