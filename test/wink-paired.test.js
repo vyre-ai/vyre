@@ -1181,7 +1181,7 @@ test("the My Cloud upgrade end to end: a space made on the person's server has a
   const row = (await dcall("spaces.list")).data.find(x => x.id === home);
   assert.equal(row && row.upgraded_to, id);
   // the records are on the server, in the hosted space
-  for (const rid of ids) { const g = await dcall("records.get", { space: id, type: "note", id: rid }); assert.ok(!g.error && g.data.record.data.title, JSON.stringify(g.error)); }
+  for (const rid of ids) { const g = await dcall("records.get", { urn: `vyre://${id}/note/${rid}` }); assert.ok(!g.error && g.data.record.data.title, JSON.stringify(g.error)); }
   const late = await dcall("records.create", { space: home, type: "note", data: { title: "late" } });
   assert.equal(late.error && late.error.code, "moved", "Personal takes no new records");
 });
