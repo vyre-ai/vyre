@@ -139,7 +139,7 @@ export default {
     const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => {
       // the kernel gives the work module `moves.carryFiles` on its own handle (network-2, kernel/moves/carry.js: bytes go pool to pool inside the kernel, never to a module)
       const mv = kernelOf().moves || (from.gw && from.gw.moves);
-      if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id });
+      if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id, ...(o.upgrade_id ? { upgrade_id: o.upgrade_id } : {}) });
       if (to.gw && to.gw.records && typeof to.gw.records.define === "function") to.install = async (/** @type {any} */ c, /** @type {string[]} */ names) => {
         const defs = (await from.types(from.chain)).filter((/** @type {any} */ t) => names.includes(t.name));
         if (defs.length !== names.length) throw Object.assign(new Error("a record type of this project is not defined here, so it cannot be installed in the other Space"), { code: "blocked" });
@@ -349,7 +349,7 @@ export default {
     });
     ctx.tool("work.chat.upgrade-move", {
       description: "Move your chats from this Space to your other Space (Personal to My Cloud): each keeps its id, title and people, is filed under General there, and its files go sealed. A chat that cannot move is named in `left` and the others still do.",
-      input: obj({ to: { type: "string" }, move_id: { type: "string" } }, ["to"]),
+      input: obj({ to: { type: "string" }, move_id: { type: "string" }, upgrade_id: { type: "string" } }, ["to"]),
       run: async (input, extra) => {
         const k = kernelOf();
         const to = await sideOf(String(input.to), extra);
@@ -359,7 +359,7 @@ export default {
           const th = await ctx.call("threads.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { runs: [], events: [] });
           return { frames: st.frames, members: st.members, runs: th.runs, events: th.events };
         };
-        return runUpgrade({ from, to, rows: await upgradeRows(from), ports: { history, ...(input.move_id ? { move_id: String(input.move_id) } : {}) } });
+        return runUpgrade({ from, to, rows: await upgradeRows(from), ports: { history, ...(input.move_id ? { move_id: String(input.move_id) } : {}), ...(input.upgrade_id ? { upgrade_id: String(input.upgrade_id) } : {}) } });
       },
     });
     ctx.tool("work.chat.history-import", {

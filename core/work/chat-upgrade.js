@@ -89,7 +89,7 @@ async function generalIn(to) {
 
 /**
  * Move the chats. A throw for one chat is named in `left` and does not stop the others.
- * @param {{ from: any, to: any, rows: any[], ports?: { move_id?: string, history?: (chat: string) => Promise<any> } }} o
+ * @param {{ from: any, to: any, rows: any[], ports?: { move_id?: string, upgrade_id?: string, history?: (chat: string) => Promise<any> } }} o
  * @returns {Promise<{ moved: number, files: number, left: { chat: string, why: string }[] }>}
  */
 export async function runUpgrade({ from, to, rows, ports = {} }) {
@@ -115,7 +115,7 @@ export async function runUpgrade({ from, to, rows, ports = {} }) {
         const inv = (await from.drive.inventory(from.chain, r.data.drive, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat && foldersOf(r.data).some(f => String(e.path).startsWith(`${f}/`)));
         const entries = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${root}${String(e.path).slice(String(r.data.drive).length)}`, sha256: e.sha256, size: e.size }));
         if (entries.length) {
-          const got = await from.carry(entries, { move_id: ports.move_id, to: to.space });
+          const got = await from.carry(entries, { move_id: ports.move_id, ...(ports.upgrade_id ? { upgrade_id: ports.upgrade_id } : {}), to: to.space });
           const byPath = new Map((got || []).map((/** @type {any} */ g) => [g.dest, g.sha256]));
           for (const e of entries) if (e.sha256 && byPath.get(e.dest) !== e.sha256) throw new Error(`a chat file did not arrive intact (${e.path})`);
           files += entries.length;
