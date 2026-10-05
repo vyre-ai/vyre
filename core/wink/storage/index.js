@@ -14,7 +14,7 @@
 //   - It does not place data. Where chunks live, copy counts, draining and healing are the vault team's pool engine. remove({ drain: true })
 //     only records the intent and keeps the grant until the engine calls completeDrain(id).
 //
-// The seam for the pool engine (also in docs/work/tailnet.md, "Wink storage"):
+// The seam for the pool engine (also in team/archive/work-journals/tailnet.md, "Wink storage"):
 //   const s = createStorageDevices({ ctx, grants, vault, scanners, s3, admin });
 //   s.poolOffers()                       -> every live offer, with credentialRef and everything else the engine needs (internal; never a tool)
 //   await s.getCredentials(ref, { by })  -> { kind, location, accessKey, secretKey } for s3 and volume; { kind, location } for a drive; refuses unless `by` is the owner

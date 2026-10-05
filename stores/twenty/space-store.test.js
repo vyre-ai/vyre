@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { createStoreFor, preflight, nameOf, REQUIRE, spacesThatFit } from "./space-store.js";
+import { createStoreFor, preflight, nameOf, REQUIRE, spacesThatFit, requireFor, SERVER_FULL, MEASURED } from "./space-store.js";
 import { MEMORY_PROFILES } from "./provision.js";
 
 const dirs = [];
@@ -67,9 +67,9 @@ test("a Space name becomes a compose-safe name", () => { assert.equal(nameOf("sp
 test("the admission check and the container limits are the same numbers", () => {
   const caps = Object.values(MEMORY_PROFILES.small).reduce((a, b) => a + b, 0);
   assert.equal(REQUIRE.memoryMb, caps + 300);
-  assert.equal(spacesThatFit(REQUIRE.memoryMb), 1);
-  assert.equal(spacesThatFit(REQUIRE.memoryMb - 1), 0);
-  assert.equal(spacesThatFit(300 + 2 * caps), 2);
+  assert.equal(spacesThatFit(REQUIRE.memoryMb, 8192), 1);
+  assert.equal(spacesThatFit(REQUIRE.memoryMb - 1, 8192), 0);
+  assert.equal(spacesThatFit(300 + 2 * caps, 8192), 2);
 });
 
 test("a new hosted Space on a box too small for Twenty is not created until the person agrees; the plan is shown first", async () => {
@@ -129,6 +129,20 @@ test("storeMode in a packaged build: a server is Twenty unless the person said s
     assert.equal(storeMode(env, { server: true, root: pkg }), v === "sqlite" ? "sqlite" : "twenty", `server with ${v}`);
     assert.equal(storeMode(env, { server: false, root: pkg }), "sqlite", `device with ${v}`);
   }
+});
+
+test("a 4 GB server gets the tiny profile and its measured need; when there is no room the one plain line is the answer", async () => {
+  assert.equal(requireFor(8192), REQUIRE, "a bigger machine keeps the small profile's need");
+  assert.equal(requireFor(4096).memoryMb, MEASURED.tiny + 300);
+  assert.ok(requireFor(4096).memoryMb < REQUIRE.memoryMb);
+  const dir = tmp();
+  const mi = (mb) => () => `MemTotal: 4096000 kB\nMemAvailable: ${mb * 1024} kB\n`;
+  const ok = await preflight({ dir, totalMb: 4096, readMeminfo: mi(requireFor(4096).memoryMb + 10), docker: async () => true, statfs: () => ({ bavail: 1e9, bsize: 4096 }), helper: false });
+  assert.equal(ok.ok, true, ok.reasons.join("; "));
+  const full = await preflight({ dir, totalMb: 4096, readMeminfo: mi(1500), docker: async () => true, statfs: () => ({ bavail: 1e9, bsize: 4096 }), helper: false });
+  assert.equal(full.ok, false);
+  assert.ok(full.reasons[0].startsWith(SERVER_FULL), full.reasons[0]);
+  assert.equal(SERVER_FULL, "This server is full. Use a bigger server for another space.");
 });
 
 test("degrade: a Space whose store cannot be set up gets a store that answers unavailable, a state file says why, and the setup is tried again; when it works the kernel's definitions are applied and the store forwards", async () => {

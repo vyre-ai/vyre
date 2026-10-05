@@ -125,6 +125,8 @@ export function createRecords(cfg) {
 
   function mapError(/** @type {any} */ e) {
     if (e instanceof KernelError) return e;
+    // On Basic a type that is not one of the fixed personal types was never defined (a module's types are not made there): the person is told why, in the one line.
+    if (cfg.basic && e && e.code === "unknown_type") return new KernelError("cloud_required", cfg.basic.refusal);
     if (e && STORE_CODES.has(e.code)) return new KernelError(e.code, e.message);
     return new KernelError("unavailable", "the store could not answer", String(e && e.message));
   }
@@ -320,7 +322,7 @@ export function createRecords(cfg) {
       const label = words(t.label || t.name);
       const same = defs.find((/** @type {any} */ d) => d.name === t.name);
       if (!same) {
-        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
+        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) && seen.get(label) !== t.name ? { label: t.label } : null);
         if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
       }
       seen.set(label, t.name);
@@ -582,6 +584,8 @@ export function createRecords(cfg) {
 
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
+    // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
+    { const mv = cfg.isMoved ? cfg.isMoved() : null; if (mv) throw new KernelError("moved", "this space moved to My Cloud; work there", { to: mv.to }); }
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
@@ -693,7 +697,14 @@ export function createRecords(cfg) {
   }
 
   async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
-    const id = mintUuid(clock());
+    // `{ import: true, id }`: a record moved here from another space of the person's keeps its id (links, chats and memory point at ids). An admin act of its own (`records.import`), and the id is a time-prefixed uuid.
+    let id = mintUuid(clock());
+    if (opts.import === true) {
+      if (!isUuid(String(opts.id))) throw new KernelError("bad_input", "an imported record keeps a time-prefixed uuid id");
+      id = String(opts.id);
+      checkType(type);
+      await gate(chain, "records.import", urn(type, id));
+    } else if (opts.id !== undefined) throw new KernelError("bad_input", "ids are the kernel's to mint; an import says so");
     const a = opts.attrs || {};
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
     const last = chain.hops[chain.hops.length - 1].actor;
@@ -706,7 +717,7 @@ export function createRecords(cfg) {
     }
     const forWho = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || (opts.on_behalf ? opts.on_behalf.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : undefined);
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...(forWho ? { created_for: `person:${forWho.actor.id}` } : {}), ...a };
-    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
+    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data, { attrs, urn: urn(type, id) }), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
     return rec;
   }
@@ -720,11 +731,13 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
+      // A Basic (device) install holds only the fixed personal types: a custom type needs a Cloud space.
+      if (cfg.basic) for (const n of [...(diff.add_types || []).map((/** @type {any} */ t) => t.name), ...(diff.change_types || []).map((/** @type {any} */ t) => t.name), ...(diff.remove_types || [])]) if (!cfg.basic.allow.has(String(n))) throw new KernelError("cloud_required", cfg.basic.refusal);
       checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff, chain, o);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space
-      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch { throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
+      { let known = []; try { known = typeof store.types === "function" ? await store.types() : []; } catch (e) { if (/** @type {any} */ (store).refusing === true) throw e; throw new KernelError("unavailable", "the type definitions could not be read, so the links were not checked"); }
         diff = withInverses(diff, known); }
       const unrequire = (/** @type {any} */ t) => (t.fields || []).some((/** @type {any} */ f) => (f.hidden === true || f.computed) && (f.required || f.unique)) ? { ...t, fields: t.fields.map((/** @type {any} */ f) => ((f.hidden === true || f.computed) && (f.required || f.unique) ? { ...f, required: false, unique: false } : f)) } : t;
       diff = { ...diff, ...(diff.add_types ? { add_types: diff.add_types.map(unrequire) } : {}), ...(diff.change_types ? { change_types: diff.change_types.map(unrequire) } : {}) };
@@ -990,7 +1003,7 @@ export function createRecords(cfg) {
     },
 
     async create(chain, type, data, opts = {}) {
-      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
+      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs, ...(opts.import === true ? { id: opts.id } : {}) }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
       const cell = { patch };
@@ -1114,7 +1127,7 @@ export function createRecords(cfg) {
       try { keep = await store.get(type, keepId); drop = await store.get(type, dropId); defs = await store.types(); } catch (e) { throw mapError(e); }
       if (!keep || !drop || keep.deleted_at || drop.deleted_at) throw new KernelError("not_found", "no such record");
       const def = defs.find((/** @type {any} */ t) => t.name === type);
-      if (!def) throw new KernelError("unknown_type", `no type ${type}`);
+      if (!def) throw cfg.basic ? new KernelError("cloud_required", cfg.basic.refusal) : new KernelError("unknown_type", `no type ${type}`);
       const LISTS = new Set(["multi_choice", "emails", "phones", "urls"]);
       /** @type {Record<string, any>} */ const patch = {}, conflicts = {};
       const sealed_left = [];

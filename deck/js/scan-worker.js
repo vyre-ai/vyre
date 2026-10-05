@@ -9,7 +9,7 @@
 // ~1-2s of work off the main thread, it does not make that work faster. The actual speed lever -
 // a cheap localization pre-pass so the full search only has to refine near the code's real
 // position/scale instead of a blind sweep - is a separate, larger algorithmic change, not built
-// here; see scan.js's own perf note and docs/work/pwa.md's "Next".
+// here; see scan.js's own perf note and team/archive/work-journals/pwa.md's "Next".
 //
 // Protocol: postMessage({ data: Uint8ClampedArray (transferred), width, height, geo }) ->
 // postMessage({ ticket: number[] | null }) (a plain array, not a Uint8Array - structured clone

@@ -1178,7 +1178,7 @@ if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
   case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
 fi
 # ---------------------------------------------------------------------------------------------------------------------------------------------
-# The Space helper: the root side of a Space's Twenty store (docs/work/space-helper.md, Revision 2). Linux only.
+# The Space helper: the root side of a Space's Twenty store (team/archive/work-journals/space-helper.md, Revision 2). Linux only.
 #
 # vyred (uid DAEMON_UID in its container) drops one file `req-<32 hex>` holding `<verb> <space>` into SP_SPOOL, a folder it alone can write; a root path unit
 # runs `space-helper-run`. The request is data: it is CLAIMED by rename into a root-only folder, looked at with stat, parsed whole against one anchored
@@ -1455,6 +1455,8 @@ sp_swap() {
     ( umask 077; fallocate -l 2G "$SP_SWAPFILE" 2>/dev/null || dd if=/dev/zero of="$SP_SWAPFILE" bs=1M count=2048 2>/dev/null ) || { sp_log "swap: could not make $SP_SWAPFILE"; rm -f "$SP_SWAPFILE"; return 0; }
     chmod 600 "$SP_SWAPFILE" && mkswap "$SP_SWAPFILE" >/dev/null 2>&1 || { sp_log "swap: mkswap failed"; rm -f "$SP_SWAPFILE"; return 0; }
   fi
+  # an existing file is used only if it is what this function makes: a regular file, owned by root, mode 600 (never one another user could have left or can read)
+  [ "$(stat -c '%F|%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "regular file|root|600" ] || { sp_log "swap: $SP_SWAPFILE is not a root-owned 0600 file; left alone"; return 0; }
   swapon "$SP_SWAPFILE" 2>/dev/null || { sp_log "swap: swapon failed"; return 0; }
   grep -qF "$SP_SWAPFILE" /etc/fstab 2>/dev/null || printf '%s none swap sw 0 0\n' "$SP_SWAPFILE" >>/etc/fstab 2>/dev/null || true
   sp_log "swap: turned on 2 GB at $SP_SWAPFILE (this server has ${mt} MB of memory and had no swap)"
@@ -1523,7 +1525,7 @@ STAT
   case "$LINE" in *"
 "*) MSG="not exactly one line"; return 1 ;; esac
   v_=${LINE%% *}; n_=${LINE#* }
-  # publish-fill takes a Space's id, a site folder and a deployment, never a path (docs/work/space-helper.md, the publish-fill verb): three tokens, each from its own anchored pattern.
+  # publish-fill takes a Space's id, a site folder and a deployment, never a path (team/archive/work-journals/space-helper.md, the publish-fill verb): three tokens, each from its own anchored pattern.
   if [ "$v_" = publish-fill ]; then
     printf '%s\n' "$n_" | grep -Eqx 'spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}' && return 0
     MSG="not a request the helper knows"; return 1

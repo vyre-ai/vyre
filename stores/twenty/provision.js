@@ -41,12 +41,14 @@ export function names(space) {
 
 /**
  * Memory limits in MB for one Space's four containers. `small` is for a Space on a small box (a few people, a few thousand
- * records): it is measured, not guessed (see docs/work/records.md for the runs). `standard` leaves Docker's default (none).
+ * records): it is measured, not guessed (see team/archive/work-journals/records.md for the runs). `standard` leaves Docker's default (none).
  * A caller may give its own numbers.
  */
 export const MEMORY_PROFILES = Object.freeze({
   // `tiny` is for ONE Space on a 4 GB server (the person never picks it: "auto" chooses by the machine's memory). Lower server and worker caps than `small`; a Node heap is set at 70% of each cap.
-  tiny: Object.freeze({ server: 1024, worker: 640, db: 192, redis: 64 }),
+  // measured on a real Twenty in a 3 GB cgroup (the stack of a 4 GB server less the OS and the daemon): no restart or kill, container peaks server 1196, worker 892, db 109, redis 25 = 2221 MB. The caps sit at the peaks, so
+  // there is no headroom beyond the swap the helper turns on. (1024 and 640 crash-looped the worker.)
+  tiny: Object.freeze({ server: 1200, worker: 900, db: 192, redis: 64 }),
   small: Object.freeze({ server: 1536, worker: 1024, db: 256, redis: 96 }),
   standard: null,
 });
@@ -574,5 +576,5 @@ export async function rotateApiKey(o) {
   return { rotated: true, expiresAt: exp };
 }
 
-/** The role the gateway's key takes. Admin until the narrowest role that works has been researched (docs/work/records.md). */
+/** The role the gateway's key takes. Admin until the narrowest role that works has been researched (team/archive/work-journals/records.md). */
 export const KEY_ROLE = "Admin";

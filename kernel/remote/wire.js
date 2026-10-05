@@ -14,6 +14,8 @@ export const REPLAY_WINDOW_MS = 5 * 60 * 1000;
 /** The calls that cross, by gateway group. Anything not here is refused (`no_such_call`); a call is only ever looked up, never built from a name. */
 export const CALLS = Object.freeze({
   grants: ["create", "revoke", "narrow", "list", "setRole", "removeMember", "transferOwner", "addActor", "members.list", "members.get", "invites.create", "invites.confirm", "invites.accept", "invites.get", "offers.offer", "offers.unoffer", "offers.lend", "offers.unlend"],
+  // A project moving out to another Space: approved once, with the person's own proof (the source's sealing process checks it); the receiving side and the finish are the spaces module's tools.
+  moves: ["out", "outMany"],
   records: ["definitions", "define", "get", "reference", "query", "aggregate", "search", "create", "update", "remove", "restore"],
   memory: ["file", "recall", "retire"],
   tasks: ["request", "get", "start", "complete", "revise", "decide", "stuck", "skip", "unblock", "card", "needsYou"],
@@ -21,9 +23,9 @@ export const CALLS = Object.freeze({
   // A sealed value goes to the HOME's sealing process, never into the record: the person's own act on a space on a server (reveal carries the person's proof for the home's own challenge: the home checks it at its sealing process)
   seal: ["put", "reveal"],
   surfaces: ["open", "revoke"],
-  // A member's computer running one of this Space's sessions (docs/work/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
+  // A member's computer running one of this Space's sessions (team/archive/work-journals/runner.md, "The lent-computer wire"). `leases` is the gateway's (the lease is bound to the member, the device and its
   // key and issued only while both Offers stand); `lent` is a SERVICE the home registers (core/runner/lent-home.js): the session's definition, its transcript, files (in chunks) and checkpoints.
-  leases: ["issue", "renew", "use"],
+  leases: ["issue", "renew", "use", "reinstate"],
   lent: ["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"],
 });
 

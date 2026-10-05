@@ -4,7 +4,7 @@
 // attempt is real work, see the perf note below), and hands each grab to a decode Worker
 // (scan-worker.js) until one resolves to a real (RS/CRC-valid) ticket, or the caller stops it.
 //
-// Deliberately NOT a live 30fps scan loop: docs/work/pwa.md's harness measurement puts a single
+// Deliberately NOT a live 30fps scan loop: team/archive/work-journals/pwa.md's harness measurement puts a single
 // full decode attempt at roughly 1-2s of JS work (a continuous 0-360deg x 9-scale search, tried
 // candidate-by-candidate until one RS-validates). This throttles to one attempt in flight at a
 // time, spaced by ATTEMPT_MS.
@@ -16,7 +16,7 @@
 // attempt target: it moves the same cost off the main thread, it doesn't make it smaller. The
 // actual speed lever - a cheap localization pre-pass so the search only refines near the code's
 // real position/scale instead of a blind sweep - is a separate, larger change, not built here;
-// see decode-core2.js's own perf note and docs/work/pwa.md's "Next".
+// see decode-core2.js's own perf note and team/archive/work-journals/pwa.md's "Next".
 //
 //   startScan({ video, onFound, onError, onSlow }) -> { stop() }
 //     video: an existing <video> element this attaches the camera stream to (muted, playsinline,
@@ -24,7 +24,7 @@
 //     onSlow(): called once, ~2s after scanning starts, if nothing has decoded yet (team-lead,
 //     2026-09-28) - a plain hint ("Hold your phone straight on to the screen") for the common
 //     real cause, since the perspective-correction search is the weakest part of this decoder
-//     (docs/work/pwa.md's own numbers). Not itself a sign anything is wrong; scanning keeps
+//     (team/archive/work-journals/pwa.md's own numbers). Not itself a sign anything is wrong; scanning keeps
 //     going exactly as before, this only adds a hint on top.
 //     onFound(ticket, avatarDataUrl): called once, the first time a frame decodes. `ticket` is
 //     the raw 8-byte value AS BYTES, never as a string - deck/js/pair-ticket.js is the only

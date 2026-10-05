@@ -19,6 +19,7 @@ import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
 import { chooseDoer } from "./assign.js";
+import { requestBind, actBind } from "../seal/uses.js";
 import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
 export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
@@ -490,7 +491,7 @@ export class FlowRunner {
         if (rules && rules.draftOnly && !draftAs) throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${labelOf(ctx.cat, s.action)} has no way to prepare a draft, so nothing was sent`);
         const r = await this.ports.call(this.#chain(ctx), draftAs || s.action, s.resource, val(s.input), { idem: draftAs ? `${idem}:draft` : idem });
         return draftAs ? { draft: true, via: draftAs, result: r } : r;
-      }, { input: val(s.input) }); break;
+      }, { input: val(s.input), bind: actBind({ action: s.action, resource: s.resource, input: val(s.input) }) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
       case "extract": out = await this.#extract(ctx, s, key, val); break;
       case "service": out = await this.#service(ctx, s, key, val); break;
@@ -503,6 +504,7 @@ export class FlowRunner {
 
   /** @param {any} ctx */
   #chain(ctx) {
+    if (ctx.actAs) return ctx.actAs;
     const r = ctx.run;
     return this.chains.forFlow({ flow: r.flow, space: r.space, approver: r.approver, tainted: r.tainted, run: r.id, source_spaces: r.source_spaces });
   }
@@ -513,7 +515,7 @@ export class FlowRunner {
    * Check the caps, ask the kernel, and handle ask and deny. Runs `act(idem)` only when the step may go ahead. The ledger records "started" before
    * the act and the caller records "done" after, so a crash in between replays the act with the same idempotency key.
    * @param {any} ctx @param {any} s @param {string} key @param {{ action: string, resource: string }} need
-   * @param {(idem: string, approval?: string, rules?: { draftOnly?: { rule?: string, label?: string } }) => Promise<any>} act @param {{ input?: any, input_class?: string }} [info]
+   * @param {(idem: string, approval?: string, rules?: { draftOnly?: { rule?: string, label?: string } }) => Promise<any>} act @param {{ input?: any, input_class?: string, bind?: string }} [info]
    */
   async #effect(ctx, s, key, need, act, info = {}) {
     const run = ctx.run;
@@ -531,7 +533,10 @@ export class FlowRunner {
       if (!approved) throw new StepFail("refused", `a person said no to step ${s.id}`);
     }
     const approvedTask = run.steps[askKey] && run.steps[askKey].status === "done" ? run.steps[askKey].task : undefined;
-    const d = await this.k.authorize({ chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask } : {}) });
+    // An approved act is the task's DOER's to carry out (the approval is a single-use authority for exactly that act, given to the doer: the Flows service under the approver): the run presents the approval
+    // as the doer, and this check only looks at it (peek): the act's own gate below it spends the one use.
+    const doerChain = approvedTask && this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
+    const d = await this.k.authorize({ chain: doerChain || chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, peek: true, ...(info.bind ? { bind: info.bind } : {}) } : {}) });
     let effect = d.effect;
     // Standing rules for the space (DESIGN-flows-joints 5a, enforced in the kernel's authorize): a rule only tightens, and its refusal names itself.
     const obl = Array.isArray(d.obligations) ? d.obligations : [];
@@ -558,6 +563,7 @@ export class FlowRunner {
           ...(doerChain ? { doer: { kind: "service", id: "flows", space: run.space }, checker: namedChecker || run.approver } : { doer: namedChecker && namedChecker.kind ? namedChecker : run.approver }),
           output: { kind: "decision" }, source: "flow_step",
           form: { kind: "held_act", flow: run.flow, run: run.id, step: s.id, action: need.action, resource: need.resource, why: reason, trigger_source: run.trigger.kind, input: info.input ?? null,
+            ...(info.bind ? { bind: info.bind } : {}),
             ...(alwaysAsk ? { rule: alwaysAsk.rule, waivable: false, ...(alwaysAsk.approver && alwaysAsk.approver.role ? { approver_role: alwaysAsk.approver.role } : {}) } : {}) } }, { idem: `${run.id}:${askKey}` });
         if (doerChain) {
           // the Flow's service asks: it does the task (a yes with its reason), which puts it in front of the checker; a replay finds it already started
@@ -574,7 +580,8 @@ export class FlowRunner {
     if (!ctx.dry) await this.#mark(ctx, key, { status: "started" });
     if (ctx.dry) ctx.dryEffects = [...(ctx.dryEffects || []), { step: s.id, action: need.action, resource: need.resource, risk, effect }];
     // Draft only: the action is prepared as a draft in the outside system and NEVER sent, even with an approval in hand.
-    return act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined);
+    ctx.actAs = doerChain;
+    try { return await act(`${run.id}:${key}`, approvedTask, draftOnly ? { draftOnly: { rule: draftOnly.rule, label: d.rule && d.rule.label } } : undefined); } finally { ctx.actAs = null; }
   }
 
   /** @param {any} ctx @param {any} s @param {string} text */
@@ -694,7 +701,7 @@ export class FlowRunner {
         readback = { ok: true, path: pair.path, checked: Object.keys((op.readback && op.readback.compare) || {}).length };
       }
       return { ...(asDraft ? { draft: true } : {}), response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(readback ? { readback } : {}), ...(files.length ? { files } : {}) };
-    }, { input: request.body === undefined ? null : request.body });
+    }, { input: request.body === undefined ? null : request.body, bind: requestBind({ connector: s.connector, method: String(s.method || "GET"), path: request.path, query: request.query, body: request.body, headers: request.headers, upload: request.upload, saveTo: request.saveTo }) });
   }
 
   /**
