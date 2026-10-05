@@ -306,7 +306,7 @@ export async function createKernel(cfg) {
         if (!a || String(a.to) !== String(o.person)) throw new KernelError("not_allowed", "only the identity that owns this home gets its first presence key here");
         const chain = chains.fromFacts({ kind: "device", device_key_id: String(o.device), person: String(o.person), path: "direct" });
         const { token } = await cfg.sealer.begin({ chain, person: o.person, key_id: o.key_id, spki: o.spki });
-        return cfg.sealer.enrol({ chain, person: o.person, key_id: o.key_id, spki: o.spki, signer: o.signer, token });
+        return cfg.sealer.enrol({ chain, person: o.person, key_id: o.key_id, spki: o.spki, signer: o.signer, ...(o.rp ? { rp: o.rp } : {}), token });
       };
 
       const reg = () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces; };

@@ -972,7 +972,7 @@ export function createPairing(o) {
         const signer = storage === "software" ? "software" : kindOk ? String(confirmed.signer) : null;
         if (!signer) return null;
         const der = Buffer.from(confirmed.key, "base64url");
-        return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer };
+        return { device, key_id: presenceKeyId(der), spki: der.toString("base64"), signer, ...(signer === "webauthn_platform" && typeof confirmed.rp === "string" ? { rp: confirmed.rp } : {}) };
       } catch { return null; }
     };
     /**

@@ -21,7 +21,7 @@ export function authenticator(o = {}) {
   const rpHash = (/** @type {string} */ r) => crypto.createHash("sha256").update(r).digest();
   const seen = { creates: 0, gets: 0 };
   return {
-    seen, credentialId,
+    seen, credentialId, rp, spki: publicKey.export({ format: "der", type: "spki" }).toString("base64"),
     async create(/** @type {any} */ opts) {
       seen.creates++;
       if (o.refuse) throw Object.assign(new Error("denied"), { name: "NotAllowedError" });

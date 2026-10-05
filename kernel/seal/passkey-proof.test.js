@@ -51,17 +51,19 @@ test("a passkey's yes is refused for another act, another person's chain, a chan
   assert.equal(ask(p, proof, ch, "seal.reveal", { ref: "seal_y", purpose: "p" }), "wrong_payload", "other fields");
   assert.equal(ask(p, { ...proof }, ch, "seal.reveal", fields), "bad_signature", "a copy of a checked proof is not the checked proof (identity, not content)");
   const bob = person("per_bob");
-  assert.equal(ask(p, proof, bob, "seal.reveal", fields), "chain_not_person" === ask(p, proof, bob, "seal.reveal", fields) ? "chain_not_person" : ask(p, proof, bob, "seal.reveal", fields), "another person");
+  assert.equal(ask(p, proof, bob, "seal.reveal", fields), "unknown_key", "another person");
   // a tampered envelope, a signature for other bytes, and a passkey made for another site never pass the verifier
   const other = await passkeyProof(auth, key_id, ch, "seal.reveal", fields, { issued: now() });
   const tampered = { ...other, nonce: "different" }; // the assertion's challenge covered the other bytes
   await p.preverify({ tampered });
   assert.equal(ask(p, tampered, ch, "seal.reveal", fields), "bad_signature");
-  const e2 = await enrolled("evil.example");
-  const fp = await passkeyProof(e2.auth, e2.key_id, e2.ch, "seal.reveal", fields, { issued: e2.now() });
-  const lie = { ...fp }; // the box holds the rp the key was enrolled with; an assertion from another origin fails the origin rule
-  await e2.p.preverify({ lie });
-  assert.equal(ask(e2.p, lie, e2.ch, "seal.reveal", fields), "bad_signature");
+  // a key enrolled for app.vyre.run whose authenticator answers for another site: the rp hash and the origin do not match what the box holds
+  const evil = authenticator({ rp: "evil.example" }), kE = "pk_evil", pE = new Presence(() => 4_000_000, {});
+  const tk = pE.begin({ person: "per_alex", key_id: kE, spki: evil.spki });
+  assert.deepEqual(pE.enrol({ person: "per_alex", key_id: kE, spki: evil.spki, signer: "webauthn_platform", rp: "app.vyre.run", token: tk.token, ctx: chainCtx(ch) }), { attested: false });
+  const lie = await passkeyProof(evil, kE, ch, "seal.reveal", fields, { issued: 4_000_000 });
+  await pE.preverify({ lie });
+  assert.equal(ask(pE, lie, ch, "seal.reveal", fields), "bad_signature", "an assertion for another site");
   // user not verified: the authenticator's flags without UV
   const noUv = authenticator({});
   const k3 = "pk_nouv", p3 = new Presence(() => 3_000_000, {});

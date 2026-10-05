@@ -617,7 +617,7 @@ export default {
       obj({ key_id: str, spki: str, signer: str, token: str, attestation: obj() }, ["key_id", "spki", "signer", "token"]), async (i, meta) => {
         const P = needPresence(), st = me();
         const bind = { eid: /** @type {string} */ (st.eid), sig: b64u(await identity.sign(bindBytes(String(st.id), String(i.key_id), String(i.spki)))) };
-        return P.recover({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), bind, key_id: String(i.key_id), spki: String(i.spki), signer: String(i.signer), token: String(i.token), ...(i.attestation ? { attestation: i.attestation } : {}) });
+        return P.recover({ chain: await ctx.kernel.chain(meta), person: st.id, ops: identity.ops(), bind, key_id: String(i.key_id), spki: String(i.spki), signer: String(i.signer), ...(typeof i.rp === "string" ? { rp: i.rp } : {}), token: String(i.token), ...(i.attestation ? { attestation: i.attestation } : {}) });
       });
     tool("spaces.presence.sync", "Send the sealing process your current identity list, so a device you removed loses its presence key at once.", obj(), async (_i, meta) => { me(); needPresence(); await syncPresence(meta); return { ok: true }; });
 
@@ -1034,7 +1034,7 @@ export default {
       /** @type {{ enrolled: boolean, reason?: string }} */ let presence = { enrolled: false, reason: "no presence key offered" };
       const pk = i.presence_key;
       if (pk && typeof pk === "object" && typeof K.enrolOwnerKey === "function") {
-        try { await K.enrolOwnerKey({ person: id, device: String(pk.device), key_id: String(pk.key_id), spki: String(pk.spki), signer: String(pk.signer) }); presence = { enrolled: true }; }
+        try { await K.enrolOwnerKey({ person: id, device: String(pk.device), key_id: String(pk.key_id), spki: String(pk.spki), signer: String(pk.signer), ...(typeof pk.rp === "string" ? { rp: pk.rp } : {}) }); presence = { enrolled: true }; }
         catch (e) { presence = { enrolled: false, reason: String(/** @type {any} */ (e).code || "failed").slice(0, 40) }; ctx.log.warn(`the owner's presence key was not enrolled (${presence.reason})`); }
       }
       return { owner: r.owner, previous: r.previous, changed: r.changed, presence };
