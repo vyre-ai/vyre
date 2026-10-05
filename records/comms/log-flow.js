@@ -5,7 +5,8 @@
 //
 //   upsert   one Communication per item, keyed on its source_key (the connector and the item's own id), so seeing the same thing twice files it once and a changed meeting updates it
 //   repeat   for each person on it: find the contact by main email, else by a further address (a contact point), and file one Participant linking them, or keeping the bare address when
-//            nobody matches (or, when the switch is on, making the contact first)
+//            nobody matches (or, when the switch is on, making the contact first); a matched or made contact is also added to the Communication's own `contacts` link (many to many, with
+//            "Communications" on the Contact), so a contact's page lists every email and meeting without reading Participants
 //
 // It reads and writes records and calls no outside service: logging never sends. The item is from outside, so the run is tainted, which only matters for steps that send, and there are none.
 
@@ -20,18 +21,20 @@ import { WATCHER_NAME_RE } from "../../kernel/flows/triggers.js";
 export function logCommunicationsFlow(o) {
   if (!WATCHER_NAME_RE.test(o.watcher)) throw new Error("name the watcher the connector's poll made");
   const slug = o.watcher.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  // the Communication also links straight to each Contact on it (many to many, "Communications" on the Contact), beside the Participant that keeps how they were on it
+  const link = (/** @type {string} */ id, /** @type {string} */ contact) => ({ id, kind: "update", type: "communication", record: { expr: "steps.comm.record" }, set: { contacts: { add: [{ urn: { expr: contact } }] } } });
   const noContact = { id: "p_bare", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: {} };
   const unknown = [
     { id: "p_new", kind: "create", type: "contact", set: { name: { expr: "person.address" }, email: { expr: "person.address" } } },
-    { id: "p_made", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: { contact: { urn: { expr: "steps.p_new.record.urn" } } } },
+    { id: "p_made", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: { contact: { urn: { expr: "steps.p_new.record.urn" } } } }, link("l_made", "steps.p_new.record.urn"),
   ];
   const perPerson = [
     { id: "by_email", kind: "pick", type: "contact", where: "record.email == person.address" },
     { id: "by_point", kind: "pick", type: "contact_point", where: "record.address == person.address" },
     { id: "match", kind: "decide", if: "steps.by_email.found",
-      then: [{ id: "p_main", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: { contact: { urn: { expr: "steps.by_email.record.urn" } } } }],
+      then: [{ id: "p_main", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: { contact: { urn: { expr: "steps.by_email.record.urn" } } } }, link("l_main", "steps.by_email.record.urn")],
       else: [{ id: "point", kind: "decide", if: "steps.by_point.found",
-        then: [{ id: "p_point", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: { contact: { urn: { expr: "steps.by_point.record.data.contact.urn" } } } }],
+        then: [{ id: "p_point", kind: "upsert", type: "participant", match: { communication: { urn: { expr: "steps.comm.record.urn" } }, address: { expr: "person.address" }, how: { expr: "person.how" } }, set: { contact: { urn: { expr: "steps.by_point.record.data.contact.urn" } } } }, link("l_point", "steps.by_point.record.data.contact.urn")],
         else: o.createUnknown ? unknown : [noContact] }] },
   ];
   const people = o.skipInternal
