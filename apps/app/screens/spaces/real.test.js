@@ -5,14 +5,14 @@ import assert from "node:assert/strict";
 import { shapeSpaces, shapeMembers, roleNames, personName, daysLeft, setRoleInput, extendedTo, shapeProjects, warningLines, homeWords } from "./real.js";
 
 // Shapes captured from a kernel-on vyred (spaces.list, spaces.members.list, spaces.roles.names).
-const LIST = [{ id: "spc_a58c2e0dbfb34fc2", name: "harlowdev.vyre.run", label: "harlowdev", displayName: "Harlow Legal", status: "done", home: { kind: "this-computer", device: { id: "u7", name: "this computer", alwaysOn: false } }, role: "owner", aliases: [], workspaceId: null, warnings: [], createdAt: 1, setup: null }];
+const LIST = [{ id: "spc_a58c2e0dbfb34fc2", name: "juniperdev.vyre.run", label: "juniperdev", displayName: "Juniper Studio", status: "done", home: { kind: "this-computer", device: { id: "u7", name: "this computer", alwaysOn: false } }, role: "owner", aliases: [], workspaceId: null, warnings: [], createdAt: 1, setup: null }];
 const MEMBERS = { space: "spc_a58c2e0dbfb34fc2", members: [
   { space: "s", person: "per_pbiglgp6ji6jzrnbskpuzw77np", role: "owner", added_by: "per_pbiglgp6ji6jzrnbskpuzw77np", added_at: 1, role_label: "Owner" },
   { space: "s", person: "per_dana000000", role: "temp", scope: ["prj_1"], expires: Date.UTC(2026, 9, 14), role_label: "Temp" },
 ], warnings: [{ code: "single_owner", message: "This space has one owner." }] };
 
 test("a space card reads the display name, address, role and home", () => {
-  assert.deepEqual(shapeSpaces(LIST), [{ id: "spc_a58c2e0dbfb34fc2", name: "Harlow Legal", address: "harlowdev.vyre.run", role: "owner", zone: null, home: "this computer", setup: null }]);
+  assert.deepEqual(shapeSpaces(LIST), [{ id: "spc_a58c2e0dbfb34fc2", name: "Juniper Studio", address: "juniperdev.vyre.run", role: "owner", zone: null, home: "this computer", setup: null }]);
   assert.equal(shapeSpaces([{ ...LIST[0], time_zone: "America/Los_Angeles" }])[0].zone, "America/Los_Angeles");
   assert.deepEqual(shapeSpaces(null), []);
   assert.equal(homeWords({ kind: "server" }), "your server");

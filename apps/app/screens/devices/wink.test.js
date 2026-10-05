@@ -47,12 +47,12 @@ test("a computer is lent only when both sides say yes", () => {
 
 test("lists read like a sentence", () => {
   assert.equal(list(["Mine"]), "Mine");
-  assert.equal(list(["Mine", "Harlow Legal"]), "Mine and Harlow Legal");
+  assert.equal(list(["Mine", "Juniper Studio"]), "Mine and Juniper Studio");
   assert.equal(list(["A", "B", "C"]), "A, B and C");
 });
 
 test("a device says which spaces it is in", () => {
-  assert.equal(deviceLine("Alex's Mac", ["Mine", "Harlow Legal"]), "Alex's Mac is in Mine and Harlow Legal");
+  assert.equal(deviceLine("Alex's Mac", ["Mine", "Juniper Studio"]), "Alex's Mac is in Mine and Juniper Studio");
   assert.equal(deviceLine("Alex's Mac", []), "Alex's Mac is not in any space");
 });
 

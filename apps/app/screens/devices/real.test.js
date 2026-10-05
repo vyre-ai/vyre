@@ -29,8 +29,8 @@ test("times read as the screen words them", () => {
 });
 
 test("spaces.list names the spaces, and every device is in the person's spaces", () => {
-  const names = spaceNames([{ id: "spc_a58c2e0dbfb34fc2", name: "harlowdev.vyre.run", label: "harlowdev", displayName: "Harlow Legal", role: "owner" }, { id: "spc_2", label: "mine" }]);
-  assert.deepEqual(names, { spc_a58c2e0dbfb34fc2: "Harlow Legal", spc_2: "mine" });
+  const names = spaceNames([{ id: "spc_a58c2e0dbfb34fc2", name: "juniperdev.vyre.run", label: "juniperdev", displayName: "Juniper Studio", role: "owner" }, { id: "spc_2", label: "mine" }]);
+  assert.deepEqual(names, { spc_a58c2e0dbfb34fc2: "Juniper Studio", spc_2: "mine" });
   assert.deepEqual(deviceSpaces(["d1"], names), { d1: ["spc_a58c2e0dbfb34fc2", "spc_2"] });
   assert.deepEqual(spaceNames(undefined), {});
 });

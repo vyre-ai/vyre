@@ -38,14 +38,14 @@ test("three autonomy levels and five budget steps", () => {
 });
 
 test("settings has five groups and the space group carries the space name", () => {
-  const g = settingsGroups("Harlow Legal");
+  const g = settingsGroups("Juniper Studio");
   assert.equal(g.length, 5);
-  assert.equal(g[2].title, "Harlow Legal");
+  assert.equal(g[2].title, "Juniper Studio");
   assert.ok(g.flatMap((x) => x.rows).every((r) => r[2].startsWith("/u/")));
 });
 
 test("settings hides what a role cannot use", () => {
-  const hrefs = (role) => settingsGroups("Harlow Legal", role).flatMap((g) => g.rows).map((r) => r[2]);
+  const hrefs = (role) => settingsGroups("Juniper Studio", role).flatMap((g) => g.rows).map((r) => r[2]);
   assert.ok(hrefs(undefined).includes("/u/settings/rules"));
   assert.ok(hrefs("admin").includes("/u/settings/customize"));
   assert.ok(!hrefs("member").includes("/u/settings/customize"));

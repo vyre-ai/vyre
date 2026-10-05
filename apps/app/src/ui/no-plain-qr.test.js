@@ -38,5 +38,5 @@ test("a Wink code is unique per ticket and the same for one ticket", () => {
 
 test("each kind says its own words", () => {
   assert.equal(KINDS.device.words(), "Add your device");
-  assert.equal(KINDS.join.words("Harlow Legal"), "Join Harlow Legal");
+  assert.equal(KINDS.join.words("Juniper Studio"), "Join Juniper Studio");
 });

@@ -101,10 +101,10 @@ test("who it is for: three answers, and a space for one person has nobody to inv
 });
 
 test("who it is for is kept with the progress and with what the box keeps", () => {
-  const raw = packProgress({ step: "look", name: "alex", spaceName: "Harlow Legal", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone", who: "personal" });
+  const raw = packProgress({ step: "look", name: "alex", spaceName: "Juniper Studio", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone", who: "personal" });
   assert.equal(unpackProgress(raw).who, "personal");
-  assert.equal(unpackProgress(packProgress({ step: "look", name: "alex", spaceName: "Harlow Legal", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone" })).who, "team");
-  assert.equal(setupFrom({ step: "look", name: "Harlow Legal", addr: null, look: "amber", where: "server", connectors: [], kit: null, who: "client" }).picks.who, "client");
+  assert.equal(unpackProgress(packProgress({ step: "look", name: "alex", spaceName: "Juniper Studio", addr: null, look: "amber", where: "server", pairTo: "me", device: "phone" })).who, "team");
+  assert.equal(setupFrom({ step: "look", name: "Juniper Studio", addr: null, look: "amber", where: "server", connectors: [], kit: null, who: "client" }).picks.who, "client");
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "personal" } } }).who, "personal");
   assert.equal(applyClaim({ space: "s", setup: { step: "members", picks: { who: "x" } } }).who, "team");
 });

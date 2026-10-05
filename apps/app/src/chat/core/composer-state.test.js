@@ -16,7 +16,7 @@ import { scorePath, compareScores } from "./match.js";
 test("the draft's mode is its first character; its body drops the character", () => {
   assert.equal(draftKind("/compact"), "command");
   assert.equal(draftKind("!git status --short"), "shell");
-  assert.equal(draftKind("/remember Harlow letters write dates as 27 September 2026"), "memory");
+  assert.equal(draftKind("/remember Juniper letters write dates as 27 September 2026"), "memory");
   assert.equal(draftKind("Use Estate intake v2"), "message");
   assert.equal(draftKind(" /not a command"), "message", "only the very first character");
   assert.equal(draftKind(""), "message");
@@ -49,7 +49,7 @@ test("an @ mention at the caret, anywhere in the draft; an email is not one", ()
   assert.deepEqual(findMention("Move the fields to @est", 23), { start: 19, end: 23, query: "est" });
   assert.deepEqual(findMention("@", 1), { start: 0, end: 1, query: "" });
   assert.deepEqual(findMention("see (@src/int", 13), { start: 5, end: 13, query: "src/int" });
-  assert.equal(findMention("mail alex@harlow.test", 21), null);
+  assert.equal(findMention("mail alex@juniper.example", 21), null);
   assert.equal(findMention("@src/app.js done", 16), null, "past the word");
   assert.deepEqual(findMention("@src/app.js done", 5), { start: 0, end: 5, query: "src/" }, "the caret decides");
   assert.deepEqual(applyMention("Compare @est and v1", { start: 8, end: 12, query: "est" }, "src/intake/estate.ts"),
@@ -58,7 +58,7 @@ test("an @ mention at the caret, anywhere in the draft; an email is not one", ()
 });
 
 test("files for @: inside the folder only, best match first, then the newest", () => {
-  const cwd = "/home/alex/work/harlow-legal";
+  const cwd = "/home/alex/work/juniper-studio";
   const files = [
     { path: `${cwd}/docs/estate-intake.md`, mtime: 10 },
     { path: `${cwd}/src/intake/estate.ts`, mtime: 30 },
@@ -96,14 +96,14 @@ test("history: Up for older, Down back to what was typed, not twice in a row, ca
 
 test("history per thread, least recently used dropped, and kept across reloads", () => {
   const st = historyStore(100, 2);
-  remember(st.get("th-harlow"), "Rebuild the intake");
+  remember(st.get("th-juniper"), "Rebuild the intake");
   remember(st.get("th-northwind"), "Draft the menu");
-  st.get("th-harlow");
+  st.get("th-juniper");
   remember(st.get("th-kit"), "Hello kit");
-  assert.deepEqual(Object.keys(st.toJSON()).sort(), ["th-harlow", "th-kit"]);
+  assert.deepEqual(Object.keys(st.toJSON()).sort(), ["th-juniper", "th-kit"]);
   const again = historyStore();
   again.load(JSON.parse(JSON.stringify(st.toJSON())));
-  assert.deepEqual(again.get("th-harlow").entries, ["Rebuild the intake"]);
+  assert.deepEqual(again.get("th-juniper").entries, ["Rebuild the intake"]);
   again.load("junk");
   again.load({ x: "not a list" });
   assert.deepEqual(again.get("x").entries, []);

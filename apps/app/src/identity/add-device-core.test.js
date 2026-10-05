@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { addDeviceCore, nameOfPairing } from "./add-device-core.js";
 
 const KEY = { publicKey: "pub", eid: "eid_me" };
-const PAIRED = { enrolled: true, relay: "ws://r", route: "rt", box: "bx", device: "dev", name: "Awbox.vyre.run", identity: { id: "per_x", vyre: "Harlow.vyre.run" } };
+const PAIRED = { enrolled: true, relay: "ws://r", route: "rt", box: "bx", device: "dev", name: "Awbox.vyre.run", identity: { id: "per_x", vyre: "Juniper.vyre.run" } };
 
 function stubs(over = {}) {
   const saved = [], kept = [];
@@ -21,7 +21,7 @@ function stubs(over = {}) {
 const rejects = (p, code) => assert.rejects(p, (e) => e.code === code);
 
 test("the name is the identity's Vyre name, else the other device's, without .vyre.run", () => {
-  assert.equal(nameOfPairing(PAIRED), "harlow");
+  assert.equal(nameOfPairing(PAIRED), "juniper");
   assert.equal(nameOfPairing({ name: "Awbox.vyre.run" }), "awbox");
 });
 
@@ -29,11 +29,11 @@ test("the name is kept only when the list holds this device's key, and the ack i
   const { d, saved, kept } = stubs();
   const acks = [];
   const r = await addDeviceCore(d, { deviceLabel: "walk phone", onAck: (a) => acks.push(a) });
-  assert.deepEqual(r, { name: "harlow", id: "per_x" });
+  assert.deepEqual(r, { name: "juniper", id: "per_x" });
   assert.deepEqual(acks, ["WINK-AAAA-BBBB"]);
   assert.equal(saved.length, 1);
   assert.equal(saved[0].eid, "eid_me");
-  assert.equal(saved[0].name, "harlow");
+  assert.equal(saved[0].name, "juniper");
   assert.equal(kept.length, 1);
 });
 
@@ -76,6 +76,6 @@ test("a device that already holds a name is refused before any key is made", asy
 
 test("a pairing that cannot be kept does not undo the name", async () => {
   const { d, saved } = stubs({ keepPairing: async () => { throw new Error("storage"); } });
-  assert.equal((await addDeviceCore(d, { deviceLabel: "p" })).name, "harlow");
+  assert.equal((await addDeviceCore(d, { deviceLabel: "p" })).name, "juniper");
   assert.equal(saved.length, 1);
 });

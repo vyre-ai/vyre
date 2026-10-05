@@ -9,7 +9,7 @@ import { STATES, canMove, needsReason, needsYou, hasOutput, isComplete, missingO
   advanceStage, spawnStage, howSentence, cardTitle, whyNot, isGate, startsItself, withEvidence, handEvidence, offers } from "./tasks.js";
 import { simulatedProof } from "./kernel-view.js";
 
-const SPACE = "spc_harlowaaaaaa";
+const SPACE = "spc_juniperaaaaaa";
 /** The directory the Deck holds: people, assistants and teammates, with whose they are. @type {any[]} */
 const actors = [
   { id: "alex", family: "person", name: "Alex Rivera" }, { id: "chris", family: "person", name: "Chris Park" },

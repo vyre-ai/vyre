@@ -118,7 +118,7 @@ test("system: the Wink network card and the egress card say what is connected an
   const w = m.winkCard({ at: 1, otherVpn: false, identity: { signedIn: true, name: "alex.vyre.run", devices: 3 }, spaces: [{ id: "personal", name: "Personal", state: "connected", node: "up", path: "direct", latencyMs: 12, peers: 2 }], relay: { enabled: true, reachable: true, latencyMs: 38 }, clock: { skewMs: 800 } });
   assert.equal(w.state, "Connected");
   assert.deepEqual(w.lines, ["Personal, connected, direct, 12 ms, 2 devices", "Relay: reachable, 38 ms"]);
-  const bad = m.winkCard({ spaces: [{ id: "s", name: "Harlow", state: "offline", path: "relay" }], relay: { enabled: true, reachable: false }, otherVpn: true, clock: { skewMs: 90_000 } });
+  const bad = m.winkCard({ spaces: [{ id: "s", name: "Juniper", state: "offline", path: "relay" }], relay: { enabled: true, reachable: false }, otherVpn: true, clock: { skewMs: 90_000 } });
   assert.equal(bad.state, "1 space not connected");
   assert.equal(bad.warn.length, 2);
   assert.equal(m.winkCard({ spaces: [] }).state, "No spaces linked");

@@ -23,23 +23,23 @@ test("a person in any Cloud space has the planner, reminders, notes, to-dos and 
 });
 
 test("where a Personal space keeps its planner items: encrypted on a team's server, or nothing said", () => {
-  assert.equal(storedLine({ basic: true, teams: [{ name: "Harlow" }] }), "Reminders, notes and to-dos: encrypted on Harlow's server");
+  assert.equal(storedLine({ basic: true, teams: [{ name: "Juniper" }] }), "Reminders, notes and to-dos: encrypted on Juniper's server");
   assert.equal(storedLine({ basic: true, teams: [] }), null);
-  assert.equal(storedLine({ basic: false, teams: [{ name: "Harlow" }] }), null);
+  assert.equal(storedLine({ basic: false, teams: [{ name: "Juniper" }] }), null);
 });
 
 test("the backup line: not backed up with no team, the destination when the box says, nothing when it is unknown", () => {
   const NB = "Not backed up: join a team or set up My Cloud";
   assert.equal(backupLine({ basic: true, teams: [] }), NB);
-  assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }], status: { to: "Harlow", state: "ok" } }), "Backed up, encrypted, to Harlow");
-  assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }], status: { to: null } }), NB);
-  assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }] }), null, "a team exists but the box has not said: no claim");
+  assert.equal(backupLine({ basic: true, teams: [{ name: "Juniper" }], status: { to: "Juniper", state: "ok" } }), "Backed up, encrypted, to Juniper");
+  assert.equal(backupLine({ basic: true, teams: [{ name: "Juniper" }], status: { to: null } }), NB);
+  assert.equal(backupLine({ basic: true, teams: [{ name: "Juniper" }] }), null, "a team exists but the box has not said: no claim");
   assert.equal(backupLine({ basic: false, teams: [] }), null);
 });
 
 test("the personal-items host: the Cloud spaces from spaces.tier, named by the one function, and the current choice", () => {
-  const t = { tier: "basic", cloud: [{ id: "spc_a", name: "harlow.vyre.run", label: "harlow" }, { id: "spc_b", name: "example.vyre.run", label: null }], time_zone: null, personal_host: "spc_b" };
-  assert.deepEqual(hostChoices(t), { options: [["spc_a", "harlow"], ["spc_b", "example"]], current: "spc_b" });
+  const t = { tier: "basic", cloud: [{ id: "spc_a", name: "juniper.vyre.run", label: "juniper" }, { id: "spc_b", name: "example.vyre.run", label: null }], time_zone: null, personal_host: "spc_b" };
+  assert.deepEqual(hostChoices(t), { options: [["spc_a", "juniper"], ["spc_b", "example"]], current: "spc_b" });
   assert.deepEqual(hostChoices({ cloud: [], personal_host: null }), { options: [], current: null });
   assert.equal(hostChoices({ cloud: [{ id: "spc_a", name: "x" }], personal_host: "gone" }).current, null);
 });
@@ -48,9 +48,9 @@ test("the storage line: what is used, the cap when there is one, and where", () 
   assert.equal(sizeWords(0), "0 B");
   assert.equal(sizeWords(1536), "1.5 KB");
   assert.equal(sizeWords(5 * 1024 ** 3), "5 GB");
-  assert.equal(storageLine({ used: 12 * 1024 ** 2, cap: 1024 ** 3 }, "harlow"), "Using 12 MB of 1 GB on harlow");
-  assert.equal(storageLine({ used: 2048, cap: 0 }, "harlow"), "Using 2 KB on harlow");
-  assert.equal(storageLine(null, "harlow"), null);
+  assert.equal(storageLine({ used: 12 * 1024 ** 2, cap: 1024 ** 3 }, "juniper"), "Using 12 MB of 1 GB on juniper");
+  assert.equal(storageLine({ used: 2048, cap: 0 }, "juniper"), "Using 2 KB on juniper");
+  assert.equal(storageLine(null, "juniper"), null);
 });
 
 test("the owner's cap choices: no cap and round sizes, with the current one kept in the list", () => {

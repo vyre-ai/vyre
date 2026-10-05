@@ -14,8 +14,8 @@ test("the one naming function: Personal, My Cloud, a team's own name, never an i
   try {
     assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "Personal");
     assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "cloud", setup: { who: "personal" } }), "My Cloud");
-    assert.equal(spaceName({ id: "s", name: "harlow.vyre.run", tier: "cloud" }), "harlow");
-    assert.equal(spaceName({ id: "s", displayName: "Harlow Legal", tier: "cloud" }), "Harlow Legal");
+    assert.equal(spaceName({ id: "s", name: "juniper.vyre.run", tier: "cloud" }), "juniper");
+    assert.equal(spaceName({ id: "s", displayName: "Juniper Studio", tier: "cloud" }), "Juniper Studio");
     assert.equal(spaceName({ id: "spc_1", name: "spc_1", tier: "cloud" }), "Space");
     assert.equal(spaceName({ id: "s", name: "alex.vyre.run", tier: "pro", setup: { who: "personal" } }), "alex", "pro is not a value any more: it is read as a name, not a tier");
   } finally { console.warn = warn; }

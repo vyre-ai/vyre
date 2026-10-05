@@ -21,9 +21,9 @@ function box(o = {}) {
 
 test("create: the form needs a lowercase name, a project and a real budget, and says which", { skip: !strip }, async () => {
   const m = await import("./agent-model.ts");
-  const ok = { ...m.NEW_FORM, name: "rex", projects: ["harlow"], instructions: " Draft intake. " };
+  const ok = { ...m.NEW_FORM, name: "rex", projects: ["juniper"], instructions: " Draft intake. " };
   const a = m.createInput(ok);
-  assert.deepEqual("input" in a && a.input, { name: "rex", kind: "agent", projects: ["harlow"], instructions: "Draft intake.", auth: { vault: "claude-setup-token" }, computer: false });
+  assert.deepEqual("input" in a && a.input, { name: "rex", kind: "agent", projects: ["juniper"], instructions: "Draft intake.", auth: { vault: "claude-setup-token" }, computer: false });
   assert.match(/** @type {any} */ (m.createInput({ ...ok, name: "Rex Two" })).problem, /lowercase/);
   assert.match(/** @type {any} */ (m.createInput({ ...ok, projects: [] })).problem, /at least one project/);
   assert.equal("input" in m.createInput({ ...ok, projects: [], hasProjects: false }), true, "no projects on the box: nothing to pick");
