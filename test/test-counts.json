@@ -734,7 +734,7 @@
  "kernel/storage/pool.test.js": 21,
  "kernel/store-hook.test.js": 1,
  "kernel/store/sqlite.test.js": 2,
- "kernel/tasks/records.test.js": 7,
+ "kernel/tasks/records.test.js": 6,
  "kernel/tasks/tasks.test.js": 42,
  "kernel/tools/surface.test.js": 8,
  "lib/agent-sandbox.e2e.test.js": 5,
