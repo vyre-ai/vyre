@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the Chats list reads work.chat.list's real answer ({ chats }, flat rows, chat is the id, people and agents comma-joined, open only for chats you are in) and shows people by name (records.actors), never by id.
+
 - feat(app): Reminders and Notes in Records open /u/records/reminder and /u/records/note (they are Records types, per the app map), not the planner page. An artifact's activity log marks what the person's assistant did (acted_via), and a task record's acted_via is read from its data.
 
 - feat(app): a space is called by its real name (displayName, label, or its address without .vyre.run); only the personal space is "Home", and a space with no readable name is "Space" with the gap logged. "(Sent by Vyre Assistant)" shows after the person's name wherever the event, task or held card carries acted_via: "assistant": record history, Now's recent lines, a task's sentence, the Waiting-on-you row and the phone's approval card. Records gets Reminders and Notes buttons that open the planner.
