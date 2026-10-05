@@ -60,6 +60,9 @@ export async function recoveryKeyOptions(): Promise<{ enclave?: string; requireE
   }
 }
 
+/** The chip key for a new device entry (made after the entry's own key, so Android can bind the two) and its attestation, or null when the OS has none to give. */
+export const entryEnclave = (entryPub: string): Promise<string | null> => Signer.enclavePublic(entryPub).catch(() => null);
+export const entryAttest = (entryPub: string): Promise<string | null> => Signer.entryAttestation(entryPub).catch(() => null);
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> {
   return { identity: await hasIdentity(), presence: Signer.hasPresenceKey() };
 }

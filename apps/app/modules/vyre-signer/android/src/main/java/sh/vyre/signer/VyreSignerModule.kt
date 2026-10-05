@@ -45,6 +45,8 @@ import java.security.spec.ECGenParameterSpec
 
 class EnsureOptions : Record {
   @Field val biometric: Boolean = false
+  /** base64url of the attestation challenge the key is made with (Android binds a Keystore key to an entry only as it is made). */
+  @Field val attestChallenge: String? = null
 }
 
 class SignOptions : Record {
@@ -94,7 +96,7 @@ class VyreSignerModule : Module() {
   private fun strongBoxPresent(): Boolean =
     Build.VERSION.SDK_INT >= 28 && context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
 
-  private fun spec(alias: String, biometric: Boolean, strongBox: Boolean): KeyGenParameterSpec {
+  private fun spec(alias: String, biometric: Boolean, strongBox: Boolean, challenge: ByteArray?): KeyGenParameterSpec {
     val b = KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_SIGN)
       .setAlgorithmParameterSpec(ECGenParameterSpec("secp256r1"))
       .setDigests(KeyProperties.DIGEST_SHA256)
@@ -109,14 +111,15 @@ class VyreSignerModule : Module() {
       }
       b.setInvalidatedByBiometricEnrollment(true)
     }
+    if (challenge != null) b.setAttestationChallenge(challenge)
     if (strongBox && Build.VERSION.SDK_INT >= 28) b.setIsStrongBoxBacked(true)
     return b.build()
   }
 
-  private fun generate(alias: String, biometric: Boolean) {
+  private fun generate(alias: String, biometric: Boolean, challenge: ByteArray? = null) {
     val gen = { strongBox: Boolean ->
       KeyPairGenerator.getInstance(KeyProperties.KEY_ALGORITHM_EC, STORE).run {
-        initialize(spec(alias, biometric, strongBox))
+        initialize(spec(alias, biometric, strongBox, challenge))
         generateKeyPair()
       }
     }
@@ -176,8 +179,16 @@ class VyreSignerModule : Module() {
     Name("VyreSigner")
 
     AsyncFunction("ensureKey") { alias: String, options: EnsureOptions ->
-      if (!keyStore().containsAlias(alias)) generate(alias, options.biometric)
+      if (!keyStore().containsAlias(alias)) {
+        val challenge = options.attestChallenge?.let { android.util.Base64.decode(it, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING) }
+        generate(alias, options.biometric, challenge)
+      }
       coordinates(alias)
+    }
+
+    // The Keystore certificate chain of a key (standard base64 DER, leaf first). The leaf's attestation extension holds the challenge the key was made with and where it lives (StrongBox or TEE).
+    AsyncFunction("attestationChain") { alias: String ->
+      (keyStore().getCertificateChain(alias) ?: emptyArray()).map { android.util.Base64.encodeToString(it.encoded, android.util.Base64.NO_WRAP) }
     }
 
     AsyncFunction("sign") { alias: String, message: String, options: SignOptions, promise: Promise ->

@@ -26,6 +26,9 @@ export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireE
   const held = await shellKeyHeld();
   return { key, ...(enclave ? { enclave } : {}), ...(agree ? { agree } : {}), ...(held ? { held: true } : {}) };
 };
+/** A phone's chip key for a new device entry, and its attestation. A browser or a Mac has none to add here (a Mac's Secure Enclave key joins through claim and recovery). */
+export const entryEnclave = async (_entryPub: string): Promise<string | null> => null;
+export const entryAttest = async (_entryPub: string): Promise<string | null> => null;
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> { return { identity: await hasIdentity(), presence: macKeyAvailable() && (await macEnclavePublic(false)) !== null }; }
 export async function wipeKeys(): Promise<void> { await forgetIdentity(); }
 export async function keyStorage(): Promise<KeyStorage> {

@@ -16,6 +16,7 @@ import { afterPaired } from "../real/pairing";
 import { relayUrl } from "../api/relay-url";
 import { addDeviceCore } from "./add-device-core.js";
 import { generateDeviceKey } from "./keys.js";
+import { entryAttest, entryEnclave } from "../keys";
 import { loadIdentity, saveIdentity } from "./store.ts";
 
 const DIRECTORY = (process.env.EXPO_PUBLIC_VYRE_NAMES_DIRECTORY || "https://names.vyre.run").replace(/\/+$/, "");
@@ -44,6 +45,8 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
   return addDeviceCore({
     held: async () => Boolean(await loadIdentity().catch(() => null)),
     makeKey: async () => (key = await generateDeviceKey()),
+    enclave: (k) => entryEnclave(k.publicKey),
+    attest: (k) => entryAttest(k.publicKey),
     agree: () => agreePublic(),
     pageHeld: () => shellKeyHeld(),
     pair: async ({ key: k, onWords, onAck, signal }) => pair({
