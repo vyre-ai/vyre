@@ -6,7 +6,7 @@ import { parse, parseSafely } from "./parse.js";
 import { SDK, SDK_VERSION } from "./sdk.js";
 import { LanguageError } from "./errors.js";
 import { parseExpr, exprNames } from "./expr.js";
-import { stageNamesOf } from "../../kernel/expr/conditions.js";
+import { stageNamesOf } from "../../lib/expr/conditions.js";
 import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
 import { CORE_TYPES as CORE_DEFS } from "../core-types.js";
@@ -14,7 +14,7 @@ import { FIELD_ORDER } from "./sdk.js";
 const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event", "project", "chat-record"]);
+export const CORE_TYPES = Object.freeze(["note", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event", "project", "session-summary", "task"]);
 
 /**
  * A Kit may add fields to a core type (a Kit's `contact` carries the fields its practice needs). The stored type is the whole thing: the core fields first, then
