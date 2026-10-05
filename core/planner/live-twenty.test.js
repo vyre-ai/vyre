@@ -91,15 +91,17 @@ if (!URL_ || !KEY_FILE) {
     const rule = "FREQ=WEEKLY;BYDAY=MO;COUNT=4", link = "https://calendar.example.com/e/abc?x=1&y=2";
     const ev = await R.create(w.owner, "event", { title: `${run} Retro`, starts_at: noon(T0 + 2 * HOUR), ends_at: noon(T0 + 3 * HOUR), all_day: false, source: "vyre", rrule: rule, url: link });
     const listed = async (/** @type {any} */ extra = {}) => (await R.query(w.owner, "event", { filter: { field: "title", op: "eq", value: `${run} Retro` }, page: { limit: 10 }, ...extra })).rows;
-    let [row] = await listed();
-    assert.deepEqual([row.id, row.data.rrule, row.data.url], [ev.id, rule, link], "rrule and url come back exactly as written");
-    row = await R.update(w.owner, "event", ev.id, { rrule: "FREQ=DAILY;COUNT=2" }, row.version);
+    const [row0] = await listed();
+    assert.deepEqual([row0.id, row0.data.rrule, row0.data.url], [ev.id, rule, link], "rrule and url come back exactly as written");
+    // the planner is running over this Space and may write the event too, so each write names the version read just before it
+    const ver = async () => (await R.get(w.owner, "event", ev.id)).version;
+    let row = await R.update(w.owner, "event", ev.id, { rrule: "FREQ=DAILY;COUNT=2" }, await ver());
     assert.equal((await listed())[0].data.rrule, "FREQ=DAILY;COUNT=2", "an update changes the rule");
-    row = await R.update(w.owner, "event", ev.id, { rrule: null, url: null }, row.version);
+    row = await R.update(w.owner, "event", ev.id, { rrule: null, url: null }, await ver());
     const cleared = (await listed())[0].data;
     assert.ok(cleared.rrule == null && cleared.url == null, "null clears both");
-    row = await R.update(w.owner, "event", ev.id, { rrule: rule, url: link }, row.version);
-    await R.remove(w.owner, "event", ev.id, row.version);
+    row = await R.update(w.owner, "event", ev.id, { rrule: rule, url: link }, await ver());
+    await R.remove(w.owner, "event", ev.id, await ver());
     assert.equal((await listed()).length, 0, "a removed event is not in the list");
     const bin = await listed({ include_deleted: true });
     assert.deepEqual(bin.map((/** @type {any} */ x) => [x.id, x.deleted_at > 0, x.data.rrule, x.data.url]), [[ev.id, true, rule, link]], "the bin lists it with its fields");
@@ -109,6 +111,6 @@ if (!URL_ || !KEY_FILE) {
     await w.read();
     const upcoming = await w.ok("planner.agenda", { from: noon(T0), to: noon(T0 + 30 * DAY) });
     assert.equal(JSON.stringify(upcoming).split(`${run} Retro`).length - 1 >= 2, true, "the planner expands the repeat into more than one occurrence");
-    await R.remove(w.owner, "event", ev.id, back.version).catch(() => {});
+    await R.remove(w.owner, "event", ev.id, await ver()).catch(() => {});
   });
 }
