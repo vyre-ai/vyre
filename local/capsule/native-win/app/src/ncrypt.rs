@@ -1,5 +1,7 @@
-//! This computer's TPM key for the device entry's `enclave` field (NK-2): a P-256 key made in the Trusted Platform Module through CNG's "Microsoft Platform Crypto Provider", with a UI policy that
-//! makes Windows ask the person (Windows Hello: face, fingerprint or PIN) for every signature. The private key never leaves the TPM. The signature is the raw 64 bytes r||s CNG gives for ECDSA, over the
+//! This computer's TPM key for the device entry's `enclave` field (NK-2): a P-256 key made in the Trusted Platform Module through CNG's "Microsoft Platform Crypto Provider", with a UI policy
+//! asking Windows to ask the person for a signature. THAT A PROMPT FOLLOWS EVERY SIGNATURE IS NOT PROVEN: it needs a run on a TPM computer (reviewer-3, 5 Oct), and the Platform Crypto Provider's
+//! consent prompt may not be Windows Hello's (Hello's per-use consent is the Passport provider's, KeyCredentialManager). Until it is shown, the page treats this key as no proof of the person: the
+//! device entry is held as a web key and cannot change who speaks for the identity (src/identity/mac-key.ts `shellKeyHeld`). The private key never leaves the TPM. The signature is the raw 64 bytes r||s CNG gives for ECDSA, over the
 //! SHA-256 of the message; the public key is the raw uncompressed point (65 bytes). A computer with no TPM, or no Windows Hello set up, has no such key: every call says so, and its device entry
 //! signs with its Ed25519 key alone, as a Mac with no Secure Enclave does.
 //!

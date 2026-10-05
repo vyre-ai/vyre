@@ -339,10 +339,16 @@ async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Opt
 
 /// The identity key's and the TPM key's commands are the main panel's only ones, and only from the pinned origin: the capability lets the panel call them, and this refuses any other page
 /// (a navigation that slipped past, a frame) before a key is touched.
-fn from_pinned(app: &AppHandle, webview: &tauri::Webview) -> Result<(), String> {
+fn from_pinned(app: &AppHandle, webview: &tauri::Webview, request: &tauri::ipc::Request<'_>) -> Result<(), String> {
     if webview.label() != "main" { return Err("Not allowed here.".into()); }
+    let Some(pin) = pinned(app) else { return Err("Not allowed here.".into()) };
+    // The top-level page is the pinned one...
     let url = webview.url().map_err(|_| "Not allowed here.".to_string())?;
-    match pinned(app) { Some(pin) if pin.allows(url.as_str()) => Ok(()), _ => Err("Not allowed here.".into()) }
+    if !pin.allows(url.as_str()) { return Err("Not allowed here.".into()); }
+    // ...and so is the frame that made THIS call: the capability admits any https frame, so a cross-origin iframe inside the pinned page would pass the check above. Its call carries its own Origin.
+    let origin = request.headers().get("origin").and_then(|v| v.to_str().ok());
+    if !pin.is_origin(origin) { return Err("Not allowed here.".into()); }
+    Ok(())
 }
 
 fn identity_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -374,29 +380,29 @@ fn identity_seed(app: &AppHandle, create: bool) -> Result<[u8; 32], String> {
 fn unb64u(s: &str) -> Result<Vec<u8>, String> { use base64::Engine; base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s.trim_end_matches('=')).map_err(|_| "That is not a message to sign.".to_string()) }
 
 #[tauri::command]
-fn identity_public(app: AppHandle, webview: tauri::Webview, create: bool) -> Result<String, String> {
-    from_pinned(&app, &webview)?;
+fn identity_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
     Ok(b64u(&vyre_capsule_win::identity::public_key(&identity_seed(&app, create)?)))
 }
 
 #[tauri::command]
-fn identity_sign(app: AppHandle, webview: tauri::Webview, message: String) -> Result<String, String> {
-    from_pinned(&app, &webview)?;
+fn identity_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
     let m = unb64u(&message)?;
     if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
     Ok(b64u(&vyre_capsule_win::identity::sign(&identity_seed(&app, false)?, &m)))
 }
 
 #[tauri::command]
-fn enclave_public(app: AppHandle, webview: tauri::Webview, create: bool) -> Result<String, String> {
-    from_pinned(&app, &webview)?;
+fn enclave_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
     Ok(b64u(&ncrypt::public_point(create)?))
 }
 
 /// The TPM key signs only after Windows has asked the person (Windows Hello). `prompt` is the words the page gave for it; Windows shows its own.
 #[tauri::command]
-fn enclave_sign(app: AppHandle, webview: tauri::Webview, message: String, prompt: Option<String>) -> Result<String, String> {
-    from_pinned(&app, &webview)?;
+fn enclave_sign(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, message: String, prompt: Option<String>) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
     let _ = prompt;
     let m = unb64u(&message)?;
     if m.is_empty() || m.len() > 64 * 1024 { return Err("That is not a message to sign.".into()); }
@@ -405,14 +411,14 @@ fn enclave_sign(app: AppHandle, webview: tauri::Webview, message: String, prompt
 
 /// The agreement key (ECDH, no prompt per use): its public point, and the shared secret with a peer's point. The key stays in the TPM or the user's key store.
 #[tauri::command]
-fn agree_public(app: AppHandle, webview: tauri::Webview, create: bool) -> Result<String, String> {
-    from_pinned(&app, &webview)?;
+fn agree_public(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
     Ok(b64u(&ncrypt::agree_public(create)?))
 }
 
 #[tauri::command]
-fn agree_secret(app: AppHandle, webview: tauri::Webview, epk: String) -> Result<String, String> {
-    from_pinned(&app, &webview)?;
+fn agree_secret(app: AppHandle, webview: tauri::Webview, request: tauri::ipc::Request<'_>, epk: String) -> Result<String, String> {
+    from_pinned(&app, &webview, &request)?;
     let p = unb64u(&epk)?;
     Ok(b64u(&ncrypt::agree_secret(&p)?))
 }

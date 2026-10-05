@@ -37,6 +37,7 @@ test("a card whose fields hash to its payload_hash is signed by the hardware key
   const proof = await s.signPresence(card);
   assert.equal(proof.payload_hash, card.payload_hash);
   assert.equal(proof.decision, "grant.pair_device");
+  assert.equal(proof.signer, "tpm", "a Windows TPM key says so (platform-3's class), never secure_enclave");
   assert.deepEqual(k.prompts, ["Approve Sam's PC"]);
   const sig = Buffer.from(proof.signature, "base64url");
   assert.equal(sig.length, 64);

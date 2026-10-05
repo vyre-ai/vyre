@@ -2,7 +2,7 @@
 // signer (phone-signer.ts): refuse unless the card's fields hash to its payload_hash (proofBody does that), then the hardware key signs the proof's bytes behind the person's prompt. The key is the one in the
 // device's identity entry (`enclave`); the page gets a signature, never the key.
 
-import { shellIdentity } from "../shell/shell.ts";
+import { shellIdentity, shellKind } from "../shell/shell.ts";
 import { macEnclavePublic, macEnclaveSign } from "../identity/mac-key.ts";
 import { fromB64url, keyIdOf, proofBody, proofBytes, spkiFromXY, b64url } from "../../modules/vyre-signer/presence-proof.js";
 import type { Signer } from "./phone-approve.js";
@@ -19,7 +19,7 @@ export async function shellSigner(): Promise<Signer | null> {
     signPresence: async (card: any) => {
       // the card carries the person (approveCard passes the id the box named); without one the proof refuses (ERR_NO_PERSON)
       const person = card.person || "";
-      const body = proofBody({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, person }, { keyId, now: Date.now(), nonce: b64url(crypto.getRandomValues(new Uint8Array(16))), signer: "secure_enclave" });
+      const body = proofBody({ op: card.op, space: card.space, fields: card.fields, payload_hash: card.payload_hash, person }, { keyId, now: Date.now(), nonce: b64url(crypto.getRandomValues(new Uint8Array(16))), signer: shellKind() === "windows" ? "tpm" : "secure_enclave" });
       const signature = await macEnclaveSign(proofBytes(body), card.prompt || "Approve this change");
       return { ...body, signature: b64url(signature) };
     },

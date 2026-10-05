@@ -103,7 +103,7 @@ export function randomBytes(n: number): string {
 // biometryCurrentSet: Face ID on every signature). Bytes are platform's (kernel/seal/wire.js): see presence-proof.js. On Android the same proof is signed by the Keystore key (vyre.human, TEE or StrongBox, BiometricPrompt per use) with signer class "strongbox" (the kernel contract's Android class; unattested in RC1).
 
 export type PresenceCard = { op: string; space: string; fields: Record<string, unknown>; payload_hash: string; prompt: string; person?: string };
-export type PresenceProof = { signer: "secure_enclave" | "strongbox"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
+export type PresenceProof = { signer: "secure_enclave" | "strongbox" | "tpm"; key_id: string; payload_hash: string; decision: string; chain_hash: string; issued_at: number; expires_at: number; nonce: string; signature: string; assertion?: string };
 
 const APPATTEST_KEY = "vyre.appattest.keyid";
 const ONLY_HERE = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };

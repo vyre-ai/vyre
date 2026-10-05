@@ -8,6 +8,7 @@
 //   exists         this device already holds a name
 
 import { agreePublic } from "./agree";
+import { shellKeyHeld } from "./mac-key.ts";
 import * as C from "../../../../kernel/identity/chain.js";
 import { addThisDevice as pair } from "@vyre/relay-client/phonepair.js";
 import { about, presenceKey, relayCrypto, relayKeyStore } from "../api/relay";
@@ -44,6 +45,7 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
     held: async () => Boolean(await loadIdentity().catch(() => null)),
     makeKey: async () => (key = await generateDeviceKey()),
     agree: () => agreePublic(),
+    pageHeld: () => shellKeyHeld(),
     pair: async ({ key: k, onWords, onAck, signal }) => pair({
       // The key this device signs its paired session with is the presence key reported here, never the identity key (platform-3).
       ...(await presenceKey() ? { presenceKey: await presenceKey() } : {}),

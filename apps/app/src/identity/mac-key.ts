@@ -3,7 +3,7 @@
 // take it as they take any other. A Mac key signs a list change alone (the chain asks for an enclave signature only of an entry that names an enclave key).
 
 import { b64u, eidOf } from "../../../../kernel/identity/chain.js";
-import { shellIdentity } from "../shell/shell.ts";
+import { shellIdentity, shellKind } from "../shell/shell.ts";
 import type { DeviceKey } from "./keys.js";
 import { lowS } from "../../modules/vyre-signer/presence-proof.js";
 
@@ -59,4 +59,16 @@ export async function macSignListChange(message: Uint8Array, prompt: string): Pr
   const sig = await key.sign(message);
   if ((await macEnclavePublic(false)) === null) return { sig };
   return { sig, esig: await macEnclaveSign(message, prompt) };
+}
+
+/**
+ * Is this computer's key one a script on the page can reach, so its entry must say `held: "web"` and so cannot change who speaks for the identity (kernel/identity/chain.js, KP-1)? The shell signs
+ * whatever bytes the page gives it, and on a team server that page is the operator's JavaScript. Two things stand between that and the person: a hardware key that asks the person for each
+ * list change (the Mac's Secure Enclave with Touch ID), and nothing else. A computer with no such key is held (no enclave key), and so is Windows until a TPM computer has shown a Hello prompt on
+ * every signature (reviewer-3's finding): its entry signs only its own genesis, and list changes come from the phone or the recovery code.
+ */
+export async function shellKeyHeld(): Promise<boolean> {
+  if (!shellIdentity()) return false;
+  if (shellKind() === "windows") return true;
+  return (await macEnclavePublic(false)) === null;
 }

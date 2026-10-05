@@ -25,10 +25,14 @@ test("the four commands exist, are declared and registered, and each refuses a p
     assert.ok(build.includes(`"${c}"`), `${c} declared in build.rs`);
     assert.ok(handler.includes(c), `${c} registered`);
     const body = rs.slice(rs.indexOf(`fn ${c}(`), rs.indexOf("\n}\n", rs.indexOf(`fn ${c}(`)));
-    assert.match(body, /from_pinned\(&app, &webview\)\?;/, c);
+    assert.match(body, /from_pinned\(&app, &webview, &request\)\?;/, c);
     assert.ok(body.indexOf("from_pinned") < body.search(/identity_seed|ncrypt::/), `${c} checks the origin first`);
   }
   assert.match(rs, /if webview\.label\(\) != "main"/);
+  // the frame that made the call, not only the top-level page: a cross-origin iframe inside the pinned page carries its own Origin and is refused
+  assert.match(rs, /request\.headers\(\)\.get\("origin"\)/);
+  assert.match(rs, /if !pin\.is_origin\(origin\) \{ return Err/);
+  assert.match(readFileSync(new URL("../src/shell.rs", import.meta.url), "utf8"), /fn only_the_pinned_origin_itself_is_the_caller_a_frame_inside_it_is_not/);
   assert.match(rs, /pin\.allows\(url\.as_str\(\)\)/);
 });
 
@@ -58,6 +62,7 @@ test("the TPM key is a P-256 key in the Platform Crypto Provider behind a UI pol
   assert.match(nc, /ECDSA_P256/);
   assert.match(nc, /NCRYPT_UI_FORCE_HIGH_PROTECTION_FLAG: u32 = 0x2/);
   assert.match(nc, /UI Policy/);
+  assert.match(nc, /NOT PROVEN/, "the comment does not claim a Hello prompt that nobody has seen");
   assert.match(nc, /This computer has no TPM that Vyre can use\./);
   assert.match(nc, /point_from_ecc_blob/);
 });

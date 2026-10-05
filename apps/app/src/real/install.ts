@@ -3,7 +3,7 @@
 import { said, tool } from "./box";
 import { Platform } from "react-native";
 import { RC, claimBlocked } from "../../screens/shell/rc";
-import { macDeviceKey, macEnclavePublic, macKeyAvailable } from "../identity/mac-key.ts";
+import { macDeviceKey, macEnclavePublic, macKeyAvailable, shellKeyHeld } from "../identity/mac-key.ts";
 import { agreePublic } from "../identity/agree.ts";
 import { enclavePublic } from "../keys";
 import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
@@ -64,7 +64,7 @@ export async function createIdentity(name: string, deviceLabel: string, password
   const agreeKey = (await agreePublic(true)) ?? undefined;
   try {
     const made = await claim({
-      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}),
+      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}), ...(agreeKey ? { agree: agreeKey } : {}), ...((await shellKeyHeld()) ? { held: true } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();

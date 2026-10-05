@@ -111,7 +111,7 @@ export function lowS(raw) {
  * Check what the card showed against its hash and build the proof body (everything but the signature). Refuses, with a code, when the fields do not hash to the card's
  * payload_hash: that is what makes what you see what you sign.
  * @param {{ op: string, space: string, fields: Record<string, any>, payload_hash: string, person: string }} req
- * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" }} o
+ * @param {{ keyId: string, now: number, nonce: string, lifeMs?: number, signer?: "secure_enclave" | "strongbox" | "tpm" }} o
  */
 export function proofBody(req, o) {
   if (!req.person) throw Object.assign(new Error("no person id for this proof"), { code: "ERR_NO_PERSON" });
