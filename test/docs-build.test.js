@@ -404,8 +404,8 @@ function fixture(/** @type {string} */ root) {
   w("docs/changelog.md", fm({ title: "Changelog", summary: "Every change.", audience: "users", owner: "integrator", status: "stable" }) +
     "<!-- include: ../CHANGELOG.md -->\n\nTo add a changelog page:\n\n```md\n<!-- include: ../CHANGELOG.md -->\n```\n");
   w("docs/SPEC.md", "---\ntitle: Specification\nredirect: adr/0004-presence.md\n---\n\nMoved.\n");
-  w("docs/work/docs.md", "# Internal\n\nsecret plans\n");
-  w("docs/work/old.md", "---\ntitle: Old\nredirect: index.md\n---\n");
+  w("team/archive/work-journals/docs.md", "# Internal\n\nsecret plans\n");
+  w("team/archive/work-journals/old.md", "---\ntitle: Old\nredirect: index.md\n---\n");
   w("docs/proposals/idea.md", "# Idea\n");
   w("core/config/theme.js", `// test palette\nexport const THEME_COLORS = { dark: { graphite: "#0E0D0C" }, light: { paper: "#F4F1EA" } };\nexport const THEME_USE = { graphite: "Page ground.", paper: "Ground" };\n`);
   w("docs/using/shots/deck.png", /** @type {any} */ (png(1280, 800)));

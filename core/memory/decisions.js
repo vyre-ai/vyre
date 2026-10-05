@@ -1,5 +1,5 @@
 // @ts-check
-// decisions: what the person decided, per project and topic, newest wins (plan 3.5, docs/work/iq.md task 3).
+// decisions: what the person decided, per project and topic, newest wins (plan 3.5, team/archive/work-journals/iq.md task 3).
 //
 // Three parts, all rules first and no model:
 //   readDecisions(text)  the person's typed turn in, the decisions it states out: { topic, value, ... }

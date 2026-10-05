@@ -1,5 +1,5 @@
 // @ts-check
-// The world memory.answer is measured against (docs/work/memory-iq.md): half a year of one
+// The world memory.answer is measured against (team/archive/work-journals/memory-iq.md): half a year of one
 // person's Claude Code sessions, in which the facts of their life come up the way they really
 // do. Rarely as a statement, mostly in passing ("picking up my wife from the airport", "the
 // Volvo needs a service"), spread over many sessions, and buried in noise that shares the words:

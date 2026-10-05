@@ -1,5 +1,5 @@
 // IQCardViews: Vyre IQ's source chips and its "Wrong?" correction panel (capsule.md "The card",
-// docs/work/capsule-pro.md 3/3a). Small hooks into CapsuleView.swift call these; the state lives
+// team/archive/work-journals/capsule-pro.md 3/3a). Small hooks into CapsuleView.swift call these; the state lives
 // in CapsuleModel (IQAsk.swift). Nothing here sends anything until a button or the field's Enter.
 
 import SwiftUI

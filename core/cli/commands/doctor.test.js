@@ -128,7 +128,7 @@ test("doctor: two spaces and two storage devices are one line each, and a missin
 });
 
 test("doctor: a module whose manifest under-declares a tool or event is a named cross, not a silent gap", async () => {
-  // The exact gotcha tailnet lost time to (docs/work/tailnet.md, 28 Sep 2026): a module that
+  // The exact gotcha tailnet lost time to (team/archive/work-journals/tailnet.md, 28 Sep 2026): a module that
   // registers a tool or emits an event its own module.json does not declare fails to start, every
   // other module still loads, and vyred's log is the only place that says which one and why.
   // vyre doctor is the other place now.

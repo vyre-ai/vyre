@@ -14,7 +14,7 @@ The preview is deployed at `preview.vyre-docs.pages.dev`. Production at docs.vyr
 
 ## The problem
 
-Vyre's documentation was scattered. The spec, the install guide, getting started, the install journey, the module guide and the performance audit were loose files at the top of `docs/`. The ADRs sat beside internal workstream notes in `docs/work/` that were never meant for readers. The landing page carried its own copy of the setup steps. Nothing said which pages were for users and which for builders, nothing said whether a page described shipped code or a plan, and nothing failed when a link broke or a command in a page stopped existing.
+Vyre's documentation was scattered. The spec, the install guide, getting started, the install journey, the module guide and the performance audit were loose files at the top of `docs/`. The ADRs sat beside internal workstream notes in `team/archive/work-journals/` that were never meant for readers. The landing page carried its own copy of the setup steps. Nothing said which pages were for users and which for builders, nothing said whether a page described shipped code or a plan, and nothing failed when a link broke or a command in a page stopped existing.
 
 Two readers need the docs, and they need different things. People want a site they can browse and search. Agents (the user's own Claude Code sessions, and the agents Vyre runs) need the same content as plain text they can fetch and quote, without scraping HTML. A page that is true for one and stale for the other is worse than no page.
 

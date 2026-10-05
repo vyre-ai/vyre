@@ -987,41 +987,40 @@ test("the transport's ports: a paired device is an entry, the entry port answers
 });
 
 
-test("space creation asks the kernel which store it would use: a server too small for the larger one needs a confirmation in the kernel's words, and only 'create' makes the space, with the flag", async t => {
+test("space creation asks the kernel which store it would use: a machine that cannot run Twenty makes nothing and offers the person's server in the kernel's words", async t => {
   const w = world(t);
-  const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
+  const TEXT = "This machine cannot run the record store for a new space (Twenty), so the space was not made here. Put it on your server instead.";
   const hosts = [];
   let small = true;
   const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
-      storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
-      host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
+      storePlan: async () => (small ? { store: "none", confirm: { text: TEXT, choices: ["server", "cancel"] } } : { store: "twenty" }),
+      host: async o => { hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
   const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
-  // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
+  // cannot run Twenty: nothing is made, and the person is shown exactly the kernel's words and the two choices
   const ask = await d.ok("spaces.create", args);
   assert.equal(ask.status, "needs_confirmation");
-  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["create", "cancel"] });
+  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["server", "cancel"] });
   assert.equal(hosts.length, 0, "the Space is never made first and explained after");
   assert.equal((await d.ok("spaces.list")).length, 0);
   // cancel: still nothing
   assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "cancel" })).status, "cancelled");
   assert.equal(hosts.length, 0);
-  // create: hosted with the flag
-  const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
-  assert.equal(made.status, "done", JSON.stringify(made));
-  assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
-  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
-  const label = await d.ok("spaces.label", {}, "module:vyred");
-  assert.equal(label.name, "harlow.vyre.run");
-  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
-  // a server with room for the larger store: no question, no flag
+  // server: pointed at the person's server, still nothing here
+  assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "server" })).status, "use_server");
+  assert.equal(hosts.length, 0);
+  // a machine that can run Twenty: no question
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
   assert.equal(big.status, "done", JSON.stringify(big));
-  assert.equal(hosts[1].accept_builtin_store, undefined);
+  assert.deepEqual(hosts.map(h => h.name), ["northwind"]);
+  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
+  const label = await d.ok("spaces.label", {}, "module:vyred");
+  assert.equal(label.name, "northwind.vyre.run");
+  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
   void w;
 });
 
