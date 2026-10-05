@@ -204,6 +204,7 @@
       "work": true,
       "attrs": true,
       "actions": [
+        "tasks.request",
         "records.read",
         "records.create",
         "records.update",
