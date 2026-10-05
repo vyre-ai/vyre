@@ -150,3 +150,28 @@ test("a path guess does not get around the folder: dot segments, doubled slashes
     assert.equal(got, null, `a guess read the file: ${p}`);
   }
 });
+
+test("a move's inventory lists a project's folder with the chat folders and no bytes, and removes them after, for an owner or admin with the move's own event, and for nobody else", async () => {
+  const { k, D, drive, bob, ada, dan, dir, made } = await rig();
+  await D.put(bob, `${dir}/note.txt`, enc("hello"));
+  await D.put(bob, `${made}/out.txt`, enc("made"));
+  drive.files.set("Projects/p1/retainer.txt", [{ ver: 1, bytes: enc("signed"), by: "x" }]);
+  drive.files.set("Projects/p2/other.txt", [{ ver: 1, bytes: enc("not this project"), by: "x" }]);
+  const started = (/** @type {any} */ who, /** @type {string} */ id) => k.log.append(who, { type: "project.move_started", sv: 1, subject: `vyre://${SPACE}/project/p1`, data: { move_id: id, to: "spc_bbbbbbbbbbbb", plan_hash: "h".repeat(43) } });
+  const MOVE = "11111111-1111-4111-8111-111111111111";
+  await assert.rejects(() => D.inventory(ada, "Projects/p1", { move_id: MOVE }), { code: "not_found" }, "no event, no inventory");
+  started(ada, MOVE);
+  const inv = await D.inventory(ada, "Projects/p1", { move_id: MOVE });
+  assert.deepEqual(inv.map(e => [e.path.slice("Projects/p1/".length), e.chat]).sort(), [[`chat/${dir.split("/").pop()}/note.txt`, true], [`made/${made.split("/").pop()}/out.txt`, true], ["retainer.txt", false]].sort());
+  assert.ok(inv.every(e => !("bytes" in e)), "never a byte");
+  await assert.rejects(() => D.inventory(ada, "Projects/p2", { move_id: MOVE }), { code: "bad_input" }, "only the moved project's folder");
+  // a member who is not an admin: even with an event under their name
+  const M2 = "22222222-2222-4222-8222-222222222222";
+  started(dan, M2);
+  await assert.rejects(() => D.inventory(dan, "Projects/p1", { move_id: M2 }), { code: "not_found" });
+  await assert.rejects(() => D.removeMoved(dan, [`${dir}/note.txt`], { move_id: M2 }), { code: "not_found" });
+  await assert.rejects(() => D.removeMoved(ada, ["Projects/p2/other.txt"], { move_id: MOVE }), { code: "bad_input" }, "another project's file");
+  assert.equal((await D.removeMoved(ada, inv.map(e => e.path), { move_id: MOVE })).removed, 3);
+  assert.equal(drive.files.has(`${dir}/note.txt`), false);
+  assert.equal(drive.files.has("Projects/p2/other.txt"), true, "the other project is untouched");
+});

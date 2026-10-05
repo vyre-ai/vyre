@@ -122,12 +122,15 @@ export default {
       const gw = space === k.space ? { records: k.records, drive: k.drive, definitions: k.definitions } : (await k.for(space)).gateway;
       return { space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
     };
+    // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when this kernel has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
+    const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => { const k = kernelOf(); if (k.moves && typeof k.moves.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => k.moves.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id }); return from; };
     ctx.tool("work.project.move-plan", {
       description: "What moving a Project to another Space would carry: counts of records, files and sealed fields, anything that blocks it, and the hash the person approves. Reads only; the mover must be an owner or admin in both Spaces.",
       input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" } }, ["project", "to_space"]),
       run: async (input, extra) => {
         const k = kernelOf();
-        const plan = await planMove({ from: await sideOf(k.space, extra), to: await sideOf(String(input.to_space), extra), project: String(input.project), client: input.client === "move" ? "move" : "leave" });
+        const to0 = await sideOf(String(input.to_space), extra);
+        const plan = await planMove({ from: withCarry(await sideOf(k.space, extra), to0), to: to0, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
         return { plan_hash: plan.hash, counts: plan.counts, blockers: plan.blockers, from: plan.from, to: plan.to };
       },
     });
@@ -137,7 +140,7 @@ export default {
       run: async (input, extra) => {
         const k = kernelOf();
         if (!k.moves || typeof k.moves.out !== "function" || typeof k.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet (the compound approval is Windows'), so nothing was moved"), { code: "unavailable" });
-        const from = await sideOf(k.space, extra), to = await sideOf(String(input.to_space), extra);
+        const to = await sideOf(String(input.to_space), extra), from = withCarry(await sideOf(k.space, extra), to);
         const plan = await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
         if (plan.hash !== input.plan_hash) throw Object.assign(new Error("the project is not what you were shown; plan the move again"), { code: "stale_plan" });
         // one yes, verified in the source Space's sealing process, bound to this exact plan; the target checks it carries the same one

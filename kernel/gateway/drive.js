@@ -28,6 +28,23 @@ export function createDriveGateway(cfg) {
     return r;
   };
 
+  /** The kernel's own `project.move_started` for this move, by this same person, within a day: the one approval a move's file steps rest on. @param {any} chain @param {{ move_id: string }} o */
+  const moveEvent = (chain, o) => {
+    mustChain(chain);
+    const who = chain.hops.length === 1 && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor.id : null;
+    if (!who || !o || typeof o.move_id !== "string") throw new KernelError("bad_input", "name the move");
+    const ev = typeof cfg.log.read === "function" ? cfg.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === o.move_id) : null;
+    if (!ev || !String(ev.actor).startsWith(`person:${who}@`) || !(Date.now() - Number(ev.time) <= 24 * 60 * 60 * 1000)) throw new KernelError("not_found", "no such move");
+    return ev;
+  };
+  /** May the mover act on this file for the move: its own `drive.*` answer, or, inside a chat's folders that only participants open, being an owner or admin of the Space (the restore act). @param {any} chain @param {string} p @param {string[]} actions */
+  const mover = async (chain, p, actions) => {
+    const m = /^Projects\/([^/]+)\/(chat|made)\/[^/]+\//.exec(String(p));
+    if (m) return check(chain, "drive.restore", `vyre://${cfg.space}/file/Projects/${m[1]}`);
+    for (const a of actions) if (!(await check(chain, a, file(p)))) return false;
+    return true;
+  };
+
   return Object.freeze({
     /**
      * The Drive as the vault's file seam for ONE chain (a lent member's request, `leases.forward`): the same `read(path, version)` and `write(path, source, { maxBytes })` the vault's
@@ -123,19 +140,55 @@ export function createDriveGateway(cfg) {
      * @param {any} chain @param {string[]} paths @param {{ move_id: string }} o @returns {Promise<{ removed: number }>}
      */
     async removeMoved(chain, paths, o) {
-      mustChain(chain);
-      const who = chain.hops.length === 1 && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor.id : null;
-      if (!who || !o || typeof o.move_id !== "string" || !Array.isArray(paths) || paths.length > 5000) throw new KernelError("bad_input", "name the move and the files");
-      const ev = typeof cfg.log.read === "function" ? cfg.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === o.move_id) : null;
-      if (!ev || !String(ev.actor).startsWith(`person:${who}@`) || !(Date.now() - Number(ev.time) <= 24 * 60 * 60 * 1000)) throw new KernelError("not_found", "no such move to remove files for");
+      const ev = moveEvent(chain, o);
+      if (!Array.isArray(paths) || paths.length > 5000) throw new KernelError("bad_input", "name the move and the files");
+      const id = String(ev.subject).split("/").pop();
       for (const p of paths) {
-        if (!/^Projects\/[^/]+\//.test(String(p))) throw new KernelError("bad_input", "only a project's own files go");
-        if (!(await check(chain, "drive.read", file(p))) || !(await check(chain, "drive.write", file(p)))) throw new KernelError("not_found", "that file is not yours to remove");
+        if (!String(p).startsWith(`Projects/${id}/`)) throw new KernelError("bad_input", "only the moved project's own files go");
+        if (!(await mover(chain, p, ["drive.read", "drive.write"]))) throw new KernelError("not_found", "that file is not yours to remove");
       }
       let removed = 0;
       for (const p of paths) { try { await run(async () => cfg.drive.delete(p, { by: actor(chain) })); removed++; } catch (e) { if (!(e instanceof KernelError && e.code === "not_found")) throw e; } }
-      note(chain, "file.deleted", `vyre://${cfg.space}/file/Projects`, { move_id: o.move_id, files: removed, what: "moved away" }, undefined);
+      note(chain, "file.deleted", `vyre://${cfg.space}/file/Projects/${id}`, { move_id: o.move_id, files: removed, what: "moved away" }, undefined);
       return { removed };
+    },
+    /**
+     * What the move's plan needs to know of a project's chat folders without reading them: how many files and bytes, never a name or a byte. An owner or admin only (the restore act on the project's
+     * folder), since the plan runs before the move is approved and so before there is an event to rest on.
+     * @param {any} chain @param {string} folder @returns {Promise<{ files: number, bytes: number }>}
+     */
+    async survey(chain, folder) {
+      mustChain(chain);
+      const m = /^Projects\/([^/]+)$/.exec(String(folder));
+      if (!m) throw new KernelError("bad_input", "a project's own folder");
+      if (!(await check(chain, "drive.restore", `vyre://${cfg.space}/file/Projects/${m[1]}`))) throw new KernelError("not_found", "no such folder");
+      let files = 0, bytes = 0;
+      for (const e of await run(async () => cfg.drive.list(`${folder}/`))) {
+        const p = String(e.path ?? e.name ?? e);
+        if (!/^Projects\/[^/]+\/(chat|made)\/[^/]+\//.test(p)) continue;
+        try { bytes += Number(cfg.drive.stat(p, {}).size) || 0; files++; } catch { /* gone */ }
+      }
+      return { files, bytes };
+    },
+    /**
+     * What a project's folder holds, for the move: path, size and the content hash of every file, chat folders included, and never a byte. A chat's files are its participants' only, so no listing
+     * under the mover's own chain shows them; the move's one approval is what covers this, proven the way `removeMoved` is, and the mover must be an owner or admin of the Space. The hash is the
+     * Drive's own (of what is stored), so a copy that arrives can be checked against it without anyone reading the file.
+     * @param {any} chain @param {string} folder @param {{ move_id: string }} o @returns {Promise<{ path: string, size: number, sha256: string | null, chat: boolean }[]>}
+     */
+    async inventory(chain, folder, o) {
+      const ev = moveEvent(chain, o);
+      const id = String(ev.subject).split("/").pop();
+      if (folder !== `Projects/${id}`) throw new KernelError("bad_input", "the move's own project folder only");
+      if (!(await check(chain, "drive.restore", `vyre://${cfg.space}/file/Projects/${id}`))) throw new KernelError("not_found", "no such move");
+      const out = [];
+      for (const e of await run(async () => cfg.drive.list(`${folder}/`))) {
+        const p = String(e.path ?? e.name ?? e);
+        let st = { size: 0, sha256: null };
+        try { st = cfg.drive.stat(p, {}); } catch { continue; }
+        out.push({ path: p, size: Number(st.size) || 0, sha256: st.sha256 ?? null, chat: /^Projects\/[^/]+\/(chat|made)\/[^/]+\//.test(p) });
+      }
+      return out;
     },
     /** A restore is a new version, and its own admin act: an assistant's `drive.write` never reaches it. */
     async restore(chain, /** @type {string} */ p, /** @type {number} */ version, /** @type {{ presence?: any }} */ opt = {}) {

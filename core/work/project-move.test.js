@@ -169,3 +169,39 @@ test("the Work engine's lines move with the files: exported, imported through th
   assert.deepEqual(order, ["export", "import", "forget"]);
   assert.equal(done.moved.know, 1);
 });
+
+test("a project's chat folders are carried sealed by the Space service: counted without reading, listed by the move's event, hash-checked on what arrives, and removed after", async () => {
+  const { a, b, proj } = await seed();
+  const chatPath = [...a.files.keys()].find(p => p.includes("/chat/"));
+  const bytes = a.files.get(chatPath);
+  /** @type {any[]} */ const carried = []; /** @type {string[][]} */ const removed = [];
+  /** @type {any} */ (a.drive).survey = async () => ({ files: 1, bytes: bytes.length });
+  /** @type {any} */ (a.drive).inventory = async (/** @type {any} */ _c, /** @type {string} */ folder, /** @type {any} */ o) => { assert.equal(o.move_id, "mv9"); return [{ path: chatPath, size: bytes.length, sha256: "ct-hash", chat: true }]; };
+  /** @type {any} */ (a.drive).removeMoved = async (/** @type {any} */ _c, /** @type {string[]} */ paths) => { removed.push(paths); for (const p of paths) a.files.delete(p); return { removed: paths.length }; };
+  // without a carry the plan says so and nothing runs
+  const blocked = await planMove({ from: a, to: b, project: proj.urn });
+  assert.match(blocked.blockers.join(), /cannot carry a chat's sealed files/);
+  /** @type {any} */ (a).carry = async (/** @type {any[]} */ entries) => { carried.push(...entries); return entries.map(e => ({ path: e.path, dest: e.dest, sha256: "ct-hash" })); };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  assert.deepEqual(plan.blockers, []);
+  assert.equal(plan.counts.chat_files, 1);
+  assert.equal(plan.files.length, 1, "the mover's own file list no longer holds the chat file");
+  const done = await runMove({ from: a, to: b, plan, ports: { move_id: "mv9" } });
+  assert.equal(carried.length, 1);
+  assert.match(carried[0].dest, /^Projects\/[^/]+\/chat\//);
+  assert.ok(removed.flat().includes(chatPath), "the chat file is removed with the rest");
+  assert.deepEqual(done.left_behind, []);
+});
+
+test("a chat file that does not arrive with the hash it left with stops the move before anything is removed", async () => {
+  const { a, b, proj } = await seed();
+  const chatPath = [...a.files.keys()].find(p => p.includes("/chat/"));
+  /** @type {any} */ (a.drive).survey = async () => ({ files: 1, bytes: 5 });
+  /** @type {any} */ (a.drive).inventory = async () => [{ path: chatPath, size: 5, sha256: "ct-hash", chat: true }];
+  /** @type {any} */ (a.drive).removeMoved = async () => { throw new Error("must not be called"); };
+  /** @type {any} */ (a).carry = async (/** @type {any[]} */ entries) => entries.map(e => ({ path: e.path, dest: e.dest, sha256: "tampered" }));
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  await assert.rejects(() => runMove({ from: a, to: b, plan, ports: { move_id: "mv9" } }), /did not arrive intact/);
+  assert.equal(a.files.has(chatPath), true);
+  assert.ok([...a.rows.values()].some(r => r.type === "chat"), "the source records are still there");
+});

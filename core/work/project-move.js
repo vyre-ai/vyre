@@ -56,14 +56,20 @@ export async function planMove({ from, to, project, client = "leave" }) {
   /** @type {{ path: string, size: number }[]} */ let files = [];
   const folder = root.data.drive_path;
   if (folder && from.drive) files = (await from.drive.list(from.chain, folder)).map((/** @type {any} */ e) => ({ path: String(e.path ?? e.name ?? e), size: Number(e.size) || 0 }));
+  // chat folders go by the sealed carry below, never by the mover's own reads
+  if (from.drive && typeof from.drive.survey === "function") files = files.filter(f => !/^Projects\/[^/]+\/(chat|made)\/[^/]+\//.test(f.path));
+  // a project's chat folders are its participants' only, so the mover's listing above never shows them; the move carries them sealed, and the plan counts them without reading
+  let chatFiles = 0, chatBytes = 0;
+  if (folder && from.drive && typeof from.drive.survey === "function") { try { const sv = await from.drive.survey(from.chain, folder); chatFiles = sv.files; chatBytes = sv.bytes; } catch { /* not an owner or admin here: the plan shows only what the mover reads */ } }
   /** @type {string[]} */ const blockers = [];
+  if (chatFiles && !(typeof from.carry === "function" && to.drive)) blockers.push("this kernel cannot carry a chat's sealed files between Spaces yet");
   if (truncated || found.size >= MAX_RECORDS) blockers.push("the project has more linked records than one move carries");
   if (files.length && !to.drive) blockers.push("the target Space has no Drive to receive the files");
   const types = to.types ? new Set((await to.types(to.chain)).map((/** @type {any} */ t) => t.name)) : null;
   // a type the target lacks is installed under the same approval (`to.install`), so it is part of the plan and the hash, not a blocker; without an installer it still blocks
   const install = types ? Object.keys(byType).filter(t => !types.has(t)).sort() : [];
   if (install.length && typeof to.install !== "function") for (const t of install) blockers.push(`the target Space has no record type ${t}`);
-  const counts = { records: byType, files: files.length, bytes: files.reduce((n, f) => n + f.size, 0), sealed_fields: sealed };
+  const counts = { records: byType, files: files.length, bytes: files.reduce((n, f) => n + f.size, 0), sealed_fields: sealed, ...(chatFiles ? { chat_files: chatFiles, chat_bytes: chatBytes } : {}) };
   const ids = [...found.keys()].sort();
   // base64url, 43 characters: the form the kernel's moves and memory's room move both require of a plan hash
   const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, install })).digest("base64url");
@@ -162,6 +168,17 @@ export async function runMove({ from, to, plan, ports = {} }) {
     if (sha(got) !== hashes[f]) throw Object.assign(new Error(`a file did not arrive intact (${f}); nothing was removed from the old Space`), { code: "verify_failed" });
   }
   state.verified = plan.hash;
+  // chat folders: sealed bytes carried by the Space service (`from.carry`, pool to pool inside the sealing processes), listed by the move's own event, each hash checked on what arrives. The mover reads no plaintext.
+  if (plan.counts.chat_files && !removing && !state.chat_carried) {
+    step("chat-files");
+    const inv = (await from.drive.inventory(from.chain, oldRoot, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat);
+    const entries = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${newRoot}${e.path.slice(oldRoot.length)}`, sha256: e.sha256, size: e.size }));
+    if (entries.length !== plan.counts.chat_files) throw Object.assign(new Error("the chat folders changed since the move was approved; plan the move again"), { code: "stale_plan" });
+    const got = await from.carry(entries, { move_id: ports.move_id, to: to.space });
+    const byPath = new Map((got || []).map((/** @type {any} */ g) => [g.dest, g.sha256]));
+    for (const e of entries) if (e.sha256 && byPath.get(e.dest) !== e.sha256) throw Object.assign(new Error(`a chat file did not arrive intact (${e.path}); nothing was removed from the old Space`), { code: "verify_failed" });
+    state.chat_carried = entries.map((/** @type {any} */ e) => e.path);
+  }
   const mapped = Object.keys(state.map).length - 1;
   if (mapped !== wanted.filter((/** @type {any} */ r) => state.map[r.urn]).length) throw Object.assign(new Error("the records that arrived do not match the plan; nothing was removed"), { code: "verify_failed" });
 
@@ -190,7 +207,8 @@ export async function runMove({ from, to, plan, ports = {} }) {
   step("cleanup");
   if (!state.cleaned) {
     const remove = typeof ports.cleanupFiles === "function" ? ports.cleanupFiles : (from.drive && typeof from.drive.removeMoved === "function" && ports.move_id ? (/** @type {string[]} */ paths) => from.drive.removeMoved(from.chain, paths, { move_id: ports.move_id }).then(() => []) : null);
-    left = remove ? ((await remove(plan.files)) || []) : [...plan.files];
+    const allFiles = [...plan.files, ...(state.chat_carried || [])];
+    left = remove ? ((await remove(allFiles)) || []) : allFiles;
     if (!left.length) state.cleaned = true;
   }
   if (ports.know && state.know_receipt && !state.know_forgotten) { step("forget-know"); await ports.know.forget({ records: knowRecords, receipt: state.know_receipt }); state.know_forgotten = true; }
