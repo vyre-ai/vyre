@@ -33,7 +33,6 @@
   "core/cli/commands/phone.test.js",
   "core/cli/commands/relay-verbs.test.js",
   "core/cli/commands/relay.test.js",
-  "core/cli/commands/send.test.js",
   "core/cli/commands/up-verbs.test.js",
   "core/cli/commands/up.test.js",
   "core/cli/qr.test.js",
