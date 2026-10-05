@@ -975,7 +975,8 @@ test("typed pair, real daemon and relay: addThisDevice by code with its presence
   assert.equal(started.status, 200, JSON.stringify(started));
   // a person-session call from that device
   const me = await w.d.registry.call("wink.access", {}, `device:${done.device}`, { person: { id: started.body.data.id }, peer: { stableId: done.device, node: done.device } });
-  assert.ok(!me.error || me.error.code !== "presence_required", JSON.stringify(me.error));
+  assert.ok(!me.error, `the session answers: ${JSON.stringify(me.error)}`);
+  assert.ok(me.data.devices.some(d => d.id === done.device), "the owner's device list, read with the typed-paired device's own session, holds that device");
 });
 
 test("a link to a server that was removed and paired again is made afresh: forget lets go of the old connection and the next call connects to where the pairing now says the server is", async () => {
@@ -999,4 +1000,44 @@ test("a pairing refused twice in a minute says its reason both times in the serv
     await assert.rejects(() => openChannel({ relay: f.w.status.url, route: f.done.route, box: Buffer.from(f.done.box, "base64url"), keys: k, hello: { v: 1, pair: "y".repeat(22) }, crypto: crypt, WebSocket: globalThis.WebSocket }));
   }
   await until(async () => f.w.logs.filter(l => /relay: refused (a hello|again) \(this pairing code has expired/.test(l)).length >= 2);
+});
+
+test("typed pair on the kernel: the typed-paired, acked device defines a record type and reads records.me over its own paired session", async t => {
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
+  delete process.env.VYRE_WINK_TYPED_CODE;
+  process.env.VYRE_SEAL_DEV = "1";
+  process.env.VYRE_KERNEL_PATH_RULE = "1";
+  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; else delete process.env.VYRE_WINK_TYPED_CODE; });
+  const w = await world(t, { kernel: true });
+  const open = (await w.call("wink.phone.open", {}, "cli", PROOF)).data;
+  const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  const idKey = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  const ks = keystore(t);
+  let ack = "";
+  const joining = addThisDevice({ code: open.code, relay: w.status.url, key: { publicKey: idKey, label: "Sam's phone" }, presenceKey, name: "Sam's phone", crypto: nodeCrypto(), keyStore: ks, pollMs: 50, onAck: a => { ack = a; } });
+  joining.catch(() => {});
+  await until(async () => ack);
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: open.code_offer, typed: ack }, "cli", PROOF)).data.ok, true);
+  const done = await joining;
+  const sign = m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: ks }, name: "Sam's phone", sign, channelOf: sid => (sid === "srv" ? { relay: w.status.url, route: done.route, box: done.box } : null) });
+  t.after(() => links.close());
+  assert.ok((await links.startPaired("srv")).id);
+  const session = links.sessionFor("srv");
+  const me = await session.call("records.me", {});
+  assert.ok(JSON.stringify(me).includes(w.d.kernel.id.owner), `records.me answers the owner: ${JSON.stringify(me).slice(0, 200)}`);
+  // the kernel's own gate for a change of types: a paired device is the person (one rule), so a real diff goes through with no extra proof
+  const defined = await session.call("records.define", { diff: { add_types: [{ name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }] }] } });
+  assert.equal(defined.applied, true, JSON.stringify(defined));
+  // the same call as the daemon's own HTTP path builds it: the relay row plus the person Wink's record names, through callerFacts
+  const { callerFacts } = await import("../core/daemon/index.js");
+  const info = await w.d.registry.call("relay.device.info", { id: done.device }, "module:vyred");
+  const rec = await w.d.registry.call("wink.device.record", { id: done.device }, "module:vyred");
+  const facts = callerFacts(`device:${done.device}`, { caller: `device:${done.device}` }, { person: { id: "ps", kind: "bearer" } }, w.d.kernel, false, { ...info.data, person: rec.data && rec.data.owner });
+  assert.ok(facts, "a confirmed paired device is given person facts");
+  const viaFacts = await w.d.registry.call("records.define", { diff: { add_types: [{ name: "company", label: "Company", fields: [{ name: "name", kind: "text", label: "Name" }] }] } }, `device:${done.device}`, { kernelFacts: facts, person: { id: "ps", kind: "bearer" } });
+  assert.equal(viaFacts.data && viaFacts.data.applied, true, JSON.stringify(viaFacts));
 });
