@@ -20,6 +20,7 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 export const OPEN_NOTES = Object.freeze({
   "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
   "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
+  "files.drive.space.search": "finds Space drive files by name among those the caller may read; names only, and the kernel decides what is listed",
   "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",
   "records.roles": "lists the role records that point at one contact, under the caller's own chain; the kernel checks each row",
   "records.holders": "lists the holders of one role, under the caller's own chain; the kernel checks each row",

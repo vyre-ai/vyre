@@ -19,6 +19,7 @@
     {"name": "files.drive.versions", "effect": "read", "reach": "person"},
     {"name": "files.drive.restore", "effect": "write", "reach": "person"},
     {"name": "files.drive.space.list", "effect": "read", "reach": "person"},
+    {"name": "files.drive.space.search", "effect": "read", "reach": "person"},
     {"name": "files.drive.space.read", "effect": "read", "reach": "person"},
     {"name": "files.drive.link.create", "outward": true, "effect": "write", "reach": "person"},
     {"name": "files.drive.link.list", "effect": "read", "reach": "person"},

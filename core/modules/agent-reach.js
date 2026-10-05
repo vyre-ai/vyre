@@ -234,6 +234,7 @@ export const PERSON_ONLY = new Map([
 export const OPEN = new Set([
   "files.drive.space.list",
   "files.drive.space.read",
+  "files.drive.space.search",
   "records.linked",
   "records.roles",
   "records.holders",

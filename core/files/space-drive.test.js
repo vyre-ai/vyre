@@ -35,7 +35,7 @@ const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
 
 test("upload, versions and restore run under the caller's own chain and answer plain shapes", async () => {
   const r = rig();
-  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.upload", "files.drive.versions"]);
+  assert.deepEqual([...r.tools.keys()].sort(), ["files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.space.search", "files.drive.upload", "files.drive.versions"]);
   for (const d of r.tools.values()) assert.deepEqual(d.callers, ["cli", "local", "deck", "capsule", "mobile", "device"]);
   const up = await r.run("files.drive.upload", { path: "Clients/A/retainer.txt", base64: b64("hello") });
   assert.deepEqual(up, { path: "Clients/A/retainer.txt", version: 1, conflict: false, size: 5 });

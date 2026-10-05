@@ -33,7 +33,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 14 | 4 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 36 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 37 | 3 | capsule, cli, deck |
 | [`flows`](#flows) | `core/flows` | `box`, `local` | 24 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
@@ -94,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box` | 59 | 34 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 21 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 22 | 0 | cli |
 
 ## about
 
@@ -116,6 +116,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `credentials`
+- Needs kernel: `{}`
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -284,7 +285,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [36](tools.md#files)
+- Tools: [37](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -567,6 +568,7 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Tools: [22](tools.md#projects)
 - Emits: [4 events](events.md#projects)
 - Shows on: cli
+- Needs kernel: `{"reach":true,"actions":["records.read"]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## providers
@@ -987,8 +989,8 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [21](tools.md#work)
+- Tools: [22](tools.md#work)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"work":true,"attrs":true,"actions":["records.read","records.create","records.update","events.read","drive.write","grants.list","drive.read"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"}]},{"name":"session-summary","label":"Session","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project"},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"provider","kind":"text","label":"Provider"},{"name":"model","kind":"text","label":"Model"},{"name":"account","kind":"text","label":"Account"},{"name":"started","kind":"datetime","label":"Started"},{"name":"ended","kind":"datetime","label":"Ended"},{"name":"status","kind":"choice","label":"Status","options":["working","done","stopped","failed"]},{"name":"summary","kind":"rich_text","label":"Summary"},{"name":"thread","kind":"text","label":"Session id","unique":true},{"name":"transcript","kind":"text","label":"Transcript (kernel address)"},{"name":"transcript_file","kind":"text","label":"Transcript file on its machine"},{"name":"machine","kind":"text","label":"Machine the transcript file is on"},{"name":"drive","kind":"text","label":"Drive folder"}]}]}`
+- Needs kernel: `{"work":true,"attrs":true,"actions":["records.read","records.create","records.update","events.read","drive.write","grants.list","drive.read"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client","to":"contact"},{"name":"owner","kind":"actor","label":"Owner"},{"name":"due","kind":"date","label":"Due"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"}]},{"name":"session-summary","label":"Session","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project"},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"provider","kind":"text","label":"Provider"},{"name":"model","kind":"text","label":"Model"},{"name":"account","kind":"text","label":"Account"},{"name":"started","kind":"datetime","label":"Started"},{"name":"ended","kind":"datetime","label":"Ended"},{"name":"status","kind":"choice","label":"Status","options":["working","done","stopped","failed"]},{"name":"summary","kind":"rich_text","label":"Summary"},{"name":"thread","kind":"text","label":"Session id","unique":true},{"name":"transcript","kind":"text","label":"Transcript (kernel address)"},{"name":"transcript_file","kind":"text","label":"Transcript file on its machine"},{"name":"machine","kind":"text","label":"Machine the transcript file is on"},{"name":"drive","kind":"text","label":"Drive folder"}]}]}`

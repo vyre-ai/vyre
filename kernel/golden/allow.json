@@ -108,6 +108,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads a Space drive file the caller may read; the kernel decides"
  },
  {
+  "tool": "files.drive.space.search",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): finds Space drive files by name among those the caller may read; names only, and the kernel decides what is listed"
+ },
+ {
   "tool": "files.drive.unmount",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): unmounts a box share from the person's Mac"
  },

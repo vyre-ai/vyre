@@ -63,6 +63,32 @@ export function registerSpaceDrive(ctx) {
       return { prefix, entries: r.entries, next: r.next };
     });
 
+  tool("files.drive.space.search", "Find files in the Space's Drive by name, under the caller's own grants: { space?, q, limit? }. Names and paths only, never a word from inside a file. What the caller may not read is the same as not there: a chat's files are its participants' only (kernel/core/folders.js), so a file, a folder name or a path in a chat the caller is not in never comes back, even for the exact words of its name. Answers { q, results: [{ path, name, size?, mtime? }], more } (at most `limit`, default 30, at most 100).",
+    obj({ space: str, q: str, limit: { type: "integer" } }, ["q"]), async (i, d, drive) => {
+      const q = String(i.q ?? "").trim().toLowerCase();
+      if (q.length < 2 || q.length > 200) throw refuse("type two letters or more to search the Drive", "bad_input");
+      if (i.limit !== undefined && (!Number.isInteger(i.limit) || i.limit < 1)) throw refuse("limit is a positive number", "bad_input");
+      const limit = Math.min(i.limit ?? 30, 100), words = q.split(/\s+/);
+      const results = /** @type {any[]} */ ([]);
+      let after = null, more = false;
+      // The listing is the kernel's: each entry is asked about under THIS caller's chain, so what is not theirs to read is never in a page. Nothing here decides who may see a path.
+      for (let page = 0; page < 20 && !more; page++) {
+        let r;
+        try { r = await drive.listPage(d.chain, "", { limit: 1000, after }); }
+        catch (e) { if (page === 0 && /** @type {any} */ (e)?.code && ["not_found", "denied"].includes(/** @type {any} */ (e).code)) return { q, results: [], more: false }; throw e; }
+        for (const e of r.entries) {
+          const path = String(e && (e.path ?? e.name ?? e)), hay = path.toLowerCase();
+          if (!words.every((/** @type {string} */ w) => hay.includes(w))) continue;
+          if (results.length >= limit) { more = true; break; }
+          results.push({ path, name: path.split("/").pop() || path, ...(Number.isFinite(e && e.size) ? { size: e.size } : {}), ...(Number.isFinite(e && e.mtime) ? { mtime: e.mtime } : {}) });
+        }
+        if (!r.next) break;
+        after = r.next;
+        if (page === 19) more = true;
+      }
+      return { q, results, more };
+    });
+
   tool("files.drive.space.read", `Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path, version, size, base64 } for a file of at most ${MAX_UPLOAD / 1048576} MB (\`too_large\` beyond).`,
     obj({ space: str, path: str, version: { type: "integer" } }, ["path"]), async (i, d, drive) => {
       const p = pathOf(i.path);

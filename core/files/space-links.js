@@ -11,6 +11,7 @@
 import crypto from "node:crypto";
 import { createDoor } from "../../lib/gateway-door.js";
 import { safePath } from "../../kernel/seal/uses.js";
+import { chatFolderOf } from "../../kernel/core/folders.js";
 import { MAX_UPLOAD } from "./space-drive.js";
 
 const obj = (/** @type {any} */ props = {}, /** @type {string[]} */ required = []) => ({ type: "object", properties: props, ...(required.length ? { required } : {}) });
@@ -33,6 +34,9 @@ export const LINK_MIGRATIONS = [
 const MIME = { txt: "text/plain; charset=utf-8", md: "text/plain; charset=utf-8", csv: "text/csv; charset=utf-8", json: "application/json", pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" };
 /** A type for the download. A file the table does not know is plain bytes, never something a browser would run (html and svg are bytes too). @param {string} name */
 export const mimeOf = (name) => /** @type {any} */ (MIME)[String(name).split(".").pop()?.toLowerCase() ?? ""] || "application/octet-stream";
+
+/** Is this path in a chat's folders (kernel/core/folders.js decides what that is)? Those files are their participants' only, so a code that anyone can hold never serves them. @param {string} space @param {string} p */
+const inChatFolder = (space, p) => chatFolderOf(`vyre://${space}/file/${p}`, space) !== null;
 
 /** @param {any} ctx @param {{ now?: () => number }} [o] */
 export function registerSpaceLinks(ctx, o = {}) {
@@ -58,7 +62,10 @@ export function registerSpaceLinks(ctx, o = {}) {
       if (!Number.isInteger(days) || days < 1 || days > MAX_DAYS) throw refuse(`a link lasts 1 to ${MAX_DAYS} days`, "bad_input");
       const d = await door.open(i, meta);
       if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
+      // The read goes first, under the caller's own chain, so someone outside a chat learns nothing from this call (the same refusal as a missing file). Then a chat's file is never made a public link: a link is
+      // opened by anyone who holds its code, and a chat's files are its participants' only; "Share to project" is the way to let members read one file.
       const bytes = await d.gateway.drive.get(d.chain, p, { version: i.version ?? null, maxBytes: MAX_UPLOAD });
+      if (inChatFolder(d.space, p)) throw refuse("a chat's files are its participants' only, so they cannot be shared with a link. Use Share to project to let the project's members read one file.", "denied");
       if (bytes.length > MAX_UPLOAD) throw refuse(`a shared file is at most ${MAX_UPLOAD / 1048576} MB`, "too_large");
       sweep();
       const held = /** @type {any} */ (open().prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes FROM files_links WHERE bytes IS NOT NULL").get());
@@ -95,8 +102,10 @@ export function registerSpaceLinks(ctx, o = {}) {
     const code = String(url.searchParams.get("c") ?? "");
     if (!CODE.test(code)) return gone();
     sweep();
-    const row = /** @type {any} */ (open().prepare("SELECT name, mime, size, bytes, expires, revoked_at FROM files_links WHERE code = ?").get(code));
+    const row = /** @type {any} */ (open().prepare("SELECT space, path, name, mime, size, bytes, expires, revoked_at FROM files_links WHERE code = ?").get(code));
     if (!row || row.revoked_at || row.bytes === null || row.expires <= now()) return gone();
+    // Checked on every open, not only when the link was made: a link that came to point into a chat's folders (an older one, or a file moved there) serves nothing, as if it were not there.
+    if (inChatFolder(String(row.space), String(row.path))) return gone();
     open().prepare("UPDATE files_links SET opens = opens + 1 WHERE code = ?").run(code);
     const safeName = String(row.name).replace(/[^\w. -]/g, "_");
     res.writeHead(200, { "content-type": row.mime, "content-length": row.size, "content-disposition": `attachment; filename="${safeName}"`, "cache-control": "no-store", "x-content-type-options": "nosniff", "content-security-policy": "sandbox", "referrer-policy": "no-referrer" });
