@@ -1389,7 +1389,7 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   const roles = { [OWNER]: "owner", [MEM]: "member" };
   const kernelFor = () => ({
     space: HOME, owner: OWNER, membership: async (/** @type {string} */ p) => (roles[p] ? { member: true, role: roles[p] } : { member: false }),
-    chain: async (/** @type {any} */ meta) => ({ hops: [{ actor: { kind: "person", id: meta.as } }] }), spaces: { hosts: (/** @type {string} */ id) => id === HOME, list: () => [HOME] }, for: () => { throw new Error("n/a"); },
+    chain: async (/** @type {any} */ meta) => ({ hops: [{ actor: { kind: "person", id: meta.as } }, ...(meta.agent ? [{ actor: { kind: "agent", id: meta.agent } }] : [])] }), spaces: { hosts: (/** @type {string} */ id) => id === HOME, list: () => [HOME] }, for: () => { throw new Error("n/a"); },
   });
   const d = await device(t, { kernelFor });
   const b64 = (/** @type {string} */ s) => Buffer.from(s).toString("base64");
@@ -1407,6 +1407,7 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   assert.deepEqual(listed.entries, [{ name: "personal/a", sha: sha("v2"), size: 2 }]);
   assert.equal((await d.call("spaces.storage.put", { space: HOME, name: "x", data: b64("y") }, "cli", as(OUT))).error?.code, "forbidden", "a stranger has no storage here");
   assert.equal((await d.call("spaces.storage.put", { space: "spc_zzzzzzzzzzzz", name: "x", data: b64("y") }, "cli", as(MEM))).error?.code, "not_found");
+  assert.equal((await d.call("spaces.storage.put", { space: HOME, name: "x", data: b64("y") }, "cli", { ...as(MEM), agent: "kit" })).error?.code, "forbidden", "an agent in the chain, relayed or not, has no storage");
   assert.equal((await d.call("spaces.storage.put", { space: HOME, name: "../x", data: b64("y") }, "cli", as(MEM))).error?.code, "bad_input");
   assert.equal((await d.call("spaces.storage.set-cap", { space: HOME, person: MEM, bytes: 4 }, "cli", as(MEM))).error?.code, "forbidden", "a member cannot set their own cap");
   await d.ok("spaces.storage.set-cap", { space: HOME, person: MEM, bytes: 2 }, "cli", as(OWNER));

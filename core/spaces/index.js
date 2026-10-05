@@ -1557,16 +1557,20 @@ export default {
      * module callers only, and each runs AS THE PERSON in both Spaces, so this module relays the person it is acting for (`relay: true`, an allowlist in core/modules/index.js). A module without the tools is
      * simply not part of the plan.
      */
-    const PORT_TOOLS = { chats: { plan: "work.chat.upgrade-plan", move: "work.chat.upgrade-move" }, memory: { plan: "memory.upgrade.plan", move: "memory.upgrade.move" } };
+    /** The four port calls, by literal tool name (the reach check reads them from source). `relay` carries the person; the allowlist is RELAY_ALLOWED in core/modules/index.js. */
+    const portCall = (/** @type {"chats" | "memory"} */ kind, /** @type {"plan" | "move"} */ op, /** @type {any} */ input) => {
+      if (kind === "chats") return op === "plan" ? ctx.call("work.chat.upgrade-plan", input, { relay: true }) : ctx.call("work.chat.upgrade-move", input, { relay: true });
+      return op === "plan" ? ctx.call("memory.upgrade.plan", input, { relay: true }) : ctx.call("memory.upgrade.move", input, { relay: true });
+    };
     const upgradePorts = async (/** @type {string} */ to) => {
       /** @type {Record<string, any>} */ const ports = {};
-      for (const [k, t] of Object.entries(PORT_TOOLS)) {
+      for (const k of /** @type {("chats" | "memory")[]} */ (["chats", "memory"])) {
         let plan = null;
         try {
-          const r = await ctx.call(t.plan, { to }, { relay: true });
+          const r = await portCall(k, "plan", { to });
           if (r && r.error) { if (r.error.code === "no_such_tool") continue; plan = { blockers: [`could not be read: ${String(r.error.message || r.error.code).slice(0, 80)}`], counts: null }; } else plan = r.data;
         } catch (e) { if (String(/** @type {any} */ (e).code) === "no_such_tool") continue; plan = { blockers: ["could not be read"], counts: null }; }
-        ports[k] = { items: plan && Array.isArray(plan.chats) ? plan.chats : [], plan: async () => plan, move: async (/** @type {{ to: string }} */ a) => { const r = await ctx.call(t.move, a, { relay: true }); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; } };
+        ports[k] = { items: plan && Array.isArray(plan.chats) ? plan.chats : [], plan: async () => plan, move: async (/** @type {{ to: string }} */ a) => { const r = await portCall(k, "move", a); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; } };
       }
       return ports;
     };
