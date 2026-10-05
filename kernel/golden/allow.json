@@ -316,6 +316,18 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; the install card for a Kit, a read; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
+  "tool": "flows.kit.diff",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads what updating an installed Kit to a version would change: parts added, changed and removed, and the risks; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.library",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Kits this build ships before anything is installed: public text, no data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.library.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads one shipped Kit in the form the card, diff and propose tools take: public text, no data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.kit.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Kits of a Space; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },

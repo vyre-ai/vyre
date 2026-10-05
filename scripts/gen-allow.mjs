@@ -213,6 +213,9 @@ export const FLOWS_NOTES = Object.freeze({
   "flows.kit.card": "the install card for a Kit, a read",
   "flows.kit.propose": "proposes a Kit for approval, and installing waits for a person",
   "flows.kit.list": "lists the Kits of a Space",
+  "flows.kit.diff": "reads what updating an installed Kit to a version would change: parts added, changed and removed, and the risks; nothing is changed",
+  "flows.kit.library": "lists the Kits this build ships before anything is installed: public text, no data",
+  "flows.kit.library.get": "reads one shipped Kit in the form the card, diff and propose tools take: public text, no data",
   "flows.budget": "reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain",
 });
 
