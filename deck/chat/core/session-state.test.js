@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { createSession, applyEvent, pendingEvents, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel,
   splitShells, seedTasks } from "./session-state.js";
 
-const T = "th-harlow";
+const T = "th-juniper";
 /** @param {any} s */
 const keys = s => s.items.map((/** @type {any} */ i) => i.key);
 /** @param {any} s @param {string} type @param {any} payload @param {any} [extra] */
@@ -87,14 +87,14 @@ test("text, tool, text with ADR 0030 block indexes keeps block keys", () => {
 
 test("a live user matched by uuid: thread.sent then thread.turn is one item", () => {
   const s = createSession(T);
-  ev(s, "thread.sent", { text: "Draft the Harlow Legal reply", surface: "deck" });
-  const changed = ev(s, "thread.turn", { turn: `${T}:3`, uuid: "uu-1", text: "Draft the Harlow Legal reply" });
+  ev(s, "thread.sent", { text: "Draft the Juniper Studio reply", surface: "deck" });
+  const changed = ev(s, "thread.turn", { turn: `${T}:3`, uuid: "uu-1", text: "Draft the Juniper Studio reply" });
   assert.equal(s.turn, 3);
   assert.deepEqual(keys(s), ["u:live:1"]);
   assert.equal(s.byKey.get("u:live:1").uuid, "uu-1");
   assert.ok(changed.includes("u:live:1"));
   // A sent event carrying the uuid (new switchboard) is the same message again.
-  ev(s, "thread.sent", { text: "Draft the Harlow Legal reply", uuid: "uu-1" });
+  ev(s, "thread.sent", { text: "Draft the Juniper Studio reply", uuid: "uu-1" });
   assert.deepEqual(keys(s), ["u:live:1"]);
   // thread.turn first mints u:<uuid>.
   const s2 = createSession(T);
@@ -331,7 +331,7 @@ test("a stop: a real crash reads failed (28a8b4f8's reason shape, 'exited <code>
 test("a closed turn and a new open turn in one read each find their own item; a live call learns its length", () => {
   const s = createSession(T);
   applyBlocks(s, [
-    { seq: 0, kind: "user", ts: 1000, text: "Draft the Harlow Legal intake" },
+    { seq: 0, kind: "user", ts: 1000, text: "Draft the Juniper Studio intake" },
     { seq: 1, kind: "text", ts: 2000, message: "m0", text: "Drafted." },
     { seq: 1, kind: "turn", ts: 1000, duration_ms: 1000, tokens: { input: 10, output: 2 }, open: true },
   ]);
@@ -428,8 +428,8 @@ test("the step counts only this turn's finished calls; a steer from another scre
 
 test("a steer your server took as a message of its own (the turn had ended) loses its marker", () => {
   const s = createSession(T);
-  localSend(s, { uuid: "u-5", text: "And the Harlow Legal intake", mode: "steer" });
-  const out = ev(s, "thread.sent", { text: "And the Harlow Legal intake", surface: "deck", uuid: "u-5", via: "turn" });
+  localSend(s, { uuid: "u-5", text: "And the Juniper Studio intake", mode: "steer" });
+  const out = ev(s, "thread.sent", { text: "And the Juniper Studio intake", surface: "deck", uuid: "u-5", via: "turn" });
   assert.ok(out.includes("steer:u-5"));
   assert.equal(s.byKey.get("steer:u-5"), undefined);
   assert.deepEqual(keys(s), ["u:u-5"]);
@@ -602,9 +602,9 @@ test("a queued send: the answer's queued_id and your server's uuid name the row 
 
 test("send-now with no turn running starts one: a message of its own, not a steer", () => {
   const s = createSession(T);
-  ev(s, "thread.queued", { queued: 7, uuid: "q-7", text: "Summarise the Harlow Legal notes" });
-  ev(s, "thread.turn", { turn: `${T}:1`, uuid: "q-7", text: "Summarise the Harlow Legal notes" });
-  ev(s, "thread.sent", { text: "Summarise the Harlow Legal notes", queued: 7, uuid: "q-7", via: "now" });
+  ev(s, "thread.queued", { queued: 7, uuid: "q-7", text: "Summarise the Juniper Studio notes" });
+  ev(s, "thread.turn", { turn: `${T}:1`, uuid: "q-7", text: "Summarise the Juniper Studio notes" });
+  ev(s, "thread.sent", { text: "Summarise the Juniper Studio notes", queued: 7, uuid: "q-7", via: "now" });
   assert.equal(s.items.filter(i => i.kind === "steer").length, 0);
   assert.equal(s.queued.length, 0);
 });
@@ -640,7 +640,7 @@ test("mode, model and thinking: from thread.started and their own events", () =>
 test("todos: the newest TodoWrite of the thread, announced as @todos", () => {
   const s = createSession(T);
   const blocks = [
-    { seq: 0, kind: "user", ts: 1, text: "Plan the Harlow Legal launch" },
+    { seq: 0, kind: "user", ts: 1, text: "Plan the Juniper Studio launch" },
     { seq: 1, kind: "tool", ts: 2, id: "td1", tool: "TodoWrite", input: { todos: [{ content: "Read the intake", status: "in_progress", activeForm: "Reading the intake" }] }, output: "ok", error: false },
     { seq: 2, kind: "tool", ts: 3, id: "td2", tool: "TodoWrite", input: { todos: [{ content: "Read the intake", status: "completed" }, { content: "Run the tests", status: "pending" }] }, output: "ok", error: false },
   ];
@@ -768,10 +768,10 @@ test("! shell in the transcript: the next message's <bash-input> blocks split ba
 
 test("# memory: thread.remembered is a notice naming the file", () => {
   const s = createSession(T);
-  const out = ev(s, "thread.remembered", { scope: "project", file: "/home/alex/work/harlow-legal/CLAUDE.md" }, { id: 7 });
+  const out = ev(s, "thread.remembered", { scope: "project", file: "/home/alex/work/juniper-studio/CLAUDE.md" }, { id: 7 });
   assert.deepEqual(out, ["n:7"]);
   assert.equal(s.byKey.get("n:7").text, "Remembered in CLAUDE.md (this project)");
-  ev(s, "thread.remembered", { scope: "local", file: "/home/alex/work/harlow-legal/CLAUDE.local.md" }, { id: 8 });
+  ev(s, "thread.remembered", { scope: "local", file: "/home/alex/work/juniper-studio/CLAUDE.local.md" }, { id: 8 });
   assert.equal(s.byKey.get("n:8").text, "Remembered in CLAUDE.local.md (this folder, not shared)");
 });
 

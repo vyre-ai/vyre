@@ -220,7 +220,7 @@ test("glass: a target that stops being live ends its run as done", () => {
 test("glass: stopped says how far it got, then leaves after 4 s", () => {
   let s = acting();
   s = applyGlassEvent(s, stepped({ at: T0 + 100, summary: "Typed the subject" }), T0 + 100).state;
-  s = applyGlassEvent(s, stepped({ at: T0 + 200, summary: "Attached the Harlow Legal brief" }), T0 + 200).state;
+  s = applyGlassEvent(s, stepped({ at: T0 + 200, summary: "Attached the Juniper Studio brief" }), T0 + 200).state;
   s = applyGlassEvent(s, { type: "thread.stopped", thread: "t1", payload: {} }, T0 + 1000).state;
   const v = s.targets["agent:kit"];
   assert.equal(phaseOf(v, T0 + 1000), "stopped");
@@ -248,9 +248,9 @@ test("glass: the step line: running, failed with why, waiting for you, the holde
   s = applyGlassEvent(s, stepped({ at: T0 + 20, ok: false, summary: "Clicked Send", why: "The Send button was greyed out" }), T0 + 20).state;
   const f = stepLine(s.targets["agent:kit"], T0 + 4020);
   assert.deepEqual(f, { mark: "failed", text: "Clicked Send", trail: "4 s", why: "The Send button was greyed out" });
-  const w = stepLine(s.targets["agent:kit"], T0 + 20, "Send to dana@harlowlegal.com");
+  const w = stepLine(s.targets["agent:kit"], T0 + 20, "Send to dana@juniperstudio.example");
   assert.equal(w.mark, "waiting");
-  assert.equal(w.text, "Waiting for you: Send to dana@harlowlegal.com");
+  assert.equal(w.text, "Waiting for you: Send to dana@juniperstudio.example");
   s = applyGlassEvent(s, stepped({ target: "agent:juno", agent: "juno", thread: "t2", summary: "Scrolled the order list" }, "t2"), T0).state;
   assert.equal(stepLine(s.targets["agent:juno"], T0 + 9000).trail, "alex has the keyboard", "the holder in place of the age");
   assert.equal(openLabel("kit"), "Open Glass for kit's computer");

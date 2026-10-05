@@ -18,7 +18,7 @@ test("a session needing the person comes first, then failed, running and done", 
 test("the words say what the session is doing", () => {
   assert.equal(wordOf(T({ asks: 1 })), "1 waiting on you");
   assert.equal(wordOf(T({ status: "stopped", stopped_reason: "idle" })), "idle");
-  assert.equal(subOf(T({ projectName: "Harlow estate" })), "running · juno · Harlow estate · sonnet");
+  assert.equal(subOf(T({ projectName: "Juniper estate" })), "running · juno · Juniper estate · sonnet");
 });
 
 test("the age is the biggest whole unit", () => {

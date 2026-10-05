@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
-const S1 = { id: "spc_a", name: "harlowdev.vyre.run", label: "harlowdev", displayName: "Harlow Legal", status: "done", role: "owner" };
+const S1 = { id: "spc_a", name: "juniperdev.vyre.run", label: "juniperdev", displayName: "Juniper Studio", status: "done", role: "owner" };
 const S2 = { id: "spc_b", name: "mine.vyre.run", label: "mine", status: "done", role: "member" };
 const ID = { exists: true, name: "devbox.vyre.run", label: "devbox", pending: false };
 
@@ -26,9 +26,9 @@ test("one space is the whole switcher; two get All spaces first; names and roles
   const { shellFrom } = await import("./real-model.ts");
   const load = async (/** @type {any} */ sp, /** @type {any} */ id) => { const r = await shellSource(/** @type {any} */ (box(sp, id))).load(); return shellFrom(r.spaces, r.identity); };
   const one = await load({ data: [S1] }, { data: ID });
-  assert.deepEqual(one.spaces, [{ id: "spc_a", name: "Harlow Legal", sub: "Owner" }]);
+  assert.deepEqual(one.spaces, [{ id: "spc_a", name: "Juniper Studio", sub: "Owner" }]);
   const two = await load({ data: [S1, S2] }, { data: ID });
-  assert.deepEqual(two.spaces.map((s) => [s.id, s.name, s.sub]), [["all", "All spaces", "One list, everything"], ["spc_a", "Harlow Legal", "Owner"], ["spc_b", "mine", "Member"]]);
+  assert.deepEqual(two.spaces.map((s) => [s.id, s.name, s.sub]), [["all", "All spaces", "One list, everything"], ["spc_a", "Juniper Studio", "Owner"], ["spc_b", "mine", "Member"]]);
 });
 
 test("the person is their identity on this box, and a missing identity still shows the spaces", { skip: !strip }, async () => {
@@ -57,10 +57,39 @@ test("the showing space's name is the one picked, else the only one", { skip: !s
   const { shellSource } = await import("./real-source.ts");
   const m = await import("./real-model.ts");
   const d = await load1({ data: [S1, S2] }, { data: ID });
-  assert.deepEqual([m.showingName(d, "spc_b"), m.showingName(d, "all"), m.startSpace(d)], ["mine", "Harlow Legal", "all"]);
+  assert.deepEqual([m.showingName(d, "spc_b"), m.showingName(d, "all"), m.startSpace(d)], ["mine", "Juniper Studio", "all"]);
 });
 
 test("a box that cannot list spaces is an error with its code, not an empty shell", { skip: !strip }, async () => {
   const { shellSource } = await import("./real-source.ts");
   await assert.rejects(shellSource(/** @type {any} */ (box({ error: { code: "offline", message: "the box did not answer" } }, { data: ID }))).load(), (/** @type {any} */ e) => e.code === "offline");
+});
+
+import { spaceName as spaceNameOf } from "./real-model.ts";
+test("a space is never called by its id: its name, label or address; Personal for the personal space; else Space; Personal and My Cloud by tier", () => {
+  const warn = console.warn; let warned = 0; console.warn = () => { warned++; };
+  try {
+    assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1" }), "Space");
+    assert.equal(warned, 1, "the gap is logged");
+    assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "SPC_9ZK4", name: "spc_9zk4" }), "Space");
+  } finally { console.warn = warn; }
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", setup: { who: "personal" } }), "Personal");
+  assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" } }), "Personal");
+  assert.equal(spaceNameOf({ id: "s1", name: "alex.vyre.run", tier: "cloud", setup: { who: "personal" } }), "My Cloud");
+  assert.equal(spaceNameOf({ id: "s2", name: "juniper.vyre.run", tier: "cloud", setup: { who: "team" } }), "juniper");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "example.vyre.run" }), "example");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", label: "juniper" }), "juniper");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "x", displayName: "Juniper Studio" }), "Juniper Studio");
+  assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "Juniper Studio" }), "Juniper Studio");
+});
+
+test("the switcher: Personal, then a team space with its Cloud tag; nobody sees Basic, Pro or an id", async () => {
+  const { spacesFrom } = await import("./real-model.ts");
+  const rows = spacesFrom([
+    { id: "spc_1", name: "alex.vyre.run", tier: "basic", setup: { who: "personal" }, role: "owner", status: "done" },
+    { id: "spc_2", name: "juniper.vyre.run", tier: "cloud", setup: { who: "team" }, role: "member", status: "done" },
+  ]);
+  assert.deepEqual(rows.map((r) => [r.name, r.sub]), [["All spaces", "One list, everything"], ["Personal", "Owner"], ["juniper", "Cloud · Member"]]);
+  assert.equal(rows[1].basic, true);
+  assert.ok(!rows.map((r) => `${r.name} ${r.sub}`).join(" ").match(/Basic|Pro\b|spc_/));
 });

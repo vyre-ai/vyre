@@ -41,7 +41,7 @@ test("held fields group under one record", { skip: !strip }, async () => {
 test("share: vault.grant gets the item, the module, an optional watcher and project; bad names are said plainly", { skip: !strip }, async () => {
   const { shareInput, shareNote, shareRefusal } = await import("./held-model.ts");
   assert.deepEqual(shareInput("Gmail", { module: "mail", project: "" }), { input: { name: "Gmail", module: "mail" } });
-  assert.deepEqual(shareInput("Gmail", { module: " watch/intake ", project: " harlow " }), { input: { name: "Gmail", module: "watch", watcher: "intake", project: "harlow" } });
+  assert.deepEqual(shareInput("Gmail", { module: " watch/intake ", project: " juniper " }), { input: { name: "Gmail", module: "watch", watcher: "intake", project: "juniper" } });
   assert.match(/** @type {any} */ (shareInput("Gmail", { module: "", project: "" })).error, /Say who gets it/);
   assert.match(/** @type {any} */ (shareInput("Gmail", { module: "two words", project: "" })).error, /no spaces/);
   assert.match(shareNote("mail", "Gmail", { grant: { status: "active" } }), /mail can now use Gmail\. It never sees the value/);

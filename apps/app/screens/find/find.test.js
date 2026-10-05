@@ -17,9 +17,9 @@ function box(o = {}) {
     if (o.error?.[tool]) return { error: o.error[tool] };
     switch (tool) {
       case "agents.list": return { data: [{ name: "kit", kind: "agent", instructions: "Reviews contracts\nmore" }, { name: "juno", kind: "assistant", instructions: "" }, { nope: 1 }] };
-      case "projects.catalog": return { data: { sessions: [{ id: "s1", label: "Harlow intake call", projects: ["harlow"], last: NOW - 3600_000, cwd: "/Users/x/work/harlow" }, { id: "s2", label: "", last: 5 }] } };
-      case "threads.list": return { data: [{ id: "s3", name: "Probate checklist", project: "harlow", agent: "kit" }] };
-      case "projects.list": return { data: { projects: [{ slug: "harlow", name: "Harlow Legal" }, { slug: "bare" }, { name: "no slug" }] } };
+      case "projects.catalog": return { data: { sessions: [{ id: "s1", label: "Juniper intake call", projects: ["juniper"], last: NOW - 3600_000, cwd: "/Users/x/work/juniper" }, { id: "s2", label: "", last: 5 }] } };
+      case "threads.list": return { data: [{ id: "s3", name: "Probate checklist", project: "juniper", agent: "kit" }] };
+      case "projects.list": return { data: { projects: [{ slug: "juniper", name: "Juniper Studio" }, { slug: "bare" }, { name: "no slug" }] } };
       case "agents.ask": return { data: o.ask ?? { thread: "t9" } };
       case "threads.send": return { data: o.send ?? { sent: true } };
       case "threads.watch": return { data: {} };
@@ -36,7 +36,7 @@ test("load: agents (the assistant first), sessions merged from the catalog and t
   assert.deepEqual(l.agents.map((a) => a.name), ["juno", "kit"]);
   assert.equal(l.assistant, "juno");
   assert.deepEqual(l.sessions.map((s) => s.id).sort(), ["s1", "s2", "s3"]);
-  assert.deepEqual(l.projects, [{ slug: "harlow", name: "Harlow Legal" }, { slug: "bare", name: "bare" }]);
+  assert.deepEqual(l.projects, [{ slug: "juniper", name: "Juniper Studio" }, { slug: "bare", name: "bare" }]);
   assert.deepEqual(b.seen.map((s) => s.tool).sort(), ["agents.list", "projects.catalog", "projects.list", "threads.list"]);
   assert.deepEqual(b.seen.find((s) => s.tool === "projects.catalog")?.input, { limit: 300 });
   assert.deepEqual(b.seen.find((s) => s.tool === "threads.list")?.input, { all: true });
@@ -44,18 +44,18 @@ test("load: agents (the assistant first), sessions merged from the catalog and t
   assert.deepEqual([none.agents, none.assistant], [[], null]);
 });
 
-test("search: four tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
+test("search: five tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
   const { findSource } = await import("./source.ts");
   const b = box();
   const s = findSource(b.call, "web");
   const got = [];
-  const on = { recall: () => got.push("r"), files: () => got.push("f"), memory: () => got.push("m"), mentions: () => got.push("x") };
+  const on = { recall: () => got.push("r"), files: () => got.push("f"), memory: () => got.push("m"), mentions: () => got.push("x"), drive: () => got.push("d") };
   s.search("a", on);
   assert.equal(b.seen.length, 0);
-  s.search("harlow", on);
+  s.search("juniper", on);
   await new Promise((r) => setTimeout(r, 5));
-  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "harlow", limit: 20 }], ["files.search", { q: "harlow", limit: 20 }], ["memory.relevant", { text: "harlow", limit: 5 }], ["mentions.search", { q: "harlow", limit: 8 }]]);
-  assert.deepEqual(got.sort(), ["f", "m", "r", "x"]);
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "juniper", limit: 20 }], ["files.search", { q: "juniper", limit: 20 }], ["memory.relevant", { text: "juniper", limit: 5 }], ["mentions.search", { q: "juniper", limit: 8 }], ["files.drive.space.search", { q: "juniper", limit: 20 }]]);
+  assert.deepEqual(got.sort(), ["d", "f", "m", "r", "x"]);
   await s.preview("/a/b.txt", "mac"); await s.preview("/a/c.txt", "other");
   assert.deepEqual(b.seen.slice(-2).map((x) => x.input), [{ path: "/a/b.txt", source: "mac" }, { path: "/a/c.txt" }]);
 });
@@ -86,10 +86,10 @@ test("sections in the fixed order, a name match before what recall found, projec
   assert.equal(s[0].rows[0].snippet, "Dana Reyes called");
   assert.deepEqual(s[1].rows.map((r) => r.href), ["/u/record/c1"]);
   assert.deepEqual(s[2].rows.map((r) => r.title), ["Reyes estate"]);
-  const s2 = sections(b, "harlow", "all", {});
+  const s2 = sections(b, "juniper", "all", {});
   assert.deepEqual(s2.map((x) => x.key), ["chats", "projects"]);
   assert.deepEqual(s2[0].rows.map((r) => r.session), ["s1"]);
-  assert.equal(s2[1].rows[0].href, "/u/project/harlow");
+  assert.equal(s2[1].rows[0].href, "/u/project/juniper");
   const s3 = sections(b, "mem", "all", {});
   assert.deepEqual(s3.map((x) => x.key), ["places"]);
   assert.equal(s3[0].rows[0].href, "/u/memory");
@@ -101,12 +101,12 @@ test("sections in the fixed order, a name match before what recall found, projec
 test("prefixes narrow the scope and are stripped: p projects, t chats, u people", { skip: !strip }, async () => {
   const { sections, queryOf } = await import("./model.ts");
   const b = await base();
-  assert.deepEqual(queryOf("p harlow", "all"), { scope: "projects", q: "harlow" });
-  assert.deepEqual(queryOf("t harlow", "all"), { scope: "chats", q: "harlow" });
+  assert.deepEqual(queryOf("p juniper", "all"), { scope: "projects", q: "juniper" });
+  assert.deepEqual(queryOf("t juniper", "all"), { scope: "chats", q: "juniper" });
   assert.deepEqual(queryOf("u kit", "all"), { scope: "people", q: "kit" });
   assert.deepEqual(queryOf("park", "all"), { scope: "all", q: "park" });
-  assert.deepEqual(queryOf("harlow", "files"), { scope: "files", q: "harlow" });
-  assert.deepEqual(sections(b, "p harlow", "all", {}).map((x) => x.key), ["projects"]);
+  assert.deepEqual(queryOf("juniper", "files"), { scope: "files", q: "juniper" });
+  assert.deepEqual(sections(b, "p juniper", "all", {}).map((x) => x.key), ["projects"]);
   assert.deepEqual(sections(b, "u reyes", "all", {}).map((x) => x.key), ["people"]);
   assert.deepEqual(sections(b, "reyes", "projects", {}).map((x) => x.key), []);
 });
@@ -135,8 +135,8 @@ test("memory facts: only ones with text; a tap goes to Memory", { skip: !strip }
 test("idle: the last searches (one of each, newest first, at most 8), recent chats, the places", { skip: !strip }, async () => {
   const { addRecent, idle } = await import("./model.ts");
   let l = [];
-  for (const q of ["a", "dana", "harlow", "Dana", "x"]) l = addRecent(l, q);
-  assert.deepEqual(l, ["Dana", "harlow"]);
+  for (const q of ["a", "dana", "juniper", "Dana", "x"]) l = addRecent(l, q);
+  assert.deepEqual(l, ["Dana", "juniper"]);
   for (let i = 0; i < 12; i++) l = addRecent(l, `query ${i}`);
   assert.equal(l.length, 8);
   assert.equal(l[0], "query 11");
@@ -153,11 +153,11 @@ test("commands: @agent asks it, tell types then watches, watch watches, anything
   const a = readCommand("@kit review the lease", b, null);
   assert.deepEqual(a.cmd, { kind: "agent", agent: "kit", text: "review the lease" });
   assert.equal(planLine(a.cmd, "", "juno"), "Enter asks kit.");
-  const d = readCommand("tell harlow intake to call dana", b, null);
+  const d = readCommand("tell juniper intake to call dana", b, null);
   assert.equal(d.cmd.kind, "drive");
   assert.equal(d.chosen?.id, "s1");
-  assert.equal(planLine(d.cmd, "Harlow intake call", "juno"), "Enter types into Harlow intake call, then watches it.");
-  assert.equal(readCommand("tell harlow intake to call dana", b, "s3").chosen?.id, "s1");
+  assert.equal(planLine(d.cmd, "Juniper intake call", "juno"), "Enter types into Juniper intake call, then watches it.");
+  assert.equal(readCommand("tell juniper intake to call dana", b, "s3").chosen?.id, "s1");
   const w = readCommand("tell me when probate checklist is done", b, null);
   assert.equal(w.cmd.kind, "watch");
   assert.equal(w.chosen?.id, "s3");
@@ -165,7 +165,7 @@ test("commands: @agent asks it, tell types then watches, watch watches, anything
   assert.equal(readCommand("what is the status", b, null).cmd.kind, "ask");
   assert.equal(planLine(readCommand("what is the status", b, null).cmd, "", "juno"), "Enter asks juno.");
   assert.equal(doneLine(a.cmd, ""), "Sent to kit.");
-  assert.equal(doneLine(d.cmd, "Harlow intake call"), "Sent to Harlow intake call. You will hear when it finishes or asks.");
+  assert.equal(doneLine(d.cmd, "Juniper intake call"), "Sent to Juniper intake call. You will hear when it finishes or asks.");
 });
 
 test("running a command: ask goes to the agent without waiting, drive sends then watches, a busy keyboard sends nothing", { skip: !strip }, async () => {
@@ -175,10 +175,10 @@ test("running a command: ask goes to the agent without waiting, drive sends then
   assert.deepEqual(await s.ask("kit", "review the lease"), { thread: "t9", note: "" });
   assert.deepEqual(b.seen[0], { tool: "agents.ask", input: { agent: "kit", text: "review the lease", surface: "web", wait: false } });
   const drive = { kind: /** @type {const} */ ("drive"), query: "x", text: "call dana", candidates: [] };
-  assert.deepEqual(await s.run(drive, { id: "s1" }, "Harlow intake"), { done: true, note: "" });
-  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["threads.send", { thread: "s1", text: "call dana", surface: "web" }], ["threads.watch", { thread: "s1", until: "either", notify: "web", note: "Tell Harlow intake: call dana" }]]);
+  assert.deepEqual(await s.run(drive, { id: "s1" }, "Juniper intake"), { done: true, note: "" });
+  assert.deepEqual(b.seen.slice(1).map((x) => [x.tool, x.input]), [["threads.send", { thread: "s1", text: "call dana", surface: "web" }], ["threads.watch", { thread: "s1", until: "either", notify: "web", note: "Tell Juniper intake: call dana" }]]);
   const busy = findSource(box({ send: { sent: false, note: "Your phone has the keyboard." } }).call, "web");
-  assert.deepEqual(await busy.run(drive, { id: "s1" }, "Harlow intake"), { done: false, note: "Your phone has the keyboard." });
+  assert.deepEqual(await busy.run(drive, { id: "s1" }, "Juniper intake"), { done: false, note: "Your phone has the keyboard." });
   const watch = { kind: /** @type {const} */ ("watch"), query: "x", until: /** @type {const} */ ("asks"), candidates: [] };
   const w = box();
   await findSource(w.call, "web").run(watch, { id: "s3" }, "Probate");
@@ -203,8 +203,8 @@ test("words: ago, short folders, missing tool", { skip: !strip }, async () => {
   assert.equal(shortDir("/etc/hosts"), "/etc");
   assert.equal(missingNote({ code: "no_such_tool" }), "That is not available on your server yet.");
   assert.equal(missingNote({ message: "Nope" }), "Nope");
-  assert.equal(hasAll("Harlow Legal", words("legal harl")), true);
-  assert.equal(hasAll("Harlow", words("legal")), false);
+  assert.equal(hasAll("Juniper Studio", words("legal harl")), true);
+  assert.equal(hasAll("Juniper", words("legal")), false);
 });
 
 test("mentions: vault names, Drive, artifacts and GitHub as their own sections; records and sessions left to Find; a late provider is named", { skip: !strip }, async () => {
@@ -231,4 +231,16 @@ test("arrow keys: rows in drawn order (a section's first five unless open, else 
   assert.equal(flatRows(secs, { a: true }).length, 9);
   assert.deepEqual(flatRows([], {}, rows("i", 2)).map((r) => r.key), ["i0", "i1"]);
   assert.deepEqual([stepHi(-1, "ArrowDown", 3), stepHi(0, "ArrowDown", 3), stepHi(2, "ArrowDown", 3), stepHi(0, "ArrowUp", 3), stepHi(2, "ArrowUp", 3), stepHi(-1, "ArrowDown", 0)], [0, 1, 2, -1, 1, -1]);
+});
+
+test("Drive file names: a chat's file opens its chat and says so; a Drive file opens the Drive; nothing is shown until the tool answers or when it has nothing", { skip: !strip }, async () => {
+  const { driveHits, sections } = await import("./model.ts");
+  const b = await base();
+  const d = { results: [{ path: "Clients/A/retainer.txt", name: "retainer.txt", size: 3 }, { path: "Projects/p1/chat/chat_abc1234/notes.txt", name: "notes.txt", chat: "chat_abc1234" }, { name: "no path" }] };
+  assert.deepEqual(driveHits(d).map((r) => [r.title, r.sub, r.href]), [["retainer.txt", "Clients/A", "/u/drive"], ["notes.txt", "In a chat you are in, …/chat/chat_abc1234", "/u/chats/chat_abc1234"]]);
+  assert.deepEqual(sections(b, "retainer", "all", {}).map((x) => x.key), []);
+  assert.deepEqual(sections(b, "retainer", "all", { drive: d }).map((x) => x.key), ["drive"]);
+  assert.deepEqual(sections(b, "retainer", "chats", { drive: d }).map((x) => x.key), [], "only in the all and files scopes");
+  assert.deepEqual(sections(b, "retainer", "files", { drive: { results: [] } }).map((x) => x.key), []);
+  assert.deepEqual(driveHits(null), []);
 });

@@ -9,11 +9,11 @@ import { scoreMatch, compareScores, scorePath, scoreFields } from "./match.js";
 test("tiers, best to worst", () => {
   assert.deepEqual(scoreMatch("", "anything"), { tier: 0, offset: 0 });
   assert.deepEqual(scoreMatch("Juno", "juno"), { tier: 0, offset: 0 });
-  assert.deepEqual(scoreMatch("harlow", "harlow legal"), { tier: 1, offset: 0 });
-  assert.deepEqual(scoreMatch("legal", "harlow legal"), { tier: 1, offset: 7 });
-  assert.deepEqual(scoreMatch("harl", "harlow legal"), { tier: 2, offset: 0 });
-  assert.deepEqual(scoreMatch("leg", "harlow legal"), { tier: 3, offset: 7 });
-  assert.deepEqual(scoreMatch("low", "harlow legal"), { tier: 4, offset: 3 });
+  assert.deepEqual(scoreMatch("juniper", "juniper legal"), { tier: 1, offset: 0 });
+  assert.deepEqual(scoreMatch("legal", "juniper legal"), { tier: 1, offset: 7 });
+  assert.deepEqual(scoreMatch("harl", "juniper legal"), { tier: 2, offset: 0 });
+  assert.deepEqual(scoreMatch("leg", "juniper legal"), { tier: 3, offset: 7 });
+  assert.deepEqual(scoreMatch("low", "juniper legal"), { tier: 4, offset: 3 });
   assert.deepEqual(scoreMatch("nwb", "northwind-bakery"), { tier: 5, offset: 0, spread: 11 });
   assert.equal(scoreMatch("nb", "north bakery"), null, "a subsequence stays in one word");
   assert.equal(scoreMatch("zz", "kit"), null);
