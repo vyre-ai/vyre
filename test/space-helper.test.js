@@ -58,7 +58,7 @@ if (a[0] === "network") {
 if (a[0] === "compose") {
   const n = nameOf(a[a.indexOf("--project-name") + 1]);
   const sub = a[a.indexOf("-f") + 2];
-  if (sub === "create") { if (has("create-fails")) process.exit(1); fs.writeFileSync(F + "/net-" + n, "1"); try { fs.copyFileSync(a[a.indexOf("-f") + 1], F + "/compose-at-create-" + n); } catch {} process.exit(0); }
+  if (sub === "create") { if (has("create-fails")) process.exit(1); fs.writeFileSync(F + "/net-" + n, "1"); try { fs.copyFileSync(a[a.indexOf("-f") + 1], F + "/compose-at-create-" + n); fs.copyFileSync(a[a.indexOf("--env-file") + 1], F + "/env-at-create-" + n); } catch {} process.exit(0); }
   if (sub === "up") { if (has("up-fails")) process.exit(1); fs.writeFileSync(F + "/running-" + n, "1"); process.exit(0); }
   if (sub === "stop") { fs.rmSync(F + "/running-" + n, { force: true }); process.exit(0); }
   if (sub === "down") { fs.rmSync(F + "/running-" + n, { force: true }); fs.rmSync(F + "/net-" + n, { force: true }); if (a.includes("-v")) fs.appendFileSync(F + "/purged", n + "\\n"); process.exit(0); }
@@ -828,10 +828,12 @@ test("space helper golden: a NEW Space starts from the saved database in the ima
   assert.equal(r.status(id).state, "ok", JSON.stringify(r.status(id)));
   const priv = path.join(r.SP, "private"), d = path.join(priv, "spaces", "harlow");
   assert.equal(fs.statSync(path.join(priv, "golden", "golden.dump")).mode & 0o777, 0o444, "one read-only copy for every Space");
+  const envAtCreate = fs.readFileSync(path.join(r.F, "env-at-create-harlow"), "utf8");
+  const pw = /ADMIN_PASSWORD=([0-9a-f]{64})/.exec(envAtCreate)?.[1];
+  assert.ok(pw && envAtCreate.includes(`GOLDEN_DUMP=${path.join(priv, "golden", "golden.dump")}`), "the first start's secrets carry the password and the dump path: " + envAtCreate.replace(/=[0-9a-f]{64}/g, "=<secret>"));
   const sec = fs.readFileSync(path.join(d, "secrets.env"), "utf8");
-  const pw = /ADMIN_PASSWORD=([0-9a-f]{64})/.exec(sec)?.[1];
-  assert.ok(pw && sec.includes(`GOLDEN_DUMP=${path.join(priv, "golden", "golden.dump")}`), sec.replace(/=[0-9a-f]{64}/g, "=<secret>"));
-  assert.equal(fs.statSync(path.join(d, "secrets.env")).mode & 0o777, 0o600);
+  assert.ok(!/ADMIN_PASSWORD|GOLDEN_DUMP/.test(sec), "and once the restore is over they are gone from root's copy: " + sec.replace(/=[0-9a-f]{64}/g, "=<secret>"));
+  assert.match(sec, /^PG_PASSWORD=[0-9a-f]{64}\nREDIS_PASSWORD=[0-9a-f]{64}\nAPP_SECRET=[0-9a-f]{64}\nENCRYPTION_KEY=[0-9a-f]{64}\n$/, "the Space's own secrets are untouched");
   const adm = path.join(r.SP, "status", "admin-harlow");
   assert.equal(fs.readFileSync(adm, "utf8").trim(), pw, "the daemon can read the one password it signs in with");
   assert.equal(fs.statSync(adm).mode & 0o777, 0o600, "and only the daemon's uid can");
@@ -847,7 +849,7 @@ test("space helper golden: a NEW Space starts from the saved database in the ima
   const id2 = r.ask("up northwind\n"); await r.helper();
   assert.equal(r.status(id2).state, "ok", JSON.stringify(r.status(id2)));
   assert.equal(fs.readFileSync(path.join(r.F, "created"), "utf8").trim().split("\n").length, 1, "the dump was taken out of the image once");
-  assert.notEqual(/ADMIN_PASSWORD=([0-9a-f]{64})/.exec(fs.readFileSync(path.join(priv, "spaces", "northwind", "secrets.env"), "utf8"))?.[1], pw, "each Space has its own password");
+  assert.notEqual(/ADMIN_PASSWORD=([0-9a-f]{64})/.exec(fs.readFileSync(path.join(r.F, "env-at-create-northwind"), "utf8"))?.[1], pw, "each Space has its own password");
   // the same up again is a plain up: no second password, no restore
   const id3 = r.ask("up harlow\n"); await r.helper();
   assert.equal(r.status(id3).state, "ok");
@@ -885,4 +887,18 @@ test("space helper golden: the admin password file is removed after ten minutes"
   await r.helper();
   assert.ok(!fs.existsSync(adm), "a password nobody read does not stay");
   void a;
+});
+
+test("space helper: a Space that a request is bringing up is left alone by the watcher's reattach (its server is not running yet while a restore comes first); without the lock it is stopped as before", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  r.flag("ctr-pid", "9393"); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective");
+  const lock = path.join(r.SP, "private", "lock-harlow"); fs.mkdirSync(lock);
+  const held = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
+  assert.ok(!/was stopped/.test(held.out), held.out);
+  assert.ok(fs.existsSync(path.join(r.F, "running-harlow")), "still running: the request that holds the lock proves it");
+  fs.rmdirSync(lock);
+  const free = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
+  assert.match(free.out, /the Space harlow was stopped/);
 });
