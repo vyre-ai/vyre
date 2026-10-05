@@ -142,7 +142,7 @@ test("name: status, check, claim and release reach the names tools; usage mistak
   const calls = await fakeVyred(t, root, {
     "names.status": async () => ({ data: state }),
     "names.check": async ({ name }) => ({ data: name === "taken" ? { name, valid: true, available: false, why: "someone else has it" } : { name, valid: true, available: true, address: `https://${name}.vyre.run` } }),
-    "names.claim": async ({ name }) => { state = { ...state, address: `https://${name}.vyre.run`, phase: "claiming" }; return { data: { ...state, recoveryCode: "abcd-efgh" } }; },
+    "names.claim": async ({ name }) => { state = { ...state, address: `https://${name}.vyre.run`, phase: "claiming" }; return { data: { ...state } }; },
     "names.release": async () => ({ error: { code: "presence_required", message: "releasing the name needs you here" } }),
   });
 
@@ -156,11 +156,10 @@ test("name: status, check, claim and release reach the names tools; usage mistak
 
   const claim = await run(root, ["name", "claim", "alex", "--json"]);
   assert.equal(claim.code, 0, claim.out);
-  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", name: null, recoveryCode: "abcd-efgh" });
-  // Text mode prints the one-time code too (it was dropped before): once, with the plain line to store it.
+  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", name: null });
+  // Text mode prints the address and nothing about a recovery code: there is none (instant recovery is the way back).
   const claimText = await run(root, ["name", "claim", "alex"]);
-  assert.match(claimText.out, /Recovery code: abcd-efgh/);
-  assert.match(claimText.out, /shown once and cannot be shown again/);
+  assert.ok(!/recovery code/i.test(claimText.out));
   // The tool's refusal: a person must be here, exit 3, with the next step.
   const rel = await run(root, ["name", "release"]);
   assert.equal(rel.code, 3, rel.out);

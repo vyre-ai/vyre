@@ -5,6 +5,7 @@ import { Block, DiffBlock } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
 import { flowsRepo } from "./data";
 import { useFlowsState } from "./store";
+import RealKitUpdate from "./RealKitUpdate";
 
 function SampleKitUpdateScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -30,9 +31,7 @@ function SampleKitUpdateScreen() {
   );
 }
 
-/** The sample update in a mock build. On a real box there is no Kit library to offer an update from, so the page says so. */
+/** The sample update in a mock build; the box's own diff (flows.kit.diff) everywhere else. */
 export default function KitUpdateScreen() {
-  const router = useRouter();
-  if (allowsMock()) return <SampleKitUpdateScreen />;
-  return <Frame title="Kits" back="/u/kits"><EmptyState title="No update for that Kit" body="This space has no Kit library to offer updates from." action={{ label: "Open Kits", onPress: () => router.push("/u/kits" as never) }} /></Frame>;
+  return allowsMock() ? <SampleKitUpdateScreen /> : <RealKitUpdate />;
 }

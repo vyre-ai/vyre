@@ -131,6 +131,7 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   assert.match(text, /Pairing a phone with the box \(vyre\.tail0000\.ts\.net\)/);
   assert.match(text, /Pair\s+scan with the phone's camera, or paste the long code/);
   assert.ok(!/tailscale|tailnet/i.test(text.replace("vyre.tail0000.ts.net", "")), "no step names another product");
+  if (/Confirmed · the QR works once/.test(text)) assert.match(text, /This device can't sign in as you until you confirm it from Devices\./, "a pairing by the offer says it is not confirmed yet");
   assert.match(text, /iPhone: Safari: Share, then Add to Home Screen/);
   assert.match(text, /Android: Chrome/);
   assert.match(text, /· Phone reached the box/);

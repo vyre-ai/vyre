@@ -42,6 +42,7 @@ export const TEAM_MEMBER = {
     f("actor", "actor", "Person or assistant", { required: true }),
     choice("kind", "Kind", ["person", "assistant"], { required: true }),
     text("role", "Role"),
+    text("skills", "Skills (words, comma separated; a Flow that names skills picks among those who have them)"),
     f("link", "project", "Project"),
     f("rich_text", "instructions", "Role instructions (assistants)"),
     text("doing", "Doing right now"),
@@ -157,4 +158,46 @@ export const PARTICIPANT = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
+/**
+ * A Project: the one hub for a piece of work (team/0.3/DESIGN-project-hub.md). Its sessions, Drive folder, repo, memory room, people, artifacts and accounts hang off this record. `slug` is the stable
+ * key every text column that names a project holds; `drive_path` and `memory_scope` are addresses the kernel writes at create; `repo` is a git remote (a local path lives with the computer, not here).
+ */
+export const PROJECT = {
+  name: "project", label: "Project", icon: "IconFolder", kind: "project",
+  fields: [
+    text("name", "Name", { required: true }),
+    // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
+    text("slug", "Short name used in addresses", { unique: true }),
+    choice("status", "Status", ["active", "archived"]),
+    f("link", "client", "Client"),
+    text("drive_path", "Drive folder"),
+    text("repo", "Repository"),
+    text("memory_scope", "Memory scope"),
+    f("datetime", "archived_at", "Archived"),
+  ],
+};
+
+/** One session's summary, kept with its Project (DESIGN-project-hub.md). Never transcript text: the transcript and checkpoints stay sealed in the kernel, `transcript` points at them. */
+export const SESSION_SUMMARY = {
+  name: "session-summary", label: "Session", icon: "IconMessage",
+  fields: [
+    text("title", "Title"),
+    f("link", "project", "Project", { to: "project" }),
+    text("people", "People"),
+    text("agents", "Agents"),
+    text("provider", "Provider"),
+    text("model", "Model"),
+    text("account", "Account"),
+    f("datetime", "started", "Started"),
+    f("datetime", "ended", "Ended"),
+    choice("status", "Status", ["working", "done", "stopped", "failed"]),
+    f("rich_text", "summary", "Summary"),
+    text("thread", "Session id", { unique: true }),
+    text("transcript", "Transcript (kernel address)"),
+    text("transcript_file", "Transcript file on its machine"),
+    text("machine", "Machine the transcript file is on"),
+    text("drive", "Drive folder"),
+  ],
+};
+
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, SESSION_SUMMARY].map((t) => Object.freeze(t)));

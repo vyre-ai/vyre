@@ -45,7 +45,7 @@ export const ALLOW = {
     why: "the kernel runs the security floor on every call's input; the floor belongs in the kernel" },
   "core/files -> core/link": { files: ["core/link/transport.js"], next: "lib",
     why: "the legacy folder-as-a-disk path looks up a program the Mac may have (drive.js); it goes with that path when VyreDrive's mount lands" },
-  "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js"], next: "lib",
+  "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js", "core/runner/lent-home.js"], next: "lib",
     why: "the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner): the confined spawner for a Vyre-started session; and the home's checkpoint store for an own-server session's per-turn seal (core/daemon/ownserver-host.js; moves to lib with the store)" },
   "core/daemon -> core/spawner": { files: ["core/spawner/client.js", "core/spawner/confine.js"], next: "lib",
     why: "a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start (ruling 4 Oct, b); it asks the root spawner, which is not a module" },

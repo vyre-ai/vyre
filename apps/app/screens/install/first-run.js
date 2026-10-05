@@ -34,6 +34,47 @@ export const MAC_WHERE = {
   serverLine: "Shows one line to run there, then you pair with a code.",
 };
 
+/** Mac, On a server, in the boxless window (rows 4e and 4f of the prototype): type the code the server shows, then type this Mac's ack on the server. */
+export const MAC_SERVER = {
+  title: "Type the code your server shows",
+  line: "Your server shows an avatar and a code that starts with WINK.",
+  help: "The code works once. Your server shows how long it has left.",
+  connect: "Connect",
+  back: "Back",
+  ackTitle: "Type this on your server",
+  ackLine: "Your server is waiting. Type this code there to finish connecting.",
+  cancel: "Cancel",
+  doneTitle: "Connected to your server",
+  doneLine: "Vyre is running there. Setup carries on here.",
+  doneRow: "Your server",
+  doneContinue: "Continue",
+  wrongTitle: "That code is not right",
+  tries: 3,
+};
+
+/** What the Mac says when typing the server's code did not work. `left` is how many tries remain; none left ends the code. @param {string} reason @param {number} left */
+export function macServerSay(reason, left) {
+  if (reason === "expired") return { title: "That code ran out of time", line: "Run the line on your server again to get a new one.", over: true };
+  if (reason === "offline") return { title: "Your Mac cannot reach the server", line: "Check that it is on and online. Nothing was connected.", over: false };
+  if (reason === "busy") return { title: "Too many tries", line: "Wait a minute, then try again.", over: false };
+  if (left <= 0) return { title: "That code is not right", line: "It has ended. Run the line on your server again to get a new one.", over: true };
+  return { title: "That code is not right", line: `Check the code on your server and type it again. ${left} ${left === 1 ? "try" : "tries"} left.`, over: false };
+}
+
+/**
+ * The line to run on a server. A release candidate's own install script only when the bridge gives a version with a hyphen ("0.3.0-rc.1"); a plain release ("0.3.0"), an unknown version and anything that is not a version get the stable line.
+ * @param {string | null | undefined} version
+ */
+export function installLine(version) {
+  const v = String(version ?? "").trim();
+  if (!/^\d+\.\d+\.\d+-[0-9A-Za-z.-]+$/.test(v)) return "curl -fsSL vyre.run/i | sh";
+  const base = `https://github.com/vyre-ai/vyre/releases/download/v${v}/`;
+  return `curl -fsSL ${base}install-box.sh | VYRE_BOX_URL=${base} sh`;
+}
+
+/** Is the page the Mac app's window with no vyred of its own (the bridge says boxless)? @param {{ boxless?: boolean } | null | undefined} shell */
+export const isBoxlessMac = (shell) => Boolean(shell && shell.boxless === true);
+
 /** The Mac's "Add your phone": the phone becomes the one that approves. */
 export const ADD_PHONE = {
   title: "Add your phone",
@@ -42,7 +83,6 @@ export const ADD_PHONE = {
   words: "Check that the phone shows the same three words.",
   skip: "Skip",
   waiting: "Waiting for your phone.",
-  expires: "Good for 5 minutes.",
 };
 
 /** A browser holds no key: it connects from a phone, or says Vyre is not set up. */
@@ -93,8 +133,8 @@ export const isWho = (id) => WHO.options.some(([k]) => k === id);
  * @typedef {{ title: string, line: string, action: string, route: string }} EmptyCopy
  */
 export const EMPTY = {
-  now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/chats" },
-  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/new-chat" },
+  now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/u/chats" },
+  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/u/chats/new" },
   agents: { title: "No assistants yet", line: "An assistant works on your own AI account.", action: "Connect your AI account", route: "/u/settings/ai" },
 };
 

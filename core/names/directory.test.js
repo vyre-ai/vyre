@@ -10,7 +10,6 @@ import crypto from "node:crypto";
 import * as config from "../config/index.js";
 import { names } from "./service.js";
 import { directory, authMessage, AUTH_TAG } from "./directory.js";
-import { codeHash } from "./rules.js";
 import worker, * as W from "../../names/worker/index.js";
 import { fakeDns } from "../../names/worker/fake-dns.js";
 import { createRuntime } from "../../relay/worker/fake-cf.js";
@@ -45,7 +44,7 @@ test("directory client: signs with the route key, and every failure carries a co
   assert.equal((await a.client.check("alex")).status, "ok");
   const r = await a.client.claim("alex");
   assert.equal(r.name, "alex");
-  assert.match(String(r.code), /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
+  assert.equal(r.fresh, true, "a new claim says so; there is no recovery code");
   assert.equal((await a.client.check("alex")).status, "mine");
   assert.equal((await h.box().client.check("alex")).status, "taken");
   await fail(h.box().client.claim("alex"), "taken");
@@ -88,10 +87,10 @@ function boxService(t, h, { resolver = undefined, accountUri = undefined } = {})
   return { svc, ctx, cfg, emitted, log, box: b, root };
 }
 
-test("names.claim: the name is held at once, the recovery code only in the answer, and no address is published", async t => {
+test("names.claim: the name is held at once, there is no recovery code anywhere, and no address is published", async t => {
   const h = hosted(t), a = boxService(t, h);
   const out = /** @type {any} */ (await a.svc.claim("alex"));
-  assert.match(out.recoveryCode, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
+  assert.equal(out.recoveryCode, undefined, "no recovery code is made");
   const s = a.svc.status();
   assert.equal(s.phase, "named");
   assert.equal(s.why, null);
@@ -99,18 +98,15 @@ test("names.claim: the name is held at once, the recovery code only in the answe
   assert.equal(s.listening, false);
   assert.equal(s.address, null, "an address is published once the built-in network has one");
   assert.deepEqual(kinds(a.emitted), ["name.claimed"]);
-  const everywhere = JSON.stringify([s, a.emitted, a.log]);
-  assert.ok(!everywhere.includes(out.recoveryCode.replace(/-/g, "")) && !everywhere.includes(out.recoveryCode), "the code is in no status, event or log");
+  assert.ok(!/recovery/i.test(JSON.stringify([s, a.emitted, a.log])), "and no status, event or log speaks of one");
   assert.equal(h.dns.records.length, 0, "nothing is pointed anywhere");
-  const again = /** @type {any} */ (await a.svc.claim());
-  assert.equal(again.recoveryCode, null, "no second code");
+  await a.svc.claim();
 });
 
 test("names.claim and names.check: taken, reserved, mine", async t => {
   const h = hosted(t), a = boxService(t, h), b = boxService(t, h);
   await a.svc.claim("alex");
   const taken = /** @type {any} */ (await b.svc.claim("alex"));
-  assert.equal(taken.recoveryCode, null);
   assert.equal(b.svc.status().phase, "failed");
   assert.match(String(b.svc.status().why), /someone else/);
   assert.notEqual(b.cfg.name, "alex", "no name was saved on the loser");
@@ -132,50 +128,6 @@ test("names.release: the name goes back for good, and the box forgets it", async
   assert.equal(h.dns.records.length, 0);
   assert.ok(a.emitted.some(e => e.type === "name.released"));
   assert.equal((await h.box().client.check("alex")).status, "ok", "a name that was never pointed anywhere is simply free again");
-});
-
-test("names.recover: the old box cancels by itself; with it offline the name moves after 72 hours", async t => {
-  const h = hosted(t), old = boxService(t, h);
-  const { recoveryCode } = /** @type {any} */ (await old.svc.claim("alex"));
-  // A reinstalled box, no owner yet: only the code.
-  const fresh = boxService(t, h);
-  await assert.rejects(fresh.svc.recover({ name: "alex", code: "aaaa-bbbb-cccc-dddd-eeee-ff" }), /do not match/);
-  await assert.rejects(fresh.svc.recover({ name: "alex", code: "" }), /code is needed/);
-  const r = await fresh.svc.recover({ name: "alex", code: recoveryCode.toUpperCase() });
-  assert.equal(r.pendingUntil, h.clock.t + 72 * HOUR);
-  assert.match(r.recoveryCode, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
-  assert.notEqual(r.recoveryCode, recoveryCode);
-  assert.equal(fresh.cfg.network.recovering, "alex");
-  assert.notEqual(fresh.cfg.name, "alex", "the name is adopted only when the rebind lands");
-  // The old box is online: its next look cancels the rebind with no click, and announces it.
-  await old.svc.watch();
-  assert.deepEqual(kinds(old.emitted).slice(-2), ["name.recovery-pending", "name.recovery-cancelled"]);
-  assert.equal(old.emitted.at(-2)?.payload.name, "alex.vyre.run");
-  h.clock.t += 80 * HOUR;
-  await fresh.svc.watch();
-  assert.equal(fresh.cfg.network.recovering, "alex", "still waiting: it never moved");
-  assert.deepEqual(kinds(fresh.emitted), []);
-  assert.equal((await old.box.client.check("alex")).status, "mine");
-  // A second try while the old box is off lands after the wait.
-  await fresh.svc.recover({ name: "alex", code: recoveryCode });
-  h.clock.t += 73 * HOUR;
-  const m = await fresh.svc.watch();
-  assert.equal(m && m.name, "alex");
-  assert.equal(fresh.cfg.name, "alex");
-  assert.ok(!fresh.cfg.network.recovering, "no longer recovering");
-  assert.deepEqual(kinds(fresh.emitted), ["name.recovered"]);
-  assert.equal((await old.box.client.check("alex")).status, "taken");
-});
-
-test("names.recover: the hash the box sends is the hash of the code it shows", async t => {
-  const h = hosted(t), a = h.box(), b = h.box();
-  const { code } = await a.client.claim("alex");
-  const sent = [];
-  const spy = directory({ base: "https://names.test", signer: b.signer, now: () => h.clock.t, fetch: /** @type {any} */ (async (url, init) => { sent.push(JSON.parse(init.body || "{}")); return b.fetch(url, init); }) });
-  const svc = names({ ctx: /** @type {any} */ ({ config: { network: {} }, paths: {}, log() {}, events: { emit() {} } }), save() {}, directory: spy });
-  const r = await svc.recover({ name: "alex", code: String(code) });
-  assert.equal(sent[0].next, codeHash("alex", r.recoveryCode));
-  assert.ok(!JSON.stringify(sent).includes(r.recoveryCode), "the new code itself never leaves the box");
 });
 
 test("names.domain.check: the CNAME to <routehash>.acme.vyre.run and the optional CAA, live", async t => {
@@ -224,7 +176,7 @@ test("directory: under a test runner the real fetch refuses the hosted directory
   assert.equal(asked, 1, "a test's own fetch never leaves the process");
 });
 
-test("names.watch: a box with no name and no recovery under way asks the directory nothing, and makes no route key", async t => {
+test("names.watch: a box with no name asks the directory nothing, and makes no route key", async t => {
   const h = hosted(t), a = boxService(t, h);
   let asked = 0, identity = 0;
   const mine = a.box.client.mine;

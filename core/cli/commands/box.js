@@ -340,6 +340,8 @@ async function update() {
   });
 }
 
+/** The image the backup and restore copy the data volumes with: pinned by digest, so a changed or hijacked tag can never run as root over the box's data (reviewer-3 SC-1). */
+export const HELPER_IMAGE = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc";
 /** A script that fails, naming them, when any of the three volumes is missing on this server. */
 const HAS_VOLUMES = `for v in ${VOLUMES.join(" ")}; do $D docker volume inspect vyre_$v >/dev/null 2>&1 || { echo "vyre_$v is missing on this server" >&2; exit 3; }; done`;
 
@@ -349,7 +351,7 @@ const BACKUP = [
   'cd "$DIR"', HAS_VOLUMES,
   "trap '$D docker compose start >&2' EXIT", "trap 'exit 1' HUP INT TERM",
   "$D docker compose stop >&2",
-  `$D docker run --rm ${VOLUMES.map(v => `-v vyre_${v}:/b/${v}:ro`).join(" ")} alpine tar czf - -C /b ${VOLUMES.join(" ")}`,
+  `$D docker run --rm ${VOLUMES.map(v => `-v vyre_${v}:/b/${v}:ro`).join(" ")} ${HELPER_IMAGE} tar czf - -C /b ${VOLUMES.join(" ")}`,
 ].join("\n");
 
 async function backup(file, flags = {}) {
@@ -383,9 +385,9 @@ const tail = (s, n = 3) => s.trim().split("\n").slice(-n).join(" / ");
 
 /** Stream one volume from the old server to the new one through this Mac. */
 async function carry(from, to, v) {
-  const src = from.spawn(script(`exec $D docker run --rm -v vyre_${v}:/v:ro alpine tar czf - -C /v .`), ["ignore", "pipe", "pipe"]);
+  const src = from.spawn(script(`exec $D docker run --rm -v vyre_${v}:/v:ro ${HELPER_IMAGE} tar czf - -C /v .`), ["ignore", "pipe", "pipe"]);
   const labels = `--label run.vyre=1 --label com.docker.compose.project=vyre --label com.docker.compose.volume=${v}`;
-  const dst = to.spawn(script(`$D docker volume create ${labels} vyre_${v} >/dev/null && exec $D docker run --rm -i -v vyre_${v}:/v alpine tar xzf - -C /v`), ["pipe", "ignore", "pipe"]);
+  const dst = to.spawn(script(`$D docker volume create ${labels} vyre_${v} >/dev/null && exec $D docker run --rm -i -v vyre_${v}:/v ${HELPER_IMAGE} tar xzf - -C /v`), ["pipe", "ignore", "pipe"]);
   const err = { src: "", dst: "" };
   src.stderr?.on("data", c => { err.src += c; });
   dst.stderr?.on("data", c => { err.dst += c; });

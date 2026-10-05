@@ -1,12 +1,11 @@
 // @ts-check
 // The names service: `<you>.vyre.run`, claimed through the name directory (ADR 0002, DESIGN-wink 2).
 //
-// A name is claimed, released, recovered and watched here, and nothing else: there is no listener, no certificate and no VPN. The browser address of a home is the
+// A name is claimed, released and watched here, and nothing else: there is no listener, no certificate and no VPN. The browser address of a home is the
 // built-in network's to publish (SPEC-wink-network 4.5), and "a home with no Wink node yet publishes no address": until then a claim stops at "named". Everything that
 // touches the outside world comes in as an adapter (the name directory, the DNS resolver), so the whole flow runs in tests against fakes. index.js wires the real ones.
 
-import crypto from "node:crypto";
-import { verdict, codeHash, base32 } from "./rules.js";
+import { verdict } from "./rules.js";
 
 /** Is this a name someone can have? Pure, so the Deck's check and the claim agree. */
 export function checkName(name) {
@@ -28,8 +27,6 @@ export function names(deps) {
   const state = { phase: "idle", why: null };
   const dir = deps.directory || null;
   let working = null;
-  /** 128 bits, in the same shape the directory hands out: abcd-efgh-... */
-  const newCode = () => base32(crypto.randomBytes(16)).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
   const fail = e => { state.phase = "failed"; state.why = /** @type {Error} */ (e).message; ctx.log("names: " + state.why); };
 
   function status() {
@@ -60,7 +57,7 @@ export function names(deps) {
   }
 
   /**
-   * Reserve the name for this box through the directory. It answers with the one-time recovery code when the name is new. The address is published once the built-in
+   * Reserve the name for this box through the directory. The address is published once the built-in
    * network has one for this home; until then the name is only held ("named").
    * @param {string} [raw]
    */
@@ -73,19 +70,16 @@ export function names(deps) {
 
   /** @param {string} name */
   async function claimNamed(name) {
-    if (working) return { ...status(), recoveryCode: null };
+    if (working) return status();
     state.phase = "idle"; state.why = null;
-    let code = null;
     working = true;
     try {
       const r = await /** @type {NonNullable<typeof dir>} */ (dir).claim(name);
-      code = r.code;
       deps.save({ name, network: { via: "vyre.run" } });
-      if (code) ctx.events.emit("name.claimed", { name: `${name}.${domain()}` });
+      if (r.fresh) ctx.events.emit("name.claimed", { name: `${name}.${domain()}` });
       state.phase = "named";
     } catch (e) { fail(e); } finally { working = null; }
-    // The code is the answer to this one call. It is not in status(), an event or a log.
-    return { ...status(), recoveryCode: code };
+    return status();
   }
 
   async function release() {
@@ -99,52 +93,21 @@ export function names(deps) {
     return status();
   }
 
-  /**
-   * A reinstalled box takes its name back with the recovery code. The directory holds a 72-hour
-   * pending rebind that the old box cancels by itself if it is still online, and tells the owner's
-   * devices about (name.recovery-pending). The code is the only authority, which is why the setup
-   * channel of a new install can call this too (names.recover.code). Returns the NEW recovery
-   * code, shown once: it takes over when the rebind lands.
-   * @param {{ name?: string, code: string }} r
-   */
-  async function recover(r) {
-    if (!dir) throw new Error("recovery needs the name directory");
-    const c = checkName(r.name || ctx.config.name);
-    if (!c.valid) throw new Error(c.why || "no name");
-    if (!r.code || typeof r.code !== "string") throw new Error("the recovery code is needed");
-    const next = newCode();
-    const out = await dir.recover({ name: c.name, code: r.code, next: codeHash(c.name, next) });
-    deps.save({ network: { recovering: c.name } });
-    return { name: c.name, pendingUntil: out.pendingUntil, recoveryCode: next };
-  }
-
   let told = 0;
   /**
-   * Ask the directory how this box's name stands. Run at start and hourly. A pending recovery of a
-   * name this box holds is cancelled here, with no click: a box that is online is the owner. A
-   * recovery this box asked for is adopted once it lands.
+   * Ask the directory how this box's name stands. Run at start and hourly.
    */
   async function watch() {
     if (!dir) return null;
-    // Only a box that holds a name here, or is taking one back, has anything to watch. A box that
+    // Only a box that holds a name here has anything to watch. A box that
     // never claimed one makes no request to the directory, and starts nothing (no route key made,
     // no signature, no outbound connection) just because vyred is running.
-    if (net().via !== "vyre.run" && !net().recovering) return null;
+    if (net().via !== "vyre.run") return null;
     const m = await dir.mine();
     // Support moved this box's name to another server (an operator rebind): tell the person once.
     if (!m.name && m.moved && ctx.config.name === m.moved.name && told !== m.moved.at) {
       told = m.moved.at;
       ctx.events.emit("name.moved", { name: `${m.moved.name}.${domain()}`, at: m.moved.at });
-    }
-    if (m.name && m.pending) {
-      const fqdn = m.fqdn || `${m.name}.${domain()}`;
-      if (m.pending.eta !== told) { told = m.pending.eta; ctx.events.emit("name.recovery-pending", { name: fqdn, eta: m.pending.eta }); }
-      await dir.cancel(m.name);
-      ctx.events.emit("name.recovery-cancelled", { name: fqdn });
-    }
-    if (m.name && net().recovering === m.name && ctx.config.name !== m.name) {
-      deps.save({ name: m.name, network: { via: "vyre.run", recovering: null } });
-      ctx.events.emit("name.recovered", { name: m.fqdn || `${m.name}.${domain()}` });
     }
     return m;
   }
@@ -173,5 +136,5 @@ export function names(deps) {
     return { domain: host, ok: cname.ok, cname, caa: { host, present: caa.length > 0, found: caa, expected: account, ok: pinned, optional: true } };
   }
 
-  return { status, check, claim, release, recover, watch, domainCheck, wait: () => working };
+  return { status, check, claim, release, watch, domainCheck, wait: () => working };
 }

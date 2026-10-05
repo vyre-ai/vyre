@@ -10,9 +10,12 @@ import { joinLabels, isTainted, memberLabels } from "../../../lib/labels.js";
 import { isSealedValue, sealedFields } from "../../../lib/sealed.js";
 import { playbooksFor } from "./playbooks.js";
 import { clean } from "./text.js";
+import { recordContext } from "./context.js";
 export { clean };
 
 export const SITUATION_TOKENS = 400;
+/** What the record's world may add when asked for (linked records, communications, history). */
+export const CONTEXT_TOKENS = 1200;
 const TITLE_CAP = 90;
 
 const tokens = (/** @type {string} */ s) => Math.ceil(s.length / 4);
@@ -38,7 +41,7 @@ function fieldText(name, v) {
  * @param {{ space: string, project?: { type: string, id: string }, record?: { type: string, id: string }, doing?: Record<string, string>, playbooks?: boolean, budget?: number }} o
  *   `project` is the project record in scope, `record` a more specific one (a task's matter); `doing` maps a teammate's name to its live line.
  */
-export async function buildSituation(kernel, chain, { space, project, record, doing = {}, playbooks = true, budget = SITUATION_TOKENS, room = null }) {
+export async function buildSituation(kernel, chain, { space, project, record, doing = {}, playbooks = true, budget = SITUATION_TOKENS, room = null, context = false, memory = null }) {
   // A chat with more than one person: the reply is the same words for everyone, so the situation is built for the audience (DESIGN-chat, "An assistant in a
   // group writes for the whole room"). A field every person in the chat may read arrives as a value; any other arrives as a token the model can only cite, drawn
   // per viewer by chat, exactly like a sealed field. Tool calls still run under the asker's own chain; only what the model SEES is narrowed.
@@ -148,6 +151,22 @@ export async function buildSituation(kernel, chain, { space, project, record, do
     }
     shown[key] = n;
     if (n < s.items.length) { out.push(`- and ${s.items.length - n} more`); used += 6; }
+  }
+
+  // The record's world, for an agent doing a task (`context: true`; never in a shared room, where what one viewer may read another may not): linked records, communications, history, in
+  // their own budget so the situation's 400 tokens stay what they were.
+  if (context && rec && !group) {
+    const c = await recordContext(kernel, chain, rec, { space, ...(memory ? { memory } : {}) });
+    inputs.push(...c.inputs); urns.push(...c.urns); quoted.push(...c.quoted);
+    let used2 = 0;
+    const cb = typeof context === "object" && context && /** @type {any} */ (context).budget ? /** @type {any} */ (context).budget : CONTEXT_TOKENS;
+    for (const sec of c.sections) {
+      if (used2 + tokens(sec.head) + 8 > cb) { out.push(`${sec.head.replace(/:$/, "")}: ${sec.items.length} item(s), not shown.`); continue; }
+      out.push(sec.head); used2 += tokens(sec.head) + 1;
+      let n = 0;
+      for (const it of sec.items) { const t = tokens(it) + 2; if (used2 + t > cb) break; out.push(`- ${it}`); used2 += t; n++; }
+      if (n < sec.items.length) out.push(`- and ${sec.items.length - n} more`);
+    }
   }
 
   // Playbooks, only where they apply, quoted with their title and version.

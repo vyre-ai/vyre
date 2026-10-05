@@ -10,6 +10,7 @@
 import { call } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
+import { OFFER_NOTE } from "../offer-note.js";
 import { personIO } from "./presence.js";
 import { out, dim, bold, colour } from "../style.js";
 import { json, emit, fail, failTool, usage, parse } from "../kit.js";
@@ -100,6 +101,7 @@ export default [
             else out("  Open this address on your phone (the QR code shows in a colour terminal). It works once, for 10 minutes.");
             out(dim(`  ${d.url}`));
             if (!d.connected) out(dim("  the box is not at the relay yet; the code works as soon as it is (vyre relay)"));
+            out(dim(`  ${OFFER_NOTE}`));
           }, d => ({ kind: "qr", text: String(d.url), caption: `Scan this with your phone's camera. It works once, for 10 minutes.${d.connected ? "" : " The box is not at the relay yet; it works as soon as it is."}` }));
         case "remove":
           if (!a) return usage("vyre relay remove needs a device id", "vyre relay devices lists them");

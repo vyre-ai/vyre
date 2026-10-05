@@ -22,11 +22,15 @@
       { "name": "flows.resume", "effect": "write", "reach": "person" },
       { "name": "flows.runs", "effect": "read", "reach": "anyone" },
       { "name": "flows.run", "effect": "read", "reach": "anyone" },
+      { "name": "flows.budget", "effect": "write", "reach": "anyone" },
       { "name": "flows.retry", "effect": "write", "reach": "anyone" },
       { "name": "flows.kit.card", "effect": "read", "reach": "anyone" },
       { "name": "flows.kit.propose", "effect": "write", "reach": "anyone" },
       { "name": "flows.kit.remove", "effect": "write", "reach": "person" },
-      { "name": "flows.kit.list", "effect": "read", "reach": "anyone" }
+      { "name": "flows.kit.list", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.diff", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.library", "effect": "read", "reach": "anyone" },
+      { "name": "flows.kit.library.get", "effect": "read", "reach": "anyone" }
     ]
   }
 }
