@@ -12022,7 +12022,7 @@ What this server was handed when it was adopted, to reach its home: { home, box,
 
 ### `wink.server.health`
 
-How this computer reaches its paired server right now, for the menu bar: { state: connected | relayed | offline, path: relay | none, reach, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.
+How this computer reaches its paired server right now, for the menu bar: { state: connected | relayed | offline, path: relay | none, dot: direct | relay | unknown, handshake (ms of the last answer), reach, reachable, latencyMs, since, why? }. Checked at most every 15 seconds.
 
 - Input:
   - `fresh` boolean
