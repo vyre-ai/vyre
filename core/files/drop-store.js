@@ -25,17 +25,18 @@ export function createDropStore(o) {
   const keyMap = () => { try { return JSON.parse(fs.readFileSync(keys, "utf8")); } catch { return {}; } };
 
   return {
-    /** A device's drop key (its public half), as the device itself registered it. @param {string} device @param {string} pub */
-    register(device, pub) {
-      if (!DEV.test(device) || typeof pub !== "string" || !/^[A-Za-z0-9_-]{40,120}$/.test(pub)) throw fail("bad_input", "a device and its drop key");
-      const m = keyMap(); m[device] = pub; fs.writeFileSync(`${keys}.tmp`, JSON.stringify(m), { mode: 0o600 }); fs.renameSync(`${keys}.tmp`, keys);
+    /** A device's drop key (its public half) with the identity signature that says whose it is, as the device registered it. @param {string} device @param {string} pub @param {{ eid: string, sig: string }} sig */
+    register(device, pub, sig) {
+      if (!DEV.test(device) || typeof pub !== "string" || !/^[A-Za-z0-9_-]{40,120}$/.test(pub) || !sig || typeof sig.eid !== "string" || typeof sig.sig !== "string" || sig.eid.length > 80 || sig.sig.length > 400) throw fail("bad_input", "a device, its drop key and the signature that vouches for it");
+      const m = keyMap(); m[device] = { pub, eid: sig.eid, sig: sig.sig }; fs.writeFileSync(`${keys}.tmp`, JSON.stringify(m), { mode: 0o600 }); fs.renameSync(`${keys}.tmp`, keys);
     },
     /** The device stops receiving: its key is forgotten, and what waits for it is thrown away. @param {string} device */
     unregister(device) {
       const m = keyMap(); delete m[device]; fs.writeFileSync(`${keys}.tmp`, JSON.stringify(m), { mode: 0o600 }); fs.renameSync(`${keys}.tmp`, keys);
       for (const id of ids()) { const x = readMeta(id); if (x && x.to === device) fs.rmSync(dirOf(id), { recursive: true, force: true }); }
     },
-    keyOf(/** @type {string} */ device) { const k = keyMap()[device]; return typeof k === "string" ? k : null; },
+    /** @returns {{ pub: string, eid: string, sig: string } | null} */
+    keyOf(/** @type {string} */ device) { const k = keyMap()[device]; return k && typeof k === "object" && typeof k.pub === "string" ? k : null; },
     /** The sender chooses the drop's id (it is the salt of the sealing key, so it is known before the key is made). @param {{ id: string, from: string, to: string, total: number, size: number, eph: string }} i @returns {string} the drop's id */
     begin(i) {
       if (!DEV.test(i.from) || !DEV.test(i.to)) throw fail("bad_input", "name the devices");

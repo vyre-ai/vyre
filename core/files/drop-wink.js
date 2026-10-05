@@ -35,6 +35,12 @@ const str = { type: "string" };
 export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   const log = (/** @type {string} */ m) => { try { ctx.log(m); } catch { /* no log */ } };
   const emit = (/** @type {string} */ t, /** @type {any} */ p) => { try { ctx.events.emit(t, p); } catch (e) { log(`${t} was not announced: ${/** @type {Error} */ (e).message}`); } };
+  const KEYTEXT = (/** @type {string} */ pub) => `vyre-drop-key-v1\n${pub}`;
+  /** A drop key is sealed to only when the identity's own list vouches for it: the signature on it is by a device of this person's identity. A key the server alone vouches for is refused. @param {{ pub: string, eid: string, sig: string }} k */
+  const vouched = async k => {
+    const r = /** @type {any} */ (await ctx.call("wink.identity.check", { message: KEYTEXT(k.pub), eid: k.eid, sig: k.sig }).catch(() => null));
+    if (!(r && r.data && r.data.ok)) throw fail("not_verified", "that computer's key for receiving files is not vouched for by your identity, so nothing was sent");
+  };
   const dropCfg = () => (ctx.config && ctx.config.files && ctx.config.files.drop) || {};
   const inboxPath = () => path.resolve(String(cfg.inbox || (role === "box" ? INBOX : macInbox())));
 
@@ -49,11 +55,11 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     const known = async (/** @type {string} */ id) => (await devices()).find(d => d.id === id && d.kind !== "web") || null;
     const t = (/** @type {string} */ name, /** @type {any} */ input, /** @type {(i: any, meta: any) => any} */ run) => ctx.tool(name, { description: `VyreDrop on the server: ${name.split(".").pop()}. Called by the person's own paired computers over their connection to this server.`, input, run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => run(i || {}, meta) });
 
-    t("files.drop.register", obj({ pub: str }, ["pub"]), (i, meta) => { st.register(caller(meta), String(i.pub)); return { registered: true }; });
+    t("files.drop.register", obj({ pub: str, eid: str, sig: str }, ["pub", "eid", "sig"]), (i, meta) => { st.register(caller(meta), String(i.pub), { eid: String(i.eid), sig: String(i.sig) }); return { registered: true }; });
     t("files.drop.unregister", obj(), (_i, meta) => { st.unregister(caller(meta)); return { registered: false }; });
     t("files.drop.targets", obj(), async (_i, meta) => {
       const me = caller(meta);
-      return { devices: (await devices()).filter(d => d.id !== me && d.kind !== "web").map(d => ({ id: d.id, name: d.name, kind: d.kind, online: Boolean(d.online), ready: Boolean(st.keyOf(d.id)), pub: st.keyOf(d.id) })) };
+      return { devices: (await devices()).filter(d => d.id !== me && d.kind !== "web").map(d => ({ id: d.id, name: d.name, kind: d.kind, online: Boolean(d.online), ready: Boolean(st.keyOf(d.id)), ...(st.keyOf(d.id) ? { pub: st.keyOf(d.id)?.pub, eid: st.keyOf(d.id)?.eid, sig: st.keyOf(d.id)?.sig } : {}) })) };
     });
     t("files.drop.begin", obj({ id: str, to: str, total: { type: "number" }, size: { type: "number" }, eph: str }, ["id", "to", "total", "size", "eph"]), async (i, meta) => {
       const me = caller(meta);
@@ -88,7 +94,9 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
         if (!s.isFile()) throw fail("bad_input", "only a file can be sent, not a folder");
         const to = (await devices()).find(d => (d.id === i.device || d.name === i.device) && d.kind !== "web");
         if (!to) throw fail("not_found", `no paired computer called "${i.device}"`);
-        const pub = st.keyOf(to.id); if (!pub) throw fail("not_ready", `"${to.name}" has not turned receiving on`);
+        const k = st.keyOf(to.id); if (!k) throw fail("not_ready", `"${to.name}" has not turned receiving on`);
+        await vouched(k);
+        const pub = k.pub;
         const id = crypto.randomBytes(15).toString("hex");
         const sealed = await sealFile(safe.real, id, pub);
         st.begin({ id, from: "server", to: to.id, total: sealed.total, size: s.size, eph: sealed.eph });
@@ -126,7 +134,8 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
       const all = t.devices || [];
       const to = i.to ? all.find((/** @type {any} */ d) => d.id === i.to || d.name === i.to) : (all.filter((/** @type {any} */ d) => d.ready).length === 1 ? all.find((/** @type {any} */ d) => d.ready) : null);
       if (!to) throw fail(i.to ? "not_found" : "ambiguous", i.to ? `none of your other computers is called "${i.to}"` : all.length ? `say which computer: ${all.map((/** @type {any} */ d) => `${d.name}${d.ready ? "" : " (not receiving)"}`).join(", ")}` : "you have no other computer paired to your server");
-      if (!to.ready || !to.pub) throw fail("not_ready", `"${to.name}" has not turned receiving on (files.receive on, on that computer)`);
+      if (!to.ready || !to.pub || !to.eid || !to.sig) throw fail("not_ready", `"${to.name}" has not turned receiving on (files.receive on, on that computer)`);
+      await vouched({ pub: String(to.pub), eid: String(to.eid), sig: String(to.sig) });
       const id = crypto.randomBytes(15).toString("hex");
       const sealed = await sealFile(safe.real, id, String(to.pub));
       await h.call("files.drop.begin", { id, to: to.id, total: sealed.total, size: s.size, eph: sealed.eph });
@@ -190,7 +199,9 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     try {
       let key = readKey(); if (!key) { key = newDropKey(); fs.writeFileSync(keyFile(), JSON.stringify(key), { mode: 0o600 }); }
       const h = await home();
-      await h.call("files.drop.register", { pub: key.pub });
+      const vouch = /** @type {any} */ (await ctx.call("wink.identity.sign", { message: KEYTEXT(key.pub) }));
+      if (!vouch || !vouch.data) throw fail("not_ready", "this computer has no identity yet");
+      await h.call("files.drop.register", { pub: key.pub, eid: String(vouch.data.eid), sig: String(vouch.data.sig) });
       await takeAll();
     } catch (e) { if (!on) return; retry = setTimeout(() => { retry = null; ready().catch(() => {}); }, RETRY); retry.unref(); }
   }

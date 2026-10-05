@@ -11,6 +11,9 @@ import { dropWink } from "./drop-wink.js";
 import { createDropStore } from "./drop-store.js";
 import { newDropKey, sender, receiver } from "./drop-seal.js";
 
+/** Stand-ins for the identity list: a device signs a text with its own secret, and any device of the identity can check it. */
+const sigOf = (eid, message) => crypto.createHash("sha256").update(`${eid}|${message}`).digest("base64url");
+const identityCheck = async (_t, input) => ({ data: { ok: ["A", "B"].includes(input.eid) && input.sig === sigOf(input.eid, input.message) } });
 const dir = p => fs.mkdtempSync(path.join(SCRATCH, p));
 const guardFor = roots => ({ resolveSafe: p => { const real = fs.realpathSync(String(p)); if (path.basename(real).startsWith(".")) throw Object.assign(new Error("not available"), { code: "not_available" }); return { real }; }, roots: () => ({ live: roots.map(r => ({ given: r, real: fs.realpathSync(r) })) }) });
 
@@ -23,6 +26,7 @@ function world(t, { devices } = {}) {
   const srvCtx = { paths: { root }, config: { files: {} }, log() {}, events: { emit: (n, p) => events.push([n, p]), on: () => () => {} }, tool: (n, d) => tools.set(n, d),
     call: async (tool, input) => {
       if (tool === "relay.devices.all") return { data: { devices: devices || [{ id: "A", name: "laptop", kind: "app", online: online.has("A") }, { id: "B", name: "desktop", kind: "app", online: online.has("B") }, { id: "W", name: "a browser", kind: "web", online: true }] } };
+      if (tool === "wink.identity.check") return identityCheck(tool, input);
       if (tool === "wink.device.call") { if (!online.has(input.device)) throw Object.assign(new Error("not connected"), { code: "unreachable" }); offers.push(input); void peers[input.device]?.offered(input.input.id); return { ok: true }; }
       throw new Error("unexpected " + tool);
     } };
@@ -34,7 +38,7 @@ function world(t, { devices } = {}) {
     const t2 = new Map(), ev = [];
     const home = dir(`drop-${id}-`), files = dir(`drop-${id}-files-`);
     const ctx = { paths: { root: home }, config: { files: { roots: [files] } }, log() {}, events: { emit: (n, p) => ev.push([n, p]), on: (n, f) => { ctx.fire = ctx.fire || {}; (ctx.fire[n] ||= []).push(f); return () => {}; } }, tool: (n, d) => t2.set(n, d),
-      call: async (tool) => { if (tool === "wink.home.id") return { data: { device: "srv" } }; throw new Error("unexpected " + tool); },
+      call: async (tool, input) => { if (tool === "wink.home.id") return { data: { device: "srv" } }; if (tool === "wink.identity.sign") return { data: { eid: id, sig: sigOf(id, input.message) } }; if (tool === "wink.identity.check") return identityCheck(tool, input); throw new Error("unexpected " + tool); },
       sessionFor: () => ({ call: async (tool, input) => via(id)(tool, input) }) };
     fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ files: { roots: [files] } }));
     const inbox = path.join(files, "inbox");
@@ -146,7 +150,7 @@ test("the server's bounds: a file over the cap, a server holding as much as it w
   let T = 1_000_000;
   const st = createDropStore({ dir: dir("drop-cap-"), maxBytes: 100, homeBytes: 150, ttlMs: 1000, now: () => T });
   const k = newDropKey().pub;
-  st.register("B", k);
+  st.register("B", k, { eid: "B", sig: "s" });
   assert.throws(() => st.begin({ id: "a".repeat(30), from: "A", to: "B", total: 2, size: 101, eph: k }), { code: "too_large" });
   const id = "b".repeat(30); st.begin({ id, from: "A", to: "B", total: 2, size: 90, eph: k }); st.put(id, "A", 0, Buffer.alloc(40)); st.put(id, "A", 1, Buffer.alloc(40)); st.finish(id, "A");
   assert.throws(() => st.begin({ id: "c".repeat(30), from: "A", to: "B", total: 2, size: 90, eph: k }), { code: "no_room" }, "the server holds as much as it will");
@@ -171,4 +175,21 @@ test("files.deliver: the server's own file to one of the person's computers, sea
   assert.deepEqual([r.sent, r.to], ["from-server.txt", "desktop"]);
   const landed = await until(() => fs.existsSync(path.join(B.inbox, "from-server.txt")) && path.join(B.inbox, "from-server.txt"));
   assert.equal(fs.readFileSync(landed, "utf8"), "delivered ".repeat(1000));
+});
+
+test("a key the server alone vouches for is refused: a swapped drop key, or one signed by something that is not on the identity list, seals nothing", async t => {
+  const w = world(t);
+  const A = w.computer("A"), B = w.computer("B", { receive: true });
+  await until(() => w.tools.get("files.drop.targets").run({}, { caller: "device:A" }).then(r => r.devices.find(d => d.id === "B" && d.ready)));
+  const src = path.join(A.files, "x.txt"); fs.writeFileSync(src, "x");
+  // the server swaps in its own key for B's (keeping B's signature, which signed another key)
+  const keys = path.join(w.root, "drop", "keys.json"); const m = JSON.parse(fs.readFileSync(keys, "utf8"));
+  const real = m.B; m.B = { ...real, pub: newDropKey().pub }; fs.writeFileSync(keys, JSON.stringify(m));
+  await assert.rejects(A.tool("files.send", { path: src, to: "desktop" }), { code: "not_verified" }, "a swapped key");
+  await assert.rejects(w.tools.get("files.deliver").run({ path: src, device: "desktop" }, { caller: "cli" }), { code: "not_verified" }, "the server's own deliver checks it too");
+  m.B = { ...real, eid: "attacker", sig: sigOf("attacker", `vyre-drop-key-v1\n${real.pub}`) }; fs.writeFileSync(keys, JSON.stringify(m));
+  await assert.rejects(A.tool("files.send", { path: src, to: "desktop" }), { code: "not_verified" }, "signed by something not on the list");
+  m.B = real; fs.writeFileSync(keys, JSON.stringify(m));
+  assert.equal((await A.tool("files.send", { path: src, to: "desktop" })).sent, "x.txt", "the real key still works");
+  void B;
 });

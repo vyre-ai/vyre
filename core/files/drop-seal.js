@@ -1,5 +1,5 @@
 // @ts-check
-// drop-seal: a dropped file is sealed on the sending device to the receiving device's own key, so the server that holds it until the receiver connects, and the relay it crosses, only ever see ciphertext.
+// drop-seal: a dropped file is sealed on the sending device to the receiving device's own key, so the server that holds it until the receiver connects, and the relay it crosses, only ever see ciphertext. Whose key that is is vouched for by the person's own identity (the receiving computer signs its drop key with its key on the identity list; the sender checks it before sealing), so the server in between cannot swap one in.
 // Each drop uses a fresh ephemeral X25519 key (so no two drops share a key), HKDF-SHA256 with the drop's id as salt, and AES-256-GCM per chunk with the chunk's place in the associated data, so a chunk
 // cannot be moved, repeated, dropped or taken from another drop without the receiver noticing. Chunk 0 is the header (name, size, hash of the whole file), the rest are the file in order.
 import crypto from "node:crypto";
