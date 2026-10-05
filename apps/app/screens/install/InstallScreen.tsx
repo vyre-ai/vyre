@@ -215,7 +215,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           // A phone that once held a name and lost its key (after a restart) opens where it can bring the name back, saying so.
           const lost = !claimBlocked() && (await hadIdentity().catch(() => false));
           if (lost) setLostKey(true);
-          setStep((s) => (["scan", "scanwords", "recovery", "have", "recover", "browser", "nosetup"].includes(s) ? s : lost ? "have" : s === "welcome" ? s : !canClaim ? "browser" : "name"));
+          setStep((s) => (["scan", "scanwords", "mcwords", "recovery", "have", "recover", "browser", "nosetup"].includes(s) ? s : lost ? "have" : s === "welcome" ? s : !canClaim ? "browser" : "name"));
         }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.
         const kept = unpackProgress(await readProgress());
@@ -297,6 +297,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
             <CopyLine text={installLine(shell()?.version)} />
           </>
         )}
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+        {MOCK ? null : <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("mcwords"); }} />}
         {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep(first ? "spaces" : "done"); }} />}
       </Page>
     );
@@ -386,6 +388,13 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = session ? (
       <Page title="Check the three words" sub="Your other device shows the same three words.">
         <PairServer session={session} who={dk === "web" || isPhone(dk) ? "Your phone" : "Your other device"} onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={(say) => { setSession(null); setWrong(say ?? pairSayHere(COPY.rejected)); setStep(scanStep); }} />
+      </Page>
+    ) : null;
+  } else if (step === "mcwords") {
+    // The server's QR or long code was read on the My Cloud page: its three words show here and the yes is said at the server.
+    body = session ? (
+      <Page title="Pair your server" sub="Say yes on the server only if it shows the same three words.">
+        <PairServer session={session} who="Your server" onConfirmed={() => { setSession(null); noId.current = false; setStep(first ? "spaces" : "done"); }} onRejected={(say) => { setSession(null); setWrong(pairSayHere(say ? serverSay(say) : SERVER_FAILED.rejected)); setStep("mycloud"); }} />
       </Page>
     ) : null;
   } else if (step === "recovery") {

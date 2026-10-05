@@ -40,7 +40,7 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 /** @type {Record<string, string|null>} */
 export const BACK = {
   welcome: null, question: "welcome", mycloud: "question", adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", mcwords: "mycloud", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 

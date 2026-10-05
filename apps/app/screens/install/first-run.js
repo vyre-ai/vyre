@@ -38,8 +38,8 @@ export const SERVER_SETUP_ROUTE = "/u/setup/server";
 export const MY_CLOUD = {
   title: "Set up My Cloud",
   line: "My Cloud runs on a computer or a server that stays on. Your phones and browsers connect to it.",
-  lineComputer: "Open its terminal and paste the line. It shows a code when it is ready.",
-  linePhone: "Send yourself the setup link and open it on that computer. It shows a code when it is ready.",
+  lineComputer: "Open its terminal and paste the line. It shows a QR and a long code when it is ready: scan the QR or paste the long code below.",
+  linePhone: "Send yourself the setup link and open it on that computer. It shows a QR and a long code when it is ready: scan the QR or paste the long code below.",
   send: "Send me the setup link",
   ready: "My server shows a code",
   share: "Set up My Cloud on a computer or a server: https://vyre.run",
