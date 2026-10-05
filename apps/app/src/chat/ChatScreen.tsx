@@ -30,6 +30,7 @@ import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
 import { ChatToolsSheet } from "../../screens/chat-tools";
 import { readDraft, writeDraft } from "./drafts";
+import { addTeammateInput, addable } from "./group.js";
 import { ChatExtras } from "./ChatExtras";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
@@ -161,19 +162,23 @@ export function ChatScreen(p: ChatScreenProps) {
   const line = [info.record?.title, info.space].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
   const realComposer = useRealComposer(p.sessionId, found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined, viewer, setNote);
+  // A chat with several assistants or models: one chip each, to switch that slot's model.
+  const slots = found.filter((f) => f.id !== viewer && (f.family === "assistant" || f.family === "model")).map((f) => ({ id: f.id, label: f.name, provider: (f as { provider?: string | null }).provider ?? null }));
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
+      <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
         onClose={() => setAboutOpen(false)}
-        title={p.title ?? "Session"}
+        title={p.title ?? "Chat"}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))}
         viewer={viewer}
         info={info}
+        addable={realComposer ? addable(realComposer.people, found) : undefined}
+        onAdd={realComposer ? async (who) => { try { await tool("chats.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}
         muted={muted}
         pinned={pinned}
         onMute={setMuted}
@@ -269,6 +274,7 @@ export function ChatScreen(p: ChatScreenProps) {
           models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Fast model", fit: 92 }, { id: "deep", label: "Deep model", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
           model={realComposer ? realComposer.model : "fast"}
           onModel={realComposer?.onModel}
+          slots={slots}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}

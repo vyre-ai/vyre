@@ -152,3 +152,14 @@ test("the group scenario: a late joiner is one quiet line, and a joiner's own st
   const text = dana.rows.map((r) => dana.item(r.key)?.text).filter(Boolean);
   assert.equal(text[0], "dana joined", "nothing above her join");
 });
+
+test("the sample world's three-model chat has one question, three answers each from its own provider, and a keep; the people-only chat has no assistant", async () => {
+  const { modelsScript, peopleScript } = await load();
+  const steps = modelsScript()[0].steps;
+  assert.equal(steps.filter((s) => s.type === "fanout").length, 1);
+  const providers = new Set(steps.filter((s) => s.type === "text-delta").map((s) => s.data.provider));
+  assert.deepEqual([...providers].sort(), ["claude", "codex", "grok"]);
+  assert.equal(steps.filter((s) => s.type === "fanout-keep").length, 1);
+  const authors = new Set(peopleScript()[0].steps.map((s) => (s.top?.author ?? "")).filter(Boolean));
+  assert.ok([...authors].every((a) => a.startsWith("person:")), "only people speak");
+});

@@ -30,11 +30,12 @@ export function useRealComposer(session: string | undefined, here: Person[] | un
   const { models, model } = useMemo(() => modelChoices(provRows, current), [provRows, current]);
   const people: Person[] = useMemo(() => peopleFor({ actors, agents, viewer, here: here ?? [] }), [actors, agents, viewer, here]);
   const records: RecordPick[] = useMemo(() => (world ? recordPicks(world as never, (d: unknown, r: unknown) => titleOf(d as never, r as never)) : []), [world]);
-  const onModel = useCallback((id: string) => {
-    const c = session ? switchCall(session, id, provRows, current) : null;
+  const onModel = useCallback((id: string, slot?: string) => {
+    const c = session ? switchCall(session, id, provRows, current, slot) : null;
     if (!c) return;
     onNote(null);
-    void tool(c.tool, c.input).catch((e: Error) => onNote(e.message || "The model did not switch."));
+    // A box that does not have chats.switch yet answers it as no such tool: the older call does the same switch.
+    void tool(c.tool, c.input).catch((e: Error & { code?: string }) => (/unknown_tool|no_such_tool|not_found/.test(String(e.code)) ? tool(c.old.tool, c.old.input) : Promise.reject(e))).catch((e: Error) => onNote(e.message || "The model did not switch."));
   }, [session, provRows, current, onNote]);
   return real ? { people, records, models: models as ModelChoice[], model, onModel } : null;
 }

@@ -20,14 +20,15 @@ test("the models offered are those of the signed-in accounts, with the answering
 
 test("a model of the answering account asks threads.model; one of another account asks threads.switch", () => {
   const cur = { provider: "claude", account: "default" };
-  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur), { tool: "threads.model", input: { thread: "t1", model: "opus" } });
-  assert.deepEqual(switchCall("t1", "codex|x1|gpt-5", ROWS, cur), { tool: "threads.switch", input: { thread: "t1", provider: "codex", account: "x1", model: "gpt-5" } });
+  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur), { tool: "chats.switch", input: { chat: "t1", provider: "claude", account: "default", model: "opus" }, old: { tool: "threads.model", input: { thread: "t1", model: "opus" } } });
+  assert.deepEqual(switchCall("t1", "claude|default|opus", ROWS, cur, "model:codex/gpt-5#1").input, { chat: "t1", slot: "model:codex/gpt-5#1", provider: "claude", model: "opus", account: "default" });
+  assert.deepEqual(switchCall("t1", "codex|x1|gpt-5", ROWS, cur).old, { tool: "threads.switch", input: { thread: "t1", provider: "codex", account: "x1", model: "gpt-5" } });
   assert.equal(switchCall("t1", "bad", ROWS, cur), null);
 });
 
 test("people to mention: this chat's first, then the space's actors and the person's agents, once each, never the viewer", () => {
   const p = peopleFor({ here: [{ name: "juno", family: "assistant" }], actors: { actors: [{ id: "per_me", name: "me", family: "person" }, { id: "per_d", name: "Dana", family: "person" }, { id: "x", name: "Juno", family: "assistant" }] }, agents: [{ name: "kit" }], viewer: "per_me" });
-  assert.deepEqual(p, [{ name: "juno", family: "assistant" }, { name: "Dana", family: "person" }, { name: "kit", family: "assistant" }]);
+  assert.deepEqual(p, [{ name: "juno", id: "juno", family: "assistant" }, { name: "Dana", id: "per_d", family: "person" }, { name: "kit", id: "kit", family: "assistant" }]);
 });
 
 test("records to tag carry their urn and how many sealed fields hold a value; internal types are left out", () => {

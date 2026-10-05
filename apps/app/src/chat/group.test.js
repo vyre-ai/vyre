@@ -166,3 +166,11 @@ test("a fan-out set draws at the first member that has a row", () => {
   assert.equal(g.fanoutAt("a:x1")?.first, true, "x1 is the first member that now has a row");
   assert.equal(g.fanoutAt("a:x2")?.first, false);
 });
+
+import { addTeammateInput, addable } from "./group.js";
+test("adding a teammate sends a person by id to add_people and an assistant to add_assistants; people already in the chat are not offered", () => {
+  assert.deepEqual(addTeammateInput("chat_1", { id: "per_9", name: "Sam", family: "person" }), { chat: "chat_1", add_people: ["per_9"] });
+  assert.deepEqual(addTeammateInput("chat_1", { name: "kit", family: "assistant" }), { chat: "chat_1", add_assistants: ["kit"] });
+  const offered = [{ name: "Sam", id: "per_9", family: "person" }, { name: "kit", family: "assistant" }, { name: "Dana", id: "per_4", family: "person" }];
+  assert.deepEqual(addable(offered, [{ name: "kit" }, { name: "alex", id: "per_1" }]).map((o) => o.name), ["Sam", "Dana"]);
+});

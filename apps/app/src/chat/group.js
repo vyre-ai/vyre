@@ -358,3 +358,18 @@ export function createGroup(viewer) {
     assistants: () => [...people.values()].filter((p) => p.family === "assistant"),
   };
 }
+
+/**
+ * chats.change's input for adding one teammate (CONTRACT-one-chat.md): a person goes in add_people by id, an assistant in add_assistants by id. Nothing else about the chat changes.
+ * @param {string} chat @param {{ id?: string, name: string, family: string }} who
+ */
+export function addTeammateInput(chat, who) {
+  const id = String(who.id || who.name);
+  return who.family === "assistant" ? { chat, add_assistants: [id] } : { chat, add_people: [id] };
+}
+
+/** Who could still be added: everyone offered who is not already in the chat, by name. @param {readonly { name: string, id?: string, family: string }[]} offered @param {readonly { name: string, id?: string }[]} inChat */
+export function addable(offered, inChat) {
+  const here = new Set(inChat.flatMap((p) => [p.name.toLowerCase(), String(p.id ?? "").toLowerCase()]));
+  return offered.filter((o) => !here.has(o.name.toLowerCase()) && !here.has(String(o.id ?? "").toLowerCase()));
+}
