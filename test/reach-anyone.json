@@ -1949,17 +1949,9 @@
    "module": "work",
    "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
   },
-  "work.project.create": {
-   "module": "work",
-   "reason": "a mutating verb, guarded: the record is made under the CALLER's own chain (records.create), and the Drive folder marker under the caller's own chain too (drive.write), so a caller without either cannot make a project"
-  },
   "work.project.rename": {
    "module": "work",
    "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
-  },
-  "work.session.move": {
-   "module": "work",
-   "reason": "guarded: the record update and the Drive folders move under the CALLER's own chain (records.update, drive.write)"
   },
   "work.session.rename": {
    "module": "work",

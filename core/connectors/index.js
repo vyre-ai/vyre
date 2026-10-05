@@ -128,6 +128,7 @@ export default {
     // what can be asked of it and which asks are outward; the credential carries that to the vault, which is where a Flow, a watcher and an assistant meet it.
     ctx.tool("connectors.declared", {
       effect: "read",
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (which services are connected is the person's)
       description: "The connectors this build ships as declarations (Stripe, Gmail, Google Calendar ...), each: id, label, how it signs in, its operations (name, label, kind, outward) and the polls a watcher can run on it, plus whether a credential of that name is already in the vault. Holds no value.",
       input: obj({ id: str }),
       run: async ({ id } = {}) => {
@@ -147,6 +148,7 @@ export default {
     // Nothing is written here: the person or their assistant makes each part under their own chain, and the vault credential, the watcher card and the Flow card are each theirs to say yes to.
     ctx.tool("connectors.logging", {
       effect: "read",
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (which services are connected is the person's)
       description: "The recipe for logging a mailbox or calendar to contacts: { connector: gmail | google-calendar, address (the mailbox, or the calendar id), project, credential? (default: the connector's id), createUnknown?, skipInternal? (a domain) } -> { watcher: the input for watchers.preset, flow: the stored Flow for flows.define, steps: what to do in order }. Writes nothing; logging reads and files records and never sends.",
       input: obj({ connector: str, address: str, project: str, credential: str, createUnknown: { type: "boolean" }, skipInternal: str }, ["connector", "address", "project"]),
       run: async input => {

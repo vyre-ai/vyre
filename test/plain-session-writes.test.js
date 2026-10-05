@@ -49,9 +49,9 @@ test("a plain model session reaches no write or outward tool but the listed ones
     if (/** @type {any} */ (why).class !== "refused") continue;
     const def = reg.tools.get(name);
     const r = await reg.call(name, def && def.input && def.input.type === "object" ? fill(def.input) : {}, "mcp", {});
-    if (!r.error || !["denied", "not_asked", "forbidden", "not_allowed", "failed"].includes(r.error.code)) open.push(`${name}: ${r.error ? r.error.code : "ran"}`);
+    if (!r.error || !["denied", "not_asked", "forbidden", "not_allowed", "failed", "held_for_approval"].includes(r.error.code)) open.push(`${name}: ${r.error ? r.error.code : "ran"}`);
   }
-  assert.deepEqual(open, [], "listed as refused for a plain session, but it was not");
+  assert.deepEqual(open, [], "listed as refused (or held for the person) for a plain session, but it ran");
   // Nothing may be left for review without an owner: the number only shrinks.
   const review = Object.entries(allowed).filter(([, v]) => /** @type {any} */ (v).class === "review").map(([n]) => n);
   assert.ok(review.length <= 5, "tools waiting for an owner's decision: " + review.join(", "));

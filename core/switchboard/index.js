@@ -3422,7 +3422,7 @@ export default {
       const me = sb.record(m.thread);
       return Boolean(me && me.project && t.project === me.project);
     };
-    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.archive", "threads.unarchive", "threads.rename", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
+    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.rename", "threads.archive", "threads.unarchive", "threads.rename", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
       "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.lease", "threads.release"]);
     const SESSION_READS = new Set(["threads.fork", "threads.branch", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))

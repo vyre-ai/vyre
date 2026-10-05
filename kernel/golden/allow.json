@@ -1,7 +1,23 @@
 [
  {
+  "tool": "agents.ask",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; agents.ask opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: guard() refuses non-assistant agent labels; modelMay refuses a plain mcp or harness caller with no verified thread or agent; sessions, the verified assistant, the person and modules pass (onboard asks as a module)"
+ },
+ {
   "tool": "agents.delete",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (destructive)"
+ },
+ {
+  "tool": "apps.list",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; apps.list opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: a read of the apps installed on this Mac; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)"
+ },
+ {
+  "tool": "apps.send",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; apps.send opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: sends as the person, so it is outward: held for the person's presence proof for every caller that is not a module"
+ },
+ {
+  "tool": "apps.targets",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; apps.targets opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: a read of the notes and lists inside one app; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/apps/index.js)"
  },
  {
   "tool": "artifacts.activity.log",
@@ -52,12 +68,132 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): proposes a live read-only view to another Space, which the other side accepts before anything crosses"
  },
  {
+  "tool": "capsule.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; capsule.status opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: a read of whether the Capsule can run on this machine: build and autostart, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/capsule/index.js)"
+ },
+ {
+  "tool": "chrome.act",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.act opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.api",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.api opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.approve",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.approve opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
+ },
+ {
+  "tool": "chrome.batch",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.batch opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.click",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.click opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.console",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.console opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.eval",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.eval opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.fill",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.fill opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.frames",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.frames opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.ghl",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.ghl opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.inspect",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.inspect opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.login",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.login opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.net",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.net opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.open",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.open opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.parallel",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.parallel opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: only reading ops (a snapshot, a screenshot, net list, api route) run, one per tab, each through the same floor and stop as a single call, so nothing is changed in a page; an agent caller needs the person's grant (requireGrant) first, and a step that writes is refused outright (use chrome.batch, which holds writes at the Gate). test: local/hands-chrome-mac/ext-batch.test.js"
+ },
+ {
+  "tool": "chrome.plan",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.plan opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: posts text for the person to approve or read, changes nothing in a page: a plan is held at the Gate for the person to approve (chrome.release is internal, Gate only), and an agent needs the grant (requireGrant) to post one"
+ },
+ {
   "tool": "chrome.plan.edit",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): edits the words of a Chrome plan step that has not started; running and finished steps stay"
  },
  {
+  "tool": "chrome.point",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.point opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard); the URL floor applies to the tab and to the frame the point lands in; what is under the point is classified by its text (a Send, Delete, publish or payment holds at the Gate whatever the plan says) and a drawn surface (no text of its own) holds unless the approved plan covers it for this tab and origin (trust.pointBudget, set only by the module); the page must still match the kept screenshot. Tests: local/hands-chrome-mac/ext-point.test.js and the point_rung stage"
+ },
+ {
+  "tool": "chrome.recipe",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.recipe opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
+  "tool": "chrome.screenshot",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.screenshot opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.site",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.site opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.snapshot",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.snapshot opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.sources",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.sources opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.state",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.state opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.status opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.stop",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.stop opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: a model may stop itself: it only halts (oversight.stop), never changes a page; chrome.resume is callers: PEOPLE, so a stop is undone only by the person"
+ },
+ {
+  "tool": "chrome.summary",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.summary opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.tabs",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.tabs opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
+ },
+ {
+  "tool": "chrome.type",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.type opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent caller needs the person's grant (requireGrant) and a posted plan (oversight guard) before it reaches Chrome; the URL floor refuses blind and read-only pages for acting ops; trust.asked is false for agents, so an outward act holds at the Gate. test: local/hands-chrome-mac/module.test.js (chrome.fill agent test). The box-side hands-chrome manifest shares the name: an agent drives only its own computer, a consequential control is refused before it is touched, and paused or taken-over computers refuse"
+ },
+ {
   "tool": "chrome.voice",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): carries the person's live speech to the Chrome panel while an agent works"
+ },
+ {
+  "tool": "chrome.wait",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; chrome.wait opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only: nothing is changed in the page; an agent caller needs the person's grant (requireGrant) first, the URL floor refuses blind pages, and a screenshot is refused when a password or one-time-code field shows (the box-side hands-chrome snapshot and screenshot are the same: an agent reads only its own computer)"
  },
  {
   "tool": "computers.egress.status",
@@ -76,12 +212,24 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers join the tailnet as their own tagged nodes"
  },
  {
+  "tool": "connectors.declared",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.declared opened to a model or a module in 1cb1cdd71 (4 Oct 2026); the body decides: a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
+ },
+ {
+  "tool": "connectors.logging",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; connectors.logging opened to a model or a module in 1cb1cdd71 (4 Oct 2026); the body decides: a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)"
+ },
+ {
   "tool": "files.deliver",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: delivers a file)"
  },
  {
   "tool": "files.drive.address",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads where one of the box's VyreDrive shares is reached on the tailnet"
+ },
+ {
+  "tool": "files.drive.link.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: makes a link that gives outsiders access to a file)"
  },
  {
   "tool": "files.drive.mount",
@@ -140,6 +288,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: sends a file)"
  },
  {
+  "tool": "flows.budget",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads the Space's daily AI allowance for Flow steps and what is used today; setting it is an owner or an admin's, decided by the module from the caller's chain; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
   "tool": "flows.card",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; the approval card for a Flow version, a read; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
@@ -166,6 +318,18 @@
  {
   "tool": "flows.kit.card",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; the install card for a Kit, a read; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.diff",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads what updating an installed Kit to a version would change: parts added, changed and removed, and the risks; nothing is changed; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.library",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; lists the Kits this build ships before anything is installed: public text, no data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "flows.kit.library.get",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; reads one shipped Kit in the form the card, diff and propose tools take: public text, no data; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
  },
  {
   "tool": "flows.kit.list",
@@ -202,6 +366,10 @@
  {
   "tool": "flows.start",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; starts a Flow now with an input, under the caller's chain, and an approved Flow only; the flows module authenticates the caller's chain, not an assistant's say-so: core/flows/index.js chainOf takes the chain from a daemon-bound session token or the person's own surface and refuses a plain mcp caller, an agent claim and anyone else, and the kernel authorizes every step under that chain"
+ },
+ {
+  "tool": "github.accounts",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; github.accounts opened to a model or a module in 3c2ce3bcf (4 Oct 2026); the body decides: read-only: names, logins and avatars of connected accounts, never a token; callers list is the person's surfaces plus first-party modules (checked in code)"
  },
  {
   "tool": "github.mcp.sync",
@@ -248,6 +416,30 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads what Glass can open: each agent's computer and the box's files"
  },
  {
+  "tool": "hands.act",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; hands.act opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent needs the person's grant (gated); a consequential control is held at the Gate (consequence.js), and a stop or pause refuses the act"
+ },
+ {
+  "tool": "hands.commit",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; hands.commit opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: an agent needs the person's grant (gated); a consequential control is held at the Gate (consequence.js), and a stop or pause refuses the act"
+ },
+ {
+  "tool": "hands.find",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; hands.find opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only; gated by the grant (agents need hands.grant.add by the person) and the hands floor"
+ },
+ {
+  "tool": "hands.observe",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; hands.observe opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: read-only; gated by the grant (agents need hands.grant.add by the person) and the hands floor"
+ },
+ {
+  "tool": "hands.stop",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; hands.stop opened to a model or a module in cb69aea6d (4 Oct 2026); the body decides: a model may stop itself: it only halts (hands.halt), never acts; hands.resume is callers: PEOPLE"
+ },
+ {
+  "tool": "harness.end",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; harness.end opened to a model or a module in c5e244c97 (4 Oct 2026); the body decides: a mutating verb, guarded as every Harness hook: HOOK_CALLERS and own() refuse a caller that is not the session's own hook; it only says thread.stopped once for that session"
+ },
+ {
   "tool": "hooks.close",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (changes what reaches the Space from outside)"
  },
@@ -256,12 +448,32 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (opens the Space to the outside)"
  },
  {
+  "tool": "learn.add",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; learn.add opened to a model or a module in 3b0ea63d2 (4 Oct 2026); the body decides: a model's lesson is proposed and never made active; the person accepts it"
+ },
+ {
   "tool": "link.companion.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the companions and the waiting request"
  },
  {
+  "tool": "link.pending",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; link.pending opened to a model or a module in 235da322d (4 Oct 2026); the body decides: read-only, scoped by the module itself"
+ },
+ {
   "tool": "link.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames a paired Mac or device, the person's own label"
+ },
+ {
+  "tool": "memory.curate",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; memory.curate opened to a model or a module in 3b0ea63d2 (4 Oct 2026); the body decides: admits a project agent under the module's own guard: its own project's memory only"
+ },
+ {
+  "tool": "memory.mute",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; memory.mute opened to a model or a module in 3b0ea63d2 (4 Oct 2026); the body decides: admits a project agent under the module's own guard: its own project's memory only"
+ },
+ {
+  "tool": "memory.pin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; memory.pin opened to a model or a module in 3b0ea63d2 (4 Oct 2026); the body decides: admits a project agent under the module's own guard: its own project's memory only"
  },
  {
   "tool": "mentions.kinds",
@@ -292,8 +504,28 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads and sets the planner's zone and escalation timing, the person's own preferences"
  },
  {
+  "tool": "pluginagent.ask",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; pluginagent.ask opened to a model or a module in 2bbe50159 (4 Oct 2026); the body decides: callers list in code (the person's surfaces, mcp and harness); it only files one pending request for the person to approve with presence (pluginagent.grant), one at a time, and changes nothing else"
+ },
+ {
+  "tool": "pluginagent.pending",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists what Claude Code on a computer is waiting to be let do: a read, nothing is granted"
+ },
+ {
+  "tool": "pluginagent.status",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; pluginagent.status opened to a model or a module in 2bbe50159 (4 Oct 2026); the body decides: read-only: whether Claude Code on this computer has been granted, and one plain sentence"
+ },
+ {
+  "tool": "presence.person.locked",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the paired devices locked after wrong sign-in answers and when each lock ends: a read for the Devices list"
+ },
+ {
   "tool": "presence.person.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether this request is signed in as the person and until when"
+ },
+ {
+  "tool": "presence.remove",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; presence.remove opened to a model or a module in 235da322d (4 Oct 2026); the body decides: a presence proof is required (HUMAN_ONLY); module callers need the tool"
  },
  {
   "tool": "projects.add-threads",
@@ -528,12 +760,20 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): hands in a doer's work for a check; the kernel decides"
  },
  {
+  "tool": "team.charter.draft",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; team.charter.draft opened to a model or a module in 3b0ea63d2 (4 Oct 2026); the body decides: project check in code (person, assistant or a session in the project, never a teammate); saved as a new version the person can read and revert"
+ },
+ {
   "tool": "team.duties.run-now",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): runs a duty once now, refused while it is off"
  },
  {
   "tool": "term.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the live terminals: folder, opener, size and bytes"
+ },
+ {
+  "tool": "threads.archive",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.archive opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
  },
  {
   "tool": "threads.branch",
@@ -544,6 +784,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): carries a paired Mac's session on in a new thread on this box"
  },
  {
+  "tool": "threads.delete",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (destructive: deletes a thread for good)"
+ },
+ {
   "tool": "threads.edit",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): changes queued words before they are handed over"
  },
@@ -552,20 +796,84 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): edits and retries a message, rewinding the conversation to just before it"
  },
  {
+  "tool": "threads.effort",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.effort opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
+  "tool": "threads.fork",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.fork opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+ },
+ {
+  "tool": "threads.interrupt",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.interrupt opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
   "tool": "threads.kill-task",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): stops one of a thread's background tasks"
+ },
+ {
+  "tool": "threads.model",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.model opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
+  "tool": "threads.release",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.release opened to a model or a module in 3c2ce3bcf (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
  },
  {
   "tool": "threads.remember",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): adds a line to the project's or the person's CLAUDE.md"
  },
  {
+  "tool": "threads.rename",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.rename opened to a model or a module in f990f0d36 (4 Oct 2026); the body decides: guarded: guard() refuses callers that may not rename sessions and mayReach() refuses a thread outside the caller's reach, as for threads.archive"
+ },
+ {
   "tool": "threads.retry",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): retries a message with the same words, idempotent with an idempotency key"
  },
  {
+  "tool": "threads.rewind",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (destructive: rewinds a thread, and with restore its files, to an earlier turn)"
+ },
+ {
+  "tool": "threads.send",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.send opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; modules call it (keyboard, glass, agents), so it cannot be person"
+ },
+ {
+  "tool": "threads.send-now",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.send-now opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
+  "tool": "threads.start",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.start opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; a session's start of a child records it as the parent"
+ },
+ {
+  "tool": "threads.stop",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.stop opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed; agents.stop stops threads through it as module:agents"
+ },
+ {
+  "tool": "threads.switch",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.switch opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
+  "tool": "threads.thinking",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.thinking opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
+  "tool": "threads.unarchive",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.unarchive opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+ },
+ {
   "tool": "threads.unqueue",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): takes back queued words before they are handed over"
+ },
+ {
+  "tool": "threads.unwatch",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.unwatch opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+ },
+ {
+  "tool": "threads.watch",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; threads.watch opened to a model or a module in 06c2f3bcc (4 Oct 2026); the body decides: own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
  },
  {
   "tool": "vault.emergency.status",
@@ -574,6 +882,10 @@
  {
   "tool": "vault.provider.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): returns which provider tokens are stored and when each was added, never a value; the person's own assistant chains only, and guests, anonymous, plain mcp and named agents without the grant stay refused"
+ },
+ {
+  "tool": "vault.revoke",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; vault.revoke opened to a model or a module in 59980bf43 (4 Oct 2026); the body decides: callerKind check inside: a named agent or a module can only withdraw its own pending request; only the person's surfaces and an unnamed session revoke freely (G-MV4)"
  },
  {
   "tool": "voice.listen",
@@ -642,6 +954,14 @@
  {
   "tool": "work.engineer.talk",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): talks to the Engineer, which only admins can do; explain reads a definition back"
+ },
+ {
+  "tool": "work.project.rename",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.project.rename opened to a model or a module in f990f0d36 (4 Oct 2026); the body decides: guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
+ },
+ {
+  "tool": "work.session.rename",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; work.session.rename opened to a model or a module in f990f0d36 (4 Oct 2026); the body decides: guarded: the record update runs under the CALLER's own chain (records.update); the thread side is threads.rename, which refuses a caller who may not reach that thread"
  },
  {
   "tool": "work.team.add",

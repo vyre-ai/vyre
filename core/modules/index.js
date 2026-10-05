@@ -36,7 +36,7 @@ const LOADER_FEATURES = ["modules.status"];
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
 // relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
