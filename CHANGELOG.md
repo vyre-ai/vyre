@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Now shows a "Finish setting up Vyre" banner, leading to /u/install/setup, when the box says onboarding is not finished (onboard.status finished is false). A box that cannot answer shows nothing.
+
 - feat(app): a browser claims and recovers a name with a passkey by default (0.2.9): EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 now turns it off, where it used to be =1 to turn it on. Merged native-core's move of the Wink code renderer to lib/wink-code.
 
 - feat(app): the chat tools sheet gets the queued messages (so Send now works when the box names the queued id, frame field queued_id), and the watcher, spend-cap and welcome cards draw in the transcript as blocks. fix(app): with nobody signed in the shell asks the box once (records.me), shows "Sign in to Vyre" and mounts no screen, instead of 50 refused calls on load.

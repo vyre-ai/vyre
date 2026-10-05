@@ -137,3 +137,12 @@ test("whose a server is: a browser reads it as the server said it, a phone as th
   assert.equal(pairSayFor(s, "mac"), s);
   assert.equal(pairSayFor(s, "ios"), "This Vyre belongs to walkercc.vyre.run. Ask them to add you to a space, or reset it to start over.");
 });
+
+import { setupUnfinished, SETUP_BANNER } from "./first-run.js";
+test("the setup banner shows only when the box says setup is not finished", () => {
+  assert.equal(setupUnfinished({ finished: false }), true);
+  assert.equal(setupUnfinished({ finished: true }), false);
+  assert.equal(setupUnfinished(null), false);
+  assert.equal(setupUnfinished({}), false);
+  assert.equal(SETUP_BANNER.route, "/u/install/setup");
+});

@@ -4,12 +4,13 @@ import { Banner, Button, Card, Chip, Divider, Row, SectionLabel, Text } from "@v
 import { visibleNeeds } from "../../src/state/answers";
 import { useHidden, useNeeds } from "../../src/state/needs";
 import type { Need } from "../../src/state/needs";
-import { useGap } from "../../src/state/setup-gap";
+import { useGap, useSetupBanner } from "../../src/state/setup-gap";
 
 /** What is missing on this device (no Vyre to talk to, or no phone to approve), as one banner with the one action. */
 export function GapNotice() {
   const router = useRouter();
-  const gap = useGap();
+  const setup = useSetupBanner();
+  const gap = useGap() ?? setup;
   if (!gap) return null;
   return (
     <Banner tone="warn">

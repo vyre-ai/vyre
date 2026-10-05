@@ -187,3 +187,8 @@ export const PHONE_SAY = {
   ended: "The pairing did not finish, so nothing was paired. Start again from your Vyre.",
   spaceOffline: "Your phone cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
 };
+
+/** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
+export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
+/** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
+export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your assistant, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };
