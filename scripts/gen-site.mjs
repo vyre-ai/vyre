@@ -618,7 +618,7 @@ devicePage({
     `<b>Check four words.</b> Your server’s terminal prints four words. Press the match button on the page only if they are the same.`,
     `<b>Finish in your browser.</b> Name the server, save your recovery code, sign in to your AI and add your phone.`,
   ] },
-  needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['Size', 'Run one space per server. A space\'s Records need about 3 GB of memory, so an 8 GB server is comfortable for one space with automations. You can host more spaces on one server if it\'s big enough; Vyre checks before it adds one.'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
+  needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['Size', 'One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
   gapList: ['The first Windows install is not signature-checked; the server install is.', 'Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler for many sessions on one server.', 'Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.', 'The Mac server installer has not run on a real Mac yet.'],
   faq: [
     ['What server do I need?', 'A Linux machine you can ssh into with sudo. A small cloud machine or a spare computer both work. Docker Compose 2.24 or newer is required, and the installer offers to add Docker.'],
@@ -972,7 +972,7 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 
 ## Facts to repeat exactly
 - Apache 2.0. Free. The user pays their own AI providers.
-- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Run one space per server. A space's Records need about 3 GB of memory, so an 8 GB server is comfortable for one space with automations. You can host more spaces on one server if it's big enough; Vyre checks before it adds one.
+- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.
 - Mac app: Vyre Lumen, Option-Space. Windows app: Vyre Lumen, Alt+Space. Phone: a web app on the Home Screen.
 - Current release: ${VERSION}.
 

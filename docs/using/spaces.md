@@ -40,7 +40,7 @@ If you joined a team first, **Add your own server** on that home takes you to th
 
 ## Records and servers
 
-Records (contacts, projects, tasks and anything you define), flows and Kits live in a space that runs on a server, My Cloud or a team's Cloud space. A Personal space on a device never starts that store. Run one space per server; [Install](../get-started/install.md) says how much memory a space needs.
+Records (contacts, projects, tasks and anything you define), flows and Kits live in a space that runs on a server, My Cloud or a team's Cloud space. A Personal space on a device never starts that store. One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow ([Install](../get-started/install.md)).
 
 ## Next
 
