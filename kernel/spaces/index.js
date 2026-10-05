@@ -52,7 +52,7 @@ export function createSpaceKernels(cfg) {
     /** @type {any} */ let drive; try { drive = await provisionDrive({ dir: d, space: id, sealer: custody.sealer || null, kernelKey: custody.key || null }) || undefined; } catch (e) { if (cfg.log) cfg.log(`kernel: no Drive for ${id} (${/** @type {Error} */ (e).message})`); }
     const spaceDb = cfg.openDb(path.join(d, "kernel.db"));
     dbs.set(id, spaceDb);
-    const booted = tell(await boot({ db: spaceDb, space: id, ...(cfg.basic ? { basic: cfg.basic } : {}), ...(drive ? { drive } : {}), ...hooks, owner: meta.owner, ...(store ? { store } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
+    const booted = tell(await boot({ db: spaceDb, space: id, ...(drive ? { drive } : {}), ...hooks, owner: meta.owner, ...(store ? { store } : {}), ...(cfg.basic ? { basic: cfg.basic } : {}), owner_uid: process.getuid ? process.getuid() : 0, ...custody, clock: cfg.clock,
       // A hosted Space that takes the claimed identity as its owner keeps that beside its own id, like the home's (the log is the truth at boot; the file follows it).
       onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { try { fs.writeFileSync(f, JSON.stringify({ ...meta, owner: to, previous_owner: from }), { mode: 0o600 }); } catch { /* the next boot rewrites it from the log */ } },
       ...(cfg.doorFor ? { door: cfg.doorFor(id) } : {}), ...(cfg.bootOptions || {}) }));

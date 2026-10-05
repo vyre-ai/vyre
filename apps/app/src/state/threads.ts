@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-/** A session as threads.list gives it (apps/CONTRACT.md 3.2), the fields Chats draws. */
+/** A session as threads.list gives it (team/archive/CONTRACT-native-apps.md 3.2), the fields Chats draws. */
 export type ThreadRow = {
   id: string;
   name: string | null;

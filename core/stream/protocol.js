@@ -1,5 +1,5 @@
 // @ts-check
-// protocol: the one typed frame a session stream carries (ADR 0052, docs/work/chat.md "0.3").
+// protocol: the one typed frame a session stream carries (ADR 0052, team/archive/work-journals/chat.md "0.3").
 //
 // A frame is a projection of the kernel EventEnvelope (kernel/contracts/event.d.ts):
 //   { v:1, id, cur, session, turn, type: "chat.<kind>", time, corr, data }

@@ -1,5 +1,5 @@
 // @ts-check
-// A raw redeemer for the real-install runs (docs/work/tailnet.md, "Real install", seventh run): scans a server's QR or long code the way the app does,
+// A raw redeemer for the real-install runs (team/archive/work-journals/tailnet.md, "Real install", seventh run): scans a server's QR or long code the way the app does,
 // then shows what a waiting pairing can reach. It is the probe test/wink.test.js runs in process, here against a real box.
 //
 //   node scripts/install/redeemer.mjs --payload 'vyre://wink/2?t=...&r=wss://...' [--relay ws://host:port] [--name NAME] [--keys FILE] [--ask] [--hold SECONDS]

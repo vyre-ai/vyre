@@ -13,7 +13,7 @@ Status: accepted, 26 Sep 2026 · Workstream: computers · Spec: section 7.9
 ## The problem
 
 An agent's computer is a container, made and driven by `core/computers/driver/docker.js` through
-box's restricted Docker API proxy (`tecnativa/docker-socket-proxy`, `docs/work/computers.md`'s
+box's restricted Docker API proxy (`tecnativa/docker-socket-proxy`, `team/archive/work-journals/computers.md`'s
 `computers.docker`). The proxy's job is to keep vyred off the raw Docker socket, which is
 root-equivalent on the box: it allow-lists which Engine *endpoints* are reachable (containers,
 images, exec, a POST, info) and denies others outright (networks, volumes).

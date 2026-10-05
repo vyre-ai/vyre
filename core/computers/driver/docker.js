@@ -257,7 +257,7 @@ export class DockerDriver {
    * vyre), the same archive-API write .boot gets and the same directory. computerd's own
    * identifyClient (index.js) reads this once at start; it is not live-reloaded by this call
    * alone -- a caller that changes who is on a running computer must also make computerd notice
-   * (docs/work/glass.md's own note on revocation).
+   * (team/archive/work-journals/glass.md's own note on revocation).
    * @param {string} id @param {Array<{ name: string, token: string }>} agents
    */
   async seedAgentTokens(id, agents) {

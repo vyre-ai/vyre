@@ -3,7 +3,7 @@
 // block is called, when an assistant header starts, how a turn's footer reads, and how the same
 // blocks print the way Claude Code's own terminal prints them (the raw view).
 //
-// Blocks are recall.transcript's (docs/work/chat.md, contract 2): user, text, thinking, tool,
+// Blocks are recall.transcript's (team/archive/work-journals/chat.md, contract 2): user, text, thinking, tool,
 // turn. Labels (lib/names.js) never say "claude": a reply is the assistant's name (or the agent's), the person is "you",
 // and another surface is its own name.
 
