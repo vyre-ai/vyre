@@ -56,7 +56,7 @@ test("files: each of the project's threads is asked for what it touched, newest 
   const r = await projectTabsSource(b.call).touched("harlow");
   assert.deepEqual(r.rows.map((x) => [x.path, x.tool, x.threadName]), [["/p/harlow/a/b/c/plan.md", "Write", "Waiting"], ["/p/harlow/x.txt", "Edit", "Live one"], ["/p/harlow/x.txt", "Edit", "Old intake"]]);
   assert.deepEqual(b.seen.filter((s) => s.tool === "harness.touched").map((s) => s.input).sort((a, c) => a.session.localeCompare(c.session)), [{ session: "t1", limit: 50 }, { session: "t2", limit: 50 }, { session: "t3", limit: 50 }]);
-  assert.equal(b.seen.some((s) => /read|preview|download/.test(s.tool)), false);
+  assert.equal(b.seen.some((s) => /\.(read|preview|download)$/.test(s.tool)), false);
   assert.deepEqual(splitPath("/p/harlow/a/b/c/plan.md"), { dir: "…/b/c/", base: "plan.md" });
   assert.deepEqual(splitPath("plan.md"), { dir: "", base: "plan.md" });
   assert.deepEqual(splitPath("/a/b.txt"), { dir: "/a/", base: "b.txt" });
