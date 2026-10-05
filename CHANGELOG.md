@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(box): a server home defaults to VYRE_STORE=auto (each Space on its own Twenty when the box has room, the built-in store when it does not); `vyre.env` or the shell may set sqlite. A desktop home keeps sqlite. (Held on branch work/store-auto until the user decides the default.)
+
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
 
 - test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.

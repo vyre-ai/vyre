@@ -53,6 +53,9 @@ services:
       # 0.3: the kernel is on, whatever a user's vyre.env says or a root-run update passes on (a packaged box must not depend on a user file; platform's MA-5 refuses a packaged
       # daemon with the kernel off). VYRE_STORE (the Space store) is the installer's choice and the root run passes it on from vyre.env.
       - VYRE_KERNEL=1
+      # A server home runs each Space on its own Twenty when the box has room for it, and on the built-in store when it does not (stores/twenty/space-store.js decides, with the reasons logged).
+      # vyre.env or the shell may say VYRE_STORE=sqlite to keep every Space on the built-in store. A desktop home never reads this file: its default stays sqlite.
+      - VYRE_STORE=${VYRE_STORE:-auto}
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env
