@@ -16,8 +16,8 @@
 //   initials   draw a tile of the title's initials before it (people-like types)
 
 /** @typedef {{ kind: "sum"|"countBy"|"funnel"|"recent", field?: string, where?: string }} Widget */
-/** @typedef {{ plural: string, titleField: string, holdsWork?: boolean, initials?: boolean, list?: { columns: string[], sort?: string }, board?: { groupBy: string, card: string[] },
- *   calendar?: { date: string }, dashboard?: { widgets: Widget[] } }} ViewDefinition */
+/** @typedef {{ plural: string, titleField: string, holdsWork?: boolean, initials?: boolean, list?: { columns: string[], sort?: string, sortDir?: "asc"|"desc", filter?: string }, board?: { groupBy: string, card: string[], filter?: string },
+ *   calendar?: { date: string, filter?: string }, dashboard?: { widgets: Widget[] } }} ViewDefinition */
 
 /** @type {Record<string, ViewDefinition>} */
 export const viewDefs = {

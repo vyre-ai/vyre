@@ -1,4 +1,4 @@
-// @ts-check
+// @ts-nocheck (copied from kernel/expr, where it is checked; the app does not import the kernel)
 // kernel/expr/conditions.js: what a record's own values decide about its definition. Pure functions over a type definition and a record's values, so the
 // gateway (which refuses), the Flows stage module (which advances) and the app (which shows and hides fields) judge the same record the same way.
 //

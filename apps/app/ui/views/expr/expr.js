@@ -1,4 +1,4 @@
-// @ts-check
+// @ts-nocheck (copied from kernel/expr, where it is checked; the app does not import the kernel)
 // The Expression language: one small, safe language for rules, stage conditions, computed fields
 // and filters. Parsed and evaluated here; never handed to eval. Limits on length, depth and nodes.
 //

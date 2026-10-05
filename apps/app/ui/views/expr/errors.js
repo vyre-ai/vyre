@@ -1,4 +1,4 @@
-// @ts-check
+// @ts-nocheck (copied from kernel/expr, where it is checked; the app does not import the kernel)
 export class LanguageError extends Error {
   /**
    * @param {string} code stable machine code, for example "forbidden_syntax"
