@@ -31,6 +31,7 @@ test("on Basic, records.define of a custom type answers: Custom types need your 
   const o = owner(k);
   await assert.rejects(() => k.gateway.records.define(o, { add_types: [CONTACT] }), e => e.code === "pro_required" && e.message === "Custom types need your own server (Pro).");
   await assert.rejects(() => k.gateway.records.define(o, { add_types: [PROJECT, { ...CONTACT, name: "matter" }] }), e => e.code === "pro_required");
+  for (const n of ["def-flow", "flow-run", "def-role", "def-view", "template"]) await assert.rejects(() => k.gateway.records.define(o, { add_types: [{ ...CONTACT, name: n }] }), e => e.code === "pro_required", `${n} needs a server`);
   for (const n of ["task", "reminder", "note"]) await assert.rejects(() => k.gateway.records.define(o, { add_types: [{ ...CONTACT, name: n }] }), e => e.code === "pro_required", `${n} needs a server`);
   await k.gateway.records.define(o, { add_types: [PROJECT] });
   await assert.rejects(() => k.gateway.records.define(o, { change_types: [{ ...CONTACT, name: "invoice" }] }), e => e.code === "pro_required");
