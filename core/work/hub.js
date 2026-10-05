@@ -137,9 +137,10 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   const KINDS = ["chat", "made"];
   /** Move a session's two folders under another project's folder, as the PERSON who moved it: the gateway checks drive.read and drive.write on every file and aborts the whole move on one refusal. A missing folder moves nothing. */
   async function moveSessionFolders(by, /** @type {string} */ fromRoot, /** @type {string} */ name, /** @type {string} */ toRoot) {
-    if (!kernel.drive || typeof kernel.drive.moveFolder !== "function" || fromRoot === toRoot) return;
+    if (!kernel.drive || typeof kernel.drive.moveFolders !== "function" || fromRoot === toRoot) return;
     if (!underProjects(fromRoot) || !underProjects(toRoot)) return;
-    for (const k of KINDS) await kernel.drive.moveFolder(by, `${fromRoot}/${k}/${name}`, `${toRoot}/${k}/${name}`);
+    // both folders are checked, file by file, before either moves: a session is never left split across two projects
+    await kernel.drive.moveFolders(by, KINDS.map(k => [`${fromRoot}/${k}/${name}`, `${toRoot}/${k}/${name}`]));
   }
 
   /** The Project a reference names: a short name, or a record address. @param {string} ref */

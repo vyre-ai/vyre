@@ -148,3 +148,15 @@ test("MV-1: moving a folder checks every file under the caller's own chain and a
   assert.equal((await d.kernel.gateway.drive.moveFolder(admin, "Projects/A", "Projects/B")).moved, 1);
   await d.kernel.gateway.drive.get(admin, "Projects/B/one.txt");
 });
+
+test("a session move is all or nothing: if any file of either folder is refused, neither folder moves", { timeout: 120_000 }, async t => {
+  const { d, admin, memberChain } = await boot(t);
+  await d.kernel.gateway.drive.put(admin, "Projects/A/chat/s1/one.txt", new TextEncoder().encode("1"));
+  await d.kernel.gateway.drive.put(admin, "Projects/A/made/s1/two.txt", new TextEncoder().encode("2"));
+  const member = await memberChain("per_" + "q".repeat(26));
+  await assert.rejects(() => d.kernel.gateway.drive.moveFolders(member, [["Projects/A/chat/s1", "Projects/B/chat/s1"], ["Projects/A/made/s1", "Projects/B/made/s1"]]));
+  await d.kernel.gateway.drive.get(admin, "Projects/A/chat/s1/one.txt");
+  await d.kernel.gateway.drive.get(admin, "Projects/A/made/s1/two.txt");
+  assert.equal((await d.kernel.gateway.drive.moveFolders(admin, [["Projects/A/chat/s1", "Projects/B/chat/s1"], ["Projects/A/made/s1", "Projects/B/made/s1"]])).moved, 2);
+  await d.kernel.gateway.drive.get(admin, "Projects/B/made/s1/two.txt");
+});

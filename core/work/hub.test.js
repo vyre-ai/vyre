@@ -21,7 +21,7 @@ function fake() {
     },
     drive: {
       put: async (/** @type {any} */ by) => { if (by && by.who === "nodrive") throw Object.assign(new Error("not allowed"), { code: "not_found" }); return { version: 1 }; },
-      moveFolder: async (/** @type {any} */ _by, /** @type {string} */ a, /** @type {string} */ b) => { moves.push([a, b]); return { moved: 0 }; },
+      moveFolders: async (/** @type {any} */ _by, /** @type {[string, string][]} */ pairs) => { for (const p of pairs) moves.push(p); return { moved: 0 }; },
     },
   };
   return { kernel, rows, moves };
@@ -58,7 +58,7 @@ test("a session's folders are named by its id: a rename moves nothing, and Move 
 
 test("when a file of the move is refused the session stays where it was", async () => {
   const { kernel } = fake();
-  kernel.drive.moveFolder = async () => { throw Object.assign(new Error("that folder is not yours to move"), { code: "not_found" }); };
+  kernel.drive.moveFolders = async () => { throw Object.assign(new Error("that folder is not yours to move"), { code: "not_found" }); };
   const hub = createHub({ kernel });
   const a = await hub.createProject({ who: "p" }, { name: "Rivera" });
   const b = await hub.createProject({ who: "p" }, { name: "Harlow" });
