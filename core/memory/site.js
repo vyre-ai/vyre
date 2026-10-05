@@ -20,9 +20,6 @@ import {
 
 import { current as whoNow } from "./who.js";
 
-const PERSON = new Set(["deck", "cli", "local", "capsule"]);
-// SHIM(legacy labels): read only with the kernel off (isPerson below asks the kernel's Who first)
-const PERSON_LABEL = /^(?:tailnet:(?!agent:)|device:)\S+$/;
 const GONE_MS = 365 * 24 * 3_600_000;
 const UNDO_MS = 24 * 3_600_000;
 const EVENTS_PER_KEY = 200;
@@ -70,7 +67,7 @@ export function register(ctx, { denied }) {
   };
 
   /** Who may use the store: the person's surfaces, their other devices, and Vyre's own modules. Never an agent. @param {any} caller @param {any} meta */
-  const isPerson = (/** @type {any} */ caller) => { const w = whoNow(); if (w) return w.ownerSurface || w.device; const c = String(caller || ""); return PERSON.has(c) || PERSON_LABEL.test(c); }; // SHIM(legacy labels): the label branch goes with the kernel-off path
+  const isPerson = (/** @type {any} */ caller) => { const w = whoNow(); return w ? Boolean(w.ownerSurface || w.device) : false; }; path
   const chrome = (caller, meta) => isPerson(caller) || (String(caller || "").startsWith("module:") && meta && meta.firstParty === true);
   const personOnly = (caller, what) => { if (!isPerson(caller)) throw denied(`${what} is for the person's own surfaces`); };
 

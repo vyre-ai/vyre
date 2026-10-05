@@ -3161,12 +3161,6 @@ export function surfaceFor(input, caller, owner, kc, kernelOwner) {
     const h = personHop(kc);
     if (h && h.via && (h.via.device || h.via.node) && h.actor.id === kernelOwner) { verifiedOwner = true; device = Boolean(h.via.device); }
     else if (h && h.via && h.via.surface) ownSocket = true;
-  } else {
-    // SHIM(legacy labels): only a build with no kernel reads the label, and it goes with the cut-over that makes the kernel mandatory.
-    const o = String(owner || "").trim().toLowerCase();
-    verifiedOwner = Boolean(ownerOverTailnet(c) && o && c.slice("tailnet:".length).trim().toLowerCase() === o) || (ownerDevice(c) && !ownerOverTailnet(c));
-    device = verifiedOwner && !ownerOverTailnet(c);
-    ownSocket = !verifiedOwner && isPerson(c) && !ownerDevice(c);
   }
   let s;
   if (verifiedOwner) s = ownSurface(asked) ? asked : (device ? "phone" : "deck");
@@ -3569,7 +3563,7 @@ export default {
     /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
     const onOwnerDevice = caller => {
       const kc = kchainNow();
-      if (kc === undefined) return ownerDevice(caller); // SHIM(legacy labels): a build with no kernel
+      if (kc === undefined) return false;
       const h = personHop(kc);
       return Boolean(h && h.via && (h.via.device || h.via.node));
     };

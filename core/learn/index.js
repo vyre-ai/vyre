@@ -524,13 +524,9 @@ export default {
         const d = text && !rule ? distill(text) : null;
         if (!rule && !d && !text) throw new Error("say the lesson: text, or rule");
         // A lesson steers every later session, so only the PERSON makes one outright. With the kernel on that is the call's chain (one person, no agent, no session-token hop); a model's
-        // `/vyre lesson` (a session calling as itself) makes a PROPOSED lesson the person accepts with learn.accept from their own surface. SHIM(legacy labels): with the kernel off, the
-        // model's labels (`mcp`, `harness`) are the model.
-        let person;
-        if (ctx.kernel && typeof ctx.kernel.chain === "function") {
-          const c = await ctx.kernel.chain(extra).catch(() => null);
-          person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
-        } else person = !/^(?:mcp|harness)(?::|\s|$)/.test(String(extra.caller || ""));
+        // `/vyre lesson` (a session calling as itself) makes a PROPOSED lesson the person accepts with learn.accept from their own surface.
+        const c = await ctx.kernel.chain(extra).catch(() => null);
+        const person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
         const l = create({ rule: rule || (d ? d.rule : String(text)), when: when || (d && d.when) || "always", level: level || (d ? d.level : undefined),
           scope: await slugged(scope), check: check !== undefined ? check : d ? d.check : null, source: { kind: "remember", session: session || null, text: text || rule, ...(person ? {} : { proposedBy: "session" }) } }, person ? "active" : "proposed");
         if (person) { ctx.events.emit("lesson.learned", { lesson: l.id, rule: l.rule, level: l.level, checked: Boolean(l.check) }); await snap(); }

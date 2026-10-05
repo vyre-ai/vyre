@@ -192,15 +192,12 @@ export default {
         // plain yes or no answer a lesson. An agent's thread never is.
         // HD-4: `interactive` is a claim in the input, so it counts for nothing by itself. A bare yes or no answers a lesson only when (1) the PERSON is behind the call and (2) the session's
         // own transcript, the line Claude Code wrote, says they typed exactly this prompt. (1) With the kernel on is the call's chain: exactly one person, no agent, no viewer or
-        // delegated hop, no Vyre thread. A caller label is no evidence either way. SHIM(legacy labels): with the kernel off, (1) is the hook's own label `harness` with no Vyre thread
-        // behind it, which is all a 0.2 daemon knows. (2) is what a model sharing a person's terminal cannot forge. Otherwise the answer needs learn.accept (the person's own).
+        // delegated hop, no Vyre thread. A caller label is no evidence either way. (2) is what a model sharing a person's terminal cannot forge. Otherwise the answer needs learn.accept (the person's own).
         let terminal = false;
         if (interactive === true && !agent && session && !(typeof meta.thread === "string" && meta.thread)) {
           let typedBy = false;
-          if (ctx.kernel && typeof ctx.kernel.chain === "function") {
-            const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
-            typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
-          } else typedBy = !agentName(caller) && modelKey(caller) === "caller:harness"; // SHIM(legacy labels): the kernel-off build
+          const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
+          typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
           if (typedBy) {
             const claimed = await ask("threads.claimed", { session: String(session) });
             if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), prompt);

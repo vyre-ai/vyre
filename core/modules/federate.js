@@ -30,18 +30,13 @@ const GATED_TOOLS = new Set([...HUMAN_ONLY].flatMap(t => [t, ...VYRE_SERVERS.map
 export const gatedAsk = ask => Boolean(ask && ((typeof ask.tool === "string" && GATED_TOOLS.has(ask.tool))
   || (ask.presence && typeof ask.presence === "object" && ask.presence.required === true)));
 
-/** The person's own callers: the Deck, the terminal, the Capsule. */
-const PERSON = new Set(["deck", "cli", "local", "capsule"]);
-/** The person on another of their devices. A guest is "tailnet-guest:<login>" and an agent carries "agent:", so neither matches. */
-// SHIM(legacy labels): read only with the kernel off (wantsMacs asks the kernel chain first)
-const TAILNET_PERSON = /^tailnet:(?!agent:)[^\s]+$/;
 
 /**
  * Should this read take in the Macs' rows? Only on the box, only when the input does not say
  * "local", and only for the person, or for a module that asks with machines: "all". Agents, MCP
  * and guests get the box's own rows. A module stays local unless it asks, which is also what keeps
  * the Mac (which runs the box's questions as module:link) from asking the box back.
- * The person comes from the kernel's chain for this call when there is a kernel (exactly one person hop, never a label); only a build with no kernel reads the label.
+ * The person comes from the kernel's chain for this call (exactly one person hop, never a label).
  * @param {any} ctx @param {any} input @param {string | undefined} caller @param {any} [meta] the call's meta, for the kernel chain
  */
 export async function wantsMacs(ctx, input, caller, meta) {
@@ -55,10 +50,7 @@ export async function wantsMacs(ctx, input, caller, meta) {
     const model = o !== c && (agentClaim(o) !== null || ["mcp", "harness", "hook"].includes(callerKind(o)));
     return machines === "all" && !model;
   }
-  if (ctx.kernel && typeof ctx.kernel.chain === "function") {
-    try { const ch = await ctx.kernel.chain(meta || { caller }); return Boolean(ch && ch.viewer !== true && Array.isArray(ch.hops) && ch.hops.length === 1 && ch.hops[0].actor && ch.hops[0].actor.kind === "person"); } catch { return false; }
-  }
-  return PERSON.has(c) || TAILNET_PERSON.test(c); // SHIM(legacy labels): a build with no kernel
+  try { const ch = await ctx.kernel.chain(meta || { caller }); return Boolean(ch && ch.viewer !== true && Array.isArray(ch.hops) && ch.hops.length === 1 && ch.hops[0].actor && ch.hops[0].actor.kind === "person"); } catch { return false; }
 }
 
 /**

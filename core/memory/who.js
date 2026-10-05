@@ -1,8 +1,7 @@
 // @ts-check
 // Who is calling memory, as the KERNEL says it (CUTOVER section H). One `Who` is built per call from the call's kernel chain (kernel-gate.js) and read by the access
 // predicates in index.js, write.js and site.js in place of caller label strings: the person's own surface, their other device (and whether they signed in on it), their own
-// session, an agent's name. With the kernel off there is no `Who` and those predicates read the label exactly as before (SHIM(legacy labels): deleted with the kernel-off path
-// at cut-over). Nothing here is client-supplied: the chain comes from the daemon's proven facts or a session token, and the module flag from the registry.
+// session, an agent's name. A call that carries no chain has no `Who`, and the predicates answer no. Nothing here is client-supplied: the chain comes from the daemon's proven facts or a session token, and the module flag from the registry.
 import { AsyncLocalStorage } from "node:async_hooks";
 import { PERSON_SURFACES } from "../presence/index.js";
 

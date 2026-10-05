@@ -298,9 +298,8 @@ export function drive(ctx, { role, guard: g, roots }) {
     };
 
     /** Share and unshare are the owner's: the box's terminal, the Capsule, or a paired Mac. Never an agent. */
-    /** Is the kernel's chain for this call exactly one person (never a label)? A build with no kernel (development) takes the daemon's verified person-session fact: SHIM(legacy labels). */
+    /** Is the kernel's chain for this call exactly one person (never a label)? */
     const personCall = async meta => {
-      if (!ctx.kernel || typeof ctx.kernel.chain !== "function") return Boolean(meta && meta.person);
       try { const c = await ctx.kernel.chain(meta); return Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person"); } catch { return false; }
     };
     const owner = async meta => {
