@@ -24,9 +24,13 @@ import { isPackaged } from "../../kernel/devbuild.js";
 /**
  * The record store a Space gets when nothing says otherwise. Two tiers (the user's ruling, 5 Oct): a SERVER install (the person's own always-on server, or a team server) gives every Space its own Twenty; a DEVICE install
  * (a laptop or desktop that is not a server) is Basic, with no Twenty and no Docker: its records are the device kernel's own index. A development build keeps the built-in store everywhere so the test suites need no Docker.
- * VYRE_STORE overrides. @param {Record<string, string | undefined>} [env] @param {{ server?: boolean }} [o] `server`: this install is a server
+ * VYRE_STORE overrides only in a development build. @param {Record<string, string | undefined>} [env] @param {{ server?: boolean, root?: string }} [o] `server`: this install is a server; `root`: read the build kind from that folder (tests)
  */
-export const storeMode = (env = process.env, o = {}) => env.VYRE_STORE || (isPackaged() && o.server === true ? "twenty" : "sqlite");
+export const storeMode = (env = process.env, o = {}) => {
+  // a packaged build has no override: a server is always Twenty (never sqlite or auto), a device is always Basic (the built-in store, fixed personal types only)
+  if (isPackaged(o.root)) return o.server === true ? "twenty" : "sqlite";
+  return env.VYRE_STORE || "sqlite";
+};
 
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
 export const REQUIRE = Object.freeze({ memoryMb: Object.values(/** @type {any} */ (MEMORY_PROFILES.small)).reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) + 300, diskMb: 6144 });
