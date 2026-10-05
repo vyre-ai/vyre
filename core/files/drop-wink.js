@@ -35,10 +35,9 @@ const str = { type: "string" };
 export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   const log = (/** @type {string} */ m) => { try { ctx.log(m); } catch { /* no log */ } };
   const emit = (/** @type {string} */ t, /** @type {any} */ p) => { try { ctx.events.emit(t, p); } catch (e) { log(`${t} was not announced: ${/** @type {Error} */ (e).message}`); } };
-  const KEYTEXT = (/** @type {string} */ pub) => `vyre-drop-key-v1\n${pub}`;
   /** A drop key is sealed to only when the identity's own list vouches for it: the signature on it is by a device of this person's identity. A key the server alone vouches for is refused. @param {{ pub: string, eid: string, sig: string }} k */
   const vouched = async k => {
-    const r = /** @type {any} */ (await ctx.call("wink.identity.check", { message: KEYTEXT(k.pub), eid: k.eid, sig: k.sig }).catch(() => null));
+    const r = /** @type {any} */ (await ctx.call("wink.identity.check", { pub: k.pub, eid: k.eid, sig: k.sig }).catch(() => null));
     if (!(r && r.data && r.data.ok)) throw fail("not_verified", "that computer's key for receiving files is not vouched for by your identity, so nothing was sent");
   };
   const dropCfg = () => (ctx.config && ctx.config.files && ctx.config.files.drop) || {};
@@ -199,7 +198,7 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     try {
       let key = readKey(); if (!key) { key = newDropKey(); fs.writeFileSync(keyFile(), JSON.stringify(key), { mode: 0o600 }); }
       const h = await home();
-      const vouch = /** @type {any} */ (await ctx.call("wink.identity.sign", { message: KEYTEXT(key.pub) }));
+      const vouch = /** @type {any} */ (await ctx.call("wink.identity.sign", { pub: key.pub }));
       if (!vouch || !vouch.data) throw fail("not_ready", "this computer has no identity yet");
       await h.call("files.drop.register", { pub: key.pub, eid: String(vouch.data.eid), sig: String(vouch.data.sig) });
       await takeAll();

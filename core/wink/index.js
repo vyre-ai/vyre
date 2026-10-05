@@ -28,6 +28,7 @@ import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_K
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { realScanners } from "./storage/discover.js";
 import { lentRevoked } from "./lent-revoked.js";
+import { dropIdentity } from "./drop-identity.js";
 import { verifyDevice } from "./node/peer-wire.js";
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
@@ -748,12 +749,10 @@ export function createWink(inject = {}) {
     const br = inject.bridge || (kst ? { createBridge: kst.createBridge, backendFor: kst.backendFor, home: () => pairing.homeServerId() } : null);
     // VyreDrop (core/files/drop-wink.js): the id of the server this computer is paired to, and, on the server, a call down the connection a computer holds (only the drop offer: nothing else goes down it this way).
     ctx.tool("wink.home.id", { description: "The id of the server this computer is paired to, or null.", input: obj(), run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => { if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules"); return { device: pairing.homeServerId() }; } });
-    // A drop key says whose it is (VyreDrop): the receiving computer signs its drop key with the key it has on its own identity's list, and the sender checks that signature against the list it holds for the same
-    // identity, so a server holding the keys in between cannot swap one in. `message` is the text signed; `check` answers whether `sig` is a signature by that entry of this person's identity.
-    ctx.tool("wink.identity.sign", { description: "Sign a text with this computer's key on its identity's list (for VyreDrop).", input: obj({ message: str }, ["message"]),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => { if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules"); const r = await signIdentity(Buffer.from(String(i.message), "utf8")); if (!r) throw fail("not_ready", "this computer has no identity yet: claim your Vyre name first"); return r; } });
-    ctx.tool("wink.identity.check", { description: "Whether a signature is by a device on this person's identity list (for VyreDrop).", input: obj({ message: str, eid: str, sig: str }, ["message", "eid", "sig"]),
-      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => { if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules"); const id = await owner1(); const e = await identityEntry(id, String(i.eid)); return { ok: Boolean(e && e.pub && verifyDevice(e.pub, Buffer.from(String(i.message), "utf8"), String(i.sig))) }; } });
+    // A drop key says whose it is (VyreDrop, core/wink/drop-identity.js): only the files module, only the text `vyre-drop-key-v1\n<key>` built from the key. Not a way to have the identity key sign anything else.
+    const dropId = dropIdentity({ sign: m => signIdentity(m), entry: async eid => identityEntry(await owner1(), eid), verify: verifyDevice });
+    ctx.tool("wink.identity.sign", { description: "Sign a VyreDrop key with this computer's key on its identity's list.", input: obj({ pub: str }, ["pub"]), run: (/** @type {any} */ i, /** @type {any} */ meta = {}) => dropId.sign(meta, i) });
+    ctx.tool("wink.identity.check", { description: "Whether a VyreDrop key was signed by a device on this person's identity list.", input: obj({ pub: str, eid: str, sig: str }, ["pub", "eid", "sig"]), run: (/** @type {any} */ i, /** @type {any} */ meta = {}) => dropId.check(meta, i) });
     ctx.tool("wink.device.call", { description: "Tell a connected computer something down the connection it holds (a drop is waiting). Only wink.drop.offer.", input: obj({ device: str, tool: str, input: { type: "object" } }, ["device", "tool"]),
       run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
         if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules");
