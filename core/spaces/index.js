@@ -1606,7 +1606,7 @@ export default {
       let started;
       try { started = await gateway.upgrade.start(local.chain, { to: String(i.to), plan_hash: plan.hash }, proof); }
       catch (e) { if (String(/** @type {any} */ (e).code) === "needs_presence") return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }) }; throw plainKernelError(e); }
-      let report; try { report = await runUpgrade({ plan, local, remote, ports }); } catch (e) { throw plainKernelError(e); }
+      let report; try { report = await runUpgrade({ plan, local, remote, ports }); } catch (e) { ctx.log.warn(`upgrade run failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
       const server = typeof i.server === "string" && i.server ? i.server : await serverOf(String(i.to));
       /** @type {{ what: string, why: string }[]} */ const notes = [];
       // each moved chat's history (its frames, members and runs) comes back to life in My Cloud once its files have landed: chat's own tool, run there
