@@ -234,9 +234,10 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * @type {import("./reply-port.js").ReplyPort}
    */
   const ksPort = {
-    open: async ({ thread }) => {
+    open: async ({ thread, asker }) => {
       if (!ks || !thread) throw Object.assign(new Error("this reply has no session of its own"), { code: "no_session" });
-      const h = await ks.forThread(thread).appendOpen({ kind: "text" });
+      // the reply is written under the session of the person whose turn it is, never the thread's newest (a later asker's turn may have opened already): the seam finds that person's own
+      const h = await ks.forThread(thread).appendOpen({ kind: "text", ...(asker ? { asker } : {}) });
       return { id: String(h.id), ver: Number(h.ver), write: d => h.write(d), close: f => h.close(f).then(() => {}) };
     },
     mayReceive: (_grp, _person, r, chain) => { try { return ctx.kernel.chats.mayReceive(chain, r.kid) === true; } catch { return false; } },
@@ -566,7 +567,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     // A restart is still reopening the open turns: this reply waits for that, and then goes on or is dropped with the others.
     if (reopening) { try { await reopening; } catch { /* the outcome is each turn's own */ } }
     if (m.dead) { refuse(); return false; }
-    try { b.h = await port.open({ grp: m.grp, token: "", thread: m.thread || "", message }); }
+    try { b.h = await port.open({ grp: m.grp, token: "", thread: m.thread || "", message, ...(m.asker ? { asker: m.asker } : {}) }); }
     catch (err) {
       refuse();
       if (/** @type {any} */ (err).code === "no_session") {
