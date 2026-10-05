@@ -25,7 +25,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => { if (o.failEmit && o.failEmit === n) throw new Error(`${n} is not declared`); events.push([n, d]); } }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -1656,4 +1656,37 @@ test("the enclave key must still stand on the identity's directory list: checked
   // another key under the same entry id is not this device's key
   clock += 11 * 60_000; entries = [{ eid: "e_phone", kind: "device", enclave: "BBBB" }];
   assert.deepEqual(await live(), { ok: false });
+});
+
+test("the home server is the newest COMPLETED pairing: a channel with no completion mark is the oldest, a newer completed pairing wins, a removed one is gone", async () => {
+  const w = world();
+  const ch = { relay: "ws://relay.test", route: "r", box: "b" };
+  assert.equal(w.p.homeServerId(), null, "nothing paired");
+  w.p.meta.set("channel:srv_legacy", ch);   // made before the completion mark existed
+  assert.equal(w.p.homeServerId(), "srv_legacy", "an older pairing still counts");
+  w.p.meta.set("channel:srv_a", ch); w.p.meta.set("paired:srv_a", { at: 100 });
+  w.p.meta.set("channel:srv_b", ch); w.p.meta.set("paired:srv_b", { at: 200 });
+  assert.equal(w.p.homeServerId(), "srv_b", "the newest completed pairing is the home");
+  w.p.meta.set("channel:srv_half", ch);   // a channel with no completion mark never beats a completed one
+  assert.equal(w.p.homeServerId(), "srv_b");
+  w.p.meta.del("channel:srv_b"); w.p.meta.del("paired:srv_b");
+  assert.equal(w.p.homeServerId(), "srv_a", "once the newest is removed the next completed one is the home");
+});
+
+test("a pairing that fails AFTER the server was adopted gives back the channel it wrote, so the failed server is never this computer's home; a completed pairing is the home", async () => {
+  const rows = (w) => /** @type {any[]} */ (w.db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' OR k LIKE 'probe:%' OR k LIKE 'paired:%'").all()).map(r => r.k);
+  const bad = world({ failEmit: "wink.server-paired" });
+  const r = await bad.call("wink.pair.server", { code: "wink-k7qm-4p2x", target: { kind: "identity", id: ME } });
+  await settle();
+  assert.equal((await bad.call("wink.pair.status", { pairing: r.pairing })).state, "failed");
+  assert.deepEqual(rows(bad), [], "a failed pairing leaves no channel, probe or completion mark");
+  assert.equal(bad.p.homeServerId(), null, "and no home");
+  assert.equal(bad.p.devices.list(ME).length, 0);
+  const good = world();
+  const g = await good.call("wink.pair.server", { code: "wink-k7qm-4p2x", target: { kind: "identity", id: ME } });
+  await settle();
+  assert.equal((await good.call("wink.pair.status", { pairing: g.pairing })).state, "done");
+  const [d] = good.p.devices.list(ME);
+  assert.equal(good.p.homeServerId(), d.id, "a completed pairing is the home");
+  assert.ok(good.p.meta.get(`paired:${d.id}`).at > 0, "with its completion mark");
 });

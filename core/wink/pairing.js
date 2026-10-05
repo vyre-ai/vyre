@@ -456,8 +456,8 @@ export function createPairing(o) {
     const r = await callRelease(chan);
     // the probe forgets a server the person removed: it answers `removed`, not whatever the old route still says
     if (r !== "unknown") { meta.set(`removed:${sid}`, now()); meta.del(`probe:${sid}`); }
-    if (r === "released") { if (links) links.forget(sid); meta.del(`channel:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
-    meta.del(`channel:${sid}`);
+    if (r === "released") { if (links) links.forget(sid); meta.del(`channel:${sid}`); meta.del(`paired:${sid}`); meta.del(`release:${sid}`); ctx.events.emit("wink.server-release", { device: sid, state: "released" }); return "released"; }
+    meta.del(`channel:${sid}`); meta.del(`paired:${sid}`);
     if (r === "refused") { meta.del(`release:${sid}`); return "refused"; }
     meta.set(`release:${sid}`, { ...chan, since: now() });
     ctx.events.emit("wink.server-release", { device: sid, state: "pending" });
@@ -517,6 +517,7 @@ export function createPairing(o) {
     // The person types the ack on the showing device; the ticket then appears and this finishes with no more taps.
     void (async () => {
       let fresh = "";
+      /** The channel this pairing wrote and what was there before it: a pairing that fails after that gives it back, so no half-made pairing leaves a server this computer could later call. @type {{ sid: string, was: { channel: any, probe: any } } | null} */ let channelMade = null;
       try {
         const w2 = watchFetch();
         const f = await ports.finish({ relay, seed: t.seed, name: i.name || String(ctx.config.name || "a device"), waitMs: 5 * 60_000, pollMs: POLL_MS, pairOptions, fetch: w2.fetch, ...(i.seed ? { once: true } : {}) });
@@ -548,7 +549,7 @@ export function createPairing(o) {
           catch (e) { why = e; }
           p.adopted = ok === true;
           if (p.state === "confirm") p.state = "waiting";
-          if (p.adopted) { const ch = channelOf(pd); if (links) links.forget(sid); if (ch) { meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); ctx.events.emit("wink.server-paired", { device: sid }); } }
+          if (p.adopted) { const ch = channelOf(pd); if (links) links.forget(sid); if (ch) { channelMade = { sid, was: { channel: meta.get(`channel:${sid}`), probe: meta.get(`probe:${sid}`) } }; meta.set(`channel:${sid}`, ch); meta.set(`probe:${sid}`, ch); meta.del(`removed:${sid}`); ctx.events.emit("wink.server-paired", { device: sid }); } }
           if (!p.adopted) {
             // the server was not told: nothing is half-added, and the person is told what to do
             if (fresh) { devices.remove(fresh); p.device = null; }
@@ -575,9 +576,14 @@ export function createPairing(o) {
             await new Promise(res => setTimeout(res, o.askPollMs ?? 500));
           }
         }
+        // the pairing is complete: only now is this server one this computer is paired to, and the newest such is the home
+        if (channelMade) meta.set(`paired:${channelMade.sid}`, { at: now() });
         p.state = "done";
         ctx.events.emit("wink.pair-done", { pairing: id, kind: i.kind, target: i.target, ...(p.device ? { device: p.device } : {}) });
-      } catch (e) { if (fresh) devices.remove(fresh); failWith("failed", String(/** @type {Error} */ (e).message || "pairing failed")); ctx.log(`wink: pairing failed: ${/** @type {Error} */ (e).message}`); }
+      } catch (e) {
+        if (fresh) devices.remove(fresh);
+        if (channelMade) { const { sid: cs, was } = channelMade; try { if (links) links.forget(cs); } catch { /* closed */ } if (was.channel) meta.set(`channel:${cs}`, was.channel); else meta.del(`channel:${cs}`); if (was.probe) meta.set(`probe:${cs}`, was.probe); else meta.del(`probe:${cs}`); channelMade = null; }
+        failWith("failed", String(/** @type {Error} */ (e).message || "pairing failed")); ctx.log(`wink: pairing failed: ${/** @type {Error} */ (e).message}`); }
     })();
     return { pairing: id, ack: t.ack, expires: p.expires };
   };
@@ -1555,7 +1561,15 @@ export function createPairing(o) {
   const serverLinks = () => links || (links = createServerLinks({ connect: relayConnect, options: pairOptions, ...(o.serve ? { serve: o.serve } : {}), name: String(ctx.config.name || "a device"), log: m => ctx.log(m), ...(o.signDevice ? { sign: o.signDevice } : ownKey ? { sign: async (/** @type {string} */ m) => ownKey.sign(m) } : {}), ...(o.presenceSigner ? { presenceSigner: o.presenceSigner } : {}), ...(o.proveTool ? { proveTool: o.proveTool } : ownKey ? { proveTool: ownKey.proveTool } : {}), autoPresence: autoPresence,
     channelOf: sid => { const c = meta.get(`channel:${sid}`); return c && c.route ? { relay: String(c.relay || ""), route: String(c.route), box: String(c.box || "") } : null; } }));
   /** The id of the server this device is paired to (the home a drive on this computer is offered to), or null. One home: the first paired server by id. */
-  const homeServerId = () => { try { const r = /** @type {any} */ (db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' ORDER BY k LIMIT 1").get()); return r ? String(r.k).slice("channel:".length) : null; } catch { return null; } };
+  const homeServerId = () => {
+    try {
+      // the newest completed pairing; a channel with no completion mark (made before the mark existed) counts as the oldest, and a failed pairing leaves no channel at all
+      const rows = /** @type {any[]} */ (db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' ORDER BY k").all());
+      /** @type {string | null} */ let best = null; let bestAt = -1;
+      for (const r of rows) { const sid = String(r.k).slice("channel:".length); const m = meta.get(`paired:${sid}`); const at = m && Number.isFinite(Number(m.at)) ? Number(m.at) : 0; if (at > bestAt) { best = sid; bestAt = at; } }
+      return best;
+    } catch { return null; }
+  };
   return { autoPresence, serverLinks, homeServerId, devices, abandoned: (/** @type {string} */ d) => abandonHook(String(d)), endPairedNow, targets, checkTarget, phone, computeAllowed, compute, dropPending, tools: () => { tools(); startRetries(); }, startTyping, pending, peers, meta, clearOwner: () => clearOwnerHook(), releaseServer, retryReleases, stop, ownHandover: () => ownHandover() };
 }
 
