@@ -361,6 +361,21 @@ test("a message sent in the chat while its run works joins the running turn (ste
   await until(async () => !(await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn's open question to be cancelled");
   assert.equal((await owner("threads.chat-stop", { chat, slot: "model:claude/nonesuch#9" })).error.code, "not_found");
   await until(async () => seen.some(p => p.state === "idle" && p.who.startsWith("model:")), "the slot's line to clear when the turn ends");
+  // a run step: the tool calls carry a step id, and one step-summary frame closes the step with plain counts
+  const toolFrames = () => logs.get(chat).read(0).filter(f => f.type === "chat.tool-started");
+  assert.ok(toolFrames().length >= 1 && toolFrames().every(f => typeof f.data.step === "string"), "tool frames name their step");
+  const sum = await until(async () => logs.get(chat).read(0).find(f => f.type === "chat.step-summary" && f.data.step === toolFrames()[0].data.step), "the step to close with a summary");
+  void sum;
+  const closed = logs.get(chat).read(0).find(f => f.type === "chat.step-summary");
+  assert.ok(closed.data.count >= 1 && typeof closed.data.summary === "string" && /^[A-Z]/.test(closed.data.summary) && closed.data.kinds && typeof closed.data.ok === "boolean", JSON.stringify(closed.data));
+  // the returning view: what happened since the read marker, as plain facts; reading to the head empties it
+  const back = (await owner("stream.catchup", { chat })).data;
+  assert.equal(back.chat, chat);
+  assert.ok(back.steps.some(x => x.step === closed.data.step && x.summary === closed.data.summary), JSON.stringify(back));
+  assert.ok(back.since === 0 && back.head >= 1);
+  assert.ok((await owner("stream.mark-read", { chat, upto: logs.get(chat).head })).data);
+  const after = (await owner("stream.catchup", { chat })).data;
+  assert.deepEqual([after.messages.length, after.steps.length, after.open_asks], [0, 0, 0], "nothing since the head");
 });
 
 test("a quoted reply stays in the chat's timeline: the frame carries reply_to and a short quote the box fills from the log, the model is told what it answers, and a message that is not in the chat is refused", { timeout: 120_000 }, async t => {

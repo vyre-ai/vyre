@@ -28,6 +28,8 @@ export const KINDS = Object.freeze([
   "file-changed", "ask", "ask-answered", "user-message", "status",
   // group chat (0.3): who is in it, what people do with a message, and a set of answers to one question
   "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut",
+  // One Chat: a run step (the tool calls between two of the assistant's messages), summarised once it closes
+  "step-summary",
 ]);
 /** Never logged: what the home sends a viewer in place of a frame they may not see (viewer.js forViewer). It keeps the cursor and holds nothing. */
 export const STUBS = Object.freeze(["hidden"]);
@@ -86,6 +88,7 @@ const CHECK = {
   "mention": d => (idStr(d.message) && Array.isArray(d.who) && d.who.length > 0 && d.who.length <= 50 && d.who.every(isAuthor) ? null : "mention needs message and who, a list of authors"),
   "read-marker": d => (isInt(d.upto) ? null : "read-marker needs upto, a cursor"),
   "fanout": d => (idStr(d.group) && idStr(d.message) && Array.isArray(d.members) && d.members.length >= 2 && d.members.length <= 8 && d.members.every((/** @type {any} */ m) => isObj(m) && isAuthor(m.who) && idStr(m.message)) ? null : "fanout needs group, message and members, two or more of { who, message }"),
+  "step-summary": d => (idStr(d.step) && isInt(d.count) && isObj(d.kinds) && isStr(d.summary) && d.summary.length <= 200 && typeof d.ok === "boolean" ? null : "step-summary needs step, count, kinds, summary and ok"),
   "fanout-keep": d => (idStr(d.group) && idStr(d.keep) ? null : "fanout-keep needs group and keep, a message id"),
   "hidden": d => (Object.keys(d).length === 0 ? null : "hidden holds nothing"),
   "text-cut": d => (idStr(d.message) && isStr(d.note) ? null : "text-cut needs message and note"),

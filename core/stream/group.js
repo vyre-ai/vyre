@@ -80,7 +80,7 @@ const shortOf = (/** @type {string} */ id) => id.slice(id.indexOf(":") + 1);
 const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
 
 /**
- * @typedef {{ who: string, name: string, kind?: string|null, doing?: boolean, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
+ * @typedef {{ who: string, name: string, kind?: string|null, doing?: boolean, step?: { id: string, kinds: Map<string, number>, tools: number, failed: number } | null, stepNo?: number, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
  *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
@@ -336,6 +336,28 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     return { message: id, author: String(first.author || ""), text: flat.length > 140 ? `${flat.slice(0, 139)}…` : flat };
   }
 
+  // ---- run steps: the tool calls between two of an assistant's messages, one collapsible block --------------------------------------------------------------------------------------------
+
+  const PLURAL = { shell: ["ran a command", "ran {n} commands"], read: ["read a file", "read {n} files"], edit: ["edited a file", "edited {n} files"], search: ["searched once", "searched {n} times"], web: ["opened a page", "opened {n} pages"], todo: ["updated the plan", "updated the plan {n} times"], agent: ["asked a helper", "asked {n} helpers"], mcp: ["used a connected tool", "used connected tools {n} times"], other: ["did a step", "did {n} steps"] };
+  /** "Read 3 files, ran 2 commands": plain counts of what a step did, never invented. @param {Record<string, number>} kinds */
+  function stepSummary(kinds) {
+    const parts = Object.entries(kinds).map(([k, n]) => { const t = /** @type {any} */ (PLURAL)[k] || PLURAL.other; return n === 1 ? t[0] : t[1].replace("{n}", String(n)); });
+    const text = parts.join(", ");
+    return (text.charAt(0).toUpperCase() + text.slice(1)).slice(0, 200) || "Worked";
+  }
+  /** The member's open step, made at its first tool call. @param {Member} m */
+  function stepOf(m) {
+    if (!m.step) { m.stepNo = (m.stepNo || 0) + 1; m.step = { id: `${m.who}#${m.stepNo}-${Date.now().toString(36)}`, kinds: new Map(), tools: 0, failed: 0 }; }
+    return m.step;
+  }
+  /** The step ends (the assistant begins a message, or the turn ends): one `step-summary` frame, so a screen can fold the step's tool frames into it. @param {Member} m */
+  function closeStep(m) {
+    const st = m.step; m.step = null;
+    if (!st || !st.tools) return;
+    try { logs.get(m.grp).append("step-summary", { step: st.id, count: st.tools, kinds: Object.fromEntries(st.kinds), summary: stepSummary(Object.fromEntries(st.kinds)), ok: st.failed === 0 }, { turn: null, author: m.who, ...(m.asker ? { acts_for: m.asker } : {}) }); }
+    catch (err) { log(`step summary for ${m.who} in ${m.grp}: ${/** @type {Error} */ (err).message}`); }
+  }
+
   // ---- live presence: who is typing, and what an assistant is doing (ephemeral frames, never logged or replayed) ----------------------------------------------------------------------
 
   /** @type {Map<string, ReturnType<typeof presenceFor>>} */ const presences = new Map();
@@ -458,6 +480,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * @param {Member} m
    */
   async function endTurn(m) {
+    closeStep(m);
     idle(m);
     const buf = m.buf; if (!buf) return;
     for (const [id, b] of [...buf]) {
@@ -469,6 +492,12 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   /** Not a message: tools, asks, files. Written through the handle of the reply that streams, else the turn's own. @param {Member} m @param {any} s */
   async function activity(m, s) {
     if (s.kind === "tool-started") doing(m, s.data && (s.data.summary || s.data.tool));
+    if (s.kind === "tool-started" || s.kind === "tool-progress" || s.kind === "tool-finished") {
+      const st = stepOf(m);
+      if (s.kind === "tool-started") { st.tools++; const k = String((s.data && s.data.kind) || "other"); st.kinds.set(k, (st.kinds.get(k) || 0) + 1); }
+      if (s.kind === "tool-finished" && s.data && s.data.ok === false) st.failed++;
+      s = { ...s, data: { ...s.data, step: st.id } };
+    }
     if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
     const m0 = m.buf || (m.buf = new Map()); m.refused ||= new Set();
     /** @type {any} */ let b = null; let message = ACT;
@@ -577,6 +606,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         if (b.h) await put(m, b, s, { ...s.data, message }, message); else b.items.push({ ...s, data: { ...s.data, message } }); // thinking waits for the reply to open
         return;
       }
+      closeStep(m);
       if (!b.h && !(await begin(m, b, message))) return;
       // A kernel port follows the room itself; the stand-in reads the kernel's list now and then, so a person who left stops receiving.
       if (port.follow && now() - b.lastSync >= SYNC_MS) { b.lastSync = now(); try { await syncList(m.grp, b.token); if (!group(m.grp).bots.has(m.who)) throw Object.assign(new Error("the assistant is no longer in the chat"), { code: "denied" }); } catch (err) { if (["not_found", "denied", "forbidden"].includes(/** @type {any} */ (err).code)) { withdraw(m, b, message, s, err); return; } } }
@@ -945,6 +975,32 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const run = before.catch(() => {}).then(() => sendOnce(i, meta));
       inflight.set(key, run);
       try { return await run; } finally { if (inflight.get(key) === run) inflight.delete(key); }
+    },
+
+    /**
+     * The returning view: what happened in a chat since the caller's read marker, in plain facts (no model summary): who said what (the last ten messages, each cut to 140 characters), the run steps
+     * that were taken (their summaries), the questions still open, and who joined or left. Read from the chat's own log; nothing is invented. @param {any} i @param {any} meta
+     */
+    catchup(i, meta) {
+      const grp = sessionOf(i);
+      const person = personOf(meta, i);
+      mustBeIn(grp, person);
+      const log0 = logs.get(grp);
+      const upto = markers.get(person, grp);
+      const frames = log0.read(0);
+      const fresh = frames.filter(f => f.cur > upto);
+      const flat = (/** @type {string} */ t) => { const x = t.replace(/\s+/g, " ").trim(); return x.length > 140 ? `${x.slice(0, 139)}…` : x; };
+      /** @type {Map<string, { message: string, author: string, raw: string, cur: number }>} */ const said = new Map();
+      for (const f of fresh) {
+        if (f.type === "chat.user-message" && f.data && f.data.enc === undefined && f.author !== person) said.set(String(f.data.message), { message: String(f.data.message), author: String(f.author || ""), raw: String(f.data.text || ""), cur: f.cur });
+        else if (f.type === "chat.text-delta" && f.data && !f.data.reasoning && f.author) { const cur = said.get(String(f.data.message)); if (cur) cur.raw += String(f.data.text || ""); else said.set(String(f.data.message), { message: String(f.data.message), author: String(f.author), raw: String(f.data.text || ""), cur: f.cur }); }
+      }
+      const open = new Set(); for (const f of fresh) { if (f.type === "chat.ask" && f.data && f.data.ask_id) open.add(String(f.data.ask_id)); if (f.type === "chat.ask-answered" && f.data) open.delete(String(f.data.ask_id)); }
+      const steps = fresh.filter(f => f.type === "chat.step-summary").map(f => ({ step: String(f.data.step), author: String(f.author || ""), summary: String(f.data.summary), ok: f.data.ok === true, count: Number(f.data.count) }));
+      const joined = fresh.filter(f => f.type === "chat.participant-joined" && f.data && f.data.who !== person).map(f => String(f.data.who));
+      const left = fresh.filter(f => f.type === "chat.participant-left" && f.data).map(f => String(f.data.who));
+      const messages = [...said.values()].slice(-10).map(x => ({ message: x.message, author: x.author, text: flat(x.raw) }));
+      return { chat: grp, since: upto, head: log0.head, unread: said.size, messages, steps: steps.slice(-10), steps_total: steps.length, open_asks: open.size, joined: [...new Set(joined)], left: [...new Set(left)] };
     },
 
     /** The caller is typing in the chat (on: false: not any more). Ephemeral: one frame per person every 3 seconds, never logged. @param {any} i @param {any} meta */
