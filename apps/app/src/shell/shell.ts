@@ -4,6 +4,8 @@ import { shellCommand } from "./shell-model.js";
 
 export type MacShell = {
   kind: "mac";
+  /** The Mac app's window of a server Mac: no vyred of its own, so the page starts as a browser with no box (it pairs to its server over the relay). */
+  boxless?: boolean;
   /** The x-vyre-presence header for one call, from Touch ID (the person's own prompt). Rejects with plain words when it is refused. */
   presence(tool: string, input: Record<string, unknown>, summary?: string): Promise<string>;
   notify(title: string, body: string): Promise<unknown>;

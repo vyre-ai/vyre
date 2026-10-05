@@ -845,3 +845,27 @@ test("worker: typed-code sessions are charged to the address that made them, a m
   assert.equal(global, 0, "a global limiter, if one is bound, is never consulted");
   assert.ok(sessions.every(k => k.startsWith("203.0.113.")));
 });
+
+// The Mac app's window is the page origin vyreapp://box (Host/VyreAppWindow.swift). Its page pairs to a server over this relay with no vyred of its own, so
+// the three browser-called routes must answer that origin, and the socket routes must not gate on Origin (a WebSocket is not CORS-governed; only a signature and the
+// route's key decide). No relay change was needed for it: this pins it.
+test("worker: the Mac app's origin vyreapp://box is answered by the browser routes and never refused at the socket routes", async t => {
+  const rt = world(t, { env: codeEnv });
+  const H = "http://relay.test";
+  const origin = "vyreapp://box";
+  for (const p of ["/v1/pair", "/v1/wink/code", "/v1/setup/mbx"]) {
+    const pre = await worker.fetch(new Request(`${H}${p}`, { method: "OPTIONS", headers: { origin, "access-control-request-method": "POST", "access-control-request-headers": "content-type" } }), rt.env);
+    assert.equal(pre.status, 204, p);
+    assert.equal(pre.headers.get("access-control-allow-origin"), "*", p);
+    assert.equal(pre.headers.get("access-control-allow-credentials"), null, p);
+  }
+  const post = await worker.fetch(new Request(`${H}/v1/wink/code`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ rv: "UU", s: "short", n: 1, m: "Y" }) }), rt.env);
+  assert.equal(post.status, 400);
+  assert.equal(post.headers.get("access-control-allow-origin"), "*");
+  const route = routeId(newRouteKey().pub);
+  for (const p of ["/v1/device", "/v1/box"]) {
+    // Same answers with and without the origin: no Origin check anywhere in the socket path.
+    assert.equal((await rt.fetch(`${H}${p}?route=${route}`, { origin })).status, 426, p);
+    assert.equal((await rt.fetch(`${H}${p}?route=NOTAROUTE`, { upgrade: "websocket", origin })).status, 400, p);
+  }
+});
