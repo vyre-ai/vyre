@@ -34,7 +34,7 @@ export class GoogleError extends Error {
 /**
  * @typedef {{ name: string, email: string, auth: import("../../lib/connectors/auth.js").Auth, base?: string | null }} Account
  * @typedef {{ api: "calendar" | "gmail", scope: string, method?: string, path: string,
- *   query?: Record<string, string | number | boolean | string[] | undefined>, body?: any }} Request
+ *   query?: Record<string, string | number | boolean | string[] | undefined>, body?: any, headers?: Record<string, string> }} Request
  */
 
 /**
@@ -55,6 +55,8 @@ export function client({ creds, fetch: f = globalThis.fetch }) {
     for (let attempt = 0; ; attempt++) {
       const headers = { ...(await creds.headers(acct.auth, { scopes })), accept: "application/json" };
       if (req.body !== undefined) headers["content-type"] = "application/json";
+      // only a precondition may ride along (the calendar sync's If-Match); never anything that could carry or replace a credential
+      for (const [k, v] of Object.entries(req.headers || {})) if (/^(if-match|if-none-match)$/i.test(k) && typeof v === "string") headers[k.toLowerCase()] = v;
       let res;
       try {
         res = await f(url, { method: req.method || "GET", headers, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS),

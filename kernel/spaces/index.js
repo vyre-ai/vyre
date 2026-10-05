@@ -28,6 +28,7 @@ export function createSpaceKernels(cfg) {
   const boot = cfg.boot || bootKernel;
   /** @type {Map<string, any>} */ const live = new Map([[cfg.personal.space, cfg.personal.kernel]]);
   /** @type {Map<string, any>} */ const remotes = new Map();
+  /** @type {any} */ let moveHooks = null;
   const ofDir = (/** @type {string} */ id) => path.join(dir, id);
   const tell = (/** @type {any} */ k) => { if (typeof k.bindSpaces === "function") k.bindSpaces(api); return k; };
 
@@ -209,6 +210,9 @@ export function createSpaceKernels(cfg) {
       }
       return moved;
     },
+    /** The spaces module's checks for a project move from another home (`remoteEvidence`, `verifyReceipt`), set once at its start; every kernel this home hosts reads them here. */
+    setMoveHooks(/** @type {any} */ h) { moveHooks = h && typeof h === "object" ? h : null; },
+    moveHooks: () => moveHooks,
     /** The kernel this home hosts for a Space and has open, or null. */
     hosted: (/** @type {string} */ id) => (live.has(id) ? hostedHandle(id, live.get(id)) : null),
     /** `ctx.kernel.for(spaceId)`: this home's own kernel when it hosts the Space, else a remote client over the transport port. Same gateway either way. */
