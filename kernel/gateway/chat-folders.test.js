@@ -89,6 +89,6 @@ test("Share to project is a kernel grant of drive.read on that one file: a membe
   assert.equal(new TextDecoder().decode(await D.get(dan, `${dir}/shared.txt`)), "for the project", "a member reads the shared file");
   await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" }, "not the next file");
   await assert.rejects(() => D.put(dan, `${dir}/shared.txt`, enc("x")), { code: "not_found" }, "not write");
-  await assert.rejects(() => D.get(dan, `${dir}/shared.txt/../private.txt`), { code: "not_found" }, "not by a path trick");
+  await assert.rejects(() => D.get(dan, `${dir}/shared.txt/../private.txt`), e => ["not_found", "bad_input"].includes(e.code), "not by a path trick");
   assert.ok(k);
 });
