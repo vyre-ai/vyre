@@ -25,10 +25,10 @@ test("palette: the check catches a failing pair (bone on bone, the bug it exists
   assert.ok(contrast("#0E0D0C", "#F1EEE6", "#0E0D0C") > 15);
 });
 
-// The Deck paints these roles from the generated deck/css/tokens.css (deck.css only adds what has
+// The Deck paints these roles from the generated web/css/tokens.css (deck.css only adds what has
 // no token yet), so the two together must resolve every role to the palette.
 test("palette: tokens.css and deck.css declare the same roles, dark on :root and paper on data-theme", () => {
-  const files = ["../../deck/css/tokens.css", "../../deck/css/deck.css"].map(f => fs.readFileSync(new URL(f, import.meta.url), "utf8"));
+  const files = ["../../web/css/tokens.css", "../../web/css/deck.css"].map(f => fs.readFileSync(new URL(f, import.meta.url), "utf8"));
   const block = (/** @type {RegExp} */ re) => {
     /** @type {Record<string, string>} */ const out = {};
     for (const css of files) {

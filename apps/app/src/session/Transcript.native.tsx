@@ -3,7 +3,7 @@
 // window. maintainVisibleContentPosition keeps a reader in history still while the tail grows,
 // and a "Jump to latest" pill shows while they are up there.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, View, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import type { TranscriptRow } from "./model";
 import type { TranscriptProps } from "./Transcript";
@@ -11,7 +11,7 @@ import type { TranscriptProps } from "./Transcript";
 /** Further up than this (px) is reading history. */
 const AWAY = 40;
 
-export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: TranscriptProps) {
+export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump, jumpTo }: TranscriptProps) {
   const newestFirst = useMemo(() => [...rows].reverse(), [rows]);
   const list = useRef<FlatList<TranscriptRow>>(null);
   const [away, setAway] = useState(false);
@@ -19,6 +19,12 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: 
     const up = e.nativeEvent.contentOffset.y > AWAY;
     setAway((was) => (was === up ? was : up));
   }, []);
+  // A tapped quote scrolls to the original (the list is inverted, so index 0 is the newest row).
+  useEffect(() => {
+    if (!jumpTo) return;
+    const index = newestFirst.findIndex((r) => r.key === jumpTo.key);
+    if (index >= 0) list.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+  }, [jumpTo?.n]);
   const toLatest = useCallback(() => {
     list.current?.scrollToOffset({ offset: 0, animated: true });
     setAway(false);
@@ -42,6 +48,7 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: 
         maintainVisibleContentPosition={{ minIndexForVisible: 1, autoscrollToTopThreshold: AWAY }}
         keyboardShouldPersistTaps="handled"
         onScroll={onScroll}
+        onScrollToIndexFailed={(info) => { list.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true }); }}
         scrollEventThrottle={100}
       />
       {away && jump ? jump(toLatest) : null}

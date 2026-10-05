@@ -18,7 +18,7 @@ function box(o = {}) {
       case "glass.targets": return { data: [{ target: "computer:kit", state: "working", viewers: ["a", "b"], takeover: { surface: "web:ab12", since: 5, private: true }, width: 1440, height: 900 }, { target: "box", screen: false, viewers: 1 }, { nope: 1 }] };
       case "glass.open": return { data: o.open ?? { session: "s1", link: { path: "relay", latencyMs: 41.6 }, screen: { path: "/v1/streams/computers/glass?t=abc", width: 1280, height: 800 } } };
       case "glass.take": return { data: { since: 99, private: input.private === true } };
-      case "glass.release": return { data: { held_ms: 125000 } };
+      case "glass.release": return { data: o.release ?? { held_ms: 125000, noted: true } };
       case "glass.files.list": return { data: { path: input.path ?? "", entries: [{ name: "b.txt", kind: "file", size: 10, mtime: 1 }, { name: "z", kind: "dir" }, { name: "a", kind: "dir" }, { kind: "file" }] } };
       case "glass.files.preview": return { data: o.preview ?? { kind: "text", text: "hello", truncated: true } };
       case "glass.files.download": return { data: { path: "/v1/glass/raw?t=1", name: "b.txt" } };
@@ -54,7 +54,7 @@ test("take and release: inputs, the held time, a note only when typed", { skip: 
   const s = glassSource(b.call);
   assert.deepEqual(await s.take("computer:kit", "web:1", false), { surface: "web:1", since: 99, private: false });
   assert.deepEqual(await s.take("computer:kit", "web:1", true), { surface: "web:1", since: 99, private: true });
-  assert.deepEqual(await s.release("computer:kit", "web:1", "  all done "), { heldMs: 125000 });
+  assert.deepEqual(await s.release("computer:kit", "web:1", "  all done "), { heldMs: 125000, noted: true });
   await s.release("computer:kit", "web:1", " ");
   await s.close("s1");
   assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["glass.take", { target: "computer:kit", surface: "web:1" }], ["glass.take", { target: "computer:kit", surface: "web:1", private: true }],
@@ -195,4 +195,14 @@ test("paths, folders to make before an upload, words", { skip: !strip }, async (
   assert.equal(stamp(new Date("2026-09-24T10:00:00").getTime(), now).includes("2026"), false);
   assert.equal(stamp(0), "");
   assert.deepEqual([clock(134_000), clock(3_734_000)], ["2:14", "1:02:14"]);
+});
+
+test("the hand-back banner claims the note is in the thread only when the box says it was told", { skip: !strip }, async () => {
+  const { glassSource } = await import("./source.ts");
+  const { handedBackBanner } = await import("./model.ts");
+  assert.deepEqual(await glassSource(box({ release: { held_ms: 1000 } }).call).release("computer:kit", "web:1", "hi"), { heldMs: 1000, noted: false }, "a box that does not say is read as not told");
+  assert.deepEqual(await glassSource(box({ release: { held_ms: 1000, noted: false } }).call).release("computer:kit", "web:1", "hi"), { heldMs: 1000, noted: false });
+  assert.equal(handedBackBanner("kit", 125000, "all done", true), "You handed the keyboard back to kit after 2:05. Your note is in its thread.");
+  assert.equal(handedBackBanner("kit", 125000, "all done", false), "You handed the keyboard back to kit after 2:05. kit has no thread open, so your note did not go anywhere.");
+  assert.equal(handedBackBanner("kit", null, "  ", false), "You handed the keyboard back to kit.");
 });

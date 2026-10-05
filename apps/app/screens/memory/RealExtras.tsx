@@ -1,5 +1,6 @@
 // Memory on a real vyred, the parts beside the facts: Ask (memory.ask), the map of what Memory holds with Pin and Mute (memory.graph, memory.pin,
 // memory.mute), and what the person corrected with Undo (memory.corrections, memory.uncorrect). Nothing here is composed: an empty box says so.
+import { dayOf } from "../../src/time/show.js";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Chip, Composer, Divider, EmptyState, IconButton, Menu, Row, Text, showToast } from "@vyre/ui";
@@ -58,7 +59,7 @@ export function RealExtras() {
     <View className="gap-s2 pt-s6">
       {err ? <Banner><View className="flex-row flex-wrap items-center gap-s3"><Text className="min-w-0 flex-1">{err}</Text><Button size="sm" label="Try again" onPress={load} /></View></Banner> : null}
       <Text strong size="secondary">What Memory holds</Text>
-      {graph && !rooms.length ? <Card><EmptyState title="Nothing mapped yet" body="People and projects appear here once Memory has read your sessions." /></Card> : null}
+      {graph && !rooms.length ? <Card><EmptyState title="Nothing mapped yet" body="People and projects appear here once Memory has read your chats." /></Card> : null}
       {rooms.map((r) => (
         <View key={r.id} className="gap-s1 pt-s2">
           <View className="flex-row items-baseline gap-s2"><Text strong>{r.name}</Text><Text size="caption" tone="faint">{r.counts}</Text></View>
@@ -83,7 +84,7 @@ export function RealExtras() {
         <Card flush>
           {list.map((c, i) => (
             <View key={c.id}>{i ? <Divider /> : null}
-              <Row dense title={correctionLine(c)} sub={`${new Date(c.created).toLocaleDateString()}${c.scope && c.scope !== "*" ? `, in ${wordsOf(c.scope)}` : ""}`} end={<Button kind="ghost" size="sm" label="Undo" onPress={() => undo(c)} />} />
+              <Row dense title={correctionLine(c)} sub={`${dayOf(new Date(c.created).getTime())}${c.scope && c.scope !== "*" ? `, in ${wordsOf(c.scope)}` : ""}`} end={<Button kind="ghost" size="sm" label="Undo" onPress={() => undo(c)} />} />
             </View>
           ))}
         </Card>

@@ -188,10 +188,9 @@ export function isDevice(machine) { return machine === "device" || machine === "
  * owner.id: the person's public, non-secret 16-byte id (hex), for the phone's avatar (team-lead,
  * 28 Sep) -- see ownerId()/fingerprint8() below. projects.move "enabled" lets projects.move
  * really move a box's homes (off until box-deploy validates it).
- * app.root: off until the one app (ADR 0027) actually takes over "/" from the Deck; while off,
- * /app/* still serves the app beside the Deck as it does today (core/daemon/app.js). Once mobile
- * flips it, /app/* becomes a 301 to the same path under "/", so an installed /app/ Home Screen
- * icon or a stale bookmark still opens (core/daemon/index.js route()).
+ * app.root: on by default, the one app (ADR 0027) answers "/" and /app/* is a 301 to the same path
+ * under "/", so an installed /app/ Home Screen icon or a stale bookmark still opens (core/daemon/index.js
+ * route()). Off, the app is served at /app/ only; there is no other web app to answer "/".
  * `role` is the machine's old two-value job (box or local): its meaning and default (an OS guess)
  * are unchanged, so the many modules that still read `ctx.config.role` directly need no change.
  * `machine` is the person's actual choice (ADR 0039): solo, server or device -- module loading
@@ -278,9 +277,8 @@ function defaults(root, platform = process.platform) {
     computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
-    // Off: /app/* keeps serving beside the Deck until mobile's client-side migration is ready and
-    // flips this (ADR 0027; core/daemon/app.js).
-    app: { root: false },
+    // On: the one app answers "/" (ADR 0027; core/daemon/app.js); a person may turn it off.
+    app: { root: true },
     term: { keep_hours: 12 },
   };
 }

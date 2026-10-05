@@ -1,4 +1,5 @@
 import "../global.css";
+import { RC } from "../screens/shell/rc";
 import "../src/identity/webcrypto";
 import "../src/identity/restore-wire";
 import { useEffect } from "react";
@@ -27,7 +28,7 @@ function Shell() {
   useEffect(() => {
     connect().catch(() => {});
     startLive();
-    startGlass();
+    if (RC.glass) startGlass();
   }, []);
   // The installed web app: its service worker, a tapped notification's route, push.seen.
   useEffect(() => startPwa((path) => router.push(path as never)), []);

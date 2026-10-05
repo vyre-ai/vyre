@@ -14,7 +14,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 
 const NORTHWIND_SESSION = "11111111-aaaa-4000-8000-000000000003";
 const HARLOW_SESSION = "11111111-aaaa-4000-8000-000000000001";
@@ -33,12 +33,13 @@ async function world(t, extra = []) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [dir], recall: { every: 0 } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   await call("recall.index", {}, opts);
   assert.ok(!(await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts)).error);
   assert.ok(!(await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts)).error);
+  assert.ok(!(await kcall("agents.create", { name: "juno", kind: "assistant" }, opts)).error);
   // This worktree predates federation's projects.access module (still on work/federation,
   // d897210d): reach() calls projects.access.check and, per its own no_such_tool fallback (the
   // same one core/memory/index.js's reach() uses), falls back to agents.projects alone where
@@ -108,8 +109,9 @@ test("recall.sessions: a named agent lists only its granted project's sessions",
 
 test("recall: taking an agent's project away narrows its reach immediately", async t => {
   const { d, opts } = await world(t);
+  const kcall = kernelCaller(d, opts.root);
   assert.ok((await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:kit")).data.length > 0);
-  assert.ok(!(await call("agents.update", { name: "kit", projects: [] }, opts)).error);
+  assert.ok(!(await kcall("agents.update", { name: "kit", projects: [] }, opts)).error);
   const after = await d.registry.call("recall.search", { q: "invoice" }, "mcp:agent:kit");
   assert.match(after.error?.message || "", /kit is not granted any project yet/);
 });

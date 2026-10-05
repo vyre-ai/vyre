@@ -76,7 +76,7 @@ jobs:
       - name: The checks' own tests
         run: node --test "scripts/check-android-permissions.test.js" "scripts/check-apk-nothing-central.test.js" "src/native/*.test.js"
       - run: npx expo prebuild -p android --no-install --clean
-      # The debug APK is the one the emulator capture shows, with the sample world on purpose (deck/ui/store.js). A release build never sets this.
+      # The debug APK is the one the emulator capture shows, with the sample world on purpose (apps/app/src/store-core/store.js). A release build never sets this.
       - run: ./gradlew --no-daemon assembleDebug
         working-directory: apps/app/android
         env:

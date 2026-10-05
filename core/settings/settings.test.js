@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
 import { MASK } from "./index.js";
 import { settingTo, settingIntents } from "../../lib/said/setting.js";
@@ -22,12 +22,13 @@ async function world(t, { disable = [], kernel = false } = {}) {
   const projects = path.join(root, "projects");
   const home = path.join(projects, "northwind");
   fs.mkdirSync(path.join(home, ".vyre"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".vyre", "project.json"), JSON.stringify({ name: "Northwind Bakery", slug: "northwind" }));
   const claudeDir = path.join(root, "claude");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn", ...disable] },
     projectsDir: projects, settings: { claude_dir: claudeDir } }));
   const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")], ...(kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
+  await d.registry.call("projects.create", { name: "Northwind", home }, "cli");
+  await d.registry.call("projects.rename", { project: "northwind", name: "Northwind Bakery" }, "cli");
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   return { root, home, claudeDir, c, d };
 }
@@ -536,7 +537,7 @@ test("an agent changes a setting only when the person asked (C25, P17), every ch
 });
 
 test("the recorder's string for a setting ask is the one settings.request asks for, value and level included (reviewer-2's alignment check)", { timeout: 30_000 }, async t => {
-  const { c, d } = await world(t);
+  const { c, d, root } = await world(t);
   const keys = (await c("settings.schema")).data.keys;
   // A plain on/off setting that is set per project, worded the way a person would say it.
   let found = null;
@@ -547,7 +548,7 @@ test("the recorder's string for a setting ask is the one settings.request asks f
   }
   assert.ok(found, "a bool project setting the recorder can name");
   const { x: m, intents } = found;
-  assert.ok(!(await c("agents.create", { name: "kit", projects: ["northwind"] })).error);
+  assert.ok(!(await kernelCaller(d, root)("agents.create", { name: "kit", projects: ["northwind"] })).error);
   const say = (/** @type {any} */ i) => d.registry.call("vault.said.record", { said: "row-1", what: "a setting ask", ...i }, "module:sessions");
   const agent = "mcp:agent:kit";
   const req = (/** @type {any} */ input) => d.registry.call("settings.request", input, agent, { thread: "t_rec" });

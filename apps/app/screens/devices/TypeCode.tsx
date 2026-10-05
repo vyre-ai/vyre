@@ -12,6 +12,7 @@ import { DRAWN_CODE_SCAN } from "../install/first-run.js";
 import { WinkScan, canReadDrawnCode } from "../../src/native/WinkScan";
 import { SCAN_SAY, type WinkScanEvent } from "../../src/native/wink-scan-model";
 import { TYPED, inviteReasonSay, leftOf, redeemSay } from "./typed-model.js";
+import { RC } from "../shell/rc";
 
 /** What a finished typing gives back: an invitation's link, to accept as a pasted one is. */
 export type Typed = { invite?: { link: string; space?: string } };
@@ -39,7 +40,11 @@ export async function redeemPairing(code: string, onAck: (ack: string) => void):
  * "Type the code" on the second device: the code the first device shows (WINK-NNPP-PPPP), then the ack code to type back on that device, then it carries on. `redeem` does the work and calls
  * `onAck` with the code to show; nothing is joined until it resolves.
  */
-export function TypeCode({ redeem, initial = "", onDone }: { redeem: (code: string, onAck: (ack: string) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void }) {
+type TypeCodeProps = { redeem: (code: string, onAck: (ack: string) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void };
+/** The short two-sided typed code, and nothing at all while it is switched off (RC.typedCode): a release build shows no field, no scan and no ack box. */
+export function TypeCode(p: TypeCodeProps) { return RC.typedCode ? <TypeCodeOn {...p} /> : null; }
+
+function TypeCodeOn({ redeem, initial = "", onDone }: { redeem: (code: string, onAck: (ack: string) => void) => Promise<Typed>; initial?: string; onDone: (t: Typed) => void }) {
   const [text, setText] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [say, setSay] = useState("");
@@ -100,7 +105,9 @@ export function TypeCode({ redeem, initial = "", onDone }: { redeem: (code: stri
 }
 
 /** On the SHOWING device: the code the other device now shows, typed back to say it is the right one (wink.code.ack; a yes moment). */
-export function AckCode({ offer, onDone }: { offer: string; onDone: () => void }) {
+export function AckCode(p: { offer: string; onDone: () => void }) { return RC.typedCode ? <AckCodeOn {...p} /> : null; }
+
+function AckCodeOn({ offer, onDone }: { offer: string; onDone: () => void }) {
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [say, setSay] = useState("");

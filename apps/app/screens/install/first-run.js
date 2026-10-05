@@ -38,19 +38,12 @@ export const SERVER_SETUP_ROUTE = "/u/setup/server";
 export const MY_CLOUD = {
   title: "Set up My Cloud",
   line: "My Cloud runs on a computer or a server that stays on. Your phones and browsers connect to it.",
-  lineComputer: "Open its terminal and paste the line. It shows a code when it is ready.",
-  linePhone: "Send yourself the setup link and open it on that computer. It shows a code when it is ready.",
+  lineComputer: "Open its terminal and paste the line. It shows a QR and a long code when it is ready: scan the QR or paste the long code below.",
+  linePhone: "Send yourself the setup link and open it on that computer. It shows a QR and a long code when it is ready: scan the QR or paste the long code below.",
   send: "Send me the setup link",
   ready: "My server shows a code",
   share: "Set up My Cloud on a computer or a server: https://vyre.run",
   codeTitle: "Type the code your server shows",
-  // On a Mac (the app's window with `identity.makeServer`): this Mac can be the server. It happens only after the person has read what it means and confirms, at the end of this flow.
-  macTitle: "Make this Mac a server",
-  macLine: "My Cloud will run on this Mac, while it stays on. Your phones and browsers connect to it.",
-  macMeans: "Your Mac asks for its password once, so Vyre can start by itself when you log in. Nothing leaves this Mac that you did not choose.",
-  macSure: "Make this Mac a server",
-  macOther: "Use another computer or server instead",
-  macBack: "Back",
   // The Windows app is a client only in 0.2.9 (the user): no home here, whatever the setup path says. The words are the ones vyred itself gives on Windows (core/daemon/host-guard.js).
   windows: "A Vyre home can't run on Windows yet. Use the Vyre app here, and run your home on a Mac, Linux or a server.",
 };
@@ -205,7 +198,7 @@ export function pairSayFor(text, kind) {
   const owned = /^This server belongs to (\S+?)\.(?: |$)/.exec(t);
   if (owned) return kind === "web" ? t : `This Vyre belongs to ${owned[1]}. Ask them to add you to a space, or reset it to start over.`;
   if (/words were not the same|did not match/i.test(t)) return PHONE_SAY.rejected;
-  if (/cannot reach|unreachable/i.test(t)) return PHONE_SAY.unreachable;
+  if (/cannot reach|unreachable/i.test(t)) return kind === "web" ? WEB_SAY.unreachable : PHONE_SAY.unreachable;
   if (/ran out of time|expired/i.test(t)) return PHONE_SAY.expired;
   if (/already used/i.test(t)) return PHONE_SAY.used;
   if (/install line|server/i.test(t)) return PHONE_SAY.ended;
@@ -222,7 +215,26 @@ export const PHONE_SAY = {
   spaceOffline: "Your phone cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
 };
 
+/** The same sentences for a browser: the device in them is the one the person is holding, so a browser says "This browser", never "Your phone". */
+export const WEB_SAY = {
+  unreachable: "This browser cannot reach your Vyre right now. Nothing was paired.",
+  spaceOffline: "This browser cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
+};
+
 /** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
 export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
 /** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
 export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your assistant, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };
+
+/**
+ * What a long code read on this device starts. A phone's code (`for: "phone"`, from Add a device) adds THIS device to the person's name; a server's code pairs this device to that server. A browser that cannot
+ * claim a name still adds itself from a phone's code (relay/client/browserjoin.js), so the phone's code never goes down the server path.
+ * @param {{ kind?: string, for?: string }} code @returns {"add-device" | "pair-server"}
+ */
+export const codeRoute = (code) => (code && code.kind === "ticket" && code.for === "phone" ? "add-device" : "pair-server");
+
+/**
+ * Where the setup question's answer goes. A device that holds no name has no identity to pair a server with, so "I have my own server" asks for the name first (the name, then the recovery code) and My Cloud
+ * comes after; a device that already holds a name goes straight to My Cloud. Joining a team always asks for the name. @param {"join" | "own"} answer @param {boolean} hasName
+ */
+export const afterQuestion = (answer, hasName) => (answer === "own" && hasName ? "mycloud" : "name");

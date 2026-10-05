@@ -152,3 +152,25 @@ test("the group scenario: a late joiner is one quiet line, and a joiner's own st
   const text = dana.rows.map((r) => dana.item(r.key)?.text).filter(Boolean);
   assert.equal(text[0], "dana joined", "nothing above her join");
 });
+
+test("the sample world's three-model chat has one question, three answers each from its own provider, and a keep; the people-only chat has no assistant", async () => {
+  const { modelsScript, peopleScript } = await load();
+  const steps = modelsScript()[0].steps;
+  assert.equal(steps.filter((s) => s.type === "fanout").length, 1);
+  const providers = new Set(steps.filter((s) => s.type === "text-delta").map((s) => s.data.provider));
+  assert.deepEqual([...providers].sort(), ["claude", "codex", "grok"]);
+  assert.equal(steps.filter((s) => s.type === "fanout-keep").length, 1);
+  const authors = new Set(peopleScript()[0].steps.map((s) => (s.top?.author ?? "")).filter(Boolean));
+  assert.ok([...authors].every((a) => a.startsWith("person:")), "only people speak");
+});
+
+test("a mock reply carries reply_to and the quote of the message it answers, in the same timeline", async () => {
+  const { createMockStream } = await load();
+  const m = createMockStream({ scenario: "people" });
+  m.sendGroup("a first message", { to: [], fanout: false });
+  const first = m.log.find((f) => f.type === "session.user-message" && f.data.state === "sent");
+  m.sendGroup("a reply", { to: [], fanout: false, replyTo: first.data.message });
+  const reply = m.log.filter((f) => f.type === "session.user-message").find((f) => f.data.text === "a reply");
+  assert.equal(reply.data.reply_to, first.data.message);
+  assert.equal(reply.data.quote.text, first.data.text);
+});

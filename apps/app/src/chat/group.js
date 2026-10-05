@@ -15,13 +15,13 @@
  * @typedef {{ group: string, message: string | null, members: FanoutMember[], kept: string | null }} Fanout
  */
 
-/** "assistant:kit" -> { family: "assistant", id: "kit" }. A bare id is a person. @param {unknown} who */
+/** "agent:kit" (the contract's slot id) and "assistant:kit" (the older one) -> { family: "assistant", id: "kit" }. A bare id is a person. @param {unknown} who */
 export function parseWho(who) {
   const s = String(who ?? "");
   const i = s.indexOf(":");
   if (i < 0) return { family: /** @type {"person"} */ ("person"), id: s };
   const f = s.slice(0, i);
-  return { family: /** @type {"person" | "assistant" | "model"} */ (f === "assistant" || f === "model" ? f : "person"), id: s.slice(i + 1) };
+  return { family: /** @type {"person" | "assistant" | "model"} */ (f === "assistant" || f === "agent" ? "assistant" : f === "model" ? "model" : "person"), id: s.slice(i + 1) };
 }
 
 /** @param {string} id @param {Record<string, string>} [names] */
@@ -166,7 +166,9 @@ export function createGroup(viewer) {
   let dividerCache = /** @type {{ rev: number, v: { key: string | null, count: number } } | null} */ (null);
 
   /** @param {string} message */ const keyOf = (message) => msgs.get(message)?.key;
-  const names = () => Object.fromEntries([...people.values()].map((p) => [`${p.family}:${p.id}`, p.name]));
+  /** Names the app learned from elsewhere (work.chat.get and the space's actors), keyed like `person:<id>`: a frame that only carries an id never overrides them. @type {Map<string, string>} */
+  const learned = new Map();
+  const names = () => ({ ...Object.fromEntries([...people.values()].map((p) => [`${p.family}:${p.id}`, p.name])), ...Object.fromEntries(learned) });
 
   function divider() {
     if (dividerCache && dividerCache.rev === rev) return dividerCache.v;
@@ -320,7 +322,11 @@ export function createGroup(viewer) {
     get readUpto() { return readUpto; },
     get viewer() { return viewer; },
     /** @param {string} v */ setViewer(v) { if (v && v !== viewer) { viewer = v; rev++; } },
-    /** @returns {Participant[]} */ participants: () => [...people.values()],
+    /** @returns {Participant[]} */ participants: () => [...people.values()].map((p) => (learned.has(p.id) ? { ...p, name: /** @type {string} */ (learned.get(p.id)) } : p)),
+    /** The name for an assistant row whose frame names no author: the chat's one model or agent when it has one, else "Assistant". */
+    assistantName() { for (const [id, name] of learned) if (id.startsWith("model:") || id.startsWith("agent:")) return name; return "Assistant"; },
+    /** Teach the group names it was not told by a frame. @param {{ id: string, name: string }[]} list ids as `person:<id>`, `agent:<id>` or a slot id */
+    learn(list) { let changed = false; for (const m of list) { if (m && m.id && m.name && learned.get(m.id) !== m.name) { learned.set(m.id, m.name); changed = true; } } if (changed) rev++; return changed; },
     names,
     presence: () => presence,
     presenceLine: () => presenceLine(presence, viewer, names()),
@@ -357,4 +363,19 @@ export function createGroup(viewer) {
     /** The assistants in the chat, for the composer's "ask all". */
     assistants: () => [...people.values()].filter((p) => p.family === "assistant"),
   };
+}
+
+/**
+ * work.chat.change's input for adding one teammate (CONTRACT-one-chat.md): a person goes in add_people by id, a space or project agent in add_agents by id. The person's own assistant is never added to a chat (it acts as the person). Nothing else about the chat changes.
+ * @param {string} chat @param {{ id?: string, name: string, family: string }} who
+ */
+export function addTeammateInput(chat, who) {
+  const id = String(who.id || who.name);
+  return who.family === "assistant" ? { chat, add_agents: [id] } : { chat, add_people: [id] };
+}
+
+/** Who could still be added: everyone offered who is not already in the chat, by name. @param {readonly { name: string, id?: string, family: string }[]} offered @param {readonly { name: string, id?: string }[]} inChat */
+export function addable(offered, inChat) {
+  const here = new Set(inChat.flatMap((p) => [p.name.toLowerCase(), String(p.id ?? "").toLowerCase()]));
+  return offered.filter((o) => !here.has(o.name.toLowerCase()) && !here.has(String(o.id ?? "").toLowerCase()));
 }

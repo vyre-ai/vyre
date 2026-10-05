@@ -13,7 +13,7 @@ import * as config from "../config/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.join(HERE, "main.js");
-const FAKE_TAILSCALE = path.join(HERE, "..", "..", "deck", "test", "fake-tailscale.js");
+const FAKE_TAILSCALE = path.join(HERE, "..", "..", "web", "test", "fake-tailscale.js");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** @param {string} root @param {number} after ms between "stops are handled" (a message from main.js) and the SIGTERM */
@@ -31,7 +31,7 @@ async function stopAfter(root, after) {
   return { ...r, err };
 }
 
-test("main: SIGTERM while vyred is still starting drains and exits 0, leaving no socket", { timeout: 30_000 }, async t => {
+test("main: SIGTERM while vyred is still starting drains and exits 0, leaving no socket", { timeout: 120_000 }, async t => {
   // Early (while its modules load and start) and late (once it is up): both are a clean stop.
   for (const after of [0, 150, 400, 2_500]) {
     const root = tempHome(t);

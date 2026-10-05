@@ -11,6 +11,9 @@ import { agreePublic } from "./agree";
 import { shellKeyHeld } from "./mac-key.ts";
 import * as C from "../../../../kernel/identity/chain.js";
 import { addThisDevice as pair } from "@vyre/relay-client/phonepair.js";
+import { joinFromPhone } from "@vyre/relay-client/browserjoin.js";
+import { Platform } from "react-native";
+import { getAgreeKey } from "../crypto/agree-key";
 import { about, presenceKey, relayCrypto, relayKeyStore } from "../api/relay";
 import { afterPaired } from "../real/pairing";
 import { relayUrl } from "../api/relay-url";
@@ -49,13 +52,13 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
     attest: (k) => entryAttest(k.publicKey),
     agree: () => agreePublic(),
     pageHeld: () => shellKeyHeld(),
-    pair: async ({ key: k, onWords, onAck, signal }) => pair({
+    pair: async ({ key: k, onWords, onAck, signal }) => (Platform.OS === "web" && o.payload !== undefined ? joinFromBrowser(o, k, onWords, signal) : pair({
       // The key this device signs its paired session with is the presence key reported here, never the identity key (platform-3).
       ...(await presenceKey() ? { presenceKey: await presenceKey() } : {}),
       ...(o.payload !== undefined ? { payload: o.payload } : { code: o.code, relay: relayUrl() }),
       key: k, name: o.deviceLabel, crypto: relayCrypto(), keyStore: relayKeyStore(), about,
       ...(onWords ? { onWords } : {}), ...(onAck ? { onAck } : {}), ...(signal ? { signal } : {}),
-    }),
+    })),
     readList: async (name) => {
       let res: Response;
       try { res = await f(`${base}/v1/ids/resolve?name=${encodeURIComponent(name)}`, { headers: { accept: "application/json" } }); } catch { throw fail("unreachable", "The names directory did not answer."); }
@@ -69,8 +72,23 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
   }, { deviceLabel: o.deviceLabel, onWords: o.onWords, onAck: o.onAck, signal: o.signal });
 }
 
+/**
+ * A browser with no box joins the name from the phone's long code (relay/client/browserjoin.js joinFromPhone): only the long code is taken, the browser's key-agreement point goes with its key so it can open
+ * private chats, and its entry says it is web-held (a key a page script can reach cannot change who speaks for the name). The three words show here while the person says yes on the phone.
+ */
+async function joinFromBrowser(o: AddOpts, k: { publicKey: string; label?: string }, onWords?: (w: string) => void, signal?: AbortSignal) {
+  const agree = await getAgreeKey();
+  if (!agree) throw fail("bad_key", "This browser cannot make the key it needs to join. Nothing was added.");
+  const presence = await presenceKey();
+  return joinFromPhone({
+    payload: String(o.payload), key: { ...k, agree: agree.point }, name: o.deviceLabel, crypto: relayCrypto(), keyStore: relayKeyStore(), about,
+    ...(presence ? { presenceKey: presence } : {}), ...(onWords ? { onWords } : {}), ...(signal ? { signal } : {}),
+  });
+}
+
 /** The words for each way adding this device can end. @param {string | undefined} code */
 export function addSay(code: string | undefined): string {
+  if (code === "bad_key") return "This browser cannot make the key it needs to join. Nothing was added.";
   if (code === "bad_code") return "That is not a code for adding a device. On the device that has your name, choose Devices, then Add a device.";
   if (code === "taken") return "That code was already used or has run out. Make a new one on the other device.";
   if (code === "busy") return "Too many tries. Wait a minute, then try again.";

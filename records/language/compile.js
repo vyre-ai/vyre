@@ -103,11 +103,17 @@ export function checkKit(kit) {
       if (f.kind === "sealed") err(path, `The field "${nm}" is sealed and cannot be used in an expression`);
     }
   };
+  /** The inverse names each target type is given in this kit: two links to one type cannot show the same named field. @type {Map<string, string>} */ const inverseOn = new Map();
   for (const t of kit.types) {
     const fieldNames = new Set();
     for (const f of t.fields) {
       if (fieldNames.has(f.name)) err(`type ${t.name}`, `Field "${f.name}" appears twice`);
       fieldNames.add(f.name);
+      if (f.kind === "link" && f.inverse) {
+        const key = `${f.to}.${f.inverse.name}`;
+        if (inverseOn.has(key) && inverseOn.get(key) !== `${t.name}.${f.name}`) err(`type ${t.name}.${f.name}`, `${inverseOn.get(key)} already shows "${f.inverse.name}" on ${f.to}: name this one differently`);
+        inverseOn.set(key, `${t.name}.${f.name}`);
+      }
       if (f.kind === "link" && !typeNames.has(f.to) && !CORE_TYPES.includes(f.to)) err(`type ${t.name}.${f.name}`, `Refers to "${f.to}", which is neither defined in this kit nor a core type (${CORE_TYPES.join(", ")})`);
     }
     for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);

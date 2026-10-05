@@ -85,7 +85,7 @@ services:
       - ${VYRE_SPACES_ROOT:-/var/lib/vyre-spaces}/status:/run/vyre-spaces-state:ro
       # The release's SHA256SUMS, signature and shell.json, which vyred serves at /release/ for the phone's shell check.
       # On the host, so a recreate of this container keeps them; root writes them (box/vyre publish_release).
-      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/deck/release:ro
+      - ${VYRE_UPDATE_ROOT:-/var/lib/vyre-update}/status/release:/opt/vyre/web/release:ro
     healthcheck:
       test: ["CMD", "vyre", "status"]
       interval: 30s

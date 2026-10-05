@@ -413,7 +413,6 @@ Listens for: `floor.wrote`, `thread.deleted`
 | --- | --- |
 | `project.changed` | `project`; sometimes `archived`, `fields`, `name` |
 | `project.created` | `home`, `name`, `project`, `threads` |
-| `projects.moved` | `at`, `from`, `moved`, `skipped`, `to` |
 | `thread.picked` | `project`, `thread` |
 | `thread.unpicked` | `project`, `thread` |
 
@@ -620,6 +619,7 @@ Listens for: `link.unpaired`
 | `model.switched` | `live`, `model`; sometimes `reported` |
 | `thinking.switched` | `on` |
 | `thread.archived` | `agent`, `project` |
+| `thread.chat` | `chat`, `cwd`, `session` |
 | `thread.contended` | `holder`, `session` |
 | `thread.continued` | `from_machine`, `from_thread`, `provider`, `source`, `thread`, `turns` |
 | `thread.deleted` | `agent`, `project`, `thread` |
@@ -632,7 +632,7 @@ Listens for: `link.unpaired`
 | `thread.remembered` | `file`, `scope` |
 | `thread.renamed` | `name` |
 | `thread.rewound` | `restore`, `uuid`; sometimes `at`, `files` |
-| `thread.rolled` | `from`, `reason`, `seed_chars`, `seed_tail`, `text`, `thread`, `to`; sometimes `share`, `source`, `used`, `window` |
+| `thread.rolled` | not found in the source (the type is built at run time) |
 | `thread.sandbox` | `sandboxed`; sometimes `confined_by`, `folder`, `provider`, `reason` |
 | `thread.sent` | `surface`, `text`; sometimes `author`, `images`, `kind`, `queued`, `queued_at`, `request`, `step`, `uuid`, `via` |
 | `thread.shell` | `code`, `command`, `output` |

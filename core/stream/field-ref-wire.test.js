@@ -24,7 +24,7 @@ function filled() {
   log.append("text-delta", { message: "m2", index: 0, text: "Anything else?" }, { author: "assistant:kit", acts_for: "person:bob" });
   return log;
 }
-const cited = (/** @type {any[]} */ frames) => frames.find(f => f.type === "session.text-done").data.blocks[0];
+const cited = (/** @type {any[]} */ frames) => frames.find(f => f.type === "chat.text-done").data.blocks[0];
 
 /** Read an SSE response until the frame with `message` m2 has arrived. */
 async function sse(/** @type {any} */ t, /** @type {SessionLog} */ log, /** @type {any} */ viewer) {
@@ -37,7 +37,7 @@ async function sse(/** @type {any} */ t, /** @type {SessionLog} */ log, /** @typ
     const r = http.get({ port, host: "127.0.0.1", path: "/" }, res => { res.on("data", d => { buf += d; if (buf.includes("Anything else?")) { r.destroy(); resolve(buf); } }); });
     r.on("error", () => resolve(buf));
   });
-  return { text: String(text), frames: String(text).split("\n").filter(l => l.startsWith("data:")).map(l => JSON.parse(l.slice(5))).filter(f => f.type && f.type !== "session.heartbeat") };
+  return { text: String(text), frames: String(text).split("\n").filter(l => l.startsWith("data:")).map(l => JSON.parse(l.slice(5))).filter(f => f.type && f.type !== "chat.heartbeat") };
 }
 
 test("SSE form: a cited field is the value for the manager and the chip for the member, in order, with no ref on either wire", async t => {
@@ -56,7 +56,7 @@ test("relay form: the same through a hop with its own delay; the member's side h
     const sched = new Sched(), rnd = prng(7), log = filled();
     /** @type {any[]} */ const got = [];
     const c = connect({ open: makeLink({ log, sched, rnd, relay: true, faultRate: 0, serveOpts: { viewer } }), timers: sched, random: rnd, onFrame: f => got.push(f) });
-    await sched.run(() => got.some(f => f.data && f.data.message === "m2" && f.type === "session.text-delta"), 20_000);
+    await sched.run(() => got.some(f => f.data && f.data.message === "m2" && f.type === "chat.text-delta"), 20_000);
     c.close();
     return got;
   };
@@ -76,8 +76,8 @@ test("F-1: a resolver that never answers costs the cited field a placeholder chi
   const t0 = Date.now();
   serve(log, { send: (/** @type {any} */ f) => got.push(JSON.parse(JSON.stringify(f))), onClose: () => {}, close: () => {} }, { from: 0, viewer: hung });
   const end = Date.now() + 3000;
-  while (!got.some(f => f.type === "session.text-delta" && f.data.message === "m2") && Date.now() < end) await new Promise(r => setTimeout(r, 10));
-  assert.ok(got.some(f => f.type === "session.text-delta" && f.data.message === "m2"), "the frame behind the stuck one still arrives");
+  while (!got.some(f => f.type === "chat.text-delta" && f.data.message === "m2") && Date.now() < end) await new Promise(r => setTimeout(r, 10));
+  assert.ok(got.some(f => f.type === "chat.text-delta" && f.data.message === "m2"), "the frame behind the stuck one still arrives");
   assert.ok(Date.now() - t0 < 2500);
   assert.equal(cited(got).block, "field");
   assert.equal(cited(got).placeholder, true, "the placeholder chip");

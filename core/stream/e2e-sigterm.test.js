@@ -17,7 +17,7 @@ import { connect, wsDuplex } from "./client.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 30_000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(20); } throw new Error(`timed out waiting for ${what}`); };
-const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const LONG = (/** @type {string} */ tag) => `${tag} ` + Array(400).fill("word").join(" ");
 
 test("SIGTERM to a real vyred mid-turn keeps the open turn; the next start reopens it", { skip: (process.env.VYRE_E2E !== "1" && "set VYRE_E2E=1 on the test box") || (!fs.existsSync(path.join(HERE, "e2e-step7-vyred.js")) && "needs chat's step 7 harness (core/stream/e2e-step7-vyred.js)"), timeout: 240_000 }, async t => {
@@ -43,13 +43,13 @@ test("SIGTERM to a real vyred mid-turn keeps the open turn; the next start reope
     const info = await (await fetch(`http://127.0.0.1:${h.port}/info`)).json();
     const call = (/** @type {string} */ who, /** @type {string} */ tool, /** @type {any} */ input) => post("/call", { who, tool, input });
     /** @type {any[]} */ const frames = [];
-    const c = connect({ from: 0, open: async ({ from }) => { const r = await call("alex", "stream.open", { session: info.chat, from }); assert.ok(!r.error, r.error && r.error.message); return wsDuplex(`ws://127.0.0.1:${h.port}${r.data.path}`); }, onFrame: (/** @type {any} */ f) => frames.push(f), backoff: () => 100 });
+    const c = connect({ from: 0, open: async ({ from }) => { const r = await call("alex", "stream.open", { chat: info.chat, from }); assert.ok(!r.error, r.error && r.error.message); return wsDuplex(`ws://127.0.0.1:${h.port}${r.data.path}`); }, onFrame: (/** @type {any} */ f) => frames.push(f), backoff: () => 100 });
     t.after(() => c.close());
     return { child, pid: /** @type {number} */ (child.pid), info, call, frames, close: () => c.close() };
   }
   const turns = () => { const db = new DatabaseSync(path.join(home, "vyre.db"), { readOnly: true }); try { return /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all()).map(r => JSON.parse(r.body)); } finally { db.close(); } };
   let v = await boot();
-  const sent = await v.call("alex", "stream.send", { session: v.info.chat, text: "@assistant " + LONG("TERMME"), to: ["assistant:assistant"], cwd: work });
+  const sent = await v.call("alex", "stream.send", { chat: v.info.chat, text: "@assistant " + LONG("TERMME"), to: ["assistant:assistant"], cwd: work });
   assert.ok(!sent.error, JSON.stringify(sent.error));
   await until(() => textOf(v.frames).includes("TERMME"), "the reply to start");
   assert.equal(turns().length, 1, "a turn is open");
@@ -63,7 +63,7 @@ test("SIGTERM to a real vyred mid-turn keeps the open turn; the next start reope
   assert.ok(!/token/i.test(JSON.stringify(kept)), "and holds no token");
   v = await boot();
   await sleep(1500);
-  const after = await v.call("alex", "stream.send", { session: v.info.chat, text: "@assistant AFTERTERM", to: ["assistant:assistant"], cwd: work });
+  const after = await v.call("alex", "stream.send", { chat: v.info.chat, text: "@assistant AFTERTERM", to: ["assistant:assistant"], cwd: work });
   assert.ok(!after.error, JSON.stringify(after.error));
   await until(() => textOf(v.frames).includes("echo: @assistant AFTERTERM"), "the reply after the restart", 40_000);
   assert.ok(!/could not resume/.test(fs.readFileSync(path.join(home, "logs", "e2e-2.log"), "utf8")), "the second process gave nothing up");

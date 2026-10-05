@@ -21,7 +21,7 @@ const sigFile = path.join(root, "lib", "release-sig.js");
 const OLD = /^export const RELEASE_KEY = "(.*)";/m.exec(fs.readFileSync(sigFile, "utf8"))?.[1];
 if (!OLD) { console.error("dev-sign: could not read the pinned key"); process.exit(1); }
 let swapped = 0;
-for (const f of ["core/vyre-core/release.js", "box/vyre", "lib/release-sig.js", "scripts/install-mac-server.sh", "deck/sw.js"]) {
+for (const f of ["core/vyre-core/release.js", "box/vyre", "lib/release-sig.js", "scripts/install-mac-server.sh"]) {
   const p = path.join(root, f);
   if (!fs.existsSync(p)) continue;
   const t = fs.readFileSync(p, "utf8");

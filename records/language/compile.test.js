@@ -174,3 +174,18 @@ for (const id of ["base", "law-firm"]) test(`the checked-in ${id} kit is what it
   assert.deepEqual(stored, compile(src), `regenerate with: node records/language/cli.js compile records/kits/${id}/kit.ts > records/kits/${id}/kit.json`);
   assert.deepEqual(compile(print(stored)), stored);
 });
+
+test("links in a Kit: many and an inverse are written, checked, printed and read back", () => {
+  const src = wrap(`export const L = defineType({ name: "l", fields: { t: defineField.text(), c: defineField.link({ to: "contact", inverse: { name: "ls", label: "Ls" } }), cs: defineField.link({ to: "contact", many: true, inverse: { name: "many_ls", label: "Many Ls" } }) } });
+export default defineKit({ id: "k", version: 1, includes: [L] });`);
+  const kit = compile(src);
+  const f = (n) => kit.types[0].fields.find((x) => x.name === n);
+  assert.deepEqual(f("c").inverse, { name: "ls", label: "Ls" });
+  assert.equal(f("cs").many, true);
+  assert.equal(f("c").many, undefined);
+  assert.deepEqual(compile(print(kit)), kit);
+  fails(wrap(`export const L = defineType({ name: "l", fields: { c: defineField.link({ to: "contact", inverse: { name: "Bad Name", label: "x" } }) } });\nexport default defineKit({ id: "k", version: 1, includes: [L] });`), "invalid_definition", /name/);
+  fails(wrap(`export const L = defineType({ name: "l", fields: { c: defineField.link({ to: "contact", many: "yes" }) } });\nexport default defineKit({ id: "k", version: 1, includes: [L] });`), "invalid_definition", /true or false/);
+  fails(wrap(`export const L = defineType({ name: "l", fields: { c: defineField.link({ to: "contact", inverse: { name: "same", label: "A" } }), d: defineField.link({ to: "contact", inverse: { name: "same", label: "B" } }) } });\nexport default defineKit({ id: "k", version: 1, includes: [L] });`), "invalid_definition", /already shows/);
+  fails(wrap(`export const L = defineType({ name: "l", fields: { t: defineField.text({ many: true }) } });\nexport default defineKit({ id: "k", version: 1, includes: [L] });`), "invalid_definition", /Unknown option/);
+});

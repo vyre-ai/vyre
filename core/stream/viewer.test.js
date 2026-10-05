@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { render, forViewer, resolveRefs } from "./viewer.js";
 
 const BOB = { id: "person:bob", roles: [] };
-const frame = (/** @type {any} */ ...fields) => ({ v: 1, id: "f1", cur: 1, session: "s", type: "session.tool-finished", data: { tool_id: "t", ok: true, result: { block: "record", title: "M", fields } } });
+const frame = (/** @type {any} */ ...fields) => ({ v: 1, id: "f1", cur: 1, session: "s", type: "chat.tool-finished", data: { tool_id: "t", ok: true, result: { block: "record", title: "M", fields } } });
 const out = (/** @type {any} */ f, v = BOB) => /** @type {any} */ (render(frame(f), v)).data.result.fields[0];
 const KEYS = ["name", "label", "kind", "sealed", "placeholder", "value"];
 
@@ -62,7 +62,7 @@ test("V-1: a genuinely sealed field and a plain read_roles field are still drawn
 
 test("a cited field the server did not resolve is a chip, never a value; a resolved one is drawn per viewer", async () => {
   const cite = { block: "field-ref", record: "vyre://spc/matter/1", field: "fee", label: "Fee" };
-  const f = { v: 1, id: "f", cur: 1, session: "s", type: "session.text-done", author: "assistant:kit", data: { message: "m", blocks: [cite] } };
+  const f = { v: 1, id: "f", cur: 1, session: "s", type: "chat.text-done", author: "assistant:kit", data: { message: "m", blocks: [cite] } };
   const sync = /** @type {any} */ (forViewer(f, BOB)).data.blocks[0];
   assert.deepEqual([sync.block, sync.placeholder, sync.label], ["field", true, "Fee"]);
   const spec = { label: "Fee", kind: "money", value: { amount: 4200 }, read_roles: ["manager"] };
@@ -79,7 +79,7 @@ test("a cited field the server did not resolve is a chip, never a value; a resol
 
 test("the room note on a terminal, diff or files block reaches the viewer as the server set it, and is never added or filtered otherwise", () => {
   const NOTE = "visible to everyone in this chat";
-  const tool = (/** @type {any} */ result) => ({ v: 1, id: "f1", cur: 1, session: "s", type: "session.tool-finished", data: { tool_id: "t", ok: true, result } });
+  const tool = (/** @type {any} */ result) => ({ v: 1, id: "f1", cur: 1, session: "s", type: "chat.tool-finished", data: { tool_id: "t", ok: true, result } });
   for (const b of [{ block: "terminal", command: "ls", output: "a", note: NOTE }, { block: "diff", path: "a.md", hunks: [], note: NOTE }, { block: "files", files: [{ path: "a.md" }], note: NOTE, detail: "1 found" }]) {
     assert.deepEqual(/** @type {any} */ (render(tool(b), BOB)).data.result, b, `${b.block}: the note and the rest, untouched`);
     assert.deepEqual(/** @type {any} */ (forViewer(tool(b), BOB)).data.result, b);

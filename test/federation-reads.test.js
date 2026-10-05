@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { SESSIONS } from "./fixtures/corpus.js";
 import { OWNER, PHONE, until, pair } from "./link-harness.js";
+import { kernelCaller } from "./helpers.js";
 
 const T0 = Date.parse("2026-09-01T09:00:00Z");
 /** The box's own session: newer than every one on the Mac, and about the same intake form. */
@@ -97,7 +98,7 @@ test("federation reads: the person on the box reads both machines, every row lab
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: home(s.boxWork, "harlow") })).error);
   assert.ok(!(await s.macCall("projects.create", { name: "Northwind Bakery", home: home(s.macWork, "northwind") })).error);
   const projects = await asBox(s, "projects.list", {});
-  assert.deepEqual(projects.projects.map(p => [p.name, p.source, p.machine]), [["Harlow Legal", "box", "testbox"], ["Northwind Bakery", "mac", "test-mac"]]);
+  assert.deepEqual(projects.projects.map(p => [p.name, p.source, p.machine]), [["General", "box", "testbox"], ["Harlow Legal", "box", "testbox"], ["General", "mac", "test-mac"], ["Northwind Bakery", "mac", "test-mac"]], "every Space has its General project");
   assert.deepEqual(projects.sources, [{ source: "box", machine: "testbox", ok: true }, { source: "mac", machine: "test-mac", ok: true }]);
   assert.deepEqual(projects.problems, []);
 });
@@ -278,7 +279,7 @@ test("federation reads: a Mac session picked into a box project resolves through
   const s = await world(t);
   assert.ok(!(await s.boxCall("projects.create", { name: "Harlow Legal", home: path.join(s.boxWork, "harlow") })).error);
   // juno is granted this project, so the registry lets it read it (an agent with no grant is refused).
-  assert.ok(!(await s.boxCall("agents.create", { name: "juno", projects: ["harlow-legal"] })).error);
+  assert.ok(!(await kernelCaller(s.box, s.boxRoot)("agents.create", { name: "juno", projects: ["harlow-legal"] })).error);
   // The Mac's session as the Mac answers it by id, and the box's own picked alongside it.
   const [mac] = (await s.macCall("recall.sessions", { ids: [MAC_ID] })).data;
   assert.equal(mac.id, MAC_ID);

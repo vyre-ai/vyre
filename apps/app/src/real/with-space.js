@@ -7,6 +7,7 @@ export const SPACE_TOOLS = new Set([
   "files.drive.restore", "files.drive.space.list", "files.drive.space.read", "files.drive.upload", "files.drive.versions",
   "records.actors", "records.create", "records.define", "records.dev-seed", "records.events", "records.kits.get", "records.kits.library", "records.list", "records.me", "records.types",
   "records.workspace.create", "records.workspace.delete",
+  "runner.places",
   "rules.accept", "rules.define", "rules.disable", "rules.dismiss", "rules.enable", "rules.get", "rules.list", "rules.propose", "rules.remove", "rules.test",
   "tasks.decide", "tasks.get", "tasks.list", "tasks.move", "tasks.request", "tasks.submit",
 ]);

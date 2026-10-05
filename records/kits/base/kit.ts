@@ -22,7 +22,7 @@ export const Lead = defineType({
   icon: "IconUserPlus",
   role: { link: "contact", ended: ["Converted", "Lost"] },
   fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "leads", label: "Leads" } }),
     source: defineField.choice(["Website", "Referral", "Ad", "Event", "Phone", "Other"], { label: "Source" }),
     summary: defineField.rich_text({ label: "What they need" }),
     lost_reason: defineField.text({ label: "Why we lost them", visible_if: 'stage == "Lost"', required_if: 'stage == "Lost"' }),
@@ -36,7 +36,7 @@ export const Appointment = defineType({
   icon: "IconCalendarEvent",
   fields: {
     title: defineField.text({ label: "Title", required: true }),
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "appointments", label: "Appointments" } }),
     kind: defineField.choice(["Meeting", "Follow-up", "Call", "Other"], { label: "Kind" }),
     starts: defineField.datetime({ label: "Starts", required: true }),
     ends: defineField.datetime({ label: "Ends" }),
@@ -52,7 +52,7 @@ export const Client = defineType({
   icon: "IconUserCheck",
   role: { link: "contact", ended: ["Closed"] },
   fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "clients", label: "Clients" } }),
     since: defineField.date({ label: "Client since" }),
     stage: defineStage(["Onboarding", "Active", "Closed"]),
   },
@@ -64,7 +64,7 @@ export const Subscriber = defineType({
   icon: "IconMailOpened",
   role: { link: "contact", ended: ["Unsubscribed"] },
   fields: {
-    contact: defineField.link({ to: "contact", label: "Contact", required: true }),
+    contact: defineField.link({ to: "contact", label: "Contact", required: true, inverse: { name: "subscriptions", label: "Subscriptions" } }),
     list: defineField.choice(["Newsletter", "Updates", "Events"], { label: "List" }),
     source: defineField.text({ label: "Where they signed up" }),
     stage: defineStage(["Subscribed", "Unsubscribed"]),
@@ -79,7 +79,7 @@ export const Project = defineType({
   fields: {
     // `name` and `client` are the core Project's own (records/core-types.js, DESIGN-project-hub.md); they are written here so the Kit reads whole, and the core ones win.
     name: defineField.text({ label: "Name", required: true }),
-    client: defineField.link({ to: "contact", label: "Client", required: true }),
+    client: defineField.link({ to: "contact", label: "Client", required: true, inverse: { name: "projects", label: "Projects" } }),
     owner: defineField.actor({ label: "Owner" }),
     due: defineField.date({ label: "Due" }),
     stage: defineStage(["New", "Active", "Review", "Done"]),

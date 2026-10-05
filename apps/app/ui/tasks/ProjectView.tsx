@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Pressable, View, useWindowDimensions } from "react-native";
-import { aid, stageFieldOf, stageNames } from "../../../../deck/ui/kernel-view.js";
+import { aid, stageFieldOf, stageNames } from "../../src/store-core/kernel-view.js";
 import { Avatar } from "../components/Avatar";
 import { Icon } from "../components/Icon";
 import { Card, Divider } from "../components/Card";

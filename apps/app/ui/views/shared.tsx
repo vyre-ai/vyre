@@ -5,7 +5,7 @@ import { renderField } from "../fields/registry";
 import type { FieldEnv } from "../fields/types";
 import { titleOf, val, viewDefOf } from "./logic.js";
 
-export type RecordsWorld = { types: any[]; byType: Record<string, any[]>; actors: any[] };
+export type RecordsWorld = { types: any[]; byType: Record<string, any[]>; actors: any[]; me?: string };
 
 /** One field of one record, drawn by the kind's renderer in its compact form: what lists, boards and agendas show. */
 export function fieldNode(f: any, rec: any, env: FieldEnv) {

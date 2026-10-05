@@ -486,7 +486,7 @@ async function resolveAsk(ref) {
 /**
  * One question's answer from what was typed: option numbers ("2", "1,3"), option labels (any
  * case), or free text, which is the "Other" answer. Multi-select joins labels in option order,
- * typed text last, with ", ", as the Deck's card does (deck/chat/lib/answers.js); single-select
+ * typed text last, with ", ", as the app's card does (apps/app/src/chat); single-select
  * takes one. Returns the answer, or throws saying what is wrong.
  * @param {{ question: string, header?: string, multiSelect?: boolean, options?: { label: string }[] }} q
  * @param {string} typed

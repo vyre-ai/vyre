@@ -15,7 +15,7 @@ function TerminalDemo() {
   const { ws = "ws://127.0.0.1:7391" } = useLocalSearchParams<{ ws?: string }>();
   const { width } = useWindowDimensions();
   const getTicket = async (from: number) => ({ url: `${ws}/pty?from=${from}` });
-  const common = { getTicket, title: "Fix the sitemap", subtitle: "~/harlow-site" };
+  const common = { getTicket, title: "Fix the sitemap", subtitle: "~/juniper-site" };
   if (width < PHONE_MAX) return <TerminalScreen {...common} onBack={() => {}} />;
   return (
     <View className="flex-1 flex-row bg-bg">

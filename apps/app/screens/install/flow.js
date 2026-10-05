@@ -1,16 +1,16 @@
 // @ts-check
-import { PHONE_SAY } from "./first-run.js";
+import { PHONE_SAY, WEB_SAY } from "./first-run.js";
 // The install flow's rules, pure so Node tests them: names, the step graph, the server's scan-or-paste code and the three-word confirm.
 // Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
 // spaces > join > invite > joined.
 
-export const NAMES_TAKEN = ["alex", "chris", "harlow", "vyre", "admin"];
+export const NAMES_TAKEN = ["alex", "chris", "juniper", "vyre", "admin"];
 export const MIN_NAME = 3;
 export const RECOVERY_CODE = "R7K4-Q2MX-9HDP-W3NB";
 /** What the server prints: a long code (also drawn as a QR). The app reads it by scan or paste; there is no short code to type. */
 export const SERVER_LONG_CODE = "vyre://wink/2?t=SGVsbG9TYW1wbGVTZWNyZQ&r=wss%3A%2F%2Frelay.example";
 
-/** "Harlow Legal" > "harlow-legal". The slug is what goes before .vyre.run. */
+/** "Juniper Studio" > "juniper-studio". The slug is what goes before .vyre.run. */
 export function slug(/** @type {string} */ s) {
   return String(s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -40,7 +40,7 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 /** @type {Record<string, string|null>} */
 export const BACK = {
   welcome: null, question: "welcome", mycloud: "question", adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
-  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
+  name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", mcwords: "mycloud", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
 
@@ -163,7 +163,7 @@ export function ownedBy(text) {
   return m ? `${m[1].toLowerCase()}.vyre.run` : null;
 }
 
-const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY)]);
+const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY), ...Object.values(WEB_SAY)]);
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
   // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.

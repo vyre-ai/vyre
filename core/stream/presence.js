@@ -34,10 +34,10 @@ export function createPresence(o) {
  * Send presence through a log's live fan-out, throttled.
  * @param {import("./log.js").SessionLog} log
  */
-export function presenceFor(log, now = Date.now) {
-  const p = createPresence({ session: log.session, now });
+export function presenceFor(log, now = Date.now, minMs = PRESENCE_MS) {
+  const p = createPresence({ session: log.session, now, minMs });
   return {
-    /** @param {string} author @param {"typing"|"doing"} state @param {string} [doing] */
+    /** @param {string} author @param {"typing"|"doing"|"idle"} state @param {string} [doing] */
     set(author, state, doing) {
       const f = p.set(author, state, doing);
       if (!f) return null;

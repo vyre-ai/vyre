@@ -18,10 +18,9 @@ import { tempHome } from "./helpers.js";
 import { CHROME_SAFE } from "../lib/chrome-flags/index.js";
 
 // This test drives the Deck through its sample data (?fixtures=1), which a box serves only to dev worlds.
-process.env.VYRE_DECK_FIXTURES = "1";
 
 // An explicit override, then a real Chrome for local Mac use, then testbox's own
-// chrome-headless-shell (deck/test's own default path, e.g. deck/test/settings-browser.js):
+// chrome-headless-shell (the default path web/test/settings-browser.js uses):
 // without this second fallback these tests silently skip on testbox, which has no Chrome.app, so
 // they never actually ran there (caught only once CI ran them for real on a Mac runner).
 const CHROME_CANDIDATES = [process.env.CHROME_BIN, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -90,7 +89,7 @@ async function chrome(t, dir) {
 }
 
 /** ?fixtures=1 goes before the #fragment, not after (a real query param, read by location.search
- * in deck/js/api.js), and never onto the one-time ?t=<token> link itself (a second query param
+ * in web/js/api.js), and never onto the one-time ?t=<token> link itself (a second query param
  * there would not survive its own redirect) — always call this on the settled URL. */
 const withFixtures = url => {
   const hashAt = url.indexOf("#");
@@ -170,9 +169,9 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
     // whether onboard.join actually said the server was reachable (link.health's real shape
     // is `online`, not `ok`/`reachable`), so a wrong node proceeded to Claude sign-in exactly
     // like a right one. No real onboard.join exists yet to answer this for real, so this test
-    // drives it through the Deck's own fixtures (?fixtures=1, deck/js/api.js), whose
+    // drives it through web/'s own fixtures (?fixtures=1, web/js/api.js), whose
     // onboard.join `verify` case answers `online: false` for node "wrong-node" specifically
-    // and `online: true` for anything else (deck/fixtures/onboard.json).
+    // and `online: true` for anything else (web/fixtures/onboard.json).
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
@@ -199,7 +198,7 @@ test("onboard page: Device, already on the same Tailscale network, verifies the 
     // link.data.url is the one-time ?t=<token> link, which the server redeems itself and
     // redirects to the stable /onboard#s=<session> address, stored in this tab's
     // sessionStorage (onboard.js's `ss.setItem("vyre.onboard", sid)`). Turning fixtures on
-    // (?fixtures=1, deck/js/api.js) is a second, same-tab navigation once that's settled, not
+    // (?fixtures=1, web/js/api.js) is a second, same-tab navigation once that's settled, not
     // appended to the one-time link itself (which already has its own ?t= query and a
     // redirect that would not carry a second query param through).
     await page.send("Page.navigate", { url: link.data.url });

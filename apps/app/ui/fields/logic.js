@@ -260,3 +260,13 @@ export function sampleFor(f, env = {}) {
   };
   return /** @type {any} */ (samples)[k] ?? null;
 }
+
+/** The address a url field may open: only http and https, so a link in a record never runs a script or opens a file. null when it is not one. @param {unknown} v */
+export function linkHref(v) {
+  const t = typeof v === "string" ? v.trim() : "";
+  if (!/^https?:\/\//i.test(t)) return null;
+  try { const u = new URL(t); return u.protocol === "http:" || u.protocol === "https:" ? u.href : null; } catch { return null; }
+}
+
+/** What a link reads as: its host and path without the scheme, short. @param {string} href */
+export const linkLabel = (href) => href.replace(/^https?:\/\//i, "").replace(/\/$/, "").slice(0, 60);

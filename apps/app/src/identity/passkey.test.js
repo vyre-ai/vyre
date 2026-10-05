@@ -156,7 +156,7 @@ test("a passkey is made only on app.vyre.run in a release build, and also on htt
   assert.equal(passkeyRp("http://localhost:19006"), null, "a release build refuses localhost");
   assert.equal(passkeyRp("http://localhost:19006", { dev: true }), "localhost");
   assert.equal(passkeyRp("http://localhost", { dev: true }), "localhost");
-  for (const o of ["https://harlow.vyre.run", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://app.vyre.run:8443", "https://example.com", "http://localhost.evil.example", "http://127.0.0.1:3000", undefined, ""]) {
+  for (const o of ["https://juniper.vyre.run", "https://app.vyre.run.evil.example", "http://app.vyre.run", "https://app.vyre.run:8443", "https://example.com", "http://localhost.evil.example", "http://127.0.0.1:3000", undefined, ""]) {
     assert.equal(passkeyRp(o, { dev: true }), null, String(o));
     assert.equal(passkeyRp(o), null, String(o));
   }
@@ -166,7 +166,7 @@ test("on another origin the claim says where to go, before the browser is asked 
   const auth = authenticator();
   const prior = Object.getOwnPropertyDescriptor(globalThis, "location");
   t.after(() => { if (prior) Object.defineProperty(globalThis, "location", prior); else delete globalThis.location; });
-  for (const origin of ["https://harlow.vyre.run", "https://firm.example.com", "http://localhost:3000"]) {
+  for (const origin of ["https://juniper.vyre.run", "https://firm.example.com", "http://localhost:3000"]) {
     Object.defineProperty(globalThis, "location", { value: { origin }, configurable: true, writable: true });
     const prod = process.env.NODE_ENV; process.env.NODE_ENV = "production"; t.after(() => { if (prod === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = prod; });
     await assert.rejects(claimIdentityWithPasskey({ name: "wrongorigin", base: "http://127.0.0.1:1", params: FAST, webauthn: auth }), (/** @type {any} */ e) => e.code === "wrong_origin" && e.message === "Open app.vyre.run to create your name.", origin);

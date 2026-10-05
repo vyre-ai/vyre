@@ -83,9 +83,8 @@ export function createAccess({ ctx, groups, logs }) {
         const role = await kernelRole(kc.chain, kc.person);
         const viewer = { id, roles: /** @type {string[]} */ (role ? [role] : []) };
         if (kc.chat) return { viewer, via: "chat", chain: kc.chain, chat: kc.chat, person: id };
-        // The kernel is on and this person is not in a chat by that id: only a switchboard thread they may read remains. The group store never decides.
-        if (await thread(session, meta)) return { viewer, via: "thread", chain: kc.chain };
-        throw fail("not_found", "no such session");
+        // The kernel is on and this person is not in a chat by that id: there is nothing to read. (A run is reached through its chat; a thread id is no longer a way in.)
+        throw fail("not_found", "no such chat");
       }
       const person = personOf(meta, i);
       // 0.2: every person caller on the box's own surfaces is the owner; a tailnet peer holds no role here (it fails closed).

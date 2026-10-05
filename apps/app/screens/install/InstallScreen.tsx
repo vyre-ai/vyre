@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Chip, Divider, Field, Row, Ring, Segmented, Text, showToast, type IconName, spaceRef, IconTile } from "@vyre/ui";
 import { FaceIdSheet, type FaceAsk } from "../shell/FaceIdSheet";
 import { loadInstall } from "./data";
+import { MyCloudCard } from "../settings/MyCloudCard";
 import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { RealAdd } from "../devices/RealAdd";
@@ -13,7 +14,7 @@ import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { isWindowsShell, shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { afterQuestion, codeRoute, installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -144,13 +145,14 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     setWrong(""); setAddWords(""); setStep("adding");
     void addDeviceToName({ payload, deviceLabel: device, onWords: setAddWords })
       .then((r) => { noId.current = false; setName(r.name); setStep(invite ? "invite" : "spaces"); })
-      .catch((e) => { setWrong(addSay((e as { code?: string }).code)); setStep("scan"); });
+      .catch((e) => { setWrong(addSay((e as { code?: string }).code)); setStep(scanStep); });
   };
   const finish = () => router.replace((first || start === "phone" || start === "connect" ? "/u/now" : "/u/spaces") as never);
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
   const boxless = isBoxlessMac(shell());
-  const afterName = () => (invite ? "invite" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
+  const ownServer = useRef(false);
+  const afterName = () => (invite ? "invite" : ownServer.current ? "mycloud" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
@@ -214,7 +216,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
           // A phone that once held a name and lost its key (after a restart) opens where it can bring the name back, saying so.
           const lost = !claimBlocked() && (await hadIdentity().catch(() => false));
           if (lost) setLostKey(true);
-          setStep((s) => (["scan", "scanwords", "recovery", "have", "recover", "browser", "nosetup"].includes(s) ? s : lost ? "have" : s === "welcome" ? s : !canClaim ? "browser" : "name"));
+          setStep((s) => (["scan", "scanwords", "mcwords", "recovery", "have", "recover", "browser", "nosetup"].includes(s) ? s : lost ? "have" : s === "welcome" ? s : !canClaim ? "browser" : "name"));
         }
         // The box names the device a setup is on but the app does not know its own device id: a setup this device began is the one whose name matches the progress it kept.
         const kept = unpackProgress(await readProgress());
@@ -279,32 +281,15 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <Page title={QUESTION.title}>
         <Card flush>
-          <Choice icon="users" title={QUESTION.join.title} sub={QUESTION.join.line} onPress={() => setStep("name")} />
+          <Choice icon="users" title={QUESTION.join.title} sub={QUESTION.join.line} onPress={() => { ownServer.current = false; setStep(afterQuestion("join", false)); }} />
           <Divider />
-          <Choice icon="server" title={QUESTION.own.title} sub={QUESTION.own.line} onPress={() => setStep("mycloud")} />
+          <Choice icon="server" title={QUESTION.own.title} sub={QUESTION.own.line} onPress={() => { void readIdentity().catch(() => null).then((w) => { ownServer.current = !w; setStep(afterQuestion("own", Boolean(w))); }); }} />
         </Card>
       </Page>
     );
   } else if (step === "mycloud") {
     // Set up My Cloud: a phone shares the setup link (no install line on a phone); a computer or browser shows the line. Then the server's code is typed here.
-    body = makeMacServer && !macOther ? (
-      <Page title={MY_CLOUD.title} sub={macSure ? MY_CLOUD.macLine : MY_CLOUD.line}>
-        {macSure ? (
-          <>
-            <Card className="gap-s2"><Text strong>{MY_CLOUD.macTitle}</Text><Text tone="muted">{MY_CLOUD.macMeans}</Text></Card>
-            <Button kind="primary" label={MY_CLOUD.macSure} onPress={() => { void makeMacServer().catch((e) => setWrong(said(e))); }} />
-            <Button kind="ghost" label={MY_CLOUD.macBack} onPress={() => setMacSure(false)} />
-          </>
-        ) : (
-          <>
-            <Text tone="muted">{MY_CLOUD.macLine}</Text>
-            <Button kind="primary" label={MY_CLOUD.macTitle} onPress={() => setMacSure(true)} />
-            <Button kind="ghost" label={MY_CLOUD.macOther} onPress={() => setMacOther(true)} />
-          </>
-        )}
-        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-      </Page>
-    ) : (
+    body = (
       <Page title={MY_CLOUD.title} sub={MY_CLOUD.line}>
         {isPhone(dk) ? (
           <>
@@ -318,6 +303,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
             <CopyLine text={installLine(shell()?.version)} />
           </>
         )}
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+        {MOCK ? null : <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("mcwords"); }} />}
         {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep(first ? "spaces" : "done"); }} />}
       </Page>
     );
@@ -326,7 +313,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <Page title={BROWSER.title} sub={BROWSER.line}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("scanwords"); }} />
+        <PairEntry onCode={(c: LongCode) => { setWrong(""); if (!MOCK && codeRoute(c) === "add-device") { startAdd(payloadOf(c)); return; } setSession(openPairing(c)); setStep("scanwords"); }} />
         {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep("spaces"); }} />}
         <Button kind="ghost" label={BROWSER.notSet} onPress={() => setStep("nosetup")} />
       </Page>
@@ -383,7 +370,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <>
-          <PairEntry onCode={(c: LongCode) => { if (claimBlocked()) { setSession(openPairing(c)); setStep("scanwords"); return; } startAdd(payloadOf(c)); }} />
+          <PairEntry onCode={(c: LongCode) => { if (claimBlocked() && codeRoute(c) === "pair-server") { setSession(openPairing(c)); setStep("scanwords"); return; } startAdd(payloadOf(c)); }} />
           {claimBlocked() ? null : <TypeCode redeem={(code, onAck) => addDeviceToName({ code, deviceLabel: device, onAck }).then((r) => { noId.current = false; setName(r.name); return {}; })} onDone={() => setStep(invite ? "invite" : "spaces")} />}
         </>}
         {offersNoVyre(dk, MOCK) ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}
@@ -406,7 +393,14 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "scanwords") {
     body = session ? (
       <Page title="Check the three words" sub="Your other device shows the same three words.">
-        <PairWords session={session} who={dk === "web" || isPhone(dk) ? "Your phone" : "Your other device"} onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={() => { setSession(null); setWrong(pairSayHere(COPY.rejected)); setStep(scanStep); }} />
+        <PairServer session={session} who={dk === "web" || isPhone(dk) ? "Your phone" : "Your other device"} onConfirmed={() => { noId.current = false; if (MOCK) setName("alex"); else void readIdentity().then((w) => w && setName(w.label)).catch(() => {}); setStep(invite ? "invite" : "spaces"); }} onRejected={(say) => { setSession(null); setWrong(say ?? pairSayHere(COPY.rejected)); setStep(scanStep); }} />
+      </Page>
+    ) : null;
+  } else if (step === "mcwords") {
+    // The server's QR or long code was read on the My Cloud page: its three words show here and the yes is said at the server.
+    body = session ? (
+      <Page title="Pair your server" sub="Say yes on the server only if it shows the same three words.">
+        <PairServer session={session} who="Your server" onConfirmed={() => { setSession(null); noId.current = false; setStep(first ? "spaces" : "done"); }} onRejected={(say) => { setSession(null); setWrong(pairSayHere(say ? serverSay(say) : SERVER_FAILED.rejected)); setStep("mycloud"); }} />
       </Page>
     ) : null;
   } else if (step === "recovery") {
@@ -414,7 +408,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
         {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
-        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); setStep(afterName()); }} />
+        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterName(); ownServer.current = false; setStep(next); }} />
       </Page>
     );
   } else if (step === "spaces") {
@@ -621,6 +615,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <Text tone="muted" className="text-center">{last?.line}</Text>
         <Text mono size="caption" tone="label">{last?.addr}</Text>
         {MOCK ? null : pendingLines({ kit: pickKit ? { id: pickKit, label: kitList?.find((k) => k.id === pickKit)?.label ?? pickKit } : null, kitResult, connectors: pickConnectors.map((id) => DATA.connectors.find((c) => c.id === id)?.label ?? id) }).map((l) => <Text key={l} tone="muted" className="text-center">{l}</Text>)}
+        {MOCK || start !== "server" ? null : <MyCloudCard />}
         <Button kind="primary" label="Continue" onPress={() => setStep("spaces")} />
       </View>
     );

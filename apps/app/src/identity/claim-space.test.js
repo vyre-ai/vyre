@@ -29,14 +29,14 @@ test("a device with no box makes a space on a server: the server hosts it, the d
   const ROOT = Buffer.alloc(32, 7).toString("base64url");
   const ROUTE = { relay: "https://relay.example", route: "rt-srv", box: "bx-srv" };
   const calls = [];
-  const made = await claimServerSpace({ identity, name: "Harlow", displayName: "Harlow Legal", base, route: ROUTE, host: async a => { calls.push(["host", a]); return { space: "spc_" + "abcdefghijkl", rootPublic: ROOT }; }, retire: async s => { calls.push(["retire", s]); } });
-  assert.deepEqual(calls, [["host", { name: "harlow" }]], "the server was asked once, nothing was retired");
-  assert.equal(made.name, "harlow.vyre.run");
+  const made = await claimServerSpace({ identity, name: "Juniper", displayName: "Juniper Studio", base, route: ROUTE, host: async a => { calls.push(["host", a]); return { space: "spc_" + "abcdefghijkl", rootPublic: ROOT }; }, retire: async s => { calls.push(["retire", s]); } });
+  assert.deepEqual(calls, [["host", { name: "juniper" }]], "the server was asked once, nothing was retired");
+  assert.equal(made.name, "juniper.vyre.run");
   const dir = idDirectory({ base, seen: memorySeen() });
-  const r = await dir.resolve("harlow", { resolve: async id => (id === me.id ? me.ops : null) });
+  const r = await dir.resolve("juniper", { resolve: async id => (id === me.id ? me.ops : null) });
   assert.ok(r.ok, JSON.stringify(r));
   assert.equal(r.kind, "space");
-  assert.deepEqual([r.payload.id, r.payload.label, r.payload.ownerName, r.payload.home.kind], ["spc_abcdefghijkl", "Harlow Legal", "boxless", "server"]);
+  assert.deepEqual([r.payload.id, r.payload.label, r.payload.ownerName, r.payload.home.kind], ["spc_abcdefghijkl", "Juniper Studio", "boxless", "server"]);
   assert.deepEqual(r.payload.route, ROUTE, "the record carries the home's route");
   assert.equal(r.payload.rootPublic, ROOT, "the record carries the server's key from host-here");
   assert.equal(made.rootPublic, ROOT);
@@ -44,7 +44,7 @@ test("a device with no box makes a space on a server: the server hosts it, the d
   assert.deepEqual(r.state.entries.map(e => [e.kind, e.subject]), [["owner", me.id]], "this person is the space's first owner");
   // a name that is taken: nothing is claimed and the hosted space is taken back
   const again = [];
-  await assert.rejects(claimServerSpace({ identity, name: "harlow", base, host: async () => ({ space: "spc_" + "mnopqrstuvwx", rootPublic: ROOT }), retire: async s => again.push(s) }), e => e.code !== undefined);
+  await assert.rejects(claimServerSpace({ identity, name: "juniper", base, host: async () => ({ space: "spc_" + "mnopqrstuvwx", rootPublic: ROOT }), retire: async s => again.push(s) }), e => e.code !== undefined);
   assert.deepEqual(again, ["spc_mnopqrstuvwx"]);
   // a server that gives no key (too old to prove anything): nothing is claimed and the hosted space is taken back
   const old = [];
