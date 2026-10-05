@@ -303,8 +303,8 @@ That is the whole install. Next: [Your first day](first-day.md).
 
 ## A Windows PC
 
-A Windows PC is a device you use Vyre from, not a home: in 0.2.9 the home is a Mac, Linux or a
-server, and a Windows home comes in 0.3.0. The Windows app is a tray app. It is not
+In 0.2.9 a Windows PC uses the Vyre app only: it is a device you use Vyre from, not a home. The home
+runs on a Mac, Linux or a server, and the Windows home comes in 0.3.0. The Windows app is a tray app. It is not
 code-signed at 0.2.0, so Windows says it does not recognize the app: choose **More info**, then
 **Run anyway**. Its installer, `VyreSetup.exe`, is on the latest release at
 <https://github.com/vyre-ai/vyre/releases>, and it is checked against the release's published
