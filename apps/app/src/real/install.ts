@@ -3,6 +3,7 @@
 import { said, tool } from "./box";
 import { Platform } from "react-native";
 import { RC, claimBlocked } from "../../screens/shell/rc";
+import { macDeviceKey, macEnclavePublic, macKeyAvailable } from "../identity/mac-key.ts";
 import { enclavePublic } from "../keys";
 import { claimIdentity, claimIdentityWithPasskey } from "../identity/claim.js";
 import { forgetIdentity, loadIdentity, saveIdentity } from "../identity/store";
@@ -52,11 +53,15 @@ export async function createIdentity(name: string, deviceLabel: string, password
   if (Platform.OS === "ios" || Platform.OS === "android") {
     try { enclave = await enclavePublic(); } catch { throw Object.assign(new Error(Platform.OS === "ios" ? "Set up Face ID or Touch ID on this iPhone, then create your name." : "Set up a screen lock and a fingerprint or face on this phone, then create your name."), { code: "no_biometrics" }); }
   }
+  // The Mac app's window signs with the key in the Mac's Keychain (the seed never reaches this page).
+  const macKey = macKeyAvailable() ? await macDeviceKey(true) : null;
+  if (macKeyAvailable() && !macKey) throw Object.assign(new Error("This Mac would not keep your key, so no name was claimed."), { code: "cannot_keep" });
   // A browser build that may claim (EXPO_PUBLIC_VYRE_BROWSER_CLAIM) makes the name with a passkey: a full device the person unlocks, never a key a script on the page could use.
   const claim = Platform.OS === "web" && RC.browserClaim ? claimIdentityWithPasskey : claimIdentity;
+  if (macKeyAvailable()) enclave = (await macEnclavePublic(true)) ?? undefined; // none on a Mac with no Secure Enclave: its entry signs alone
   try {
     const made = await claim({
-      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}),
+      name, password, deviceLabel, base: DIRECTORY, ...(enclave ? { enclave } : {}), ...(macKey ? { key: macKey } : {}),
       beforeClaim: async (m) => {
         await saveIdentity({ name: m.name, id: m.id, eid: m.eid, ops: m.ops, pin: m.pin, key: m.key });
         const back = await loadIdentity();

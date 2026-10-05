@@ -110,6 +110,9 @@ export const NO_VYRE = {
 /** RC1: the drawn Wink avatar cannot be read by the camera yet (RC2), so a pairing screen offers no camera view; a code is typed or pasted. */
 export const CAMERA_SCAN = false;
 
+/** The drawn Wink code is read by the camera (src/native/WinkScan, the Deck's decoder in a WebView) wherever a person can type a code: TypeCode's "Scan the code" action. A phone only; a browser has no reader here. */
+export const DRAWN_CODE_SCAN = true;
+
 /** "I don't have Vyre running yet" is offered on a phone's connect screen only (never in a mock walk, a Mac or a browser). @param {DeviceKind} kind @param {boolean} mock */
 export const offersNoVyre = (kind, mock) => isPhone(kind) && !mock;
 

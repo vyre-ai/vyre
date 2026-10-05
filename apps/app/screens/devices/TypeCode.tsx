@@ -7,6 +7,10 @@ import { afterPaired } from "../../src/real/pairing";
 import { tool } from "../../src/real/box";
 import { relayUrl } from "../../src/api/relay-url";
 import { parseWinkCode } from "../../src/api/wink-code";
+import { avatarBytesToCode } from "@vyre/relay-client/avatarcode.js";
+import { DRAWN_CODE_SCAN } from "../install/first-run.js";
+import { WinkScan, canReadDrawnCode } from "../../src/native/WinkScan";
+import { SCAN_SAY, type WinkScanEvent } from "../../src/native/wink-scan-model";
 import { TYPED, inviteReasonSay, leftOf, redeemSay } from "./typed-model.js";
 
 /** What a finished typing gives back: an invitation's link, to accept as a pasted one is. */
@@ -46,8 +50,22 @@ export function TypeCode({ redeem, initial = "", onDone }: { redeem: (code: stri
   useEffect(() => () => { live.current = false; }, []);
   useEffect(() => { if (!ack) return; const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [ack]);
 
-  const go = async () => {
-    const c = parseWinkCode(text);
+  const [reading, setReading] = useState(false);
+  const [hint, setHint] = useState("");
+  const canScan = DRAWN_CODE_SCAN && canReadDrawnCode;
+  // The camera reads the drawn code, which carries the same eight symbols a person would type (relay/client/avatarcode.js): from here it is the typed code's own pairing.
+  const onScan = (e: WinkScanEvent) => {
+    if (e.type === "slow") { setHint(SCAN_SAY.slow); return; }
+    setReading(false);
+    if (e.type === "error") { setHint(SCAN_SAY[e.code]); return; }
+    if (e.type !== "ticket") return;
+    const code = avatarBytesToCode(e.ticket);
+    if (!code) { setHint(""); setSay(SCAN_SAY.not_a_code); return; }
+    setHint(""); setText(code); void go(code);
+  };
+
+  const go = async (given?: string) => {
+    const c = parseWinkCode(given ?? text);
     if (!c.ok || c.kind !== "typed") { setSay(redeemSay("bad_input")); return; }
     setBusy(true); setSay("");
     try {
@@ -72,6 +90,9 @@ export function TypeCode({ redeem, initial = "", onDone }: { redeem: (code: stri
   return (
     <View className="w-full gap-s2">
       {say ? <Banner tone="warn">{say}</Banner> : null}
+      {canScan ? (reading
+        ? <View className="w-full gap-s2"><View className="h-72 w-full overflow-hidden rounded-card"><WinkScan onEvent={onScan} /></View>{hint ? <Text size="caption" tone="muted">{hint}</Text> : null}<Button kind="ghost" size="sm" label="Stop scanning" onPress={() => { setReading(false); setHint(""); }} /></View>
+        : <View className="w-full gap-s2"><Button kind="primary" label="Scan the code" onPress={() => { setHint(""); setSay(""); setReading(true); }} />{hint ? <Text size="caption" tone="muted">{hint}</Text> : null}</View>) : null}
       <Field label={TYPED.label} name="Typed code" value={text} onChangeText={(v) => { setText(v); if (say) setSay(""); }} placeholder="WINK-7K4Q-M2XD" mono help={TYPED.help} />
       <View className="flex-row"><Button kind="primary" size="sm" label={TYPED.go} disabled={!text.trim()} onPress={() => void go()} /></View>
     </View>

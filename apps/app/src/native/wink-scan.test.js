@@ -46,6 +46,7 @@ test("the page opens the back camera, tells the app only the ticket, and says pl
   const html = readFileSync(new URL("./wink-scan-page.generated.js", import.meta.url), "utf8");
   for (const piece of ["facingMode", "getUserMedia", "ReactNativeWebView.postMessage", "NotAllowedError", "type: \\\"ticket\\\"", "stream.getTracks().forEach"]) assert.ok(html.includes(piece), piece);
   assert.ok(!/console\.log|localStorage|sessionStorage/.test(html), "the ticket is never logged or kept");
+  assert.ok(!/#[0-9a-fA-F]{3,8}(?![0-9a-zA-Z_])/.test(html), "no literal colour in the page");
 });
 
 import { readScanMessage, SCAN_SAY } from "./wink-scan-model.ts";
@@ -71,6 +72,20 @@ test("an error says one of three plain things, and every failure has words for t
 test("the component loads the generated page from a secure origin and keeps the ticket to one event", async () => {
   const src = readFileSync(new URL("./WinkScan.native.tsx", import.meta.url), "utf8");
   assert.match(src, /baseUrl: "https:\/\/vyre\.run\/"/);
+  assert.match(src, /replace\("__PAGE_BG__", color\.bg\)/, "the backdrop is a theme colour");
   assert.match(src, /if \(e\.type === "ticket"\) done\.current = true/);
   assert.match(src, /mediaCapturePermissionGrantType="grant"/);
+});
+
+import { avatarBytesToCode, codeToAvatarBytes } from "../../../../relay/client/avatarcode.js";
+
+test("round trip: a typed code, drawn as the avatar's 8 bytes (two bits a mark), read back through the page's decoder, is the same code", () => {
+  const { ctx } = sandbox();
+  for (const code of ["WINK-7K4Q-M2XD", "WINK-2345-6789".replace(/[01OIL]/g, "2"), "WINK-ZZZZ-ZZZZ"]) {
+    const bytes = codeToAvatarBytes(code);
+    if (!bytes) continue; // a sample outside the alphabet is not a code
+    const read = ctx.__t.ticketFromLevels(levelsOf([...bytes]));
+    assert.equal(avatarBytesToCode(Uint8Array.from(read)), code);
+  }
+  assert.equal(avatarBytesToCode(Uint8Array.from(ctx.__t.ticketFromLevels(levelsOf(id8)))), null, "a ring that is not a code reads as no code");
 });
