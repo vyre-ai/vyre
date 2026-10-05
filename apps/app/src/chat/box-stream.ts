@@ -14,6 +14,7 @@ import { call, send, socket } from "../api/box";
 import { peerDuplex, peerWanted } from "../real/peer";
 import { SURFACE } from "../state/live";
 import { streamSource } from "./stream-source.js";
+import { reason } from "./reason.js";
 import type { StreamSource } from "./mock-stream";
 
 type Done = Promise<{ ok: true; thread?: string } | { ok: false; reason: string }>;
@@ -44,8 +45,6 @@ export type GroupActions = {
 /** A # tag picked in the composer. */
 export type Mention = { kind: string; id: string; name: string };
 export type BoxStream = StreamSource & SessionActions & GroupActions;
-
-const reason = (e: { code?: string; message?: string }) => e.message || e.code || "Refused";
 
 async function write(tool: string, input: Record<string, unknown>) {
   const { answered } = await send<Record<string, unknown>>(tool, input);
@@ -99,7 +98,7 @@ export function boxStream(session: string): BoxStream {
     head: () => head,
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
     sendText: (text, o) => note("threads.send", { thread: session, text, surface: SURFACE, uuid: newUuid(), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8) } : {}) }),
-    stopSession: () => note("threads.stop", { thread: session }),
+    stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {

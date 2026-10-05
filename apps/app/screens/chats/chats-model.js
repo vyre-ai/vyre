@@ -76,12 +76,13 @@ export const noSuchTool = (e) => /unknown_tool|no_such_tool|not_found|unknown to
 
 /**
  * Person ids in a row become the names the person knows them by (records.actors: { actors: [{ id, name }] }). An id with no name behind it reads "Someone", never the id. Agents are named by their own id.
- * @param {ChatRow[]} rows @param {any} actors @returns {ChatRow[]}
+ * The viewer is left out of the names (a chat's line says who ELSE is in it).
+ * @param {ChatRow[]} rows @param {any} actors @param {string | null} [me] the viewer's person id @returns {ChatRow[]}
  */
-export function withNames(rows, actors) {
+export function withNames(rows, actors, me = null) {
   const list = Array.isArray(actors?.actors) ? actors.actors : Array.isArray(actors) ? actors : [];
   /** @type {Map<string, string>} */ const byId = new Map();
   for (const a of list) if (a && typeof a.id === "string" && typeof a.name === "string" && a.name.trim() && !/^per_/.test(a.name)) byId.set(a.id, a.name.trim());
   const nameOf = (/** @type {string} */ id) => byId.get(id) ?? (/^per_/.test(id) ? "Someone" : id);
-  return rows.map((r) => ({ ...r, people: r.people.map(nameOf) }));
+  return rows.map((r) => ({ ...r, people: r.people.filter((id) => !me || id !== me).map(nameOf) }));
 }

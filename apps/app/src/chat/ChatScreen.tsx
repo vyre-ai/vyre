@@ -32,6 +32,7 @@ import { ChatToolsSheet } from "../../screens/chat-tools";
 import { readDraft, writeDraft } from "./drafts";
 import { addTeammateInput, addable } from "./group.js";
 import { ChatExtras } from "./ChatExtras";
+import { useChatMembers } from "./useChatMembers";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
 
@@ -157,7 +158,11 @@ export function ChatScreen(p: ChatScreenProps) {
 
   const group = store.group;
   const found = group.participants();
-  const faces = found.length ? found : [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  // Before the stream says who is here: a real chat asks the box (work.chat.get); only the sample world shows its sample people.
+  const here = useChatMembers(p.sessionId);
+  const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
+  const faces = found.length ? found : allowsMock() ? sample : here.members;
+  const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   const line = [info.record?.title, info.space].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
@@ -167,7 +172,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
-      <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
+      <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
       <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
@@ -175,7 +180,7 @@ export function ChatScreen(p: ChatScreenProps) {
         onClose={() => setAboutOpen(false)}
         title={p.title ?? "Chat"}
         participants={found.length ? found : faces.map((f) => ({ ...f, family: f.family as "person" | "assistant" }))}
-        viewer={viewer}
+        viewer={viewerId}
         info={info}
         addable={realComposer ? addable(realComposer.people, found) : undefined}
         onAdd={realComposer ? async (who) => { try { await tool("work.chat.change", addTeammateInput(p.sessionId, who)); return null; } catch (e) { return e instanceof Error && e.message ? e.message : "That did not go through."; } } : undefined}

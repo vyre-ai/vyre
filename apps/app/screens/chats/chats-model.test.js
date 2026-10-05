@@ -60,3 +60,8 @@ test("a chat you are in carries project_name, providers and last_line from the e
   assert.deepEqual([rows[0].project, rows[0].providers, rows[0].line], ["Northwind", ["claude", "codex"], "Draft ready"]);
   assert.deepEqual([rows[1].project, rows[1].providers, rows[1].line, rows[1].open], ["HR", [], "", false]);
 });
+
+test("the viewer is left out of a chat's people", () => {
+  const rows = chatsFrom({ chats: [{ chat: "c1", title: "t", people: "per_me,per_2", agents: "", open: true }] });
+  assert.deepEqual(withNames(rows, { actors: [{ id: "per_2", name: "Dana Okafor" }] }, "per_me")[0].people, ["Dana Okafor"]);
+});

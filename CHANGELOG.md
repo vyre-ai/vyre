@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): found by walking the chat screens against a box with work.chat.* (scripts/app-walk-chat.mjs): a real chat no longer shows sample people (alex, juno); who is in it comes from work.chat.get and records.actors (the viewer is You, a nameless person is Someone); the viewer is left out of a chat's line in the list; the header reads the chat's title, not "Session"; "Ask all" counts the chat's own assistants and models, not the space's; a refusal reads in plain words with no ids, and a stop uses threads.chat-stop.
+
 - feat(app): New chat starts a chat with work.chat.create (the person is always in it; a space or project agent is listed by name, the person's own assistant never is), opens it, and leaves the first words in its box. threads.start is no longer used for a new chat.
 
 - feat(app): a Personal space (no server) of a person who is in any Cloud space has the planner, reminders, notes, to-dos and the calendar; custom Records (Contacts and the person's own types), Customize, flows and Kits still say "This needs a Cloud space", and with no Cloud space the whole old gate applies. Settings says where those items are kept: "Reminders, notes and to-dos: encrypted on <team>'s server".

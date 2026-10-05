@@ -15,3 +15,11 @@ test("box-stream has sendGroup, keep, react, pin and markRead, each a stream.* t
   assert.ok(!/fetch\(|XMLHttpRequest/.test(src), "writes never bypass the outbox");
   assert.match(src, /async function write[\s\S]*send</, "write goes through the box layer's send (outbox, Idempotency-Key)");
 });
+
+test("a refusal reads in plain words: no ids, no thread or session", async () => {
+  const { reason } = await import("./reason.js");
+  assert.equal(reason({ code: "bad_input", message: "no thread chat_01a10a23-bd19-4144" }), "This chat cannot be opened yet.");
+  assert.equal(reason({ code: "not_found", message: "anything" }), "This chat cannot be opened yet.");
+  assert.equal(reason({ code: "denied", message: "this call is not from chat_abc123 yet" }), "this call is not from yet");
+  assert.equal(reason({ code: "x" }), "x");
+});
