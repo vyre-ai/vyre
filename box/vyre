@@ -1437,24 +1437,42 @@ space_helper_record() {
   rename_over "$SP_PRIV/images.new" "$SP_PRIV/images"
   rm -f "$t"
 }
-# sp_swap: a Linux server with under 6 GB of memory and no swap gets one 2 GB swapfile, once (the "tiny" profile lets a container spill into it). Root only, one fixed path and size that no request
-# can change, never touches a server that already has swap, and a failure only logs: the Space still starts without it.
-SP_SWAPFILE=/var/lib/vyre-swapfile
+# sp_swap: a Linux server under 6 GB of memory with no swap gets ENCRYPTED swap (the tiny profile's containers may spill into it), or none. Swap writes memory to disk, and a server holds lent keys and
+# session leases in memory, so the swap is a dm-crypt plain mapping keyed from /dev/urandom at every boot: no key is kept anywhere, and nothing in it survives a reboot. With no cryptsetup or no
+# losetup there is NO swap (the capped run held without it). Root only, one fixed file and size that no request can change, never touches a server that already has swap, and a failure only logs: the Space
+# still starts without it. The paths and the memory file are variables only so a test can point them at a temp folder.
+SP_SWAPFILE=${SP_SWAPFILE:-/var/lib/vyre-swapfile}
+SP_SWAP_MAP=${SP_SWAP_MAP:-vyre-swap}
+SP_DM=${SP_DM:-/dev/mapper}
+SP_MEMINFO=${SP_MEMINFO:-/proc/meminfo}
+SP_CRYPTTAB=${SP_CRYPTTAB:-/etc/crypttab}
+SP_FSTAB=${SP_FSTAB:-/etc/fstab}
+sp_swap_undo() { cryptsetup close "$SP_SWAP_MAP" >/dev/null 2>&1 || true; [ -z "$1" ] || losetup -d "$1" >/dev/null 2>&1 || true; }
 sp_swap() {
   [ "$(uname -s)" = Linux ] || return 0
-  mt=$(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo 2>/dev/null || true)
+  mt=$(awk '/^MemTotal:/ {print int($2/1024)}' "$SP_MEMINFO" 2>/dev/null || true)
   case "$mt" in ""|*[!0-9]*) return 0 ;; esac
   [ "$mt" -gt 0 ] && [ "$mt" -lt 6144 ] || return 0
   if [ -n "$(swapon --noheadings --show=NAME 2>/dev/null)" ]; then return 0; fi
+  if ! command -v cryptsetup >/dev/null 2>&1 || ! command -v losetup >/dev/null 2>&1; then
+    sp_log "swap: no cryptsetup here, so no swap (plain swap would write memory, keys included, to the disk in the clear)"; return 0
+  fi
   if [ ! -f "$SP_SWAPFILE" ]; then
     ( umask 077; fallocate -l 2G "$SP_SWAPFILE" 2>/dev/null || dd if=/dev/zero of="$SP_SWAPFILE" bs=1M count=2048 2>/dev/null ) || { sp_log "swap: could not make $SP_SWAPFILE"; rm -f "$SP_SWAPFILE"; return 0; }
-    chmod 600 "$SP_SWAPFILE" && mkswap "$SP_SWAPFILE" >/dev/null 2>&1 || { sp_log "swap: mkswap failed"; rm -f "$SP_SWAPFILE"; return 0; }
+    chmod 600 "$SP_SWAPFILE" || { rm -f "$SP_SWAPFILE"; return 0; }
   fi
-  # an existing file is used only if it is what this function makes: a regular file, owned by root, mode 600 (never one another user could have left or can read)
-  [ "$(stat -c '%F|%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "regular file|root|600" ] || { sp_log "swap: $SP_SWAPFILE is not a root-owned 0600 file; left alone"; return 0; }
-  swapon "$SP_SWAPFILE" 2>/dev/null || { sp_log "swap: swapon failed"; return 0; }
-  grep -qF "$SP_SWAPFILE" /etc/fstab 2>/dev/null || printf '%s none swap sw 0 0\n' "$SP_SWAPFILE" >>/etc/fstab 2>/dev/null || true
-  sp_log "swap: turned on 2 GB at $SP_SWAPFILE (this server has ${mt} MB of memory and had no swap)"
+  # the file is used only if it is what this function makes: a regular file owned by the user running it (root), mode 600
+  [ "$(stat -c '%F|%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "regular file|$(id -un)|600" ] || { sp_log "swap: $SP_SWAPFILE is not a 0600 file of this user; left alone"; return 0; }
+  loop=$(losetup -j "$SP_SWAPFILE" 2>/dev/null | head -n 1 | cut -d: -f1)
+  [ -n "$loop" ] || loop=$(losetup -f --show "$SP_SWAPFILE" 2>/dev/null) || { sp_log "swap: no loop device"; return 0; }
+  # a fresh random key now (and at every boot through crypttab): never stored, so the contents die with the mapping
+  if [ ! -e "$SP_DM/$SP_SWAP_MAP" ]; then
+    cryptsetup open --type plain --cipher aes-xts-plain64 --key-size 512 --key-file /dev/urandom --keyfile-size 64 "$loop" "$SP_SWAP_MAP" >/dev/null 2>&1 || { sp_log "swap: cryptsetup failed"; sp_swap_undo "$loop"; return 0; }
+  fi
+  mkswap "$SP_DM/$SP_SWAP_MAP" >/dev/null 2>&1 && swapon "$SP_DM/$SP_SWAP_MAP" 2>/dev/null || { sp_log "swap: mkswap or swapon failed"; sp_swap_undo "$loop"; return 0; }
+  grep -qF "$SP_SWAP_MAP" "$SP_CRYPTTAB" 2>/dev/null || printf '%s %s /dev/urandom swap,cipher=aes-xts-plain64,size=512\n' "$SP_SWAP_MAP" "$SP_SWAPFILE" >>"$SP_CRYPTTAB" 2>/dev/null || true
+  grep -qF "$SP_DM/$SP_SWAP_MAP" "$SP_FSTAB" 2>/dev/null || printf '%s none swap sw 0 0\n' "$SP_DM/$SP_SWAP_MAP" >>"$SP_FSTAB" 2>/dev/null || true
+  sp_log "swap: turned on 2 GB of encrypted swap (a random key every boot) at $SP_SWAPFILE (this server has ${mt} MB of memory and had no swap)"
 }
 sp_up() {
   n=$1
