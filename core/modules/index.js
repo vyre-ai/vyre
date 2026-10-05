@@ -250,8 +250,8 @@ export function validate(m, { firstParty = false } = {}) {
     const owners = RESERVED_EVENTS[e.split(".")[0]];
     if (owners && !(firstParty && owners.includes(String(m.name)))) out.push(`event "${e}" is reserved for ${owners.join(" or ")}`);
     // Allowlist, not a denylist: other modules act on device.*, wink.*, name.*, relay.*, vault.*, turn.*, settings.* and spaces.* events, so an added module may emit only events named for itself
-    // (`<its name>.verb` or `<its name>-x.verb`). A first-party module keeps the rule above.
-    else if (!firstParty) { const noun = e.split(".")[0]; if (noun !== String(m.name) && !noun.startsWith(`${m.name}-`)) out.push(`event "${e}": a module that is not Vyre's own may emit only events named for itself ("${m.name}.…")`); }
+    // (`<its name>.verb`, the singular of it ("notes" says `note.added`) or `<its name>-x.verb`). A first-party module keeps the rule above.
+    else if (!firstParty) { const noun = e.split(".")[0], own = String(m.name); if (noun !== own && noun !== own.replace(/s$/, "") && !noun.startsWith(`${own}-`)) out.push(`event "${e}": a module that is not Vyre's own may emit only events named for itself ("${m.name}.…")`); }
   }
   out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: toolEntries(m).map(t => t.name) }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
