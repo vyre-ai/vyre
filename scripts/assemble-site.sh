@@ -59,10 +59,13 @@ else ipath=/install.sh; fi
 printf '/box /box/install-box.sh 200\n/i %s 200\n/download/mac /start#mac 302\n' "$ipath" >"$out/_redirects"
 mkdir -p "$out/setup/relay" "$out/setup/deck/js" "$out/setup/deck/vendor/vyrecode" "$out/setup/fonts"
 for f in $(git ls-tree --name-only "$tag" relay/client/ | grep '\.js$' | grep -v '\.test\.js$'); do git show "$tag:$f" >"$out/setup/relay/$(basename "$f")"; done
-git show "$tag:deck/css/tokens.css" >"$out/setup/tokens.css"
-git show "$tag:deck/js/phone-code.js" >"$out/setup/deck/js/phone-code.js"
-for f in $(git ls-tree --name-only "$tag" deck/vendor/vyrecode/ | grep '\.js$'); do git show "$tag:$f" >"$out/setup/deck/vendor/vyrecode/$(basename "$f")"; done
-git show "$tag:deck/vendor/qrcode.js" >"$out/setup/deck/vendor/qrcode.js"
+# A release made before the Deck moved to web/ keeps these files under deck/: take whichever the tag has.
+pick() { if git cat-file -e "$tag:web/$1" 2>/dev/null; then echo "web/$1"; else echo "deck/$1"; fi; }
+git show "$tag:$(pick css/tokens.css)" >"$out/setup/tokens.css"
+git show "$tag:$(pick js/phone-code.js)" >"$out/setup/deck/js/phone-code.js"
+vdir=$(dirname "$(pick vendor/qrcode.js)")/vyrecode
+for f in $(git ls-tree --name-only "$tag" "$vdir/" | grep '\.js$'); do git show "$tag:$f" >"$out/setup/deck/vendor/vyrecode/$(basename "$f")"; done
+git show "$tag:$(pick vendor/qrcode.js)" >"$out/setup/deck/vendor/qrcode.js"
 git cat-file -e "$tag:lib/providers/signin-hosts.json" 2>/dev/null && git show "$tag:lib/providers/signin-hosts.json" >"$out/setup/signin-hosts.json" || true
 for f in instrument-sans/InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 jetbrains-mono/JetBrainsMono-Regular.woff2; do
   git show "$tag:apps/app/assets/fonts/$f" >"$out/setup/fonts/$(basename "$f")"

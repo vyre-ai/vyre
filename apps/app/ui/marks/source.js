@@ -1,6 +1,6 @@
 // @ts-check
 // The SVG source of every mark in the app, pure (no DOM, no React): one function, markSource(), from (kind, seed, size band, scheme)
-// to markup. The generators are the Deck's own (deck/vendor/vyrecode: assistant creature, agent, teammate character, project and space emblem),
+// to markup. The generators are the Deck's own (web/vendor/vyrecode: assistant creature, agent, teammate character, project and space emblem),
 // plus the person face v2 ported from the prototype (team/0.2.2/prototype-src/p3o.js personV2) and the device marks of team/0.3/assets.
 // Same seed, same mark, on every surface. A mark never falls back to a letter.
 

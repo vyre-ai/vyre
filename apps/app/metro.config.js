@@ -32,7 +32,7 @@ const ALIASES = [
 ];
 // Folders the shared files import by relative path (deck/ui reaches ../../kernel/contracts and ../../lib/theme).
 // ui/views/logic reaches the shared expression rules (lib/expr, one copy for the kernel and the app).
-// ui/marks reaches the Deck's mark generators (deck/vendor/vyrecode) and the seed rule (lib/avatar-seed) by relative path.
+// ui/marks reaches the Deck's mark generators (web/vendor/vyrecode) and the seed rule (lib/avatar-seed) by relative path.
 const EXTRA_WATCH = [path.resolve(here, "../../kernel/identity"), path.resolve(here, "../../names/worker"), path.resolve(here, "../../kernel/contracts"), path.resolve(here, "../../lib/theme"), path.resolve(here, "../../lib/avatar-seed"), path.resolve(here, "../../lib/wink-code"), path.resolve(here, "../../lib/expr")];
 
 const config = getDefaultConfig(here);

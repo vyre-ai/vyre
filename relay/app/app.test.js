@@ -97,7 +97,7 @@ test("release: the loader is sealed, pinned by SRI in its page, and sw.js carrie
   assert.ok(fs.existsSync(path.join(out, "apple-touch-icon.png")));
   const signedList = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8")).files;
   for (const f of ["manifest.webmanifest", "icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"]) assert.ok(f in signedList, `${f} is in the signed loader`);
-  assert.equal(Buffer.compare(fs.readFileSync(path.join(out, "icon-192.png")), fs.readFileSync(path.join(import.meta.dirname, "..", "..", "deck", "icon-192.png"))), 0, "icons are copied as bytes, not text");
+  assert.equal(Buffer.compare(fs.readFileSync(path.join(out, "icon-192.png")), fs.readFileSync(path.join(import.meta.dirname, "..", "..", "web", "icon-192.png"))), 0, "icons are copied as bytes, not text");
   assert.match(fs.readFileSync(path.join(out, "manifest.js"), "utf8"), /"\.\/client\/bytes\.js"/);
 });
 
@@ -312,8 +312,8 @@ test("release: the sealed loader ships the scanner and the in-app scan, and ever
   const out = path.join(dir, "out");
   await loader({ release: "1.0.0", key, out });
   const m = JSON.parse(fs.readFileSync(path.join(out, "release-manifest.json"), "utf8"));
-  for (const f of ["pairing.js", "fragment.js", "relay/wink/page.js", "relay/wink/flow.js", "relay/wink/wink.css", "deck/js/scan.js", "deck/js/scan-worker.js", "deck/js/haptics.js"]) assert.ok(m.files[f], `${f} is sealed in the loader`);
-  assert.ok(!m.files["deck/js/api.js"] && !m.files["deck/js/app.js"], "no Deck API client or shell in the app loader");
+  for (const f of ["pairing.js", "fragment.js", "relay/wink/page.js", "relay/wink/flow.js", "relay/wink/wink.css", "web/js/scan.js", "web/js/scan-worker.js", "web/js/haptics.js"]) assert.ok(m.files[f], `${f} is sealed in the loader`);
+  assert.ok(!m.files["web/js/api.js"] && !m.files["deck/js/app.js"], "no Deck API client or shell in the app loader");
   const { specifiers } = await import("../wink/closure.js");
   for (const f of Object.keys(m.files).filter(f => /\.js$/.test(f))) {
     const dirOf = path.posix.dirname(f);
@@ -331,7 +331,7 @@ test("pairing.js, from the sealed tree: the in-app scanner hands back the decode
   keygen(key);
   const out = path.join(dir, "out");
   await loader({ release: "1.0.0", key, out });
-  const { install } = await import("../../deck/test/fake-dom.js");
+  const { install } = await import("../../web/test/fake-dom.js");
   install();
   /** @type {any} */ (globalThis).matchMedia = () => ({ matches: true });
   /** @type {any} */ (document).visibilityState = "visible";

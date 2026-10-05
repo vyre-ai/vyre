@@ -4,7 +4,7 @@
 // that ADR's Consequences ("launch renders vyrecode2.js's output on the Deck's pairing screen")
 // plus the live/pairing variant app-design flagged as still needed from launch: a shimmer while
 // the ticket is valid, and a visible countdown/expiry state once it's stale. Geometry, palette
-// and the encode/decode math are app-design's vendored code (deck/vendor/vyrecode/), unchanged;
+// and the encode/decode math are app-design's vendored code (web/vendor/vyrecode/), unchanged;
 // everything in this file is launch's own.
 //
 // tailnet's relay.pair.ticket is built (work/tailnet 2990a810, sent to their reviewer): mint {}
@@ -57,7 +57,7 @@ export function ticketLevels(ticket) {
 export function ticketRingSvg(ticket, { userOption = 0, theme = "dark", size = 280 } = {}) {
   const levels = ticketLevels(ticket);
   const svg = renderCode2(levels, { userOption, style: "ticksSunburst", theme, size });
-  // app-design's locked renderer (deck/vendor/vyrecode) positions the face in one group; the dance
+  // app-design's locked renderer (web/vendor/vyrecode) positions the face in one group; the dance
   // needs an untransformed inner group to animate, so it is added here rather than in the vendor copy.
   return svg.replace(/(<g transform="translate\([^)]*\) scale\([^)]*\)">)([\s\S]*)(<\/g>\s*<\/svg>)$/, '$1<g class="vyrecode-face">$2</g>$3');
 }

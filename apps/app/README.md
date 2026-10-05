@@ -9,7 +9,8 @@ It has its own `package.json` and `package-lock.json` and is not part of the roo
 ```sh
 npm install            # in apps/app
 npm run web            # dev server, stop it when done
-npm run export:web     # static SPA in dist/, base path /app
+npm run export:web:root # static SPA in dist/ for serving at / (what the box serves, and the release builds)
+npm run export:web     # the same for the base path /app (config app.root off)
 npm run typecheck      # tsc --noEmit
 npm test               # node --test, DOM-free tests under perf/ and src/
 ```
@@ -23,7 +24,7 @@ On a shared Mac, run exports through the team build lock (<team-dir>/buildlock.s
 - `src/state/connection.ts`: R3 state (`live`, `reconnecting` only after the first failed retry, `offline`) and outbox rows (`sending` at once, gone on the box's answer, `refused` kept with its reason).
 - `src/auth/`: the person session. At the box's origin the `__Host-vyre_person` cookie does it. At another origin, `person.ts` (PKCE, the signed `x-vyre-proof`, pure and Node-tested) and `person.web.ts` (a non-extractable P-256 key and the token in IndexedDB, the redirect to the box's `/person/signin`). The key goes to `/v1/person/token` as a public JWK, which is what the box checks. On the phone, `person.native.ts` keeps the key in hardware through `modules/vyre-signer` (below), the token in expo-secure-store, and signs in through the system's authentication browser (expo-web-browser).
 - `modules/vyre-signer/`: a local Expo module, autolinked from `modules/`. Android Keystore EC P-256 (StrongBox where present, else the TEE) and iOS Secure Enclave keys: `vyre.person` signs every request, `vyre.human` needs a strong biometric per signature and signs HUMAN_ONLY calls as `x-vyre-human`. `ensureKey`, `sign` (DER, base64url; `derToP1363` in person.ts converts it), `deleteKey`, `info`, `randomBytes`. Only `.native.ts` files import it, so the web build never does.
-- `metro.config.js` and `tsconfig.json`: `@vyre/resilience/*` resolves to `../../core/resilience/*` and `@vyre/chat-core/*` to `../../deck/chat/core/*` (chat's session core, imported as it is, never copied); Metro watches only those folders. Files the Node tests load import them by relative path instead.
+- `metro.config.js` and `tsconfig.json`: `@vyre/resilience/*` resolves to `../../core/resilience/*` and `@vyre/chat-core/*` to `src/chat/core/*` (chat's session core); Metro watches only those folders. Files the Node tests load import them by relative path instead.
 - `src/state/`: Needs you (`needs-model.ts`: held Gate items and open asks as one row, oldest first, events applied, the cache read back), the swipe's answers (`answers.ts`: held for the 4 s Undo, then through the outbox; outbox.js has no cancel, so an answer reaches it only once Undo is over, and leaving the page flushes it), `live.ts` (cache first, then the box's reads and events) and the view cache (`cache.web.ts`, web.js cacheStore).
 - `src/ui/SwipeRow.*`: the approve swipe. Web: a scroll-snap strip (Approve, the row, Deny) on the compositor; native: Gesture Handler and Reanimated.
 - `src/session/`: a session over chat core session-state, grouping, pace, window, composer-state, commands and caps, held to the native bar (`docs/design/native-bar.md`): one frame clock publishes every change and every streaming reply's reveal (`store.ts`, `reveal.js`), Send paints the row under `u:<uuid>` at once (`send.js`), the session opens from this device's view cache then reads since its newest event, and the draft is kept per session. Web: a `column-reverse` scroller windowed above 100 rows (`Transcript.web.tsx`), the composer moved by one `--vyre-kb` inset from visualViewport (`Frame.web.tsx`); native: an inverted FlatList and KeyboardAvoidingView.

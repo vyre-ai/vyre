@@ -49,8 +49,6 @@ brief.
 
 In the Deck, the search box at the top (Command-K) runs the same search:
 
-![The Deck's search for harlow intake: matching turns from the Harlow sessions, each with its session, project and date](shots/deck-search.png)
-
 ### Keep the index up to date
 
 Vyre indexes on its own: a session a moment after each Claude Code turn ends, and every folder
@@ -118,8 +116,6 @@ In the Deck, **Memory** (`/memory`) draws the graph as a floor plan, one room pe
 people, things and threads inside and each fact as a gold dot on its link. Choose a fact to see
 its source turns. **Now** shows **Memory learned today**, each fact with its source thread.
 
-![Memory in the Deck as a map: rooms for Northwind Bakery and Harlow Legal with Sam Okafor, Dana Reyes, their things and threads, and each fact as a gold dot](shots/deck-memory.png)
-
 > [!SNAG] The Deck says "Memory is not available."
 > The Memory view could not read the graph from Vyre. Choose **Try again**. If it keeps failing,
 > check that Vyre runs (`vyre status`) and that the memory module started (`vyre modules`).
@@ -132,8 +128,6 @@ to find, the site's own API calls and its notes. Each row has **Wrong?**, which 
 item. **Forget** on a site removes everything Vyre learned about it. Neither asks first, because
 each can be undone for 24 hours: the line says "Forgot ... Undo", and **Recently forgotten** at
 the bottom lists what can still be brought back, on any device.
-
-![The Sites tab in Memory: Harlow CRM with its host, its family, and what Vyre for Chrome has learned about it, with a Forget button.](shots/deck-memory-sites.png)
 
 ## How projects keep memory apart
 

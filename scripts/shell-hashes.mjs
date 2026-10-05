@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // @ts-check
-// shell-hashes: writes DIR/shell.json, the sha256 of every code file (js, css, html) the daemon serves for the Deck plus deck/sw.js's SHELL list
+// shell-hashes: writes DIR/shell.json, the sha256 of every code file (js, css, html) the daemon serves for the pre-app pages in web/
 // ({ v: 1, files: [[path, hex], ...] }, sorted). The release runs this into dist/ BEFORE
 // scripts/sign-manifest.mjs, so SHA256SUMS lists shell.json and the one release signature covers
-// it. The service worker checks a new shell against it (deck/sw.js verifyShell, reviewer N-H1).
-// sw.js itself is left out: it is stamped with the build when served.
+// it.
 //
 //   node scripts/shell-hashes.mjs DIR [VERSION]   (VERSION defaults to package.json's; the worker
 //   refuses a release older than the highest it has accepted)
@@ -16,10 +15,10 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Directories that are not the Deck's served code: tests and fixtures. The onboarding and sign-in pages ARE listed (the worker checks them too). */
+/** Directories that are not served code: tests and fixtures. The onboarding and sign-in pages ARE listed (the worker checks them too). */
 const SKIP_DIR = new Set(["test", "fixtures", "node_modules"]);
 const CODE = /\.(m?js|css|html)$/;
-// Served from the repo root, not deck/ (core/daemon/index.js): the resilience files, the avatar rule, and the relay client's browser closure.
+// Served from the repo root, not web/ (core/daemon/index.js): the resilience files, the avatar rule, and the relay client's browser closure.
 const ROOT_FILES = ["core/resilience/backoff.js", "core/resilience/sse.js", "core/resilience/stream.js", "core/resilience/outbox.js", "core/resilience/web.js",
   "lib/avatar-seed/index.js", "lib/wink-code/geometry.js", "lib/wink-code/payload.js", "lib/wink-code/rs.js", "lib/wink-code/vyrecode2.js", "lib/wink-code/identity.js", ...["client", "channel", "bytes", "response", "sse", "webcrypto", "noise"].map((n) => `relay/client/${n}.js`)];
 
@@ -39,36 +38,25 @@ const twin = (p) => (p === "/" ? ["/index.html"] : p.endsWith("/index.html") && 
 
 /** The real files served as code (URL paths), "/" for index.html included, no twins. @param {string} [repo] */
 function realCode(repo = REPO) {
-  return [...new Set([...walk(path.join(repo, "deck"), "").map((r) => "/" + r), ...(fs.existsSync(path.join(repo, "web")) ? walk(path.join(repo, "web"), "").map((r) => "/" + r) : []), "/", ...ROOT_FILES.map((f) => "/" + f)])].sort();
+  return [...new Set([...(fs.existsSync(path.join(repo, "web")) ? walk(path.join(repo, "web"), "").map((r) => "/" + r) : []), ...ROOT_FILES.map((f) => "/" + f)])].sort();
 }
 
-/** Every code path the daemon serves for the Deck, addresses that serve the same file included: what the worker holds a signed shell to. @param {string} [repo] */
+/** Every code path the daemon serves for the pre-app pages, addresses that serve the same file included: what the worker holds a signed shell to. @param {string} [repo] */
 export function codePaths(repo = REPO) {
   const real = realCode(repo);
   return [...new Set([...real, ...real.flatMap(twin)])].sort();
 }
 
-/** The shell's precache paths, as sw.js lists them (sw.js itself is stamped per build, so it is left out). @param {string} [repo] */
-export function shellPaths(repo = REPO) {
-  const src = fs.readFileSync(path.join(repo, "deck", "sw.js"), "utf8");
-  const m = /const SHELL = \[([\s\S]*?)\];/.exec(src);
-  if (!m) throw new Error("could not find sw.js's SHELL list");
-  return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]).filter((p) => p !== "/sw.js");
-}
-
-/** web/ (the pre-app pages, ahead of the Deck at the same address) first, then the repo-root files, then deck/. */
-const fileOf = (/** @type {string} */ repo, /** @type {string} */ p) => {
-  const web = path.join(repo, "web", p.slice(1));
-  if (p !== "/" && fs.existsSync(web) && fs.statSync(web).isFile()) return web;
-  return ROOT_FILES.includes(p.slice(1)) ? path.join(repo, p.slice(1)) : path.join(repo, "deck", p === "/" ? "index.html" : p.slice(1));
-};
+/** web/ (the pre-app pages) first, then the repo-root files the daemon serves beside them. */
+const fileOf = (/** @type {string} */ repo, /** @type {string} */ p) =>
+  ROOT_FILES.includes(p.slice(1)) ? path.join(repo, p.slice(1)) : path.join(repo, "web", p.slice(1));
 
 /**
- * Every served code file (js, mjs, css, html) plus every precached shell file (images and fonts), with its sha256.
+ * Every served code file (js, mjs, css, html), with its sha256.
  * @param {string} [repo] @param {string} [version] @returns {{ v: 1, version: string, files: [string, string][] }}
  */
 export function shellHashes(repo = REPO, version = JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).version) {
-  const real = [...new Set([...realCode(repo), ...shellPaths(repo)])];
+  const real = realCode(repo);
   /** @type {Map<string, string>} */ const hashes = new Map();
   for (const p of real) {
     const h = crypto.createHash("sha256").update(fs.readFileSync(fileOf(repo, p))).digest("hex");

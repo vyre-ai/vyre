@@ -88,14 +88,14 @@ for f in "$src"/relay/client/*.js; do
   case "$f" in *.test.js) continue ;; esac
   cp "$f" "$here/site/setup/relay/"
 done
-cp "$src/deck/css/tokens.css" "$here/site/setup/tokens.css"
+cp "$src/web/css/tokens.css" "$here/site/setup/tokens.css"
 # The phone's ring (the same drawing the Deck uses for Wink) and the renderer it needs, kept in the folder shape
 # its own imports expect.
 rm -rf "$here/site/setup/deck"
 mkdir -p "$here/site/setup/deck/js" "$here/site/setup/deck/vendor/vyrecode"
-cp "$src/deck/js/phone-code.js" "$here/site/setup/deck/js/"
-cp "$src"/deck/vendor/vyrecode/*.js "$here/site/setup/deck/vendor/vyrecode/"
-cp "$src/deck/vendor/qrcode.js" "$here/site/setup/deck/vendor/"
+cp "$src/web/js/phone-code.js" "$here/site/setup/deck/js/"
+cp "$src"/web/vendor/vyrecode/*.js "$here/site/setup/deck/vendor/vyrecode/"
+cp "$src/web/vendor/qrcode.js" "$here/site/setup/deck/vendor/"
 # Where a provider's sign-in page may be (sessions' list); the page falls back to any plain https address until it exists.
 rm -f "$here/site/setup/signin-hosts.json"
 [ -f "$src/lib/providers/signin-hosts.json" ] && cp "$src/lib/providers/signin-hosts.json" "$here/site/setup/signin-hosts.json"
@@ -103,10 +103,10 @@ rm -f "$here/site/setup/signin-hosts.json"
 rm -rf "$here/site/setup/fonts"
 mkdir -p "$here/site/setup/fonts"
 # The app no longer bundles text fonts (the platform font everywhere), so the setup page's files come from the Deck's own copies when the app's are gone.
-font() { # font TARGET-NAME APP-PATH DECK-FILE
+font() { # font TARGET-NAME APP-PATH WEB-FILE
   if [ -f "$src/apps/app/assets/fonts/$2" ]; then cp "$src/apps/app/assets/fonts/$2" "$here/site/setup/fonts/$1"
-  elif [ -f "$src/deck/fonts/$3" ]; then cp "$src/deck/fonts/$3" "$here/site/setup/fonts/$1"
-  else echo "build-site: no font for $1 (neither apps/app/assets/fonts/$2 nor deck/fonts/$3)" >&2; exit 1; fi
+  elif [ -f "$src/web/fonts/$3" ]; then cp "$src/web/fonts/$3" "$here/site/setup/fonts/$1"
+  else echo "build-site: no font for $1 (neither apps/app/assets/fonts/$2 nor web/fonts/$3)" >&2; exit 1; fi
 }
 font InstrumentSans-Regular.woff2 instrument-sans/InstrumentSans-Regular.woff2 instrument-sans-latin.woff2
 font InstrumentSans-SemiBold.woff2 instrument-sans/InstrumentSans-SemiBold.woff2 instrument-sans-latin.woff2

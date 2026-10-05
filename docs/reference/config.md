@@ -104,7 +104,6 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CORE_SOCKET` | vyre-core's socket. Default `/var/run/vyre/vyre-core.sock`, in a folder root makes and _vyre owns. | `core/vyre-core/main.js` |
 | `VYRE_CORE_STRICT` | `0` lets vyre-core start from a tree its owner could write (dev and Linux tests only). On by default on a Mac. | `core/vyre-core/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
-| `VYRE_DECK_FIXTURES` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
 | `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |

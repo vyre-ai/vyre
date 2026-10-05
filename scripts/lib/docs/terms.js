@@ -51,7 +51,7 @@ export const CONCEPTS = [
   { name: "box", page: "concepts/box-and-mac.md", match: /\bbox(es)?\b/i },
   { name: "brief", page: "using/projects-and-threads.md#see-a-project-and-its-brief", match: /\bbriefs?\b/i, code: "core/harness/index.js" },
   { name: "Capsule", page: "using/capsule.md", match: /\bCapsule\b/, code: "local/capsule/index.js" },
-  { name: "Chat", page: "using/chat.md", match: /\bChat\b/, code: "deck/chat/index.js" },
+  { name: "Chat", page: "using/chat.md", match: /\bChat\b/, code: "apps/app/src/chat/ChatScreen.tsx" },
   { name: "computer", page: "using/agents.md#give-an-agent-a-computer", match: /\bcomputers?\b/i, code: "core/computers/index.js" },
   { name: "connector", page: "using/connectors.md", match: /\bconnectors?\b/i },
   { name: "Deck", page: "using/deck.md", match: /\bDeck\b/, code: "deck/index.html" },
@@ -60,7 +60,7 @@ export const CONCEPTS = [
   { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "core/events/index.js" },
   { name: "floor", page: "concepts/floor.md", match: /\bfloor\b/i },
   { name: "Gate", page: "using/deck.md#approve-or-change-a-held-draft", match: /\bGate\b/, code: "core/gate/index.js" },
-  { name: "Glass", page: "using/glass.md", match: /\bGlass\b/, code: "deck/glass/index.js" },
+  { name: "Glass", page: "using/glass.md", match: /\bGlass\b/, code: "apps/app/screens/glass/GlassScreen.tsx" },
   { name: "gold marking", page: "using/memory.md#the-gold-marking", match: /\bgold\b/i },
   { name: "grant", page: "using/vault.md#let-an-agent-module-or-watcher-use-an-item", match: /\bgrant(?:s|ed|ing)?\b/i, code: "core/vault/index.js" },
   { name: "harness", page: "concepts/modules.md#kinds-of-module", match: /\bharness\b/i, code: "core/harness/index.js" },
@@ -306,14 +306,13 @@ export function envVars(root) {
   return out;
 }
 
-/** The Deck's views and their routes, and the onboarding pages. */
+/** The Deck's views and their routes (when a checkout still has the Deck), and the pre-app pages. */
 export function screens(root) {
   const out = [];
   let app = "";
-  try { app = fs.readFileSync(path.join(root, "deck/js/app.js"), "utf8"); } catch { return out; }
+  try { app = fs.readFileSync(path.join(root, "deck/js/app.js"), "utf8"); } catch { /* the Deck is gone: only the pre-app pages are listed */ }
   const routes = app.match(/\bconst ROUTES\s*=\s*\[/);
-  if (!routes) return out;
-  const lit = balanced(app, /** @type {number} */ (routes.index) + routes[0].length - 1) || "";
+  const lit = routes ? balanced(app, /** @type {number} */ (routes.index) + routes[0].length - 1) || "" : "";
   /** @type {Map<string, string[]>} */ const byView = new Map();
   for (const m of lit.matchAll(/\[\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\]/g)) {
     if (!byView.has(m[2])) byView.set(m[2], []);

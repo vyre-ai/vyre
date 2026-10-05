@@ -1,5 +1,5 @@
 // @ts-check
-// The terminal QR code: the vendored encoder (deck/vendor/qrcode.js) at level M in byte mode,
+// The terminal QR code: the vendored encoder (web/vendor/qrcode.js) at level M in byte mode,
 // pinned for a box address and a relay pair URL longer than version 10 holds, plus the parts a
 // scanner reads first and the half-block drawing.
 

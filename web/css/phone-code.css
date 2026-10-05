@@ -30,7 +30,7 @@
 /* The avatar's dance on device.paired (the user, 28 Sep), before "Your phone is connected": NOT
    launch's own animation — ui-ux's motion prototype (scratchpad/avatar-motion/avatar-motion.html,
    the "goal done" moment), played on `.vyrecode-face` (the ring's own face group, see
-   deck/vendor/vyrecode/vyrecode2.js) instead of the prototype's small avatar tile, plus the same
+   web/vendor/vyrecode/vyrecode2.js) instead of the prototype's small avatar tile, plus the same
    confetti burst. `deck/js/phone-code.js`'s `playDance()` adds/removes these classes and the
    confetti elements; nothing here plays on a loop or without that call. transform-box: fill-box
    so the hop scales/translates around the face's own centre regardless of the outer group's

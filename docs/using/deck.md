@@ -63,8 +63,6 @@ The Deck draws its first screen at once. It asks the box whether setup is finish
 most a moment for the answer: if the answer comes later and says there is no owner yet, the page
 then moves to the onboarding.
 
-![Now in the Deck: two things wait for you, an email to dana@harlowlegal.com and a spend for Northwind Bakery, both held at the Gate, with Send and Discard](shots/deck-now.png)
-
 ## Search what was said
 
 Type in the search box at the top (Command-K) to search every session's words, the same search
@@ -78,8 +76,6 @@ When an agent wants to send something, the Gate holds it and Now lists it in the
 2. Click a field to edit it: To, Subject and Body for an email; for a web request, Method, URL,
    Headers and Body. The fields read as text until you click them.
 3. Press Send to send exactly what is on screen, or Discard to drop it.
-
-![A held email opened in the Deck: who it goes to, the subject and body you can edit, and Send or Discard](shots/deck-held.png)
 
 Send, Discard, Allow and Deny are a person's actions: agents and Claude's sessions can't press
 them. Only sending, posting, paying or deleting asks you to prove you are there. The first Send
@@ -120,17 +116,11 @@ instead: type its name, tick **Give it its own computer, from the pool.** if you
 press **Create**. The assistant is made on every project with the Claude sign-in onboarding
 stored, the same as onboarding would have made it.
 
-![kit's page in the Deck: its job, the projects it works in, a box to talk to it, what wakes it, its usage and its model](shots/deck-agent.png)
-
 ## Finish setup, or change it
 
 Settings starts with Setup: every onboarding step (you, Claude Code, Tailscale, your address,
 your history, your devices) and whether it is done. **Finish** beside a skipped step opens the
 onboarding at that step. `vyre index` does the history step from a terminal.
-
-![Settings in the Deck: the six setup steps, each marked To do or Done with a Finish or Open button, then your name and address](shots/deck-settings.png)
-
-![Settings, Your devices: the iPhone alex-iphone, offline in Tailscale with how to turn it back on, and the Mac alex-mbp online, with Add a device.](shots/settings-devices.png)
 
 Beside each step is the command that does the same from a terminal: `vyre up` (it picks up at
 the first step not finished) or, for history, `vyre index`.
