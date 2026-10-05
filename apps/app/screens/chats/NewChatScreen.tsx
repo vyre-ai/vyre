@@ -33,22 +33,25 @@ export default function NewChatScreen() {
     })();
     return () => { live = false; };
   }, []);
-  // A chat made on a device that has an agreement key is sealed from the start: this device makes the ring (the server never makes a key). With no key, or no way to read who I am, the chat stays in the clear.
-  const ringFor = async (): Promise<{ id: string; ring: unknown } | null> => {
-    try {
-      const me = await getAgreeKey();
-      if (!me) return null;
-      const who = await tool<{ person?: string }>("records.me", {});
-      const { holders } = await holdersFor((t, i) => tool(t, i ?? {}), who?.person ? [who.person] : [], me);
-      return await newChatRing(`chat_${newUuid()}`, holders);
-    } catch { return null; }
+  // Every chat is private: this device makes the ring (the server never makes a key). It does not start the chat quietly short of that: no key on this device, this device's agree point not yet published on its
+  // identity list, or a participant whose devices cannot agree each stop it with a plain line.
+  const ringFor = async (): Promise<{ id: string; ring: unknown } | { say: string }> => {
+    const me = await getAgreeKey();
+    if (!me) return { say: "This device can't start private chats yet." };
+    const who = await tool<{ person?: string }>("records.me", {}).catch(() => null);
+    if (!who?.person) return { say: "Vyre could not tell who you are, so the chat did not start." };
+    const r = await holdersFor((t, i) => tool(t, i ?? {}), [who.person], me);
+    if (!r.listed) return { say: "This device isn't ready for private chats yet." };
+    if (r.without.length) return { say: "Some devices can't open private chats yet." };
+    return newChatRing(`chat_${newUuid()}`, r.holders);
   };
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
     setBusy(true); setErr("");
     try {
       const made = await ringFor();
-      const id = chatIdOf(await tool("work.chat.create", { ...createInput({ agent }), ...(made ?? {}) }));
+      if ("say" in made) { setErr(made.say); return; }
+      const id = chatIdOf(await tool("work.chat.create", { ...createInput({ agent }), ...made }));
       if (!id) throw new Error("The chat started but Vyre did not say which one. Open it from Chat.");
       // The first words are sent into the new chat (work.chat.create takes none); that send starts the chat's run. If it fails they wait in the chat's box instead.
       if (text.trim()) {

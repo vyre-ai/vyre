@@ -12,29 +12,33 @@ export function jwkOfAgree(agree) {
 }
 
 /**
- * Every device that may read a chat: this device, and each device of each participant that carries an agreement key on its identity list entry (spaces.identity.state { person }: { entries: [{ eid, kind, agree? }] }).
- * A participant with no device that can agree is named, because their chat would be unreadable to them.
- * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {readonly string[]} people person ids @param {{ holder: string, jwk: any }} me
- * @returns {Promise<{ holders: Record<string, any>, without: string[] }>}
+ * Every device that may read a chat: this device, and each device of each participant that carries an agreement key on its identity list entry (spaces.identity.devices { person }: { devices: [{ eid, agree? }] },
+ * the public agree points of people who share a space). Nothing is made quietly short: `without` names every participant none of whose devices can agree (or whose list cannot be read), and `listed` says whether
+ * THIS device's own agree point is published on its identity list, because other devices find it there. The caller refuses to make the ring until both are right.
+ * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call @param {readonly string[]} people person ids (this person first) @param {{ holder: string, jwk: any }} me
+ * @returns {Promise<{ holders: Record<string, any>, without: string[], listed: boolean }>}
  */
 export async function holdersFor(call, people, me) {
   /** @type {Record<string, any>} */ const holders = { [me.holder]: me.jwk };
   /** @type {string[]} */ const without = [];
+  let listed = false;
   for (const person of people) {
-    /** @type {any} */ let state = null;
-    try { state = await call("spaces.identity.state", { person }); } catch { state = null; } // a list that cannot be read leaves that person without a device here
-    const entries = Array.isArray(state?.entries) ? state.entries : [];
+    /** @type {any} */ let answer = null;
+    try { answer = await call("spaces.identity.devices", { person }); } catch { answer = null; } // a list that cannot be read leaves that person without a device that can agree
+    const devices = Array.isArray(answer?.devices) ? answer.devices : [];
     let found = 0;
-    for (const e of entries) {
-      if (!e || e.kind !== "device" || typeof e.agree !== "string") continue;
-      const jwk = jwkOfAgree(e.agree);
+    for (const d of devices) {
+      if (!d || typeof d.agree !== "string") continue;
+      const jwk = jwkOfAgree(d.agree);
       if (!jwk) continue;
-      holders[await fingerprint(jwk)] = jwk;
+      const f = await fingerprint(jwk);
+      holders[f] = jwk;
+      if (f === me.holder) listed = true;
       found++;
     }
     if (!found) without.push(person);
   }
-  return { holders, without };
+  return { holders, without, listed };
 }
 
 /** The ring for a new chat, made on this device: { id, ring } to pass to work.chat.create { id, people, agents, ring }. @param {string} id @param {Record<string, any>} holders */

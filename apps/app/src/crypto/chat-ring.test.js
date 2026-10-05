@@ -20,18 +20,22 @@ test("an identity entry's agree point reads back as the device's public JWK; any
   assert.equal(jwkOfAgree("not base64 !!"), null);
 });
 
-test("the holders of a new chat are this device and every participant device with an agree key; a participant with none is named", async () => {
+test("the holders of a new chat are this device and every participant device with an agree point; a participant with none is named; this device must be published", async () => {
   const me = await device(), bob1 = await device(), bob2 = await device();
   const call = async (tool, input) => {
-    assert.equal(tool, "spaces.identity.state");
-    if (input.person === "per_bob") return { entries: [{ eid: "e1", kind: "device", agree: bob1.point }, { eid: "e2", kind: "device", agree: bob2.point }, { eid: "e3", kind: "code" }] };
-    return { entries: [{ eid: "e9", kind: "device" }] };
+    assert.equal(tool, "spaces.identity.devices");
+    if (input.person === "per_me") return { devices: [{ eid: "e0", agree: me.point }] };
+    if (input.person === "per_bob") return { devices: [{ eid: "e1", agree: bob1.point }, { eid: "e2", agree: bob2.point }, { eid: "e3" }] };
+    return { devices: [{ eid: "e9" }] };
   };
-  const { holders, without } = await holdersFor(call, ["per_bob", "per_old"], { holder: me.holder, jwk: me.pub });
-  assert.deepEqual(Object.keys(holders).sort(), [me.holder, bob1.holder, bob2.holder].sort());
-  assert.deepEqual(without, ["per_old"]);
+  const r = await holdersFor(call, ["per_me", "per_bob", "per_old"], { holder: me.holder, jwk: me.pub });
+  assert.deepEqual(Object.keys(r.holders).sort(), [me.holder, bob1.holder, bob2.holder].sort());
+  assert.deepEqual(r.without, ["per_old"]);
+  assert.equal(r.listed, true);
+  const unpublished = await holdersFor(async () => ({ devices: [{ eid: "e0" }] }), ["per_me"], { holder: me.holder, jwk: me.pub });
+  assert.deepEqual([unpublished.listed, unpublished.without], [false, ["per_me"]], "this device's agree point is not on its list yet");
   const refused = await holdersFor(async () => { throw new Error("no such tool"); }, ["per_x"], { holder: me.holder, jwk: me.pub });
-  assert.deepEqual([Object.keys(refused.holders), refused.without], [[me.holder], ["per_x"]], "a list that cannot be read still gives a ring for this device");
+  assert.deepEqual([refused.without, refused.listed], [["per_x"], false], "a list that cannot be read is named, never skipped");
 });
 
 test("a ring made for a new chat opens on each holder's device and nowhere else", async () => {
