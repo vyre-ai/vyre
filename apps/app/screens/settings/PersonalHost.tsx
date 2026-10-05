@@ -4,6 +4,7 @@ import { tool } from "../../src/real/box";
 import { spaceName } from "../../src/state/space-name.js";
 import { capChoices, hostChoices, storageLine } from "../shell/basic.js";
 import { useMembers } from "../spaces/state";
+import { KeepRunning } from "./KeepRunning";
 
 /** Where a Personal space keeps its reminders, notes and to-dos (encrypted): one of the Cloud spaces the person is in. The box answers the choices and the current one (spaces.tier); the choice is spaces.personal-host.set. */
 export function PersonalHost() {
@@ -18,7 +19,7 @@ export function PersonalHost() {
   useEffect(() => { if (current) tool("spaces.storage.usage", { space: current }).then(setUsage).catch(() => setUsage(null)); }, [current]);
   const line = current ? storageLine(usage, options.find(([id]) => id === current)?.[1] ?? "your team") : null;
   if (!options.length) return null;
-  if (options.length < 2) return line ? <Card><Text tone="muted">{line}</Text></Card> : null;
+  if (options.length < 2) return line || current ? <Card className="gap-s2">{line ? <Text tone="muted">{line}</Text> : null}{current ? <KeepRunning space={current} name={options[0]?.[1] ?? "Your team"} /> : null}</Card> : null;
   const set = async (space: string) => {
     setProblem("");
     try { await tool("spaces.personal-host.set", { space }); showToast("Your personal items are kept there now."); load(); }
@@ -30,6 +31,7 @@ export function PersonalHost() {
       <Select label="Kept on" value={current ?? ""} options={options} onChange={(v) => void set(v)} />
       {line ? <Text tone="muted">{line}</Text> : null}
       {owner && current ? <CapSetter space={current} usage={usage} /> : null}
+      {current ? <KeepRunning space={current} name={options.find(([id]) => id === current)?.[1] ?? "Your team"} /> : null}
       {problem ? <Text tone="err">{problem}</Text> : null}
     </Card>
   );
