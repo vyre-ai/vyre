@@ -2,6 +2,7 @@
 // WebCrypto shim and the presence key, and writes what it saw on screen and to the log as KEYCHECK lines. A release build renders nothing.
 import { useEffect, useState } from "react";
 import { ScrollView, Text } from "react-native";
+import { tokens } from "../src/theme/tokens";
 import { ed25519 } from "@noble/curves/ed25519";
 import { generateDeviceKey } from "../src/identity/keys.js";
 import { sealRecord, openRecord } from "../src/identity/seal.js";
@@ -56,7 +57,7 @@ export default function KeyCheck() {
   }, []);
   if (!ON) return null;
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#fff" }} contentContainerStyle={{ padding: 16, paddingTop: 80 }}>
+    <ScrollView style={{ flex: 1, backgroundColor: tokens.color.paper.panel }} contentContainerStyle={{ padding: 16, paddingTop: 80 }}>
       <Text style={{ fontSize: 18, fontWeight: "600", marginBottom: 8 }}>KEYCHECK</Text>
       {lines.map((l, i) => <Text key={i} style={{ fontSize: 11, marginBottom: 4 }}>{l}</Text>)}
     </ScrollView>

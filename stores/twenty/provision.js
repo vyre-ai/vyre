@@ -8,9 +8,11 @@
 // tested without Docker. testbox runs it for real (stores/twenty/live).
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
+import net from "node:net";
 
 export const TWENTY_IMAGE = "twentycrm/twenty";
 /** The release this build was tested against. Upgrades are explicit. */
@@ -19,6 +21,8 @@ export const TWENTY_TESTED_TAG = "v2.44.0";
 /** The Twenty image reference a Space runs: tag and digest. An upgrade names a full reference like this, never a bare tag. */
 export const TWENTY_TESTED_REF = `${TWENTY_IMAGE}:${TWENTY_TESTED_TAG}@sha256:01fb6d2c00397976fd7613dbeb9703b514b52fb6270339b7a326a2a975d15b26`;
 export const POSTGRES_IMAGE = "postgres:16.4-alpine@sha256:5660c2cbfea50c7a9127d17dc4e48543eedd3d7a41a595a2dfa572471e37e64c";
+/** The loopback proxy a Mac server publishes Twenty through (alpine/socat 1.8.0.3, index digest: linux arm64 and amd64). Twenty itself never gets a published port or an outbound network. */
+export const PROXY_IMAGE = "alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e";
 export const REDIS_IMAGE = "redis:7.4-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499";
 /** Is this a full, pinned image reference: name, tag and sha256 digest? @param {unknown} r */
 export const isPinnedRef = r => typeof r === "string" && /^[a-z0-9][a-z0-9./_-]*:[A-Za-z0-9_][A-Za-z0-9_.-]*@sha256:[0-9a-f]{64}$/.test(r);
@@ -41,21 +45,33 @@ export function names(space) {
  * A caller may give its own numbers.
  */
 export const MEMORY_PROFILES = Object.freeze({
+  // `tiny` is for ONE Space on a 4 GB server (the person never picks it: "auto" chooses by the machine's memory). Lower server and worker caps than `small`; a Node heap is set at 70% of each cap.
+  tiny: Object.freeze({ server: 1024, worker: 640, db: 192, redis: 64 }),
   small: Object.freeze({ server: 1536, worker: 1024, db: 256, redis: 96 }),
   standard: null,
 });
-/** @param {string | { server: number, worker: number, db: number, redis: number } | null | undefined} m */
-export function memoryOf(m) {
+/** Under this much total memory (MB) a Space gets the `tiny` profile, and a Linux server with no swap gets some. */
+export const TINY_BELOW_MB = 6144;
+/** The profile a machine of `totalMb` gets when nothing says otherwise: tiny under about 6 GB, small above. The person never sees a setting. @param {number} totalMb @returns {"tiny" | "small"} */
+export const autoProfile = (totalMb) => (Number.isFinite(totalMb) && totalMb > 0 && totalMb < TINY_BELOW_MB ? "tiny" : "small");
+/** @param {string | { server: number, worker: number, db: number, redis: number } | null | undefined} m @param {number} [totalMb] the machine's memory for "auto" (the running machine's by default) */
+export function memoryOf(m, totalMb = os.totalmem() / 1048576) {
   if (m === undefined || m === null) return null;
-  if (typeof m === "string") { if (!(m in MEMORY_PROFILES)) throw new Error(`memory is one of ${Object.keys(MEMORY_PROFILES).join(", ")} or four numbers`); return /** @type {any} */ (MEMORY_PROFILES)[m]; }
+  if (m === "auto") return MEMORY_PROFILES[autoProfile(totalMb)];
+  if (typeof m === "string") { if (!(m in MEMORY_PROFILES)) throw new Error(`memory is one of auto, ${Object.keys(MEMORY_PROFILES).join(", ")} or four numbers`); return /** @type {any} */ (MEMORY_PROFILES)[m]; }
   for (const k of ["server", "worker", "db", "redis"]) if (!Number.isInteger(/** @type {any} */ (m)[k]) || /** @type {any} */ (m)[k] < 32) throw new Error(`memory.${k} is whole megabytes, at least 32`);
   return m;
 }
 
 /**
- * The compose file for one Space. Pure. Nothing here publishes a port; the network is internal.
+ * The compose file for one Space. Pure. Nothing here publishes a port and the network is internal, except on a Mac server (`publish: "loopback"`): there a proxy container
+ * on a second, ordinary network publishes the server's port on 127.0.0.1 only, at TWENTY_HOST_PORT from .env. Twenty itself keeps the internal network alone (no outbound,
+ * no published port), because Docker cannot publish a port from an internal network, and a Mac's host cannot reach container addresses inside Colima's VM.
  * `memory` caps each container (a Node heap is set below its container's limit so it collects before the kernel kills it).
- * @param {{ space: string, image?: string, hookPort?: number, memory?: Parameters<typeof memoryOf>[0] }} o `image` is a full pinned reference (tag and digest)
+ * `golden`: a new Space starts from a saved, already migrated database (see findGolden): a one-shot `restore` service loads ./golden.dump into the empty database before the server starts, so the server's
+ * first boot runs no migrations. It is in the compose file only for that first start. `migrated` (also implied by `golden`) keeps the server from running the migration steps at every start: they take
+ * about 30 s each and the database is already at this image's version. An upgrade writes the compose file without it, so its first start does migrate.
+ * @param {{ space: string, image?: string, hookPort?: number, publish?: "loopback", golden?: boolean, migrated?: boolean, memory?: Parameters<typeof memoryOf>[0], totalMb?: number }} o `totalMb` is the machine's memory for the "auto" profile (the root helper passes the host's, since it runs this in a container). `image` is a full pinned reference (tag and digest)
  */
 export function composeFile(o) {
   const n = names(o.space);
@@ -75,10 +91,12 @@ export function composeFile(o) {
     'IS_EMAIL_VERIFICATION_REQUIRED: "false"',
     'IS_MULTIWORKSPACE_ENABLED: "false"',
   ];
-  const mem = memoryOf(o.memory);
+  const mem = memoryOf(o.memory, o.totalMb);
   const heap = (/** @type {number} */ mb) => `NODE_OPTIONS: "--max-old-space-size=${Math.max(96, Math.floor(mb * 0.7))}"`;
   const envBlock = (extra = [], /** @type {number | undefined} */ mb = undefined) => [...env, ...(mem && mb ? [heap(mb)] : []), ...extra].map((l) => `      ${l}`).join("\n");
-  const cap = (/** @type {number | undefined} */ mb) => (mem && mb ? `\n    mem_limit: ${mb}m\n    memswap_limit: ${mb}m` : "");
+  // on the tiny profile a container may spill half its cap into the server's swap (the helper turns swap on for a small server); every other profile has none
+  const swapOf = (/** @type {number} */ mb) => (mem === MEMORY_PROFILES.tiny ? mb + Math.floor(mb / 2) : mb);
+  const cap = (/** @type {number | undefined} */ mb) => (mem && mb ? `\n    mem_limit: ${mb}m\n    memswap_limit: ${swapOf(mb)}m` : "");
   return `# Generated by Vyre for the space "${o.space}". Do not edit: provisioning rewrites this file.
 name: ${n.project}
 services:
@@ -92,10 +110,10 @@ services:
       - server-data:/app/packages/twenty-server/.local-storage
       - ./empty-front:/app/packages/twenty-server/dist/front:ro
     environment:
-${envBlock([], mem?.server)}
+${envBlock(o.golden || o.migrated ? ['DISABLE_DB_MIGRATIONS: "true"'] : [], mem?.server)}
     depends_on:
       db: { condition: service_healthy }
-      redis: { condition: service_healthy }
+      redis: { condition: service_healthy }${o.golden ? "\n      restore: { condition: service_completed_successfully }" : ""}
     healthcheck: { test: "curl --fail http://localhost:3000/healthz", interval: 5s, timeout: 5s, retries: 80 }
   worker:
     image: \${TWENTY_IMAGE_REF:-${image}}
@@ -115,17 +133,35 @@ ${envBlock(['DISABLE_DB_MIGRATIONS: "true"'], mem?.worker)}
     volumes: [db-data:/var/lib/postgresql/data]
     environment: { POSTGRES_DB: default, POSTGRES_USER: postgres, POSTGRES_PASSWORD: "\${PG_PASSWORD}" }
     healthcheck: { test: "pg_isready -U postgres -h localhost -d default", interval: 5s, timeout: 5s, retries: 20 }
-  redis:
+${o.golden ? `  restore:
+    image: ${POSTGRES_IMAGE}
+    restart: "no"
+    networks: [store]
+    volumes: [./golden.dump:/golden.dump:ro]
+    environment: { PGPASSWORD: "\${PG_PASSWORD}", ADMIN_PASSWORD: "\${ADMIN_PASSWORD}" }
+    entrypoint: ["sh", "-c", "set -e; pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error /golden.dump; psql -h db -U postgres -d default -v ON_ERROR_STOP=1 <<'SQL'\\n\\\\set pw \`printenv ADMIN_PASSWORD\`\\nDELETE FROM core.\\"signingKey\\";\\nUPDATE core.workspace SET \\"isPasswordAuthEnabled\\" = true;\\nCREATE EXTENSION IF NOT EXISTS pgcrypto;\\nUPDATE core.\\"user\\" SET \\"passwordHash\\" = crypt(:'pw', gen_salt('bf', 10));\\nDROP EXTENSION pgcrypto;\\nSQL"]
+    depends_on:
+      db: { condition: service_healthy }
+` : ""}  redis:
     image: ${REDIS_IMAGE}
     restart: unless-stopped${cap(mem?.redis)}
     networks: [store]
     command: ["redis-server", "--maxmemory-policy", "noeviction"${mem ? `, "--maxmemory", "${Math.floor(mem.redis * 0.75)}mb"` : ""}, "--requirepass", "\${REDIS_PASSWORD}"]
     healthcheck: { test: ["CMD-SHELL", "redis-cli -a \\"$$REDIS_PASSWORD\\" ping | grep PONG"], interval: 5s, timeout: 5s, retries: 20 }
     environment: { REDIS_PASSWORD: "\${REDIS_PASSWORD}" }
-networks:
+${o.publish === "loopback" ? `  proxy:
+    image: ${PROXY_IMAGE}
+    restart: unless-stopped
+    command: ["TCP-LISTEN:3000,fork,reuseaddr", "TCP:server:3000"]
+    networks: [store, publish]
+    ports:
+      - "127.0.0.1:\${TWENTY_HOST_PORT:?}:3000"
+    depends_on:
+      server: { condition: service_healthy }
+` : ""}networks:
   store:
     internal: true
-volumes:
+${o.publish === "loopback" ? "  publish: {}\n" : ""}volumes:
   db-data:
     name: ${n.volumes.db}
   server-data:
@@ -155,11 +191,11 @@ export function firewallRules(o) {
  * @typedef {{ exec: (cmd: string, args: string[], opts?: { cwd?: string, input?: string }) => Promise<{ stdout: string, stderr: string }>,
  *   fetch: typeof fetch, sleep: (ms: number) => Promise<void> }} Runner
  */
-/** The real runner: docker on this machine. @returns {Runner} */
-export function realRunner() {
+/** The real runner: docker on this machine. `env` is the environment docker runs with (a Mac server names Colima's socket in DOCKER_HOST); default this process's. @param {{ env?: Record<string, string | undefined> }} [ro] @returns {Runner} */
+export function realRunner(ro = {}) {
   return {
     exec: (cmd, args, opts = {}) => new Promise((resolve, reject) => {
-      const p = execFile(cmd, args, { cwd: opts.cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => (err ? reject(Object.assign(new Error(`${cmd} ${args.slice(0, 3).join(" ")} failed: ${String(stderr || err.message).slice(0, 400)}`), { stdout, stderr })) : resolve({ stdout, stderr })));
+      const p = execFile(cmd, args, { cwd: opts.cwd, maxBuffer: 64 * 1024 * 1024, ...(ro.env ? { env: /** @type {any} */ (ro.env) } : {}) }, (err, stdout, stderr) => (err ? reject(Object.assign(new Error(`${cmd} ${args.slice(0, 3).join(" ")} failed: ${String(stderr || err.message).slice(0, 400)}`), { stdout, stderr })) : resolve({ stdout, stderr })));
       if (opts.input) p.stdin?.end(opts.input);
     }),
     fetch,
@@ -176,9 +212,11 @@ export function spaceDir(home, space) { need(space); return path.join(home, "spa
 
 /**
  * @typedef {{ home: string, space: string, runner?: Runner, image?: string, gatewayContainer?: string | null,
- *   reach?: "alias" | "ip", memory?: Parameters<typeof memoryOf>[0], log?: (line: string) => void }} ProvisionOptions
+ *   reach?: "alias" | "ip" | "loopback", publish?: "loopback", pickPort?: () => Promise<number>, memory?: Parameters<typeof memoryOf>[0], log?: (line: string) => void,
+ *   golden?: false | { dump: string, meta: GoldenMeta } }} ProvisionOptions
+ * @typedef {{ image: string, email: string, workspaceId: string, builtAt: string, state?: Record<string, any> }} GoldenMeta
  * @typedef {{ space: string, dir: string, url: string, origin: string, keyFile: string, workspaceId: string, network: string,
- *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, image: string }} Provisioned
+ *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, image: string, port?: number }} Provisioned
  */
 
 /**
@@ -197,42 +235,129 @@ export async function provisionSpace(o) {
   const keyFile = path.join(dir, "service.key");
   const origin = `http://${n.serverAlias}:3000`;
   const base = { space: o.space, dir, origin, keyFile, network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), image };
+  // a Space already made: the image its env file names must be a full pinned reference, or it is refused at start (the same rule as an upgrade)
+  try { const named = /^TWENTY_IMAGE_REF=(.*)$/m.exec(fs.readFileSync(path.join(dir, ".env"), "utf8"))?.[1]; if (named !== undefined && !isPinnedRef(named)) throw new Error(`This Space's env file names the Twenty image without a digest (${named.slice(0, 80)}): refusing to start it`); }
+  catch (e) { if (/** @type {any} */ (e)?.code !== "ENOENT") throw e; }
   if (fs.existsSync(keyFile) && fs.existsSync(path.join(dir, "workspace.id"))) {
     const url = await reachUrl(o, runner, n, origin);
-    return { ...base, url, workspaceId: fs.readFileSync(path.join(dir, "workspace.id"), "utf8").trim() };
+    const rp = o.reach === "loopback" ? readLoopbackPort(dir) : 0;
+    return { ...base, url, workspaceId: fs.readFileSync(path.join(dir, "workspace.id"), "utf8").trim(), ...(rp ? { port: rp } : {}) };
   }
   fs.mkdirSync(path.join(dir, "empty-front"), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(dir, "state"), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(dir, "backups"), { recursive: true, mode: 0o700 });
-  writePrivate(path.join(dir, ".env"), `TWENTY_IMAGE_REF=${image}\nPG_PASSWORD=${secret(16)}\nREDIS_PASSWORD=${secret(16)}\nAPP_SECRET=${secret(32)}\nENCRYPTION_KEY=${secret(32)}\n`);
-  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory }));
+  const loopback = o.publish === "loopback";
+  const port = loopback ? await (o.pickPort ?? pickLoopbackPort)() : 0;
+  // A saved, already migrated database for this image (built by stores/twenty/live/build-golden.mjs): the Space starts from it, which skips the server's first-boot migrations and the first define of the
+  // core types. The saved user's password is replaced in the restore step by this Space's own, so nothing shared stays valid.
+  const golden = o.golden === false ? null : o.golden ?? findGolden({ image });
+  const adminPass = secret(24);
+  writePrivate(path.join(dir, ".env"), `TWENTY_IMAGE_REF=${image}\nPG_PASSWORD=${secret(16)}\nREDIS_PASSWORD=${secret(16)}\nAPP_SECRET=${secret(32)}\nENCRYPTION_KEY=${secret(32)}\n${golden ? `ADMIN_PASSWORD=${adminPass}\n` : ""}${loopback ? `TWENTY_HOST_PORT=${port}\n` : ""}`);
+  if (golden) {
+    fs.copyFileSync(golden.dump, path.join(dir, "golden.dump")); fs.chmodSync(path.join(dir, "golden.dump"), 0o600);
+    // what the store knows of the saved types (its own plans, which types have their mirror columns): the new Space starts knowing it, so its first define finds nothing to do
+    for (const [f, v] of Object.entries(golden.meta.state ?? {})) if (/^[a-z-]+\.json$/.test(f)) writePrivate(path.join(dir, "state", f), JSON.stringify(v));
+  }
+  writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory, ...(golden ? { golden: true } : {}), ...(loopback ? { publish: "loopback" } : {}) }));
+  if (loopback) writePrivate(path.join(dir, "reach.json"), JSON.stringify({ host: "127.0.0.1", port, at: new Date().toISOString() }));
   if (o.memory !== undefined) writePrivate(path.join(dir, "memory.json"), JSON.stringify(o.memory));
   writePrivate(path.join(dir, "webhook.secret"), secret(24));
   // Each phase is timed and logged, so a slow create says which part is slow (the screen that waits on this shows the same phases).
   const phase = async (/** @type {string} */ name, /** @type {() => Promise<any>} */ fn) => { const t = Date.now(); const r = await fn(); log(`phase ${name}: ${((Date.now() - t) / 1000).toFixed(1)}s`); return r; };
   await phase("pull images", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "pull", "--quiet"], { cwd: dir }));
   await phase("start database and cache", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait", "db", "redis"], { cwd: dir }));
-  await phase("start Twenty (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
+  await phase(golden ? "start Records (saved database, first healthy answer)" : "start Records (migrations, first healthy answer)", () => runner.exec("docker", ["compose", "-f", "compose.yml", "--env-file", ".env", "up", "-d", "--wait"], { cwd: dir }));
   if (o.gatewayContainer) await runner.exec("docker", ["network", "connect", "--alias", n.gatewayAlias, n.network, o.gatewayContainer]).catch((e) => { if (!/already exists/i.test(String(e.message))) throw e; });
   const url = await reachUrl(o, runner, n, origin);
   await waitHealthy(runner, url);
   log("creating the service user, workspace and key");
-  const adminPass = secret(24);
-  const adminEmail = `service@${o.space}.vyre.invalid`;
+  const adminEmail = golden ? golden.meta.email : `service@${o.space}.vyre.invalid`;
   writePrivate(path.join(dir, "admin.secret"), JSON.stringify({ email: adminEmail, password: adminPass }));
-  const r = await phase("workspace and key", () => bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }));
+  const r = golden
+    ? await phase("workspace and key (from the saved database)", () => adoptGolden({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }))
+    : await phase("workspace and key", () => bootstrap({ runner, url, origin, email: adminEmail, password: adminPass, displayName: o.space }));
+  if (golden) {
+    // the restore step belongs to the first start only: the dump goes, and the compose file no longer names it
+    fs.rmSync(path.join(dir, "golden.dump"), { force: true });
+    writePrivate(path.join(dir, "compose.yml"), composeFile({ space: o.space, image, memory: o.memory, migrated: true, ...(loopback ? { publish: "loopback" } : {}) }));
+  }
   writePrivate(keyFile, r.apiKey);
   writePrivate(path.join(dir, "key.json"), JSON.stringify({ apiKeyId: r.apiKeyId, expiresAt: r.expiresAt, createdAt: new Date().toISOString() }));
   writePrivate(path.join(dir, "workspace.id"), r.workspaceId);
-  return { ...base, url, workspaceId: r.workspaceId };
+  return { ...base, url, workspaceId: r.workspaceId, ...(loopback ? { port } : {}) };
+}
+
+/**
+ * Where a saved database for an image is kept: `<tag>.dump` (pg_dump custom format, no owners) and `<tag>.json` ({ image, email, workspaceId, builtAt }) in one folder. The folders looked in,
+ * in order: VYRE_TWENTY_GOLDEN_DIR, then stores/twenty/golden in this checkout. The file is only used when its image is exactly the one the Space will run.
+ * @param {{ image: string, dirs?: string[] }} o @returns {{ dump: string, meta: GoldenMeta } | null}
+ */
+export function findGolden(o) {
+  const tag = tagOfRef(o.image);
+  const dirs = o.dirs ?? [process.env.VYRE_TWENTY_GOLDEN_DIR, new URL("./golden", import.meta.url).pathname].filter((/** @type {any} */ d) => typeof d === "string" && d);
+  for (const d of dirs) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(path.join(d, `${tag}.json`), "utf8"));
+      const dump = path.join(d, `${tag}.dump`);
+      if (meta && meta.image === o.image && typeof meta.email === "string" && fs.statSync(dump).size > 0) return { dump, meta };
+    } catch { /* not here */ }
+  }
+  return null;
+}
+
+/**
+ * A Space started from the saved database already has its user and workspace, and the restore step has put this Space's own password on the user: sign in with it, make this Space's API key and name the
+ * workspace for the Space. The saved database's old key is signed with another secret and is dead.
+ * @param {{ runner: Runner, url: string, origin: string, email: string, password: string, displayName: string }} o
+ */
+export async function adoptGolden(o) {
+  const gq = async (/** @type {string} */ query, /** @type {string | undefined} */ token) => {
+    const res = await o.runner.fetch(`${o.url}/metadata`, { method: "POST", headers: { "content-type": "application/json", origin: o.origin, ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ query }) });
+    const j = /** @type {any} */ (await res.json());
+    if (j.errors) throw new Error(`Records could not start from the saved database: ${String(j.errors[0]?.message).slice(0, 200)}`);
+    return j.data;
+  };
+  const q = (/** @type {string} */ x) => JSON.stringify(x);
+  const lt = await gq(`mutation Adopt_loginToken { getLoginTokenFromCredentials(email: ${q(o.email)}, password: ${q(o.password)}, origin: ${q(o.origin)}) { loginToken { token } } }`);
+  const tk = await gq(`mutation Adopt_login { getAuthTokensFromLoginToken(loginToken: ${q(lt.getLoginTokenFromCredentials.loginToken.token)}, origin: ${q(o.origin)}) { tokens { accessOrWorkspaceAgnosticToken { token } } } }`);
+  const access = tk.getAuthTokensFromLoginToken.tokens.accessOrWorkspaceAgnosticToken.token;
+  const me = await gq("query Adopt_ws { currentWorkspace { id } }", access);
+  const roles = await gq("query Adopt_roles { getRoles { id label } }", access);
+  const role = roles.getRoles.find((/** @type {any} */ r) => r.label === "Admin") ?? roles.getRoles[0];
+  const exp = new Date(Date.now() + 365 * 864e5).toISOString();
+  const ak = await gq(`mutation Adopt_key { createApiKey(input: { name: "vyre-gateway", expiresAt: ${q(exp)}, roleId: ${q(role.id)} }) { id } }`, access);
+  const tok = await gq(`mutation Adopt_token { generateApiKeyToken(apiKeyId: ${q(ak.createApiKey.id)}, expiresAt: ${q(exp)}) { token } }`, access);
+  await gq(`mutation Adopt_name { updateWorkspace(data: { displayName: ${q(o.displayName)}, isPasswordAuthEnabled: false }) { id } }`, access).catch(() => {});
+  return { workspaceId: me.currentWorkspace.id, apiKey: tok.generateApiKeyToken.token, apiKeyId: ak.createApiKey.id, expiresAt: exp };
+}
+
+/** The host port a Mac Space's Twenty is published on (127.0.0.1 only), as recorded in its reach.json. @param {string} dir */
+export function readLoopbackPort(dir) {
+  try { const p = JSON.parse(fs.readFileSync(path.join(dir, "reach.json"), "utf8")).port; return Number.isInteger(p) && p > 1023 && p < 65536 ? p : 0; } catch { return 0; }
+}
+
+/** A free port on 127.0.0.1 in the dynamic range, picked at random. @returns {Promise<number>} */
+export async function pickLoopbackPort() {
+  for (let i = 0; i < 40; i++) {
+    const port = 49152 + crypto.randomInt(0, 16000);
+    const ok = await new Promise(resolve => { const srv = net.createServer(); srv.once("error", () => resolve(false)); srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true))); });
+    if (ok) return port;
+  }
+  throw new Error("Could not find a free port on 127.0.0.1");
 }
 
 /** @param {ProvisionOptions} o @param {Runner} runner @param {ReturnType<typeof names>} n @param {string} origin */
 async function reachUrl(o, runner, n, origin) {
   if ((o.reach ?? "alias") === "alias") return origin;
+  if (o.reach === "loopback") {
+    // A Mac server: Twenty is published on 127.0.0.1 only, through the proxy, at the port recorded when the Space was provisioned.
+    const port = readLoopbackPort(spaceDir(o.home, o.space));
+    if (!port) throw new Error("This Space's loopback port is not recorded");
+    return `http://127.0.0.1:${port}`;
+  }
   const out = await runner.exec("docker", ["inspect", "-f", `{{(index .NetworkSettings.Networks "${n.network}").IPAddress}}`, `${n.project}-server-1`]);
   const ip = out.stdout.trim();
-  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("Could not find the Twenty server's address on its network");
+  if (!/^\d+\.\d+\.\d+\.\d+$/.test(ip)) throw new Error("Could not find the Records server's address on its network");
   return `http://${ip}:3000`;
 }
 
@@ -242,7 +367,7 @@ async function waitHealthy(runner, url, tries = 90) {
     try { const r = await runner.fetch(`${url}/healthz`); if (r.ok) return; } catch { /* not up yet */ }
     await runner.sleep(2000);
   }
-  throw new Error("Twenty did not become healthy in time");
+  throw new Error("Records did not become healthy in time");
 }
 
 /**
@@ -254,7 +379,7 @@ export async function bootstrap(o) {
   const gq = async (/** @type {string} */ query, /** @type {string | undefined} */ token) => {
     const res = await o.runner.fetch(`${o.url}/metadata`, { method: "POST", headers: { "content-type": "application/json", origin: o.origin, ...(token ? { authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify({ query }) });
     const j = /** @type {any} */ (await res.json());
-    if (j.errors) throw new Error(`Twenty bootstrap failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
+    if (j.errors) throw new Error(`Records bootstrap failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
     return j.data;
   };
   const q = (/** @type {string} */ s) => JSON.stringify(s);
@@ -351,7 +476,7 @@ export async function backupSpace(o) {
  * Bring a backup up as a Space on this machine: the same box after a loss, or another one (a move). `space` may be a new name:
  * the compose file is rewritten for it and the secrets are kept, so the service key still works (it is signed with the Space's
  * own APP_SECRET). Checks every part's checksum before it touches anything. Refuses a Space that is already provisioned here.
- * @param {{ home: string, space: string, from: string, runner?: Runner, reach?: "alias" | "ip", log?: (line: string) => void }} o
+ * @param {{ home: string, space: string, from: string, runner?: Runner, reach?: "alias" | "ip" | "loopback", log?: (line: string) => void }} o
  * @returns {Promise<Provisioned & { seconds: number }>}
  */
 export async function restoreSpace(o) {
@@ -414,7 +539,7 @@ export function keyHealth(o) {
 /**
  * Make a new key for the Space, check it works, write it over the old one (0600, in one rename so a reader never sees half a key), then revoke the old.
  * Uses the instance admin credential kept for provisioning (admin.secret), never the running key. The store reads the key file on every call, so nothing restarts.
- * @param {{ home: string, space: string, runner?: Runner, now?: () => number, force?: boolean, url?: string, reach?: "alias" | "ip", log?: (line: string) => void }} o
+ * @param {{ home: string, space: string, runner?: Runner, now?: () => number, force?: boolean, url?: string, reach?: "alias" | "ip" | "loopback", log?: (line: string) => void }} o
  * @returns {Promise<{ rotated: boolean, expiresAt?: string, why?: string }>}
  */
 export async function rotateApiKey(o) {
@@ -427,7 +552,7 @@ export async function rotateApiKey(o) {
   const gq = async (/** @type {string} */ query, /** @type {string | undefined} */ token, /** @type {string | undefined} */ useKey) => {
     const res = await runner.fetch(`${url}/metadata`, { method: "POST", headers: { "content-type": "application/json", origin, ...(token || useKey ? { authorization: `Bearer ${token ?? useKey}` } : {}) }, body: JSON.stringify({ query }) });
     const j = /** @type {any} */ (await res.json());
-    if (j.errors) throw new Error(`Twenty key rotation failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
+    if (j.errors) throw new Error(`Records key rotation failed: ${String(j.errors[0]?.message).slice(0, 200)}`);
     return j.data;
   };
   const q = (/** @type {string} */ x) => JSON.stringify(x);

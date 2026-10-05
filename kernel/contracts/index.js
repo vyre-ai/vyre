@@ -18,7 +18,7 @@ export const OUTWARD_RISKS = f(["outward.send", "outward.pay", "outward.publish"
 export const EFFECTS = f(["allow", "deny", "ask"]);
 export const REASON_CODES = f([
   "ok", "no_grant", "expired", "wrong_space", "wrong_node", "needs_presence", "needs_approval", "sealed", "tainted", "limit",
-  "undeclared", "not_a_member", "chain_not_person", "revoked", "pattern_not_covered", "not_contained", "unknown_action", "bad_input", "not_found",
+  "undeclared", "not_a_member", "chain_not_person", "revoked", "pattern_not_covered", "not_contained", "unknown_action", "runner_only", "bad_input", "not_found",
 ]);
 export const VISIBILITY_KINDS = f(["space", "members", "actor", "subject", "owner"]);
 
@@ -48,6 +48,15 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "stuck", to: "ready", by: "responsible_person_or_person_with_presence" },
   { from: "stuck", to: "skipped", by: "proposal_for_person_with_presence", guarded: true },
   { from: "stuck", to: "skipped", by: "doer_or_person", guarded: false },
+].map(r => Object.freeze(r)));
+
+/**
+ * Opening a finished task again (a to-do ticked by mistake) is not a transition: done and skipped stay terminal in the table above. `reopen` is its own act, only for these two states, only for a
+ * task with no checker and no outward act, and only for its doer, a person, or whoever assigned it. It writes `task.reopened`.
+ */
+export const TASK_REOPENS = Object.freeze([
+  { from: "done", to: "ready", by: "doer_or_person" },
+  { from: "skipped", to: "ready", by: "doer_or_person" },
 ].map(r => Object.freeze(r)));
 
 export const FIELD_KINDS = f([

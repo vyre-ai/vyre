@@ -577,7 +577,7 @@ test("learn: a yes that is not a person's accepts nothing: -p input, a headless 
   };
   // The hook says interactive false for -p, --print, stream-json and our own headless threads.
   const told = await turn("never use em dashes in anything you write", "p1");
-  assert.match(told.data.text, /not in force until the user accepts it from a terminal \(`vyre learn accept 1`\), the Deck or the Capsule/);
+  assert.match(told.data.text, /not in force until the user accepts it with a tap in the Vyre app, from a terminal \(`vyre learn accept 1`\), the Deck or the Capsule/);
   assert.doesNotMatch(told.data.text, /a plain yes keeps it/, "a headless thread is not told a reply will do");
   const no = await turn("yes", "p2", { interactive: false });
   assert.match(no.data.text, /did not accept lesson 1.*only from a person typing in an interactive Claude Code session.*vyre learn accept 1/);

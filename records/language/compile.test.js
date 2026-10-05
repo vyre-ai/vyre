@@ -135,3 +135,42 @@ test("the kit's types are the kernel's TypeDefinition: every field has a label, 
     for (const f of t.fields) { assert.ok(f.label, `${t.name}.${f.name} has a label`); assert.ok(FIELD_KINDS.includes(f.kind)); if (f.kind === "sealed") assert.ok(f.seal.class && f.seal.level); }
   }
 });
+
+test("conditional fields, stage entry conditions and stage sets compile, print and read back", () => {
+  const src = wrap(`export const M = defineType({ name: "m", fields: {
+  area: defineField.choice(["Personal Injury", "Estate Planning"]),
+  accident_date: defineField.date({ visible_if: 'area == "Personal Injury"', required_if: 'area == "Personal Injury"' }),
+  trust_name: defineField.text({ visible_if: 'area == "Estate Planning"' }),
+  stage: defineStage(["Intake", { name: "Signed", enter_if: "not empty(area)" }], { sets: [
+    { name: "pi", when: 'area == "Personal Injury"', stages: ["Intake", "Treating", "Demand", "Settled"] },
+    { name: "ep", when: 'area == "Estate Planning"', stages: ["Intake", "Drafting", { name: "Signed", enter_if: "not empty(trust_name)" }] },
+  ] }),
+} });
+export default defineKit({ id: "k", version: 1, includes: [M] });`);
+  const kit = compile(src);
+  const t = kit.types[0];
+  assert.equal(t.fields.find((f) => f.name === "accident_date").visible_if, 'area == "Personal Injury"');
+  assert.equal(t.fields.find((f) => f.name === "accident_date").required_if, 'area == "Personal Injury"');
+  assert.deepEqual(t.fields.find((f) => f.kind === "stage").options, ["Intake", "Signed", "Treating", "Demand", "Settled", "Drafting"]);
+  assert.equal(t.stage_sets.length, 2);
+  assert.equal(t.stages[1].enter_if, "not empty(area)");
+  const text = print(kit);
+  assert.deepEqual(compile(text), kit);
+  assert.equal(print(compile(text)), text);
+});
+
+test("conditional fields and stage sets are checked against the type", () => {
+  fails(kitOf("", 't: defineField.text({ visible_if: "nope == 1" })'), "invalid_definition", /not a field of a/);
+  fails(kitOf("", 't: defineField.text({ visible_if: "t == 1" })'), "invalid_definition", /cannot name the field it is on/);
+  fails(kitOf("", 't: defineField.text({ required: true, required_if: "u == 1" }), u: defineField.text()'), "invalid_definition", /not both/);
+  fails(kitOf("", 't: defineField.text({ required: true, visible_if: "u == 1" }), u: defineField.text()'), "invalid_definition", /required_if/);
+  fails(kitOf("", 's: defineField.sealed({ class: "us-ssn" }), t: defineField.text({ visible_if: "s == 1" })'), "invalid_definition", /sealed/);
+  fails(kitOf("", 'u: defineField.text(), st: defineStage(["A", "B"], { sets: [{ name: "x", when: \'st == "A"\', stages: ["A", "C"] }] })'), "invalid_definition", /not by its stage/);
+});
+
+for (const id of ["base", "law-firm"]) test(`the checked-in ${id} kit is what its source compiles to, and its text is a fixed point`, () => {
+  const src = fs.readFileSync(new URL(`../kits/${id}/kit.ts`, import.meta.url), "utf8");
+  const stored = JSON.parse(fs.readFileSync(new URL(`../kits/${id}/kit.json`, import.meta.url), "utf8"));
+  assert.deepEqual(stored, compile(src), `regenerate with: node records/language/cli.js compile records/kits/${id}/kit.ts > records/kits/${id}/kit.json`);
+  assert.deepEqual(compile(print(stored)), stored);
+});

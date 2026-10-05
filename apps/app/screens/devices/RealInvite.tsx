@@ -2,6 +2,8 @@
 // An invite for an admin or owner waits for you to confirm the words the invitee reads to you (spaces.invites.confirm).
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Platform, Share, View } from "react-native";
+import { isPhone } from "../install/first-run.js";
+import { deviceKindHere } from "../../src/real/pair-say";
 import { WinkCode } from "../../src/ui/WinkCode";
 import { AckCode } from "./TypeCode";
 import { useRouter } from "expo-router";
@@ -12,7 +14,7 @@ import { useMembers } from "../spaces/state";
 import { tool, said } from "../../src/real/box";
 import { TEMP_DAYS, createInput, inviteRefusal, liveServers, inviteRow, invitable, joinedLine, madeNote, emailIt } from "./invite.js";
 
-const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e));
+const why = (e: unknown) => inviteRefusal((e as { code?: string }).code, said(e), "", isPhone(deviceKindHere()) || deviceKindHere() === "web");
 
 export function RealInvite() {
   const { spaces, space, loading, error, load } = useMembers();
@@ -99,7 +101,7 @@ export function RealInvite() {
           <Segmented label="Who may use it" value={anyone ? "anyone" : "named"} onChange={(v) => setAnyone(v === "anyone")} options={[["named", "One named person"], ["anyone", "Anyone with the link"]]} />
           {anyone ? <Banner tone="warn"><Text>Anyone who gets this link can join, so send it only to the person you mean. A named invite works for that person alone.</Text></Banner> : <Field label="Their Vyre name" help="Only that person can use the link." value={to} onChangeText={setTo} placeholder="sam.vyre.run" />}
           {problem ? <Banner tone="warn"><Text>{problem}</Text></Banner> : null}
-          {onComputer ? <View className="flex-row"><Button label={onComputer === "pair" ? "Pair a server first" : "Make a space on your server"} onPress={() => router.push((onComputer === "pair" ? "/u/wink/add" : "/u/install/create") as never)} /></View> : null}
+          {onComputer && !isPhone(deviceKindHere()) && deviceKindHere() !== "web" ? <View className="flex-row"><Button label={onComputer === "pair" ? "Pair a server first" : "Make a space on your server"} onPress={() => router.push((onComputer === "pair" ? "/u/wink/add" : "/u/install/create") as never)} /></View> : null}
           <View className="flex-row"><Button kind="primary" label={busy ? "Making" : "Make the invitation"} onPress={busy ? () => {} : make} /></View>
         </Card>
       )}

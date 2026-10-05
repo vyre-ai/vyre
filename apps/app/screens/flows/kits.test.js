@@ -59,3 +59,33 @@ test("the library lists what the box offers and nothing when the box has no such
   assert.deepEqual(b.seen.at(-1), { tool: "flows.kit.propose", input: { kit: { id: "estate-planning", version: 1 } } });
   assert.deepEqual(m.proposeNote({ ok: false, errors: [{ path: "version", message: "version 2 is already installed" }] }), { ok: false, text: "version: version 2 is already installed" });
 });
+
+test("an update: the library's newer version is offered, flows.kit.diff reads it without proposing, and its parts become diff lines", { skip: !strip }, async () => {
+  const { kitsSource } = await import("./kits-source.ts");
+  const m = await import("./kits-model.ts");
+  const diff = { installed: true, from: 3, to: 4, newer: true, diff: { added: [{ kind: "flow", name: "weekly_digest" }], changed: [{ kind: "template", name: "welcome" }], removed: [{ kind: "role", name: "intern" }], widenings: [{ part: "flow weekly_digest", what: "now email.send" }], risks: [{ part: "type matter", what: "the field email is removed (its values stay in the store)" }], widening: true } };
+  const lib = [{ id: "estate-planning", version: 4 }, { id: "pi-intake", version: 2 }, { id: "wait", version: 9 }, { id: "old", version: 9 }];
+  assert.deepEqual(m.updatesOf(ROWS, lib), { "estate-planning": 4 }, "equal version, pending and removed Kits get no update");
+  const b = box({ "flows.kit.library.get": { data: { kit: { id: "estate-planning", version: 4 } } }, "flows.kit.diff": { data: diff } });
+  const s = kitsSource(b.call);
+  const kit = await s.libraryKit("estate-planning");
+  const d = await s.diff(kit);
+  assert.deepEqual(b.seen, [{ tool: "flows.kit.library.get", input: { id: "estate-planning" } }, { tool: "flows.kit.diff", input: { kit: { id: "estate-planning", version: 4 } } }]);
+  assert.ok(!b.seen.some((x) => x.tool === "flows.kit.propose"), "reading the diff asks nobody");
+  assert.deepEqual(m.diffLines(d), [{ t: "a", s: "Flow weekly_digest" }, { t: "c", s: "Template welcome changes" }, { t: "d", s: "Role intern" }]);
+  assert.equal(m.versionLine(d), "v3 to v4");
+  assert.equal(m.widenings(d)[0].what, "now email.send");
+  assert.match(m.risks(d)[0].what, /email is removed/);
+  assert.equal(m.hasChanges(d), true);
+  assert.equal(m.hasChanges({ installed: true, from: 4, to: 4, newer: false, diff: { ...diff.diff, added: [], changed: [], removed: [], widenings: [] } }), false);
+  assert.equal(m.hasChanges({ installed: false, from: null, to: 4, newer: false, diff: null }), false);
+  assert.equal(m.versionLine({ installed: false, from: null, to: 4, newer: false, diff: null }), "Not installed. v4 is on offer.");
+});
+
+test("the library Kit falls back to records.kits.get on a box without the flows name", { skip: !strip }, async () => {
+  const { kitsSource } = await import("./kits-source.ts");
+  const b = box({ "flows.kit.library.get": { error: { code: "no_such_tool", message: "x" } }, "records.kits.get": { data: { kit: { id: "a", version: 2 } } } });
+  assert.deepEqual(await kitsSource(b.call).libraryKit("a"), { id: "a", version: 2 });
+  const gone = box({ "flows.kit.library.get": { error: { code: "not_found", message: "no Kit a in the library" } } });
+  await assert.rejects(kitsSource(gone.call).libraryKit("a"), (/** @type {any} */ e) => e.code === "not_found");
+});

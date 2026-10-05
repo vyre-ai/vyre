@@ -144,15 +144,25 @@ export function createFolder() {
         break;
       }
       case "text-delta": {
-        if (d.reasoning) break; // thinking is not drawn as a reply
         const mid = f.message ?? d.message;
+        // Thinking is its own row, drawn folded under the reply it belongs to: never as the reply, and never dropped (the person may want to see how it got there).
+        if (d.reasoning) {
+          const rk = "r:" + mid + ":" + (d.index ?? 0);
+          const before = items.get(rk);
+          if (before && before.done) break;
+          const rit = { key: rk, kind: "reasoning", text: (before?.text ?? "") + String(d.text ?? ""), done: false, ...(before ? { author: before.author, actsFor: before.actsFor } : who(f)), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : before?.provider ? { provider: before.provider, model: before.model ?? null } : {}) };
+          if (put(rk, "reasoning", rit)) out.layout = true;
+          else items.set(rk, rit);
+          touch(rk);
+          break;
+        }
         const key = "a:" + mid;
         const prev = items.get(key);
         // One row per message: two assistants streaming at once never share text. A finished or cut row takes no more.
         if (prev && prev.done) break;
         const text = (prev?.text ?? "") + String(d.text ?? "");
         open.add(String(mid));
-        const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}) };
+        const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : prev?.provider ? { provider: prev.provider, model: prev.model ?? null } : {}) };
         if (put(key, "text", it)) out.layout = true;
         else items.set(key, it);
         out.appended = { key, length: text.length };
@@ -164,6 +174,8 @@ export function createFolder() {
         const it = items.get(key);
         open.delete(String(f.message ?? d.message));
         if (it && patch(key, { done: true, settled: it.text.length })) touch(key);
+        const rk = "r:" + (f.message ?? d.message) + ":" + (d.index ?? 0);
+        if (items.has(rk) && patch(rk, { done: true })) touch(rk);
         // The reply's cited fields (field-ref, drawn per viewer by the server into field blocks): one block row each, after its text.
         if (Array.isArray(d.blocks)) {
           d.blocks.slice(0, 8).forEach((/** @type {any} */ b, /** @type {number} */ i) => {

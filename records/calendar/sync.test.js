@@ -6,6 +6,8 @@ import { createRecordsHost } from "../host.js";
 import { CORE_TYPES } from "../core-types.js";
 import { createCalendarSync } from "./sync.js";
 import { fromGoogle, toGoogle } from "./google.js";
+import { callThrough } from "./declared-call.js";
+import calendarDeclaration from "../connectors/google-calendar/declaration.js";
 
 const SPACE = "spc_harlow000001";
 /** A tiny Google Calendar: events by id, an etag that changes on every write, sync tokens, and If-Match. */
@@ -14,18 +16,19 @@ function fakeGoogle() {
   const stamp = (e) => ({ ...e, etag: `"e${++g.rev}"`, updated: g.rev });
   g.put = (e) => { g.events.set(e.id, stamp(e)); };
   g.request = async ({ method, url, body, headers }) => {
-    g.calls.push(`${method} ${url.replace("https://www.googleapis.com/calendar/v3/calendars/primary", "")}${headers?.["If-Match"] ? " if-match" : ""}`);
+    g.calls.push(`${method} ${url.replace("https://www.googleapis.com/calendar/v3/calendars/primary", "")}${headers?.["if-match"] ? " if-match" : ""}`);
     const u = new URL(url);
+    if (method === "GET" && /\/events\/[^/?]+$/.test(u.pathname)) { const e = g.events.get(decodeURIComponent(u.pathname.split("/").pop())); return e ? { status: 200, body: e } : { status: 404, body: {} }; }
     if (method === "GET") {
       const tok = u.searchParams.get("syncToken");
       if (tok && g.expireToken) { g.expireToken = false; return { status: 410, body: {} }; }
       const since = tok ? Number(tok.replace("t", "")) : 0;
       return { status: 200, body: { items: [...g.events.values()].filter((e) => e.updated > since && (tok || e.status !== "cancelled")), nextSyncToken: `t${g.rev}` } };
     }
-    if (method === "POST") { const e = stamp({ ...body, id: `g${g.events.size + 1}` }); g.events.set(e.id, e); return { status: 200, body: e }; }
+    if (method === "POST") { const id = body.id ?? `g${g.events.size + 1}`; if (g.events.has(id)) return { status: 409, body: {} }; const e = stamp({ ...body, id }); g.events.set(id, e); return { status: 200, body: e }; }
     if (method === "PATCH") {
       const id = decodeURIComponent(u.pathname.split("/").pop()); const cur = g.events.get(id);
-      if (headers?.["If-Match"] && headers["If-Match"] !== cur.etag) return { status: 412, body: {} };
+      if (headers?.["if-match"] && headers["if-match"] !== cur.etag) return { status: 412, body: {} };
       const e = stamp({ ...cur, ...body }); g.events.set(id, e); return { status: 200, body: e };
     }
     return { status: 400, body: {} };
@@ -39,14 +42,25 @@ async function rig(over = {}) {
   await host.defineCore();
   const google = fakeGoogle();
   const reports = [];
-  const sync = createCalendarSync({ kernel: host.kernel, chain: () => host.ownerChain(), request: google.request, report: (t, d) => reports.push([t, d]), ...over });
+  // the sync speaks the declaration's ops; the fake Google is the transport
+  const call = callThrough(calendarDeclaration, ({ method, path, query, body, headers }) => google.request({ method, url: `https://www.googleapis.com${path}${query ? "?" + new URLSearchParams(Object.entries(query).map(([k, v]) => [k, String(v)])) : ""}`, body, headers }));
+  const asked = [];
+  // the approval path: `write` runs the act when it is allowed or approved, and answers held or refused otherwise
+  const write = over.policy === undefined ? undefined : async (c, perform) => {
+    const verdict = await over.policy(c);
+    if (verdict === "allow") return { done: true, value: await perform() };
+    if (verdict === "hold") { asked.push(c.title); return over.hold && (await over.hold(c)) ? { done: true, value: await perform({ approval: "tsk_ok" }) } : { done: false, held: true }; }
+    return { done: false, refused: true };
+  };
+  const { policy: _p, hold: _h, ...rest } = over;
+  const sync = createCalendarSync({ kernel: host.kernel, chain: () => host.ownerChain(), call, ...(write ? { write } : {}), report: (t, d) => reports.push([t, d]), ...rest });
   const events = async () => (await host.kernel.records.query(host.ownerChain(), "event", { page: { limit: 100 } })).rows;
   return { host, google, sync, events, reports };
 }
 
 test("the Event type is a core type with the fields the calendar needs", () => {
   const e = CORE_TYPES.find((t) => t.name === "event");
-  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes"]);
+  assert.deepEqual(e.fields.map((f) => f.name), ["title", "starts_at", "ends_at", "all_day", "time_zone", "place", "people", "record", "source", "calendar", "external_id", "notes", "url", "rrule"]);
 });
 
 test("google shapes: timed, all-day, attendees, and back", () => {
@@ -55,6 +69,9 @@ test("google shapes: timed, all-day, attendees, and back", () => {
   const day = fromGoogle({ id: "b", summary: "Deadline", start: { date: "2026-10-09" }, end: { date: "2026-10-10" } }, "x");
   assert.equal(day.all_day, true); assert.equal(toGoogle(day).start.date, "2026-10-09");
   assert.equal(fromGoogle({ id: "c" }, "x"), null);
+  // the event's own page on its calendar is the record's link, not a line in its notes
+  assert.equal(fromGoogle({ id: "d", summary: "x", start: { date: "2026-10-09" }, htmlLink: "https://www.google.com/calendar/event?eid=abc" }, "g").url, "https://www.google.com/calendar/event?eid=abc");
+  assert.equal(fromGoogle({ id: "e", summary: "x", start: { date: "2026-10-09" }, htmlLink: "javascript:1" }, "g").url, undefined);
 });
 
 test("pull makes records, then an incremental pull updates and removes", async () => {
@@ -86,7 +103,8 @@ test("nothing is written outward without a policy that allows it; refused and he
   assert.equal(reports[0][0], "calendar.refused");
   const held = await rig({ policy: () => "hold", hold: async () => false });
   await held.host.kernel.records.create(held.host.ownerChain(), "event", { title: "x", starts_at: "2026-10-07T17:00:00.000Z", source: "vyre" });
-  assert.equal((await held.sync.push()).refused, 1);
+  assert.equal((await held.sync.push()).held, 1);
+  assert.equal((await held.sync.push()).held, 1, "a held change is asked again on the next push, not lost");
   assert.equal(held.google.calls.length, 0, "a hold nobody approved sends nothing");
 });
 
@@ -95,7 +113,7 @@ test("an allowed new event is inserted, tied to its outside id, and its own writ
   await host.kernel.records.create(host.ownerChain(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", people: ["sam@example.test"], source: "vyre" });
   assert.equal((await sync.push()).inserted, 1);
   const [e] = await events();
-  assert.match(e.data.external_id, /^g/); assert.equal(e.data.calendar, "google-calendar");
+  assert.match(e.data.external_id, /^[0-9a-f]{32}$/, "the event id is ours, derived from the record"); assert.equal(e.data.calendar, "google-calendar");
   assert.equal(google.events.get(e.data.external_id).attendees[0].email, "sam@example.test");
   assert.deepEqual(await sync.push(), { inserted: 0, patched: 0, held: 0, refused: 0, conflicts: 0 }, "no change, no call");
   assert.deepEqual(await sync.pull(), { created: 0, updated: 0, removed: 0 }, "the pull does not duplicate it");
@@ -139,4 +157,14 @@ test("every write went through the gateway: the log has the events and verifies"
   google.put(timed("g1", "A", "09")); await sync.pull();
   assert.equal(host.log.read({ type: "event.created" }).length, 1);
   assert.equal(host.log.verify().ok, true);
+});
+
+test("a repeat of an insert after a crash (the outside event exists, the record never learned its id) reads that event and does not make a second", async () => {
+  const { host, google, sync, events } = await rig({ policy: () => "allow" });
+  const r = await host.kernel.records.create(host.ownerChain(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", source: "vyre" });
+  const id = String(r.id).replace(/-/g, "").toLowerCase();
+  google.put({ id, summary: "Closing call", start: { dateTime: "2026-10-07T17:00:00Z" }, end: { dateTime: "2026-10-07T17:00:00Z" } });
+  assert.equal((await sync.push()).inserted, 1);
+  assert.equal(google.events.size, 1, "one event outside");
+  assert.equal((await events())[0].data.external_id, id);
 });

@@ -33,8 +33,8 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
-  const agents = ["research", "intake", "rogue"];
-  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read"]), ...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
+  const agents = ["research", "intake", "rogue", "assistant"];
+  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read", "tasks.work"]), ...people.map(p => G(actor("person", p), ["tasks.*", "records.read", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
@@ -43,7 +43,7 @@ function rig(over = {}) {
   const presence = { check: async ({ chain, op, fields, proof }) => (chain && proof ? pr.refuse(proof, { op, space: SPACE, fields, ctx: chainCtx(chain) }) : "no_proof") };
   const log = over.wrapLog ? over.wrapLog(createEventLog({ space: SPACE, clock })) : createEventLog({ space: SPACE, clock });
   const authorizer = createAuthorizer({
-    space: SPACE, actions: [...TASK_ACTIONS, ...SEAL_ACTIONS, { action: "email.send", resource_type: "message", risk: "outward.send", label: "send", gloss: "" }], clock,
+    space: SPACE, actions: [...TASK_ACTIONS, ...SEAL_ACTIONS, { action: "records.read", resource_type: "record", risk: "read", label: "read", gloss: "" }, { action: "email.send", resource_type: "message", risk: "outward.send", label: "send", gloss: "" }], clock,
     grants: { forSubject: a => grants.filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id).concat(a.kind === "person" ? [G(a, ["email.send"])] : []), get: () => undefined },
     members: { has: a => members.has(`${a.kind}:${a.id}`) },
     hasPresenceSession: () => true, verifyPresence: () => true,
@@ -57,6 +57,7 @@ function rig(over = {}) {
     responsible: (p, doer) => p.id === OWNER, responsibleFor: () => actor("person", OWNER),
     resolve: { template: async (id, v) => (v === 1 ? { body: "Hello {{sealed:ssn}}" } : null), contact: async (record, address) => address === "verified@example.com", sealed: async ref => (ref === "sv_1" ? { class: "us-ssn", record: `vyre://${SPACE}/contact/c1` } : null) },
     facts: { record: async () => ({ data: { size: 12, partner: "x", empty: "" } }), exists: async u => u.startsWith("vyre://") },
+    projectExists: async u => u.endsWith("/project/p1"),
     release: async (t, body, by) => { if (over.releaseDelay) await new Promise(res => setTimeout(res, over.releaseDelay)); if (over.releaseFails) throw new Error("smtp down"); released.push({ id: t.id, body, by }); },
   });
   const sign = (chain, who, op, fields, over2 = {}) => {
@@ -526,6 +527,22 @@ test("idempotency: a repeated key returns the first task and makes one; the same
   assert.notEqual(c.id, a.id);
 });
 
+test("approval bind: an approval that recorded the bind of what the person saw releases only a request that carries that same bind; approve A and send B is refused, whatever else matches", async () => {
+  const r = rig();
+  const t = await toNeedsCheck(r, draftTask({ form: { kind: "held_act", bind: "bind-of-request-A" } }));
+  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
+  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, bind: "bind-of-request-A" }), true, "the request that was approved");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, bind: "bind-of-request-B" }), false, "approve A, send B: refused");
+  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), false, "a request that states no bind is not the approved one either");
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, bind: "bind-of-request-B" }), false, "and a refused use spends nothing");
+  assert.equal(r.tasks.useApproval({ id: t.id, ...act, bind: "bind-of-request-A" }), true, "the approved request still goes, once");
+  // an approval that recorded no bind is judged as before (the action, the resource, the doer, the age)
+  const t2 = await toNeedsCheck(r);
+  await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
+  assert.equal(r.tasks.approvedAct({ id: t2.id, ...act, bind: "anything" }), true);
+});
+
 test("approval on authorize: an approved held-act task allows exactly that act by its doer once, and nothing else", async () => {
   const r = rig();
   const t = await toNeedsCheck(r);
@@ -653,4 +670,104 @@ test("PR-2: the form a Flow sent with a task is bound into what the checker's pr
   assert.equal((await r.tasks.get(owner(), two.id)).state, "needs_check", "nothing was approved");
   const good = r.proof(A, ALICE, two);
   assert.equal((await r.tasks.decide(A, two.id, { outcome: "approved", proof: good })).state, "done");
+});
+
+// ---- edit, reopen and sub-items (the planner's to-dos are Tasks) ----
+const todoSpec = (over = {}) => ({ title: "Send the engagement letter", doer: actor("person", OWNER), output: { kind: "note" }, due: 1_800_000_100_000, note: "use the new template", ...over });
+
+test("tasks: the doer, a person or the assigner edit a task's words, note, due time and form; anyone else and a task waiting for its check do not", async () => {
+  const r = rig();
+  const t = await r.tasks.request(kernelSvc(), todoSpec());
+  const e = await r.tasks.edit(owner(), t.id, { title: "Send the Harlow Legal engagement letter", due: null, note: null, form: { planner: { list: "work" } } });
+  assert.equal(e.title, "Send the Harlow Legal engagement letter");
+  assert.ok(!("due" in e) && !("note" in e), "null clears");
+  assert.deepEqual(e.form, { planner: { list: "work" } });
+  assert.equal((await r.tasks.get(owner(), t.id)).title, e.title);
+  assert.equal((await r.tasks.edit(kernelSvc(), t.id, { title: "By the assigner" })).title, "By the assigner");
+  await assert.rejects(() => r.tasks.edit(asIntake(), t.id, { title: "x" }), { code: "not_allowed" }, "an assistant that was not given it");
+  await assert.rejects(() => r.tasks.edit(owner(), t.id, { state: "done" }), { code: "bad_input" }, "only words, note, due, form and parent");
+  await assert.rejects(() => r.tasks.edit(owner(), t.id, { title: " " }), { code: "bad_input" });
+  const ev = r.log.read({ type: "task.edited" });
+  assert.equal(ev.length, 2);
+  assert.ok(!JSON.stringify(ev).includes("engagement letter"), "the text is never in the log in the clear");
+  const c = await toNeedsCheck(r);
+  await assert.rejects(() => r.tasks.edit(owner(), c.id, { title: "x" }), { code: "bad_state" });
+});
+
+test("tasks: a done or skipped task with no checker reopens; one with a checker does not; the answer is dropped", async () => {
+  const r = rig();
+  const t = await r.tasks.request(kernelSvc(), todoSpec());
+  await r.tasks.start(owner(), t.id);
+  const done = await r.tasks.complete(owner(), t.id, { note: "Done", sources: ["vyre://x/y/z"] });
+  assert.equal(done.state, "done");
+  assert.ok(done.answer);
+  await assert.rejects(() => r.tasks.reopen(asIntake(), t.id), { code: "not_allowed" });
+  const again = await r.tasks.reopen(owner(), t.id);
+  assert.equal(again.state, "ready");
+  assert.ok(!("answer" in again));
+  await r.tasks.skip(owner(), t.id, "no longer needed");
+  assert.equal((await r.tasks.get(owner(), t.id)).state, "skipped");
+  assert.equal((await r.tasks.reopen(kernelSvc(), t.id)).state, "ready", "the assigner may too");
+  await assert.rejects(() => r.tasks.reopen(owner(), t.id), { code: "bad_state" }, "a task that is ready is not reopened");
+  const c = await r.tasks.request(owner(), draftTask({ checker: undefined, output: { kind: "note" }, doer: actor("agent", "research"), required: true }));
+  await r.tasks.start(agentChain("research"), c.id);
+  const d2 = await r.tasks.complete(agentChain("research"), c.id, { note: "ok", sources: ["vyre://x/y/z"] });
+  assert.equal(d2.state, "done");
+});
+
+test("tasks: a sub-item names its parent, lists under it, and a task cannot sit under its own sub-task", async () => {
+  const r = rig();
+  const a = await r.tasks.request(kernelSvc(), todoSpec({ title: "Move the office" }));
+  const b = await r.tasks.request(kernelSvc(), todoSpec({ title: "Book the movers", parent: a.id }));
+  await assert.rejects(() => r.tasks.request(kernelSvc(), todoSpec({ parent: "00000000-0000-4000-8000-000000000000" })), { code: "bad_input" });
+  assert.deepEqual((await r.tasks.list(owner(), { parent: a.id })).map(x => x.id), [b.id]);
+  await assert.rejects(() => r.tasks.edit(owner(), a.id, { parent: b.id }), { code: "bad_input" }, "a cycle");
+  await assert.rejects(() => r.tasks.edit(owner(), a.id, { parent: a.id }), { code: "bad_input" });
+  assert.equal((await r.tasks.edit(owner(), b.id, { parent: null })).parent, undefined);
+});
+
+test("tasks: a to-do given to an assistant is finished by that assistant, and one made for the person by an assistant is not", async () => {
+  const r = rig();
+  const given = await r.tasks.request(owner(), todoSpec({ doer: actor("agent", "research") }));
+  await r.tasks.start(agentChain("research"), given.id);
+  assert.equal((await r.tasks.complete(agentChain("research"), given.id, { note: "done", sources: ["vyre://x/y/z"] })).state, "done");
+  const mine = await r.tasks.request(kernelSvc(), todoSpec());
+  await assert.rejects(() => r.tasks.start(agentChain("research"), mine.id), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.complete(agentChain("research"), mine.id, { note: "done", sources: ["vyre://x/y/z"] }), { code: "not_allowed" });
+});
+
+test("tasks: the person's default assistant acts AS the person on a to-do (finish, edit, reopen); a space or project agent does not, and an approval stays the human's", async () => {
+  const r = rig();
+  const assistant = agentChain("assistant");
+  assert.equal(assistant.via, "assistant", "the kernel marks the person's assistant");
+  assert.equal(agentChain("research").via, undefined);
+  const t = await r.tasks.request(kernelSvc(), todoSpec());
+  await assert.rejects(() => r.tasks.start(agentChain("research"), t.id), { code: "not_allowed" }, "a project agent is not the person");
+  await r.tasks.start(assistant, t.id);
+  assert.equal((await r.tasks.edit(assistant, t.id, { title: "Edited by the assistant" })).title, "Edited by the assistant");
+  const done = await r.tasks.complete(assistant, t.id, { note: "Done", sources: ["vyre://x/y/z"] });
+  assert.equal(done.state, "done");
+  assert.equal((await r.tasks.reopen(assistant, t.id)).state, "ready");
+  assert.equal((await r.tasks.skip(assistant, t.id, "no longer needed")).state, "skipped");
+  // Deciding a check is the human's own act: the assistant's chain is refused.
+  const c = await toNeedsCheck(r);
+  await assert.rejects(() => r.tasks.decide(assistant, c.id, { outcome: "approved", proof: r.proof(assistant, "per_owner", c) }), (e) => e && e.code !== undefined);
+  assert.equal((await r.tasks.get(owner(), c.id)).state, "needs_check", "nothing was approved");
+});
+
+test("tasks: a task names its project as a link to a Project record of this Space; another Space's, a made-up one and an unreadable one are refused; list takes a project", async () => {
+  const r = rig();
+  const P1 = `vyre://${SPACE}/project/p1`;
+  const a = await r.tasks.request(owner(), todoSpec({ project: P1 }));
+  assert.equal(a.project, P1);
+  await assert.rejects(() => r.tasks.request(owner(), todoSpec({ project: "vyre://spc_bbbbbbbbbbbb/project/p1" })), { code: "bad_input" });
+  await assert.rejects(() => r.tasks.request(owner(), todoSpec({ project: "northwind" })), { code: "bad_input" });
+  await assert.rejects(() => r.tasks.request(owner(), todoSpec({ project: `vyre://${SPACE}/project/ghost` })), { code: "bad_input" }, "a Project that is not there");
+  await assert.rejects(() => r.tasks.request(owner(), todoSpec({ project: `vyre://${SPACE}/contact/c1` })), { code: "bad_input" }, "a project is a Project record");
+  const b = await r.tasks.request(owner(), todoSpec());
+  assert.deepEqual((await r.tasks.list(owner(), { project: P1 })).map(x => x.id), [a.id]);
+  assert.equal((await r.tasks.edit(owner(), b.id, { project: P1 })).project, P1);
+  assert.equal((await r.tasks.list(owner(), { project: P1 })).length, 2);
+  assert.equal((await r.tasks.edit(owner(), b.id, { project: null })).project, undefined);
+  await assert.rejects(() => r.tasks.edit(owner(), b.id, { project: "vyre://spc_bbbbbbbbbbbb/project/p1" }), { code: "bad_input" });
 });

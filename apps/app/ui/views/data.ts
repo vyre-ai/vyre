@@ -3,12 +3,12 @@
 import { useMemo } from "react";
 import { useStoreQuery } from "../store";
 import type { FieldEnv } from "../fields/types";
-import { linkIndex } from "./logic.js";
+import { isHiddenType, linkIndex } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 
 export function useRecordsWorld() {
   return useStoreQuery<RecordsWorld>(async (s) => {
-    const types = await s.types();
+    const types = (await s.types()).filter((t: any) => !isHiddenType(t));
     const lists = await Promise.all(types.map((t: any) => s.list(t.name)));
     return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await s.actors()) as any[] };
   }, []);

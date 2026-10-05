@@ -26,6 +26,9 @@ export const GRANT_ACTIONS = Object.freeze([
   // Taking access away asks for no fresh proof, only the person's live session (risk "admin" = session presence): withdrawing can only reduce what a computer may do.
   { action: "grants.unoffer", resource_type: "offer", risk: "admin", label: "stop sharing a computer", gloss: "Withdraw an offer of a computer for work." },
   { action: "grants.invite", resource_type: "invite", risk: "grant", label: "invite someone", gloss: "Invite a person to join with a role." },
+  // Moving a project to another of the person's Spaces on this home (kernel/gateway/moves.js): the move is approved once, where it starts; the receiving Space asks only the role.
+  { action: "project.move_out", resource_type: "project", risk: "grant", label: "move a project to another space", gloss: "Start moving a project out of this Space. You approve once, for the whole move." },
+  { action: "project.move_in", resource_type: "project", risk: "admin", label: "receive a moved project", gloss: "Accept a project moved here from another of your Spaces, after the approval given there." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
   // Standing rules for a Space (DESIGN-flows-joints 5a): an owner sets them with presence; they only ever tighten.
   { action: "rules.set", resource_type: "rule", risk: "grant", label: "set a standing rule", gloss: "Make a rule the whole Space must keep: never, draft only, or always ask." },
@@ -38,6 +41,12 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "kits.propose", resource_type: "kit", risk: "write", label: "ask to install a Kit", gloss: "Put a Kit's install card in front of an owner or admin. Nothing changes until they say yes." },
   { action: "kits.install", resource_type: "kit", risk: "admin", label: "install a Kit", gloss: "Add the types, fields, stages and Flows of a Kit." },
   { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Take a Kit's parts out. Records stay." },
+  // What a Flow's steps do (kernel/flows/runner.js, compile.js STEP_ACTIONS): run a Flow by hand, give someone a task, run a Code step in the sandbox, send text to a model through the door. Registered
+  // here so the real authorizer knows them (an unregistered action answers unknown_action, which the Flow harness hid by registering its own).
+  { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
+  { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
+  { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },
+  { action: "model.call", resource_type: "model", risk: "read", label: "ask a model", gloss: "Send text to an AI model through the Space's inference door. Sealed values go as placeholders." },
   { action: "rules.get", resource_type: "rule", risk: "read", label: "see one standing rule", gloss: "Read one rule or proposal in plain words." },
   { action: "rules.test", resource_type: "rule", risk: "read", label: "try a standing rule", gloss: "See what the rules would do to an act, without doing it." },
   { action: "rules.enable", resource_type: "rule", risk: "grant", label: "turn a standing rule on", gloss: "Make a rule you switched off bind again." },

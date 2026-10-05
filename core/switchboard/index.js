@@ -32,6 +32,7 @@ import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { recordTags } from "./record-tags.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -561,6 +562,17 @@ export class Switchboard {
       cur = this.record(cur.parent);
     }
     return out;
+  }
+
+  /** A new name for a thread. Says thread.renamed only when the name really changed, so two sides that both sync names settle. @param {string} id @param {string} name */
+  rename(id, name) {
+    const nm = String(name ?? "").trim().slice(0, 120);
+    if (!nm) throw Object.assign(new Error("a session needs a name"), { code: "bad_input" });
+    const r = this.must(id);
+    if (r.name === nm) return { thread: id, name: nm, changed: false };
+    this.set(id, { name: nm });
+    this.emitRaw("thread.renamed", { name: nm }, id, r.project);
+    return { thread: id, name: nm, changed: true };
   }
 
   must(id) {
@@ -1849,8 +1861,11 @@ export class Switchboard {
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
     await this.hearActs(id, text, uuid, pasted, rec.project);
     const names = mentionsOf(text, pasted);
-    if (!names.length && !chips.length) return [];
-    const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
+    // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
+    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
+    if (!names.length && !picked.chips.length && !picked.tags.length) return [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) }) : [];
+    const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
   }
@@ -3287,6 +3302,8 @@ export default {
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
+      // A record tag (# in the composer) is read under the sender's own chain, in this Space only.
+      recordTags: (/** @type {any[]} */ chips) => recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() }),
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
@@ -3405,7 +3422,7 @@ export default {
       const me = sb.record(m.thread);
       return Boolean(me && me.project && t.project === me.project);
     };
-    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.archive", "threads.unarchive", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
+    const SESSION_MUTATING = new Set(["threads.start", "threads.continue-here", "threads.delete", "threads.archive", "threads.unarchive", "threads.rename", "threads.stop", "threads.interrupt", "threads.rewind", "threads.edit-retry", "threads.retry",
       "threads.send", "threads.send-now", "threads.switch", "threads.model", "threads.effort", "threads.thinking", "threads.lease", "threads.release"]);
     const SESSION_READS = new Set(["threads.fork", "threads.branch", "threads.items", "threads.get", "threads.asks", "threads.queue", "threads.tasks", "threads.watch", "threads.unwatch"]);
     const scoped = (name, run) => (SESSION_MUTATING.has(name) || SESSION_READS.has(name))
@@ -3918,6 +3935,9 @@ export default {
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
+    tool("threads.rename", "Give a thread a new name. The name is the session's title everywhere (the project's session list, its record in Records); thread.renamed is said, and a rename made in Records comes back here the same way.",
+      { type: "object", required: ["thread", "name"], properties: { thread: str, name: str } },
+      async (i, meta) => { guard(meta.caller, "rename sessions"); mayReach(meta, sb.must(i.thread)); return sb.rename(i.thread, i.name); });
     tool("threads.unarchive", "Bring an archived thread back into the list; its worktree is made again on the same branch. thread.unarchived is said.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "unarchive sessions"); mayReach(meta, sb.must(i.thread)); return sb.unarchive(i.thread); });

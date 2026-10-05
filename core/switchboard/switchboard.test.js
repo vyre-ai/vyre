@@ -24,6 +24,7 @@ import { open } from "../store/index.js";
 import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
 import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
+process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -239,7 +240,9 @@ async function until(fn, what, ms = 8000) {
  * A vyred in a temp home. `vault` is items to put in the real vault (name to a fake value), each
  * granted to module agents the way a person does it from the CLI, except those in `ungranted`.
  */
-async function boot(t, { vault, ungranted = [], probe, modules = [] } = {}) {
+async function boot(t, { vault, ungranted = [], probe, modules = [], legacy = false } = {}) {
+  // legacy: the test reads the caller's label (a tailnet owner label, an agent key over the home socket), which only a kernel-off daemon honours; with the kernel on the person and the session come from the kernel's chain (covered by kernel-turn.test.js and person-label.test.js).
+  if (legacy) { const was = process.env.VYRE_KERNEL; process.env.VYRE_KERNEL = "0"; t.after(() => { if (was === undefined) delete process.env.VYRE_KERNEL; else process.env.VYRE_KERNEL = was; }); }
   // tempHome's own cleanup always runs first (after-hooks run in the order they were added), so
   // it needs a way to stop this in-process vyred before it removes the directory - otherwise a
   // real ENOTEMPTY race (found under the full suite at concurrency 4, 2026-09-28, in the sibling
@@ -320,7 +323,7 @@ function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.random
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
 
 test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
-  const w = await boot(t);
+  const w = await boot(t, { legacy: true });
   const { root, work, tool, launches, d } = w;
   const a = sse(root), b = sse(root);
   t.after(() => { a.close(); b.close(); });
@@ -533,7 +536,7 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
-  const { root, tool, launches } = await boot(t, { vault: { "setup-token": "fake-setup-value", "api-key": "fake-api-value" } });
+  const { root, tool, launches } = await boot(t, { legacy: true, vault: { "setup-token": "fake-setup-value", "api-key": "fake-api-value" } });
   const s = sse(root);
   t.after(() => s.close());
 
@@ -806,7 +809,7 @@ test("agents.history: each question with its answer and thread, newest last, pag
   // agents.list says whether each may have a computer; core/computers decides on it.
   assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => [a.name, a.computer]), [["juno", false], ["scout", true]]);
   for (const [agent, text] of [["juno", "one"], ["scout", "two"], ["juno", "three"]]) {
-    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" })).data.text, `echo: ${text}`);
+    assert.equal((await tool("agents.ask", { agent, text, surface: "deck" }, "deck")).data.text, `echo: ${text}`);
   }
   const juno = (await tool("agents.history", { agent: "juno" })).data;
   assert.deepEqual(juno.map(x => [x.agent, x.text, x.answer, x.surface]), [["juno", "one", "echo: one", "deck"], ["juno", "three", "echo: three", "deck"]]);

@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
+import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, filterWords, isHiddenType, viewDefOf, storedViewsOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -24,9 +24,10 @@ test("the five types are data a view can draw: every list column and board field
 });
 
 test("which views a type has: Matter list, board and calendar; Contact list and board; Template no calendar", () => {
-  assert.deepEqual(viewsOf(def("matter")), ["list", "board", "calendar"]);
+  assert.deepEqual(viewsOf(def("matter")), ["list", "board", "calendar", "dashboard"]);
   assert.deepEqual(viewsOf(def("contact")), ["list", "board"]);
   assert.deepEqual(viewsOf(def("template")), ["list", "board"]);
+  assert.deepEqual(viewsOf(def("project")), ["list", "board", "calendar", "dashboard"]);
   assert.deepEqual(listColumns(def("matter")).map((f) => f.name), ["client", "stage", "fee", "owner"]);
 });
 
@@ -127,4 +128,106 @@ test("a sealed field's edit goes through the store's putSealed, never update, an
   const seen = await store.seesAs(jane.urn, "assistant");
   assert.equal(seen.ssn.ref, undefined);
   assert.equal(seen.ssn.sealed, "us-ssn");
+});
+
+test("dashboard: sum keeps rows that pass where, count by has a bar per stage, funnel counts reached-or-later, recent is newest first", () => {
+  const d = def("matter"), rows = byType.matter;
+  const cards = dashboardCards(d, rows);
+  assert.deepEqual(cards.map((c) => c.kind), ["sum", "countBy", "funnel", "recent"]);
+  const open = rows.filter((r) => r.data.stage !== "Closed");
+  assert.equal(cards[0].total, open.reduce((a, r) => a + numberOf(r.data.fee), 0));
+  assert.equal(cards[0].title, "Fee total");
+  assert.match(cards[0].hint, /, stage is not Closed$/);
+  assert.deepEqual(cards[1].bars.map((b) => b[0]), ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
+  assert.equal(cards[1].bars.reduce((a, b) => a + b[1], 0), rows.length);
+  assert.deepEqual(cards[2].bars.map((b) => b[0]), ["Intake", "Engagement", "Drafting", "Signing"]);
+  assert.equal(cards[2].bars[0][1], rows.length);
+  for (let i = 1; i < cards[2].bars.length; i++) assert.ok(cards[2].bars[i][1] <= cards[2].bars[i - 1][1], "a funnel never grows");
+  assert.ok(cards[3].rows.length <= 5);
+  for (let i = 1; i < cards[3].rows.length; i++) assert.ok(cards[3].rows[i - 1].updated_at >= cards[3].rows[i].updated_at);
+});
+
+test("dashboard: a widget whose field the type lacks is skipped, a type with no widgets has none", () => {
+  const d = def("matter"), vd = { plural: "Matters", titleField: "title", dashboard: { widgets: [{ kind: "sum", field: "nope" }, { kind: "recent" }] } };
+  assert.deepEqual(dashboardCards(d, byType.matter, vd).map((c) => c.kind), ["recent"]);
+  assert.deepEqual(dashboardCards(def("contact"), byType.contact), []);
+});
+
+test("where reads field op value; numbers compare as numbers; words say it plainly", () => {
+  const rec = (data) => ({ data });
+  assert.equal(whereFn("fee > 100")(rec({ fee: 250 })), true);
+  assert.equal(whereFn("fee > 100")(rec({ fee: { amount: 50 } })), false);
+  assert.equal(whereFn("stage = Closed")(rec({ stage: "Closed" })), true);
+  assert.equal(whereFn("not a clause"), null);
+  assert.equal(saysWhere("stage != Closed"), "stage is not Closed");
+  assert.equal(numberOf({ amount: 12, currency: "USD" }), 12);
+  assert.equal(numberOf("x"), 0);
+  assert.equal(barPct(1, 4), 25);
+  assert.equal(barPct(3, 0), 300);
+});
+
+test("a type's stored views decide how it is shown; the table is only the default", () => {
+  const matter = def("matter");
+  const table = viewDefOf(matter);
+  const stored = { ...matter, views: [
+    { name: "all", type: "list", columns: ["stage", "fee", "gone_field"], sort: { field: "fee", dir: "desc" }, filter: "fee >= 0" },
+    { name: "by_owner", type: "board", groupBy: "stage", columns: ["owner"] },
+    { name: "when", type: "calendar", dateField: "closing", filter: "fee >= 0" },
+  ] };
+  const vd = viewDefOf(stored);
+  assert.deepEqual(vd.list.columns, ["stage", "fee"], "a column the type does not have is dropped");
+  assert.equal(vd.list.sort, "fee"); assert.equal(vd.list.sortDir, "desc"); assert.equal(vd.list.filter, "fee >= 0");
+  assert.deepEqual(vd.board, { groupBy: "stage", card: ["owner"] });
+  assert.deepEqual(vd.calendar, { date: "closing", filter: "fee >= 0" });
+  assert.equal(vd.plural, table.plural, "what a view does not say stays as the table has it");
+  assert.deepEqual(viewDefOf(matter), table, "no stored views: the table, unchanged");
+  assert.deepEqual(viewDefOf({ ...matter, views: [{ name: "b", type: "board", groupBy: "nope" }] }).board, table.board, "a view that names a missing field is ignored");
+  // a type the table does not know takes its whole layout from what it stores
+  const own = { name: "lead", label: "Lead", fields: [{ name: "name", kind: "text" }, { name: "area", kind: "choice", options: ["a", "b"] }, { name: "city", kind: "text" }], views: [{ name: "b", type: "board", groupBy: "area", columns: ["city"] }] };
+  assert.deepEqual(viewDefOf(own).board, { groupBy: "area", card: ["city"] });
+});
+
+test("a stored filter keeps only the rows it holds for", () => {
+  const rows = [{ data: { area: "PI", n: 1 } }, { data: { area: "EP", n: 2 } }, { data: {} }];
+  assert.equal(viewRows(rows, undefined), rows, "no filter: the same rows");
+  assert.deepEqual(viewRows(rows, 'area == "PI"').map((r) => r.data.n), [1]);
+  assert.deepEqual(viewRows(rows, "(").length, 0, "a filter that cannot be read shows nothing rather than everything");
+});
+
+test("a type with several stored views of one kind: the first is the default, a name picks another", () => {
+  const matter = def("matter");
+  const t = { ...matter, views: [
+    { name: "all", type: "list", label: "All", columns: ["stage"] },
+    { name: "big", type: "list", label: "Big fees", columns: ["fee"], filter: "fee > 1000" },
+    { name: "by_stage", type: "board", groupBy: "stage" },
+  ] };
+  assert.deepEqual(storedViewsOf(t, "list"), [{ name: "all", label: "All", type: "list" }, { name: "big", label: "Big fees", type: "list" }]);
+  assert.deepEqual(viewDefOf(t).list.columns, ["stage"]);
+  assert.deepEqual(viewDefOf(t, undefined, "big").list, { ...viewDefOf(t, undefined, "big").list, columns: ["fee"], filter: "fee > 1000" });
+  assert.deepEqual(viewDefOf(t, undefined, "nope").list.columns, ["stage"], "an unknown name is the default");
+  assert.equal(viewDefOf(t, undefined, "big").board.groupBy, "stage", "a name picks within its own kind only");
+});
+
+test("a type with no stage gets a board on its first choice field", () => {
+  const lead = { name: "lead", label: "Lead", fields: [{ name: "name", kind: "text" }, { name: "practice_area", kind: "choice", label: "Practice area", options: ["PI", "EP"] }, { name: "city", kind: "text" }] };
+  const vd = viewDefOf(lead);
+  assert.equal(vd.board.groupBy, "practice_area");
+  assert.deepEqual(viewsOf(lead), ["list", "board"]);
+  const b = boardColumns(lead, [{ data: { practice_area: "PI" } }, { data: {} }], vd);
+  assert.deepEqual(b.columns.map((c) => c.id), ["PI", "EP", ""]);
+  assert.equal(viewDefOf({ name: "note", label: "Note", fields: [{ name: "title", kind: "text" }] }).board, undefined, "no choice field, no board");
+});
+
+test("the Space's own bookkeeping types are not a screen of the person's", () => {
+  for (const n of ["def-flow", "flow-state", "kit-proposal", "kit-install", "goal"]) assert.equal(isHiddenType({ name: n }), true, n);
+  for (const n of ["contact", "project", "kit", "flowers", "lead"]) assert.equal(isHiddenType({ name: n }), false, n);
+  assert.equal(isHiddenType({ name: "x", internal: true }), true);
+});
+
+test("a stored filter reads as words in the Filtered row", () => {
+  const t = { fields: [{ name: "stage", label: "Stage" }, { name: "fee", label: "Fee" }, { name: "due", label: "Due" }] };
+  assert.equal(filterWords(t, 'stage == "Intake"'), "Stage is Intake");
+  assert.equal(filterWords(t, 'stage != "Closed" and fee >= 100'), "Stage is not Closed and Fee is at least 100");
+  assert.equal(filterWords(t, "not empty(due)"), "Due is filled in");
+  assert.equal(filterWords(t, "empty(due)"), "Due is empty");
 });
