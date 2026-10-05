@@ -149,6 +149,8 @@ export const COMMUNICATION = {
     text("source_key", "Connector and its id", { unique: true }),
     text("mailbox", "Mailbox or calendar"),
     f("link", "record", "Concerns"),
+    // the Contacts on it, many to many: a Contact's page shows its Communications (the reverse); the Participant beside it keeps how each was on it and the address as written
+    f("link", "contacts", "Contacts", { to: "contact", many: true, inverse: { name: "communications", label: "Communications" } }),
   ],
 };
 

@@ -57,12 +57,18 @@ test("an email is filed once as a Communication, with a participant for each per
     "cc:stranger@elsewhere.test": undefined,
   }, "main email, a further address (contact point), and bare addresses with no contact");
   assert.equal((await all("contact")).length, 2, "no contact was made for a stranger: off to start");
+  // the Communication links straight to each Contact on it (many to many), beside the Participants; a stranger with no contact adds nothing
+  assert.deepEqual(comms[0].data.contacts.map((/** @type {any} */ c) => c.urn).sort(), [bob.urn, jane.urn].sort());
+  // and the Contact shows it as "Communications" (the named reverse)
+  const janeNow = await R.get(chain(), "contact", jane.id);
+  assert.deepEqual((janeNow.data.communications || []).map((/** @type {any} */ c) => c.urn), [comms[0].urn], "the reverse link on the Contact");
   // the timeline on the contact shows it, from both of Bob's addresses
   assert.equal((await timelineOf(host.kernel, chain(), jane.urn)).length, 1);
   assert.equal((await timelineOf(host.kernel, chain(), bob.urn)).length, 1);
   // the same item again (the watcher saw it twice, or the run was retried): nothing doubles
   await feed(item);
   assert.equal((await all("communication")).length, 1); assert.equal((await all("participant")).length, 4);
+  assert.equal((await all("communication"))[0].data.contacts.length, 2, "and the links are not doubled");
 });
 
 test("a reply from the mailbox is outbound and files on the contact it was sent to; a changed meeting updates its Communication and adds the new attendee", async () => {
