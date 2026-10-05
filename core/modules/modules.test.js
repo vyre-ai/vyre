@@ -1333,7 +1333,7 @@ test("modules: a relayed call is judged as the relayed person, firstParty false;
   t.after(() => db.close());
   const stranger = { kind: "device", device_key_id: "d9", person: "per_mallory", path: "direct" };
   const alex = { kind: "device", device_key_id: "d1", person: "per_alex", path: "direct" };
-  assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: stranger })).data, { refused: "denied" }, "a relayed non-member is refused, not waved through as first-party");
+  assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: stranger })).data, { r: { error: { code: "denied", message: "not a member" } } }, "a relayed non-member is refused, not waved through as first-party");
   assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: alex })).data, { r: { data: { passed: "member", relayedBy: "module:spaces" } } }, "a relayed member passes as a member, the module named for audit only");
   // a plain module call (no relay) is still first-party, and carries no relayedBy
   assert.deepEqual((await reg.call("spaces.plain", {}, "cli", { kernelFacts: stranger })).data, { r: { data: { passed: "first-party", relayedBy: null } } });
