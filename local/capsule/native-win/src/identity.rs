@@ -5,21 +5,41 @@
 
 use ed25519_dalek::{Signer, SigningKey};
 
+/// The BCRYPT_ECCPUBLIC_BLOB of a peer's raw uncompressed point (65 bytes, 0x04 first) as an ECDH public key, for CNG to import; None for anything else.
+pub fn ecdh_blob_from_point(point: &[u8]) -> Option<Vec<u8>> {
+    if point.len() != 65 || point[0] != 4 { return None; }
+    let mut blob = Vec::with_capacity(72);
+    blob.extend_from_slice(&ECK1.to_le_bytes());
+    blob.extend_from_slice(&32u32.to_le_bytes());
+    blob.extend_from_slice(&point[1..]);
+    Some(blob)
+}
+
+/// CNG's raw ECDH secret comes back little-endian; the agreed value everyone else uses (node's computeSecret, CryptoKit, WebCrypto) is the big-endian X coordinate.
+pub fn secret_big_endian(raw: &[u8]) -> Option<[u8; 32]> {
+    if raw.len() != 32 { return None; }
+    let mut out = [0u8; 32];
+    for (i, b) in raw.iter().rev().enumerate() { out[i] = *b; }
+    Some(out)
+}
+
 /// The 32-byte Ed25519 public key for a 32-byte seed.
 pub fn public_key(seed: &[u8; 32]) -> [u8; 32] { SigningKey::from_bytes(seed).verifying_key().to_bytes() }
 
 /// The 64-byte Ed25519 signature of `message` under a 32-byte seed.
 pub fn sign(seed: &[u8; 32], message: &[u8]) -> [u8; 64] { SigningKey::from_bytes(seed).sign(message).to_bytes() }
 
-/// BCRYPT_ECCPUBLIC_BLOB: the magic "ECS1" (0x31534345), the key size in bytes (32 for P-256), then X and Y, 32 bytes each, big-endian.
+/// BCRYPT_ECCPUBLIC_BLOB: the magic ("ECS1", 0x31534345, for an ECDSA key; "ECK1", 0x314B4345, for an ECDH key), the key size in bytes (32 for P-256), then X and Y, 32 bytes each, big-endian.
 const ECS1: u32 = 0x3153_4345;
+const ECK1: u32 = 0x314B_4345;
 
 /// The raw uncompressed point (0x04, X, Y: 65 bytes) a BCRYPT_ECCPUBLIC_BLOB of a P-256 key holds, or None for any other blob.
+/// An ECDH key's blob is the same but for its magic.
 pub fn point_from_ecc_blob(blob: &[u8]) -> Option<[u8; 65]> {
     if blob.len() != 8 + 64 { return None; }
     let magic = u32::from_le_bytes(blob[0..4].try_into().ok()?);
     let cb = u32::from_le_bytes(blob[4..8].try_into().ok()?);
-    if magic != ECS1 || cb != 32 { return None; }
+    if (magic != ECS1 && magic != ECK1) || cb != 32 { return None; }
     let mut p = [0u8; 65];
     p[0] = 4;
     p[1..].copy_from_slice(&blob[8..72]);
@@ -66,6 +86,28 @@ mod tests {
         assert_eq!(p[0], 4);
         assert_eq!(&p[1..33], &(0..32).map(|i| i as u8).collect::<Vec<_>>()[..]);
         assert_eq!(&p[33..], &(100..132).map(|i| i as u8).collect::<Vec<_>>()[..]);
+    }
+
+    #[test]
+    fn an_ecdh_blob_has_the_same_point_and_round_trips_from_a_raw_point() {
+        let mut point = [0u8; 65];
+        point[0] = 4;
+        for i in 1..65 { point[i] = i as u8; }
+        let blob = ecdh_blob_from_point(&point).unwrap();
+        assert_eq!(&blob[0..4], &0x314B_4345u32.to_le_bytes());
+        assert_eq!(point_from_ecc_blob(&blob).unwrap(), point);
+        assert!(ecdh_blob_from_point(&point[..64]).is_none(), "short");
+        let mut compressed = point; compressed[0] = 2;
+        assert!(ecdh_blob_from_point(&compressed).is_none(), "not uncompressed");
+    }
+
+    #[test]
+    fn cngs_little_endian_secret_becomes_the_big_endian_x_coordinate() {
+        let le: Vec<u8> = (0..32).collect();
+        let be = secret_big_endian(&le).unwrap();
+        assert_eq!(be[0], 31);
+        assert_eq!(be[31], 0);
+        assert!(secret_big_endian(&le[..31]).is_none());
     }
 
     #[test]

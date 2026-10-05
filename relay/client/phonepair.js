@@ -36,7 +36,7 @@ export function parsePhonePayload(s) {
 }
 
 /**
- * @param {{ payload: string, key: { publicKey: string, label?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
+ * @param {{ payload: string, key: { publicKey: string, label?: string, agree?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
  *   presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
@@ -88,7 +88,7 @@ export async function addThisDevice(o) {
   };
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
-    const entry = { publicKey: o.key.publicKey, ...(o.key.label ? { label: String(o.key.label).slice(0, 60) } : {}) };
+    const entry = { publicKey: o.key.publicKey, ...(o.key.label ? { label: String(o.key.label).slice(0, 60) } : {}), ...(o.key.agree ? { agree: String(o.key.agree) } : {}) };
     const base = { commit, tag, name: deviceName.slice(0, 64), entry };
     const first = await wait(base);
     const nb = String(first && first.nb || "");

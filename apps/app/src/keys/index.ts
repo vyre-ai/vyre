@@ -3,6 +3,7 @@
 
 import { createIdentityKey, hasIdentity, identityKey, forgetIdentity } from "../identity/store";
 import { macDeviceKey, macEnclavePublic, macKeyAvailable, macSignListChange } from "../identity/mac-key.ts";
+import { agreePublic } from "../identity/agree.ts";
 
 export type KeyStorage = { identity: "webcrypto-indexeddb" | "software-indexeddb" | "mac-keychain" | "none"; presence: "passkey" | "none" | "not-in-rc1" | "secure-enclave" | "keystore" | "software" };
 export type { PresenceCard, PresenceProof } from "../../modules/vyre-signer/index";
@@ -15,12 +16,13 @@ export async function signIdentityOp(message: Uint8Array): Promise<Uint8Array> {
   return k.sign(message);
 }
 /** The Mac app's window hands recovery its own key (the seed stays in the Keychain); a browser makes one in the call. */
-export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean; key?: NonNullable<Awaited<ReturnType<typeof macDeviceKey>>> }> => {
+export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean; agree?: string; key?: NonNullable<Awaited<ReturnType<typeof macDeviceKey>>> }> => {
   if (!macKeyAvailable()) return {};
   const key = await macDeviceKey(true);
   if (!key) return {};
   const enclave = await macEnclavePublic(true); // a Mac with no Secure Enclave keeps an entry that signs alone
-  return enclave ? { key, enclave } : { key };
+  const agree = (await agreePublic(true)) ?? undefined;
+  return { key, ...(enclave ? { enclave } : {}), ...(agree ? { agree } : {}) };
 };
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> { return { identity: await hasIdentity(), presence: macKeyAvailable() && (await macEnclavePublic(false)) !== null }; }
 export async function wipeKeys(): Promise<void> { await forgetIdentity(); }

@@ -17,6 +17,9 @@ export type MacShell = {
     /** The Secure Enclave key of this Mac's entry (Touch ID per signature): its raw uncompressed point, and a raw r||s signature. Absent or rejecting on a Mac with no Secure Enclave. */
     enclavePublic?(create?: boolean): Promise<string>;
     enclaveSign?(message: string, prompt: string): Promise<string>;
+    /** This computer's agreement key (ECDH P-256, never leaves the OS keystore or hardware): its raw uncompressed point, and the 32-byte shared secret with a peer's point (both base64url). No prompt per use. */
+    agreePublic?(create?: boolean): Promise<string>;
+    agree?(epk: string): Promise<string>;
   };
   /** The version of this app, when the bridge says (a release candidate shows its own install line). */
   version?: string;

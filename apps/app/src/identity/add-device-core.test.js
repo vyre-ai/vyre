@@ -79,3 +79,13 @@ test("a pairing that cannot be kept does not undo the name", async () => {
   assert.equal((await addDeviceCore(d, { deviceLabel: "p" })).name, "harlow");
   assert.equal(saved.length, 1);
 });
+
+test("this device's agreement point rides in the key it offers, and a device with no agreement key offers none", async () => {
+  const seen = [];
+  const { d } = stubs({ agree: async () => "AGREEPOINT", pair: async (o) => { seen.push(o.key); return PAIRED; } });
+  await addDeviceCore(d, { deviceLabel: "walk phone" });
+  assert.deepEqual(seen[0], { publicKey: "pub", agree: "AGREEPOINT" });
+  const none = stubs({ agree: async () => { throw new Error("no key"); }, pair: async (o) => { seen.push(o.key); return PAIRED; } });
+  await addDeviceCore(none.d, { deviceLabel: "walk phone" });
+  assert.deepEqual(seen[1], { publicKey: "pub" });
+});

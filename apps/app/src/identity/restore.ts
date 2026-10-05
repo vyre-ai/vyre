@@ -41,6 +41,8 @@ type Opts = {
   key?: Awaited<ReturnType<typeof generateDeviceKey>>;
   /** The phone's Secure Enclave public key (NK-2) for the new entry, when this device has one. */
   enclave?: string;
+  /** This device's agreement key (a P-256 point, base64url): the key a chat key is wrapped to (src/identity/agree.ts). */
+  agree?: string;
   /** On a phone: refuse (not_hardware) unless `enclave` is given, so a recovered phone never has a device entry whose seed alone can change the list (NK-2). */
   requireEnclave?: boolean;
 };
@@ -96,7 +98,7 @@ export async function recoverIdentity(o: Opts): Promise<{ name: string; id: stri
   if (!state.entries.some((e: any) => e.kind === "code" && e.eid === ck.eid)) throw fail("wrong_code", "That code (or password) is not the one for this name.");
   if (o.requireEnclave && !o.enclave) throw fail("not_hardware", "This phone could not give its Secure Enclave key.");
   const key = o.key ?? (await generateDeviceKey());
-  const entry = { eid: key.eid, kind: "device", pub: key.publicKey, ...(o.enclave ? { enclave: o.enclave } : {}) };
+  const entry = { eid: key.eid, kind: "device", pub: key.publicKey, ...(o.enclave ? { enclave: o.enclave } : {}), ...(o.agree ? { agree: o.agree } : {}) };
   let op: any, next: any;
   try {
     op = await C.makeOp(state, { type: "add", entry }, { by: ck.eid, ts: Math.max(now(), state.ts), sign: (m: Uint8Array) => ck.sign(m) });

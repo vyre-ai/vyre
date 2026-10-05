@@ -4,9 +4,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
-const FOUR = ["identity_public", "identity_sign", "enclave_public", "enclave_sign"];
+const FOUR = ["identity_public", "identity_sign", "enclave_public", "enclave_sign", "agree_public", "agree_secret"]; // the four identity commands and the two agreement ones
 
-test("the main panel is permitted exactly the four identity commands, on https origins, and nothing else", () => {
+test("the main panel is permitted exactly the identity and agreement commands, on https origins, and nothing else", () => {
   const cap = JSON.parse(read("../app/capabilities/main-identity.json"));
   assert.deepEqual(cap.windows, ["main"]);
   assert.deepEqual(cap.permissions, FOUR.map((c) => "allow-" + c.replace(/_/g, "-")));
@@ -47,7 +47,7 @@ test("no command returns a seed: the identity commands give a public key or a si
 test("the page sees a frozen window.__vyreShell of kind windows with the same identity calls as the Mac's, and no presence or menu", () => {
   const rs = read("../app/src/main.rs");
   assert.match(rs, /kind: "windows", boxless: false, version: \{v\}, identity: identity/);
-  for (const call of ["identity_public", "identity_sign", "enclave_public", "enclave_sign"]) assert.match(rs, new RegExp(`inv\\("${call}"`));
+  for (const call of ["identity_public", "identity_sign", "enclave_public", "enclave_sign", "agree_public", "agree_secret"]) assert.match(rs, new RegExp(`inv\\("${call}"`));
   assert.match(rs, /\.initialization_script\(shell_signal\(/);
   assert.doesNotMatch(/function shell_signal[\s\S]*?\}\)\(\);/.exec(rs)?.[0] ?? "", /presence|onCommand|notify/);
 });

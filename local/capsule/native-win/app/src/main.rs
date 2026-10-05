@@ -69,7 +69,9 @@ fn shell_signal(version: &str) -> String {
     public: function (create) {{ return inv("identity_public", {{ create: !!create }}); }},
     sign: function (message) {{ return inv("identity_sign", {{ message: message }}); }},
     enclavePublic: function (create) {{ return inv("enclave_public", {{ create: !!create }}); }},
-    enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }}
+    enclaveSign: function (message, prompt) {{ return inv("enclave_sign", {{ message: message, prompt: prompt }}); }},
+    agreePublic: function (create) {{ return inv("agree_public", {{ create: !!create }}); }},
+    agree: function (epk) {{ return inv("agree_secret", {{ epk: epk }}); }}
   }});
   Object.defineProperty(window, "__vyreShell", {{ value: Object.freeze({{ kind: "windows", boxless: false, version: {v}, identity: identity }}), writable: false, configurable: false }});
 }})();"#)
@@ -401,6 +403,20 @@ fn enclave_sign(app: AppHandle, webview: tauri::Webview, message: String, prompt
     Ok(b64u(&ncrypt::sign(&m)?))
 }
 
+/// The agreement key (ECDH, no prompt per use): its public point, and the shared secret with a peer's point. The key stays in the TPM or the user's key store.
+#[tauri::command]
+fn agree_public(app: AppHandle, webview: tauri::Webview, create: bool) -> Result<String, String> {
+    from_pinned(&app, &webview)?;
+    Ok(b64u(&ncrypt::agree_public(create)?))
+}
+
+#[tauri::command]
+fn agree_secret(app: AppHandle, webview: tauri::Webview, epk: String) -> Result<String, String> {
+    from_pinned(&app, &webview)?;
+    let p = unb64u(&epk)?;
+    Ok(b64u(&ncrypt::agree_secret(&p)?))
+}
+
 /// What `connect` needs to stay linked to the paired box (no secret in it), for the link window.
 #[tauri::command]
 fn get_link(app: AppHandle) -> Option<serde_json::Value> {
@@ -529,7 +545,7 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, enclave_public, enclave_sign, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, identity_public, identity_sign, enclave_public, enclave_sign, agree_public, agree_secret, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });

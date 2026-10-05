@@ -157,7 +157,7 @@ async function verifyEsig(e, message, esig) {
 const verifyEntry = (e, message, sig) => (e.alg === "webauthn-es256" ? verifyWebAuthn(/** @type {string} */ (e.pub), String(e.rp || ""), message, sig) : verifySig(/** @type {string} */ (e.pub), message, sig));
 
 /**
- * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, held?: "web", enclave?: string, attest?: string }} Entry
+ * @typedef {{ eid: string, kind: "device"|"code"|"contact"|"owner", pub?: string, subject?: string, label?: string, since: number, addedBy: string|null, founder?: boolean, alg?: "webauthn-es256", rp?: string, agree?: string, held?: "web", enclave?: string, attest?: string }} Entry
  * @typedef {{ id: string, kind: "person"|"space", seq: number, head: string, ts: number, entries: Entry[] }} State
  * @typedef {{ ownerOps?: (id: string) => Promise<any[]|null>, live?: boolean, liveFrom?: number, seenAt?: (seq: number) => number|undefined, now?: number, skewMs?: number }} Ctx
  * `ownerOps(id)` gives a person's whole chain (the verifier checks it itself). `live` says every op here is being ACCEPTED now, so its device must be on the owner's
@@ -188,8 +188,14 @@ async function shapeOfEntry(e, kind) {
     const pt = unb64(e.enclave);
     if (passkey || e.kind !== "device" || !pt || pt.length !== 65 || pt[0] !== 4) throw chainError("bad_entry", "an enclave key is a raw uncompressed P-256 point on a device entry");
   }
+  // `agree`: the raw uncompressed P-256 point a device keeps for key agreement (ECDH), the key other devices wrap a chat key to. It is part of the signed entry, so it is immutable once on the list
+  // and a recovery or a join cannot swap it; it signs nothing and no list change needs it. A device entry only.
+  if (e.agree !== undefined) {
+    const pt = unb64(e.agree);
+    if (e.kind !== "device" || !pt || pt.length !== 65 || pt[0] !== 4) throw chainError("bad_entry", "an agreement key is a raw uncompressed P-256 point on a device entry");
+  }
   if (e.attest !== undefined && (typeof e.attest !== "string" || e.attest.length > 8192)) throw chainError("bad_entry", "an attestation is a string");
-  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held === "web" ? { held: "web" } : {}), ...(e.enclave !== undefined ? { enclave: e.enclave } : {}), ...(e.attest !== undefined ? { attest: e.attest } : {}) };
+  return { eid: e.eid, kind: e.kind, pub: e.pub, label: cleanLabel(e.label), ...(passkey ? { alg: "webauthn-es256", rp: e.rp } : {}), ...(e.held === "web" ? { held: "web" } : {}), ...(e.enclave !== undefined ? { enclave: e.enclave } : {}), ...(e.agree !== undefined ? { agree: e.agree } : {}), ...(e.attest !== undefined ? { attest: e.attest } : {}) };
 }
 const cleanLabel = (/** @type {unknown} */ l) => (typeof l === "string" ? l.replace(/[\u0000-\u001f]/g, " ").slice(0, 60) : undefined) || undefined;
 

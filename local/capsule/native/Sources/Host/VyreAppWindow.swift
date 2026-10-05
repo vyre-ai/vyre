@@ -28,6 +28,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var identity: MacIdentity?
     /// The Secure Enclave key of this Mac's device entry (MacEnclave.swift).
     var enclave: MacEnclave?
+    /// This Mac's agreement key (MacAgree.swift): ECDH for opening a wrapped chat key, no prompt per use.
+    var agreement: MacAgree?
     /// Settings' "Make this Mac a server": runs this Mac's own setup (FirstRunWindow.swift). Set by the Capsule at launch.
     var makeServer: (() -> Void)?
 
@@ -149,6 +151,12 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case "identity.has": reply(id, ["has": id0.has])
             default: id0.forget(); reply(id, ["ok": true])
             }
+        case "agree.public":
+            guard let pt = agreement?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no agreement key."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pt)])
+        case "agree.agree":
+            guard let epk = (args["epk"] as? String).flatMap(MacIdentity.unb64url), let secret = agreement?.agree(epk: epk) else { return reply(id, ["error": "This Mac could not open that."]) }
+            reply(id, ["secret": MacIdentity.b64url(secret)])
         case "setup.server":
             makeServer?()
             reply(id, ["ok": true])
@@ -310,6 +318,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
           has: function () { return call("identity.has").then(function (r) { return r.has; }); },
           forget: function () { return call("identity.forget").then(function () {}); },
+          agreePublic: function (create) { return call("agree.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          agree: function (epk) { return call("agree.agree", { epk: epk }).then(function (r) { return r.secret; }); },
           makeServer: function () { return call("setup.server").then(function () {}); },
           enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           enclaveSign: function (message, prompt) { return call("enclave.sign", { message: message, prompt: prompt }).then(function (r) { return r.signature; }); }

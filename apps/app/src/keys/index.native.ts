@@ -7,6 +7,7 @@
 import { Platform } from "react-native";
 import { createIdentityKey, hasIdentity, identityKey, forgetIdentity } from "../identity/store.native";
 import * as Signer from "../../modules/vyre-signer";
+import { agreePublic } from "../identity/agree.ts";
 
 export type { PresenceCard, PresenceProof } from "../../modules/vyre-signer";
 export type KeyStorage = { identity: "keychain" | "none"; presence: "secure-enclave" | "keystore" | "software" | "none" };
@@ -49,9 +50,12 @@ export function listChangeSigners(prompt: string): { sign: (m: Uint8Array) => Pr
  * What recoverIdentity / claimIdentity need from this device so its new entry carries the Secure Enclave key (RX-1, NK-2): on an iPhone `{ enclave, requireEnclave: true }` (the call refuses
  * rather than make a phone entry whose seed alone could change the list; no Face ID or no enrolled face means no enclave key, and the error says so); elsewhere nothing.
  */
-export async function recoveryKeyOptions(): Promise<{ enclave?: string; requireEnclave?: boolean }> {
+export async function recoveryKeyOptions(): Promise<{ enclave?: string; requireEnclave?: boolean; agree?: string }> {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return {};
-  try { return { enclave: await Signer.enclavePublic(), requireEnclave: true }; } catch (e) {
+  try {
+    const agree = (await agreePublic(true)) ?? undefined; // the key a chat key is wrapped to; its point goes in the entry
+    return { enclave: await Signer.enclavePublic(), requireEnclave: true, ...(agree ? { agree } : {}) };
+  } catch (e) {
     throw Object.assign(new Error("Set up a screen lock and a fingerprint or face on this phone, then try again."), { code: "no_biometrics", cause: e });
   }
 }
