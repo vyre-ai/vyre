@@ -47,7 +47,7 @@ test("a release server with no env set offers the typed code beside the QR, good
   const made = (await s.call("wink.server.code", { qr: true })).data;
   assert.match(made.code, /^WINK-[0-9A-Z]{4}-[0-9A-Z]{4}$/, "the typed code is shown by default");
   assert.ok(made.qr && /^vyre:\/\/wink\//.test(made.qr), "beside the long code");
-  assert.ok(made.expires - t0 > CODE_TTL_MS - 15_000 && made.expires - t0 <= CODE_TTL_MS + 1000, `it expires in about ten minutes (${Math.round((made.expires - t0) / 1000)} s)`);
+  assert.ok(made.code_expires - t0 > CODE_TTL_MS - 15_000 && made.code_expires - t0 <= CODE_TTL_MS + 1000, `the typed code expires in about ten minutes (${Math.round((made.code_expires - t0) / 1000)} s)`);
   // three wrong tries (a wrong last character each time), each answered "no"; the fourth, even with the RIGHT code, is refused: the code is closed
   const wrong = made.code.slice(0, -1) + (made.code.endsWith("A") ? "B" : "A");
   for (let i = 1; i <= MAX_ATTEMPTS; i++) { const r = await typeWinkCode({ relay: s.url, input: wrong }); assert.equal(r.ok, false, `try ${i} is refused`); }
