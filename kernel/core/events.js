@@ -39,7 +39,6 @@ export function verifyEvents(/** @type {string} */ space, /** @type {readonly an
   return { ok: true, head: prev, seq: n };
 }
 
-const deepFreezeEarly = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreezeEarly(v); } return o; };
 
 const deepFreeze = (/** @type {any} */ o) => { if (o && typeof o === "object" && !Object.isFrozen(o)) { Object.freeze(o); for (const v of Object.values(o)) deepFreeze(v); } return o; };
 const WINDOW = Object.freeze({ events: 2000, bytes: 4 * 1024 * 1024 });

@@ -172,7 +172,6 @@ export function createGrantsStore(cfg) {
   const kernelChain = () => cfg.chains.fromFacts({ kind: "module", module: "grants", first_party: true });
   // K-3: the seal is the sealing process (or, for a development kernel with no sealing process, a local key). The store holds no key of its own.
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
-  const LEGACY_RE = /^(grant|member|actor|offer|invite|chat|rule)\./;
   // Every event this store writes is sealed (one `kernel.mac` per event) and numbered on THIS store's own chain: `gseq` counts its events and `gprev` is the hash of the
   // seal of the one before. A genuine event copied and appended again later has an old `gseq`, so rebuild skips it: a revoked grant or a removed member cannot be replayed
   // back. (The log's own position cannot be the number: another writer appends between the MAC and the append now that the MAC is a round trip to the sealing process.)
