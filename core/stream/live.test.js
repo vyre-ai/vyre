@@ -31,7 +31,7 @@ async function serve(t, w) {
     if (!u) { socket.end("HTTP/1.1 404 Not Found\r\n\r\n"); return; }
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
-    u.handler(req, socket, head, { caller: "deck", url });
+    u.handler(req, socket, head, { caller: "cli", url });
   });
   await new Promise(r => s.listen(0, "127.0.0.1", () => r(undefined)));
   const port = /** @type {any} */ (s.address()).port;
@@ -47,7 +47,7 @@ function client(t, w, port, session) {
   /** @type {any[]} */ const frames = [];
   const c = connect({
     open: async ({ from }) => {
-      const o = (await w.tool("stream.open", { chat: session, from }, "deck")).data;
+      const o = (await w.tool("stream.open", { chat: session, from })).data;
       return wsDuplex(`ws://127.0.0.1:${port}${o.path}`);
     },
     onFrame: f => frames.push(f),
@@ -109,7 +109,7 @@ test("live: a running session streams, a steer is queued then picked up, and a s
   assert.deepEqual(cut.frames.map(f => f.cur), cut.frames.map((_, i) => i + 1), "gapless from 1 while live");
 
   // Steer while the turn is blocked: a queued frame, then the socket dies before it is picked up.
-  const steer = (await w.tool("threads.send", { thread: id, text: "use the rye price too", surface: "deck" }, "deck")).data;
+  const steer = (await w.tool("threads.send", { thread: id, text: "use the rye price too", surface: "deck" })).data;
   assert.equal(steer.steered, true);
   await until(() => cut.frames.some(f => f.type === "chat.user-message" && f.data.state === "queued" && f.data.message === steer.uuid), "the queued frame");
   const before = cut.c.last;
@@ -122,11 +122,11 @@ test("live: a running session streams, a steer is queued then picked up, and a s
   const bash = await until(async () => (await w.tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash"), "the Bash ask");
   await w.tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
   await w.finished(id);
-  await until(async () => (await w.tool("stream.open", { chat: await chatOf(w, id) }, "deck")).data.head === cut.c.last && cut.c.last > before, "the cut-off client to catch up", 8000);
+  await until(async () => (await w.tool("stream.open", { chat: await chatOf(w, id) })).data.head === cut.c.last && cut.c.last > before, "the cut-off client to catch up", 8000);
 
   // A client that was never cut off reads the same log from the start.
   const whole = client(t, w, port, await chatOf(w, id));
-  const head = (await w.tool("stream.open", { chat: await chatOf(w, id) }, "deck")).data.head;
+  const head = (await w.tool("stream.open", { chat: await chatOf(w, id) })).data.head;
   await until(() => whole.c.last === head, "the uninterrupted client", 8000);
   assert.equal(cut.c.last, head);
   // A replay may merge a run of deltas into one frame (span), so the frames can differ in count; the
@@ -156,10 +156,10 @@ test("live: a queued message taken back is a cancelled frame, and a stop says st
   const id = (await w.tool("threads.start", { cwd: w.work, prompt: "demo", surface: "deck" })).data.id;
   await until(async () => (await w.tool("threads.asks", { thread: id })).data.find(a => a.tool === "Edit"), "the Edit ask");
   const live = client(t, w, port, await chatOf(w, id));
-  const queued = (await w.tool("threads.send", { thread: id, text: "check the hours", surface: "deck", mode: "queue" }, "deck")).data;
+  const queued = (await w.tool("threads.send", { thread: id, text: "check the hours", surface: "deck", mode: "queue" })).data;
   assert.equal(queued.queued, true);
   await until(() => live.frames.some(f => f.type === "chat.user-message" && f.data.state === "queued"), "queued frame", 8000);
-  await w.tool("threads.unqueue", { thread: id }, "deck");
+  await w.tool("threads.unqueue", { thread: id });
   await until(() => live.frames.some(f => f.type === "chat.user-message" && f.data.state === "cancelled"), "cancelled frame", 8000);
   const gone = live.frames.filter(f => f.type === "chat.user-message" && f.data.message === queued.uuid).map(f => f.data.state);
   assert.deepEqual(gone, ["queued", "cancelled"]);
@@ -178,7 +178,7 @@ test("live: a session that began before the stream (an empty log) is seeded from
   const db = new DatabaseSync(config.paths(w.root).db);
   try { db.exec("DELETE FROM stream_frames"); } finally { db.close(); }
   await w.restart();
-  const o = (await w.tool("stream.open", { chat: await chatOf(w, id), from: 0 }, "deck")).data;
+  const o = (await w.tool("stream.open", { chat: await chatOf(w, id), from: 0 })).data;
   assert.ok(o.head > 0, "the log was seeded");
   const { port } = await serve(t, w);
   const seen = client(t, w, port, await chatOf(w, id));
@@ -195,11 +195,11 @@ test("live: term.open for a session opens in the session's folder and a typed li
   const id = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data.id;
   await w.finished(id);
   const live = client(t, w, port, await chatOf(w, id));
-  const r = await w.tool("term.open", { session: id, surface: "deck:abc123" }, "deck");
+  const r = await w.tool("term.open", { session: id, surface: "deck:abc123" });
   assert.ok(!r.error, r.error && r.error.message);
   assert.equal(fs.realpathSync(r.data.cwd), fs.realpathSync(w.work));
   const ws = new WebSocket(`ws://127.0.0.1:${port}${r.data.path}`);
-  t.after(async () => { try { ws.close(); } catch {} await w.tool("term.close", { term: r.data.term }, "deck"); });
+  t.after(async () => { try { ws.close(); } catch {} await w.tool("term.close", { term: r.data.term }); });
   await new Promise((ok, no) => { ws.onopen = ok; ws.onerror = () => no(new Error("term socket")); });
   await sleep(300);
   ws.send(JSON.stringify({ t: "in", d: "echo " }));
