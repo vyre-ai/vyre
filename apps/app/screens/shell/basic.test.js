@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hostChoices, isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
+import { sizeWords, storageLine, hostChoices, isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
 
 test("a space is Basic only when the box says tier basic; cloud and team spaces are not", () => {
   assert.equal(isBasicRow({ tier: "basic" }), true);
@@ -42,4 +42,13 @@ test("the personal-items host: the Cloud spaces from spaces.tier, named by the o
   assert.deepEqual(hostChoices(t), { options: [["spc_a", "harlow"], ["spc_b", "example"]], current: "spc_b" });
   assert.deepEqual(hostChoices({ cloud: [], personal_host: null }), { options: [], current: null });
   assert.equal(hostChoices({ cloud: [{ id: "spc_a", name: "x" }], personal_host: "gone" }).current, null);
+});
+
+test("the storage line: what is used, the cap when there is one, and where", () => {
+  assert.equal(sizeWords(0), "0 B");
+  assert.equal(sizeWords(1536), "1.5 KB");
+  assert.equal(sizeWords(5 * 1024 ** 3), "5 GB");
+  assert.equal(storageLine({ used: 12 * 1024 ** 2, cap: 1024 ** 3 }, "harlow"), "Using 12 MB of 1 GB on harlow");
+  assert.equal(storageLine({ used: 2048, cap: 0 }, "harlow"), "Using 2 KB on harlow");
+  assert.equal(storageLine(null, "harlow"), null);
 });

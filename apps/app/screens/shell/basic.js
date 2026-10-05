@@ -54,3 +54,18 @@ export function hostChoices(t) {
   const current = typeof t?.personal_host === "string" && options.some(([id]) => id === t.personal_host) ? t.personal_host : null;
   return { options, current };
 }
+
+const UNITS = ["B", "KB", "MB", "GB", "TB"];
+/** A size in words: 1.5 GB. @param {number} n */
+export function sizeWords(n) {
+  let v = Math.max(0, Number(n) || 0), i = 0;
+  while (v >= 1024 && i < UNITS.length - 1) { v /= 1024; i++; }
+  return `${i === 0 ? Math.round(v) : v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} ${UNITS[i]}`;
+}
+
+/** The storage line for the space that keeps a Personal space's items: spaces.storage.usage answers { used, cap } in bytes (cap 0 for none). @param {any} u @param {string} host */
+export function storageLine(u, host) {
+  if (!u || typeof u.used !== "number") return null;
+  const cap = typeof u.cap === "number" && u.cap > 0 ? ` of ${sizeWords(u.cap)}` : "";
+  return `Using ${sizeWords(u.used)}${cap} on ${host}`;
+}
