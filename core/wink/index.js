@@ -757,7 +757,15 @@ export function createWink(inject = {}) {
     const homeId = () => (br && br.home ? br.home() : null);
     const drive = acceptDrive({ endpoint, secrets: bsecrets, home: homeId, roots: br && br.roots ? br.roots : storageRoots, onServed: r => servedKeep.put(r) });
     const serveBridge = bridgeServe({ endpoint, drive, home: homeId, scan: async () => { const r = await storage.discovery.discover(); return { from: String(ctx.config.name || "a computer").slice(0, 60), candidates: r.candidates.map((/** @type {any} */ c) => ({ name: c.name, kind: c.kind, host: c.host, share: c.share, path: c.path, size: c.size })), notes: r.notes }; } });
-    serveRef.fn = serveBridge;
+    // The home's one message that is not storage: a grant for this computer ended, so the runner stops the Space's sessions here and deletes the local work and keys now (core/runner, runner.revoke).
+    serveRef.fn = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      if (tool !== "wink.lent.revoked") return serveBridge(tool, input);
+      const sp = input && typeof input.space === "string" ? input.space : "";
+      if (!/^spc_[a-z0-9]{1,40}$/.test(sp)) throw fail("bad_input", "name the space");
+      ctx.log(`wink: the home says this computer's grant for ${sp} ended; its sessions stop and the local work is deleted`);
+      const r = /** @type {any} */ (await ctx.call("runner.revoke", { space: sp }));
+      return { ok: true, revoked: Boolean(r && r.data && r.data.revoked) };
+    };
     // A computer that belongs to a server keeps one connection to it (core/wink/storage/hold.js `holdDrive`): the server asks it down that connection what drives it can see, and sends the frames of a drive it serves.
     /** @type {{ stop(): void } | null} */ let held = null;
     function ensureHold() {

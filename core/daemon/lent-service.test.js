@@ -20,12 +20,13 @@ test("a Space this home serves gets a lent service; a kernel with no offers stor
   assert.deepEqual(Object.keys(s).filter(k => ["status", "start", "stop", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "appendTranscript", "getTranscript", "usage"].includes(k)).length, 10);
 });
 
-test("status answers from the Offers; start refuses with not_found when the daemon gave no definition, and uses lentSpec when it did", async () => {
+test("status answers from the Offers; start answers the member's own agent when the daemon gave no definition, and uses lentSpec when it did", async () => {
   const root = fs.mkdtempSync(path.join(SCRATCH, "ls-"));
   const k = kernel({ spaceAllows: true, memberAccepts: true });
   const bare = lentServiceFor({ root })("spc_aaaaaaaaaaaa", k);
   assert.deepEqual(await bare.status(chain("per_bob", "dev_laptop")), { spaceAllows: true, memberAccepts: true, lenderCap: null });
-  await assert.rejects(bare.start(chain("per_bob", "dev_laptop"), { session: "s1" }), e => e.code === "not_found");
+  const own = await bare.start(chain("per_bob", "dev_laptop"), { session: "s0" });
+  assert.deepEqual([own.command, own.network, own.routes], ["claude", "provider", []], "the member's own agent, the provider as the only network");
   const seen = [];
   const withSpec = lentServiceFor({ root, lentSpec: async i => { seen.push(i); return { command: "/usr/bin/agent", args: [], env: {}, routes: [], readOnly: [], labels: {}, network: "provider" }; } })("spc_aaaaaaaaaaaa", k);
   const r = await withSpec.start(chain("per_bob", "dev_laptop"), { session: "s1" });
@@ -33,4 +34,18 @@ test("status answers from the Offers; start refuses with not_found when the daem
   assert.deepEqual(seen, [{ space: "spc_aaaaaaaaaaaa", session: "s1", person: "per_bob", device: "dev_laptop" }]);
   const closed = lentServiceFor({ root, lentSpec: async () => ({ command: "x", routes: [] }) })("spc_aaaaaaaaaaaa", kernel({ spaceAllows: true, memberAccepts: false }));
   await assert.rejects(closed.start(chain("per_bob", "dev_laptop"), { session: "s1" }), e => e.code === "not_allowed");
+});
+
+test("an Offer for a computer that ends tells the daemon which computer, once per Space; an Offer for any computer is not pushed", () => {
+  const root = fs.mkdtempSync(path.join(SCRATCH, "ls-"));
+  const told = [];
+  let listener = null, unsubbed = 0;
+  const k = { gateway: { grants: { offers: { active: () => ({}), onRevoke: f => { listener = f; return () => { unsubbed++; }; } } }, leases: {} } };
+  const f = lentServiceFor({ root, onRevoke: (space, info) => told.push([space, info.device]) });
+  f("spc_aaaaaaaaaaaa", k);
+  listener({ device: "dev_laptop", member: "per_bob", side: "member_accepts", reason: "withdrawn" });
+  listener({ device: null, member: "per_bob", side: "space_allows", reason: "withdrawn" });
+  assert.deepEqual(told, [["spc_aaaaaaaaaaaa", "dev_laptop"]]);
+  f("spc_aaaaaaaaaaaa", k);   // the server for the Space was made again: the old listener goes
+  assert.equal(unsubbed, 1);
 });
