@@ -1473,7 +1473,7 @@ export default {
       try {
         const r = /** @type {any} */ (await ctx.call("wink.code.carry", { link, space }));
         const d = r && !r.error && r.data ? r.data : null;
-        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer } : { code: null };
+        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer, ...(d.avatar ? { code_avatar: d.avatar } : {}) } : { code: null };
       } catch { return { code: null }; }
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",
