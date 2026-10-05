@@ -63,10 +63,6 @@
   "owner": "tailnet",
   "seen": "integrator run 37181895537 (FAIL)"
  },
- "test/onboard-page.test.js": {
-  "owner": "launch",
-  "seen": "integrator run 37181895537 (FAIL)"
- },
  "test/peer-race.test.js": {
   "owner": "platform",
   "seen": "integrator run 37181895537 (FAIL)"
