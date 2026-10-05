@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { createWinkCode } from "./code.js";
+import { codeToAvatarBytes } from "../../relay/client/avatarcode.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
 import { registerReset } from "./reset.js";
@@ -238,6 +239,8 @@ export function createWink(inject = {}) {
 
     // An invitation's typed code (RC1): spaces.invites.create hands the invite's own link here and gets a short code for it. Whoever types the code, and whose ack the person types back here, receives that link inside
     // the ticket's sealed record (the long code, carried by the PAKE). It adds no way in: the link is the same one, and accepting it is the same accept. A code that cannot be made answers { code: null }.
+    /** The avatar's 8 bytes for a typed code (the camera reader's picture of it), base64url. @param {string} code */
+    const avatarBytes = code => { const b = codeToAvatarBytes(code); return b ? Buffer.from(b).toString("base64url") : null; };
     ctx.tool("wink.code.carry", {
       internal: true,
       description: "For the spaces module: show a short typed code that carries an invitation's link to the person who types it (and whose ack is typed back with wink.code.ack). Answers { code, offer, expires } or { code: null }. One typed code shows at a time: this replaces the one showing.",
@@ -249,7 +252,7 @@ export function createWink(inject = {}) {
         if (link.length > 1500 || !/^https:\/\/[^\s]+$/.test(link)) throw fail("bad_input", "the link is an https address");
         try {
           const c = await openCode("W5", { v: 1, kind: "space-invite", link, ...(input.space ? { space: String(input.space).slice(0, 64) } : {}) });
-          return { code: c.code, offer: c.offer, expires: c.expires };
+          return { code: c.code, offer: c.offer, expires: c.expires, avatar: avatarBytes(c.code) };
         } catch { return { code: null }; }
       },
     });

@@ -4,7 +4,7 @@ Usage: scripts/devbox-merge-check.py [merge-commit]   (default HEAD). Prints the
 Before the commit is made (merge in progress, conflicts resolved): scripts/devbox-merge-check.py --worktree  refuses a leftover conflict marker in any file the merge touches."""
 import subprocess, sys
 SHARED = ["core/daemon/index.js", "core/modules/index.js", "kernel/home.js", "kernel/index.js", "kernel/gateway/index.js", "kernel/gateway/records.js", "core/wink/pairing.js", "core/presence/module.js"]
-def g(*a): return subprocess.run(["git", *a], capture_output=True, text=True).stdout
+def g(*a): return subprocess.run(["git", *a], capture_output=True).stdout.decode("utf-8", "replace")
 import re
 MARK = re.compile(r"^(<<<<<<<( |$)|>>>>>>>( |$)|=======$)", re.M)
 def markers(text, name):

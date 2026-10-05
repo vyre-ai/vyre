@@ -589,3 +589,31 @@ test("one permission rule: an agent's admin act still needs the person's session
   const mineOut = await ask(both("email.send", msg), person(), "email.send", `vyre://${SPACE}/message/m1`);
   assert.equal(mineOut.reason, "needs_approval", "the person's own outward act still asks");
 });
+
+test("chain: the person's assistant acts AS the person: `via: assistant` on the chain, the kernel event's actor stays the person and says it was the assistant; a plain session and a person's own act carry neither", async () => {
+  const chains = builder();
+  const asAssistant = chains.fromFacts({ kind: "agent_session", agent: "assistant", session: "s1", thread: "t1", person: OWNER, vouched: true, from_token: true });
+  const own = chains.fromFacts(sock("deck"));
+  const named = chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s1", thread: "t1", person: OWNER, vouched: true });
+  assert.equal(asAssistant.via, "assistant");
+  assert.equal(own.via, undefined);
+  assert.equal(named.via, undefined, "a named agent is not the person's assistant");
+  const log = createEventLog({ space: SPACE, clock: () => ++T });
+  const e1 = log.append(asAssistant, { type: "note.written", sv: 1, subject: `vyre://${SPACE}/note/n1`, data: {} });
+  const e2 = log.append(own, { type: "note.written", sv: 1, subject: `vyre://${SPACE}/note/n2`, data: {} });
+  assert.equal(e1.actor, `person:${OWNER}@${SPACE}`);
+  assert.equal(e1.acted_via, "assistant");
+  assert.equal(e2.acted_via, undefined);
+  assert.equal(chainHash(asAssistant) === chainHash(own), false, "the hops still tell the two apart");
+});
+
+test("chain: a model slot is the person's chain plus an agent hop `model:<provider>/<model>#<n>`, vouched, and the person's grants are all it has", async () => {
+  const chains = builder();
+  const slot = chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "anthropic/claude-sonnet-5-5#2", vouched: true });
+  assert.deepEqual(slot.hops.map(h => [h.actor.kind, h.actor.id]), [["person", OWNER], ["agent", "model:anthropic/claude-sonnet-5-5#2"]]);
+  assert.equal(slot.model, "anthropic/claude-sonnet-5-5#2");
+  assert.equal(slot.delegated, true);
+  assert.throws(() => chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "x", vouched: true }), { code: "not_a_member" });
+  assert.throws(() => chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "a/b#1", vouched: false }), { code: "not_a_member" });
+  assert.throws(() => chains.fromFacts({ kind: "model_slot", person: "per_nobody", session: "s1", model: "a/b#1", vouched: true }), { code: "not_a_member" });
+});

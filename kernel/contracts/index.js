@@ -50,6 +50,15 @@ export const TASK_TRANSITIONS = Object.freeze([
   { from: "stuck", to: "skipped", by: "doer_or_person", guarded: false },
 ].map(r => Object.freeze(r)));
 
+/**
+ * Opening a finished task again (a to-do ticked by mistake) is not a transition: done and skipped stay terminal in the table above. `reopen` is its own act, only for these two states, only for a
+ * task with no checker and no outward act, and only for its doer, a person, or whoever assigned it. It writes `task.reopened`.
+ */
+export const TASK_REOPENS = Object.freeze([
+  { from: "done", to: "ready", by: "doer_or_person" },
+  { from: "skipped", to: "ready", by: "doer_or_person" },
+].map(r => Object.freeze(r)));
+
 export const FIELD_KINDS = f([
   "text", "rich_text", "number", "money", "boolean", "date", "datetime", "choice", "multi_choice", "rating", "url", "link", "actor",
   "file", "address", "phones", "emails", "urls", "stage", "sealed",

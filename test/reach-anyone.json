@@ -925,6 +925,10 @@
    "module": "planner",
    "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
   },
+  "planner.bin": {
+   "module": "planner",
+   "reason": "read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
+  },
   "planner.agenda": {
    "module": "planner",
    "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
