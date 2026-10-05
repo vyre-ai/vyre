@@ -229,3 +229,39 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   assert.equal((await call(C, "work.chat.get", { chat })).data.open, true);
   assert.equal((await listed(C)).open, true);
 });
+
+test("a chat started outside the stream continues in it: the existing run is adopted (no second run), its history is the chat's transcript, and a message sent in the chat goes to that run", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = kernelCaller(d, root);
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "cli" }, "cli");
+  assert.ok(r.data, JSON.stringify(r.error));
+  await until(async () => (await d.registry.call("threads.get", { thread: r.data.id, limit: 200 }, "cli")).data.events.some(e => e.type === "thread.finished"), "the first turn");
+  const chat = (await d.registry.call("threads.get", { thread: r.data.id, limit: 1 }, "cli")).data.thread.chat;
+  const logs = d.registry.modules.get("stream").handle.logs;
+  const texts = () => {
+    const frames = logs.get(chat).read(0);
+    return frames.filter(f => f.type === "session.text-done").map(done => frames.filter(f => f.type === "session.text-delta" && f.data.message === done.data.message && !f.data.reasoning).map(f => String(f.data.text)).join(""));
+  };
+  // before anyone speaks through the stream, the chat opens as the run's own log
+  assert.equal((await owner("stream.open", { chat })).data.session, r.data.id);
+  // a message sent in the chat: the run that is there answers; no second run starts
+  const sent = await owner("stream.send", { chat, text: "and again" });
+  assert.ok(sent.data, JSON.stringify(sent.error));
+  await until(async () => texts().length >= 2, "the chat's transcript to hold both replies", 60_000);
+  assert.deepEqual(texts(), ["echo: hello", "echo: and again"], "history first, then the new reply");
+  const said = logs.get(chat).read(0).filter(f => f.type === "session.user-message").map(f => String(f.data.text));
+  assert.ok(said.includes("hello") && said.includes("and again"), JSON.stringify(said));
+  assert.equal(((await d.registry.call("threads.of-chat", { chat }, "module:work")).data.runs || []).length, 1, "one run in the chat, not two");
+  // and now the chat's own log is the transcript
+  assert.equal((await owner("stream.open", { chat })).data.session, chat);
+});

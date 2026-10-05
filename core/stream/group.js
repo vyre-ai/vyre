@@ -43,7 +43,9 @@ const MIGRATIONS = [`
   );
   CREATE TABLE stream_groups_marks (
     person TEXT NOT NULL, session TEXT NOT NULL, upto INTEGER NOT NULL, PRIMARY KEY (person, session)
-  );`];
+  );`,
+// One Chat: a member that is a run started outside the stream (kind 'run') is kept whatever the kernel's list of assistants says: it is the run's slot, not an agent somebody added.
+`ALTER TABLE stream_groups_members ADD COLUMN kind TEXT;`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
@@ -70,7 +72,7 @@ const shortOf = (/** @type {string} */ id) => id.slice(id.indexOf(":") + 1);
 const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
 
 /**
- * @typedef {{ who: string, name: string, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
+ * @typedef {{ who: string, name: string, kind?: string|null, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
  *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
@@ -106,8 +108,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   const q = {
     members: db.prepare("SELECT * FROM stream_groups_members WHERE grp = ?"),
     allMembers: db.prepare("SELECT * FROM stream_groups_members"),
-    upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event) VALUES (?,?,?,?,?,?,?,?)
-      ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer`),
+    upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer, kind = excluded.kind`),
     last: db.prepare("UPDATE stream_groups_members SET last_event = ? WHERE grp = ? AND who = ?"),
     outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface) VALUES (?,?,?,?,?,?,?)"),
     outDone: db.prepare("UPDATE stream_groups_outbox SET done = 1 WHERE uuid = ?"),
@@ -117,8 +119,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** @param {any} r @returns {Member} */
   const memberOf = r => ({ grp: String(r.grp), who: String(r.who), name: String(r.name || shortOf(String(r.who))), thread: r.thread ? String(r.thread) : null, cwd: r.cwd ? String(r.cwd) : null,
-    asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(), });
-  const save = (/** @type {Member} */ m) => q.upsert.run(m.grp, m.who, m.thread, m.cwd, m.name, m.asker, m.answer, m.last);
+    asker: r.asker ? String(r.asker) : null, answer: r.answer ? String(r.answer) : null, kind: r.kind ? String(r.kind) : null, last: Number(r.last_event || 0), ad: createAdapter(), msgs: new Map(), held: null, q: Promise.resolve(), });
+  const save = (/** @type {Member} */ m) => q.upsert.run(m.grp, m.who, m.thread, m.cwd, m.name, m.asker, m.answer, m.last, m.kind || null);
 
   // ---- the kernel's chat (ctx.kernel on): tokens with the chat in them, and chats.append ------------------
 
@@ -176,7 +178,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     for (const p of wantPeople) if (!g.people.has(p)) join(grp, p);
     for (const b of wantBots) if (!g.bots.has(b)) join(grp, b);
     for (const p of [...g.people]) if (!wantPeople.has(p)) { g.people.delete(p); g.names.delete(p); closeSpan(g, p, logs.get(grp).append("participant-left", { who: p }).cur); }
-    for (const [b, m] of [...g.bots]) if (!wantBots.has(b)) { g.bots.delete(b); g.names.delete(b); if (m.thread) byThread.delete(m.thread); m.tokens = new Map(); closeSpan(g, b, logs.get(grp).append("participant-left", { who: b }).cur); }
+    for (const [b, m] of [...g.bots]) if (!wantBots.has(b) && m.kind !== "run") { g.bots.delete(b); g.names.delete(b); if (m.thread) byThread.delete(m.thread); m.tokens = new Map(); closeSpan(g, b, logs.get(grp).append("participant-left", { who: b }).cur); }
     if (g.dflt && !g.bots.has(g.dflt)) g.dflt = null;
     return g;
   }
@@ -594,6 +596,66 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (m.held) m.held.push(e); else project(m, e);
   }
 
+  // ---- runs started outside the stream (One Chat) -----------------------------------------------------
+
+  /**
+   * Read a run's history into the group and then follow it: the person's words and the run's replies, in order, as the chat's own transcript. The replies go through the kernel like any (the reply
+   * handle of the run's own session); the person's words are written as they were said. `asker` is who the replies act for.
+   * @param {Member} m @param {string} asker
+   */
+  async function seedRun(m, asker) {
+    byThread.set(String(m.thread), m);
+    m.held = [];
+    /** @type {any[]} */ let events = [];
+    try { const r = await ctx.call("threads.get", { thread: m.thread, limit: 1000 }); events = r && r.data && Array.isArray(r.data.events) ? r.data.events : []; }
+    catch (err) { log(`seed ${m.thread}: ${/** @type {Error} */ (err).message}`); }
+    m.asker = asker; m.answer = `h.${String(m.thread).slice(0, 8)}`; m.msgs = new Map();
+    for (const ev of events) {
+      if (!EVENTS.test(ev.type)) continue;
+      const id = Number(ev.id);
+      if (!(id > m.last)) continue;
+      m.last = id;
+      /** @type {any[]} */ let specs = [];
+      try { specs = m.ad.event({ ...ev, thread: m.thread }); } catch (err) { log(`${ev.type} for ${m.thread}: ${/** @type {Error} */ (err).message}`); }
+      for (const sp of specs) {
+        if (sp.kind === "user-message") {
+          await (m.pq || Promise.resolve());
+          try { logs.get(m.grp).append("user-message", { ...sp.data, state: "sent", history: true }, { author: asker, message: String(sp.data.message) }); } catch { /* a word that cannot be shown is left out */ }
+        } else if (!SKIP.has(sp.kind) || sp.kind === "status") projectKernel(m, [sp]);
+      }
+    }
+    await (m.pq || Promise.resolve());
+    const held = m.held; m.held = null;
+    for (const e of held) project(m, e);
+    m.asker = null; m.answer = null; m.msgs = new Map();
+    dirty.add(m);
+    if (!timer && !stopped) { timer = setTimeout(flush, 100); timer.unref?.(); }
+  }
+
+  /**
+   * One Chat: a chat whose run was started outside the stream (the CLI, a terminal, a Flow, the assistant) continues here. Its runs become the chat's members (an agent's run is that agent's slot, a
+   * run with no agent is a model slot `model:<provider>/<model>#<id>`), answering on their own threads, so a message sent in the chat goes to the run that is already there and the transcript is one.
+   * Done once per run, at a send. @param {string} grp @param {string} asker the person speaking (`person:per_x`)
+   */
+  async function adoptRuns(grp, asker) {
+    if (!kernelOn()) return;
+    const r = await ctx.call("threads.of-chat", { chat: grp }).catch(() => null);
+    const runs = r && r.data && Array.isArray(r.data.runs) ? r.data.runs : [];
+    const g = group(grp);
+    for (const run of runs) {
+      const thread = String(run.thread);
+      if ([...g.bots.values()].some(x => x.thread === thread) || byThread.has(thread)) continue;
+      const who = run.agent ? `assistant:${run.agent}` : `model:${run.provider || "claude"}/${run.model || "default"}#${thread.slice(0, 6)}`;
+      let m = g.bots.get(who);
+      if (m && m.thread) continue; // that slot already answers on another thread of its own
+      if (!m) { join(grp, who, { name: run.name ? String(run.name) : undefined }); m = g.bots.get(who); }
+      if (!m) continue;
+      m.thread = thread; m.kind = "run"; save(m);
+      await seedRun(m, asker);
+    }
+    if (!g.dflt) { const only = [...g.bots.keys()]; if (only.length === 1) g.dflt = only[0]; }
+  }
+
   // ---- delivery -----------------------------------------------------------------------------------
 
   /** The kernel's person id from an actor string (`person:per_x` to `per_x`); the Switchboard refuses any other form. @param {string} a */
@@ -618,8 +680,16 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const r = await run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn }));
+      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...turn }));
+      let r = await send();
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
+      // A run started elsewhere (the CLI, a terminal) is held by the surface that started it: a person speaking in the chat takes the keyboard, once, as the stream's own runs always have it.
+      if (r.data && r.data.sent === false && r.data.holder && !r.data.queued && r.data.queued_id == null) {
+        const l = await run(() => ctx.call("threads.lease", { thread: m.thread, surface }));
+        if (l.error) throw fail(l.error.code || "failed", l.error.message);
+        r = await send();
+        if (r.error) throw fail(r.error.code || "failed", r.error.message);
+      }
       return r.data;
     }
     return undefined;
@@ -721,6 +791,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const answers = rows.map(r => ({ who: String(r.who), message: String(r.answer) }));
         return { session: grp, message, duplicate: true, ...(fo ? { group: fo.data.group, answers: fo.data.members } : { answers }) };
       }
+      await adoptRuns(grp, author);
       const parts = participants(g);
       const mentions = mentionedIn({ participants: parts, text, mentions: i.mentions });
       /** @type {string[]} */ let to;
