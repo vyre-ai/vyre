@@ -7,6 +7,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { execFileSync } from "node:child_process";
 import * as config from "../config/index.js";
 import { names } from "./service.js";
 import { directory, authMessage, AUTH_TAG } from "./directory.js";
@@ -18,6 +19,8 @@ import * as wire from "../relay/wire.js";
 import { tempHome } from "../../test/helpers.js";
 
 const HOUR = 3_600_000;
+const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
+const skip = !hasOpenssl && "openssl is needed to make a certificate";
 /** The hosted directory, over fakes. */
 function hosted(t, env = {}) {
   const dns = fakeDns();
