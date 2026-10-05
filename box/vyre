@@ -1425,8 +1425,13 @@ space_helper_record() {
   : >"$SP_PRIV/images.new"
   # shellcheck disable=SC2013 # image references have no spaces
   for im in $(grep '^    image: ' "$t" | sed 's/^    image: //' | sort -u); do
-    pl=$(printf '%s' "$im" | sed 's/\${TWENTY_TAG:-\([^}]*\)}/\1/')
-    timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$pl" >/dev/null 2>&1 || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: could not pull $pl" >&2; return 1; }
+    # A compose default (`${TWENTY_IMAGE:-twentycrm/twenty:v2...@sha256:...}`, `${TWENTY_TAG:-...}`) is pulled as its default: root never takes the value from an env file.
+    pl=$(printf '%s' "$im" | sed 's/\${[A-Z_][A-Z0-9_]*:-\([^}]*\)}/\1/g')
+    case "$pl" in *'${'*) rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: the image name $im has a variable with no default, so it cannot be pulled" >&2; return 1 ;; esac
+    if ! why=$(timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$pl" 2>&1 >/dev/null); then
+      rm -f "$t" "$SP_PRIV/images.new"
+      echo "vyre: could not pull $pl: $(printf '%s' "${why:-no answer from the registry}" | tail -n 1 | cut -c1-200)" >&2; return 1
+    fi
     dg=$(hdock image inspect -f '{{index .RepoDigests 0}}' "$pl" 2>/dev/null || true)
     printf '%s\n' "$dg" | grep -Eqx '[a-z0-9./_-]+@sha256:[0-9a-f]{64}' || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: no digest for $pl" >&2; return 1; }
     printf '%s %s\n' "$im" "$dg" >>"$SP_PRIV/images.new"
