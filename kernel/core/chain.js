@@ -30,6 +30,12 @@ export const chainHash = (/** @type {any} */ chain) => sha256(canonical({ space:
 /** One person acting for themselves. A viewer chain (a person in the room an assistant writes for) is NOT: it is the kernel's read-only view of them, never their own act. */
 export const isExactlyPerson = (/** @type {any} */ chain) => isChain(chain) && chain.viewer !== true && chain.hops.length === 1 && chain.hops[0].actor.kind === "person";
 
+/**
+ * One person acting for themselves, or the person's own default assistant acting AS them (`chain.via === "assistant"`: the person's chain plus the assistant hop, never a second principal). Not a
+ * space or project agent (that chain carries a different agent and no `via`), not a viewer, and not a model slot. What only a human may do (an approval, a proof) still asks `isExactlyPerson`.
+ */
+export const actsAsPerson = (/** @type {any} */ chain) => isExactlyPerson(chain) || (isChain(chain) && chain.viewer !== true && chain.via === "assistant" && chain.hops[0].actor.kind === "person");
+
 export const hasKind = (/** @type {any} */ chain, /** @type {string} */ kind) => chain.hops.some((/** @type {any} */ h) => h.actor.kind === kind);
 
 /** An unknown trust or class is an error, never "weakest": a bad label must not drop a taint (invariant 9). */

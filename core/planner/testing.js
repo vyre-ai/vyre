@@ -41,7 +41,7 @@ const proofFor = (/** @type {string} */ action, /** @type {any} */ input, /** @t
 const presence = { check: async (/** @type {any} */ { chain, op, fields, proof: p }) => (chain && p && p.op === op && canonical(p.fields) === canonical(fields) && !used.has(p.n) && (used.add(p.n), true) ? null : "wrong_proof") };
 
 /** The assistants of the test Space: actors the owner added, working under the person. */
-export const ASSISTANTS = ["juno", "kit"];
+export const ASSISTANTS = ["juno", "kit", "assistant"];
 
 /** What a Space has before the planner starts: the shared Event type, and the assistants the owner added with what they may do with tasks. */
 export async function prepareKernel(/** @type {any} */ k) {
@@ -92,7 +92,7 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
   t.after(() => handle.stop());
   const R = k.gateway.records;
   const w = {
-    k, events, clock, timers, fired, acked, logs, google, handle, owner, agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
+    k, events, clock, timers, fired, acked, logs, google, handle, owner, agents: [{ name: "assistant", kind: "assistant" }, { name: "juno", kind: "agent", projects: "*" }, { name: "kit", kind: "agent", projects: "*" }],
     settled: () => handle.calendar.settled(),
     async call(name, input = {}, caller = "cli") {
       const def = tools.get(name);

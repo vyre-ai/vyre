@@ -55,7 +55,7 @@ export function fromTask(/** @type {any} */ t) {
   if (!p) return null;
   const state = t.state === "done" ? "done" : t.state === "skipped" ? "cancelled" : "open";
   const timed = Boolean(p.wall);
-  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, project: p.project ?? null, thread: p.thread ?? null,
+  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, project: t.project ?? p.project ?? null, thread: p.thread ?? null,
     tags: typeof p.tags === "string" ? p.tags : "[]", pinned: p.pinned ? 1 : 0, state, at: timed && t.due != null ? t.due : null, tz: p.tz ?? null, floating: p.floating ? 1 : 0, wall: p.wall ?? null,
     date: p.date ?? null, repeat: typeof p.repeat === "string" ? p.repeat : null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
     deleted_at: p.deleted_at ?? null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
@@ -63,8 +63,11 @@ export function fromTask(/** @type {any} */ t) {
 
 /** A to-do row as the Task it is made as. */
 export function toTaskSpec(/** @type {any} */ r, /** @type {{ kind: string, id: string, space: string }} */ doer) {
-  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), ...(r.parent ? { parent: r.parent } : {}), form: { planner: formOf(r) } };
+  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), ...(r.parent ? { parent: r.parent } : {}), ...(isProjectUrn(r.project) ? { project: r.project } : {}), form: { planner: formOf(r) } };
 }
+
+/** A project that is a link to a Project record rides as the Task's own `project`; a plain name stays in the form. */
+const isProjectUrn = (/** @type {any} */ v) => typeof v === "string" && /^vyre:\/\/[^/\s]+\/project\/[A-Za-z0-9_-]+$/.test(v);
 
 /** What a Task has no field for, as the Task's form carries it. */
 export const formOf = (/** @type {any} */ r) => Object.fromEntries(TODO_FORM.map(k => [k, k === "tags" ? (typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || [])) : r[k] ?? null]));
@@ -76,6 +79,7 @@ export function taskEdit(r, keys) {
   if (keys.includes("body")) p.note = r.body ? String(r.body).slice(0, 400) : null;
   if (keys.includes("at") || keys.includes("wall")) p.due = r.at ?? null;
   if (keys.includes("parent")) p.parent = r.parent ?? null;
+  if (keys.includes("project")) p.project = isProjectUrn(r.project) ? r.project : null;
   if (keys.some(k => TODO_FORM.includes(k) && k !== "created")) p.form = { planner: formOf(r) };
   return p;
 }

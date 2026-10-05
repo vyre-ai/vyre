@@ -41,7 +41,8 @@
         "planner_firing/*",
         "planner_state/*",
         "event/*",
-        "task/*"
+        "task/*",
+        "project/*"
       ],
       "types": [
         {

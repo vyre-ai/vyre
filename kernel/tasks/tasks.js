@@ -5,7 +5,7 @@
 // person, with a hardware-signer proof over the exact payload, the decision and the chain, once.
 import { canonical, sha256 } from "../core/canonical.js";
 import { mintUuid } from "../core/ids.js";
-import { isChain, isExactlyPerson } from "../core/chain.js";
+import { isChain, isExactlyPerson, actsAsPerson } from "../core/chain.js";
 import { createGate } from "../core/gate.js";
 import { KernelError } from "../core/errors.js";
 import { TASK_TRANSITIONS, TASK_REOPENS, ACTOR_KINDS } from "../contracts/index.js";
@@ -20,7 +20,7 @@ export const TASK_ACTIONS = Object.freeze([
   { action: "tasks.decide", resource_type: "task", risk: "write", label: "approve or reject", gloss: "Decide a task waiting for your check." },
 ].map(a => Object.freeze(a)));
 
-const REQUEST_KEYS = new Set(["parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
+const REQUEST_KEYS = new Set(["project", "parent", "title", "record", "stage", "source", "doer", "helpers", "checker", "output", "how", "template", "inputs", "depends_on", "due", "escalate_after", "escalate_to", "required", "note", "session", "flow", "form"]);
 const SOURCES = new Set(["manual", "assistant_request", "flow_step"]);
 /** Sources only a service chain may name (the kernel's own modules and Flows, never a person or a model): the task is the continuation of a session in a Space. */
 const SERVICE_SOURCES = new Set(["continue_in_space"]);
@@ -107,6 +107,13 @@ export function createTasks(cfg) {
   /** @type {Set<string>} tasks being decided right now: a second decide on one is refused before it can release again */ const deciding = new Set();
   /** @type {Map<string, number>} */ const coolDown = new Map();
 
+  /** A task names its project as a link to the Project record of THIS Space, one the chain may read: a link to another Space or to a record it cannot see names nothing. */
+  async function checkProject(/** @type {any} */ chain, /** @type {any} */ project) {
+    const m = typeof project === "string" ? /^vyre:\/\/([^/\s]+)\/project\/([A-Za-z0-9_-]{1,64})$/.exec(project) : null;
+    if (!m || m[1] !== cfg.space) throw new KernelError("bad_input", "a task's project is a Project record of this Space");
+    try { await gate(chain, "records.read", project); } catch (e) { if (e instanceof KernelError && e.code === "not_found") throw new KernelError("bad_input", "no such project"); throw e; }
+    if (typeof cfg.projectExists === "function" && !(await cfg.projectExists(project))) throw new KernelError("bad_input", "no such project");
+  }
   const get_ = (/** @type {string} */ id) => { const t = tasks.get(id); if (!t) throw new KernelError("not_found", "no such task"); return t; };
   // A task changes in memory and then its event is written; if the write fails the task goes back to what it was, so memory never shows a change the log does not hold (an approval
   // that was refused by the log must not stay live). `pending` keeps the state before the first change since the last event; `note` clears it on success and restores it on failure.
@@ -188,11 +195,12 @@ export function createTasks(cfg) {
     return r;
   }
   const isDoer = (/** @type {any} */ chain, /** @type {any} */ t) => {
+    // The person, or their default assistant acting AS them (chain.via === "assistant"): a to-do the assistant made for the person is the person's own act. A space or project agent is neither.
+    if (t.doer.kind === "person") return actsAsPerson(chain) && same(chain.hops[0].actor, t.doer);
     const a = acting(chain);
     if (!same(a, t.doer)) return false;
     // A task an assistant works carries its assigner in the chain, so an assigner cannot borrow a broader teammate (R6-9).
     if (t.doer.kind === "agent") return chain.hops.length >= 2 && same(chain.hops[0].actor, t.assigned_by);
-    if (t.doer.kind === "person") return isExactlyPerson(chain);
     return true;
   };
   const checkersOf = (/** @type {any} */ t) => {
@@ -200,7 +208,7 @@ export function createTasks(cfg) {
     const list = !c ? [] : c.role ? roleHolders(c.role) : [c];
     return list.filter((/** @type {any} */ a) => a && a.kind === "person" && !same(a, t.doer));
   };
-  const personOf = (/** @type {any} */ chain) => (isExactlyPerson(chain) ? chain.hops[0].actor : null);
+  const personOf = (/** @type {any} */ chain) => (actsAsPerson(chain) ? chain.hops[0].actor : null);
   const promote = (/** @type {any} */ chain) => {
     for (const t of [...tasks.values()]) {
       if (t.state !== "waiting") continue;
@@ -238,6 +246,7 @@ export function createTasks(cfg) {
       const persons = checkersOf(/** @type {any} */ probe);
       if (checker && !persons.length) throw new KernelError(checker.role ? "no_checker" : "same_actor", checker.role ? "no person holds that role" : "the checker must be a person other than the doer");
       for (const d of spec.depends_on || []) if (!tasks.has(d)) throw new KernelError("bad_input", "a dependency does not exist");
+      if (spec.project !== undefined) await checkProject(chain, spec.project);
       if (spec.parent !== undefined && (typeof spec.parent !== "string" || !tasks.has(spec.parent))) throw new KernelError("bad_input", "a parent task does not exist");
       const waiting = (spec.depends_on || []).some((/** @type {string} */ d) => { const x = tasks.get(d); return !(x.state === "done" || (x.state === "skipped" && !x.required)); });
       const id = mintUuid(clock());
@@ -247,7 +256,7 @@ export function createTasks(cfg) {
         ...(checker ? { checker: freeze({ ...checker }) } : {}), output: freeze({ ...spec.output }),
         ...(spec.how ? { how: spec.how } : {}), ...(spec.template ? { template: spec.template } : {}), ...(spec.inputs ? { inputs: freeze([...spec.inputs]) } : {}),
         ...(spec.depends_on ? { depends_on: freeze([...spec.depends_on]) } : {}), ...(spec.due ? { due: spec.due } : {}), ...(spec.required ? { required: true } : {}), ...(spec.note ? { note: String(spec.note).slice(0, FIX_CAP) } : {}),
-        ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
+        ...(spec.parent ? { parent: spec.parent } : {}), ...(spec.project ? { project: spec.project } : {}), ...(spec.flow !== undefined ? { flow: String(spec.flow).slice(0, 200) } : {}), ...(spec.form !== undefined ? { form: opaque(spec.form) } : {}),
         ...(spec.session ? { session: spec.session } : {}), ...(spec.escalate_after ? { escalate_after: spec.escalate_after } : {}), ...(spec.escalate_to ? { escalate_to: spec.escalate_to } : {}),
         state: waiting ? "waiting" : "ready", assigned_by: freeze({ ...chain.hops[0].actor }),
         labels: freeze({ trust: chain.labels.trust, red: chain.labels.red, source_spaces: freeze([...chain.labels.source_spaces]) }),
@@ -273,6 +282,7 @@ export function createTasks(cfg) {
       const out = [];
       for (const t of [...tasks.values()].sort((a, b) => (a.id < b.id ? -1 : 1))) {
         if (q.record && t.record !== q.record) continue;
+        if (q.project !== undefined && (t.project || null) !== q.project) continue;
         if (q.parent !== undefined && (t.parent || null) !== q.parent) continue;
         if (q.doer && canon(t.doer.id) !== canon(q.doer)) continue;
         if (q.checker && !checkersOf(t).some((/** @type {any} */ c) => canon(c.id) === canon(q.checker))) continue;
@@ -488,12 +498,13 @@ export function createTasks(cfg) {
       if (t.kernel) throw new KernelError("not_allowed", "a kernel task is not edited");
       if (!isDoer(chain, t) && !personOf(chain) && !same(chain.hops[0].actor, t.assigned_by)) throw new KernelError("not_allowed", "only the doer, a person or whoever assigned the task edits it");
       if (t.state === "needs_check") throw new KernelError("bad_state", "a task waiting for its check is not edited");
-      for (const k of Object.keys(patch || {})) if (!["title", "note", "due", "form", "parent"].includes(k)) throw new KernelError("bad_input", `${k} is not something a task's edit changes`);
+      for (const k of Object.keys(patch || {})) if (!["title", "note", "due", "form", "parent", "project"].includes(k)) throw new KernelError("bad_input", `${k} is not something a task's edit changes`);
       const next = { ...t };
       if (patch.title !== undefined) { if (typeof patch.title !== "string" || !patch.title.trim()) throw new KernelError("bad_input", "a task needs a title"); next.title = patch.title.trim().slice(0, 200); }
       if (patch.note !== undefined) { if (patch.note === null || patch.note === "") delete next.note; else next.note = String(patch.note).slice(0, FIX_CAP); }
       if (patch.due !== undefined) { if (patch.due === null) delete next.due; else if (Number.isFinite(patch.due)) next.due = patch.due; else throw new KernelError("bad_input", "due is a time in ms"); }
       if (patch.form !== undefined) { if (patch.form === null) delete next.form; else next.form = opaque(patch.form); }
+      if (patch.project !== undefined) { if (patch.project === null) delete next.project; else { await checkProject(chain, patch.project); next.project = patch.project; } }
       if (patch.parent !== undefined) {
         if (patch.parent === null) delete next.parent;
         else {

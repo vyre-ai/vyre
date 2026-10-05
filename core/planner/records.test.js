@@ -212,3 +212,33 @@ test("records: the person gives a to-do to an assistant and it finishes it; one 
   assert.equal((await w.ok("planner.get", { item: mine.id })).item.state, "open");
   assert.equal((await w.k.tasks.get(w.owner, mine.id)).state, "ready");
 });
+
+test("records: the person's default assistant acts as the person on a to-do; a project agent does not", async t => {
+  const w = await world(t);
+  const assistant = "mcp:agent:assistant", kit = "mcp:agent:kit";
+  const mine = await w.ok("planner.add", { kind: "todo", title: "Draft the engagement letter" }, assistant);
+  const done = await w.ok("planner.done", { item: mine.id }, assistant);
+  assert.equal(done.item.state, "done", "the assistant acts as the person");
+  assert.equal((await w.k.tasks.get(w.owner, mine.id)).state, "done");
+  const edited = await w.ok("planner.add", { kind: "todo", title: "Call the printer" }, assistant);
+  assert.equal((await w.ok("planner.update", { item: edited.id, title: "Call the printer today" }, assistant)).title, "Call the printer today");
+  assert.equal((await w.ok("planner.update", { item: mine.id, state: "open" }, assistant)).state, "open", "and reopens it");
+  const theirs = await w.ok("planner.add", { kind: "todo", title: "Check the docket" }, kit);
+  assert.equal((await w.call("planner.done", { item: theirs.id }, kit)).error.code, "not_allowed", "a project agent that added one for the person cannot finish it");
+});
+
+test("records: a to-do names its project as a link to a Project record, or keeps a plain name", async t => {
+  const w = await world(t);
+  await w.k.gateway.records.define(w.owner, { add_types: [{ name: "project", label: "Project", fields: [{ name: "name", kind: "text", label: "Name", required: true }] }] });
+  const p = await w.k.gateway.records.create(w.owner, "project", { name: "Northwind Bakery" });
+  const linked = await w.ok("planner.add", { kind: "todo", title: "Send the invoice", project: p.urn });
+  assert.equal(linked.project, p.urn);
+  assert.equal((await w.k.tasks.get(w.owner, linked.id)).project, p.urn, "the Task carries the link");
+  const plain = await w.ok("planner.add", { kind: "todo", title: "Buy flour", project: "northwind" });
+  assert.equal(plain.project, "northwind");
+  assert.equal((await w.k.tasks.get(w.owner, plain.id)).project, undefined, "a plain name stays in the form");
+  assert.equal((await w.call("planner.add", { kind: "todo", title: "x", project: `vyre://${w.k.gateway ? "spc_aaaaaaaaaaaa" : ""}/project/nope` })).error.code, "bad_input", "a Project that is not there");
+  const moved = await w.ok("planner.update", { item: plain.id, project: p.urn });
+  assert.equal(moved.project, p.urn);
+  assert.equal((await w.k.tasks.get(w.owner, plain.id)).project, p.urn);
+});
