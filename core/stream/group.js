@@ -34,6 +34,7 @@ import { validEnc } from "./protocol.js";
 import { createReadMarkers } from "./readmarks.js";
 import { cutNote } from "./reply-port.js";
 import { presenceFor } from "./presence.js";
+import { validZone, zoneFrom } from "../../lib/time/index.js";
 
 const MIGRATIONS = [`
   CREATE TABLE stream_groups_members (
@@ -58,8 +59,6 @@ const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
 const SKIP = new Set(["user-message", "status", "term-command", "term-chunk"]);
 const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
-/** Is this an IANA time zone name? */
-const zoneOk = (/** @type {string} */ z) => { if (!z || z.length > 64) return false; try { new Intl.DateTimeFormat("en", { timeZone: z }); return true; } catch { return false; } };
 
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -807,6 +806,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const text = String(i.text ?? "").trim();
       if (!text) throw fail("bad_input", "text is empty");
       if (text.length > 20000) throw fail("bad_input", "text is too long");
+      const tz = typeof i.tz === "string" && validZone(i.tz) ? i.tz : (zoneFrom(meta && meta.zone, "") || null); // the device's own zone: what it said, else the header the daemon validated
       const message = typeof i.message === "string" && ID.test(i.message) ? i.message : crypto.randomUUID();
       const out = logs.get(grp);
       const g = group(grp);
@@ -871,7 +871,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         kid = String((await append(mine.token, { text })).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
-      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(i.tz !== undefined && typeof i.tz === "string" && zoneOk(i.tz) ? { tz: i.tz } : {}) }, { author, message });
+      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(tz ? { tz } : {}) }, { author, message });
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));
@@ -879,7 +879,6 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (answers.length >= 2) { groupId = typeof i.group === "string" && ID.test(i.group) ? i.group : `g.${message}`; out.append("fanout", { group: groupId, message, members: answers }, { author, message }); }
       const surface = typeof i.surface === "string" ? i.surface : "deck";
       const mode = i.mode === "queue" || i.mode === "steer" ? i.mode : null;
-      const tz = typeof i.tz === "string" && zoneOk(i.tz) ? i.tz : null;
       const rows = answers.map(a => {
         const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text, asker: author, answer: a.message, surface, mode, tz };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }

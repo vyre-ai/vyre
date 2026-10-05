@@ -377,7 +377,8 @@ test("a quoted reply stays in the chat's timeline: the frame carries reply_to an
   const owner = kernelCaller(d, root);
   const chat = (await owner("work.chat.create", { title: "Quotes" })).data.chat;
   const logs = d.registry.modules.get("stream").handle.logs;
-  assert.ok((await owner("stream.send", { chat, text: "hello there" })).data);
+  const first = await owner("stream.send", { chat, text: "hello there" });
+  assert.ok(first.data, JSON.stringify(first.error));
   await until(async () => logs.get(chat).read(0).some(f => f.type === "chat.text-done"), "the first reply", 60_000);
   const reply = logs.get(chat).read(0).find(f => f.type === "chat.text-done");
   assert.equal((await owner("stream.send", { chat, text: "and why?", reply_to: "nonesuch-message" })).error.code, "not_found");

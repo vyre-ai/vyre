@@ -19,6 +19,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
+import { validZone, zoneFrom } from "../../lib/time/index.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { hostSafe } from "../../lib/api-endpoint.js";
 import { claudeProvider } from "../sessions/providers.js";
@@ -155,8 +156,6 @@ export const MIGRATIONS = [
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 /** What a provider is called in a line a person reads. @param {string} p */
-/** Is this an IANA time zone name this runtime knows? @param {string} z */
-export const validZone = z => { if (typeof z !== "string" || !z || z.length > 64) return false; try { new Intl.DateTimeFormat("en", { timeZone: z }); return true; } catch { return false; } };
 export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
 
 /** The things a provider can do that a person would miss, in the words a notice uses. */
@@ -3761,7 +3760,7 @@ export default {
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
-        if (typeof i.tz === "string" && validZone(i.tz) && (queuesFor(caller) || firstParty)) sb.db.prepare("UPDATE threads_runs SET tz = ? WHERE id = ?").run(i.tz, i.thread);
+        { const tz = typeof i.tz === "string" && validZone(i.tz) ? i.tz : zoneFrom(meta && meta.zone, ""); if (tz && (queuesFor(caller) || firstParty)) sb.db.prepare("UPDATE threads_runs SET tz = ? WHERE id = ?").run(tz, i.thread); }
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey))
           : firstParty && /^module:/.test(String(caller || "")) && typeof i.uuid === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.uuid) ? i.uuid.toLowerCase() : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
