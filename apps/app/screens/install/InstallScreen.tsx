@@ -8,10 +8,11 @@ import { loadInstall } from "./data";
 import { AFTER_HOME, CONTINUE_HERE, SERVER_FAILED, serverSay, RECOVERY_CODE, SERVER_LONG_CODE, WHERE_STEP, backOf, connectedLine, isResumable, nextSetup, packProgress, unpackProgress, homeLine, nameNote, nameStatus, pairToOptions, serverLines, slug, startStep } from "./flow.js";
 import { PairEntry, PairServer, PairWords, openPairing, type LongCode } from "../devices/PairParts";
 import { RealAdd } from "../devices/RealAdd";
-import { TypeCode } from "../devices/TypeCode";
+import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
+import { MacServer } from "./MacServer";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { installLine, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -19,7 +20,9 @@ import { readProgress, writeProgress, writeSkipped } from "../../src/state/setup
 import { wordsLine, type PairingSession } from "../../src/api/pairing-session";
 import { MOCK, said } from "../../src/real/box";
 import { ConnectClaude } from "../settings/ConnectClaude";
-import { addThisDevice, hadIdentity, recoverIdentity } from "../../src/identity/restore";
+import { hadIdentity, recoverIdentity } from "../../src/identity/restore";
+import { addDeviceToName, addSay } from "../../src/identity/add-device";
+import { payloadOf } from "../devices/real.js";
 import { recoveryKeyOptions } from "../../src/keys";
 import { HAVE, nameOf, recoverCheck, recoverRefusal, successToast } from "./have-model.js";
 import { clearJoin } from "../../src/shell/join-hold.js";
@@ -85,6 +88,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // A Mac's first run chooses where Vyre runs before the space is named; set when it did.
   const [macFlow, setMacFlow] = useState(false);
   const [who, setWho] = useState("team");
+  // Adding this device to a name by its long code: the three words this device derived, shown for the person to check on the other device.
+  const [addWords, setAddWords] = useState("");
   const [name, setName] = useState("");
   const [spaceName, setSpaceName] = useState(DATA.defaultSpaceName);
   const [addr, setAddr] = useState<string | null>(null);
@@ -135,10 +140,17 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   // Opened from Spaces on Create or Join, the first step has nothing behind it: Close goes back to Spaces.
   const back = !first && step === startStep(start) ? null : backOf(step, { vps, have: !MOCK && !claimBlocked(), welcome: first && !lostKey, browser: dk === "web" && !canClaim, macFlow });
   // The empty states open Add your phone and Connect: when they end the person is back on Now, not on Spaces.
+  const startAdd = (payload: string) => {
+    setWrong(""); setAddWords(""); setStep("adding");
+    void addDeviceToName({ payload, deviceLabel: device, onWords: setAddWords })
+      .then((r) => { noId.current = false; setName(r.name); setStep(invite ? "invite" : "spaces"); })
+      .catch((e) => { setWrong(addSay((e as { code?: string }).code)); setStep("scan"); });
+  };
   const finish = () => router.replace((first || start === "phone" || start === "connect" ? "/u/now" : "/u/spaces") as never);
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
-  const afterName = () => (invite ? "invite" : first && dk === "mac" ? "macwhere" : "spaces");
+  const boxless = isBoxlessMac(shell());
+  const afterName = () => (invite ? "invite" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
@@ -195,7 +207,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     void (async () => {
       try {
         const me0 = await readIdentity();
-        if (me0) { setName(me0.label); setStep((s) => (first && (s === "name" || s === "welcome") ? "spaces" : s)); }
+        if (me0) { setName(me0.label); setStep((s) => (first && (s === "name" || s === "welcome") ? (boxless && dk === "mac" ? "macserver" : "spaces") : s)); }
         // Identity first: a device with no name cannot create or join a space, so any other way in starts at the name. A kept invite waits for it.
         else {
           noId.current = true;
@@ -264,7 +276,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title={BROWSER.title} sub={BROWSER.line}>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <PairEntry onCode={(c: LongCode) => { setWrong(""); setSession(openPairing(c)); setStep("scanwords"); }} />
-        {MOCK ? null : <TypeCode kind="phone" onDone={() => { noId.current = false; setStep("spaces"); }} />}
+        {MOCK ? null : <TypeCode redeem={redeemPairing} onDone={() => { noId.current = false; setStep("spaces"); }} />}
         <Button kind="ghost" label={BROWSER.notSet} onPress={() => setStep("nosetup")} />
       </Page>
     );
@@ -319,8 +331,10 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title={MOCK ? "Scan from your other device" : HAVE.scanTitle} sub={MOCK ? "Open Vyre on a device that has your name and scan this, or paste the long code on it." : HAVE.scanLine}>
         {MOCK ? <View className="w-ring self-center"><Ring seed={4} /></View> : null}
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
-        {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <PairEntry onCode={(c: LongCode) => { try { setSession(claimBlocked() ? openPairing(c) : addThisDevice(c, { deviceLabel: device })); setStep("scanwords"); } catch (e) { setWrong(recoverRefusal((e as { code?: string }).code)); } }} />}
-        {isPhone(dk) && !MOCK ? <TypeCode kind="phone" onDone={() => { noId.current = false; setStep("spaces"); }} /> : null}
+        {MOCK ? <Button kind="primary" label="Simulate the scan" onPress={() => { setSession(openPairing(parseSample())); setStep("scanwords"); }} /> : <>
+          <PairEntry onCode={(c: LongCode) => { if (claimBlocked()) { setSession(openPairing(c)); setStep("scanwords"); return; } startAdd(payloadOf(c)); }} />
+          {claimBlocked() ? null : <TypeCode redeem={(code, onAck) => addDeviceToName({ code, deviceLabel: device, onAck }).then((r) => { noId.current = false; setName(r.name); return {}; })} onDone={() => setStep(invite ? "invite" : "spaces")} />}
+        </>}
         {offersNoVyre(dk, MOCK) ? <Button kind="ghost" label={NO_VYRE.have} onPress={() => setStep("novyre")} /> : null}
       </Page>
     );
@@ -330,6 +344,12 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title={NO_VYRE.title} sub={NO_VYRE.line}>
         <Button kind="primary" label={NO_VYRE.send} onPress={() => { Share.share({ message: NO_VYRE.share }).catch(() => {}); }} />
         <Button kind="ghost" label={NO_VYRE.notNow} onPress={() => { void writeSkipped(true).finally(() => router.replace("/u/now" as never)); }} />
+      </Page>
+    );
+  } else if (step === "adding") {
+    body = (
+      <Page title="Check the three words" sub="Say yes on your other device only if it shows the same three words.">
+        {addWords ? <Card className="items-center"><Text mono strong size="title" className="text-center">{addWords}</Text></Card> : <Text tone="muted">Reaching your other device.</Text>}
       </Page>
     );
   } else if (step === "scanwords") {
@@ -406,6 +426,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         </Card>
       </Page>
     );
+  } else if (step === "macserver") {
+    body = <MacServer name={name} onBack={() => setStep("welcome")} onDone={() => setStep("addphone")} />;
   } else if (step === "macwhere") {
     const pick = (w: "server" | "here") => () => { setWhere(w); setMacFlow(true); setStep("create"); };
     body = (
@@ -430,7 +452,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   } else if (step === "cmd") {
     body = (
       <Page title="Run this on your server" sub="Open its terminal and paste the line.">
-        <CopyLine text={DATA.installCommand} />
+        <CopyLine text={installLine(shell()?.version)} />
         <Button kind="primary" label="I ran it" onPress={() => setStep("srv1")} />
       </Page>
     );
@@ -558,7 +580,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         <View className="w-ring self-center"><Ring seed={6} /></View>
         {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
         <Field label="Invite link" value={link} onChangeText={setLink} placeholder="harlow.vyre.run/join/..." />
-        {MOCK ? null : <TypeCode kind="invite" onDone={(t) => { if (!t.invite) { setWrong("The code worked but gave no invitation."); return; } const l = t.invite.link; setLink(l); setBusy(true); setWrong(""); previewInvite(l).then((p) => { setInvite(inviteFrom(p, l)); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false)); }} />}
+        {MOCK ? null : <TypeCode redeem={redeemInvite} onDone={(t) => { if (!t.invite) { setWrong("The code worked but gave no invitation."); return; } const l = t.invite.link; setLink(l); setBusy(true); setWrong(""); previewInvite(l).then((p) => { setInvite(inviteFrom(p, l)); setStep("invite"); }).catch((e) => setWrong(inviteRefusal((e as { code?: string }).code, said(e)))).finally(() => setBusy(false)); }} />}
         <View className="flex-row gap-s2">
           <Button kind="primary" label="Open invite" disabled={!MOCK && (busy || !link.trim())} onPress={() => {
             if (MOCK) return setStep("invite");

@@ -18,6 +18,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     let menuActions = MenuActions()
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
+    /// The first run: with no vyred and no server, "Where should Vyre run?" (FirstRunWindow.swift); later launches open straight into the app.
+    lazy var firstRun = FirstRunController(model: model, home: home)
     /// Emoji, colours, time zones, money, snippets, quicklinks and your commands (LocalAnswers.swift).
     let local: LocalAnswersProvider
     /// Commands modules declare for the Capsule (ViewCommandsProvider.swift).
@@ -116,6 +118,8 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         }
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)
+            // The first look at vyred decides the first run; it never runs under the tests or the footprint checks (no windows there).
+            if !headless, ProcessInfo.processInfo.environment["VYRE_CAPSULE_TEST"] != "1" { self?.firstRun.vyredChanged(up: st == .open) }
             if st == .open {
                 self?.hotkeys.reportRetry()
                 Task { await self?.presence.pinSelf() }
