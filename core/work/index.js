@@ -9,6 +9,7 @@
 
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
+import { createHub } from "./hub.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
 import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
@@ -83,6 +84,21 @@ export default {
       return (engineer = createEngineer({ kernel: k, compile: k.compile, simulate: k.simulate || null, ...(k.engineerChain ? { engineerChain: k.engineerChain } : {}) }));
     };
 
+    // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
+    /** @type {any} */ let hub = null;
+    const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, log: ctx.log }));
+    if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
+      ctx.events.on("thread.started", (/** @type {any} */ e) => { void hubOf().onStarted(e && e.payload).catch(() => {}); });
+      ctx.events.on("thread.stopped", (/** @type {any} */ e) => { void hubOf().onStopped(e && e.payload).catch(() => {}); });
+    }
+    ctx.tool("work.project.create", {
+      description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
+      input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),
+      run: async (input, extra) => {
+        const rec = await hubOf().createProject(await chainOf(extra), { name: input.name, repo: input.repo, client: input.client, slug: input.slug });
+        return { project: rec.urn, slug: rec.data.slug, drive_path: rec.data.drive_path, memory_scope: rec.data.memory_scope };
+      },
+    });
     ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",
       input: obj(),

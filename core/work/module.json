@@ -25,6 +25,12 @@
         "effect": "write"
       },
       {
+        "name": "work.project.create",
+        "summary": "make a Project: one record with its Drive folder, repository and memory scope",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.situation",
         "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
         "reach": "anyone",
@@ -115,7 +121,144 @@
         "records.read",
         "records.create",
         "records.update",
-        "events.read"
+        "events.read",
+        "drive.write"
+      ],
+      "types": [
+        {
+          "name": "project",
+          "label": "Project",
+          "icon": "IconFolder",
+          "fields": [
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "Name",
+              "required": true
+            },
+            {
+              "name": "slug",
+              "kind": "text",
+              "label": "Short name used in addresses",
+              "required": true,
+              "unique": true
+            },
+            {
+              "name": "status",
+              "kind": "choice",
+              "label": "Status",
+              "options": [
+                "active",
+                "archived"
+              ]
+            },
+            {
+              "name": "client",
+              "kind": "link",
+              "label": "Client"
+            },
+            {
+              "name": "drive_path",
+              "kind": "text",
+              "label": "Drive folder"
+            },
+            {
+              "name": "repo",
+              "kind": "text",
+              "label": "Repository"
+            },
+            {
+              "name": "memory_scope",
+              "kind": "text",
+              "label": "Memory scope"
+            },
+            {
+              "name": "archived_at",
+              "kind": "datetime",
+              "label": "Archived"
+            }
+          ]
+        },
+        {
+          "name": "session-summary",
+          "label": "Session",
+          "icon": "IconMessage",
+          "fields": [
+            {
+              "name": "title",
+              "kind": "text",
+              "label": "Title"
+            },
+            {
+              "name": "project",
+              "kind": "link",
+              "label": "Project",
+              "to": "project"
+            },
+            {
+              "name": "people",
+              "kind": "text",
+              "label": "People"
+            },
+            {
+              "name": "agents",
+              "kind": "text",
+              "label": "Agents"
+            },
+            {
+              "name": "provider",
+              "kind": "text",
+              "label": "Provider"
+            },
+            {
+              "name": "model",
+              "kind": "text",
+              "label": "Model"
+            },
+            {
+              "name": "account",
+              "kind": "text",
+              "label": "Account"
+            },
+            {
+              "name": "started",
+              "kind": "datetime",
+              "label": "Started"
+            },
+            {
+              "name": "ended",
+              "kind": "datetime",
+              "label": "Ended"
+            },
+            {
+              "name": "status",
+              "kind": "choice",
+              "label": "Status",
+              "options": [
+                "working",
+                "done",
+                "stopped",
+                "failed"
+              ]
+            },
+            {
+              "name": "summary",
+              "kind": "rich_text",
+              "label": "Summary"
+            },
+            {
+              "name": "thread",
+              "kind": "text",
+              "label": "Thread",
+              "unique": true
+            },
+            {
+              "name": "transcript",
+              "kind": "text",
+              "label": "Transcript (kernel address)"
+            }
+          ]
+        }
       ]
     },
     "daemon": [
