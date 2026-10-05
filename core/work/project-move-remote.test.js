@@ -90,7 +90,7 @@ test("the Personal upgrade moves each project once: moved ones are skipped, a fa
   /** @type {Record<string, any>} */ const states = {};
   /** @type {string[]} */ const ran = [];
   let boom = true;
-  const opts = { projects, stateOf: (/** @type {string} */ u) => (states[u] ||= {}), planOne: async (/** @type {string} */ u) => ({ project: u }), runOne: async (/** @type {any} */ plan, /** @type {any} */ st) => { ran.push(plan.project); if (plan.project.endsWith("p3") && boom) { st.partial = true; throw new Error("target unreachable"); } st.done = true; } };
+  const opts = { projects, approveAll: undefined, stateOf: (/** @type {string} */ u) => (states[u] ||= {}), planOne: async (/** @type {string} */ u) => ({ project: u }), runOne: async (/** @type {any} */ plan, /** @type {any} */ st) => { ran.push(plan.project); if (plan.project.endsWith("p3") && boom) { st.partial = true; throw new Error("target unreachable"); } st.done = true; } };
   const r1 = await upgradePersonal(opts);
   assert.deepEqual(r1.moved, ["vyre://A/project/p1", "vyre://A/project/p4"]);
   assert.deepEqual(r1.skipped, ["vyre://A/project/p2"]);
@@ -100,4 +100,41 @@ test("the Personal upgrade moves each project once: moved ones are skipped, a fa
   const r2 = await upgradePersonal({ ...opts, projects: [mkp("p1", "moved"), mkp("p2", "moved"), mkp("p3", "active"), mkp("p4", "moved")] });
   assert.deepEqual(r2.moved, ["vyre://A/project/p3"]);
   assert.equal(states["vyre://A/project/p3"].partial, true, "the project's own saved state came back");
+});
+
+test("the memory room and the Work engine's lines cross homes too: sealed to the target's key, and in the pull, each forgotten at the source only against its receipt", async () => {
+  const { from, proj, files } = source();
+  const plan = await planRemoteMove({ from, to: { space: "B" }, project: proj.urn });
+  /** @type {string[]} */ const order = [];
+  const memory = {
+    offer: async () => { order.push("offer"); return { to_key: "k" }; }, export: async () => { order.push("export"); return { package: "sealed" }; },
+    import: async (/** @type {any} */ i) => { order.push("import"); assert.equal(i.package, "sealed"); return { digest: "m", counts: { writes: 2 } }; },
+    forget: async (/** @type {any} */ i) => { order.push("forget-memory:" + i.receipt.digest); },
+  };
+  const know = { forget: async (/** @type {any} */ i) => { order.push("forget-know:" + i.receipt.digest); assert.ok(i.records.includes(proj.urn)); } };
+  const pt = ports({ files, ports: { memory, know, pull: async (/** @type {any} */ i) => ({ target: "vyre://B/project/b1", counts: { records: { chat: 1 }, files: i.plan.files.length }, files: {}, know: { digest: "k", count: 3 } }) } });
+  const done = await runRemoteMove({ from, to: { space: "B" }, plan, ports: pt });
+  assert.deepEqual(order, ["offer", "export", "import", "forget-know:k", "forget-memory:m"]);
+  assert.deepEqual(done.not_carried, [], "nothing is left unsaid or behind");
+});
+
+test("the whole upgrade is ONE approval: every project is planned, the person approves the set once, and each move runs under the move id it was given", async () => {
+  const mkp = (/** @type {string} */ id) => ({ urn: `vyre://A/project/${id}`, data: { status: "active" } });
+  const projects = [mkp("p1"), mkp("p2"), mkp("p3")];
+  /** @type {Record<string, any>} */ const states = {};
+  let asked = 0; /** @type {string[][]} */ const shown = [];
+  /** @type {string[]} */ const ranWith = [];
+  const r = await upgradePersonal({
+    projects, stateOf: (/** @type {string} */ u) => (states[u] ||= {}), planOne: async (/** @type {string} */ u) => ({ project: u, hash: `h-${u.split("/").pop()}` }),
+    approveAll: async (/** @type {any[]} */ plans) => { asked++; shown.push(plans.map(p => p.hash)); return Object.fromEntries(plans.map(p => [p.project, `mv-${p.hash}`])); },
+    runOne: async (/** @type {any} */ plan, /** @type {any} */ st) => { ranWith.push(st.move_id); },
+  });
+  assert.equal(asked, 1, "one prompt");
+  assert.deepEqual(shown, [["h-p1", "h-p2", "h-p3"]], "over every project's plan");
+  assert.deepEqual(ranWith, ["mv-h-p1", "mv-h-p2", "mv-h-p3"]);
+  assert.equal(r.approved, 3);
+  // a second run: the projects that failed keep their move id and are not asked again
+  const again = await upgradePersonal({ projects, stateOf: (/** @type {string} */ u) => states[u], planOne: async (/** @type {string} */ u) => ({ project: u, hash: "x" }), approveAll: async () => { asked++; return {}; }, runOne: async () => {} });
+  assert.equal(asked, 1, "no new prompt: they already hold their move ids");
+  assert.equal(again.approved, 0);
 });

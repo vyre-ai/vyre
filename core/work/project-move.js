@@ -58,9 +58,12 @@ export async function planMove({ from, to, project, client = "leave" }) {
   if (folder && from.drive) files = (await from.drive.list(from.chain, folder)).map((/** @type {any} */ e) => ({ path: String(e.path ?? e.name ?? e), size: Number(e.size) || 0 }));
   // chat folders go by the sealed carry below, never by the mover's own reads
   if (from.drive && typeof from.drive.survey === "function") files = files.filter(f => !/^Projects\/[^/]+\/(chat|made)\/[^/]+\//.test(f.path));
+  // the content hash of every file the mover reads, from the Drive's own record (no byte is read to plan): what the person approves covers the contents, not just the names and counts
+  /** @type {Record<string, string | null>} */ const hashes = {};
+  if (from.drive && typeof from.drive.stat === "function") for (const f of files) { try { const st = await from.drive.stat(from.chain, f.path); hashes[f.path] = st && st.sha256 ? String(st.sha256) : null; } catch { hashes[f.path] = null; } }
   // a project's chat folders are its participants' only, so the mover's listing above never shows them; the move carries them sealed, and the plan counts them without reading
-  let chatFiles = 0, chatBytes = 0;
-  if (folder && from.drive && typeof from.drive.survey === "function") { try { const sv = await from.drive.survey(from.chain, folder); chatFiles = sv.files; chatBytes = sv.bytes; } catch { /* not an owner or admin here: the plan shows only what the mover reads */ } }
+  let chatFiles = 0, chatBytes = 0; /** @type {string[]} */ let chatHashes = [];
+  if (folder && from.drive && typeof from.drive.survey === "function") { try { const sv = await from.drive.survey(from.chain, folder); chatFiles = sv.files; chatBytes = sv.bytes; chatHashes = sv.hashes || []; } catch { /* not an owner or admin here: the plan shows only what the mover reads */ } }
   /** @type {string[]} */ const blockers = [];
   if (chatFiles && to.remote !== true && !(typeof from.carry === "function" && to.drive)) blockers.push("this kernel cannot carry a chat's sealed files between Spaces yet");
   if (truncated || found.size >= MAX_RECORDS) blockers.push("the project has more linked records than one move carries");
@@ -75,8 +78,8 @@ export async function planMove({ from, to, project, client = "leave" }) {
   // the versions too: a record edited after the approval is not the record that was approved
   const versions = [`${root.urn}@${root.version}`, ...[...found.values()].map(r => `${r.urn}@${r.version}`)].sort();
   // base64url, 43 characters: the form the kernel's moves and memory's room move both require of a plan hash
-  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, versions, install })).digest("base64url");
-  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
+  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, versions, install, hashes: Object.entries(hashes).sort(([a], [b]) => (a < b ? -1 : 1)), chat_hashes: chatHashes })).digest("base64url");
+  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hashes, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
 }
 
 /** A slug free in the target. @param {any} to @param {string} base */
@@ -168,6 +171,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
     const dest = `${newRoot}${f.slice(oldRoot.length)}`;
     const bytes = bytesOf(await from.drive.get(from.chain, f));
     hashes[f] = sha(bytes);
+    if (plan.hashes && plan.hashes[f] && plan.hashes[f] !== hashes[f]) throw Object.assign(new Error(`a file changed since the move was approved (${f}); plan the move again`), { code: "stale_plan" });
     await to.drive.put(to.chain, dest, bytes);
   }
 

@@ -262,3 +262,16 @@ test("a memory room that changed during the move is carried again and forgotten 
   await runMove({ from: a, to: b, plan, ports: { memory } });
   assert.deepEqual(order, ["offer", "export", "import", "forget:old", "offer", "export", "import", "forget:new"]);
 });
+
+test("the plan carries every file's content hash from the Drive's own record, and a file edited after the approval stops the move", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {any} */ (a.drive).stat = async (/** @type {any} */ _c, /** @type {string} */ p) => { const bytes = a.files.get(p); return { size: bytes.length, sha256: Buffer.from(bytes).toString("hex") }; };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  assert.equal(Object.keys(plan.hashes).length, plan.files.length);
+  assert.ok(Object.values(plan.hashes).every(h => typeof h === "string" && h.length > 0));
+  const again = await planMove({ from: a, to: b, project: proj.urn });
+  assert.equal(again.hash, plan.hash, "the same contents, the same hash");
+  const f = plan.files[0];
+  a.files.set(f, enc("edited after approval"));
+  await assert.rejects(() => runMove({ from: a, to: b, plan }), /changed since/);
+});

@@ -76,6 +76,10 @@ export function createDriveGateway(cfg) {
         return cfg.drive.get(p, { version: o.version ?? null });
       }, "file.accessed", { path: p, version: o.version ?? null }); },
     async history(chain, /** @type {string} */ p) { return read(chain, "drive.read", file(p), async () => cfg.drive.history(p), "file.accessed", { path: p, what: "history" }); },
+    /** A file's version, size and content hash, without reading it: `drive.read` on it like a read, and no byte moves. @param {any} chain @param {string} p @returns {Promise<{ version: number, size: number, sha256: string | null }>} */
+    async stat(chain, /** @type {string} */ p) {
+      return read(chain, "drive.read", file(p), async () => cfg.drive.stat(p, {}), "file.accessed", { path: p, what: "stat" });
+    },
     /** The listing shows only what the chain may read: the folder is authorized once, then each entry is asked about until a page is full. A page is at most 1,000 entries and a call looks at most 5,000, so the cost of one call is bounded whatever the folder holds. `after` is the last path the previous page covered. */
     async listPage(chain, /** @type {string} */ prefix = "", /** @type {{ limit?: number, after?: string | null }} */ o = {}) {
       mustChain(chain);
@@ -155,7 +159,7 @@ export function createDriveGateway(cfg) {
     /**
      * What the move's plan needs to know of a project's chat folders without reading them: how many files and bytes, never a name or a byte. An owner or admin only (the restore act on the project's
      * folder), since the plan runs before the move is approved and so before there is an event to rest on.
-     * @param {any} chain @param {string} folder @returns {Promise<{ files: number, bytes: number }>}
+     * @param {any} chain @param {string} folder @returns {Promise<{ files: number, bytes: number, hashes: string[] }>}
      */
     async survey(chain, folder) {
       mustChain(chain);
@@ -163,12 +167,14 @@ export function createDriveGateway(cfg) {
       if (!m) throw new KernelError("bad_input", "a project's own folder");
       if (!(await check(chain, "drive.restore", `vyre://${cfg.space}/file/Projects/${m[1]}`))) throw new KernelError("not_found", "no such folder");
       let files = 0, bytes = 0;
+      /** @type {string[]} */ const hashes = [];
       for (const e of await run(async () => cfg.drive.list(`${folder}/`))) {
         const p = String(e.path ?? e.name ?? e);
         if (!/^Projects\/[^/]+\/(chat|made)\/[^/]+\//.test(p)) continue;
-        try { bytes += Number(cfg.drive.stat(p, {}).size) || 0; files++; } catch { /* gone */ }
+        try { const st = cfg.drive.stat(p, {}); bytes += Number(st.size) || 0; files++; hashes.push(String(st.sha256 ?? "")); } catch { /* gone */ }
       }
-      return { files, bytes };
+      // the content hashes without the names, sorted: the plan's hash covers what the chat folders hold, and nothing says whose they are
+      return { files, bytes, hashes: hashes.sort() };
     },
     /**
      * What a project's folder holds, for the move: path, size and the content hash of every file, chat folders included, and never a byte. A chat's files are its participants' only, so no listing
