@@ -20,7 +20,7 @@ test("a real put-if against a live space: atomic compare-and-set, then the seale
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ recall: { every: 0, vectors: false }, vault: { keystore: "file" } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
-  const space = d.kernel.space;
+  const space = d.kernel.id.space;
   const call = (tool, input) => as(d, tool, input, "cli");
   const b64 = s => Buffer.from(s).toString("base64");
   // the raw tool: create (must not exist), refuse a second create, replace only on the sha seen
