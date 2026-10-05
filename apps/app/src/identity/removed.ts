@@ -1,7 +1,7 @@
 // The server said this device was removed (the relay's "device removed", close code 4401): the device forgets everything it held (wipe.js has the steps and the one rule for what counts), then shows the pair-again
 // screen. Once: a second signal while the wipe runs changes nothing. A refused sign-in or an unreachable server never comes here (isRemovedCode).
 import { isRemovedCode, wipeAll } from "./wipe.js";
-import { afterWipe, deviceSteps } from "./wipe";
+import { afterWipe, deviceSteps } from "./device-wipe";
 import { noteRemoved } from "../auth/notice.js";
 
 let running: Promise<void> | null = null;

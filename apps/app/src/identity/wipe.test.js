@@ -70,13 +70,13 @@ test("wipe: the steps run in order and a throwing step is reported with its own 
   assert.deepEqual(r, { done: ["a", "c"], failed: [{ name: "b", why: "nope" }] });
 });
 
-test("wipe: the phone's secure-store keys named in wipe.native.ts are the ones the app writes, and nothing else is written by name", async () => {
+test("wipe: the phone's secure-store keys named in device-wipe.native.ts are the ones the app writes, and nothing else is written by name", async () => {
   const { readFileSync } = await import("node:fs");
   const here = new URL(".", import.meta.url);
   const read = (/** @type {string} */ f) => readFileSync(new URL(f, here), "utf8");
-  const wipe = read("./wipe.native.ts");
+  const wipe = read("./device-wipe.native.ts");
   for (const [file, lit] of [["../state/appearance-keep.js", "vyre.appearance"], ["../state/setup-progress.ts", "vyre.setup.progress"], ["../state/setup-progress.ts", "vyre.setup.skipped"], ["../state/space-roots.ts", "vyre.space-roots"]]) {
     assert.ok(read(file).includes(`"${lit}"`), `${file} writes ${lit}`);
-    assert.ok(wipe.includes(`"${lit}"`), `wipe.native.ts names ${lit}`);
+    assert.ok(wipe.includes(`"${lit}"`), `device-wipe.native.ts names ${lit}`);
   }
 });
