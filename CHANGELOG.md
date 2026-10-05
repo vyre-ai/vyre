@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Settings lets a person with more than one Cloud space choose where their Personal items (reminders, notes, to-dos) are kept (spaces.tier answers the choices and the current one; spaces.personal-host.set saves).
+
 - feat(app): every time shown goes through lib/time (src/time/show.js): task and event times, agent usage, flow runs, Drive and kit dates, artifact activity, lock times, account dates, and a record's history, all in the viewer's own zone; a test fails if a screen formats a time by hand. A Contact record says "It is 9:41 pm PT where they are" from the Contact's time_zone. A time that belongs to a space with a zone also says the space's time once windows adds the zone.
 
 - feat(app): a passkey browser says its own yes. A held act (a reveal, a send) is answered by the browser itself: it opens the ask, fetches its card, signs the kernel's proof with the passkey (signer webauthn_platform, the assertion's challenge SHA-256 of the proof's bytes, key id from the SPKI) and sends approvals.answer; any failure leaves the ask for the owner's phone. The hello offers the passkey as `key` (not public_key), as the box reads it.
