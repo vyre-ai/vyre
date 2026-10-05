@@ -1443,7 +1443,8 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
     space: PERSONAL, owner: ME, membership: async () => ({ member: true, role: "owner" }),
     chain: async () => chainOf(pk), chainIn: async () => chainOf(pk),
     proofFrom: (meta) => (meta && meta.kernel_proof ? { presence: meta.kernel_proof } : {}), proofRequest: (call, ...a) => proofRequest(PERSONAL, call, ...a),
-    for: (id) => (id === PERSONAL ? { space: id, hosted: true, gateway: pk.gateway } : id === CLOUD ? { space: id, hosted: false, gateway: ck.gateway } : (() => { throw new Error("no such space"); })()),
+    // My Cloud as a RemoteKernel is: the chain argument is ignored (the server mints it from the peer), so this stands in with the person's own chain there
+    for: (id) => (id === PERSONAL ? { space: id, hosted: true, gateway: pk.gateway } : id === CLOUD ? { space: id, hosted: false, gateway: { definitions: () => ck.gateway.definitions(chainOf(ck)), records: new Proxy({}, { get: (_t, name) => (_c, ...a) => ck.gateway.records[name](chainOf(ck), ...a) }) } } : (() => { throw new Error("no such space"); })()),
     spaces: { hosts: () => false },
   });
   const d = await device(t, { kernelFor });
