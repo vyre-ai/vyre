@@ -1733,10 +1733,11 @@ Finish a sign-in with the whole address the browser landed on (for a browser on 
 
 ### `connectors.declare`
 
-Make a vault credential from a shipped declaration, so Flows, watchers and assistants can reach that service through the vault: { id, secret? (a key or token, for bearer and api-key connectors), as: "service-account" with subject (the address it acts as) and item (the vault item holding the service-account key), or client (the vault item holding an OAuth app's client id and secret), name? (default: the connector id), scope? }. A model never calls this. For an OAuth connector this makes the credential; the sign-in is then made with connectors.connect for the matching app.
+Make a vault credential from a shipped declaration, so Flows, watchers and assistants can reach that service through the vault: { id, also? (more connector ids that sign in the same way and share this one credential, such as ["google-calendar"] with gmail: one sign-in), secret? (a key or token, for bearer and api-key connectors), as: "service-account" with subject (the address it acts as) and item (the vault item holding the service-account key), or client (the vault item holding an OAuth app's client id and secret), name? (default: the connector id), scope? }. A model never calls this. For an OAuth connector this makes the credential; the sign-in is then made with connectors.connect for the matching app.
 
 - Input:
   - `id` string, required
+  - `also` list of string
   - `as` "service-account"
   - `client` string
   - `field` string

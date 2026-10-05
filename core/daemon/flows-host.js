@@ -16,7 +16,7 @@ import { createStages } from "../../kernel/flows/stages.js";
 const MIN_TICK_MS = 60_000;
 
 /**
- * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined,
+ * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void },
  * }} o
  */
 export function createFlowsHost(o) {
@@ -79,7 +79,8 @@ export function createFlowsHost(o) {
       // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
       const { CORE_TYPES } = await import("../../records/core-types.js");
       const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
-      const kitStorage = [CORE_TYPES.find((/** @type {any} */ t) => t.name === "template"), defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
+      // Every Space has the core types (contact, organization, communication, event ...): the objects layer the calendar sync and "Log communications" write to. `template` is also the Kit's storage.
+      const kitStorage = [...CORE_TYPES, defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
       const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
     }
@@ -120,8 +121,12 @@ export function createFlowsHost(o) {
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */
       personChain: () => personChain(ownerOf()),
+      /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
+      get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
       stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
     spaces.set(space, host);
+    // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
+    if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, service: ports.service }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }
     return host;
   }
 
@@ -129,6 +134,6 @@ export function createFlowsHost(o) {
     attach,
     get: (/** @type {string} */ space) => spaces.get(space) || null,
     spaces: () => [...spaces.keys()],
-    stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); },
+    stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); if (o.calendarSync) o.calendarSync.stop(); },
   });
 }

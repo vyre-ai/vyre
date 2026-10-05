@@ -2,7 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DECLARATIONS } from "./index.js";
-import { checkDeclaration, defineConnector, toCredentialConfig, serviceOf, buildRequest, opFor, readbackRequest, compareReadback, parseResponse, isOutward } from "./format.js";
+import { checkDeclaration, defineConnector, toCredentialConfig, mergedCredentialConfig, serviceOf, buildRequest, opFor, readbackRequest, compareReadback, parseResponse, isOutward } from "./format.js";
 import { normalize, classify } from "../../core/vault/api-request.js";
 
 const stripe = DECLARATIONS.stripe, gmail = DECLARATIONS.gmail, cal = DECLARATIONS["google-calendar"];
@@ -124,4 +124,23 @@ test("parseResponse: a named output field that is missing is a problem, an extra
   assert.equal(parseResponse(stripe, "customers.get", { status: 200, json: { id: "c", livemode: false } }).ok, true);
   assert.deepEqual(parseResponse(stripe, "customers.get", { status: 200, json: { email: "x" } }).problems, ["response.id: needed"]);
   assert.equal(parseResponse(stripe, "customers.get", { status: 404, json: {} }).ok, false);
+});
+
+test("one sign-in for several declarations: Gmail and Calendar share a credential that names both hosts, each route says which host it is on", () => {
+  const cfg = toCredentialConfig([gmail, cal], { as: "service-account", subject: "office@harlow.test" });
+  assert.deepEqual(cfg.hosts, ["gmail.googleapis.com", "www.googleapis.com"]);
+  assert.equal(cfg.auth.type, "service-account");
+  assert.ok(cfg.auth.scopes.includes("https://www.googleapis.com/auth/gmail.compose") && cfg.auth.scopes.some(s => /calendar/.test(s)), "the scopes are joined");
+  const n = normalize(cfg);
+  const host = (method, path) => n.service.allow.find(r => r.method === method && r.path === path).host;
+  assert.equal(host("GET", "/gmail/v1/users/me/messages"), "gmail.googleapis.com");
+  assert.equal(host("POST", "/calendar/v3/calendars/*/events"), "www.googleapis.com");
+  assert.equal(n.service.ops.length, Object.keys(gmail.ops).length + Object.keys(cal.ops).length);
+  assert.deepEqual(n.service.draft, { method: "POST", path: "/gmail/v1/users/me/drafts", wrap: "message" });
+  assert.equal(classify("POST", "/gmail/v1/users/me/drafts", n.endpoints).kind, "read", "a draft is not held");
+  assert.equal(classify("POST", "/calendar/v3/calendars/primary/events", n.endpoints).kind, "send");
+  // refused: a connector that signs in another way, a repeated op, a rule naming a host the credential lacks
+  assert.throws(() => mergedCredentialConfig([gmail, stripe], {}), /does not sign in the way/);
+  assert.throws(() => mergedCredentialConfig([gmail, gmail], { client: "g" }), /two connectors/);
+  assert.throws(() => normalize({ ...cfg, service: { ...cfg.service, allow: [{ method: "GET", path: "/x", host: "elsewhere.example.test" }] } }), /not one of the credential's hosts/);
 });

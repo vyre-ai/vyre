@@ -30,7 +30,7 @@ const TYPES = ["string", "number", "boolean", "object", "array", "time", "email"
 const isObj = (/** @type {any} */ v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** @typedef {{ type: string, required?: boolean, enum?: any[], max?: number, items?: Shape, fields?: Record<string, Shape> }} Shape */
-/** @typedef {{ params?: Record<string, Shape>, query?: Record<string, Shape>, body?: Record<string, Shape>, encoding?: "json" | "form" }} OpInput */
+/** @typedef {{ params?: Record<string, Shape>, query?: Record<string, Shape>, body?: Record<string, Shape>, headers?: Record<string, Shape>, encoding?: "json" | "form" }} OpInput */
 /** @typedef {{ method: string, path: string, kind: string, label?: string, input?: OpInput, output?: Record<string, Shape>, idempotent?: boolean,
  *   readback?: { op: string, args: Record<string, string>, compare?: Record<string, string> }, wrap?: string }} Op */
 /** @typedef {{ op: string, items?: string, id: string, at?: string, title?: string, args?: { query?: Record<string, any>, params?: Record<string, string> }, since?: { lookback_days?: number },
@@ -100,8 +100,8 @@ export function checkDeclaration(d) {
     if (inp !== undefined) {
       if (!isObj(inp)) out.push(`${p}.input: an object`);
       else {
-        for (const k of Object.keys(inp)) if (!["params", "query", "body", "encoding"].includes(k)) out.push(`${p}.input.${k}: not part of an op's input`);
-        checkShapes(inp.params, `${p}.input.params`, out); checkShapes(inp.query, `${p}.input.query`, out); checkShapes(inp.body, `${p}.input.body`, out);
+        for (const k of Object.keys(inp)) if (!["params", "query", "body", "headers", "encoding"].includes(k)) out.push(`${p}.input.${k}: not part of an op's input`);
+        checkShapes(inp.params, `${p}.input.params`, out); checkShapes(inp.query, `${p}.input.query`, out); checkShapes(inp.body, `${p}.input.body`, out); checkShapes(inp.headers, `${p}.input.headers`, out);
         if (inp.encoding !== undefined && !["json", "form"].includes(inp.encoding)) out.push(`${p}.input.encoding: json or form`);
       }
     }
@@ -166,9 +166,10 @@ export const patternOf = path => path.replace(/\{[^}]*\}/g, "*");
 /**
  * What the declaration becomes in the vault: an api-credential's config. The host is the declaration's; `subject` is the address a service account acts as and `client` the vault item that
  * holds an oauth app's client id and secret, both chosen by the person at install and never by a request.
- * @param {Declaration} d @param {{ as?: "service-account", subject?: string, client?: string | { item: string, field?: string }, item?: string, field?: string }} [o]
+ * @param {Declaration | Declaration[]} d  (a list is one sign-in for several declarations that sign in the same way: see mergedCredentialConfig) @param {{ as?: "service-account", subject?: string, client?: string | { item: string, field?: string }, item?: string, field?: string }} [o]
  */
 export function toCredentialConfig(d, o = {}) {
+  if (Array.isArray(d)) return mergedCredentialConfig(d, o);
   const a = d.auth;
   /** @type {any} */ let auth;
   if (o.as === "service-account" && !(a.type === "service-account" || (Array.isArray(a.also) && a.also.includes("service-account")))) throw Object.assign(new Error(`${d.id} does not sign in as a service account`), { code: "bad_input" });
@@ -253,15 +254,16 @@ function checkFields(obj, shapes, path, out, strict) {
 
 /**
  * The request for one op, from what a person or Flow supplies: the path filled in, the query and body checked against the op's declared shapes. An input the op does not declare is
- * refused, never passed along. @param {Declaration} d @param {string} name @param {{ params?: any, query?: any, body?: any }} [input]
+ * refused, never passed along. @param {Declaration} d @param {string} name @param {{ params?: any, query?: any, body?: any, headers?: any }} [input]
  * @returns {{ method: string, path: string, query?: Record<string, any>, body?: any, headers?: Record<string, string> }}
  */
-export function buildRequest(d, name, input = {}) {
+export function buildRequest(d, name, input = {}) {  // input: { params, query, body, headers }
   const op = d.ops[name];
   if (!op) throw Object.assign(new Error(`${d.id} has no op ${name}`), { code: "not_found" });
   const sh = op.input || {}, problems = /** @type {string[]} */ ([]);
   checkFields(input.params || {}, sh.params || {}, "params", problems, true);
   checkFields(input.query || {}, sh.query || {}, "query", problems, true);
+  checkFields(input.headers || {}, sh.headers || {}, "headers", problems, true);
   if (sh.body) checkFields(input.body || {}, sh.body, "body", problems, true); else if (input.body !== undefined) problems.push("body: this op takes none");
   if (problems.length) throw Object.assign(new Error(`${d.id} ${name}: ${problems.join("; ")}`), { code: "bad_input", problems });
   const path = op.path.replace(/\{([a-z_][a-z0-9_]*)\}/gi, (_m, k) => encodeURIComponent(String(input.params[k])));
@@ -269,7 +271,8 @@ export function buildRequest(d, name, input = {}) {
     method: op.method, path,
     ...(input.query && Object.keys(input.query).length ? { query: input.query } : {}),
     ...(sh.body && input.body !== undefined ? { body: op.wrap ? { [op.wrap]: input.body } : input.body } : {}),
-    ...(sh.body && sh.encoding === "form" ? { headers: { "content-type": "application/x-www-form-urlencoded" } } : {}),
+    ...((sh.body && sh.encoding === "form") || (input.headers && Object.keys(input.headers).length)
+      ? { headers: { ...(sh.body && sh.encoding === "form" ? { "content-type": "application/x-www-form-urlencoded" } : {}), ...(input.headers || {}) } } : {}),
   };
 }
 
@@ -335,4 +338,40 @@ export function compareReadback(d, name, done, read) {
     if (JSON.stringify(cur) !== JSON.stringify(wrote)) mismatches.push({ field, wrote, read: cur });
   }
   return { ok: mismatches.length === 0, mismatches };
+}
+
+/**
+ * One credential for several declarations that sign in the same way (Gmail and Google Calendar: one Google sign-in). The credential names every host, each service route says which host
+ * it is on, scopes are joined, endpoint classes are joined, and the ops of all of them are one list. A draft op, an idempotency header and a rate come from the declarations only when
+ * they agree (the rate is the lowest). Op names must not repeat across declarations.
+ * @param {Declaration[]} ds @param {Parameters<typeof toCredentialConfig>[1]} o
+ */
+export function mergedCredentialConfig(ds, o = {}) {
+  if (!ds.length) throw Object.assign(new Error("no connector to make a credential for"), { code: "bad_input" });
+  const first = ds[0];
+  for (const d of ds) {
+    if (d.auth.type !== first.auth.type || d.auth.token_uri !== first.auth.token_uri || d.auth.authorize_uri !== first.auth.authorize_uri) throw Object.assign(new Error(`${d.id} does not sign in the way ${first.id} does, so they cannot share a credential`), { code: "bad_input" });
+  }
+  const scopes = [...new Set(ds.flatMap(d => d.auth.scopes || []))];
+  const base = toCredentialConfig({ ...first, auth: { ...first.auth, ...(scopes.length ? { scopes } : {}) } }, o);
+  const parts = ds.map(d => ({ d, p: declarationParts(d) }));
+  const names = new Set();
+  for (const { d } of parts) for (const n of Object.keys(d.ops)) { if (names.has(n)) throw Object.assign(new Error(`op ${n} is declared by two connectors sharing a credential`), { code: "bad_input" }); names.add(n); }
+  const rates = parts.map(x => x.p.rate && x.p.rate.per_minute).filter(Boolean);
+  const idem = new Set(parts.map(x => x.p.service.idempotency && x.p.service.idempotency.header));
+  const draft = parts.map(x => x.p.service.draft).filter(Boolean);
+  const retry = parts.every(x => !x.p.service.rate || x.p.service.rate.retry_after);
+  return {
+    ...base, hosts: [...new Set(parts.flatMap(x => x.p.hosts))],
+    endpoints: parts.flatMap(x => x.p.endpoints),
+    ...(rates.length ? { rate: { per_minute: Math.min(...rates) } } : {}),
+    service: {
+      allow: parts.flatMap(x => x.p.service.allow.map(r => ({ ...r, host: x.p.hosts[0] }))),
+      deny: parts.flatMap(x => x.p.service.deny),
+      ...(draft.length === 1 ? { draft: draft[0] } : {}),
+      ...(idem.size === 1 && [...idem][0] ? { idempotency: { header: [...idem][0] } } : {}),
+      ...(rates.length ? { rate: { per_minute: Math.min(...rates), retry_after: retry } } : {}),
+      ops: parts.flatMap(x => x.p.service.ops),
+    },
+  };
 }

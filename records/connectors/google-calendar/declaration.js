@@ -5,6 +5,7 @@ import { defineConnector } from "../format.js";
 
 const EVENTS = "https://www.googleapis.com/auth/calendar.events", READ = "https://www.googleapis.com/auth/calendar.readonly";
 const eventBody = {
+  id: { type: "string" },
   summary: { type: "string", max: 1024 }, location: { type: "string" }, description: { type: "string" },
   start: { type: "object", required: true }, end: { type: "object", required: true }, attendees: { type: "array" },
 };
@@ -26,7 +27,7 @@ export default defineConnector({
       input: { params: { calendar: { type: "string", required: true } }, body: eventBody }, output: { id: { type: "string", required: true } },
       readback: { op: "events.get", args: { calendar: "request.params.calendar", id: "response.json.id" }, compare: { summary: "request.body.summary" } } },
     "events.patch": { method: "PATCH", path: "/calendar/v3/calendars/{calendar}/events/{id}", kind: "send", label: "Change an event",
-      input: { params: { calendar: { type: "string", required: true }, id: { type: "string", required: true } }, body: Object.fromEntries(Object.entries(eventBody).map(([k, v]) => [k, { ...v, required: false }])) }, output: { id: { type: "string", required: true } },
+      input: { params: { calendar: { type: "string", required: true }, id: { type: "string", required: true } }, headers: { "if-match": { type: "string" } }, body: Object.fromEntries(Object.entries(eventBody).map(([k, v]) => [k, { ...v, required: false }])) }, output: { id: { type: "string", required: true } },
       readback: { op: "events.get", args: { calendar: "request.params.calendar", id: "request.params.id" }, compare: { summary: "request.body.summary" } } },
     "events.delete": { method: "DELETE", path: "/calendar/v3/calendars/{calendar}/events/{id}", kind: "delete", label: "Remove an event",
       input: { params: { calendar: { type: "string", required: true }, id: { type: "string", required: true } } } },

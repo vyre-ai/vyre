@@ -20,7 +20,7 @@ export function fakeGoogle(o = { mailbox: "alex@harlow.test" }) {
   /** An event as Calendar holds it; `updated` moves forward on every write unless the test gives it. @param {any} e */
   function putEvent(e) {
     const id = e.id ?? `ev${++g.n}`;
-    const row = { kind: "calendar#event", status: "confirmed", ...e, id, etag: `"${g.n}"`, updated: e.updated ?? new Date(g.clock += 1000).toISOString(), htmlLink: `https://calendar.google.com/event?eid=${id}` };
+    const row = { kind: "calendar#event", status: "confirmed", ...e, id, etag: `"e${++g.n}"`, updated: e.updated ?? new Date(g.clock += 1000).toISOString(), htmlLink: `https://calendar.google.com/event?eid=${id}` };
     g.events.set(id, row); return row;
   }
   /** @param {{ method: string, url: URL, headers: Record<string, string>, body?: string }} r */

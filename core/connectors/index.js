@@ -136,7 +136,7 @@ export default {
         const have = new Set(((await ctx.call("vault.list", {})).data?.items || []).map(/** @param {any} x */ x => String(x.name)));
         return { connectors: list.map(d => ({
           id: d.id, label: d.label, host: new URL(d.base_url).hostname, auth: { type: d.auth.type, ...(d.auth.also ? { also: d.auth.also } : {}), ...(d.auth.scopes ? { scopes: d.auth.scopes } : {}) },
-          installed: have.has(d.id),
+          installed: have.has(d.id) || (d.auth.also !== undefined && have.has("google-api")),
           ops: Object.entries(d.ops).map(([name, op]) => ({ name, label: op.label || name, kind: op.kind, outward: isOutward(op), ...(op.idempotent === false ? { idempotent: false } : {}) })),
           polls: Object.entries(d.poll || {}).map(([name, p]) => ({ name, label: p.label || name, every_minutes: p.every_minutes ?? 15 })),
         })) };
@@ -157,7 +157,8 @@ export default {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address) && d.id === "gmail") throw fail("address is the mailbox's email address", "bad_input");
         if (!address || address.length > 200) throw fail("address is the mailbox or calendar to log", "bad_input");
         const needs = poll === "mail.recent" ? "mailbox" : "calendar";
-        const credential = input.credential ? String(input.credential) : d.id;
+        const have = new Set(((await ctx.call("vault.list", {})).data?.items || []).map(/** @param {any} x */ x => String(x.name)));
+        const credential = input.credential ? String(input.credential) : ["google-api", d.id, `${d.id}-api`].find(n => have.has(n)) || d.id;
         const watcher = { kind: "connector", connector: d.id, poll, project: String(input.project), credential, vars: { [needs]: address } };
         const name = connectorWatcherName(d, { poll, vars: watcher.vars });
         const flow = logCommunicationsFlow({ watcher: name, createUnknown: input.createUnknown === true, ...(input.skipInternal ? { skipInternal: String(input.skipInternal) } : {}) });
@@ -171,19 +172,22 @@ export default {
 
     ctx.tool("connectors.declare", {
       effect: "write",
-      description: "Make a vault credential from a shipped declaration, so Flows, watchers and assistants can reach that service through the vault: { id, secret? (a key or token, for bearer and api-key connectors), as: \"service-account\" with subject (the address it acts as) and item (the vault item holding the service-account key), or client (the vault item holding an OAuth app's client id and secret), name? (default: the connector id), scope? }. A model never calls this. For an OAuth connector this makes the credential; the sign-in is then made with connectors.connect for the matching app.",
-      input: obj({ id: str, name: str, secret: str, as: { type: "string", enum: ["service-account"] }, subject: str, item: str, field: str, client: str, scope: { type: "object" } }, ["id"]),
+      description: "Make a vault credential from a shipped declaration, so Flows, watchers and assistants can reach that service through the vault: { id, also? (more connector ids that sign in the same way and share this one credential, such as [\"google-calendar\"] with gmail: one sign-in), secret? (a key or token, for bearer and api-key connectors), as: \"service-account\" with subject (the address it acts as) and item (the vault item holding the service-account key), or client (the vault item holding an OAuth app's client id and secret), name? (default: the connector id), scope? }. A model never calls this. For an OAuth connector this makes the credential; the sign-in is then made with connectors.connect for the matching app.",
+      input: obj({ id: str, also: { type: "array", items: str }, name: str, secret: str, as: { type: "string", enum: ["service-account"] }, subject: str, item: str, field: str, client: str, scope: { type: "object" } }, ["id"]),
       callers: PEOPLE,
       run: async (input, meta) => {
         const who = String(meta && meta.caller || "");
         if (!PEOPLE.includes(who)) throw fail("only you make a connector's credential, from your own screen", "denied");
-        const d = declared(String(input.id));
-        if (!d) throw fail(`no connector ${String(input.id).slice(0, 40)}; this build declares ${Object.keys(DECLARATIONS).join(", ")}`, "not_found");
-        const name = input.name ? String(input.name) : d.id;
+        const ids = [String(input.id), ...(Array.isArray(input.also) ? input.also.map(String) : [])];
+        const ds = ids.map(i => declared(i));
+        if (ds.some(x => !x)) throw fail(`no connector ${ids[ds.indexOf(null)].slice(0, 40)}; this build declares ${Object.keys(DECLARATIONS).join(", ")}`, "not_found");
+        const d = /** @type {any} */ (ds[0]);
+        const many = ds.length > 1;
+        const name = input.name ? String(input.name) : many ? (String(d.auth.authorize_uri).startsWith("https://accounts.google.com/") ? "google-api" : ids.join("-").slice(0, 32)) : d.id;
         const secretAuth = d.auth.type === "bearer" || d.auth.type === "api-key";
         if (!secretAuth && input.secret) throw fail(`${d.label} does not take a pasted secret; it signs in as a service account (as, subject, item) or with an OAuth app (client)`, "bad_input");
         let config;
-        try { config = toCredentialConfig(d, { ...(input.as ? { as: input.as } : {}), ...(input.subject ? { subject: String(input.subject) } : {}), ...(input.item ? { item: String(input.item), ...(input.field ? { field: String(input.field) } : {}) } : {}), ...(input.client ? { client: String(input.client) } : {}) }); }
+        try { config = toCredentialConfig(many ? /** @type {any} */ (ds) : d, { ...(input.as ? { as: input.as } : {}), ...(input.subject ? { subject: String(input.subject) } : {}), ...(input.item ? { item: String(input.item), ...(input.field ? { field: String(input.field) } : {}) } : {}), ...(input.client ? { client: String(input.client) } : {}) }); }
         catch (e) { throw fail(/** @type {Error} */ (e).message, "bad_input"); }
         if (input.scope) config = { ...config, scope: input.scope };
         if (secretAuth && !input.secret && !input.item) throw fail(`${d.label} signs in with a key: pass it as secret, or name the vault item that holds it (item)`, "bad_input");
@@ -192,7 +196,7 @@ export default {
         if (old && old.kind !== "api-credential") throw fail(`the vault already has an item named ${name} that is not an api credential; pass name or rename it first`, "exists");
         const r = await ctx.call("vault.put", { name, kind: "api-credential", description: `${d.label} connector (made by Vyre)`, fields: { config: JSON.stringify(config), ...(input.secret ? { secret: String(input.secret) } : {}) } }, { as: who });
         if (r.error) throw fail(`could not save the credential in the vault: ${r.error.message}`, r.error.code || "vault");
-        return { name, connector: d.id, host: new URL(d.base_url).hostname, ops: Object.keys(d.ops).length, outward: Object.entries(d.ops).filter(([, op]) => isOutward(op)).map(([n]) => n),
+        return { name, connectors: ids, hosts: ds.map(x => new URL(/** @type {any} */ (x).base_url).hostname), ops: ds.reduce((n, x) => n + Object.keys(/** @type {any} */ (x).ops).length, 0), outward: ds.flatMap(x => Object.entries(/** @type {any} */ (x).ops).filter(([, op]) => isOutward(/** @type {any} */ (op))).map(([n]) => n)),
           next: d.auth.type === "oauth" && !input.as ? "sign in with connectors.connect so the vault holds tokens" : "ready: Flows reach it as the connector " + name };
       },
     });

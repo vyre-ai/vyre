@@ -117,6 +117,7 @@ export function normalize(i) {
   const scope = i.scope === undefined ? undefined : normalizeScope(i.scope);
   const rate = i.rate === undefined ? undefined : normalizeRate(i.rate);
   const service = i.service === undefined ? undefined : normalizeService(i.service);
+  if (service) for (const r of service.allow) if (r.host && !hosts.includes(r.host)) throw bad(`a service rule names ${r.host}, which is not one of the credential's hosts`);
   return { auth, hosts, endpoints, ...(readers ? { readers } : {}), ...(scope ? { scope } : {}), ...(rate ? { rate } : {}), ...(service ? { service } : {}) };
 }
 
@@ -130,7 +131,9 @@ function normalizeService(sv) {
   const rule = (/** @type {any} */ r) => {
     if (!isObj(r) || typeof r.path !== "string" || !/^\/[A-Za-z0-9._~\/*-]{0,200}$/.test(r.path) || /(^|\/)\.\.?(\/|$)/.test(r.path) || /\*[^/]|[^/]\*/.test(r.path) || r.path.slice(0, -2).includes("**")) throw bad("a service rule is { method?, path }: a path from the root, with `*` for one whole segment or a trailing /*");
     if (r.method !== undefined && !METHODS.includes(String(r.method).toUpperCase())) throw bad("a service rule's method is GET, HEAD, POST, PUT, PATCH, DELETE or *");
-    return { ...(r.method !== undefined && r.method !== "*" ? { method: String(r.method).toUpperCase() } : {}), path: r.path };
+    // `host`: which of the credential's hosts this route is on, for a credential that names several (one Google sign-in for Gmail and Calendar); left out, the first exact host
+    if (r.host !== undefined && (typeof r.host !== "string" || !HOST.test(r.host) || r.host.startsWith("*."))) throw bad("a service rule's host is one exact host of the credential");
+    return { ...(r.method !== undefined && r.method !== "*" ? { method: String(r.method).toUpperCase() } : {}), path: r.path, ...(r.host !== undefined ? { host: r.host.toLowerCase() } : {}) };
   };
   const list = (/** @type {any} */ l, /** @type {string} */ w) => { if (l === undefined) return []; if (!Array.isArray(l) || l.length > 100) throw bad(`service.${w} is a list of rules`); return l.map(rule); };
   // What a connector declaration (records/connectors/format.js) says beside the rules, kept for the Flow step runner: the draft op, the idempotency header, the provider's rate and

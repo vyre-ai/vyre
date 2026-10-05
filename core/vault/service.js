@@ -24,6 +24,11 @@ export function pathMatches(pattern, pathname) {
   return pat.every((seg, i) => seg === "*" || seg === got[i]);
 }
 
+/** The allow rule that matched, for its host. @param {{ allow?: any[] } | undefined} rules */
+export function ruleFor(rules, method, pathname) {
+  return ((rules && rules.allow) || []).find(r => (!r.method || r.method === "*" || r.method === method) && pathMatches(r.path, pathname)) || null;
+}
+
 /** Deny wins, default no. @param {{ allow?: any[], deny?: any[] } | undefined} rules */
 export function routeAllowed(rules, method, pathname) {
   if (!rules) return false;
@@ -72,7 +77,9 @@ export function registerService({ api, vault, internal, forwardFile, forwardHead
       // matched in that form and sent as exactly that form (SV-1).
       let path; try { path = canonicalPath(rawPath); } catch { path = null; }
       if (path === null || !routeAllowed(config.service, method, path)) { audit(false, `${method} refused by the connector's rules`); throw bad("that request is not open to this caller", "not_found"); }
-      const host = config.hosts.find(h => !h.startsWith("*."));
+      // A credential that names several hosts (one sign-in for Gmail and Calendar) says in each route which host it is on; a route with none is on the first exact host.
+      const matched = ruleFor(config.service, method, path);
+      const host = matched && matched.host && config.hosts.includes(matched.host) ? matched.host : config.hosts.find(h => !h.startsWith("*."));
       if (!host) throw bad("this connector names no exact host, so a Flow cannot reach it", "not_found");
       // Drive paths first, so the bind below covers the canonical forms: the same one-form refusal as request paths (dot segments, backslash, encoded slash, control characters, empty segments, and
       // here also a colon, a leading `~` and bidi or zero-width marks): `/Clients/A/../B/x` must not pass as under `Clients/A`.
