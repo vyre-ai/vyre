@@ -1457,7 +1457,7 @@ space_helper_record() {
   : >"$SP_PRIV/images.new"
   # shellcheck disable=SC2013 # image references have no spaces
   for im in $(grep '^    image: ' "$t" | sed 's/^    image: //' | sort -u); do
-    pl=$(printf '%s' "$im" | sed 's/\${TWENTY_TAG:-\([^}]*\)}/\1/')
+    pl=$(printf '%s' "$im" | sed -e 's/\${TWENTY_TAG:-\([^}]*\)}/\1/' -e 's/\${TWENTY_IMAGE_REF:-\([^}]*\)}/\1/')
     timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$pl" >/dev/null 2>&1 || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: could not pull $pl" >&2; return 1; }
     dg=$(hdock image inspect -f '{{index .RepoDigests 0}}' "$pl" 2>/dev/null || true)
     printf '%s\n' "$dg" | grep -Eqx '[a-z0-9./_-]+@sha256:[0-9a-f]{64}' || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: no digest for $pl" >&2; return 1; }
