@@ -82,3 +82,33 @@ test("sealed store: it reports the suite revision it passes", async t => {
   assert.equal(v.store, "sealed-personal");
   assert.equal(v.conformance, SUITE_REVISION);
 });
+
+test("two devices: the phone opens the same sealed objects on the server by itself, with the laptop off; each sees what the other wrote; a write that lost is refused and the next call reads the winner", async t => {
+  const dir = tmp(t), backend = new FileBackend(dir), imk = newKey();
+  const laptop = createSealedStore({ backend, identity: "alex", imk, create: true, allow: PERSONAL_TYPES, device: "laptop" });
+  await laptop.store.define({ add_types: [REMINDER, NOTE] });
+  await laptop.store.create("reminder", ids[0], { text: "Call the dentist", due_at: 1000, done: false });
+  laptop.lock();                                                   // the laptop is off
+  // the phone: its own process, the same code, the same key from the identity home, the same server objects
+  const phone = createSealedStore({ backend, identity: "alex", imk, device: "phone" });
+  assert.equal((await phone.store.get("reminder", ids[0])).data.text, "Call the dentist");
+  await phone.store.create("reminder", ids[1], { text: "Pick up the keys", due_at: 2000, done: false });
+  await phone.store.update("reminder", ids[0], { done: true }, 1);
+  // the laptop wakes and sees the phone's work
+  const laptop2 = createSealedStore({ backend, identity: "alex", imk, device: "laptop" });
+  assert.equal((await laptop2.store.get("reminder", ids[0])).data.done, true);
+  assert.equal((await laptop2.store.query("reminder", { page: { limit: 10 } })).rows.length, 2);
+  // both online: a write by one is visible to the other on its next call, with no restart
+  await laptop2.store.create("note", ids[2], { text: "from the laptop" });
+  assert.equal((await phone.store.get("note", ids[2])).data.text, "from the laptop");
+  // a race: both read version 2, the laptop writes, then the phone's write on the stale copy is refused
+  const gate = backend.putIf.bind(backend);
+  let fired = false;
+  backend.putIf = (name, bytes, expected) => { if (!fired && name.includes("/rec/")) { fired = true; laptop2.store.update("reminder", ids[1], { text: "the laptop won" }, 1).catch(() => {}); } return gate(name, bytes, expected); };
+  await assert.rejects(() => phone.store.update("reminder", ids[1], { text: "the phone lost" }, 1), { code: "version_conflict" });
+  backend.putIf = gate;
+  assert.equal((await phone.store.get("reminder", ids[1])).data.text, "the laptop won", "the next call reads what the winner wrote");
+  // the disk is still ciphertext only
+  const disk = everything(dir);
+  for (const secret of ["dentist", "keys", "laptop won", "phone lost"]) assert.ok(!disk.includes(secret), secret);
+});
