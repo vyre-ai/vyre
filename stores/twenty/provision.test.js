@@ -213,7 +213,7 @@ test("a Space made from the saved database: its compose file restores it once, s
   assert.match(g, /restore: \{ condition: service_completed_successfully \}/);
   assert.match(g, /\$\{GOLDEN_DUMP:-\.\/golden\.dump\}:\/golden\.dump:ro/);
   assert.match(g, /pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error/);
-  for (const reset of [/DELETE FROM core\."appToken";/, /DELETE FROM core\."userSession";/, /DELETE FROM core\."apiKey";/, /"oAuthClientSecretHash" = encode\(sha256\(gen_random_uuid\(\)/, /"inviteHash" = gen_random_uuid\(\)/]) assert.match(g, reset, "nothing shared stays: " + reset);
+  for (const reset of [/DELETE FROM core\.\\"appToken\\";/, /DELETE FROM core\.\\"userSession\\";/, /DELETE FROM core\.\\"apiKey\\";/, /\\"oAuthClientSecretHash\\" = encode\(sha256\(gen_random_uuid\(\)/, /\\"inviteHash\\" = gen_random_uuid\(\)/]) assert.match(g, reset, "nothing shared stays: " + reset);
   assert.match(g, /printenv ADMIN_PASSWORD/, "the new password comes from the Space's own env file, never from the saved file");
   assert.ok(!/-c .*ADMIN_PASSWORD|\$\$?ADMIN_PASSWORD/.test(g), "and is read inside psql from its environment, never put on a command line that a process list shows");
   assert.match(g, /DELETE FROM core\.\\"signingKey\\"/, "the saved signing key is dropped: it is sealed with another Space's secrets");
