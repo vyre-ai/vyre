@@ -183,7 +183,7 @@ export const MIGRATIONS = [
   INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('rederive', 1);
   `,
   `
-  -- Personal facts (team/archive/work-journals/memory-iq.md): what the user's own turns say about them and the
+  -- Personal facts (docs/work/memory-iq.md): what the user's own turns say about them and the
   -- people and things in their life. Claims are per turn; everything below them is derived.
   CREATE TABLE memory_me_claims (
     session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0,
