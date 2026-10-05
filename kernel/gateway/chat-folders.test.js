@@ -83,9 +83,12 @@ test("Share to project is a kernel grant of drive.read on that one file: a membe
   await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
   await D.put(bob, `${dir}/private.txt`, enc("not shared"));
   await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "before the share");
-  // the share: the participant's own act, a grant to the project's readers on exactly this file
-  const gi = { subject: { kind: "role", name: "member" }, actions: ["drive.read"], resource: { prefix: `vyre://${SPACE}/file/${dir}/shared.txt` }, conditions: {}, source: "chat:share" };
-  await g.create(owner, gi, { presence: proof("grants.create", gi, `vyre://${SPACE}/grant/new`) });
+  // the share: a participant's own act (no presence), a grant to the project's readers on exactly this file
+  await assert.rejects(() => g.shareFile(dan, `${dir}/shared.txt`), { code: "not_found" }, "only a participant shares");
+  await assert.rejects(() => g.shareFile(owner, `${dir}/shared.txt`), { code: "not_found" }, "not even the owner, who is not in the chat");
+  const sh = await g.shareFile(bob, `${dir}/shared.txt`);
+  assert.equal(sh.source, "chat:share");
+  assert.equal((await g.shareFile(bob, `${dir}/shared.txt`)).id, sh.id, "sharing twice is one grant");
   assert.equal(new TextDecoder().decode(await D.get(dan, `${dir}/shared.txt`)), "for the project", "a member reads the shared file");
   await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" }, "not the next file");
   await assert.rejects(() => D.put(dan, `${dir}/shared.txt`, enc("x")), { code: "not_found" }, "not write");
@@ -99,4 +102,16 @@ test("a module's own service chain may write a chat's files and never reads them
   await D.put(bob, `${dir}/note.txt`, enc("hello"));
   await assert.rejects(() => D.get(svc, `${dir}/note.txt`), { code: "not_found" });
   await assert.rejects(() => D.get(dan, `${dir}/note.txt`), { code: "not_found" });
+});
+
+test("unsharing takes the file back at once, and only a participant or an admin may", async () => {
+  const { g, D, bob, dan, ada, dir } = await rig();
+  await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
+  await g.shareFile(bob, `${dir}/shared.txt`);
+  assert.ok(await D.get(dan, `${dir}/shared.txt`));
+  await assert.rejects(() => g.unshareFile(dan, `${dir}/shared.txt`), { code: "not_found" });
+  assert.deepEqual(await g.unshareFile(bob, `${dir}/shared.txt`), { unshared: 1 });
+  await assert.rejects(() => D.get(dan, `${dir}/shared.txt`), { code: "not_found" }, "refused again");
+  await g.shareFile(bob, `${dir}/shared.txt`);
+  assert.deepEqual(await g.unshareFile(ada, `${dir}/shared.txt`), { unshared: 1 }, "an admin may take a share back");
 });
