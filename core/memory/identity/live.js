@@ -187,6 +187,9 @@ export class IdentityLive {
     return this.status();
   }
 
+  /** Whether facts changed since the last seal (the upgrade seals first). */
+  unsaved() { return Boolean(this.lease && this.lease.open && this.saved !== digest(exportTables(this.db))); }
+
   /** Seal what changed since the last time, as ciphertext. */
   save() {
     const lease = this.lease;

@@ -34,6 +34,8 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { createMoves, slugOf } from "./move.js";
 import { Backup, noBackup } from "./backup/index.js";
+import { planOf, carry } from "./upgrade.js";
+import { spacesTransport } from "./identity/spaces-transport.js";
 import { usageOf } from "../../kernel/store/sealed.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
@@ -1281,6 +1283,25 @@ export default {
     });
     const bkTimer = bkCfg ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
     if (bkTimer && typeof bkTimer.unref === "function") bkTimer.unref();
+    // ---- the Personal to My Cloud upgrade (upgrade.js): the spaces module asks for a plan (read only, counts and blockers) and then for the move; module callers only
+    const upgradeBackend = () => (idCfg && idCfg.home ? new FileBackend(String(idCfg.home)) : null);
+    ctx.tool("memory.upgrade.plan", {
+      effect: "read", callers: ["module"],
+      description: "What the person's sealed memory would carry to their My Cloud server: { counts: { objects, bytes }, blockers }. Read only; the counts go into the hash the person approves.",
+      input: { type: "object", properties: {} },
+      run: async () => planOf(upgradeBackend(), String(idCfg && idCfg.id || ""), { unsaved: () => Boolean(identity && identity.unsaved()) }),
+    });
+    ctx.tool("memory.upgrade.move", {
+      effect: "write", callers: ["module"],
+      description: "Carry the person's sealed memory (the identity home, the Personal backup, the encrypted personal records: ciphertext, keys unchanged) to their per-member storage on the My Cloud space `to`, each object checked by hash after it lands. Answers { objects, bytes, skipped, failed }; a failed object is named and does not stop the others.",
+      input: { type: "object", required: ["to"], properties: { to: { type: "string" } } },
+      run: async (input) => {
+        const backend = upgradeBackend();
+        if (!backend) return { objects: 0, bytes: 0, skipped: 0, failed: [] };
+        if (identity && identity.unlocked) { try { identity.save(); } catch { /* the autosave seals it too */ } }
+        return carry(backend, spacesTransport((tool, i) => ctx.call(tool, i), String(input.to)), String(idCfg.id));
+      },
+    });
     // ---- the encrypted personal records (kernel/store/sealed.js, team/0.3/DESIGN-personal-records.md): a Personal person's Planner, reminders, notes and to-dos, ciphertext on this team server beside the identity
     // home. The status is readable while it is locked (the storage is only counted); the per-member cap is the space owner's to change and lives with this module.
     const capKey = ctx.store.db.prepare("SELECT v FROM memory_meta WHERE k = 'personal_cap_bytes'");
