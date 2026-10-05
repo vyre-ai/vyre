@@ -12,8 +12,8 @@
     "source": "https://github.com/vyre-ai/vyre"
   },
   "install": {
-    "url": "https://vyre.run/setup/",
-    "note": "The setup page gives the user a one-time code. An agent must not run the install line for the user."
+    "url": "https://vyre.run/start/",
+    "note": "The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user."
   },
   "platforms": {
     "server": [

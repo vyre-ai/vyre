@@ -20,7 +20,7 @@ Vyre runs on two kinds of machine. The **box** is a server you own: a Linux mach
 | `solo` | a Mac with nobody else to connect (the default on macOS) | the full local set, Lumen included, and nothing that serves other devices |
 | `device` | a computer that joins a server (the default on Windows) | the local set that reaches the server |
 
-A Linux machine defaults to `server`. A Mac starts as `solo`, and becomes a server when you choose "A Mac that stays on" at vyre.run/setup. Older configs that say `"role": "box"` or `"role": "local"` still work and are read as server and as solo. See [config](../reference/config.md).
+A Linux machine defaults to `server`. A Mac starts as `solo`, and becomes a server when you choose to make it the server for My Cloud, or run the Mac server installer. Older configs that say `"role": "box"` or `"role": "local"` still work and are read as server and as solo. See [config](../reference/config.md).
 
 Every module declares the machines it runs on (`"roles"` in its `module.json`: `box`, `local`, or both when omitted). What that means today:
 

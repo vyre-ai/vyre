@@ -757,12 +757,12 @@ main() {
   if [ "$SYSTEM" = 1 ]; then
     system_install
     wait_system
-    say "Vyre is running. Back in your browser, it will find this Mac."
+    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
     say "It starts when this Mac boots, with nobody signed in, and stays awake while it runs. Its command is $BIN/vyre"
   else
     write_plist
     start_service
-    say "Vyre is running. Back in your browser, it will find this Mac."
+    say "Vyre is running. Pair it from your Vyre app: run $BIN/vyre call wink.server.code '{\"qr\":true}' here, then scan the QR or paste the long code."
     say "It starts when you sign in to this Mac and stays awake while it runs. Its command is $BIN/vyre"
   fi
 }

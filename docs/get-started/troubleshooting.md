@@ -49,51 +49,27 @@ A healthy `vyre status` says Vyre is running, with its version, its role, how lo
 and how many modules are running. A failed module adds `· 1 failed (vyre modules)` to the second
 line.
 
-## Setup at vyre.run/setup
+## Setup in the Vyre app
 
-### "This browser is too old for the setup."
+### "That code ran out of time", or "That code was already used"
 
-The setup page needs Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer or Firefox 130 or newer. "This browser could not make the key the setup needs" means the same: try a current one.
+The code the server prints works for one pairing and for five minutes. Run the install line on the server again for a new one, or, if Vyre is already installed, run `vyre call wink.server.code '{"qr":true}'` on the server to show a fresh code. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first, then paste the line again. Your data stays.
 
-### "This page could not reach Vyre's relay."
+### "The words were not the same", or "Nothing was paired"
 
-The setup page talks to your server through Vyre's relay. Check your connection, and that a work network or a browser extension is not blocking `vyre.run`, then press **Start again**.
+The three words in the app did not match the ones your server's terminal showed, so the pairing stopped. Start again from your server with a new code. Do not confirm words for a code you did not start yourself.
 
-### "This code has expired. Start again."
+### "Your phone cannot reach your Vyre right now"
 
-The code in the install line works for one hour and one server. Open <https://vyre.run/setup> again. If the earlier line had already started Vyre on the server, the installer prints `Vyre is already running in /srv/vyre, so this installer leaves it alone.` for a new line: run `vyre uninstall --keep-data` on the server first. Your data stays.
+Check that the server is on and online, and that a work network or a browser extension is not blocking `vyre.run`. Nothing was paired. Run `vyre status` on the server, then try again.
 
-### "Two servers used this code." or "Another server already used this code."
+### "that name is reserved", or the name is taken
 
-A code works for one server, and the first one to use it wins. If that was not your server, someone else had the line. Close the page and start again from <https://vyre.run/setup>. This is also why the page shows four words: they must match the ones your server's terminal printed.
-
-### "The four words did not match, so that was not your server."
-
-Close the page and start again. Do not use a line you did not copy from your own page.
-
-### "The progress lines arrived out of order" or "did not check out"
-
-Something between the server and the page altered or replayed the progress. The install itself is not harmed. Press **Start again**; if you pasted the same line twice, run `vyre uninstall --keep-data` first.
-
-### The page says "Waiting for your server"
-
-The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Your server is ready.` If the installer stopped, the last line says why (Docker, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
-
-### "that name is reserved", or the address is not free
-
-Pick another name. Service names such as `app`, `login` and `vault`, well-known company names and look-alikes of them are not given out, and a name someone else holds is not free.
+Pick another name. Service names such as `app`, `login` and `vault`, well-known company names and look-alikes of them are not given out, and a name someone else holds is not free. People and spaces share one set of names, so a space cannot take its owner's name.
 
 ### You did not save the recovery code
 
-It is shown once, and only on that page, so nothing can show it again. It matters only if you reinstall: with it, a reinstall takes this address back. The address itself keeps working.
-
-### "The address could not be published" or "the certificate could not be made"
-
-The page shows the reason it was given. If it stays, run `vyre name` on the server for where the address stands.
-
-### The link to open your server expired
-
-It works once, for two minutes. Press **Get a new link** on the setup page, and open it in the browser you will use with your server.
+It is shown once, so nothing can show it again. It is the only way back in if you lose every device. If you still have a device signed in to your name, add the new device from it with **Add a device**.
 
 ## The box
 
@@ -111,7 +87,7 @@ The containers started but Vyre did not answer within a minute. Run `vyre logs` 
 vyre uninstall --keep-data
 ```
 
-Then paste a fresh install line from <https://vyre.run/setup>. `--keep-data` leaves the volumes, and with them the vault, your AI sign-ins and your projects. `--delete-data` removes them too; without either flag, `vyre uninstall` asks. Before deleting data, `vyre backup` saves everything.
+Then run the install line again (`curl -fsSL vyre.run/i | sh`). `--keep-data` leaves the volumes, and with them the vault, your AI sign-ins and your projects. `--delete-data` removes them too; without either flag, `vyre uninstall` asks. Before deleting data, `vyre backup` saves everything.
 
 ### "the service unit is out of date" (without Docker)
 

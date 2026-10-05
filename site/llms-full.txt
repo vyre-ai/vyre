@@ -16,14 +16,14 @@ Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Lice
 - Modules are the building blocks you or your agents add. Each declares who may call each tool.
 
 ## Where it runs
-- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line from https://vyre.run/setup/. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
+- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by `vyre capsule install`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Vyre web app added to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
-1. Open https://vyre.run/setup/ and choose a Linux server or a Mac that stays on.
+1. Open the Vyre app, choose your name, create a space and choose a server. The steps are at https://vyre.run/start/.
 2. On the server, as yourself: `curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh`
 3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, add your phone.
 4. Mac: `npm i -g https://vyre.run/box/vyre.tgz`, then `vyre up`, then `vyre capsule install`.
@@ -33,7 +33,7 @@ Release 0.2.9. Updated 2026-10-05. Source: https://github.com/vyre-ai/vyre. Lice
 Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.
 
 ## Where your data lives
-Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
+Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Releases
 - 0.2.9 (out now): the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.
@@ -69,7 +69,7 @@ Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server it
 Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.
 
 ### Where does my data live?
-Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.
+Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.
 
 ### Do I need a VPN or another network app?
 No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.

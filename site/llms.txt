@@ -6,7 +6,7 @@ Current release: 0.2.9. Site: https://vyre.run. Source: https://github.com/vyre-
 
 ## Start here
 - [Home](https://vyre.run/): what Vyre is and what it does
-- [Set up Vyre](https://vyre.run/setup/): the setup page, which gives one install line with a one-time code
+- [Get started](https://vyre.run/start/): the steps, from the Vyre app to pairing your server
 - [Get started](https://vyre.run/start/): the steps in order
 - [Direction](https://vyre.run/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](https://vyre.run/privacy/): what Vyre knows about you, which is almost nothing

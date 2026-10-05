@@ -73,7 +73,7 @@ function nav(slug) {
     <div class="nav-end">
       <a class="star-pill" href="${REPO}" aria-label="Star Vyre on GitHub">${STAR}<span>Star</span></a>
       <button class="icon-btn" id="theme" type="button" aria-label="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 2a6 6 0 0 0 0 12z" fill="currentColor"/></svg></button>
-      <a class="btn btn-fill btn-sm" href="/setup/">Set up Vyre</a>
+      <a class="btn btn-fill btn-sm" href="/start/">Set up Vyre</a>
       <button class="icon-btn menu-btn" id="menu" type="button" aria-expanded="false" aria-controls="links" aria-label="Menu"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></button>
     </div>
   </div>
@@ -87,7 +87,7 @@ const FOOT = `<footer class="foot">
         <p class="tag">Your AI command center, on your own machines. Open source, Apache 2.0.</p>
       </div>
       <div><p class="fh">Devices</p><ul><li><a href="/mac/">Mac</a></li><li><a href="/windows/">Windows</a></li><li><a href="/linux/">Linux server</a></li><li><a href="/phone/">Phone</a></li></ul></div>
-      <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/setup/">Setup</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
+      <div><p class="fh">Learn</p><ul><li><a href="/direction/">Direction</a></li><li><a href="/start/">Get started</a></li><li><a href="/privacy/">Privacy</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">Known gaps</a></li></ul></div>
       <div><p class="fh">Open source</p><ul><li><a href="https://github.com/vyre-ai/vyre">GitHub</a></li><li><a class="star-link" href="https://github.com/vyre-ai/vyre">${STAR}Star on GitHub</a></li><li><a href="https://github.com/vyre-ai/vyre/releases">Releases</a></li><li><a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a></li><li><a href="https://github.com/vyre-ai/vyre#readme">Docs</a></li></ul></div>
       <div><p class="fh">For machines</p><ul><li><a href="/llms.txt">llms.txt</a></li><li><a href="/llms-full.txt">llms-full.txt</a></li><li><a href="/agents.md">agents.md</a></li><li><a href="/sitemap.xml">Sitemap</a></li></ul></div>
     </div>
@@ -102,7 +102,7 @@ const SOFT = (extra = {}) => ({
   applicationCategory: 'DeveloperApplication', operatingSystem: 'macOS, Windows, Linux, iOS, Android', softwareVersion: VERSION,
   license: 'https://www.apache.org/licenses/LICENSE-2.0', isAccessibleForFree: true,
   offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }, publisher: { '@id': `${SITE}/#org` },
-  codeRepository: 'https://github.com/vyre-ai/vyre', downloadUrl: `${SITE}/setup/`, ...extra,
+  codeRepository: 'https://github.com/vyre-ai/vyre', downloadUrl: `${SITE}/start/`, ...extra,
 });
 const crumbs = (items) => ({ '@type': 'BreadcrumbList', itemListElement: items.map(([name, url], i) => ({ '@type': 'ListItem', position: i + 1, name, item: url })) });
 const faqLd = (faq) => ({ '@type': 'FAQPage', mainEntity: faq.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: strip(a) } })) });
@@ -179,7 +179,7 @@ const HOME_FAQ = [
   ['Do I need a server?', 'Yes, one machine that stays on: a Linux server with Docker, or a Mac that stays on. Your Mac, your Windows PC and your phone connect to it. Your agents keep working when your laptop is closed.'],
   ['Does it run on Windows?', 'Yes, as an app on your PC with a tray icon and an Alt+Space panel. The server itself runs on Linux or on a Mac that stays on. The Windows app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.'],
   ['Does it work on my phone?', 'Yes, on iPhone and Android. Open the Vyre app, scan the code your server or computer shows, and check that both screens show the same three words. There is nothing else to install or sign in to.'],
-  ['Where does my data live?', 'Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
+  ['Where does my data live?', 'Sessions, memory and the vault stay on your machines. vyre.run holds your name’s DNS record and runs the relay, which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider’s own app.'],
   ['Do I need a VPN or another network app?', 'No. Vyre has its own private network built in, so your server, your computers and your phone find each other with nothing to install and nothing to sign in to. Where a direct path is not possible, Vyre’s relay carries the connection, end-to-end encrypted.'],
   ['Does it replace Claude Code, Codex or Grok?', 'No. Vyre runs them with your own accounts and adds memory, a vault, teammates, watchers and one session that outlives any one model. You keep using each tool the way you do.'],
   ['What stops an agent from doing something I did not ask for?', 'Your own words are the approval: an action you asked for goes ahead, and one you did not ask for waits. Sends, posts and payments that no one asked for need Touch ID or Face ID, and the vault never shows a secret to an agent. Rules like these cannot be switched off by a setting.'],
@@ -195,7 +195,7 @@ const homeBody = `
       <p class="lead">Vyre runs your agents on a server you own, with Claude, Codex, Grok or OpenRouter in one session. Reach them from your Mac, your Windows PC or your phone.</p>
       <p class="hero-keep">Your agents keep working when your laptop is closed.</p>
       <div class="btn-row">
-        <a class="btn btn-fill" href="/setup/">Set up Vyre</a>
+        <a class="btn btn-fill" href="/start/">Set up Vyre</a>
         <a class="btn" href="/direction/">See the direction</a>
       </div>
       <p class="hero-note">Free. Needs one AI account.</p>
@@ -429,16 +429,16 @@ const homeBody = `
   <div class="wrap feat">
     <div class="feat-copy rv">
       <span class="num">Get started</span>
-      <h2 id="in-h" class="h2">One line on your server, <b>then finish in your browser.</b></h2>
-      <p class="lead">The setup page gives you a line with a one-time code in it. Paste it on your server. The rest happens in your browser.</p>
-      <div class="btn-row"><a class="btn btn-fill" href="/setup/">Open the setup page</a><a class="btn" href="/start/">Read the steps</a></div>
+      <h2 id="in-h" class="h2">One line on your server, <b>then pair it from the app.</b></h2>
+      <p class="lead">The Vyre app gives you a line to paste on your server. The server shows a code, and you pair it with three words.</p>
+      <div class="btn-row"><a class="btn btn-fill" href="/start/">Read the steps</a></div>
     </div>
     <div class="rv">
       <ol class="steps" style="margin-top:0">
-        <li><b>Open vyre.run/setup.</b> Choose a Linux server or a Mac that stays on.</li>
+        <li><b>Open the Vyre app.</b> Choose your name and create a space.</li>
         <li><b>Paste the line on your server.</b> It asks before it installs anything, including Docker.
-          ${term('curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh', 'curl -fsSL https://vyre.run/i | VYRE_CODE=<your code> sh')}</li>
-        <li><b>Finish in your browser.</b> Name your server, sign in to your AI and add your phone.</li>
+          ${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}</li>
+        <li><b>Pair it from the app.</b> Scan or paste the code your server shows, and confirm the same three words.</li>
         <li><b>Add your computers.</b> Vyre Lumen for <a href="/mac/">Mac</a> and <a href="/windows/">Windows</a> pairs to your server.</li>
       </ol>
     </div>
@@ -478,7 +478,7 @@ const homeBody = `
 <section class="closing" aria-labelledby="end-h">
   <div class="wrap">
     <h2 id="end-h" class="display">Let’s get <b>to work.</b></h2>
-    <div class="btn-row"><a class="btn btn-fill" href="/setup/">Set up Vyre</a><a class="btn" href="${REPO}">${STAR}Star on GitHub</a><a class="btn" href="${REPO}">Read the source</a></div>
+    <div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="${REPO}">${STAR}Star on GitHub</a><a class="btn" href="${REPO}">Read the source</a></div>
   </div>
 </section>`;
 
@@ -501,7 +501,7 @@ function devicePage({ slug, os, name, crumb, h1, lead, ogSub, desc, title, art, 
     ${eyebrow(name)}
     <h1 class="display">${h1}</h1>
     <p class="lead">${lead}</p>
-    <div class="btn-row"><a class="btn btn-fill" href="/setup/">Set up Vyre</a><a class="btn" href="/start/">Read the steps</a></div>
+    <div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/start/">Read the steps</a></div>
   </div>
 </section>
 ${art ? `<section class="sec" style="padding-top:56px"><div class="wrap"><div class="rv" style="max-width:880px;margin-inline:auto">${art}</div></div></section>` : ''}
@@ -528,7 +528,7 @@ ${art ? `<section class="sec" style="padding-top:56px"><div class="wrap"><div cl
 <section class="sec" aria-labelledby="faq-h">
   <div class="wrap"><div class="sec-head rv"><h2 id="faq-h" class="h2">Questions about <b>${name}.</b></h2></div>${faqHtml(faq)}</div>
 </section>
-<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Set up <b>Vyre.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/setup/">Open the setup page</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Set up <b>Vyre.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Read the steps</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
   page({
     slug, path, title, desc, body, ogTitle: h1.replace(/<[^>]+>/g, ''), ogSub,
     ld: [SOFT({ '@id': `${SITE}${path}#app`, name: `Vyre for ${crumb}`, url: SITE + path, operatingSystem: os }), crumbs([['Vyre', `${SITE}/`], [crumb, SITE + path]]), faqLd(faq)],
@@ -551,7 +551,7 @@ devicePage({
     ['Touch ID', 'Unlock your vault with Touch ID or your vault password.'],
     ['Your keys', 'Your own shortcuts, # tags, module commands and spoken replies.'],
   ] },
-  steps: { h: 'Install the command line, <b>then build Lumen.</b>', lead: 'Set up your server first, at <a href="/setup/">vyre.run/setup</a>. Then, on your Mac:', items: [
+  steps: { h: 'Install the command line, <b>then build Lumen.</b>', lead: 'Set up your server first, from the Vyre app (see <a href="/start/">Get started</a>). Then, on your Mac:', items: [
     `<b>Install the command line.</b> Vyre is not on npm yet, so it installs from a tarball on vyre.run.${term('npm i -g https://vyre.run/box/vyre.tgz')}`,
     `<b>Pair this Mac with your server.</b> It asks for your server’s pairing code, shows three words, and pairs once you confirm they match on both screens.${term('vyre up')}`,
     `<b>Build Vyre Lumen.</b> It builds from the package on your Mac; nothing is downloaded. If it asks for the Command Line Tools, run <code>xcode-select --install</code> first.${term('vyre capsule install')}`,
@@ -582,7 +582,7 @@ devicePage({
     ['Your shared folder as a drive', 'The tray’s “Open Vyre Drive” maps a folder your server shares as a drive letter.'],
     ['Signed updates', 'The app updates itself, only from releases the Vyre key signed, and never to an older version.'],
   ] },
-  steps: { h: 'Install the app, <b>then pair your PC.</b>', lead: 'Set up your server first, at <a href="/setup/">vyre.run/setup</a>.', items: [
+  steps: { h: 'Install the app, <b>then pair your PC.</b>', lead: 'Set up your server first, from the Vyre app (see <a href="/start/">Get started</a>).', items: [
     `<b>Download the installer.</b> <code>VyreSetup.exe</code> comes with each release on <a href="https://github.com/vyre-ai/vyre/releases">GitHub</a>. The installer script checks its SHA-256.`,
     `<b>Run it.</b> The app is not code-signed yet, so Windows asks you to choose “More info”, then “Run anyway”.`,
     `<b>Pair your PC.</b> In Settings on your other device, add a Windows PC, then type the 13 words or scan the QR code on the PC.`,
@@ -601,28 +601,28 @@ devicePage({
 devicePage({
   slug: 'linux', os: 'Linux', name: 'Vyre on a Linux server', crumb: 'Linux server',
   title: 'Vyre on a Linux server: your agents keep working',
-  desc: 'Install Vyre on a Linux server you own. One line from the setup page, signed images and updates, and your agents keep working when your laptop is closed.',
+  desc: 'Install Vyre on a Linux server you own. One line from the Vyre app, signed images and updates, and your agents keep working when your laptop is closed.',
   h1: 'Your server is <b>where Vyre lives.</b>',
   lead: 'Install Vyre on a Linux machine you control. Your agents run there and keep working when your laptop is closed. Your Mac, your PC and your phone are the ways in.',
-  ogSub: 'One line from the setup page. Signed images and updates. Your agents keep working when your laptop is closed.',
+  ogSub: 'One line from the Vyre app. Signed images and updates. Your agents keep working when your laptop is closed.',
   what: { h: 'A home for your agents, <b>that you own.</b>', items: [
-    ['One line, then your browser', 'The setup page gives you a line with a one-time code. The rest happens in a browser.'],
+    ['One line, then the app', 'The Vyre app gives you a line to paste on your server. The server shows a code, and you pair it with three words.'],
     ['Checked before it runs', 'The installer asks before installing anything, checks what it downloads against a published signature, and pulls images by digest after their signatures are checked.'],
     ['Updates that cannot go backwards', 'A box refuses an unsigned, wrongly signed, tampered or older release, and keeps running as it was. Stable never takes a test version.'],
     ['Your name, your domain', 'Reach it at you.vyre.run, or serve it under your own domain.'],
     ['Backup and removal', 'Export and import a server, back up, restore, and uninstall with or without your data.'],
   ] },
-  steps: { h: 'Open the setup page, <b>paste one line.</b>', items: [
-    `<b>Open <a href="/setup/">vyre.run/setup</a>.</b> Choose “A Linux server”. The page shows one line with a one-time code. The code works for an hour and one server.`,
-    `<b>Paste it on your server</b>, as yourself, not as root.${term('curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;your code&gt; sh', 'curl -fsSL https://vyre.run/i | VYRE_CODE=<your code> sh')}`,
-    `<b>Check four words.</b> Your server’s terminal prints four words. Press the match button on the page only if they are the same.`,
-    `<b>Finish in your browser.</b> Name the server, save your recovery code, sign in to your AI and add your phone.`,
+  steps: { h: 'Open the app, <b>paste one line.</b>', items: [
+    `<b>Open the Vyre app.</b> Choose your name, create a space and choose a server. The app shows one line to run.`,
+    `<b>Paste it on your server</b>, as yourself, not as root.${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}`,
+    `<b>Pair it.</b> The server prints a QR and a long code. Scan or paste it in the app, and confirm the same three words in the app and the terminal.`,
+    `<b>Finish in the app.</b> Give the space a look, connect your AI account and your tools, and pick a Kit or start empty.`,
   ] },
   needs: [['Server', 'A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.'], ['Size', 'One space per server. A 4 GB server runs one space; Vyre sizes it for you. 8 GB is comfortable and leaves room to grow.'], ['AI', 'One of Claude, Codex, Grok or OpenRouter'], ['Where', 'Installs in /srv/vyre']],
   gapList: ['The first Windows install is not signature-checked; the server install is.', 'Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler for many sessions on one server.', 'Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.', 'The Mac server installer has not run on a real Mac yet.'],
   faq: [
     ['What server do I need?', 'A Linux machine you can ssh into with sudo. A small cloud machine or a spare computer both work. Docker Compose 2.24 or newer is required, and the installer offers to add Docker.'],
-    ['Can I use a Mac as the server?', 'Yes, a Mac that stays on. Choose “A Mac that stays on” on the setup page and run the same line.'],
+    ['Can I use a Mac as the server?', 'Yes, a Mac that stays on. Run the same line in Terminal on that Mac.'],
     ['How do I start over?', 'Run the installer with --uninstall to remove Vyre and keep your data, or add --purge to delete the vault, sign-ins and projects too.'],
     ['What does vyre.run hold?', 'Your name’s DNS record and the relay that carries setup progress and phone pairing, end-to-end encrypted. Your sessions, memory and vault stay on your server.'],
   ],
@@ -688,7 +688,7 @@ const DIR = `
 <section class="sec" aria-labelledby="note-h">
   <div class="wrap"><div class="note rv"><p class="lbl" id="note-h" style="margin-bottom:8px">A plain note</p><p style="margin:0">This is direction, not a promise of dates. Order and scope can change when we learn something. The <a href="https://github.com/vyre-ai/vyre/releases">releases</a> and the <a href="https://github.com/vyre-ai/vyre/blob/main/docs/known-gaps.md">known gaps</a> are what is true today.</p></div></div>
 </section>
-<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Start with <b>what works today.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/setup/">Set up Vyre</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Start with <b>what works today.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Set up Vyre</a><a class="btn" href="/">Back to vyre.run</a></div></div></section>`;
 page({
   slug: 'direction', path: '/direction/',
   title: 'Where Vyre is going: the direction',
@@ -705,7 +705,7 @@ const START = `
     <p class="crumbs"><a href="/">Vyre</a> / Get started</p>
     ${eyebrow('Getting started')}
     <h1 class="display">Put Vyre <b>on your server.</b></h1>
-    <p class="lead">The steps, in order. The setup page does most of them for you.</p>
+    <p class="lead">The steps, in order. The Vyre app does most of them for you.</p>
     <p class="sm" style="max-width:42em">Vyre is not on npm yet, so your Mac installs the command line from a tarball on vyre.run, and the Mac app, Vyre Lumen, is built on your Mac rather than downloaded. The server install is checked against a published signature.</p>
   </div>
 </section>
@@ -714,18 +714,15 @@ ${part('00', 'need', 'What you need', `<ul>
 <li>A server: a Linux machine you can <code>ssh</code> into with sudo (Docker is installed for you if it is missing, after you say yes), or a Mac that stays on.</li>
 <li>An account with at least one of Claude, Codex, Grok or OpenRouter.</li>
 <li>For Vyre Lumen on your Mac: Node 22.5 or newer (<code>node --version</code>).</li></ul>`)}
-${part('01', 'server', 'Open the setup page', `<p>Go to <a href="/setup/">vyre.run/setup</a> and choose <strong>A Linux server</strong> or <strong>A Mac that stays on</strong>. The page gives you one line with a one-time code in it. The code works for an hour and for one server.</p>
+${part('01', 'server', 'Open the Vyre app', `<p>Open the Vyre app on your phone or Mac and choose <strong>Get started</strong>. Choose your Vyre name, save your recovery code, then create a space. For a space on a server you own, the app shows one line to run on it.</p>
 <p>Open a terminal on your server as yourself, not as root, and paste the line. It looks like this:</p>
-${term('curl -fsSL https://vyre.run/i | VYRE_CODE=&lt;the code on the page&gt; sh', 'curl -fsSL https://vyre.run/i | VYRE_CODE=<the code on the page> sh')}
-<p>The installer asks before it installs anything, including Docker if the server has none. It sets Vyre up in <code>/srv/vyre</code>, checks what it downloads against a published signature, and starts it. On a Mac that stays on, the same line installs Vyre as a service that starts at boot. The setup page follows the install as it happens.</p>`)}
-${part('02', 'onboarding', 'Finish in your browser', `<ol>
-<li><strong>Check the words.</strong> Your server’s terminal prints four words. The page shows four words too; press <em>These match my server’s terminal</em> only if they are the same. If they are not, press <em>They don’t match</em>.</li>
-<li><strong>Name your server.</strong> Pick the address you will reach it at, <code>you.vyre.run</code>, or use your own domain.</li>
-<li><strong>Save your recovery code.</strong> It is shown once. If you ever reinstall, it takes this address back.</li>
-<li><strong>Sign in to your AI.</strong> Claude, Codex and Grok each sign in on the provider’s own page; Vyre never sees your password. One is enough to go on, and you can add more later.</li>
-<li><strong>See your network.</strong> Vyre’s private network is built in, so there is nothing to connect. The page shows whether your server is reachable directly or through the relay.</li>
-<li><strong>Add your phone</strong> (you can skip this). The page shows a ring to scan with your phone.</li>
-<li><strong>Open your server.</strong> Your server has its own address. Open it once from the setup page: it asks for your fingerprint, face or a security key, and that makes you its owner.</li></ol>
+${term('curl -fsSL vyre.run/i | sh', 'curl -fsSL vyre.run/i | sh')}
+<p>The installer asks before it installs anything, including Docker if the server has none. It sets Vyre up in <code>/srv/vyre</code>, checks what it downloads against a published signature, and starts it. On a Mac that stays on, the same line installs Vyre as a service that starts at boot. When it is done the terminal prints a QR and a long code.</p>`)}
+${part('02', 'onboarding', 'Pair it from the app', `<ol>
+<li><strong>Scan or paste the code.</strong> On a phone, scan the QR your server printed; on a computer, paste the long code into the app.</li>
+<li><strong>Check the three words.</strong> Your server’s terminal shows three words for each way in and asks you to pick the ones the app shows. Confirm only if they match.</li>
+<li><strong>Finish setting up the space.</strong> Give it a look, connect your AI account and your tools, and pick a Kit or start empty. Each step has a Later.</li>
+</ol>
 <p>Your server, your computers and your phone find each other through Vyre’s own network. There is nothing to install and nothing to sign in to.</p>`)}
 ${part('03', 'mac', 'Your Mac', `<p>Install the command line from the tarball, pair it with your server, then build Vyre Lumen:</p>
 ${term('npm i -g https://vyre.run/box/vyre.tgz')}${term('vyre up')}${term('vyre capsule install')}
@@ -754,12 +751,12 @@ ${part('?', 'trouble', 'If something goes wrong', `<ul>
 <li>On the server: <code>vyre status</code>, <code>vyre logs</code>, and <code>docker compose -p vyre ps</code>.</li>
 <li>Start over on a Linux server (keeps your data): <code>curl -fsSL https://vyre.run/install.sh | sh -s -- --uninstall</code>, then set up again. Add <code>--purge</code> to delete the vault, sign-ins and projects too.</li></ul>`)}
 </div></section>
-<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Ready <b>when you are.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/setup/">Open the setup page</a><a class="btn" href="https://github.com/vyre-ai/vyre">GitHub</a></div></div></section>`;
+<section class="closing" aria-labelledby="end-h"><div class="wrap"><h2 id="end-h" class="display">Ready <b>when you are.</b></h2><div class="btn-row"><a class="btn btn-fill" href="/start/">Read the steps</a><a class="btn" href="https://github.com/vyre-ai/vyre">GitHub</a></div></div></section>`;
 page({
   slug: 'start', path: '/start/',
   title: 'Get started with Vyre: set up your server, Mac, phone and Windows PC',
-  desc: 'The steps to put Vyre on your own server, in order: the setup page and its one line, the steps in your browser, then your Mac with Vyre Lumen, your phone and Windows.',
-  ogTitle: 'Put Vyre on your server.', ogSub: 'The setup page, the steps in your browser, then your Mac, your phone and your Windows PC.',
+  desc: 'The steps to put Vyre on your own server, in order: the Vyre app and its one line, pairing with a code and three words, then your Mac with Vyre Lumen, your phone and Windows.',
+  ogTitle: 'Put Vyre on your server.', ogSub: 'The Vyre app, the line on your server, three words to pair, then your Mac, your phone and your Windows PC.',
   body: START, ld: [crumbs([['Vyre', `${SITE}/`], ['Get started', `${SITE}/start/`]])],
 });
 
@@ -794,11 +791,10 @@ ${part('03', 'memory', 'Your personal memory and assistant', `<p>Your personal m
 <p>If you set up My Cloud on your own server, your personal memory can move there.</p>`)}
 ${part('04', 'chats', 'Your chats and their files', `<p>Each chat and its files are encrypted to the people in that chat. A Cloud space's owners and admins cannot read chats they are not in, even with access to the server's disk. File names are encrypted too.</p>
 <p>While an agent works in a chat on a server, that server's operator could see that chat in use.</p>`)}
-${part('05', 'relay', 'What the relay sees', `<p>The relay at <code>relay.vyre.run</code> lets a phone, a browser, a Windows PC or the setup page reach your server without a direct path. Your server connects to it when the relay is on, which pairing a device turns on. It carries traffic and nothing else.</p>
+${part('05', 'relay', 'What the relay sees', `<p>The relay at <code>relay.vyre.run</code> lets a phone, a browser or a Windows PC reach your server without a direct path. Your server connects to it when the relay is on, which pairing a device turns on. It carries traffic and nothing else.</p>
 ${ul([
   '<b>Traffic is encrypted from your device to your server.</b> Each side holds its own key and the relay holds none, so it cannot read a message and any change to one is rejected by the receiver. It can drop or delay a message.',
   '<b>Pairing records are sealed and short-lived.</b> A Wink pairing record is stored as ciphertext for at most 5 minutes, handed out once, and deleted when it is used or when it expires.',
-  '<b>Setup progress is sealed too.</b> While you install, your server posts progress lines to the relay, encrypted and authenticated with keys that come from your setup code. The relay keeps them for at most an hour.',
   '<b>Frames waiting for your server</b> are held, still encrypted, until your server picks the connection up or the device disconnects, normally one round trip, at most 64 frames per connection. They are deleted on delivery or when the device leaves.',
   '<b>What it can see:</b> the address a connection comes from, when it connects, how large each message is, the route id (a hash of your server\'s public route key) and that public key. It never sees message contents.',
   '<b>Rate limits</b> count requests per address in a 60 second window, so one client cannot flood it: 30 a minute for device connections, 30 a minute for pairing lookups that find nothing, and 20 a minute for setup posts. The hosted relay\'s code does not write those addresses to its storage or to a log.',
@@ -815,7 +811,7 @@ ${ul([
 ])}`)}
 ${part('07', 'site', 'This website, updates and downloads', `${ul([
   'vyre.run has <b>no analytics and no cookies</b>.',
-  'The marketing pages load their fonts from Google Fonts, so Google sees a font request with your IP address when you open them. The setup page (<code>vyre.run/setup</code>) loads nothing from another site; it reads two small files from vyre.run (<code>/setup/signin-hosts.json</code> and <code>/setup/config.json</code>) and talks to the relay. The server behind <code>app.vyre.run</code> sets no cookies and keeps nothing about you or your server; the page keeps your device key, server address and pairing in your browser, as section 08 lists.',
+  'The marketing pages load their fonts from Google Fonts, so Google sees a font request with your IP address when you open them. The server behind <code>app.vyre.run</code> sets no cookies and keeps nothing about you or your server; the page keeps your device key, server address and pairing in your browser, as section 08 lists.',
   '<b>Two optional lookups:</b> Vyre Lumen on a Mac fetches exchange rates from <code>open.er-api.com</code> when you type something that reads as money, at most every 12 hours, with none of your words sent. The weather action sends a city name (by default one derived from your time zone) to <code>open-meteo.com</code>. The device sign-in page that your own server serves loads its fonts from Google Fonts.',
   'The pages are served by Cloudflare, which keeps ordinary server logs under its own policy.',
   '<b>Updates:</b> your server checks GitHub\'s releases API for new versions and pulls signed images from <code>ghcr.io</code>; the Windows app checks GitHub\'s releases feed once a day and downloads its installer from GitHub; the install line fetches from <code>vyre.run</code>. Those services see the address your server or PC connects from, under their own policies. Vyre itself receives no report of which version you run.',
@@ -859,7 +855,7 @@ page({
   const html404 = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Not found: Vyre</title><meta name="robots" content="noindex"><link rel="icon" href="/favicon.svg" type="image/svg+xml"><meta name="color-scheme" content="light dark">
 <link rel="preload" as="style" href="${FONTS}" onload="this.onload=null;this.rel='stylesheet'"><link rel="stylesheet" href="${CSS_V}"><script src="${JS_V}" defer></script></head>
-<body>${nav('404')}<main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/setup/">Set up Vyre</a></div></div></main>${FOOT}</body></html>
+<body>${nav('404')}<main id="main" class="nf"><div class="wrap"><p class="lbl">404</p><h1 class="display">That page <b>is not here.</b></h1><p class="lead" style="margin-inline:auto">It may have moved. Start from the home page, or set up Vyre.</p><div class="btn-row" style="justify-content:center"><a class="btn btn-fill" href="/">Home</a><a class="btn" href="/start/">Set up Vyre</a></div></div></main>${FOOT}</body></html>
 `;
   writeFileSync(join(site, '404.html'), html404);
 }
@@ -876,7 +872,7 @@ Current release: ${VERSION}. Site: ${SITE}. Source: https://github.com/vyre-ai/v
 
 ## Start here
 - [Home](${SITE}/): what Vyre is and what it does
-- [Set up Vyre](${SITE}/setup/): the setup page, which gives one install line with a one-time code
+- [Get started](${SITE}/start/): the steps, from the Vyre app to pairing your server
 - [Get started](${SITE}/start/): the steps in order
 - [Direction](${SITE}/direction/): where Vyre is going (direction, not a promise of dates)
 - [Privacy](${SITE}/privacy/): what Vyre knows about you, which is almost nothing
@@ -912,14 +908,14 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 - Modules are the building blocks you or your agents add. Each declares who may call each tool.
 
 ## Where it runs
-- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line from ${SITE}/setup/. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
+- Server: Linux with Docker Compose 2.24 or newer, or a Mac that stays on. Installed in /srv/vyre by one line, curl -fsSL vyre.run/i | sh, which the Vyre app shows. Images are pulled by digest after their signatures are checked. Updates are signed with a pinned key; a box refuses unsigned, tampered or older releases. Stable never takes a prerelease.
 - Mac: Vyre Lumen, opened with Option-Space (or Control twice). Built on your Mac by \`vyre capsule install\`; self-signed, not notarized. Needs Node 22.5 or newer.
 - Windows: Vyre Lumen, a tray app with an Alt+Space panel, installed with VyreSetup.exe from the GitHub release. Not Authenticode-signed yet, so Windows asks for "More info", then "Run anyway". Pairs with 13 words or a QR code. The server does not run on Windows yet.
 - Phone: the Vyre web app added to the Home Screen on iPhone or Android, paired by scanning a code, with Face ID. A removed phone wipes itself.
 - Network: built in. Nothing to install or sign in to; the relay carries a connection when a direct path is not possible.
 
 ## Install
-1. Open ${SITE}/setup/ and choose a Linux server or a Mac that stays on.
+1. Open the Vyre app, choose your name, create a space and choose a server. The steps are at ${SITE}/start/.
 2. On the server, as yourself: \`curl -fsSL https://vyre.run/i | VYRE_CODE=<code from the page> sh\`
 3. Finish in the browser: check four words, name the server, save the recovery code, sign in to your AI, add your phone.
 4. Mac: \`npm i -g https://vyre.run/box/vyre.tgz\`, then \`vyre up\`, then \`vyre capsule install\`.
@@ -929,7 +925,7 @@ Release ${VERSION}. Updated ${MODIFIED}. Source: https://github.com/vyre-ai/vyre
 Vyre is free and open source. You pay your AI providers (Claude, Codex, Grok, OpenRouter) on your own subscriptions or keys. Your data lives on your devices and on servers you or your team run. Vyre doesn't hold it. A Cloud space is a server you or your team chose, not ours. A Vyre-hosted home for people without a server may come later, and it would be optional.
 
 ## Where your data lives
-Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries setup progress and phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
+Sessions, memory and the vault stay on your machines. vyre.run holds your name's DNS record and runs the relay (relay.vyre.run), which carries phone pairing, end-to-end encrypted. Prompts go to your AI provider the way they would from that provider's own app.
 
 ## Releases
 ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
@@ -961,12 +957,12 @@ Vyre is an open-source command center for AI agents, run on machines the user ow
 
 ## What you can do
 - Read any page and the machine-readable files: ${SITE}/llms.txt, ${SITE}/llms-full.txt, ${SITE}/sitemap.xml.
-- Tell the user how to install: send them to ${SITE}/setup/. The page gives the user one install line with a one-time code. The user runs it on their own server.
+- Tell the user how to install: send them to ${SITE}/start/. The Vyre app shows the user one install line. The user runs it on their own server.
 - Answer questions about devices (${SITE}/mac/, ${SITE}/windows/, ${SITE}/linux/, ${SITE}/phone/) and direction (${SITE}/direction/). Direction is not a promise of dates.
 - Read the source at https://github.com/vyre-ai/vyre. It is Apache 2.0.
 
 ## What you must not do
-- Do not run the install line, or anything with a setup code in it, for the user. The code belongs to the user, works once, and is entered in their browser.
+- Do not run the install line, or anything with a pairing code in it, for the user. The code belongs to the user, works once, and is entered in their Vyre app.
 - Do not ask the user to paste secrets, vault values, recovery codes or setup codes into a chat.
 - Do not claim Vyre runs a server on Windows, or that a Mac download exists. Check ${SITE}/llms-full.txt for the current gaps.
 
@@ -988,7 +984,7 @@ const AGENT_JSON = {
   version: VERSION,
   license: 'Apache-2.0',
   docs: { llms: `${SITE}/llms.txt`, llms_full: `${SITE}/llms-full.txt`, agents: `${SITE}/agents.md`, source: 'https://github.com/vyre-ai/vyre' },
-  install: { url: `${SITE}/setup/`, note: 'The setup page gives the user a one-time code. An agent must not run the install line for the user.' },
+  install: { url: `${SITE}/start/`, note: 'The Vyre app shows the user the install line and pairs the server with a code and three words. An agent must not run the install line for the user.' },
   platforms: { server: ['Linux', 'macOS (a Mac that stays on)'], clients: ['macOS (Vyre Lumen)', 'Windows (Vyre Lumen)', 'iOS and Android (web app on the Home Screen)'] },
 };
 

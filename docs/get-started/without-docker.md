@@ -11,7 +11,7 @@ status: stable
 A Mac, or a Linux server without Docker, runs Vyre straight from the npm package. There is one
 background process, running as your own login account (never root), with its data in `~/.vyre`
 in that account's home. Vyre's history reads the same `~/.claude/` as your own `claude`. The
-setup page at vyre.run/setup installs a Linux server with Docker, or a Mac that stays on as a
+install line from the Vyre app installs a Linux server with Docker, or a Mac that stays on as a
 service, as in [Install](install.md); this page is for running Vyre from the package instead,
 and you pair it from your Vyre app.
 
@@ -50,12 +50,12 @@ A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, asks wher
 (or saves the address you gave with `--connect`; it pairs nothing and asks nothing, and pairing is
 `vyre link pair <code>` with the code the box shows), offers once to add Vyre's line to Claude Code's status line, and builds and
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
-[Install, step 10](install.md#10-put-the-lumen-on-your-mac).
+[Install, step 7](install.md#7-put-the-lumen-on-your-mac).
 
 `vyre up --box` sets the role to `box` and prints the pairing line (`wink.server.code`), which you
 pair from your Vyre app. The Mac then serves your phone, so it has to stay awake for the
-phone to reach it. For a Mac that is the always-on server, use the setup page and choose **A
-Mac that stays on** ([Install](install.md#2-run-the-line-on-your-server)): it installs Vyre as a
+phone to reach it. For a Mac that is the always-on server, use the Vyre app's
+install line ([Install](install.md#3-run-the-line-on-your-server)): it installs Vyre as a
 service that starts when the Mac does, which `vyre up --box` does not.
 
 There is no login item. `vyre up` starts Vyre, and restarts it when the installed version or

@@ -418,7 +418,7 @@ test("install-box.sh v2: a code another server already used stops with the plain
   const forged = Buffer.concat([raw.subarray(0, 16), Buffer.from(await (await import("../relay/client/setup.js")).setupFingerprint(other.spki))]).toString("base64url");
   const c = await runAsync({ ...second.env, VYRE_CODE: forged, VYRE_RELAY: base }, ["--yes", "--from", REPO]);
   assert.notEqual(c.status, 0);
-  assert.match(c.stderr, /Another server already used this code\. Your browser is not connected to this server\. Start again at https:\/\/vyre\.run\/setup\./);
+  assert.match(c.stderr, /Another server already used this code\. Run the install line again to get a new code\./);
   assert.ok(!fs.existsSync(second.dir), "nothing was installed");
 });
 

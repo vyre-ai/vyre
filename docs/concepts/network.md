@@ -41,7 +41,7 @@ Your server is served at one HTTPS address:
 
 | Address | When | Certificate |
 |---|---|---|
-| `https://alex.vyre.run` | the default after setup at vyre.run/setup: a name you claim there | Let's Encrypt, by DNS challenge |
+| `https://alex.vyre.run` | the default after setup: the name you claim in the Vyre app | Let's Encrypt, by DNS challenge |
 | your own domain, such as `https://vyre.juniperstudio.example` | when you bring a domain at the end of setup | Let's Encrypt, by DNS challenge through a record you add |
 
 A `vyre.run` name is an A record pointing at your server's public IPv4 address. The name directory publishes it only after an outside check proves your server's public port (7443 by default) answers; until then the name is not published and the server is reachable through the relay only. The certificate is Let's Encrypt, by DNS challenge through the directory. For your own domain, you add two records, an A record to the server's public address and an `_acme-challenge` CNAME, and Vyre checks the CNAME before it serves the domain.

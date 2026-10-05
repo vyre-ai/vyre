@@ -69,7 +69,7 @@ vyre presence remove <id>
 ```
 
 - Lumen enrolls its key at first run, with Touch ID.
-- When you set up through vyre.run/setup, the first passkey is made in the browser that started setup, and that browser becomes your first trusted device.
+- When you set up in the Vyre app, the device that started setup holds the key for your name.
 - On a box, the box never takes a terminal code: there, the Vyre app's passkey is the only proof.
 
 > [!WHY] Why does the box refuse a terminal code?

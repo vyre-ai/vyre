@@ -13,7 +13,7 @@ Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model fo
 
 ## Set up
 
-Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI and adding your phone.
+Open the Vyre app on your phone or Mac, choose your name and create a space. It gives you one line to paste on your server, then pairs the server with a code and three words, and walks you through your AI account, your tools and a Kit.
 
 - **The server** is a Linux machine with Docker, or a Mac that stays on.
 - **The network** is built in. There is nothing to install and nothing to sign in to.
@@ -29,7 +29,7 @@ vyre capsule install
 
 Or take the app as a disk image: `Vyre.dmg` (from the capsule-mac run's artifacts until releases carry it), open it and drag Vyre to Applications. It is self-signed: Vyre has no Apple Developer ID and the app is not notarized, so the first time macOS refuses a plain double-click. Right-click Vyre in Applications, choose Open, then Open again; after that it opens normally. Or build the image yourself on a Mac with `sh local/capsule/native/build.sh app && sh scripts/make-dmg.sh`.
 
-The line the setup page shows is `curl -fsSL https://vyre.run/i | VYRE_CODE=<code> sh`, where the code is the one on the page. (`curl -fsSL https://vyre.run/install.sh | sh` is the same install without a code, for the terminal only.) Step by step: [Install](docs/get-started/install.md).
+The line the app shows is `curl -fsSL vyre.run/i | sh`. It prints a QR and a long code; scan it or paste it into the app, then confirm the same three words in the app and the terminal. Step by step: [Install](docs/get-started/install.md).
 
 ## On your Mac: Vyre Lumen
 
@@ -86,7 +86,7 @@ Coming in 0.2.1: Touch ID prompts for terminal commands that need them, the Safa
 
 **Is it secure?** Your server publishes no port, your keys are encrypted at rest, relay traffic is end-to-end encrypted, and every send, post, payment or new device needs your Touch ID or Face ID. Releases are signed.
 
-**How do I add my phone?** Open the setup page or your server's address on the phone, scan the ring, check the name and fingerprint, and tap Pair.
+**How do I add my phone?** Open the Vyre app on the phone, scan or paste the code your server or a signed-in device shows, and confirm the three words.
 
 ## Develop
 

@@ -17,13 +17,13 @@ Use your own details throughout. Nothing here needs example data.
 
 ## 1. Set up your server (about 15 minutes)
 
-Open <https://vyre.run/setup>, choose where Vyre will live, and paste the one line it shows into
-a terminal on that server. The page watches the install, checks four words with you, helps you
-claim an address such as `alex.vyre.run`, and shows your private network. [Install](../get-started/install.md)
-walks every screen.
+Open the Vyre app, choose your name, create a space, and paste the one line it shows into a
+terminal on that server. The app then pairs the server with a code and three words, and walks you
+through giving the space a look, your AI account, your tools and a Kit.
+[Install](../get-started/install.md) walks every screen.
 
-**Check:** the page says **You're in** at your own address, and `vyre status` on the server says
-Vyre is running.
+**Check:** the terminal on the server says `Your server is ready.` and `Connected to <name>`, and
+`vyre status` on the server says Vyre is running.
 
 ## 2. Sign in to your AI (2 minutes)
 

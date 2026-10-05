@@ -31,7 +31,7 @@ cannot touch a file or run a command; it is there so a conversation can carry on
 else is out of usage. Codex and Grok cannot be steered mid-turn or rewound, and the effort
 levels are Claude's only.
 
-You sign Claude, Codex and Grok in on the setup page (vyre.run/setup), with each
+You connect Claude when you set up Vyre, or later in Settings, with the
 provider's own sign-in: you open its page, enter the code it shows, and the token goes into
 that account's own private folder, which Vyre never reads. An account can also hold an API key
 from the [Vault](vault.md). Store the key, let sessions read it, and add the account:
