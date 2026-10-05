@@ -64,6 +64,8 @@ export function createFlowsHost(o) {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
     };
     const ports = {
+      // A module tool marked `flow` as a `call` step (core/daemon/module-actions.js); the runner has authorized the action for the run's chain before this is reached.
+      call: o.callAction,
       // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
       sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),

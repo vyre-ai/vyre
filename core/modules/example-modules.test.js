@@ -37,6 +37,16 @@ test("forms and docgen: installed from the examples, a webhook answer becomes a 
     { name: "doc_template", label: "Template", fields: [f("name"), f("folder"), f("body")] },
   ] });
 
+  // A Flow that starts when a lead is made (a record trigger: the module's work starts Flows through the records it files).
+  const host = d.registry.deps.flowsHost.get(d.kernel.id.space);
+  const meta = async () => ({ token: (await d.kernel.surfaces.open(owner, {})).token });
+  const flow = { format: 1, name: "follow_up", label: "Follow up a new lead", authorship: "human", trigger: { on: "event", event: "lead.created" },
+    caps: [{ action: "records.create", resource: `vyre://${d.kernel.id.space}/contact/*` }],
+    steps: [{ id: "c", kind: "create", type: "contact", set: { name: "Followed up" } }] };
+  const def = await d.registry.call("flows.define", { flow }, "cli", await meta());
+  assert.ok(def.data && def.data.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
+
   // forms: only the webhook route reaches the tool; the answer is a lead in the Space.
   assert.equal((await d.registry.call("forms.submit", { name: "Dana", email: "dana@harlow.test" }, "local")).error?.code, "no_such_tool", "a person cannot call the webhook tool");
   const got = await d.registry.call("forms.submit", { name: "Dana Reyes", email: "dana@harlow.test", message: "locks changed" }, "hook");
@@ -45,6 +55,8 @@ test("forms and docgen: installed from the examples, a webhook answer becomes a 
   assert.deepEqual([leads.count, leads.leads[0].name], [1, "Dana Reyes"]);
   assert.equal((await d.kernel.gateway.records.query(owner, "lead", { page: { limit: 10 } })).rows.length, 1, "it is a real record in the Space");
   assert.ok(d.events.since(0, { type: "forms.answer-received" }).length === 1);
+  let followed = 0; for (let i = 0; i < 60 && !followed; i++) { await new Promise(r => setTimeout(r, 250)); followed = (await d.kernel.gateway.records.query(owner, "contact", { page: { limit: 20 } })).rows.filter((/** @type {any} */ r) => r.data.name === "Followed up").length; }
+  assert.equal(followed, 1, "the lead the module filed started the Flow");
 
   // docgen: a template and a contact give a file in the declared Drive folder, and nowhere else.
   const tpl = await d.kernel.gateway.records.create(owner, "doc_template", { name: "Engagement letter", folder: "Clients/Harlow", body: "Dear {{name}}, we will handle {{matter}}." });

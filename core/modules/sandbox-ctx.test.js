@@ -87,3 +87,41 @@ test("needs.kernel.records: a sandboxed module makes and lists records of the ty
   assert.equal(r.data.defines, "undeclared", "it cannot define types");
   assert.equal(r.data.handle, "undeclared", "it has no kernel handle");
 });
+
+test("a module tool marked flow is an action of the Space the owner may run from a Flow, and a Flow's call step runs it; a tool not marked is not reachable that way", { skip: process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 120_000 }, async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
+  writeModule(path.join(root, "modules"), "stamp", { vyre: "1", description: "Stamps a note with a counter.",
+    does: { tools: [{ name: "stamp.mark", reach: "anyone", summary: "stamp a note", flow: { risk: "write", label: "Stamp the note" } }, { name: "stamp.peek", reach: "anyone", summary: "read the counter" }] }, watches: { emits: ["stamp.marked"] } },
+    `export default { async start(ctx) {
+      await ctx.store.migrate(["CREATE TABLE stamp_marks (id INTEGER PRIMARY KEY AUTOINCREMENT, note TEXT)"]);
+      ctx.tool("stamp.mark", { input: { type: "object" }, run: async ({ note }) => { await ctx.store.exec("INSERT INTO stamp_marks (note) VALUES (?)", [String(note || "")]); await ctx.events.emit("stamp.marked", {}); return { ok: true }; } });
+      ctx.tool("stamp.peek", { input: { type: "object" }, run: async () => ({ n: (await ctx.store.query("SELECT COUNT(*) AS n FROM stamp_marks"))[0].n }) });
+      return {};
+    } };`);
+  const d = await start({ presence: present, root, log: () => {} });
+  t.after(() => d.stop());
+  assert.equal(d.registry.status().find(m => m.name === "stamp")?.state, "running", JSON.stringify(d.registry.status().find(m => m.name === "stamp")));
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  const names = d.kernel.gateway.actions().map((/** @type {any} */ a) => a.action);
+  assert.ok(names.includes("stamp.mark") && !names.includes("stamp.peek"), "only the marked tool is an action");
+  const res = `vyre://${d.kernel.id.space}/module/stamp/mark`;
+  assert.equal((await d.kernel.gateway.authorize({ chain: owner, action: "stamp.mark", resource: res })).effect, "allow", "the owner holds it");
+  const agent = d.kernel.chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s9", thread: "t9", vouched: true, person: d.kernel.id.owner });
+  assert.notEqual((await d.kernel.gateway.authorize({ chain: agent, action: "stamp.mark", resource: res })).effect, "allow", "an assistant does not");
+  // A Flow with a call step runs it.
+  const host = d.registry.deps.flowsHost.get(d.kernel.id.space);
+  const meta = async () => ({ token: (await d.kernel.surfaces.open(owner, {})).token });
+  const flow = { format: 1, name: "stamp_it", label: "Stamp it", authorship: "human", trigger: { on: "manual" },
+    caps: [{ action: "stamp.mark", resource: `vyre://${d.kernel.id.space}/module/stamp/*` }],
+    steps: [{ id: "s", kind: "call", action: "stamp.mark", resource: res, input: { note: "from a flow" } }] };
+  const def = await d.registry.call("flows.define", { flow }, "cli", await meta());
+  assert.ok(def.data && def.data.ok, JSON.stringify(def));
+  await host.flows.tools["flows.approve"](host.personChain(), { id: def.data.id, version: def.data.version, hash: def.data.hash });
+  await host.flows.tools["flows.start"](host.personChain(), { id: def.data.id, input: {} });
+  let n = 0; for (let i = 0; i < 60 && n < 1; i++) { await new Promise(r => setTimeout(r, 250)); n = (await d.registry.call("stamp.peek", {}, "local")).data.n; }
+  assert.equal(n, 1, "the Flow's call step ran the module's tool once");
+  // A tool that was not marked is no action a Flow may name.
+  assert.ok(!d.registry.flowActionTools.has("stamp.peek"));
+});

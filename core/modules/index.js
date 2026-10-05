@@ -236,6 +236,10 @@ export function validate(m, { firstParty = false } = {}) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
     if (typeof e === "object" && e.reach !== undefined && !REACHES.includes(e.reach)) out.push(`tool "${t}": reach must be one of ${REACHES.join(", ")}`);
     if (typeof e === "object" && e.outward !== undefined && e.outward !== true && !OUTWARD.includes(e.outward)) out.push(`tool "${t}": outward must be one of ${OUTWARD.join(", ")} (or true)`);
+    if (typeof e === "object" && e.flow !== undefined) {
+      if (!e.flow || typeof e.flow !== "object" || !["read", "write", "outward.send"].includes(e.flow.risk)) out.push(`tool "${t}": flow.risk must be read, write or outward.send`);
+      else if (e.reach !== undefined && e.reach !== "anyone") out.push(`tool "${t}": a tool that can be a Flow step must be reach anyone`);
+    }
   }
   for (const e of (m.watches && m.watches.emits) || []) {
     if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
@@ -777,6 +781,7 @@ export class Registry {
         rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
         rec.sandboxed = true;
         rec.state = "running";
+        await this.registerFlowActions(m);
         this.deps.log(`module ${m.name} ${m.version} running (sandboxed)`);
         return;
       }
@@ -784,6 +789,7 @@ export class Registry {
       if (!mod || typeof mod.start !== "function") throw new Error("entry file must export default { start(ctx) }");
       rec.handle = await mod.start(adapter.context(this.context(adapter.manifest(m))));
       rec.state = "running";
+      await this.registerFlowActions(m);
       this.deps.log(`module ${m.name} ${m.version} running`);
     } catch (e) {
       Object.assign(rec, { state: "failed", error: /** @type {Error} */ (e).message });
@@ -792,6 +798,13 @@ export class Registry {
       for (const [k] of this.routes) if (k.startsWith(`/v1/${m.name}/`)) { this.routes.delete(k); this.routeInfo.delete(k); }
       this.deps.log(`module ${m.name} failed to start: ${/** @type {Error} */ (e).message}`);
     }
+  }
+
+  /** The tools a module marked `flow` become actions of the Space (and the owner and admins may run them from a Flow): the kernel registers them (deps.registerFlowActions). @param {any} m */
+  async registerFlowActions(m) {
+    const defs = toolEntries(m).filter(e => e.flow && typeof e.flow === "object").map(e => ({ action: e.name, risk: e.flow.risk, label: e.flow.label || e.summary || e.name, gloss: e.summary || "" }));
+    if (!defs.length || typeof this.deps.registerFlowActions !== "function") return;
+    try { await this.deps.registerFlowActions(m.name, defs); for (const d of defs) (this.flowActionTools ||= new Set()).add(d.action); } catch (e) { this.deps.log(`warn: module ${m.name}: its Flow actions were not registered: ${/** @type {Error} */ (e).message}`); }
   }
 
   /** What a module gets. It sees only what its manifest declared. */
