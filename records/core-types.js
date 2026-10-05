@@ -200,4 +200,26 @@ export const SESSION_SUMMARY = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, SESSION_SUMMARY].map((t) => Object.freeze(t)));
+/**
+ * One file of a Project, in the Project's Drive folder (Projects/<slug>/chat/<session>/ for what the person dropped into a chat, Projects/<slug>/made/<session>/ for what a model made), linked from
+ * its session record and the Project. The bytes are the Drive's; this record says what the file is and where it came from, so a Project's page lists its files and a session's page lists its own.
+ */
+export const PROJECT_FILE = {
+  name: "project-file", label: "File", icon: "IconFile",
+  fields: [
+    text("name", "Name", { required: true }),
+    text("path", "Drive path"),
+    choice("kind", "Where from", ["chat", "made"]),
+    text("mime", "Type"),
+    f("number", "size", "Size in bytes"),
+    text("sha256", "Hash"),
+    text("source", "Made by (provider and tool)"),
+    f("link", "project", "Project", { to: "project" }),
+    f("link", "session", "Session", { to: "session-summary" }),
+    text("thread", "Thread"),
+    text("artifact", "Artifact"),
+    text("key", "Once-only key", { unique: true }),
+  ],
+};
+
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, SESSION_SUMMARY, PROJECT_FILE].map((t) => Object.freeze(t)));

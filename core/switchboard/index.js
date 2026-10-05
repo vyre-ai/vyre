@@ -675,6 +675,22 @@ export class Switchboard {
   }
 
   /**
+   * Images the person dropped into a chat, saved into the project's folder (work.files.save, kind chat). A name the surface gave is kept; else pasted-image-<n>. Quiet when the work module is not here.
+   * @param {string} id @param {{ media_type: string, data: string, name?: string }[]} images
+   */
+  async saveDropped(id, images) {
+    const EXT = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+    let n = 0;
+    for (const i of images) {
+      n++;
+      const ext = EXT[i.media_type] || "png";
+      const name = i.name ? (/\.[A-Za-z0-9]{2,5}$/.test(i.name) ? i.name : `${i.name}.${ext}`) : `pasted-image-${n}.${ext}`;
+      const r = await this.deps.call("work.files.save", { thread: id, kind: "chat", name, base64: i.data, mime: i.media_type, source: "dropped into the chat" }).catch(() => null);
+      if (r && r.error && r.error.code === "no_such_tool") return;
+    }
+  }
+
+  /**
    * A GitHub session's commit identity and hooks are its environment (github.session.env: GIT_AUTHOR_* and GIT_COMMITTER_* names and emails, and one
    * GIT_CONFIG_* entry for the hooks folder), put in the session process on every launch AND resume. {} when the project has no repo, git is older than
    * 2.31, or github is not here. Only those keys, only strings.
@@ -1098,6 +1114,23 @@ export class Switchboard {
     return inside ? { ok: true, why: "" } : { ok: false, why: "an agent's session starts only inside a project folder it can see" };
   }
 
+  /**
+   * The folder a session saves what it makes in: <session temp>/artifacts, a real folder (no link in its path) the session can write and nothing else shares. Null without a home to sit beside,
+   * or when it cannot be made. artifacts watches it and keeps each file in the project's Drive folder.
+   * @param {string} id
+   */
+  artifactsDir(id) {
+    if (!this.deps.root) return null;
+    try {
+      const temp = sessionTempDir(String(this.deps.root), id);
+      fs.mkdirSync(temp, { recursive: true, mode: 0o700 });
+      const dir = path.join(fs.realpathSync(temp), "artifacts");
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      fs.chmodSync(dir, 0o700);
+      return dir;
+    } catch { return null; }
+  }
+
   sessionTemp(id) {
     const dir = sessionTempDir(String(this.deps.root || ""), id);
     try { const st = fs.lstatSync(dir); if (st.isSymbolicLink() || !st.isDirectory()) fs.rmSync(dir, { recursive: true, force: true }); } catch { /* not there */ }
@@ -1223,6 +1256,9 @@ export class Switchboard {
     // With its own socket the session reaches vyred ONLY through it: a session that inherited the daemon's VYRE_HOME (an unsandboxed development run) would find vyred's main socket from it and call as
     // a bare caller, with no kernel session, so its calls would carry no person. The sandbox hides the home anyway; this makes the unsandboxed path behave the same.
     if (sock) delete env.VYRE_HOME;
+    // The session's own folder for what it makes (VYRE_ARTIFACTS_DIR): inside its sandboxed temp folder, outside the home. Whatever is saved there is kept in the project's Drive folder (artifacts watches it).
+    const artifactsDir = this.artifactsDir(id);
+    if (artifactsDir) env.VYRE_ARTIFACTS_DIR = artifactsDir; else delete env.VYRE_ARTIFACTS_DIR;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
@@ -1252,6 +1288,8 @@ export class Switchboard {
     const ar = o.accountRun;
     if (ar && ar.home) env.HOME = ar.home;
     const account = ar && ar.uid != null ? { uid: ar.uid, shared: rec.cwd === (process.env.VYRE_WORK || "/work") || String(rec.cwd).startsWith((process.env.VYRE_WORK || "/work") + "/") } : null;
+    // A session that runs as another user (the packaged box) must be able to write its folder; best effort, and only where vyred is allowed to give it away.
+    if (artifactsDir && account && account.uid != null) { try { fs.chownSync(artifactsDir, account.uid, ar && ar.gid != null ? ar.gid : account.uid); } catch { /* not allowed here: the session's own uid is the owner already, or the folder stays vyred's */ } }
     // What a provider that is not Claude gets: the floor as a function (its file and shell methods
     // are served through it), and the same MCP bridge Claude's plugin uses (harness/mcp/server.js),
     // scoped by vyred on the thread's own socket, never by anything the session could forge.
@@ -1278,6 +1316,7 @@ export class Switchboard {
     const provider = other || claudeProvider({ sdk: this.sdk, bin: this.sdk ? this.deps.bin || process.env.VYRE_CLAUDE_BIN || "" : this.bin, run: this.run });
     const driver = other ? String(o.provider) : this.sdk ? "sdk" : "cli";
     state.proc = provider.run({ ...lo, cwd: rec.cwd, env, ...on });
+    if (artifactsDir) this.deps.call("artifacts.capture.register", { thread: id, dir: artifactsDir, ...(account && account.uid != null ? { uid: account.uid } : {}) }).catch(() => {});
     this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null, driver });
     this.touch(id, state);
     // A session never sits in "starting" for ever: if the agent says nothing within the limit (not signed in, not installed, no route to its provider) the thread FAILS with what was seen, its processes
@@ -1907,6 +1946,8 @@ export class Switchboard {
         || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
       if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
     }
+    // What the person dropped into the chat is kept in the project's folder, Projects/<slug>/chat/<session>/ (core/work/files.js), whatever the provider does with it. Never in the turn's way.
+    if (images && images.length) void this.saveDropped(id, images).catch(() => {});
     // First-party chat turn (core/stream): open this turn's kernel session for the person who asked, in the chat it belongs to, before any word reaches the session. (A duplicate was answered above, before anything is opened.)
     if (kernelTurn && this.record(id)) {
       // A turn keeps its asker for its whole run. Another person's message while it runs is not folded into it (it would run under the first asker's token: a member's refused act would succeed once an
@@ -3123,7 +3164,8 @@ function imagesOf(list) {
     const data = String(i && i.data || "");
     if (!IMAGE_TYPES.includes(String(i && i.media_type))) throw Object.assign(new Error(`an image is ${IMAGE_TYPES.join(", ")}`), { code: "bad_input" });
     if (!/^[A-Za-z0-9+/=\s]+$/.test(data) || data.length * 0.75 > IMAGES.mb * 1024 * 1024) throw Object.assign(new Error(`an image is base64, at most ${IMAGES.mb} MB`), { code: "bad_input" });
-    return { media_type: String(i.media_type), data: data.replace(/\s+/g, "") };
+    const name = typeof i.name === "string" ? i.name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 120) : "";
+    return { media_type: String(i.media_type), data: data.replace(/\s+/g, ""), ...(name ? { name } : {}) };
   });
 }
 

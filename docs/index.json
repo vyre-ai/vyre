@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1219,"event":459,"config":254,"env":248,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1220,"event":459,"config":254,"env":249,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2224,6 +2224,7 @@
     {"kind":"env","name":"VYRE_APP_BOX_URL","definedIn":"scripts/mac-app-package.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_APP_WEB_DIR","definedIn":"scripts/mac-app-package.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_APPLE_TEAM_ID","definedIn":"core/daemon/app.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_ARTIFACTS_DIR","definedIn":"core/switchboard/index.js","page":"reference/config.md#set-by-vyre","mentions":[]},
     {"kind":"env","name":"VYRE_ASK_TRIES","definedIn":"scripts/install/i.sh","page":null,"mentions":[]},
     {"kind":"env","name":"VYRE_BACKUP_SKIP_PROJECTS","definedIn":"core/cli/commands/up.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_BACKUP_SKIP_TRANSCRIPTS","definedIn":"core/cli/commands/up.js","page":"reference/config.md#environment-variables","mentions":[]},
@@ -2576,6 +2577,7 @@
     {"kind":"tool","name":"work.engineer.approve","definedIn":"core/work/index.js","page":"reference/tools.md#workengineerapprove","module":"work","mentions":[]},
     {"kind":"tool","name":"work.engineer.revise","definedIn":"core/work/index.js","page":"reference/tools.md#workengineerrevise","module":"work","mentions":[]},
     {"kind":"tool","name":"work.engineer.talk","definedIn":"core/work/index.js","page":"reference/tools.md#workengineertalk","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.files.save","definedIn":"core/work/index.js","page":"reference/tools.md#workfilessave","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.accept","definedIn":"core/work/index.js","page":"reference/tools.md#workknowaccept","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.answer","definedIn":"core/work/index.js","page":"reference/tools.md#workknowanswer","module":"work","mentions":[]},
     {"kind":"tool","name":"work.know.capture","definedIn":"core/work/index.js","page":"reference/tools.md#workknowcapture","module":"work","mentions":[]},

@@ -215,6 +215,14 @@ export function translate(m) {
   if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
     for (const b of m.message.content) {
       if (b.type === "tool_result" && Array.isArray(b.vyre_media) && b.vyre_media.length) (out.media ||= []).push(...b.vyre_media.slice(0, 4));
+      // Claude Code's own tool results (an MCP image tool, a screenshot, a chart) carry an image as a block: { type: "image", source: { type: "base64", media_type, data } }. Mapped to the same
+      // shape the other providers' generated media take, so it is saved the same way (switchboard.saveMedia). The bytes never ride the thread's events.
+      if (b.type === "tool_result" && Array.isArray(b.content)) {
+        for (const c of b.content.slice(0, 8)) {
+          if (c && c.type === "image" && c.source && c.source.type === "base64" && typeof c.source.data === "string" && /^image\/(png|jpeg|gif|webp)$/.test(String(c.source.media_type))) (out.media ||= []).push({ mime: String(c.source.media_type), data_b64: c.source.data, source: "tool-result" });
+        }
+        if (out.media && out.media.length > 4) out.media = out.media.slice(0, 4);
+      }
       if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error), ...(Number.isInteger(b.exit_code) ? { exit_code: b.exit_code } : {}) } });
     }
     return out;

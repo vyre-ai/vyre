@@ -463,6 +463,25 @@ async function turn(prompt, uuid = null) {
     out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-x", content: "ok" }] } });
     await say("done"); return result(true, "done");
   }
+  // "savefile <name> <base64>": the agent writes a file into its own artifacts folder ($VYRE_ARTIFACTS_DIR), as any provider's tool does, then replies with where it put it.
+  // "artifactsdir": says the folder it was given.
+  const savefile = /^savefile (\S+) (\S+)$/.exec(p);
+  if (savefile) {
+    const dir = process.env.VYRE_ARTIFACTS_DIR;
+    if (!dir) { await say("no folder"); return result(true, "no folder"); }
+    fs.writeFileSync(path.join(dir, savefile[1]), Buffer.from(savefile[2], "base64"), { mode: 0o600 });
+    await say(`saved ${savefile[1]}`);
+    return result(true, `saved ${savefile[1]}`);
+  }
+  if (p === "artifactsdir") { await say(`folder ${process.env.VYRE_ARTIFACTS_DIR || "none"}`); return result(true, "folder"); }
+  // "imageblock <base64 png>": a finished tool call whose result is an image block, as Claude Code prints an MCP image tool's answer (content: [image, text]), then a reply.
+  const imageblock = /^imageblock (\S+)$/.exec(p);
+  if (imageblock) {
+    out({ type: "assistant", message: { id: "m-img", role: "assistant", content: [{ type: "tool_use", id: "tu-img", name: "mcp__images__draw", input: { prompt: "a heron" } }] } });
+    out({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: "tu-img", content: [{ type: "image", source: { type: "base64", media_type: "image/png", data: imageblock[1] } }, { type: "text", text: "drawn" }] }] } });
+    await say("drew it");
+    return result(true, "drew it");
+  }
   const media = /^media (\[.*\])$/s.exec(p);
   if (media) {
     out({ type: "assistant", message: { id: "m-media", role: "assistant", content: [{ type: "tool_use", id: "tu-media", name: "image_gen", input: {} }] } });

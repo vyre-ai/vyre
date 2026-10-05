@@ -108,6 +108,8 @@ export const _test = {
   beforeCopyOut: null,
   /** How long a folder event for a media file waits for the file to settle, in ms. */
   mediaDebounce: 1500,
+  /** How long a folder event waits for the file to settle before it is kept, in ms (the folder watcher). */
+  captureDebounce: 600,
   /** The most generated media one project and one thread may hold, in bytes (plain refusal beyond it). */
   mediaCaps: { project: 5 * 1024 ** 3, thread: 1024 ** 3, total: 20 * 1024 ** 3 },
 };
@@ -438,6 +440,41 @@ export default {
     // ---- making and changing ------------------------------------------------------------------
 
     /** @param {{ project?: string|null, kind: string, format?: string, title?: string, content: string, data?: unknown, message?: string }} i @param {any} meta */
+    /** The most one file a session saved in its folder may be, to be kept in a project's folder through a tool call (base64 in the call; a larger one stays where it is and is said so in the log). Media is read in chunks by the work module instead. */
+    const PROJECT_FILE_MAX = 8 * 1024 * 1024;
+    const MIME_BY_EXT = { ".md": "text/markdown", ".html": "text/html", ".htm": "text/html", ".svg": "image/svg+xml", ".json": "application/json", ".mmd": "text/plain", ".txt": "text/plain", ".csv": "text/csv", ".pdf": "application/pdf",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation", ".zip": "application/zip" };
+    const slugOf = (/** @type {string} */ v, /** @type {string} */ fallback) => String(v || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || fallback;
+    /** Hand one file to the work module, which puts it in the project's Drive folder (Projects/<slug>/made/<session>/) and records it. Quiet when the work module is not here. @param {any} body */
+    const saveToProject = async body => {
+      const r = await ctx.call("work.files.save", { kind: "made", ...body }).catch(() => null);
+      if (r && r.error && r.error.code !== "no_such_tool") ctx.log(`artifacts: could not keep ${body.name} in the project folder: ${r.error.message || r.error.code}`);
+    };
+    /**
+     * What a session made (a report, a page, a diagram, an image, a video, a sound) is also kept in its project's Drive folder, Projects/<slug>/made/<session>/ (work.files.save). One path per
+     * artifact: a new version is a new Drive version of the same file. Quiet when the work module is not here, and never in the way of the artifact.
+     * @param {any} r the artifact's row
+     */
+    const toProjectFolder = async r => {
+      if (!r || !r.thread) return;
+      try {
+        const by = JSON.parse(r.made_by || "{}");
+        if (isMediaFormat(r.format)) {
+          const m = r.media ? JSON.parse(r.media) : {};
+          if (!(m.bytes > 0)) return;
+          // no bytes in the call: the work module reads the media in chunks (artifacts.media.read), so a large video never holds this thread
+          await saveToProject({ thread: r.thread, name: `${slugOf(m.prompt ? String(m.prompt).split(/\s+/).slice(0, 8).join(" ") : r.title, MEDIA[r.format].kind)}${MEDIA[r.format].ext}`, from_artifact: r.id, mime: m.mime, source: `${m.provider || by.provider || "an agent"} ${m.source || "media"}`, artifact: r.id, key: `artifact:${r.id}` });
+          return;
+        }
+        const main = MAIN_FILE[/** @type {keyof typeof MAIN_FILE} */ (r.format)];
+        const { files } = await filesAt(r);
+        const content = files[main];
+        if (typeof content !== "string" || !content) return;
+        const ext = path.extname(main) || ".txt";
+        await saveToProject({ thread: r.thread, name: `${slugOf(r.title, "artifact")}${ext}`, base64: Buffer.from(content, "utf8").toString("base64"), mime: MIME_BY_EXT[/** @type {keyof typeof MIME_BY_EXT} */ (ext)] || "text/plain", source: `${by.provider || "an agent"} artifact (${r.kind})`, artifact: r.id, key: `artifact:${r.id}` });
+      } catch (e) { ctx.log(`artifacts: could not keep ${r && r.id} in the project folder: ${/** @type {Error} */ (e).message}`); }
+    };
+
     const create = async (i, meta) => {
       const kind = /** @type {keyof typeof KINDS} */ (i.kind);
       if (!KINDS[kind]) throw refuse(`kind must be one of ${Object.keys(KINDS).join(", ")}`, "bad_input");
@@ -457,6 +494,7 @@ export default {
       catch (e) { db.prepare("DELETE FROM artifacts_items WHERE id = ?").run(id); throw e; }
       emit("artifact.created", r, { made_by: by });
       if (r.thread) emit("thread.artifact", r, { thread: r.thread });
+      void toProjectFolder(r);
       return shape(r);
     };
 
@@ -484,6 +522,7 @@ export default {
       emit("artifact.updated", fresh, { made_by: by });
       const thread = meta && meta.thread;
       if (thread) emit("thread.artifact", fresh, { thread });
+      void toProjectFolder(fresh);
       return shape(fresh);
     };
 
@@ -507,7 +546,7 @@ export default {
      * folder's. The content is read from the descriptor, never by path again.
      * @param {any} reg @param {string} file @returns {string|null}
      */
-    const readCaptured = (reg, file) => {
+    const readCaptured = (reg, file, { binary = false, max = MAX_BYTES } = {}) => {
       const id = `${reg.dev}:${reg.ino}`;
       if (dirId(reg.dir) !== id) return null;
       if (_test.beforeOpen) _test.beforeOpen(file);
@@ -515,14 +554,14 @@ export default {
       try { fd = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); } catch { return null; }
       try {
         const st = fs.fstatSync(fd, { bigint: true });
-        if (!st.isFile() || st.nlink !== 1n || st.size > BigInt(MAX_BYTES)) return null;
+        if (!st.isFile() || st.nlink !== 1n || st.size > BigInt(max)) return null;
         if (reg.uid !== null && reg.uid !== undefined && st.uid !== BigInt(reg.uid)) return null;
         if (LINUX_FD) { try { if (fs.readlinkSync(`/proc/self/fd/${fd}`) !== file) return null; } catch { return null; } }
         const buf = Buffer.alloc(Number(st.size));
         let got = 0;
         while (got < buf.length) { const n = fs.readSync(fd, buf, got, buf.length - got, got); if (n <= 0) break; got += n; }
         if (dirId(reg.dir) !== id) return null;
-        return buf.subarray(0, got).toString("utf8");
+        return binary ? buf.subarray(0, got) : buf.subarray(0, got).toString("utf8");
       } finally { fs.closeSync(fd); }
     };
 
@@ -697,6 +736,7 @@ export default {
       const fresh = row(idNew);
       emit("artifact.created", fresh, { made_by: by });
       emit("thread.artifact", fresh, { thread: i.thread });
+      void toProjectFolder(fresh);
       return shape(fresh);
     };
 
@@ -760,6 +800,7 @@ export default {
       const fresh = row(idNew);
       emit("artifact.created", fresh, { made_by: by });
       emit("thread.artifact", fresh, { thread: i.thread });
+      void toProjectFolder(fresh);
       return shape(fresh);
     };
 
@@ -794,8 +835,30 @@ export default {
       mediaTimers.set(key, timer);
     };
 
+    /**
+     * A file a session saved in its folder that is not an artifact kind (a PDF, a spreadsheet, a data file, a code output) is still the project's: it goes to the project's folder as it is, once per
+     * content. Read with the same safe open as every captured file.
+     * @param {string} thread @param {any} reg @param {string} file @param {string} name
+     */
+    const keepOther = async (thread, reg, file, name) => {
+      const bytes = readCaptured(reg, file, { binary: true, max: PROJECT_FILE_MAX });
+      if (!bytes || !bytes.length) return;
+      await saveToProject({ thread, name, base64: /** @type {Buffer} */ (bytes).toString("base64"), mime: MIME_BY_EXT[/** @type {keyof typeof MIME_BY_EXT} */ (path.extname(name).toLowerCase())] || "application/octet-stream", source: "saved in the session's folder", key: `file:${thread}:${name}` });
+    };
+
+    /** One capture of one file at a time: the folder watcher and a provider's own event can name the same file together, and must not each make an artifact of it. @type {Map<string, Promise<any>>} */
+    const capturing = new Map();
     /** @param {{ thread?: string, path?: string }} e */
     const capture = async e => {
+      if (!e || typeof e.thread !== "string" || typeof e.path !== "string") return;
+      const key = `${e.thread}/${path.basename(e.path)}`;
+      const prior = capturing.get(key) || Promise.resolve();
+      const run = prior.catch(() => {}).then(() => captureOne(e));
+      capturing.set(key, run);
+      try { return await run; } finally { if (capturing.get(key) === run) capturing.delete(key); }
+    };
+    /** @param {{ thread?: string, path?: string }} e */
+    const captureOne = async e => {
       if (!e || typeof e.thread !== "string" || typeof e.path !== "string") return;
       const reg = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_capture_dirs WHERE thread = ?").get(e.thread));
       if (!reg || !reg.dev) return;
@@ -805,7 +868,7 @@ export default {
       const ext = path.extname(name).toLowerCase();
       if (mediaFormatOf(name)) { scheduleMedia(e.thread, name); return; }
       const how = BY_EXTENSION[ext];
-      if (!how) return;
+      if (!how) { await keepOther(e.thread, reg, file, name); return; }
       const content = readCaptured(reg, file);
       if (content === null) return;
       const rel = name;
@@ -828,6 +891,37 @@ export default {
       db.prepare("INSERT OR REPLACE INTO artifacts_capture_files (thread, name, artifact) VALUES (?,?,?)").run(e.thread, rel, made.id);
       emit("thread.artifact", row(made.id), { thread: e.thread });
     };
+    // The folder watcher: a file any provider saves in a thread's registered folder is kept, with no event from the provider. fs.watch on the folder (top level only), each file settled for a moment before
+    // it is read (a file being written is not read half way), and the same safe-open checks as every captured file. A session's folder is watched from its registration until the thread ends.
+    /** @type {Map<string, fs.FSWatcher>} */ const folderWatch = new Map();
+    /** @type {Map<string, NodeJS.Timeout>} */ const captureTimers = new Map();
+    const scheduleCapture = (/** @type {string} */ thread, /** @type {string} */ name) => {
+      if (!name || name.startsWith(".")) return;
+      const key = `${thread}/${name}`;
+      clearTimeout(captureTimers.get(key));
+      const timer = setTimeout(() => {
+        captureTimers.delete(key);
+        const reg = /** @type {any} */ (db.prepare("SELECT dir FROM artifacts_capture_dirs WHERE thread = ?").get(thread));
+        if (reg) capture({ thread, path: path.join(reg.dir, name) }).catch(err => ctx.log(`artifacts: folder ${name}: ${err.message}`));
+      }, _test.captureDebounce);
+      timer.unref();
+      captureTimers.set(key, timer);
+    };
+    const unwatchFolder = (/** @type {string} */ thread) => { const w = folderWatch.get(thread); if (w) { try { w.close(); } catch { /* closed */ } folderWatch.delete(thread); } };
+    const watchFolder = (/** @type {string} */ thread) => {
+      if (folderWatch.has(thread)) return;
+      const reg = /** @type {any} */ (db.prepare("SELECT * FROM artifacts_capture_dirs WHERE thread = ?").get(thread));
+      if (!reg || !reg.dev) return;
+      try {
+        const w = fs.watch(reg.dir, { persistent: false }, (_ev, fname) => { if (fname) scheduleCapture(thread, String(fname)); });
+        w.on("error", () => unwatchFolder(thread));
+        folderWatch.set(thread, w);
+        for (const n of fs.readdirSync(reg.dir)) scheduleCapture(thread, n);
+      } catch (err) { ctx.log(`artifacts: could not watch ${reg.dir}: ${/** @type {Error} */ (err).message}`); }
+    };
+    // folders registered before a restart are watched again
+    for (const r of /** @type {any[]} */ (db.prepare("SELECT thread FROM artifacts_capture_dirs").all())) watchFolder(String(r.thread));
+    const offStopped = ctx.events.on("thread.stopped", (/** @type {any} */ ev) => { const p = ev && ev.payload ? ev.payload : ev; const t = p && (p.thread || p.session); if (t) setTimeout(() => unwatchFolder(String(t)), 2 * _test.captureDebounce).unref(); });
     const offWrote = ctx.events.on("floor.wrote", (/** @type {any} */ ev) => { capture(ev && ev.payload ? ev.payload : ev).catch(err => ctx.log(`artifacts: capture: ${err.message}`)); });
 
     // A tag's grant ends with its thread (reviewer-2 LOW).
@@ -908,6 +1002,7 @@ export default {
       examples: [{}],
       run: async (i, meta) => {
         const scope = await scopeOf(meta);
+        // head > 0: an artifact is listed once its first version is kept, not while it is being made (the folder watcher makes them beside a person's own calls)
         const where = ["deleted_at IS NULL"], args = [];
         if (!("all" in scope)) {
           const mine = "project" in scope ? scope.project : PERSONAL;
@@ -1168,6 +1263,7 @@ export default {
         const st = fs.lstatSync(dir, { bigint: true });
         if (!st.isDirectory()) throw refuse(`${dir} is not a folder`, "bad_input");
         db.prepare("INSERT OR REPLACE INTO artifacts_capture_dirs (thread, dir, dev, ino, uid) VALUES (?,?,?,?,?)").run(i.thread, dir, String(st.dev), String(st.ino), i.uid ?? null);
+        unwatchFolder(String(i.thread)); watchFolder(String(i.thread));
         return { thread: i.thread, dir, uid: i.uid ?? null };
       },
     });
@@ -1334,7 +1430,10 @@ export default {
         clearInterval(sweeper);
         if (typeof offWrote === "function") offWrote();
         if (typeof offThreadGone === "function") offThreadGone();
+        if (typeof offStopped === "function") offStopped();
         for (const t of mediaTimers.values()) clearTimeout(t);
+        for (const t of captureTimers.values()) clearTimeout(t);
+        for (const th of [...folderWatch.keys()]) unwatchFolder(th);
       },
     };
   },

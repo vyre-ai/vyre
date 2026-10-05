@@ -10,6 +10,7 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
+import { createFiles, KINDS as FILE_KINDS, MAX_FILE } from "./files.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
 import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
@@ -135,6 +136,43 @@ export default {
       description: "Move to project: file a session under another Project (a short name or a record address). Its record, Drive folder and the project's session list follow; its id, times and transcript pointer stay.",
       input: obj({ thread: { type: "string" }, project: { type: "string" } }, ["thread", "project"]),
       run: async (input, extra) => { const r = await hubOf().moveSession(input.thread, input.project, await chainOf(extra)); return { thread: r.data.thread, project: r.data.project && r.data.project.urn, drive: r.data.drive }; },
+    });
+    // Every file of a project lands in its Drive folder (core/work/files.js). Vyre's own modules hand files over: sessions (a chat's attachments, an image a tool returned), artifacts (what a model made).
+    /** @type {any} */ let files = null;
+    const filesOf = () => files || (files = createFiles({ kernel: kernelOf(), hub: hubOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, log: ctx.log }));
+    const fromModule = (/** @type {any} */ meta) => { kernelOf(); if (!(meta && typeof meta.caller === "string" && meta.caller.startsWith("module:"))) throw fail("denied", "only Vyre's own modules put files into a project's folder"); };
+    // Files follow a session when it is moved to another Project: the Drive moves its folders and says so (file.moved); the records of its files take the new place (core/work/files.js onMoved).
+    if (ctx.kernel && ctx.kernel.events && typeof ctx.kernel.events.subscribe === "function" && typeof ctx.kernel.serviceChain === "function") {
+      try { ctx.kernel.events.subscribe(ctx.kernel.serviceChain("work"), "work-files-moved", { type: "file.moved" }, async (/** @type {any} */ e) => { if (e && e.data) await filesOf().onMoved(e.data); }); }
+      catch (err) { if (typeof ctx.log === "function") ctx.log(`work: the file-move follower did not start: ${/** @type {Error} */ (err).message}`); }
+    }
+    ctx.tool("work.files.save", {
+      description: "Save one file of a session into its project's Drive folder (Projects/<slug>/chat|made/<session>/<name>) and record it, linked from the session and the Project. { thread, kind: chat|made, name, base64, mime?, source?, artifact?, key? } -> { path, created } or { path: null } when the session has no project. Vyre's own modules only.",
+      input: obj({ thread: { type: "string" }, kind: { type: "string", enum: FILE_KINDS }, name: { type: "string" }, base64: { type: "string" }, from_artifact: { type: "string" }, mime: { type: "string" }, source: { type: "string" }, artifact: { type: "string" }, key: { type: "string" } }, ["thread", "kind", "name"]),
+      callers: ["module"],
+      run: async (input, meta) => {
+        fromModule(meta);
+        /** @type {Uint8Array} */ let bytes;
+        if (typeof input.from_artifact === "string" && input.from_artifact) {
+          // media an artifact holds, read a chunk at a time (artifacts.media.read: 4 MB, awaited between chunks), so a large file never holds a thread
+          const parts = [];
+          for (let offset = 0, total = 0; ; ) {
+            const c = await ctx.call("artifacts.media.read", { id: String(input.from_artifact), offset, length: 4 * 1024 * 1024 });
+            if (!c || c.error || !c.data) throw fail("unavailable", `could not read the artifact: ${c && c.error ? c.error.message : "no answer"}`);
+            const chunk = Buffer.from(String(c.data.bytes_b64 || ""), "base64");
+            parts.push(chunk); total += chunk.length; offset += chunk.length;
+            if (c.data.eof || !chunk.length || total > MAX_FILE) break;
+          }
+          bytes = new Uint8Array(Buffer.concat(parts));
+        } else {
+          const text = String(input.base64 || "");
+          if (!text) throw fail("bad_input", "give base64 bytes or an artifact to read them from");
+          if (!/^[A-Za-z0-9+/\s]*={0,2}$/.test(text) || text.length * 0.75 > MAX_FILE + 3) throw fail("bad_input", "base64 bytes, up to 100 MB");
+          bytes = new Uint8Array(Buffer.from(text, "base64"));
+        }
+        const r = await filesOf().saveFile({ thread: String(input.thread), kind: input.kind, name: String(input.name), bytes, mime: input.mime, source: input.source, artifact: input.artifact, key: input.key });
+        return r ? { path: r.path, created: r.created, id: r.record && r.record.id } : { path: null };
+      },
     });
     ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",

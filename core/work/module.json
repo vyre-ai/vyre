@@ -49,6 +49,12 @@
         "effect": "write"
       },
       {
+        "name": "work.files.save",
+        "summary": "save one file of a session into its project's Drive folder (Vyre's own modules)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.situation",
         "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
         "reach": "anyone",
@@ -291,6 +297,81 @@
               "name": "drive",
               "kind": "text",
               "label": "Drive folder"
+            }
+          ]
+        },
+        {
+          "name": "project-file",
+          "label": "File",
+          "icon": "IconFile",
+          "fields": [
+            {
+              "name": "name",
+              "kind": "text",
+              "label": "Name",
+              "required": true
+            },
+            {
+              "name": "path",
+              "kind": "text",
+              "label": "Drive path"
+            },
+            {
+              "name": "kind",
+              "kind": "choice",
+              "label": "Where from",
+              "options": [
+                "chat",
+                "made"
+              ]
+            },
+            {
+              "name": "mime",
+              "kind": "text",
+              "label": "Type"
+            },
+            {
+              "name": "size",
+              "kind": "number",
+              "label": "Size in bytes"
+            },
+            {
+              "name": "sha256",
+              "kind": "text",
+              "label": "Hash"
+            },
+            {
+              "name": "source",
+              "kind": "text",
+              "label": "Made by (provider and tool)"
+            },
+            {
+              "name": "project",
+              "kind": "link",
+              "label": "Project",
+              "to": "project"
+            },
+            {
+              "name": "session",
+              "kind": "link",
+              "label": "Session",
+              "to": "session-summary"
+            },
+            {
+              "name": "thread",
+              "kind": "text",
+              "label": "Thread"
+            },
+            {
+              "name": "artifact",
+              "kind": "text",
+              "label": "Artifact"
+            },
+            {
+              "name": "key",
+              "kind": "text",
+              "label": "Once-only key",
+              "unique": true
             }
           ]
         }

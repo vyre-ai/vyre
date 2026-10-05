@@ -216,6 +216,7 @@ const ENV_MEANING = {
   ACME_DIRECTORY: "The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS.",
   AGENT: "The agent a thread runs as.",
   AGENT_KEY: "The key that proves a thread's calls come from its agent.",
+  ARTIFACTS_DIR: "The folder a thread saves what it makes in (images, documents, pages, data). Vyre keeps each file in the project's Drive folder.",
   AGENT_KIND: "`assistant` or `agent`. Only the assistant is offered the tools that drive other threads.",
   ALLOW_REAL_TRANSCRIPTS: "`1`: a home other than `~/.vyre` reads the transcripts in `~/.claude` too. Never under tests.",
   CLAUDE_HOME: "Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`.",
