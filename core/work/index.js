@@ -129,7 +129,18 @@ export default {
       const mv = from.gw && from.gw.moves;
       if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id });
       // SCRATCH ONLY (work/move-int): a stand-in for network-2's sealed carry, reading and writing under the mover's own chains, so the integration walk can run. Never on a real branch.
-      if (process.env.VYRE_TEST_FAKE_CARRY === "1" && !from.carry) from.carry = async (/** @type {any[]} */ entries) => { const out = []; for (const e of entries) { const r = await from.drive.get(from.chain, e.path); const b = r instanceof Uint8Array ? r : (r.bytes || r.data); await to.drive.put(to.gw.serviceChain("work"), e.dest, b); out.push({ path: e.path, dest: e.dest, sha256: e.sha256 }); } return out; };
+      if (process.env.VYRE_TEST_FAKE_CARRY === "1" && !from.carry) from.carry = async (/** @type {any[]} */ entries) => {
+        /** @type {Map<string, string>} */ const chats = new Map(); const out = [];
+        for (const e of entries) {
+          const m = /^(Projects\/[^/]+\/(?:chat|made)\/)([^/]+)(\/.*)$/.exec(e.dest); if (!m) throw new Error("not a chat path");
+          if (!chats.has(m[2])) chats.set(m[2], (await to.gw.grants.chats.create(to.chain, {})).id);
+          const dest = `${m[1]}${chats.get(m[2])}${m[3]}`;
+          const r = await from.drive.get(from.chain, e.path); const bytes = r instanceof Uint8Array ? r : (r.bytes || r.data);
+          await to.drive.put(to.chain, dest, bytes);
+          out.push({ path: e.path, dest: e.dest, sha256: e.sha256 });
+        }
+        return out;
+      };
       if (to.gw && to.gw.records && typeof to.gw.records.define === "function") to.install = async (/** @type {any} */ c, /** @type {string[]} */ names) => {
         const defs = (await from.types(from.chain)).filter((/** @type {any} */ t) => names.includes(t.name));
         if (defs.length !== names.length) throw Object.assign(new Error("a record type of this project is not defined here, so it cannot be installed in the other Space"), { code: "blocked" });
