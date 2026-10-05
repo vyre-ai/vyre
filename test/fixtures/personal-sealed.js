@@ -1,5 +1,5 @@
 // @ts-check
-// A second sealed world for memory.answer (docs/work/memory-iq.md). It was written without reading
+// A second sealed world for memory.answer (team/archive/work-journals/memory-iq.md). It was written without reading
 // the rules, the model prompt, or the body of any other world, so it measures how far the answerer
 // generalises. Nobody tuning the rules or the prompt should read past this header.
 //

@@ -33,9 +33,15 @@ test("mail and meetings found by the poll watchers land on the contacts' timelin
   const dir = path.join(root, "watchers"); fs.mkdirSync(dir);
   const clock = { now: Date.now() };
   const bus = new EventEmitter();
-  const request = async (/** @type {any} */ i) => { const out = google.handle({ method: i.method, url: new URL(i.url), headers: { ...(i.headers || {}), authorization: `Bearer ${TOKEN}` }, body: i.body }); return { kind: "read", status: out.status, headers: out.headers, body: out.body }; };
+  // the google module's read for a connected account (Gmail and Calendar reads only)
+  const googleApi = async (/** @type {any} */ i) => {
+    const q = new URLSearchParams(); for (const [k, v] of Object.entries(i.query || {})) for (const x of [].concat(/** @type {any} */ (v))) q.append(k, String(x));
+    const host = i.path.startsWith("/gmail/") ? "gmail.googleapis.com" : "www.googleapis.com";
+    const out = google.handle({ method: "GET", url: new URL(`https://${host}${i.path}${q.size ? "?" + q : ""}`), headers: { authorization: `Bearer ${TOKEN}` } });
+    return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
+  };
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {}, request, netOptions: () => testHooks.net, wall: () => testHooks.wall,
+    db, dir, now: () => clock.now, log: () => {}, google: googleApi, googleGranted: async () => true, netOptions: () => testHooks.net, wall: () => testHooks.wall,
     emit: (/** @type {string} */ type, /** @type {any} */ payload) => { bus.emit(type, payload); },
     call: async (/** @type {string} */ tool) => tool === "projects.list" ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/harlow-legal", workspaces: ["/work/harlow-legal"] }] } } : { error: { code: "no_such_tool" } },
     fetch: async () => "unused", teach: async () => true,
@@ -45,8 +51,8 @@ test("mail and meetings found by the poll watchers land on the contacts' timelin
   // the records host with the default Flow for the mailbox and the calendar, each armed on the watcher the preset makes
   const host = createRecordsHost({ space: "spc_harlow000001", owner: "per_owner", store: createMemoryStore() });
   await host.defineCore();
-  const mail = await rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail", vars: { mailbox: MAILBOX } });
-  const cal = await rt.createPreset({ kind: "connector", connector: "google-calendar", poll: "events.changed", project: "harlow-legal", credential: "google-calendar", vars: { calendar: MAILBOX } });
+  const mail = await rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: MAILBOX } });
+  const cal = await rt.createPreset({ kind: "connector", connector: "google-calendar", poll: "events.changed", project: "harlow-legal", google: "work", vars: { calendar: MAILBOX } });
   for (const w of [mail, cal]) {
     const d = await host.flows.runner.define(null, logCommunicationsFlow({ watcher: w.name }), host.person);
     assert.ok(d.ok, JSON.stringify(d.errors));

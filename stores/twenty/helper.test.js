@@ -82,7 +82,11 @@ test("createStoreFor in twenty mode: a machine that cannot run Twenty refuses a 
   const home = fs.mkdtempSync(path.join(SCRATCH, "cs-")); dirs.push(home);
   const f = createStoreFor({ home, mode: "twenty", helper: false, preflight: async () => ({ ok: false, reasons: ["no Docker"], facts: {} }) });
   await assert.rejects(() => f("spc_abcdefghijkl", {}), (e) => e.code === "unavailable" && /no Docker/.test(e.message));
-  const g = createStoreFor({ home, mode: "auto", helper: false, preflight: async () => ({ ok: false, reasons: ["no Docker"], facts: {} }) });
+  // a box that should run Twenty and cannot (no Docker) is broken: auto refuses too, with the cause, and never offers the built-in store
+  const g0 = createStoreFor({ home, mode: "auto", helper: false, preflight: async () => ({ ok: false, reasons: ["no Docker"], facts: {} }) });
+  await assert.rejects(() => g0("spc_mnopqrstuvwx", {}), (e) => e.code === "unavailable" && /no Docker/.test(e.message) && /Records store/.test(e.message));
+  // only a box too small for Twenty asks about the built-in store, and offers the server
+  const g = createStoreFor({ home, mode: "auto", helper: false, preflight: async () => ({ ok: false, reasons: ["not enough free memory: 900 MB available, a Space's Twenty needs about 2000 MB"], facts: {} }) });
   await assert.rejects(() => g("spc_mnopqrstuvwx", {}), (e) => e.code === "needs_confirmation" && e.plan.confirm.choices.includes("server"));
   assert.equal(fs.existsSync(path.join(home, "kernel", "spaces", "spc_mnopqrstuvwx", "store.json")), false, "nothing was decided or written");
 });

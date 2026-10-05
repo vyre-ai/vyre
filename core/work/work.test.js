@@ -57,6 +57,14 @@ test("work.tools lists the Space's own nouns and the outward act; work.call retu
   assert.equal(found.result.records.length, 1);
 });
 
+test("work.space-brief names the Space and its record types with their fields, definitions only, for an agent's environment brief", async () => {
+  const { tools } = await boot();
+  const r = await tools["work.space-brief"].run({}, { caller: "module:sessions" });
+  assert.equal(r.space, SPACE);
+  assert.deepEqual(r.types, [{ name: "matter", fields: ["title", "stage"] }]);
+  assert.deepEqual(manifest.does.tools.find(t => t.name === "work.space-brief").reach, "modules");
+});
+
 test("a person's own outward act asks for their presence, never runs, and an unknown tool is not_found", async () => {
   const { call } = await boot();
   const out = await call("work.call", { tool: "email.send", input: { summary: "Welcome email for Jane Doe" } });

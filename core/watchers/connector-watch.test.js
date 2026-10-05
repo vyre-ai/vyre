@@ -1,6 +1,7 @@
 // @ts-check
 // A poll from any connector's declaration (records/connectors) as a watcher, with no per-service watcher code: the Gmail, Google Calendar and Stripe declarations, run by the one generic loop in a
-// real watcher child, against a fake Google and a fake Stripe reached through the vault's read (the `request` port). A real child and a real store: a hosted runner, never the person's Mac.
+// real watcher child, against a fake Google reached through the google module's api (the `google` port: a connected account, read only) and a fake Stripe reached through the vault's read (the
+// `request` port). A real child and a real store: a hosted runner, never the person's Mac.
 import "../../scripts/mac-test-guard.mjs";
 import { test as nodeTest } from "node:test";
 import { skipOffRunner } from "../../lib/sandbox/test-host.js";
@@ -35,8 +36,17 @@ function setup(/** @type {any} */ t, /** @type {{ google: any, stripe?: any }} *
     const out = f.h.handle({ method: i.method, url: u, headers: { ...(i.headers || {}), authorization: `Bearer ${f.key}` }, body: i.body });
     return { kind: "read", status: out.status, headers: out.headers, body: out.body };
   };
+  // the google module's read for a connected account: Gmail and Calendar reads only, the token added the way the module adds it
+  const googleApi = async (/** @type {any} */ i) => {
+    assert.equal(i.account, "work"); assert.equal(i.method, "GET");
+    const host = i.path.startsWith("/gmail/") ? "gmail.googleapis.com" : "www.googleapis.com";
+    const q = new URLSearchParams(); for (const [k, v] of Object.entries(i.query || {})) for (const x of [].concat(/** @type {any} */ (v))) q.append(k, String(x));
+    const u = new URL(`https://${host}${i.path}${q.size ? "?" + q : ""}`); seen.push(`GET ${host}${u.pathname}${u.search}`);
+    const out = google.handle({ method: "GET", url: u, headers: { authorization: `Bearer ${TOKEN}` } });
+    return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
+  };
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {}, request, netOptions: () => testHooks.net, wall: () => testHooks.wall,
+    db, dir, now: () => clock.now, log: () => {}, request, google: googleApi, googleGranted: async () => true, netOptions: () => testHooks.net, wall: () => testHooks.wall,
     emit: () => {}, call: async (/** @type {string} */ tool) => tool === "projects.list" ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/harlow-legal", workspaces: ["/work/harlow-legal"] }] } } : { error: { code: "no_such_tool" } },
     fetch: async () => "unused", teach: async (/** @type {string} */ kind, /** @type {any} */ fact) => { taught.push({ kind, ...fact }); return true; },
   });
@@ -49,7 +59,7 @@ test("a Gmail poll starts quiet, then files each new message with its people, di
   const google = fakeGoogle({ mailbox: MAILBOX });
   google.addMessage({ from: "Jane Doe <jane@client.test>", subject: "Before the poll", at: at(-60) });
   const s = setup(t, { google });
-  const made = await s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail", vars: { mailbox: MAILBOX } });
+  const made = await s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: MAILBOX } });
   assert.equal(made.name, "gmail-alex-harlow-test");
   assert.deepEqual(made.facts.reads, ["gmail.googleapis.com"]);
   assert.match(made.lines.do, /Nothing in Gmail is changed/);
@@ -82,7 +92,7 @@ test("a Gmail poll starts quiet, then files each new message with its people, di
 test("a Calendar poll files an event once, and a changed event is a new item with the same source key", async t => {
   const google = fakeGoogle({ mailbox: MAILBOX });
   const s = setup(t, { google });
-  const made = await s.rt.createPreset({ kind: "connector", connector: "google-calendar", poll: "events.changed", project: "harlow-legal", credential: "google-calendar", vars: { calendar: MAILBOX } });
+  const made = await s.rt.createPreset({ kind: "connector", connector: "google-calendar", poll: "events.changed", project: "harlow-legal", google: "work", vars: { calendar: MAILBOX } });
   await s.rt.create(made.name, { hash: made.hash }); await s.rt.settle();
   const later = () => new Date(s.clock.now + 5 * 60_000).toISOString();
   google.putEvent({ updated: later(), id: "sign1", summary: "Signing: Rivera trust", description: "Bring ID", start: { dateTime: "2026-10-08T16:00:00Z" }, end: { dateTime: "2026-10-08T17:00:00Z" },
@@ -119,10 +129,30 @@ test("the same loop polls Stripe: no watcher code for a service that is only a d
 
 test("a poll that is missing something it needs, or does not exist, is refused when it is written, not when it first runs", async t => {
   const s = setup(t, { google: fakeGoogle() });
-  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail" }), /needs mailbox/);
-  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail", vars: { mailbox: MAILBOX, other: "x" } }), /no use for other/);
-  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "nope", project: "harlow-legal", credential: "gmail", vars: { mailbox: MAILBOX } }), /has no poll nope/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work" }), /needs mailbox/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: MAILBOX, other: "x" } }), /no use for other/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "nope", project: "harlow-legal", google: "work", vars: { mailbox: MAILBOX } }), /has no poll nope/);
   await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "clio", poll: "x", project: "harlow-legal", credential: "c" }), /connector this build declares/);
-  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", vars: { mailbox: MAILBOX } }), /needs credential/);
-  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail", vars: { mailbox: MAILBOX }, when: "every 1 minutes" }), /schedule|minutes/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", vars: { mailbox: MAILBOX } }), /name it \(google/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail", google: "work", vars: { mailbox: MAILBOX } }), /has no vault credential/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "stripe", poll: "payments.recent", project: "harlow-legal" }), /needs credential/);
+  await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: MAILBOX }, when: "every 1 minutes" }), /schedule|minutes/);
+});
+
+test("G-1: a Google watcher reads nothing until a person grants the account to it, for a dry run as for a run", async t => {
+  const google = fakeGoogle({ mailbox: MAILBOX });
+  const s = setup(t, { google });
+  let granted = false;
+  s.rt.d.googleGranted = async (/** @type {string} */ account, /** @type {string} */ watcher) => granted && account === "work" && watcher === "gmail-alex-harlow-test";
+  s.rt.d.googleItem = async () => "work-google";
+  const made = await s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", lookback_days: 1, vars: { mailbox: MAILBOX } });
+  assert.equal(made.grant, "vyre vault grant work-google watchers --watcher gmail-alex-harlow-test");
+  google.addMessage({ from: "jane@client.test", subject: "Hello", at: at(-5) });
+  const before = await s.rt.test(made.name);
+  assert.match(JSON.stringify(before), /not granted to this watcher/);
+  assert.equal(s.seen.length, 0, "nothing was read");
+  granted = true;
+  const after = await s.rt.test(made.name);
+  assert.doesNotMatch(JSON.stringify(after), /not granted/);
+  assert.ok(s.seen.length > 0, "with the grant it reads");
 });

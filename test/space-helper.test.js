@@ -1,8 +1,8 @@
 // @ts-check
-// The Space helper (box/vyre `space-helper-run`, `space-helper`, `admin`; docs/work/space-helper.md Revision 2): the root side of a Space's Twenty store.
+// The Space helper (box/vyre `space-helper-run`, `space-helper`, `admin`; team/archive/work-journals/space-helper.md Revision 2): the root side of a Space's Twenty store.
 // Run with sh against a temp folder standing in for /var/lib/vyre-spaces. docker, nsenter (with a tiny iptables that keeps one rule list per pid, the
 // container's namespace) and the other host tools are fakes on PATH; the compose file is the REAL one, from stores/twenty/provision.js. Linux only (stat -c).
-// A request from another uid and a real iptables owner match need a real box: see docs/work/space-helper.md for the box test list.
+// A request from another uid and a real iptables owner match need a real box: see team/archive/work-journals/space-helper.md for the box test list.
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -43,7 +43,14 @@ if (a[0] === "inspect") {
   process.exit(1);
 }
 if (a[0] === "events") { if (has("events")) { const lines = rd("events"); fs.rmSync(F + "/events"); out(lines); } process.exit(0); }
-if (a[0] === "pull") process.exit(has("pull-fails") ? 1 : 0);
+if (a[0] === "pull") {
+  const ref = a[a.length - 1];
+  // as the real docker: a reference that still holds a compose variable is not an image name
+  if (ref.includes("\${")) { process.stderr.write("invalid reference format\\n"); process.exit(1); }
+  fs.appendFileSync(F + "/pulled", ref + "\\n");
+  if (has("pull-fails")) { process.stderr.write("Error response from daemon: pull access denied for " + ref + "\\n"); process.exit(1); }
+  process.exit(0);
+}
 if (a[0] === "image" && a[1] === "inspect") { const nm = a[a.length - 1].split(":")[0]; out(nm + "@sha256:" + require("crypto").createHash("sha256").update(rd("digest-salt", "x") + nm).digest("hex")); }
 if (a[0] === "ps") { const n = nameOf(a.join(" ")); out(n && has("running-" + n) ? "srv1" : ""); }
 if (a[0] === "network") {
@@ -300,6 +307,31 @@ test("space helper: the Space cap, the up rate and one-at-a-time answer busy or 
   assert.equal(r.status(held).state, "busy");
 });
 
+test("space helper: a lock whose run is gone is taken over at once, and a fresh install clears what an earlier install left (locks, claims, the up-rate window, old answers) and keeps every Space", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const first = r.ask("up aa\n"); await r.helper();
+  assert.equal(r.status(first).state, "ok");
+  const priv = path.join(r.SP, "private");
+  // a lock left by a run that no longer exists: not busy
+  fs.mkdirSync(path.join(priv, "lock-aa")); fs.writeFileSync(path.join(priv, "lock-aa", "pid"), "999999\n");
+  const again = r.ask("stop aa\n"); await r.helper();
+  assert.equal(r.status(again).state, "ok", JSON.stringify(r.status(again)));
+  assert.equal(fs.existsSync(path.join(priv, "lock-aa")), false, "the lock is released at the end of the request");
+  // what an earlier install left: a lock with no owner, a claim, a full rate window, an old answer
+  fs.mkdirSync(path.join(priv, "lock-bb")); fs.mkdirSync(path.join(priv, "claim"), { recursive: true }); fs.writeFileSync(path.join(priv, "claim", "req-" + "a".repeat(32)), "up bb\n");
+  fs.writeFileSync(path.join(priv, "rate-up"), `${Math.floor(Date.now() / 60000)} 1000\n`);
+  const old = path.join(r.SP, "status", "status-" + "b".repeat(32)); fs.writeFileSync(old, "{}"); const past = new Date(Date.now() - 3600_000); fs.utimesSync(old, past, past);
+  const recent = path.join(r.SP, "status", "status-" + "c".repeat(32)); fs.writeFileSync(recent, "{}");
+  const inst = /** @type {any} */ (await r.run(["space-helper", "install"]));
+  assert.equal(inst.code, 0, inst.out);
+  for (const gone of ["lock-bb", "rate-up", path.join("claim", "req-" + "a".repeat(32))]) assert.equal(fs.existsSync(path.join(priv, gone)), false, `${gone} was cleared`);
+  assert.equal(fs.existsSync(old), false, "an answer nobody waits for is cleared"); assert.equal(fs.existsSync(recent), true, "a recent answer is kept");
+  assert.ok(fs.existsSync(path.join(priv, "spaces", "aa", "record")), "the Space is kept");
+  const up = r.ask("up bb\n"); await r.helper();
+  assert.equal(r.status(up).state, "ok", JSON.stringify(r.status(up)));
+});
+
 test("space helper: a flood is cut at the spool cap, and a stop still runs afterwards", opts, async t => {
   const r = rig(t);
   await r.prime();
@@ -435,8 +467,11 @@ test("space helper: install writes a path unit on the spool with the start limit
   assert.match(s, /StartLimitIntervalSec=0/); assert.match(s, /ExecStart=.*space-helper-run/);
   assert.equal(fs.readFileSync(path.join(r.SP, "private", "image"), "utf8").trim(), "sha256:" + "a".repeat(64));
   const images = fs.readFileSync(path.join(r.SP, "private", "images"), "utf8").trim().split("\n").map(l => l.split(" "));
-  const named = [...composeFile({ space: "x" }).matchAll(/^    image: (.*)$/gm)].map(m => m[1]);
-  assert.deepEqual(images.map(i => i[0]).sort(), [...new Set(named)].sort(), "the images recorded are the ones the generated compose file names, expanded or not");
+  const written = images.map(i => i[0]);
+  for (const want of [/postgres/, /redis/, /twentycrm\/twenty/]) assert.ok(written.some(w => want.test(w)), `${want} is recorded: ${written.join(", ")}`);
+  const pulled = fs.readFileSync(path.join(r.F, "pulled"), "utf8").trim().split("\n");
+  assert.ok(pulled.every(p => !p.includes("${")), `every pull names a real reference, never a compose template: ${pulled.join(", ")}`);
+  assert.ok(pulled.some(p => /^twentycrm\/twenty:v[0-9.]+(@sha256:[0-9a-f]{64})?$/.test(p)), `Twenty is pulled by its pinned tag and digest: ${pulled.join(", ")}`);
   for (const [, dg] of images) assert.match(dg, /^[a-z0-9\/]+@sha256:[0-9a-f]{64}$/, "every image is recorded by digest");
   assert.equal(fs.statSync(path.join(r.SP, "private")).mode & 0o777, 0o700);
   assert.match(r.calls(), /systemctl enable --now vyre-spaces\.path/);
@@ -609,7 +644,8 @@ test("space helper: the images are pulled and recorded by digest at install; a f
   const r = rig(t);
   r.flag("pull-fails");
   const bad = /** @type {any} */ (await r.run(["space-helper", "install"]));
-  assert.notEqual(bad.code, 0); assert.match(bad.out, /could not pull/);
+  assert.notEqual(bad.code, 0); assert.match(bad.out, /could not pull [a-z0-9]\S*: Error response from daemon: pull access denied/, "the real reference and the registry's reason");
+  assert.doesNotMatch(bad.out, /\$\{/, "never the raw compose template");
   fs.rmSync(path.join(r.F, "pull-fails"));
   await r.prime();
   r.ask("up harlow\n"); await r.helper();

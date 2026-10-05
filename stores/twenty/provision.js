@@ -41,7 +41,7 @@ export function names(space) {
 
 /**
  * Memory limits in MB for one Space's four containers. `small` is for a Space on a small box (a few people, a few thousand
- * records): it is measured, not guessed (see docs/work/records.md for the runs). `standard` leaves Docker's default (none).
+ * records): it is measured, not guessed (see team/archive/work-journals/records.md for the runs). `standard` leaves Docker's default (none).
  * A caller may give its own numbers.
  */
 export const MEMORY_PROFILES = Object.freeze({
@@ -592,5 +592,5 @@ export async function rotateApiKey(o) {
   return { rotated: true, expiresAt: exp };
 }
 
-/** The role the gateway's key takes. Admin until the narrowest role that works has been researched (docs/work/records.md). */
+/** The role the gateway's key takes. Admin until the narrowest role that works has been researched (team/archive/work-journals/records.md). */
 export const KEY_ROLE = "Admin";

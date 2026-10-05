@@ -1,5 +1,5 @@
 // @ts-check
-// The SEALED half of the 0.2 eval world (docs/work/iq.md, the sealed world section). Memory is tuned
+// The SEALED half of the 0.2 eval world (team/archive/work-journals/iq.md, the sealed world section). Memory is tuned
 // against the open world (iq02-open.js), so it is measured on this one, which nobody tunes against:
 // score it, do not read it. Its gold questions are test/eval/iq02-sealed.json.
 //

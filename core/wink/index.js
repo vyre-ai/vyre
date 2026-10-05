@@ -28,6 +28,7 @@ import { registerReset } from "./reset.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
 import { realScanners } from "./storage/discover.js";
+import { lentRevoked } from "./lent-revoked.js";
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
@@ -327,9 +328,9 @@ export function createWink(inject = {}) {
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
     // What this device answers when its server calls back down the connection it holds (storage frames, a drive to accept, a scan): set once the storage side below exists.
-    const serveRef = { fn: /** @type {(tool: string, input: any) => Promise<any>} */ (async () => { throw fail("denied", "This connection answers storage calls only."); }) };
+    const serveRef = { fn: /** @type {(tool: string, input: any, from: string) => Promise<any>} */ (async () => { throw fail("denied", "This connection answers storage calls only."); }) };
     const pairing = createPairing({
-      serve: (/** @type {string} */ tool, /** @type {any} */ input) => serveRef.fn(tool, input),
+      serve: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ from) => serveRef.fn(tool, input, from),
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, typedDefault: typedCodeDefault,
       codeNow: () => { const o1 = codeOffer ? readOffer(codeOffer) : null; return shown && o1 && o1.state === "offered" ? { code: shown.code, expires: shown.expires, offer: codeOffer } : null; },
       cancelCode: () => { const o1 = codeOffer ? readOffer(codeOffer) : null; if (code && o1 && o1.flow === "W1" && ["offered", "found"].includes(o1.state)) { code.cancel(); writeOffer(codeOffer, "closed", { why: "used" }); } }, confirmAdopt: inject.confirmAdopt,
@@ -458,7 +459,7 @@ export function createWink(inject = {}) {
       },
     });
     ctx.tool("wink.relay.apply", {
-      description: "Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see docs/work/tailnet.md). Answers { applied, url }.",
+      description: "Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see team/archive/work-journals/tailnet.md). Answers { applied, url }.",
       input: obj({ v: { type: "number" }, action: { type: "string", enum: ["relay.enable"] }, url: str, box: str, device: str, ts: { type: "number" }, nonce: str, sig: str }, ["v", "action", "box", "device", "ts", "nonce", "sig"]),
       run: async (input, meta = {}) => {
         owner(meta, "changing the relay");
@@ -750,6 +751,14 @@ export function createWink(inject = {}) {
     // that passes `inject.pool` / `inject.bridge` / `inject.poolBackend` replaces them.
     const kst = ctx.kernel && ctx.kernel.storage ? ctx.kernel.storage : null;
     const br = inject.bridge || (kst ? { createBridge: kst.createBridge, backendFor: kst.backendFor, home: () => pairing.homeServerId() } : null);
+    // VyreDrop (core/files/drop-wink.js): the id of the server this computer is paired to, and, on the server, a call down the connection a computer holds (only the drop offer: nothing else goes down it this way).
+    ctx.tool("wink.home.id", { description: "The id of the server this computer is paired to, or null.", input: obj(), run: async (/** @type {any} */ _i, /** @type {any} */ meta = {}) => { if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules"); return { device: pairing.homeServerId() }; } });
+    ctx.tool("wink.device.call", { description: "Tell a connected computer something down the connection it holds (a drop is waiting). Only wink.drop.offer.", input: obj({ device: str, tool: str, input: { type: "object" } }, ["device", "tool"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ meta = {}) => {
+        if (!String((meta && meta.caller) || "").startsWith("module:")) throw fail("denied", "for modules");
+        if (i.tool !== "wink.drop.offer") throw fail("denied", "only a drop offer goes down a held connection this way");
+        return holds.linkTo(String(i.device)).call("wink.drop.offer", i.input || {});
+      } });
     const noEngine = () => fail("unavailable", "This server has no storage engine to share a drive with.");
     const endpoint = createBridgeEndpoint({ createBridge: br ? br.createBridge : () => { throw noEngine(); }, secrets: bsecrets,
       // On a computer that serves a drive for its server, the offer's row is at the server, not here: the secret the server sealed to this computer and the one caller it answers are what bind a frame to the offer.
@@ -764,13 +773,18 @@ export function createWink(inject = {}) {
     const drive = acceptDrive({ endpoint, secrets: bsecrets, home: homeId, roots: br && br.roots ? br.roots : storageRoots, onServed: r => servedKeep.put(r) });
     const serveBridge = bridgeServe({ endpoint, drive, home: homeId, scan: async () => { const r = await storage.discovery.discover(); return { from: String(ctx.config.name || "a computer").slice(0, 60), candidates: r.candidates.map((/** @type {any} */ c) => ({ name: c.name, kind: c.kind, host: c.host, share: c.share, path: c.path, size: c.size })), notes: r.notes }; } });
     // The home's one message that is not storage: a grant for this computer ended, so the runner stops the Space's sessions here and deletes the local work and keys now (core/runner, runner.revoke).
-    serveRef.fn = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+    const lentRevokedFn = lentRevoked({ call: (/** @type {string} */ t, /** @type {any} */ i) => t === "spaces.server.of" ? ctx.call("spaces.server.of", i) : t === "runner.revoke" ? ctx.call("runner.revoke", i) : Promise.reject(Object.assign(new Error("not a tool lent-revoked calls"), { code: "denied" })), log: m => ctx.log(m) });
+    serveRef.fn = async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {string} */ from) => {
+      if (tool === "wink.drop.offer") {
+        // a drop waits for this computer on the server: only the server this computer is paired to may say so
+        if (!from || from !== pairing.homeServerId()) throw fail("denied", "only the server this computer is paired to can offer a file");
+        const id = input && typeof input.id === "string" ? input.id : "";
+        if (!/^[a-z0-9]{20,40}$/.test(id)) throw fail("bad_input", "a drop's id");
+        await ctx.call("files.drop.offered", { id });
+        return { ok: true };
+      }
       if (tool !== "wink.lent.revoked") return serveBridge(tool, input);
-      const sp = input && typeof input.space === "string" ? input.space : "";
-      if (!/^spc_[a-z0-9]{1,40}$/.test(sp)) throw fail("bad_input", "name the space");
-      ctx.log(`wink: the home says this computer's grant for ${sp} ended; its sessions stop and the local work is deleted`);
-      const r = /** @type {any} */ (await ctx.call("runner.revoke", { space: sp }));
-      return { ok: true, revoked: Boolean(r && r.data && r.data.revoked) };
+      return lentRevokedFn(input, from);
     };
     // A computer that belongs to a server keeps one connection to it (core/wink/storage/hold.js `holdDrive`): the server asks it down that connection what drives it can see, and sends the frames of a drive it serves.
     /** @type {{ stop(): void } | null} */ let held = null;

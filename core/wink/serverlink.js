@@ -19,7 +19,7 @@ const err = (/** @type {string} */ code, /** @type {string} */ message) => Objec
 
 /**
  * @param {{ channelOf: (sid: string) => { relay: string, route: string, box: string } | null, connect: (o: any) => any, options?: any, name?: string,
- *   serve?: (tool: string, input: any) => Promise<any>, sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, autoPresence?: boolean, log?: (m: string) => void, openMs?: number }} o
+ *   serve?: (tool: string, input: any, from: string) => Promise<any>, sign?: (message: string) => Promise<string> | string, presenceSigner?: (challenge: any) => Promise<{ presence: any }> | { presence: any }, proveTool?: (tool: string, input: any) => any, autoPresence?: boolean, log?: (m: string) => void, openMs?: number }} o
  *   channelOf: where the paired server is (relay, route and box, as pairing stored them); connect: the relay client's `connect`; options: its crypto and key store.
  */
 export function createServerLinks(o) {
@@ -70,7 +70,7 @@ export function createServerLinks(o) {
         s.onhead = (/** @type {any} */ h) => { clearTimeout(timer); h && h.status === 200 ? resolve(undefined) : reject(err(h && h.status === 429 ? "rate_limited" : "denied", `the server refused the peer stream (${h && h.status})`)); };
         s.onreset = (/** @type {any} */ why) => { clearTimeout(timer); reject(err("unreachable", String(why || "reset"))); };
       });
-      const session = peerSession(streamPipe(s), { first: 1, ...(o.serve && !l.invitee ? { serve: o.serve } : {}) });
+      const session = peerSession(streamPipe(s), { first: 1, ...(o.serve && !l.invitee ? { serve: (/** @type {string} */ tool, /** @type {any} */ input) => o.serve?.(tool, input, sid) } : {}) });
       l.peer = session;
       return session;
     })();

@@ -4,7 +4,7 @@
 // tailnet's relay/client library; deck/js/pair-avatar.js renders the success screen's avatar.
 // This file is the sheet that shows one for the other.
 //
-// Flow (docs/work/pwa.md's "Phone-side contract" has the full writeup, for launch's Deck-side
+// Flow (team/archive/work-journals/pwa.md's "Phone-side contract" has the full writeup, for launch's Deck-side
 // screen): the Deck's "Add your phone" shows the person's avatar in a live code ring encoding a
 // one-time ticket. Here: the camera reads it (scan.js), resolveTicket() looks the ticket up and
 // verifies it WITHOUT pairing - the ticket never leaves the phone, the record's MAC covers the

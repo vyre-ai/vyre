@@ -27,6 +27,18 @@ const PERSON_PROXY = new Set([
   "wink:approvals.status",
 ]);
 
+/** RELAY_ALLOWED in core/modules/index.js: which module may relay the running call's person to which tools (a name, or a prefix ending in a dot). A call made with `{ relay: true }` runs as that person, so the callee's reach is judged on the person. */
+function relayAllowed() {
+  const src = fs.readFileSync(path.join(root, "core", "modules", "index.js"), "utf8");
+  const block = /const RELAY_ALLOWED = Object\.freeze\(\{([\s\S]*?)\}\);/.exec(src);
+  /** @type {Record<string, string[]>} */ const out = {};
+  if (!block) return out;
+  for (const m of block[1].matchAll(/(\w+):\s*\[([^\]]*)\]/g)) out[m[1]] = [...m[2].matchAll(/["']([^"']+)["']/g)].map(x => x[1]);
+  return out;
+}
+const relayedOk = (/** @type {Record<string, string[]>} */ allow, /** @type {string} */ mod, /** @type {string} */ tool, /** @type {string} */ call) =>
+  /,\s*\{\s*relay:\s*true\s*\}\s*\)/.test(call) && (allow[mod] || []).some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)));
+
 function* files(dir) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP.has(e.name)) continue;
@@ -55,7 +67,7 @@ function reaches() {
 }
 
 test("no first-party module calls, as a module, a tool whose reach refuses modules", () => {
-  const reach = reaches();
+  const reach = reaches(), allow = relayAllowed();
   const bad = [];
   const CALL = /\b(?:ctx\.call|call|use)\(\s*["'`]([a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+)["'`]/g;
   for (const top of ["core", "modules", "local", "lib"]) {
@@ -71,6 +83,7 @@ test("no first-party module calls, as a module, a tool whose reach refuses modul
         if (!r || !["asked", "person", "hook"].includes(r)) continue;
         if (tool.split(".")[0] === mod && !/ctx\.call/.test(m[0])) continue; // a module's own internal helper named call()
         if (PERSON_PROXY.has(`${mod}:${tool}`)) continue;
+        if (relayedOk(allow, mod, tool, src.slice(m.index, m.index + 160))) continue;   // a relayed call runs as the person (the registry refuses it unless core/modules RELAY_ALLOWED lists it and a person is on the call)
         bad.push(`${path.relative(root, f)}: ${tool} (reach ${r})`);
       }
     }

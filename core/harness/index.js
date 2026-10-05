@@ -8,11 +8,15 @@
 // returns less, never an error, so Claude Code behaves exactly as it would without Vyre.
 
 import { timeLine, personZone } from "../../lib/time/index.js";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { rules } from "./rules.js";
 import { agentName, modelKey } from "../../lib/caller.js";
 import { LIVE_STATUSES } from "../../lib/thread-status.js";
+import { withoutSeed } from "../../lib/seed.js";
+import { meterOf, wantsMillion, warning } from "./meter.js";
+import { claudeHome, transcriptFolders } from "../config/index.js";
 
 const MIGRATIONS = [
   `CREATE TABLE harness_files (
@@ -186,8 +190,46 @@ export default {
       description: "UserPromptSubmit: memory relevant to this prompt, marked as memory with its source. Empty when nothing is relevant.",
       callers: HOOK_CALLERS,
       input: { type: "object", required: ["prompt"], properties: { prompt: { type: "string" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, projects: { type: "string" },
-        interactive: { type: "boolean" } } },
-      run: async ({ prompt, cwd, session, prompt_id, agent: named, projects, interactive }, { caller, ...meta } = {}) => {
+        interactive: { type: "boolean" }, transcript: { type: "string", description: "the session's transcript file, for the window warning" } } },
+      run: async (input, extra = {}) => {
+        const r = await enrich(input, extra);
+        const notice = await rollNotice(input, extra);
+        return notice ? { ...r, notice } : r;
+      },
+    });
+
+    /**
+     * Once per crossing, a person's own terminal session is told its window is filling (see ./meter.js): never an agent's or a Vyre-run session (Vyre rolls those itself), and only when
+     * the session's own transcript, under a transcript folder, says so. Forgotten again when the window falls back under the line (a roll, a /clear, a compaction).
+     * @type {Set<string>}
+     */
+    const warned = new Set();
+    const rollNotice = async (/** @type {any} */ { session, transcript, agent: named }, /** @type {any} */ { caller, ...meta } = {}) => {
+      try {
+        if (!session || typeof transcript !== "string" || !transcript.endsWith(".jsonl") || agentOf(named, caller) || (typeof meta.thread === "string" && meta.thread)) return null;
+        if (path.basename(transcript, ".jsonl") !== String(session)) return null;
+        const folders = transcriptFolders(ctx.config.transcripts || [], ctx.paths?.root || "");
+        // Inside a transcript folder, by real path: a symlink out of one is outside it.
+        const real = fs.realpathSync(path.resolve(transcript));
+        const inside = (/** @type {string} */ dir) => { try { const r = path.relative(fs.realpathSync(dir), real); return Boolean(r) && !r.startsWith("..") && !path.isAbsolute(r); } catch { return false; } };
+        if (!folders.some(inside)) return null;
+        const on = await ask("settings.get", { key: "sessions.rollover" });
+        if (on && on.value === false) return null;
+        const at = await ask("settings.get", { key: "sessions.rollover_at" });
+        const line = (at && typeof at.value === "number" ? at.value : 60) / 100;
+        const m = meterOf(transcript, { million: wantsMillion(claudeHome(ctx.paths?.root)) });
+        if (!m) return null;
+        const key = String(session);
+        if (m.share < line - 0.1) { warned.delete(key); return null; }
+        if (m.share < line || warned.has(key)) return null;
+        warned.add(key);
+        return warning(m);
+      } catch { return null; }
+    };
+
+    const enrich = async (/** @type {any} */ { prompt: said, cwd, session, prompt_id, agent: named, projects, interactive }, /** @type {any} */ { caller, ...meta } = {}) => {
+        // A rolled session's first message carries Vyre's seed in front of the person's words (lib/seed.js): the transcript has it whole, everything that reads the person's words reads only theirs.
+        const prompt = withoutSeed(said);
         await own({ caller, ...meta }, session);
         const agent = agentOf(named, caller);
         // Every prompt starts a turn for Learning, slash commands included; it may also be a correction.
@@ -206,7 +248,7 @@ export default {
           } else typedBy = !agentName(caller) && modelKey(caller) === "caller:harness"; // SHIM(legacy labels): the kernel-off build
           if (typedBy) {
             const claimed = await ask("threads.claimed", { session: String(session) });
-            if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), prompt);
+            if (!(claimed && claimed.headless)) terminal = await typedByPerson(String(session), said);
           }
         }
         const learned = session ? await ask("learn.signal", { session, prompt_id, prompt, cwd, agent, interactive: terminal }) : null;
@@ -233,8 +275,7 @@ export default {
         const facts = await ask("memory.relevant", { text: prompt, ...where, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
         return { text: [inbox, ...(first ? [lessons, memory] : [memory, lessons])].filter(Boolean).join("\n\n") };
-      },
-    });
+    };
 
     const SUBAGENT = /^(Agent|Task)$/;
     /** Take a subagent slot for a session's Agent call: null when it may run, else why not. */

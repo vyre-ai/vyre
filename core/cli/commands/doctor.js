@@ -265,7 +265,7 @@ export async function diagnose(deps = {}) {
   // Every module started: a manifest that under- or over-declares a tool or event fails that
   // module alone, silently to a person just watching Chat or the Deck (every other module still
   // loads, so "no such tool" from something that quietly never registered is the only symptom
-  // otherwise) - the gotcha that cost tailnet real time shipping relay.pair.ticket (docs/work/
+  // otherwise) - the gotcha that cost tailnet real time shipping relay.pair.ticket (team/archive/work-journals/
   // tailnet.md, 28 Sep 2026). vyred's own log already names the module and the exact manifest key
   // (core/modules/index.js's startOne), but nothing surfaced it here until now, and the log is
   // the only place it was loud. /v1/modules is this machine's own registry (box or Mac, whichever

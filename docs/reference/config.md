@@ -127,6 +127,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_KERNEL_PROOF` | Not described yet. | `core/cli/commands/daemon.js` |
 | `VYRE_LEGACY_DIRECT_MODEL` | Not described yet. | `core/sessions/index.js`, `local/voice/index.js` |
 | `VYRE_LENT_AGENT` | Not described yet. | `core/daemon/lent-service.js` |
+| `VYRE_LENT_AGENT_ARGS` | Not described yet. | `core/daemon/lent-service.js` |
+| `VYRE_LENT_AGENT_DEV` | Not described yet. | `core/daemon/lent-service.js` |
 | `VYRE_MODULE_SDK` | A folder holding the module SDK's testing.js, for a module's own tests made by `vyre module new` before the SDK is on npm. | `core/cli/commands/module.js` |
 | `VYRE_NAMES_DEV_CLOUDFLARE` | Not described yet. | `core/names/index.js` |
 | `VYRE_NAMES_DIRECTORY` | Not described yet. | `core/names/index.js` |

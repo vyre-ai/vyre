@@ -331,12 +331,12 @@ The fields above stay beside it.
   sidecar exists.
 - Several parts depend on policy the person writes. Vyre's job there is to explain it exactly and
   to check it (the drive audit, Taildrop's reason, the lock state), not to hold it.
-- Parts still unproven on a real tailnet are listed in `docs/work/tailnet.md`, and are to be run
+- Parts still unproven on a real tailnet are listed in `team/archive/work-journals/tailnet.md`, and are to be run
   for real before merge (SPEC section 14).
 
 ## Decisions needed
 
-Decided by the lead on 27 Sep 2026, to be built after this merge (docs/work/tailnet.md, "Next"):
+Decided by the lead on 27 Sep 2026, to be built after this merge (team/archive/work-journals/tailnet.md, "Next"):
 
 1. Taildrive: read-only by default, with a per-share read-write switch behind presence
    (`files.drive.access`); a share refuses any folder the files guard flags anywhere inside it,

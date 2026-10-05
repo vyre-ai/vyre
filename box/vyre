@@ -1178,7 +1178,7 @@ if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
   case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
 fi
 # ---------------------------------------------------------------------------------------------------------------------------------------------
-# The Space helper: the root side of a Space's Twenty store (docs/work/space-helper.md, Revision 2). Linux only.
+# The Space helper: the root side of a Space's Twenty store (team/archive/work-journals/space-helper.md, Revision 2). Linux only.
 #
 # vyred (uid DAEMON_UID in its container) drops one file `req-<32 hex>` holding `<verb> <space>` into SP_SPOOL, a folder it alone can write; a root path unit
 # runs `space-helper-run`. The request is data: it is CLAIMED by rename into a root-only folder, looked at with stat, parsed whole against one anchored
@@ -1458,8 +1458,13 @@ space_helper_record() {
   : >"$SP_PRIV/images.new"
   # shellcheck disable=SC2013 # image references have no spaces
   for im in $(grep '^    image: ' "$t" | sed 's/^    image: //' | sort -u); do
-    pl=$(printf '%s' "$im" | sed -e 's/\${TWENTY_TAG:-\([^}]*\)}/\1/' -e 's/\${TWENTY_IMAGE_REF:-\([^}]*\)}/\1/')
-    timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$pl" >/dev/null 2>&1 || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: could not pull $pl" >&2; return 1; }
+    # A compose default (`${TWENTY_IMAGE:-twentycrm/twenty:v2...@sha256:...}`, `${TWENTY_TAG:-...}`) is pulled as its default: root never takes the value from an env file.
+    pl=$(printf '%s' "$im" | sed 's/\${[A-Z_][A-Z0-9_]*:-\([^}]*\)}/\1/g')
+    case "$pl" in *'${'*) rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: the image name $im has a variable with no default, so it cannot be pulled" >&2; return 1 ;; esac
+    if ! why=$(timeout 900 env -i PATH="$PATH" HOME=/root DOCKER_CONFIG="$SP_PRIV/docker-config" docker pull -q "$pl" 2>&1 >/dev/null); then
+      rm -f "$t" "$SP_PRIV/images.new"
+      echo "vyre: could not pull $pl: $(printf '%s' "${why:-no answer from the registry}" | tail -n 1 | cut -c1-200)" >&2; return 1
+    fi
     dg=$(hdock image inspect -f '{{index .RepoDigests 0}}' "$pl" 2>/dev/null || true)
     printf '%s\n' "$dg" | grep -Eqx '[a-z0-9./_-]+@sha256:[0-9a-f]{64}' || { rm -f "$t" "$SP_PRIV/images.new"; echo "vyre: no digest for $pl" >&2; return 1; }
     printf '%s %s\n' "$im" "$dg" >>"$SP_PRIV/images.new"
@@ -1580,7 +1585,7 @@ STAT
   case "$LINE" in *"
 "*) MSG="not exactly one line"; return 1 ;; esac
   v_=${LINE%% *}; n_=${LINE#* }
-  # publish-fill takes a Space's id, a site folder and a deployment, never a path (docs/work/space-helper.md, the publish-fill verb): three tokens, each from its own anchored pattern.
+  # publish-fill takes a Space's id, a site folder and a deployment, never a path (team/archive/work-journals/space-helper.md, the publish-fill verb): three tokens, each from its own anchored pattern.
   if [ "$v_" = publish-fill ]; then
     printf '%s\n' "$n_" | grep -Eqx 'spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}' && return 0
     MSG="not a request the helper knows"; return 1
@@ -1675,12 +1680,15 @@ sp_do() {
     printf '%s %s\n' "$mn" $((cnt + 1)) >"$r"
   fi
   lk=$SP_PRIV/lock-$n
-  if [ -d "$lk" ] && [ -n "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rmdir "$lk" 2>/dev/null || true; fi
+  if [ -d "$lk" ] && [ -n "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rm -rf "${lk:?}" 2>/dev/null || true; fi
+  # A lock names the run that took it. One whose run is gone (killed, a reboot, an earlier install) is not busy: it is taken over now, not after two hours.
+  if [ -d "$lk" ]; then lp=$(cat "$lk/pid" 2>/dev/null || true); case "$lp" in ""|*[!0-9]*) ;; *) kill -0 "$lp" 2>/dev/null || { rm -rf "${lk:?}" 2>/dev/null || true; sp_log "took over a lock whose run was gone"; } ;; esac; fi
   mkdir "$lk" 2>/dev/null || { sp_status "$id" busy "that Space is busy"; sp_log "busy: $v"; return 0; }
+  printf '%s\n' "$$" >"$lk/pid" 2>/dev/null || true
   sp_status "$id" running "$v"
   rc=0
   case "$v" in up) sp_up "$n" || rc=1 ;; stop) sp_stop "$n" || rc=1 ;; down) sp_down "$n" || rc=1 ;; firewall-add) sp_fw_add "$n" || rc=1 ;; firewall-del) sp_fw_del "$n" || rc=1 ;; esac
-  rmdir "$lk" 2>/dev/null || true
+  rm -rf "${lk:?}" 2>/dev/null || true
   if [ "$rc" = 0 ]; then sp_status "$id" ok "${MSG:-done}"; sp_log "ok $v"; else sp_status "$id" failed "${MSG:-failed}"; sp_log "failed $v: ${MSG:-}"; fi
 }
 # space_helper_run: what the path unit runs, as root.
@@ -1770,6 +1778,20 @@ space_helper_reattach() {
   done
   sp_wall_ready || echo "vyre: the helper could not write the firewall marker; the vyre container will not start its daemon until it can" >&2
 }
+# sp_reset_stale: what an earlier install left in the helper's own state must not break a new one. Run at every `space-helper install` (a fresh install and every update).
+# With no helper run in flight (a run owns its locks, its claims and its rate window), the up-rate window, the locks, the claims and the answers nobody is still waiting for
+# (a reader polls its own id for minutes) are cleared. Nothing of a Space is touched: its record, its data and a project that runs stay as they are, and a running Space
+# is adopted by the reattach pass (`space-helper watch`/`reattach`), never stopped here. Nothing is refused silently: what was cleared is one line in the helper's log.
+sp_reset_stale() {
+  if command -v pgrep >/dev/null 2>&1 && pgrep -f 'space-helper-run' >/dev/null 2>&1; then return 0; fi
+  cleared=0
+  [ ! -e "$SP_PRIV/rate-up" ] || { rm -f "$SP_PRIV/rate-up" 2>/dev/null || true; cleared=$((cleared + 1)); }
+  for l in "$SP_PRIV"/lock-*; do [ -d "$l" ] || continue; rm -rf "${l:?}" 2>/dev/null || true; cleared=$((cleared + 1)); done
+  for c in "$SP_PRIV"/claim/req-*; do [ -e "$c" ] || continue; rm -rf "${c:?}" 2>/dev/null || true; cleared=$((cleared + 1)); done
+  for f in "$SP_STATE"/status-*; do [ -f "$f" ] || continue; [ -z "$(find "$f" -maxdepth 0 -mmin +10 2>/dev/null)" ] || { rm -f "$f" 2>/dev/null || true; cleared=$((cleared + 1)); }; done
+  [ "$cleared" = 0 ] || sp_log "install: cleared $cleared stale entries left by an earlier install"
+  return 0
+}
 # space_helper install|remove|status: the path unit, root's. DirectoryNotEmpty on the spool; trigger limits off, so a flood cannot disable the unit that does
 # the cleanup (the helper itself throttles).
 space_helper() {
@@ -1783,6 +1805,7 @@ space_helper() {
       own_ok "$WRAPPER" "$ROOT_UID" strict || die "$WRAPPER must be owned by root and not writable by others: the helper runs it as root"
       sp_dirs; set_root_run
       mkdir -p "$SP_PRIV/docker-config" && chmod 700 "$SP_PRIV/docker-config"
+      sp_reset_stale
       space_helper_record || die "the helper could not record the image it regenerates from; nothing was installed"
       { printf '[Unit]\nDescription=Vyre Space helper, asked for by vyred\nStartLimitIntervalSec=0\n\n[Service]\nType=oneshot\nExecStart=%s space-helper-run\nTimeoutStartSec=3600\n' "$WRAPPER"; } >"$units/$un.service.new" && mv "$units/$un.service.new" "$units/$un.service"
       { printf '[Unit]\nDescription=Vyre Space helper requests\nStartLimitIntervalSec=0\n\n[Path]\nDirectoryNotEmpty=%s\nUnit=%s.service\nTriggerLimitIntervalSec=0\n\n[Install]\nWantedBy=multi-user.target\n' "$SP_SPOOL" "$un"; } >"$units/$un.path.new" && mv "$units/$un.path.new" "$units/$un.path"
