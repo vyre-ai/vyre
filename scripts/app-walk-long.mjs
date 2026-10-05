@@ -134,7 +134,8 @@ await scenario("L: the browser start screen pairs with the long code and three w
   const idx = (asking.choices || []).findIndex((ch) => flat(ch) === pageWords);
   need(idx >= 0, `the page's words (${pageWords}) are not among the owner's choices ${JSON.stringify(asking.choices)}`);
   const ans = await withYes("wink.phone.pair.answer", { yes: true, pick: idx + 1 });
-  need(!ans.error, `the owner's yes was refused: ${JSON.stringify(ans.error).slice(0, 200)}`);
+  need(!ans.error, `the owner's yes was refused: ${JSON.stringify(ans.error ?? "")}`);
+  console.log("OWNER ANSWER", JSON.stringify(ans.data ?? ans).slice(0, 200));
   await c.pg.waitForFunction(() => /Your spaces|Create a space|Nothing was added|did not work|does not hold|not on the list|already holds/.test(document.body.innerText), null, { timeout: 60000 });
   await c.shot("end");
   const end = (await c.text()).slice(0, 260);
