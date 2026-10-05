@@ -27,8 +27,8 @@ export async function startTypedPairing(h, deps) {
   });
   if (!r.ok) return { ok: false, say: SAY[r.reason] || SAY.refused };
   const link = r.paired;
-  if (!link || typeof link.address !== "string") return { ok: false, say: SAY.nothing };
-  try { await deps.invoke("finish_typed_pair", { link, address: link.address }); }
+  if (!link || (typeof link.address !== "string" && typeof link.handle !== "string")) return { ok: false, say: SAY.nothing };
+  try { await deps.invoke("finish_typed_pair", { link, address: typeof link.address === "string" ? link.address : null, handle: typeof link.handle === "string" ? link.handle : null }); }
   catch (e) { return { ok: false, say: String((e && e.message) || e) }; }
   return { ok: true };
 }

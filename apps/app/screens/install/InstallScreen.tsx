@@ -263,6 +263,10 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const last = made[made.length - 1];
   const inv = MOCK ? DATA.invite : invite ?? { ...DATA.invite, space: "", address: "", from: "", role: "", roleLine: "", sees: "", link: "" };
 
+  // "Set up My Cloud" on a Mac that can be the server: the person sees what it means, confirms, and only then does the Mac set itself up (at the end of this flow, never on a press elsewhere).
+  const [macSure, setMacSure] = useState(false);
+  const [macOther, setMacOther] = useState(false);
+  const makeMacServer = shell()?.identity?.makeServer;
   let body: React.ReactNode = null;
   if (step === "welcome") {
     body = (
@@ -284,7 +288,24 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     );
   } else if (step === "mycloud") {
     // Set up My Cloud: a phone shares the setup link (no install line on a phone); a computer or browser shows the line. Then the server's code is typed here.
-    body = (
+    body = makeMacServer && !macOther ? (
+      <Page title={MY_CLOUD.title} sub={macSure ? MY_CLOUD.macLine : MY_CLOUD.line}>
+        {macSure ? (
+          <>
+            <Card className="gap-s2"><Text strong>{MY_CLOUD.macTitle}</Text><Text tone="muted">{MY_CLOUD.macMeans}</Text></Card>
+            <Button kind="primary" label={MY_CLOUD.macSure} onPress={() => { void makeMacServer().catch((e) => setWrong(said(e))); }} />
+            <Button kind="ghost" label={MY_CLOUD.macBack} onPress={() => setMacSure(false)} />
+          </>
+        ) : (
+          <>
+            <Text tone="muted">{MY_CLOUD.macLine}</Text>
+            <Button kind="primary" label={MY_CLOUD.macTitle} onPress={() => setMacSure(true)} />
+            <Button kind="ghost" label={MY_CLOUD.macOther} onPress={() => setMacOther(true)} />
+          </>
+        )}
+        {wrong ? <Banner tone="warn">{wrong}</Banner> : null}
+      </Page>
+    ) : (
       <Page title={MY_CLOUD.title} sub={MY_CLOUD.line}>
         {isPhone(dk) ? (
           <>

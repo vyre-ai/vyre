@@ -9,13 +9,9 @@
     "core:default",
     "allow-get-state",
     "allow-save-pairing",
-    "allow-begin-pair",
-    "allow-offer-pair",
     "allow-set-autostart",
     "allow-device-key-pub",
     "allow-device-key-dh",
-    "allow-pair-status",
-    "allow-finish-pair",
     "allow-finish-typed-pair",
     "allow-cancel-pair"
   ]

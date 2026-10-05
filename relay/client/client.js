@@ -318,10 +318,10 @@ export async function resolveTicket(ticket, o) {
  * @param {Parameters<typeof resolveTicket>[1] & Parameters<typeof pairOffer>[1]} o
  */
 export async function pairTicket(ticket, o) {
-  const { offer, address } = await resolveTicket(ticket, o);
+  const { offer, address, handle } = await resolveTicket(ticket, o);
   const paired = await pairOffer(offer, o);
-  // The box's own https origin, from the sealed record the ticket held (null when the box gave none): a client that opens the box's web page (the Windows app) pins it.
-  return address ? { ...paired, address } : paired;
+  // The box's own https origin and its vyre.run handle, from the sealed record the ticket held (each only when the box gave one): a client that opens the box's web page (the Windows app) pins them.
+  return { ...paired, ...(address ? { address } : {}), ...(handle ? { handle } : {}) };
 }
 
 /**

@@ -58,25 +58,6 @@ const SHELL_SIGNAL: &str = r#"Object.defineProperty(window, "__VYRE_SHELL__", { 
 
 struct Live {
     hotkey: Mutex<String>,
-    /// The seed for the pairing the person started: 16 CSPRNG bytes, memory only, five minutes.
-    /// The person's Deck turns it into a Wink ticket, so nothing travels back to this computer.
-    seed: Mutex<Option<(String, std::time::Instant)>>,
-    /// An offer resolved by the bundled page and awaiting the person's Pair.
-    pending: Mutex<Option<PendingOut>>,
-    /// The person pressed Pair on the confirm window; the bundled page may now run the handshake.
-    confirmed: Mutex<bool>,
-}
-
-#[derive(Serialize, Clone)]
-struct PendingOut {
-    name: String,
-    fingerprint: String,
-    /// The host the panel will load. Always shown, since the name is the box's own free text.
-    host: String,
-    /// True when the host is not on vyre.run; the confirm page shows it as its own line.
-    own_domain: bool,
-    #[serde(skip)]
-    address: String,
 }
 
 #[derive(Serialize)]
@@ -318,97 +299,17 @@ fn unmount_drive(letter: String) -> Result<(), String> {
     net_use(&drive::unmap_args(&letter.to_ascii_uppercase())).map(|_| ())
 }
 
-const SEED_LIFE: std::time::Duration = std::time::Duration::from_secs(300);
-
-/// Start "Add this computer": a fresh 16-byte seed, shown to the person (QR or words), never put
-/// in a link or a log. Replaces any earlier seed.
-#[tauri::command]
-fn begin_pair(live: State<Live>) -> String {
-    use base64::Engine;
-    use rand::RngCore;
-    let mut b = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut b);
-    let seed = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b);
-    *live.seed.lock().unwrap() = Some((seed.clone(), std::time::Instant::now()));
-    *live.pending.lock().unwrap() = None;
-    *live.confirmed.lock().unwrap() = false;
-    seed
-}
-
-/// The bundled page resolved the ticket for our seed and hands over what the sealed record says.
-/// Refused unless a live seed exists and no offer is already waiting.
-#[tauri::command]
-async fn offer_pair(app: AppHandle, live: State<'_, Live>, name: String, fingerprint: String, handle: Option<String>, address: Option<String>) -> Result<(), String> {
-    match live.seed.lock().unwrap().as_ref() {
-        Some((_, at)) if at.elapsed() <= SEED_LIFE => {}
-        _ => return Err("This pairing ran out of time. Start again.".into()),
-    }
-    if live.pending.lock().unwrap().is_some() { return Err("A pairing is already waiting for your answer.".into()); }
-    let pin = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "That server's address does not check out.")?;
-    let host = pin.address.trim_start_matches("https://").to_string();
-    let clean = |s: &str, max: usize| s.chars().filter(|c| !c.is_control()).take(max).collect::<String>();
-    *live.pending.lock().unwrap() = Some(PendingOut { name: clean(&name, 64), fingerprint: clean(&fingerprint, 16), host, own_domain: pin.own_domain, address: pin.address });
-    let _ = WebviewWindowBuilder::new(&app, "confirm", WebviewUrl::App("confirm.html".into()))
-        .title(APP_NAME).inner_size(480.0, 340.0).resizable(false).build();
-    Ok(())
-}
-
-#[tauri::command]
-fn pending_pair(live: State<Live>) -> Option<PendingOut> { live.pending.lock().unwrap().clone() }
-
-#[tauri::command]
-fn cancel_pair(app: AppHandle, live: State<Live>) {
-    *live.pending.lock().unwrap() = None;
-    *live.seed.lock().unwrap() = None;
-    *live.confirmed.lock().unwrap() = false;
-    if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
-}
-
-/// The person pressed Pair: nothing is pinned yet. The bundled page sees "confirmed", runs the
-/// handshake, and only a finished handshake pins (finish_pair).
-#[tauri::command]
-fn confirm_pair(app: AppHandle, live: State<Live>) -> Result<(), String> {
-    if live.pending.lock().unwrap().is_none() { return Err("Nothing to pair.".into()); }
-    *live.confirmed.lock().unwrap() = true;
-    if let Some(w) = app.get_webview_window("confirm") { let _ = w.close(); }
-    Ok(())
-}
-
-/// "waiting" (no answer yet), "confirmed", or "cancelled" (the person said no, or it ran out).
-#[tauri::command]
-fn pair_status(live: State<Live>) -> &'static str {
-    let live_seed = matches!(live.seed.lock().unwrap().as_ref(), Some((_, at)) if at.elapsed() <= SEED_LIFE);
-    if *live.confirmed.lock().unwrap() { "confirmed" }
-    else if live.pending.lock().unwrap().is_some() && live_seed { "waiting" }
-    else { "cancelled" }
-}
-
-/// The handshake finished: pin the confirmed address (with what `connect` needs to stay linked,
-/// which holds no secret), close the pairing page and open the panel.
 /// A pairing made with the typed code another device showed (relay/client/join.js, the ack typed back there is the person's yes): keep it as the device-first pairing does, pinned to the
-/// box's own address. Only the bundled first-run page may call this; the address must be a server address the shell would pin anyway.
+/// box's own address. Only the bundled first-run page may call this; the address is checked by `pin_from_offer`.
 #[tauri::command]
-async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: String) -> Result<(), String> {
-    let pin = Pinned::parse(&address).ok_or("The pairing gave no address this app can open.")?;
+async fn finish_typed_pair(app: AppHandle, link: serde_json::Value, address: Option<String>, handle: Option<String>) -> Result<(), String> {
+    // The address the pairing named, held to the rules for what the shell may pin (shell::pin_from_offer): on vyre.run it must be exactly the box's own handle's address.
+    let choice = shell::pin_from_offer(handle.as_deref(), address.as_deref()).map_err(|_| "The pairing gave no address this app can open.")?;
+    let pin = Pinned::parse(&choice.address).ok_or("The pairing gave no address this app can open.")?;
     if !link.is_object() { return Err("The pairing was not complete.".into()); }
     let path = record_path(&app).ok_or("No place to save on this computer.")?;
     std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&path, serde_json::json!({ "address": pin.origin(), "link": link }).to_string()).map_err(|e| e.to_string())?;
-    if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
-    ensure_link_window(&app);
-    show_panel(&app, "/quick");
-    Ok(())
-}
-
-#[tauri::command]
-async fn finish_pair(app: AppHandle, live: State<'_, Live>, link: serde_json::Value) -> Result<(), String> {
-    if !*live.confirmed.lock().unwrap() { return Err("The pairing was not confirmed.".into()); }
-    let p = live.pending.lock().unwrap().take().ok_or("Nothing to pair.")?;
-    *live.seed.lock().unwrap() = None;
-    *live.confirmed.lock().unwrap() = false;
-    let path = record_path(&app).ok_or("No place to save on this computer.")?;
-    std::fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-    std::fs::write(&path, serde_json::json!({ "address": p.address, "link": link }).to_string()).map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window("first-run") { let _ = w.close(); }
     ensure_link_window(&app);
     show_panel(&app, "/quick");
@@ -543,10 +444,10 @@ fn main() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, begin_pair, offer_pair, pending_pair, confirm_pair, cancel_pair, pair_status, finish_pair, finish_typed_pair, device_key_pub, device_key_dh, get_link])
+        .invoke_handler(tauri::generate_handler![get_state, save_pairing, set_autostart, notify, mount_drive, unmount_drive, finish_typed_pair, device_key_pub, device_key_dh, get_link])
         .setup(|app| {
             let handle = app.handle().clone();
-            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)), seed: Mutex::new(None), pending: Mutex::new(None), confirmed: Mutex::new(false) });
+            app.manage(Live { hotkey: Mutex::new(bind_hotkey(&handle)) });
 
             let open = MenuItem::with_id(app, "open", "Open Vyre", true, None::<&str>)?;
             let drive = MenuItem::with_id(app, "drive", "Open Vyre Drive", true, None::<&str>)?;

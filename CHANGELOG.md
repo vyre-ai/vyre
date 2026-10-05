@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(windows): the unreachable Rust pairing of the old device-first flow is deleted: begin_pair, offer_pair, pending_pair, confirm_pair, pair_status, cancel_pair and finish_pair, the confirm window and its capability, and the shell's seed, pending and confirmed state. The typed-code pairing (`finish_typed_pair`) now holds its address and handle to the shell's pin rules (`shell::pin_from_offer`, with its tests), and `pairTicket` also returns the box's `handle`. capsule-win CI builds it.
+- feat(app): on a Mac that can be the server, "Set up My Cloud" (/u/setup/server) explains what it means, asks to confirm, and only then calls `identity.makeServer()` at the end of that flow (app-wire's Settings button only opens the route); "Use another computer or server instead" stays a choice. Test in screens/install/question.test.js.
 - feat(app): the calendar shows a repeating Event's occurrences from the box (planner.agenda { from, to } for the visible window), replacing the event's single first-date item; the app expands no rule itself. A box without planner.agenda shows the event once.
 
 - refactor(app): Drive is one screen. The mock build feeds the same tabs (Space, Shared, Box folders, On your computer) from the sample world through a fake box (screens/drive/mock-box.ts), so the second sample screen and its own "Shared links" tab are gone (4 tests).

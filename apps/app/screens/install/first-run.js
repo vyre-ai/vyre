@@ -44,6 +44,13 @@ export const MY_CLOUD = {
   ready: "My server shows a code",
   share: "Set up My Cloud on a computer or a server: https://vyre.run",
   codeTitle: "Type the code your server shows",
+  // On a Mac (the app's window with `identity.makeServer`): this Mac can be the server. It happens only after the person has read what it means and confirms, at the end of this flow.
+  macTitle: "Make this Mac a server",
+  macLine: "My Cloud will run on this Mac, while it stays on. Your phones and browsers connect to it.",
+  macMeans: "Your Mac asks for its password once, so Vyre can start by itself when you log in. Nothing leaves this Mac that you did not choose.",
+  macSure: "Make this Mac a server",
+  macOther: "Use another computer or server instead",
+  macBack: "Back",
 };
 
 /** Step 4 on a Mac: where Vyre runs. The server path shows one line to run there. */
