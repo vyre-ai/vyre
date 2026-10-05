@@ -86,3 +86,17 @@ test("sealed chat folders: Share to project is a grant plus a key wrap, unshare 
   assert.equal(dec(await D.get(bob, `${dir}/shared.txt`)), "for the project", "the participant still reads it after the key rotated");
   assert.ok(ada && raw);
 });
+
+test("sealed chat folders: a project member who is not in the chat opens a shared file through the project's ring alone, and is refused an unshared one, before and after the chat is locked", async () => {
+  const { g, D, bob, dan, dir, held, chat, raw } = await rig();
+  await D.put(bob, `${dir}/shared.txt`, enc("for the project"));
+  await D.put(bob, `${dir}/private.txt`, enc("not shared"));
+  await g.shareFile(bob, `${dir}/shared.txt`);
+  held.delete(chat.id);   // no participant has the chat unlocked: only the project's ring is held
+  assert.equal(dec(await D.get(dan, `${dir}/shared.txt`)), "for the project", "opened with the project ring, no chat key");
+  await assert.rejects(() => D.get(dan, `${dir}/private.txt`), { code: "not_found" }, "the unshared file stays refused");
+  // the project index on the disk is ciphertext too
+  const disk = [...raw.files.entries()].map(([p, vs]) => p + "\n" + vs.map(v => Buffer.from(v.bytes).toString("latin1")).join("\n")).join("\n");
+  assert.ok(!disk.includes("shared.txt") && !disk.includes("for the project"), "no name or content in the project's share index");
+  assert.ok([...raw.files.keys()].some(k => k === "Projects/p1/.shared"), "the project's sealed index exists");
+});

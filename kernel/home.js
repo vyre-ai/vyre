@@ -11,6 +11,9 @@ import { startSealer } from "./seal/client.js";
 import { fileKernelKey } from "./keys.js";
 import { Pool } from "./storage/pool.js";
 import { Drive } from "./storage/drive.js";
+import { sealedDrive } from "./storage/sealed-drive.js";
+import { ProcessKeys } from "../lib/chat-keys.js";
+import { createChatLease } from "./gateway/chat-keys.js";
 import { dirBackend } from "./storage/backends.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
@@ -75,11 +78,18 @@ export async function bootHomeKernel(cfg) {
   const personalStore = cfg.storeFor ? await cfg.storeFor(id.space, { owner: id.owner, personal: true }) : undefined;
   // The home Space's own Drive (versions, conflicts, backups): chunks encrypted under a pool key from the sealing process, one directory node on this home; other nodes attach later.
   /** @type {any} */ let drive;
+  const chatKeys = new ProcessKeys(() => true);   // who may use a chat is decided at the Drive gateway, before a key is touched
+  /** @type {any} */ let chatGrants = null;
   if (sealer) {
     try {
       const pool = new Pool({ dir: path.join(id.dir, "drive"), key: await sealer.poolKey({ owner: id.space }) });
       pool.addNode({ id: "home", backend: dirBackend(path.join(id.dir, "drive", "node")), home: true });
-      drive = new Drive(pool);
+      // A chat's folders are stored sealed (kernel/storage/sealed-drive.js): the keys are lent to this process by a participant's device (kernel/gateway/chat-keys.js) and live in memory only.
+      drive = sealedDrive(new Drive(pool), {
+        keysFor: (/** @type {string} */ chat) => { const k = chatKeys.get(chat); return k && chatGrants && k.epoch >= chatGrants.chats.epoch(chat) ? k : null; },
+        sealed: (/** @type {string} */ chat) => Boolean(chatGrants && chatGrants.chats.epoch(chat) > 0),
+        projectKeysFor: () => null,
+      });
     } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
   // The inference door (contract 8.4): every model call, and the ledger a reveal records what a person was shown in. Built here, over the sealing process this home runs, with the kernel's own isChain;
@@ -219,8 +229,10 @@ export async function bootHomeKernel(cfg) {
   const audit = (/** @type {string} */ type, /** @type {any} */ data) => k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type, sv: 1, subject: `vyre://${id.space}/space/${data.space}`, data, vis: "owner", red: "internal" });
   const spaces = createSpaceKernels({ root: cfg.root, audit, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(door ? { doorFor: () => door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}), ...(cfg.remote ? { remote: cfg.remote } : {}) });
   await spaces.start();
+  chatGrants = k.gateway && k.gateway.grants ? k.gateway.grants : null;
+  const chatLease = chatGrants && drive ? createChatLease({ keys: chatKeys, grants: chatGrants }) : undefined;
   hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
   // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart
   { const ad = typeof k.grants.adopted === "function" ? k.grants.adopted() : null; if (ad) { try { await spaces.adoptOwner(ad.to, ad.from); } catch (e) { (cfg.log || (() => {}))(`kernel: a hosted Space could not take the claimed identity as its owner (${/** @type {Error} */ (e).message})`); } } }
-  return Object.freeze({ ...k, spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
+  return Object.freeze({ ...k, ...(chatLease ? { chatKeys: chatLease } : {}), spaces, id: Object.freeze({ space: id.space, get owner() { return id.owner; } }), kernelFor: k.kernelFor, firstPartyCheck, reservedName, resetModulesList, cliSigninPayload, cliSigninCheck, get modulesListReset() { return modulesListReset; }, moduleHost: host, supervisor, moduleApprovals: approvals, stop: async () => { await spaces.stop(); await supervisor.stopAll(); if (ownSealer && sealer) await sealer.close(); } });
 }

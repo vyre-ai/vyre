@@ -15,8 +15,8 @@ export function createDriveGateway(cfg) {
   const actor = (/** @type {any} */ chain) => { const a = chain.hops[chain.hops.length - 1].actor; return `${a.kind}:${a.id}`; };
   const mustChain = (/** @type {any} */ c) => { if (!isChain(c)) throw new KernelError("bad_input", "a call needs a kernel-built chain"); };
   // A Drive that stores a chat's files under ids (kernel/storage/sealed-drive.js) names the stored path: authorization, grants and the log all use it, so no file or folder name is written anywhere
-  // but the sealed index. A chat whose key is locked in this process cannot be named, which looks like it is not there.
-  const shown = (/** @type {string} */ p) => { if (typeof cfg.drive.stored !== "function") return p; try { return cfg.drive.stored(p); } catch { throw new KernelError("unavailable", "this chat's key is not unlocked here"); } };
+  // but the sealed index. A chat whose key is locked in this process cannot be named, which looks like it is not there (`not_found`).
+  const shown = (/** @type {string} */ p) => { if (typeof cfg.drive.stored !== "function") return p; try { return cfg.drive.stored(p); } catch { throw new KernelError("not_found", "no such record"); } };
   const file = (/** @type {string} */ p) => { const sp = shown(p); try { return `vyre://${cfg.space}/file/${safePath(sp)}`; } catch (e) { if (e instanceof KernelError) throw e; throw new KernelError("bad_input", "bad path"); } };
   const backup = (/** @type {string} */ n) => { try { return `vyre://${cfg.space}/file/backups/${segment(n)}`; } catch { throw new KernelError("bad_input", "bad name"); } };
   const note = (/** @type {any} */ chain, /** @type {string} */ type, /** @type {string} */ subject, /** @type {any} */ data, /** @type {any} */ decision) => { try { cfg.log.append(chain, { type, sv: 1, subject, data, vis: "subject", red: "internal" }, decision ? { decision } : {}); } catch { /* the act stands; the note is best effort */ } };

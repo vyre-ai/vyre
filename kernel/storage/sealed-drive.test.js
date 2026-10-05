@@ -66,9 +66,9 @@ test("sealed drive: locked means absent, versions and restore keep their keys, d
 test("sealed drive: share wraps the file key to the project's ring (no copy); unshare rotates the key and the old wrap no longer opens the new version", async t => {
   const w = world(t);
   await w.sd.put(`${dir}/plan.txt`, Buffer.from("the plan"));
-  const before = Object.keys(w.drive.ix.files).length, versions = w.drive.ix.files[Object.keys(w.drive.ix.files).find(k => k.startsWith(dir))].versions.length;
+  const before = Object.keys(w.drive.ix.files).filter(k => !k.endsWith(".shared")).length, versions = w.drive.ix.files[Object.keys(w.drive.ix.files).find(k => k.startsWith(dir))].versions.length;
   assert.deepEqual(await w.sd.share(`${dir}/plan.txt`), { wrapped: true });
-  assert.equal(Object.keys(w.drive.ix.files).length, before, "no second file");
+  assert.equal(Object.keys(w.drive.ix.files).filter(k => !k.endsWith(".shared")).length, before, "no second file");
   assert.equal(w.drive.ix.files[Object.keys(w.drive.ix.files).find(k => k.startsWith(dir) && !k.endsWith(".names"))].versions.length, versions, "no new version: a wrap, not a copy");
   const un = await w.sd.unshare(`${dir}/plan.txt`);
   assert.equal(un.rotated, true);

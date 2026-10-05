@@ -5,7 +5,7 @@
 // The gateway still authorizes on the logical path (membership first); this only decides what is stored. A chat whose key is not unlocked in this process is locked: reads and writes
 // of its files say so, and its files do not appear in a listing. Paths outside chat folders pass straight through.
 import { Readable } from "node:stream";
-import { namer, sealFile, openFile, shareFile, unshareFile } from "../../lib/chat-keys.js";
+import { namer, sealFile, openFile, openShared, shareFile, unshareFile } from "../../lib/chat-keys.js";
 import { seal, open } from "../../lib/keywrap.js";
 
 const FOLDER = /^Projects\/([^/]+)\/(chat|made)\/([^/]+)(?:\/(.*))?$/;
@@ -16,18 +16,32 @@ const enc = (/** @type {any} */ v) => Buffer.from(JSON.stringify(v), "utf8");
 
 /**
  * @param {any} drive the Drive underneath
- * @param {{ keysFor: (chat: string) => import("../../lib/chat-keys.js").Keys | null, projectKeysFor?: (project: string) => import("../../lib/chat-keys.js").Keys | null }} src what this process holds: a chat's keys when it is unlocked
+ * @param {{ keysFor: (chat: string) => import("../../lib/chat-keys.js").Keys | null, projectKeysFor?: (project: string) => import("../../lib/chat-keys.js").Keys | null, sealed?: (chat: string) => boolean }} src what this process holds: a chat's keys when it is unlocked; `sealed(chat)` says whether the chat keeps its folders sealed (a chat with no ring does not, and its paths pass straight through)
  */
 export function sealedDrive(drive, src) {
   /** @param {string} p */
-  const parse = p => { const m = FOLDER.exec(String(p).replace(/\/{2,}/g, "/")); return m ? { project: m[1], kind: m[2], chat: m[3], rest: m[4] === undefined || m[4] === "" ? null : m[4], root: `Projects/${m[1]}/${m[2]}/${m[3]}` } : null; };
+  const parse = p => { const m = FOLDER.exec(String(p).replace(/\/{2,}/g, "/")); return m && (!src.sealed || src.sealed(m[3])) ? { project: m[1], kind: m[2], chat: m[3], rest: m[4] === undefined || m[4] === "" ? null : m[4], root: `Projects/${m[1]}/${m[2]}/${m[3]}` } : null; };
   const keysOf = (/** @type {string} */ chat) => { const k = src.keysFor(chat); if (!k) throw err("unavailable", "this chat's key is not unlocked here"); return k; };
   /** @param {string} p */
+  /** A file shared to a project is found through the PROJECT's ring alone (a member who is not in the chat never holds the chat's name key): the project's sealed index of what was shared, kept in memory
+   *  once loaded (`loadShared`). @type {Map<string, Map<string, any>>} */
+  const shared = new Map();
+  const sharedPath = (/** @type {string} */ project) => `Projects/${project}/.shared`;
+  const sharedAad = (/** @type {string} */ project) => `project-shared:${project}`;
+  const sharedId = (/** @type {any} */ pk, /** @type {{ kind: string, chat: string, rest: string|null }} */ w) => namer(pk).id(`${w.kind}/${w.chat}/${w.rest}`);
+  /** The entry a project's index holds for this logical path, or null. @param {{ project: string, kind: string, chat: string, rest: string|null }} w */
+  const sharedEntry = w => {
+    const pk = src.projectKeysFor ? src.projectKeysFor(w.project) : null, m = shared.get(w.project);
+    return pk && m ? m.get(sharedId(pk, w)) || null : null;
+  };
   const stored = p => {
     const w = parse(p);
     if (!w || w.rest === null) return p;
-    const n = namer(keysOf(w.chat));
-    return `${w.root}/${w.rest.split("/").map(s => n.id(s)).join("/")}`;
+    const ck = src.keysFor(w.chat);
+    if (ck) { const n = namer(ck); return `${w.root}/${w.rest.split("/").map(s => n.id(s)).join("/")}`; }
+    const e = sharedEntry(w);
+    if (e) return e.stored;
+    throw err("unavailable", "this chat's key is not unlocked here");
   };
   /** One index per chat folder root, read and written one at a time. @type {Map<string, Promise<any>>} */
   const turns = new Map();
@@ -40,7 +54,26 @@ export function sealedDrive(drive, src) {
   const writeIndex = async (/** @type {{ root: string, chat: string }} */ w, /** @type {any} */ ix) => { await drive.put(`${w.root}/${NAMES}`, enc(seal(JSON.stringify(ix), keysOf(w.chat).nameKey, aad(w.chat))), { by: "sealed-drive" }); };
   const rel = (/** @type {string} */ storedPath, /** @type {{ root: string }} */ w) => storedPath.slice(w.root.length + 1);
 
+  /** Read a project's sealed index of shared files into memory (call when the project's ring is unlocked here, and after a restart). @param {string} project */
+  const loadShared = async project => {
+    const pk = src.projectKeysFor ? src.projectKeysFor(project) : null;
+    if (!pk) return { loaded: 0 };
+    let entries = {};
+    try { entries = JSON.parse(open(JSON.parse(Buffer.from(await drive.get(sharedPath(project))).toString("utf8")), pk.nameKey, sharedAad(project)).toString("utf8")).entries || {}; } catch { entries = {}; }
+    shared.set(project, new Map(Object.entries(entries)));
+    return { loaded: Object.keys(entries).length };
+  };
+  const saveShared = (/** @type {string} */ project, /** @type {(m: Map<string, any>) => void} */ mutate) => turn(`project:${project}`, async () => {
+    const pk = src.projectKeysFor ? src.projectKeysFor(project) : null;
+    if (!pk) return;
+    if (!shared.has(project)) await loadShared(project);
+    const m = shared.get(project) || new Map();
+    mutate(m); shared.set(project, m);
+    await drive.put(sharedPath(project), enc(seal(JSON.stringify({ entries: Object.fromEntries(m) }), pk.nameKey, sharedAad(project))), { by: "sealed-drive" });
+  });
+
   const self = {
+    loadShared,
     /** The path the Drive actually stores a logical path under (ids for a chat's files): what the gateway authorizes and logs, so no name reaches the kernel's log either. @param {string} p */
     stored,
     /** @param {string} p @param {Uint8Array} bytes @param {any} [o] */
@@ -60,6 +93,12 @@ export function sealedDrive(drive, src) {
     async get(p, o = {}) {
       const w = parse(p);
       if (!w || w.rest === null) return drive.get(p, o);
+      if (!src.keysFor(w.chat)) {
+        // not in the chat: only a file shared to the project opens, through the project's ring, at the version that was shared
+        const e = sharedEntry(w), pk = src.projectKeysFor ? src.projectKeysFor(w.project) : null;
+        if (!e || !pk) throw err("unavailable", "this chat's key is not unlocked here");
+        return new Uint8Array(openShared(pk, e.rec, JSON.parse(Buffer.from(await drive.get(e.stored, { version: e.ver })).toString("utf8"))));
+      }
       const k = keysOf(w.chat), sp = stored(p), version = o.version ?? drive.stat(sp, {}).version;
       const box = JSON.parse(Buffer.from(await drive.get(sp, { version })).toString("utf8"));
       const rec = (await readIndex(w)).files[rel(sp, w)]?.recs?.[version];
@@ -102,6 +141,7 @@ export function sealedDrive(drive, src) {
       /** @type {Map<string, any>} */ const ixs = new Map();
       for (const e of /** @type {any[]} */ (raw)) {
         const sp = String(e.path ?? e.name ?? e), w = parse(sp);
+        if (/^Projects\/[^/]+\/\.shared$/.test(sp)) continue;
         if (!w || w.rest === null) { out.push(e); continue; }
         if (w.rest === NAMES || w.rest === ".ring") continue;
         let k = null; try { k = keysOf(w.chat); } catch { continue; }
@@ -131,6 +171,9 @@ export function sealedDrive(drive, src) {
         const ver = Math.max(...Object.keys(e.recs).map(Number));
         e.recs[ver] = shareFile(k, e.recs[ver], pk);
         await writeIndex(w, ix);
+        // and the project's own index: where the file is stored and its name, sealed under the PROJECT's ring, with the one wrap that opens it
+        const rec = { ...e.recs[ver], shares: { [pk.id]: e.recs[ver].shares[pk.id] } };
+        await saveShared(w.project, m => m.set(sharedId(pk, w), { stored: sp, ver, rec, name: namer(pk).seal(`${w.kind}/${w.chat}/${w.rest}`) }));
         return { wrapped: true };
       });
     },
@@ -149,6 +192,7 @@ export function sealedDrive(drive, src) {
         for (const r of Object.values(e.recs)) delete /** @type {any} */ (r).shares[pk.id];
         e.recs[res.version] = rec;
         await writeIndex(w, ix);
+        await saveShared(w.project, m => m.delete(sharedId(pk, w)));
         return { rotated: true, version: res.version };
       });
     },
