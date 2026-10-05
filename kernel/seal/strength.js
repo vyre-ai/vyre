@@ -34,9 +34,10 @@ const GESTURE_METHODS = new Set(["touchid", "capsule", "passkey", "tty", "code"]
 /**
  * UY-2 (ruling 6410c6a): on a release build an enclave or Android Keystore key the server could NOT attest (the sideloaded iPhone, an Android phone whose attestation chain is not yet verified) is enrolled and says yes, marked
  * `unattested`: its method is "unattested" and its strength "unattested", never "hardware" and never "attested" (hardware means attested, or it is not said). A software key is not one of these and stays refused on release.
- * An attested key keeps its own mark. Only these signer names: the keys a phone's or a PC's secure chip holds.
+ * An attested key keeps its own mark. Only these signer names: the keys a phone's secure chip holds.
  */
-// A PC's TPM (Windows Hello, a P-256 key behind the user's gesture, `tpm`) is the same kind of key as a phone's chip: admitted on release when no attestation can be checked, marked unattested.
-export const UNATTESTED_SIGNERS = new Set(["secure_enclave", "strongbox", "tpm"]);
+// `tpm` (a PC's Windows Hello key) is NOT admitted unattested on a release build: until a prompt on every signature is shown on a real TPM computer, a page script that can reach the key could mint a yes silently.
+// It is a known signer class (proof.js SIGNERS, verified as P-256), taken only where unattested keys are (a development build), so a Windows PC is not the yes yet and the phone is.
+export const UNATTESTED_SIGNERS = new Set(["secure_enclave", "strongbox"]);
 /** Is this an unattested key of a signer the release rule admits? @param {{ attested?: boolean, signer?: string }} k */
 export const isUnattestedEnclave = k => k.attested !== true && UNATTESTED_SIGNERS.has(String(k.signer));

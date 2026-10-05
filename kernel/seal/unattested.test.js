@@ -31,9 +31,10 @@ test("release: an unattested Secure Enclave key and an unattested Keystore key e
   }
 });
 
-test("release: a software key and an unattested signer outside the chip-key classes are refused (tpm joins secure_enclave and strongbox: see tpm-signer.test.js)", async t => {
+test("release: a software key and any other unattested signer are refused (tpm included: see tpm-signer.test.js)", async t => {
   const s = await release(t);
   assert.equal(await code(enrolDevice(s, signer("per_sw", undefined, "software"))), "software_refused");
+  assert.equal(await code(enrolDevice(s, signer("per_tpm", undefined, "tpm"))), "unattested");
   assert.equal(await code(enrolDevice(s, signer("per_wh", undefined, "windows_hello"))), "unattested");
 });
 
