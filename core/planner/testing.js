@@ -42,6 +42,9 @@ const presence = { check: async (/** @type {any} */ { chain, op, fields, proof: 
 
 /** The assistants of the test Space: actors the owner added, working under the person. */
 export const ASSISTANTS = ["juno", "kit", "assistant"];
+/** Two members who are not the owner: they hold no admin role, so the Bin lists only what is theirs. */
+export const MEMBERS = ["per_member", "per_third"];
+export const memberFacts = (/** @type {string} */ person) => ({ kind: "invitee", person, vouched: true });
 
 /** What a Space has before the planner starts: the shared Event type, and the assistants the owner added with what they may do with tasks. */
 export async function prepareKernel(/** @type {any} */ k) {
@@ -54,12 +57,16 @@ export async function prepareKernel(/** @type {any} */ k) {
     const g = { subject: { kind: "actor", actor: a }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${SPACE}/task/*` }, conditions: {}, source: "test" };
     await k.gateway.grants.create(owner, g, { presence: proofFor("grants.create", g, `vyre://${SPACE}/grant/new`) });
   }
+  for (const id of MEMBERS) {
+    const m = { person: id, role: "member" };
+    await k.gateway.grants.setRole(owner, m, { presence: proofFor("grants.role", m, `vyre://${SPACE}/member/${id}`) });
+  }
 }
 
 /** A kernel for a test: the memory store, or any store handed in (the live suite passes a real Twenty's). */
 export const newKernel = async (/** @type {any} */ store, /** @type {any} */ more = {}) => createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4), presence, ...(store ? { store } : {}), ...more });
 
-export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle(), kernel = null } = {}) {
+export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeGoogle(), kernel = null, store = null } = {}) {
   const k = kernel || await newKernel();
   const owner = k.chains.fromFacts(FACTS);
   if (!kernel) await prepareKernel(k);
@@ -81,7 +88,7 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
   /** An assistant's call carries the chain the daemon would make from its vouched session; the test hands it in as meta.kernelChain. */
   const withChains = (/** @type {any} */ real) => Object.defineProperty(Object.create(real), "chain", { value: async (/** @type {any} */ meta) => (meta && meta.kernelChain) || real.chain(meta) });
   const ctx = {
-    name: "planner", config: { role: "box", planner: { timezone: tz } }, paths: { root }, kernel: withChains(k.kernelFor({ name: "planner", needs: NEEDS })),
+    name: "planner", ...(store ? { store } : {}), config: { role: "box", planner: { timezone: tz } }, paths: { root }, kernel: withChains(k.kernelFor({ name: "planner", needs: NEEDS })),
     log: m => logs.push(m),
     events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
     tool: (name, def) => tools.set(name, def),
@@ -94,6 +101,13 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
   const w = {
     k, events, clock, timers, fired, acked, logs, google, handle, owner, tier: /** @type {any} */ (null), agents: [{ name: "assistant", kind: "assistant" }, { name: "juno", kind: "agent", projects: "*" }, { name: "kit", kind: "agent", projects: "*" }],
     settled: () => handle.calendar.settled(),
+    /** Call as another person of the Space (a member, not the owner): `facts` is what the daemon proved about their connection. */
+    async callAs(/** @type {any} */ facts, /** @type {string} */ name, input = {}) {
+      const def = tools.get(name);
+      if (!def) return { error: { code: "no_such_tool" } };
+      try { return { data: await def.run(input, { caller: "deck", kernelFacts: facts }) }; }
+      catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
+    },
     async call(name, input = {}, caller = "cli", more = {}) {
       const def = tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
