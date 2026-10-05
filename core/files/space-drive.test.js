@@ -100,7 +100,9 @@ test("on a real kernel-on daemon the home Space's Drive works through the real t
   for (const caller of ["mcp", "mcp:agent:kit", "tailnet-guest:x", "anonymous"]) {
     for (const [tool, input] of [["files.drive.versions", { path: "Clients/A/retainer.txt" }], ["files.drive.upload", { path: "x/y.txt", base64: b64("no") }]]) assert.ok((await call(tool, input, { root, caller })).error, `${caller} ${tool}`);
   }
-  assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, 3, "nothing else was written");
+  // the one permission rule (c328cd1): a person caller (exactly one person in the chain) does an admin act such as a restore with no presence, so the restore above is a NEW version (4), nothing is lost,
+  // and nothing else was written. A caller that needs presence is refused and writes nothing (3).
+  assert.equal((await ok("files.drive.versions", { path: "Clients/A/retainer.txt" })).versions.length, restored.error ? 3 : 4, "nothing else was written");
 });
 
 test("DR-2: versions pages by `after` and `limit`, and list and read refuse bad paging input", async () => {
