@@ -120,7 +120,7 @@ export function pickGithubAccounts(d) {
  * The surfaces vault.connections.grant/revoke know (ADR 0028 decision 9b). "Planner" is not
  * one yet: app-design's Connections board shows a Planner chip, and the lead's ask is for these
  * chips to grant real access, so this is a live question back to vault and app-design rather
- * than a chip this file invents (docs/work/connectors.md, Needs from others).
+ * than a chip this file invents (team/archive/work-journals/connectors.md, Needs from others).
  */
 export const SURFACE_NAMES = ["capsule", "chat", "agents", "phone"];
 /** A provider name (core/vault/providers.js) to the word and card group the board draws. */

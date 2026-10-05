@@ -5,7 +5,7 @@
 #   gh workflow run relay-deploy.yml --ref work/stage-0.2 -f sha=<the stage sha> -f relay=true -f names=true
 #
 # The Cloudflare token is the environment secret CLOUDFLARE_API_TOKEN, and the account id is the repository or environment
-# variable CLOUDFLARE_ACCOUNT_ID (an id is not a secret). Exact token scopes are in docs/work/tailnet.md ("Cloudflare token").
+# variable CLOUDFLARE_ACCOUNT_ID (an id is not a secret). Exact token scopes are in team/archive/work-journals/tailnet.md ("Cloudflare token").
 name: relay-deploy
 on:
   workflow_dispatch:

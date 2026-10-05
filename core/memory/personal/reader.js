@@ -1,5 +1,5 @@
 // @ts-check
-// personal/reader: the fast model reads the user's turns for personal facts (docs/work/memory-iq.md,
+// personal/reader: the fast model reads the user's turns for personal facts (team/archive/work-journals/memory-iq.md,
 // "The reader"). The rules in extract.js are the cheap first filter and stay precise; they do not
 // generalise to how people really type, so every user turn with a personal signal is also read by
 // the fast model (config.models.memory, haiku by default), once.

@@ -43,7 +43,7 @@ never Touch ID (it's not a secret action, ADR 0024).
 5. **Receiving files from the server (files.receive).** **Built** this session (0.1.1, e2e review
    of aa9cb40c/9338a6a5): off by default, per device, in config today: not yet a declared
    settings-hub entry (tried; a device-level setting needs a different store than config.json,
-   reverted rather than ship unreviewed: see docs/work/federation.md). Offering it as a clear
+   reverted rather than ship unreviewed: see team/archive/work-journals/federation.md). Offering it as a clear
    toggle in this step is **S**: wire the existing tool to a UI checkbox.
 
 6. **Conflicts.** Partially built: Taildrop already renames on a name clash

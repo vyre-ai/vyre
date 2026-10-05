@@ -4,7 +4,7 @@
 // never the Mac someone is using) and drives it over the DevTools protocol: the popup renders
 // against real chrome.* APIs (not the vm-and-fake-chrome stubs extension.test.js uses), pairs
 // against a real fill listener, and fills a real login into a real page. What the manifest-only
-// and HTTP-contract tests cannot see (docs/work/vault.md "Next" #4 / 0.1.1 #9).
+// and HTTP-contract tests cannot see (team/archive/work-journals/vault.md "Next" #4 / 0.1.1 #9).
 //
 // Everything lives under a temp folder and is torn down on the way out, Ctrl-C included: a
 // static page server, the Fill HTTP listener, a temp Vault, and Chrome's own profile. No value

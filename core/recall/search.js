@@ -110,14 +110,14 @@ export function floorFor(/** @type {number} */ n) {
  * A second, PER-QUERY floor on top of floorFor's fixed one: mean + z * stddev of this query's
  * own dot products (see dense.js `search`). Left off (undefined) by default: on the real
  * labelled set it could not clear the best English-sounding nonsense probes without also
- * burying real answers (docs/work/recall.md has the sweep), so agreement gating (below) and
+ * burying real answers (team/archive/work-journals/recall.md has the sweep), so agreement gating (below) and
  * `USER_WEIGHT` carry the real fix and this stays a knob for the eval harness to keep testing.
  */
 export const Z = undefined;
 /** How many turns meaning may add to the pool. */
 export const DENSE_K = 200;
 /**
- * The reciprocal-rank constant. The earlier rank-fusion-k sweep (docs/work/recall.md) tested
+ * The reciprocal-rank constant. The earlier rank-fusion-k sweep (team/archive/work-journals/recall.md) tested
  * only the assistant-only variant at dense_weight 0.05-0.08, where 60 held up; re-swept on the
  * SHIPPED all-role index at dense_weight 0.2-0.3 it does not: rrf_k pushes a keyword rank down
  * faster than a dense rank at the SAME rrf_k when dense_weight < 1, so at 60 a candidate ranked
@@ -142,7 +142,7 @@ export const RRF = 10;
  * 0.81 (still above the pre-this-branch 0.845, but a real step down from 0.25's own 0.881) —
  * apparently a rank-ordering threshold in that small a corpus, not a smooth tradeoff. Kept at
  * 0.25 because the fictional set is the one measurement here that must not regress; re-checked
- * against the retuned rrf_k (10) above and still the best point. See docs/work/recall.md.
+ * against the retuned rrf_k (10) above and still the best point. See team/archive/work-journals/recall.md.
  */
 export const DENSE_WEIGHT = 0.25;
 /**
@@ -158,7 +158,7 @@ export const DENSE_WEIGHT = 0.25;
  * anything on the real corpus either. Left at 1 (off) for that reason; DENSE_WEIGHT and the
  * agreement-gated floor above already clear keyword on the real corpus without it. Kept as an
  * eval-harness knob in case a future labelled set, or a length-based rather than role-based
- * version of the same idea, makes it safe. See docs/work/recall.md.
+ * version of the same idea, makes it safe. See team/archive/work-journals/recall.md.
  */
 export const USER_WEIGHT = 1;
 
