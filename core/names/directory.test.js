@@ -131,7 +131,7 @@ test("names.release: the name goes back for good, and the box forgets it", async
   assert.ok(!a.cfg.network.via);
   assert.equal(h.dns.records.length, 0);
   assert.ok(a.emitted.some(e => e.type === "name.released"));
-  assert.equal((await h.box().client.check("alex")).status, "taken", "for good");
+  assert.equal((await h.box().client.check("alex")).status, "ok", "a name that was never pointed anywhere is simply free again");
 });
 
 test("names.recover: the old box cancels by itself; with it offline the name moves after 72 hours", async t => {

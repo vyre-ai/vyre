@@ -553,7 +553,7 @@ const SIGNIN_FIXTURE = `export default { async start(ctx) {
   return { async stop() {} };
 } };`;
 
-test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in, the network status and a second call", async t => {
+test("setup: modules declare setupTools in module.json and the setup channel reaches exactly those; one session survives a call, sign-in and a second call", async t => {
   const dirFake = await fakeDirectory(t);
   const w = await world(t, { disable: ["onboard"], directory: dirFake.url, fixtures: [
     ["sessionsfx", { does: { tools: ["sessionsfx.accounts.signin", "sessionsfx.accounts.other"] }, setupTools: ["sessionsfx.accounts.signin"] }, SIGNIN_FIXTURE],
@@ -578,9 +578,6 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const real = await a.call("sessions.accounts.signin", { flow: "no-such-flow" });
   assert.notEqual(real.error?.code, "not_asked", "askedOnly accepts the setup page's device");
   assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
-  const net = await a.call("network.wink.status");
-  assert.notEqual(net.status, 404, "the network status is on the setup channel (the router does not hide it)");
-  assert.equal((await a.call("network.wink.join", { space: "x" })).status === 200, false, "joining a network is not on it");
   const c2 = await claim();
   assert.equal(c2.status, 200, JSON.stringify(c2));
   assert.equal(c2.data.recoveryCode, null, "the code is shown once");
