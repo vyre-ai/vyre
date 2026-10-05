@@ -27,6 +27,7 @@ import { connect as relayConnect, resolveTicket } from "../../relay/client/clien
 import { nodeCrypto, fileKeyStore } from "../../relay/client/nodecrypto.js";
 import { WORDS as WORDLIST } from "../../relay/client/words.js";
 import { verifyDevice } from "./node/peer-wire.js";
+import { verifyWith } from "../../kernel/identity/chain.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
@@ -899,7 +900,7 @@ export function createPairing(o) {
       const pr = input && input.proof && typeof input.proof === "object" ? input.proof : null;
       // a server installed with no pair-to is not waiting for anyone: its refusals say what was missing, not whom it waits for
       const shownName = String((input && input.owner && input.owner.name) || to).slice(0, 48);
-      if (!pr || typeof pr.eid !== "string" || typeof pr.sig !== "string" || pr.eid.length > 64 || pr.sig.length > 200) throw fail(open ? "denied_no_proof" : "denied", words(open ? "pairNeedsIdentity" : "pairNeedsProof"));
+      if (!pr || typeof pr.eid !== "string" || typeof pr.sig !== "string" || pr.eid.length > 64 || pr.sig.length > 1200) throw fail(open ? "denied_no_proof" : "denied", words(open ? "pairNeedsIdentity" : "pairNeedsProof"));
       if (typeof o.identityEntry !== "function") throw fail("denied", words("pairCannotProve"));
       // A fresh server has never seen this identity's chain: the app says the Vyre name it claims (`owner.vyre`) and the port reads that name's chain from the names directory, pinned and verified, and
       // keeps it only if the chain is the claimed id's. The directory out of reach is its own answer, never a "not them", and nothing is paired on a proof that could not be checked.
@@ -917,14 +918,18 @@ export function createPairing(o) {
       if (open && release && !pin) throw fail("no_pin", words("pairNeedsPin"));
       const message = pairToMessage(await boxKey(), caller.slice(7), tag);
       // a --pair-to server also takes the older message with no tag (an installer made before the tag); the open flow never does
-      if (!verifyDevice(e.pub, message, pr.sig) && !(!open && tag && verifyDevice(e.pub, pairToMessage(await boxKey(), caller.slice(7)), pr.sig))) { ctx.log("wink: the identity proof's signature did not match this pairing"); throw notThem(); }
+      // A passkey's signature is a WebAuthn assertion (a longer envelope the chain's own check reads), not a bare signature: the entry says which (alg, rp), the way the identity chain checks it.
+      const sigOk = async (/** @type {Uint8Array} */ m) => (e.alg === "webauthn-es256" ? await verifyWith(e.pub, m, pr.sig, /** @type {any} */ ({ alg: e.alg, pub: e.pub, rp: e.rp })) : verifyDevice(e.pub, m, pr.sig));
+      if (!(await sigOk(message)) && !(!open && tag && await sigOk(pairToMessage(await boxKey(), caller.slice(7))))) { ctx.log("wink: the identity proof's signature did not match this pairing"); throw notThem(); }
       if (open) {
         // PI-1: who owns a server speaks from a hardware-held key. A phone's entry carries `enclave` (its Secure Enclave key behind Face ID) and must add that key's signature over the same message; a browser-held
-        // entry, a passkey and a plain software key are accepted on a development build only, which says so in wink.server.status (owner_proof: software).
-        const hardware = Boolean(e.enclave) && e.held !== "web" && e.alg === undefined;
-        if (hardware && !(typeof pr.esig === "string" && verifyEnclave(e.enclave, message, pr.esig))) { ctx.log("wink: the identity proof lacks its Face ID signature"); throw notThem(); }
+        // entry and a plain software key are accepted on a development build only; a passkey is accepted anywhere, which says so in wink.server.status (owner_proof: software).
+        // A passkey is hardware-class: its assertion carries user presence AND verification, which the chain's check requires (kernel/identity/chain.js verifyWebAuthn), so it owns a server on a release build too (lead ruling 5 Oct).
+        const passkey = e.alg === "webauthn-es256";
+        const hardware = passkey || (Boolean(e.enclave) && e.held !== "web" && e.alg === undefined);
+        if (hardware && !passkey && !(typeof pr.esig === "string" && verifyEnclave(e.enclave, message, pr.esig))) { ctx.log("wink: the identity proof lacks its Face ID signature"); throw notThem(); }
         if (!hardware && release) { ctx.log("wink: the identity proof came from a key that is not hardware-held"); throw fail("not_hardware", words("pairNotHardware")); }
-        proofKinds.set(caller, hardware ? "enclave, unattested" : "software"); pinKinds.set(caller, pin ? "given" : "none"); if (hardware) enclaveKeys.set(caller, { key: String(e.enclave), eid: String(e.eid), name: input.owner && typeof input.owner.vyre === "string" ? input.owner.vyre : null }); else enclaveKeys.delete(caller);
+        proofKinds.set(caller, hardware ? (passkey ? "passkey" : "enclave, unattested") : "software"); pinKinds.set(caller, pin ? "given" : "none"); if (hardware && !passkey) enclaveKeys.set(caller, { key: String(e.enclave), eid: String(e.eid), name: input.owner && typeof input.owner.vyre === "string" ? input.owner.vyre : null }); else enclaveKeys.delete(caller);
       }
       return String(e.identity || to);
     };

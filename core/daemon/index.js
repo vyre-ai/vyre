@@ -467,7 +467,7 @@ async function startLocked(opts, root, p, release) {
         // the signed time the entry was added and whether it founded the list, from the verified chain (the door applies the 24-hour newcomer rule with the sealing process's own clock); unknown stays unknown
         let age = e;
         if (typeof e.since !== "number" || typeof e.founder !== "boolean") { const ev = await ask("spaces.identity.evidence", { person: identity, ...(name ? { name } : {}) }); const f = ev && Array.isArray(ev.entries) ? ev.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null; if (f) age = f; }
-        return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
+        return { pub: e.pub, ...(e.alg ? { alg: e.alg, ...(e.rp ? { rp: e.rp } : {}) } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
