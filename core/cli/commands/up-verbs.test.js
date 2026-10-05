@@ -136,20 +136,19 @@ async function fakeVyred(t, root, tools) {
   return calls;
 }
 
-test("name: status, check, claim, ts.net and release reach the names tools; usage mistakes are exit 2", async t => {
+test("name: status, check, claim and release reach the names tools; usage mistakes are exit 2", async t => {
   const root = tempHome(t);
-  let state = { address: null, phase: "none", owner: "alex@example.com" };
+  let state = { name: null, address: null, phase: "idle" };
   const calls = await fakeVyred(t, root, {
     "names.status": async () => ({ data: state }),
     "names.check": async ({ name }) => ({ data: name === "taken" ? { name, valid: true, available: false, why: "someone else has it" } : { name, valid: true, available: true, address: `https://${name}.vyre.run` } }),
     "names.claim": async ({ name }) => { state = { ...state, address: `https://${name}.vyre.run`, phase: "claiming" }; return { data: { ...state, recoveryCode: "abcd-efgh" } }; },
-    "names.fallback": async () => { state = { ...state, address: "https://box.example-tail.ts.net", phase: "serving" }; return { data: state }; },
     "names.release": async () => ({ error: { code: "presence_required", message: "releasing the name needs you here" } }),
   });
 
   const s = await run(root, ["name"]);
   assert.equal(s.code, 0, s.out);
-  assert.match(s.out, /no address · none · owner alex@example\.com/);
+  assert.match(s.out, /no name · idle/);
   assert.deepEqual(JSON.parse((await run(root, ["name", "--json"])).stdout), state);
 
   assert.match((await run(root, ["name", "check", "alex"])).out, /https:\/\/alex\.vyre\.run is free/);
@@ -157,15 +156,11 @@ test("name: status, check, claim, ts.net and release reach the names tools; usag
 
   const claim = await run(root, ["name", "claim", "alex", "--json"]);
   assert.equal(claim.code, 0, claim.out);
-  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", owner: "alex@example.com", recoveryCode: "abcd-efgh" });
+  assert.deepEqual(JSON.parse(claim.stdout), { address: "https://alex.vyre.run", phase: "claiming", name: null, recoveryCode: "abcd-efgh" });
   // Text mode prints the one-time code too (it was dropped before): once, with the plain line to store it.
   const claimText = await run(root, ["name", "claim", "alex"]);
   assert.match(claimText.out, /Recovery code: abcd-efgh/);
   assert.match(claimText.out, /shown once and cannot be shown again/);
-  const ts = await run(root, ["name", "ts.net"]);
-  assert.equal(ts.code, 0, ts.out);
-  assert.match(ts.out, /https:\/\/box\.example-tail\.ts\.net · serving · owner alex@example\.com/);
-
   // The tool's refusal: a person must be here, exit 3, with the next step.
   const rel = await run(root, ["name", "release"]);
   assert.equal(rel.code, 3, rel.out);
@@ -179,33 +174,9 @@ test("name: status, check, claim, ts.net and release reach the names tools; usag
 
   assert.deepEqual(calls.map(c => [c.tool, c.input]), [
     ["names.status", {}], ["names.status", {}], ["names.check", { name: "alex" }], ["names.check", { name: "taken" }],
-    ["names.claim", { name: "alex" }], ["names.claim", { name: "alex" }], ["names.fallback", {}], ["names.release", {}],
+    ["names.claim", { name: "alex" }], ["names.claim", { name: "alex" }], ["names.release", {}],
   ], "usage mistakes never reach vyred");
   assert.ok(calls.every(c => c.caller === "cli"));
-});
-
-test("owner: sets the login, shows it, --json is never a login, and no vyred is exit 5", async t => {
-  const root = tempHome(t);
-  let owner = null;
-  const calls = await fakeVyred(t, root, {
-    "names.status": async () => ({ data: { address: null, phase: "none", owner } }),
-    "names.owner": async ({ login }) => { owner = login; return { data: { address: null, phase: "none", owner } }; },
-  });
-  assert.match((await run(root, ["owner"])).out, /no owner yet/);
-  assert.deepEqual(JSON.parse((await run(root, ["owner", "--json"])).stdout), { owner: null });
-  const set = await run(root, ["owner", "alex@example.com"]);
-  assert.equal(set.code, 0, set.out);
-  assert.match(set.out, /owner: alex@example\.com/);
-  assert.equal(JSON.parse((await run(root, ["owner", "alex@example.com", "--json"])).stdout).owner, "alex@example.com");
-  assert.match((await run(root, ["owner"])).out, /^\s+alex@example\.com$/m);
-  assert.ok(!calls.some(c => c.input.login === "--json"), "--json never became the owner");
-
-  // No vyred at all: the read fails as vyred not running, exit 5, not a 0 with an error printed.
-  const empty = tempHome(t);
-  const down = await run(empty, ["owner"]);
-  assert.equal(down.code, 5, down.out);
-  assert.match(down.out, /vyred is not running/);
-  assert.match(down.out, /next: vyre up starts it/);
 });
 
 test("uninstall --system: needs --system; a dry run prints the plan and changes nothing; without root it refuses", async t => {
@@ -216,7 +187,7 @@ test("uninstall --system: needs --system; a dry run prints the plan and changes 
 
   const dry = await run(root, ["uninstall", "--system", "--dry-run", "--purge"]);
   assert.equal(dry.code, 0, dry.out);
-  assert.match(dry.out, /would run systemctl disable --now vyre\.service vyre\.socket/);
+  assert.match(dry.out, /would run systemctl disable --now vyre\.service/);
   assert.match(dry.out, /would remove \/etc\/systemd\/system\/vyre\.service/);
   assert.match(dry.out, /purge: .*\.vyre is deleted/);
   assert.match(dry.out, /would remove .*\.vyre$/m);
@@ -237,10 +208,10 @@ test("up.js commands: vyre commands lists vyre name's verbs; the others take fla
   const root = tempHome(t);
   const d = JSON.parse((await run(root, ["commands", "--all", "--json"])).stdout);
   const of = n => d.commands.find(c => c.name === n);
-  assert.deepEqual(of("name").verbs.map(v => v.verb), ["status", "check", "claim", "ts.net", "release"]);
+  assert.deepEqual(of("name").verbs.map(v => v.verb), ["status", "check", "claim", "release"]);
   assert.deepEqual(of("name").verbs.find(v => v.verb === "claim").args, [{ name: "n", required: true }]);
   assert.deepEqual(of("name").verbs.filter(v => v.read).map(v => v.verb), ["status", "check"]);
-  for (const n of ["up", "backup", "restore", "owner", "uninstall"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
+  for (const n of ["up", "backup", "restore", "uninstall"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
   assert.deepEqual(of("up").flags.map(f => f.name), ["box", "connect", "no-capsule", "keep-link", "dry-run", "json"]);
   assert.deepEqual(of("up").flags.find(f => f.name === "connect"), { name: "connect", value: "addr" });
   assert.deepEqual(of("restore").args, [{ name: "file", required: true }]);
@@ -253,9 +224,9 @@ test("up.js commands --view: up --dry-run is a card, name a card, name status th
   const u = frames(up.stdout);
   assert.deepEqual([u[0].cmd, u[0].view.kind, u[0].data.role, u[0].data.ready], ["up", "card", "box", false]);
   assert.equal(u.length, 2, "the object, then done: no prose");
-  const calls = await fakeVyred(t, root, { "names.status": async () => ({ data: { address: "https://harlow-legal.vyre.run", phase: "serving", owner: "alex@example.com" } }) });
+  const calls = await fakeVyred(t, root, { "names.status": async () => ({ data: { name: "harlow-legal", address: "https://harlow-legal.vyre.run", phase: "serving" } }) });
   const n = frames((await run(root, ["name", "--view"])).stdout);
-  assert.deepEqual([n[0].cmd, n[0].view.kind, n[0].view.state, n[0].view.fields[0].value], ["name", "card", "ok", "https://harlow-legal.vyre.run"]);
+  assert.deepEqual([n[0].cmd, n[0].view.kind, n[0].view.state, n[0].view.fields.find(f => f.label === "Address").value], ["name", "card", "ok", "https://harlow-legal.vyre.run"]);
   assert.deepEqual(JSON.parse((await run(root, ["name", "status", "--json"])).stdout), n[0].data);
   assert.deepEqual(calls.map(c => c.tool), ["names.status", "names.status"]);
   const file = path.join(SCRATCH, `up-view-${process.pid}-${Date.now()}.tar.gz`);

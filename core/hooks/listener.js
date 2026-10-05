@@ -1,9 +1,8 @@
 // @ts-check
 // listener: the one HTTP listener in Vyre that the public internet reaches, through Funnel.
 //
-// It binds 127.0.0.1 and nothing else. Never a tailnet address and never 0.0.0.0, which in the
-// box's shared namespace would include tailscale0. tailscaled shares that namespace, so it
-// reaches loopback, and Funnel proxies each published path here. What it accepts is narrow:
+// It binds 127.0.0.1 and nothing else. Never a network address and never 0.0.0.0. Whatever carries public links to this home
+// reaches loopback and proxies each published path here. What it accepts is narrow:
 //   - POST /hooks/<name> for a route that is open right now; anything else is a bare 404;
 //   - a JSON or form body of at most 256 KB, read within 5 seconds of the connection opening;
 //   - 30 requests a minute per route, a token bucket refilled from the clock, so no timer runs;

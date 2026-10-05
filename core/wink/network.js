@@ -1,5 +1,5 @@
 // @ts-check
-// wink.network.*: what the person's network looks like, in Wink's words, and the two things they can do to it (spec 4.7, TAILSCALE-removal step 1).
+// wink.network.*: what the person's network looks like, in Wink's words, and the two things they can do to it (spec 4.7, removal plan step 1).
 // These four are the Wink module's INTERNAL tools (reach modules, caller module:network only). The names the surfaces call are network.wink.status, .whois, .join and .leave,
 // registered by the network module (core/network/wink.js), which owns the `network.` prefix; a module's tools must start with its own name, so the Wink module cannot hold them.
 // The network module does the owner's check and the person's presence; these do the work.

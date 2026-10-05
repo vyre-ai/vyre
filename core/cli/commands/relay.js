@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre relay`: reach the box with a QR code, no Tailscale (ADR 0026). Status, pairing with a code
+// `vyre relay`: reach the box with a QR code (ADR 0026). Status, pairing with a code
 // drawn in the terminal, the device list, and turning it on and off. Every change goes through
 // the person at this terminal (presence), like the same buttons in the Deck.
 //
@@ -86,7 +86,7 @@ export default [
       { verb: "unpin", summary: "follow the newest web app release this box knows", usage: "", person: true },
     ],
     help: "vyre relay: whether the relay is on and connected\nvyre relay pair: a QR code for one more device (once, 10 minutes)\nvyre relay devices: paired devices, which are connected, and how\nvyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)\nvyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts",
-    summary: "reach this box from your phone with a QR code, no Tailscale",
+    summary: "reach this box from your phone with a QR code",
     async run(args) {
       const { flags, pos } = parse(args, { bool: ["off"], values: ["url"], cmd: "relay" });
       const [verb = "status", a, ...rest] = pos;

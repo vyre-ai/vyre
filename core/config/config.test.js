@@ -221,7 +221,7 @@ test("config: save merges one level deep, removes nulls and writes 0600", t => {
   assert.equal(c.network.owner, "alex@example.com");
   assert.equal(c.network.address, "https://alex.vyre.run");
   assert.equal(c.network.port, undefined);
-  assert.equal(c.network.tailscale, false, "defaults are still merged under what was saved");
+  assert.equal(typeof c.role, "string", "defaults are still merged under what was saved");
   if (process.platform === "win32") assert.ok(isOwnerOnly(config.paths(root).config), "the config file is open to other users");
   else assert.equal(fs.statSync(config.paths(root).config).mode & 0o777, 0o600);
   assert.ok(!("role" in JSON.parse(fs.readFileSync(config.paths(root).config, "utf8"))), "defaults were written to the file");

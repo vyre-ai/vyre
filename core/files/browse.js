@@ -1,7 +1,7 @@
 // @ts-check
 // browse: looking inside a VyreDrive share and reading a file from it, through the box.
 //
-// A phone cannot mount a share (Taildrive has no phone client), and a page in a browser cannot
+// A phone cannot mount a share (a mounted share has no phone client), and a page in a browser cannot
 // speak WebDAV to it either. So the box answers two plain calls: files.drive.list (what is in
 // this folder) and files.drive.read (one chunk of this file). The phone's Files view, the Deck and
 // the Windows app's panel all use them. Both hold to the same rules as sharing itself: only a

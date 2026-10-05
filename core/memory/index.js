@@ -346,8 +346,7 @@ export default {
     const OWNER = new Set(["deck", "cli", "local", "capsule"]);
     const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); }; // SHIM(legacy labels): the label side runs only with the kernel off
     /**
-     * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
-     * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
+     * The user on another of their devices: a listener sets "tailnet:<login>" for a person's own device, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.

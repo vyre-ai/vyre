@@ -2,7 +2,7 @@
 // move: once, on a box, project homes leave ~/Vyre/projects for the work folder.
 //
 // ~/Vyre/projects sits in the vyre-home volume with the vault and Claude's sign-in, which is
-// never shared. /work/projects is in the vyre-work volume, which Taildrive shares. A project
+// never shared. /work/projects is in the vyre-work volume, which VyreDrive shares. A project
 // home is a folder directly inside the old folder that holds a marker; anything else stays put.
 // Each moved home leaves a symlink behind, because Claude Code keys a session's transcript by
 // its folder and a session started in the old path must still resume. What this module stores

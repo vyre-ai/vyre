@@ -146,11 +146,9 @@ export function privateSocketDir() {
   return dir;
 }
 
-/** @typedef {{ tailscale: boolean, address?: string, owner?: string, domain?: string, via?: "vyre.run"|"ts.net",
- *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string, origins?: string[],
- *   guests?: { enabled: boolean, people: Record<string, { tools: string[] }> } }} Network
- * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002);
- * guests the people from other tailnets it also serves, each limited to its tools (ADR 0014 part 8). */
+/** @typedef {{ address?: string, domain?: string, via?: "vyre.run",
+ *   port?: number, box?: string, onboardPort?: number, ownerSeen?: string, origins?: string[] }} Network
+ * address is the https URL the browser address of this home is published at, once the built-in network has one. */
 
 /**
  * Whether a machine plays the server's part: the eight box-only modules, an always-on presence,
@@ -210,7 +208,7 @@ export function hostedOrigins(network) {
 }
 
 /**
- * The box's work folder: the vyre-work volume, which Taildrive shares. Tests point
+ * The box's work folder: the vyre-work volume, which VyreDrive shares. Tests point
  * VYRE_WORK_DIR at a temp folder.
  */
 export function workDir() {
@@ -240,7 +238,7 @@ export function boxProjectsDir() {
 /**
  * Defaults: one person on one machine, nothing enabled that needs setting up. `platform` is
  * injectable (default `process.platform`) so a test can cover the darwin branch on any CI
- * machine, the way `core/names/tailscale.js`'s `installCommand` already does.
+ * machine, the way the other platform-aware helpers do.
  * @param {string} root @param {string} [platform]
  */
 /** On a box with accounts (each session's own uid and HOME), each account's Claude transcripts, expanded when read. */
@@ -268,8 +266,7 @@ function defaults(root, platform = process.platform) {
     // synced: sessions a paired device sent here with the person's consent (ADR 0008, amendment).
     transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive"), path.join(root, "synced"), ...accountTranscripts()],
     modules: { enable: [], disable: [] },
-    // Guests from another tailnet: off, nobody listed (ADR 0014 part 8, core/names/guests.js).
-    network: { tailscale: false, guests: { enabled: false, people: {} } },
+    network: {},
     // Off: no computer's Chrome goes out through the user's Mac until the owner lists sites
     // (core/computers/egress.js, box/compose.egress.yml).
     glass: { egress: { enabled: false, sites: [] } },
@@ -316,7 +313,7 @@ export function load(root = home(), platform = process.platform) {
   // defaults() would -- someone who set role: "box" by hand meant a real server, not Solo.
   if (user.machine === undefined && user.role !== undefined) c.machine = user.role === "box" ? "server" : user.role === "local" ? "solo" : c.machine;
   if (!["solo", "server", "device"].includes(c.machine)) { problems.push(`machine "${c.machine}" is not solo, server or device; using ${d.machine}`); c.machine = d.machine; }
-  // On a box with a work folder, projects live there so Taildrive can share them, but only where
+  // On a box with a work folder, projects live there so VyreDrive can share them, but only where
   // nothing has to move: a new box (no homes in ~/Vyre/projects), or one whose homes the owner
   // already moved with projects.move (the record is there). An existing box keeps
   // ~/Vyre/projects until then. The role may come from config.json, so this is decided here

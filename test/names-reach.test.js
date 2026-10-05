@@ -28,11 +28,11 @@ async function box(t) {
 // recover is also a presence tool: a caller that cannot prove a person is here (an agent claim on a surface label) stops there, before the reach check.
 const refused = r => r.error && ["denied", "no_such_tool", "presence_required"].includes(r.error.code);
 
-test("names: claim, fallback, connect, release, owner and recover refuse a model session, an agent, a hook, a guest and any other module", async t => {
+test("names: claim, release and recover refuse a model session, an agent, a hook, a guest and any other module", async t => {
   const d = await box(t);
   const callers = ["mcp", "mcp:thread:t1", "mcp:agent:kit", "harness", "cli:agent:kit", "module:sneaky", "module:vault", "hook", "anonymous", "tailnet-guest:sam@example.com", "tailnet:agent:kit"];
-  const calls = [["names.claim", { name: "alex" }], ["names.fallback", {}], ["names.connect", {}], ["names.release", {}], ["names.owner", { login: "mallory@example.com" }],
-    ["names.recover", { name: "alex", code: "abcd-efgh-ijkl-mnop-qrst-uv" }], ["names.domain.serve", { domain: "example.com" }]];
+  const calls = [["names.claim", { name: "alex" }], ["names.release", {}],
+    ["names.recover", { name: "alex", code: "abcd-efgh-ijkl-mnop-qrst-uv" }]];
   for (const c of callers) for (const [tool, input] of calls) {
     const r = await d.registry.call(tool, input, c);
     assert.ok(refused(r), `${tool} from ${c}: ${JSON.stringify(r).slice(0, 200)}`);
@@ -45,13 +45,11 @@ test("names: the person's surfaces and the named modules still reach what they n
   const d = await box(t);
   // allowed callers are not refused by the reach check (the call itself may still fail on its own terms)
   for (const [tool, input, who] of [["names.claim", { name: "a" }, "cli"], ["names.claim", { name: "a" }, "deck"], ["names.claim", { name: "a" }, "module:onboard"], ["names.claim", { name: "a" }, "module:launch"],
-    ["names.fallback", {}, "module:onboard"], ["names.connect", {}, "module:onboard"], ["names.release", {}, "cli"], ["names.owner", { login: "alex@example.com" }, "module:network"],
-    ["names.owner", { login: "alex@example.com" }, "cli"], ["names.claim", { name: "a" }, "device:abcdefghijklmnop"]]) {
+    ["names.release", {}, "cli"], ["names.claim", { name: "a" }, "device:abcdefghijklmnop"]]) {
     const r = await d.registry.call(tool, input, who);
     assert.notEqual(r.error && r.error.code, "denied", `${tool} from ${who}: ${JSON.stringify(r).slice(0, 200)}`);
     assert.notEqual(r.error && r.error.code, "no_such_tool", `${tool} from ${who}`);
   }
   // but a module that is not onboard, launch or network is not one of them, and onboard may not release or reassign the owner
   assert.ok(refused(await d.registry.call("names.release", {}, "module:onboard")));
-  assert.ok(refused(await d.registry.call("names.owner", { login: "x@example.com" }, "module:onboard")));
 });

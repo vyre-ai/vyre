@@ -34,8 +34,22 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
-/** Mounting a folder as a disk rode on another product's drive sharing, which Vyre no longer runs; its replacement (VyreDrive's loopback mount) is not built yet (team/BACKLOG.md). Every call answers "not installed". */
-const tailscale = async (/** @type {string[]} */ _args, /** @type {any} */ _opts) => ({ code: 127, out: "", err: "" });
+import { tailscaleBin } from "../link/transport.js";
+/**
+ * Legacy: sharing a folder as a disk still drives another product's drive sharing when its program is on the machine, and answers "not installed" (code 127) when it is not
+ * (every test, and every Vyre server: none ships it). Its replacement, VyreDrive's loopback mount, is not built yet (team/BACKLOG.md); this file's callers go with it.
+ * @param {string[]} args @param {{ timeout?: number }} [opts] @returns {Promise<{ code: number, out: string, err: string }>}
+ */
+const tailscale = (args, { timeout = 15_000 } = {}) => {
+  const b = tailscaleBin();
+  if (!b) return Promise.resolve({ code: 127, out: "", err: "not installed" });
+  return new Promise(resolve => {
+    execFile(b, args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (e, out, err) => {
+      const code = !e ? 0 : /** @type {any} */ (e).code === "ENOENT" ? 127 : Number(/** @type {any} */ (e).code) || 1;
+      resolve({ code, out: String(out), err: String(err) });
+    });
+  });
+};
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
 import { reach, within } from "./access.js";

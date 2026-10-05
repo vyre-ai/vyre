@@ -85,7 +85,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
        key_hash TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, last_seen INTEGER)`,
     // Capabilities live on the peer row, not a second identity path (e2e, session-import review):
-    // "mac" is the full link feature set (reads, Taildrop, ask-answering); "device" is a peer
+    // "mac" is the full link feature set (reads, file delivery, ask-answering); "device" is a peer
     // paired only to import its own sessions (sync.upload.*), never forwarded a read or a write.
     `ALTER TABLE link_peers ADD COLUMN kind TEXT NOT NULL DEFAULT 'mac'`,
     // A companion (core/link/companion.js): a local core vouched for by the desktop app device that is its parent.
@@ -285,7 +285,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       const h = shaped(await health.check({ stableId: asked }), reachSince, asked);
       // The caller came in over the tailnet listener, so for itself the answer is direct even when
       // the box's own ping of it fails (a phone asleep between requests); the detail is still
-      // whatever Tailscale said.
+      // whatever the link said.
       if (tailnetLogin(caller) && own && own.stableId === asked && h.reach === "none") {
         const { fix, ...rest } = h;
         return { ...rest, reach: "direct", why: "Connected to your server.", since: reachSince.at(asked, "direct") };
@@ -529,10 +529,10 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     effect: "read", callers: [...BOX_PEOPLE, "module"],
     description: "The paired Macs and whether each is online for the box to read now.",
     input: { type: "object", properties: {} },
-    // stableId: the Mac's tailnet peer id (Tailscale status Peer.ID), for a module that needs to
-    // find it among the box's own tailnet peers (files.deliver, ADR 0021's "Mac and box as one").
+    // stableId: the Mac's node id, for a module that needs to
+    // find it among the box's own peers (files.deliver, ADR 0021's "Mac and box as one").
     // node is the paired name shown to surfaces; stableId is never shown, only matched against.
-    // "device" peers are not Macs (no live reads, no Taildrop): left out here, same as macs.call.
+    // "device" peers are not Macs (no live reads, no file delivery): left out here, same as macs.call.
     run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node, stable_id FROM link_peers WHERE kind = 'mac' ORDER BY paired_at").all()).map(m => ({
       mac: m.id, name: m.name, node: m.node || null, stableId: m.stable_id || null,
       online: waiting.has(m.id) || (lastServe.get(m.id) ?? -Infinity) >= now() - hold - 5000,

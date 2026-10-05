@@ -1,7 +1,7 @@
 // @ts-check
 // `vyre box` end to end against fakes: an ssh that runs the "remote" command here, a remote PATH
-// with fake uname, docker, sudo and vyre, a fake Tailscale on the Mac and a fake browser. Nothing
-// real is reached: no server, no Docker, no Tailscale.
+// with fake uname, docker, sudo and vyre and a fake browser. Nothing
+// real is reached: no server, no Docker.
 import "../../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -11,8 +11,7 @@ import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import * as config from "../../config/index.js";
 import { ending } from "../ending.js";
-import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup, viaTailnet } from "./box.js";
-import { parse as parseTailnet } from "../tailnet.js";
+import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup } from "./box.js";
 import { VERSION } from "../../daemon/index.js";
 
 const FAKE_SSH = `#!/bin/sh
@@ -30,8 +29,8 @@ done
 export FAKE_TARGET="$1"
 shift
 [ -n "$op" ] && exit 0
-# A target named in FAKE_SSH_REFUSE turns every login away, as a Tailscale SSH policy would.
-if [ -n "\${FAKE_SSH_REFUSE:-}" ] && [ "$FAKE_TARGET" = "$FAKE_SSH_REFUSE" ]; then echo "tailscale: access denied by policy" >&2; exit 255; fi
+# A target named in FAKE_SSH_REFUSE turns every login away.
+if [ -n "\${FAKE_SSH_REFUSE:-}" ] && [ "$FAKE_TARGET" = "$FAKE_SSH_REFUSE" ]; then echo "access denied by policy" >&2; exit 255; fi
 exec sh -c "$*"
 `;
 
@@ -78,9 +77,8 @@ case "$1" in
 esac
 `;
 
-const TAILNET = { BackendState: "Running", Self: { HostName: "laptop", DNSName: "laptop.tail0000.ts.net.", UserID: 7 }, User: { 7: { LoginName: "alex@example.com" } }, Peer: {} };
 const ADDRESS = "https://vyre.tail0000.ts.net";
-const steps = (done) => Object.fromEntries(["you", "claude", "tailscale", "name", "history", "devices"].map((k, i) => [k, i < done ? "done" : "todo"]));
+const steps = (done) => Object.fromEntries(["you", "claude", "pair", "name", "history", "devices"].map((k, i) => [k, i < done ? "done" : "todo"]));
 const status = (done, extra = {}) => ({ address: done >= 4 ? ADDRESS : null, owner: "alex@example.com", assistant: "Juno", finished: false, steps: steps(done), ...extra });
 
 function freePort() {
@@ -97,7 +95,6 @@ function rig(t) {
   const exe = (name, body) => fs.writeFileSync(path.join(bin, name), body, { mode: 0o755 });
   exe("ssh", FAKE_SSH);
   exe("vyre", FAKE_VYRE);
-  exe("tailscale", `#!/bin/sh\ncat <<'J'\n${JSON.stringify(TAILNET)}\nJ\n`);
   exe("uname", "#!/bin/sh\necho Linux\n");
   exe("docker", FAKE_DOCKER);
   // With a sudo-password file, sudo -n fails as it does when sudo needs a password.
@@ -109,7 +106,7 @@ function rig(t) {
   exe("installer.sh", `#!/bin/sh\necho "$*" >> "$FAKE_BOX/installer.log"\nenv | grep -q '^VYRE_NO_UP=1' && echo no-up >> "$FAKE_BOX/installer.log"\nmkdir -p "$VYRE_DIR" && touch "$VYRE_DIR/compose.yml"\necho installed\n`);
   const env = {
     PATH: `${bin}:${process.env.PATH}`, VYRE_SSH_BIN: path.join(bin, "ssh"), FAKE_SSH_LOG: path.join(root, "ssh.log"),
-    VYRE_TAILSCALE_BIN: path.join(bin, "tailscale"), VYRE_OPEN_BIN: path.join(bin, "open"), VYRE_BOX_INSTALLER: path.join(bin, "installer.sh"),
+    VYRE_OPEN_BIN: path.join(bin, "open"), VYRE_BOX_INSTALLER: path.join(bin, "installer.sh"),
     VYRE_DIR: path.join(root, "srv", "vyre"), VYRE_TUN: "/dev/null", VYRE_BOX_POLL_MS: "20", FAKE_BOX: fb,
   };
   const prev = Object.fromEntries(Object.keys(env).map(k => [k, process.env[k]]));
@@ -137,7 +134,7 @@ test("box: preflight lines parse, and the plan says what will change", () => {
   assert.deepEqual(parsePreflight("volumes=vyre_vyre-home vyre_vyre-work \n").volumes, ["vyre_vyre-home", "vyre_vyre-work"]);
   assert.match(plan(p).join("\n"), /install Docker with get\.docker\.com[\s\S]*create \/srv\/vyre[\s\S]*\/usr\/local\/bin\/vyre[\s\S]*sudo will ask/);
   assert.match(String(unfit({ ...p, os: "Darwin" })), /not Linux/);
-  assert.match(String(unfit({ ...p, tun: false })), /\/dev\/net\/tun/);
+  assert.equal(unfit({ ...p, tun: false }), null, "no tunnel device is needed");
   assert.equal(unfit(p), null);
   assert.equal(parsePreflight("os=Linux\ndocker=2.29.1\nsudo=root\n").docker, "2.29.1");
 });
@@ -185,7 +182,7 @@ test("box add --yes: installs, opens the link, waits step by step, saves, and en
   for (let i = 0; i < 250 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
   assert.equal(r.read("opened").trim(), url, "the browser is opened detached, so give it a moment");
   assert.match(text, /Finish in your browser\. I'll wait here\./);
-  for (const label of ["You", "Claude Code", "Tailscale", "Your address", "Your devices"]) assert.match(text, new RegExp(`${label}\\s+done`));
+  for (const label of ["You", "Claude Code", "Pair this server", "Your address", "Your devices"]) assert.match(text, new RegExp(`${label}\\s+done`));
   assert.match(text, /Your history\s+skipped/);
   assert.equal(text.match(/Claude Code\s+done/g)?.length, 1, "each step is said once");
   assert.ok(text.includes(ending({ address: ADDRESS, assistant: "Juno" }).join("\n")), text);
@@ -280,15 +277,6 @@ test("box add: a taken local port stops it and names the port", async t => {
   assert.equal(r.read("opened"), "");
 });
 
-test("box add: a signed-out Mac stops before touching the server", async t => {
-  const r = rig(t);
-  fs.writeFileSync(path.join(r.root, "bin", "tailscale"), `#!/bin/sh\necho '{"BackendState":"NeedsLogin"}'\n`, { mode: 0o755 });
-  const { code, text } = await capture(() => add("alex@203.0.113.9", { yes: true }));
-  assert.equal(code, 1);
-  assert.match(text, /open Tailscale and sign in/);
-  assert.equal(fs.existsSync(path.join(r.root, "ssh.log")), false);
-});
-
 test("box remove --yes: uninstalls on the server and forgets the box", async t => {
   const r = rig(t);
   config.save({ box: { ssh: "alex@203.0.113.9" }, network: { box: ADDRESS } });
@@ -381,7 +369,7 @@ test("box backup: writes through .partial at 0600, refuses to overwrite without 
   const file = path.join(r.root, "b.tar.gz");
   const first = await capture(() => run(["backup", file]));
   assert.equal(first.code, 0, first.text);
-  assert.match(fs.readFileSync(file, "utf8"), /data vyre_tailscale-state/);
+  assert.match(fs.readFileSync(file, "utf8"), /data vyre_vyre-work/);
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   assert.equal(fs.existsSync(file + ".partial"), false);
   const log = ssh(r);
@@ -429,7 +417,7 @@ test("box move: carries the volumes, checks the new box answers, then takes the 
   assert.doesNotMatch(inst, /--purge/);
   const dk = r.read("docker.log");
   assert.ok(dk.indexOf(`${NEW} compose down -v`) >= 0 && dk.indexOf(`${NEW} compose down -v`) < dk.indexOf(`${OLD} compose stop`), "the fresh stack is down before any volume moves");
-  for (const v of ["vyre-home", "vyre-work", "tailscale-state"]) assert.match(text, new RegExp(`${v}\\s+moved`));
+  for (const v of ["vyre-home", "vyre-work"]) assert.match(text, new RegExp(`${v}\\s+moved`));
   assert.equal(/** @type {any} */ (config.load()).box.ssh, NEW);
 });
 
@@ -457,30 +445,8 @@ test("box move: a failed copy starts the old box again and says which side faile
   assert.equal(/** @type {any} */ (config.load()).box.ssh, OLD);
 });
 
-// ---- Tailscale SSH ----
-
-const HOST_KEYS = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleOnlyNotARealKey"];
-/** A tailnet whose peer "box" is at 100.64.0.5, with Tailscale SSH unless told otherwise. */
-const withPeer = (peer = {}) => ({ ...TAILNET, Peer: { n1: { HostName: "box", DNSName: "box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5", "fd7a:115c:a1e0::5"],
-  Online: true, UserID: 7, OS: "linux", sshHostKeys: HOST_KEYS, ...peer } } });
-const tailscaleSays = (r, s) => fs.writeFileSync(path.join(r.root, "bin", "tailscale"), `#!/bin/sh\ncat <<'J'\n${JSON.stringify(s)}\nJ\n`, { mode: 0o755 });
-const TS_TARGET = "alex@box.tail0000.ts.net";
 /** Masters opened, by target, in order. */
 const masters = r => ssh(r).split("\n").filter(l => l.includes("ControlMaster=auto")).map(l => l.trim().split(" ").slice(-2)[0]);
-
-test("box: viaTailnet names the MagicDNS name only for an online peer that runs Tailscale SSH", () => {
-  const t = parseTailnet(withPeer());
-  assert.equal(t.peers[0].ssh, true, "sshHostKeys present");
-  for (const host of ["box", "box.tail0000.ts.net", "BOX.tail0000.ts.net.", "100.64.0.5", "fd7a:115c:a1e0::5"]) assert.equal(viaTailnet(`alex@${host}`, t), TS_TARGET, host);
-  assert.equal(viaTailnet("alex@203.0.113.9", t), null, "not on the tailnet");
-  assert.equal(viaTailnet("alex@box", parseTailnet(withPeer({ sshHostKeys: undefined }))), null, "no Tailscale SSH");
-  assert.equal(parseTailnet(withPeer({ sshHostKeys: [] })).peers[0].ssh, false);
-  assert.equal(viaTailnet("alex@box", parseTailnet(withPeer({ Online: false }))), null, "offline");
-  const two = { ...TAILNET, Peer: { ...withPeer().Peer, n2: { ...withPeer().Peer.n1, DNSName: "box-1.tail0000.ts.net.", TailscaleIPs: ["100.64.0.6"] } } };
-  assert.equal(viaTailnet("alex@box", parseTailnet(two)), TS_TARGET, "the first label of a MagicDNS name wins over a shared HostName");
-  const shared = { ...TAILNET, Peer: { a: { ...withPeer().Peer.n1, DNSName: "box-1.tail0000.ts.net." }, b: { ...withPeer().Peer.n1, DNSName: "box-2.tail0000.ts.net." } } };
-  assert.equal(viaTailnet("alex@box", parseTailnet(shared)), null, "a HostName two peers share names neither");
-});
 
 /** A box already set up and finished, so add goes straight from reaching it to the ending. */
 function finishedBox(t) {
@@ -491,50 +457,6 @@ function finishedBox(t) {
   return r;
 }
 const noPair = { call: async () => ({ error: { code: "no_such_tool", message: "" } }) };
-
-test("box add: a host on the tailnet with Tailscale SSH is reached by its MagicDNS name, which is saved", async t => {
-  const r = finishedBox(t);
-  tailscaleSays(r, withPeer());
-  const { code, text } = await capture(() => add("alex@100.64.0.5", noPair));
-  assert.equal(code, 0, text);
-  assert.match(text, /reaching alex@box\.tail0000\.ts\.net over Tailscale SSH/);
-  assert.deepEqual(masters(r), [TS_TARGET], "one master, to the tailnet name");
-  assert.equal(/** @type {any} */ (config.load()).box.ssh, TS_TARGET);
-});
-
-test("box add: when Tailscale SSH turns the Mac away, it falls back to the target as typed and saves that", async t => {
-  const r = finishedBox(t);
-  tailscaleSays(r, withPeer());
-  process.env.FAKE_SSH_REFUSE = TS_TARGET;
-  t.after(() => { delete process.env.FAKE_SSH_REFUSE; });
-  const { code, text } = await capture(() => add("alex@box", noPair));
-  assert.equal(code, 0, text);
-  assert.match(text, /Tailscale SSH did not let this Mac in \(tailscale: access denied by policy\); trying alex@box as typed/);
-  assert.deepEqual(masters(r), [TS_TARGET, "alex@box"]);
-  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@box");
-});
-
-test("box add: a host not on the tailnet, or a peer without Tailscale SSH, is reached as typed", async t => {
-  for (const [target, s] of [["alex@203.0.113.9", withPeer()], ["alex@box", withPeer({ sshHostKeys: undefined })]]) {
-    const r = finishedBox(t);
-    tailscaleSays(r, s);
-    const { code, text } = await capture(() => add(target, noPair));
-    assert.equal(code, 0, text);
-    assert.doesNotMatch(text, /Tailscale SSH/);
-    assert.deepEqual(masters(r), [target]);
-    assert.equal(/** @type {any} */ (config.load()).box.ssh, target);
-  }
-});
-
-test("box move: a new server on the tailnet with Tailscale SSH is reached and saved by its MagicDNS name", async t => {
-  const r = moving(t);
-  tailscaleSays(r, withPeer());
-  const { code, text } = await capture(() => move("alex@box", { yes: true }, { probe: async () => ({}) }));
-  assert.equal(code, 0, text);
-  assert.match(text, /reaching alex@box\.tail0000\.ts\.net over Tailscale SSH/);
-  assert.deepEqual(masters(r).slice(0, 2), [OLD, TS_TARGET], "the old box as saved, the new one over the tailnet");
-  assert.equal(/** @type {any} */ (config.load()).box.ssh, TS_TARGET);
-});
 
 test("box add: after the switch, the code waits for the passkey, and an expired code is replaced", async t => {
   const r = rig(t);
