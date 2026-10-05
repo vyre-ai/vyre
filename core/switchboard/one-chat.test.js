@@ -126,3 +126,98 @@ test("a terminal session's SessionStart leaves a chat of the person's, remembere
   await new Promise(r => setTimeout(r, 300));
   assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM threads_terminal_chats").get().n, 1);
 });
+
+test("a person's call on a run needs the person to be in its chat: a member outside the chat gets not_found on every threads tool, the owner and the person added to it do not", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const grants = d.kernel.gateway.grants;
+  const BOB = "per_" + "b".repeat(26);
+  await grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const bobChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "sb" });
+  const tokenOf = async chain => ({ token: (await d.kernel.surfaces.open(chain, {})).token });
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "cli" }, "cli");
+  assert.ok(r.data, JSON.stringify(r.error));
+  const id = r.data.id;
+  const chat = (await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli")).data.thread.chat;
+  for (const [tool, input] of [["threads.get", { thread: id, limit: 1 }], ["threads.send", { thread: id, text: "hi", surface: "cli" }], ["threads.rename", { thread: id, name: "x" }], ["threads.items", { thread: id }]]) {
+    const res = await d.registry.call(tool, input, "cli", await tokenOf(bobChain));
+    assert.equal(res.error && res.error.code, "not_found", `${tool} for a member outside the chat: ${JSON.stringify(res.error)}`);
+  }
+  const mine = await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli", await tokenOf(ownerChain));
+  assert.ok(mine.data && mine.data.thread.chat === chat, "the owner, who is in it, reads it");
+  await grants.chats.change(ownerChain, chat, { add_people: [BOB] });
+  const bobIn = await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli", await tokenOf(bobChain));
+  assert.ok(bobIn.data && bobIn.data.thread.id === id, `a person added to the chat reads it: ${JSON.stringify(bobIn.error)}`);
+});
+
+
+test("work.chat.*: create, change, list and get follow the kernel's chat read; a row shows what the engine knows only to people in the chat; chat-switch and chat-stop reach a slot only for them", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const grants = d.kernel.gateway.grants;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const BOB = "per_" + "b".repeat(26), CAROL = "per_" + "c".repeat(26);
+  for (const [p, n] of [[BOB, 2], [CAROL, 3]]) await grants.setRole(ownerChain, { person: p, role: "member" }, { presence: { op: "x", fields: {}, n } });
+  const as = async (person, id) => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: `d-${id}`, person, path: "direct", session: `s-${id}` }), {})).token });
+  const call = async (who, tool, input) => d.registry.call(tool, input, "cli", who);
+  const O = await as(owner, "o"), B = await as(BOB, "b"), C = await as(CAROL, "c");
+
+  // making and changing a chat is a person acting directly (a paired device's own chain, as the app's calls arrive); a session token's chain is refused. The happy path of both tools is walked on a real
+  // paired device (a test device would have to be enrolled); here the chat is made through the kernel and the tools that read and file it are exercised.
+  assert.equal((await call(O, "work.chat.create", { people: [BOB] })).error.code, "chain_not_person");
+  assert.equal((await call(O, "work.chat.create", { models: [{ provider: "codex", model: "x" }] })).error.code, "bad_input");
+  const made = await grants.chats.create(ownerChain, { people: [BOB] });
+  const chat = made.id;
+  await until(async () => (await call(O, "work.chat.list", {})).data.chats.find(r => r.chat === chat), "the chat's record, made from the kernel's chat.created");
+  await call(O, "work.chat.rename", { chat, title: "Docket check" }).then(x => assert.ok(x.data, JSON.stringify(x.error)));
+  const listed = async who => (await call(who, "work.chat.list", {})).data.chats.find(r => r.chat === chat);
+  const mineRow = await listed(B);
+  assert.deepEqual([mineRow.title, mineRow.open, mineRow.project_name], ["Docket check", true, "General"]);
+  const outsider = await listed(C);
+  assert.ok(outsider, "an admin or member sees that the chat exists");
+  assert.equal(outsider.open, undefined, "but not that it is open to them");
+  assert.ok(!("providers" in outsider) && !("last_line" in outsider), "and nothing the engine knows");
+  assert.equal((await call(C, "work.chat.get", { chat })).error.code, "not_found");
+  assert.equal((await call(C, "work.chat.rename", { chat, title: "mine now" })).error.code, "not_found", "a person outside cannot rename it");
+  assert.equal((await call(O, "work.chat.get", { chat })).data.slots.length, 0);
+
+  // a run in the chat: the providers and the last line show to the people in it
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck", chat, asker: owner }, "module:stream");
+  assert.ok(r.data, JSON.stringify(r.error));
+  await until(async () => (await d.registry.call("threads.get", { thread: r.data.id, limit: 200 }, "cli")).data.events.some(e => e.type === "thread.finished"), "the turn");
+  const row = await listed(O);
+  assert.deepEqual(row.providers, ["claude"]);
+  assert.match(row.last_line, /echo: hello/);
+  const got = (await call(B, "work.chat.get", { chat })).data;
+  assert.equal(got.slots.length, 1);
+  assert.equal(got.slots[0].thread, r.data.id);
+  assert.equal((await call(C, "threads.chat-switch", { chat, slot: got.slots[0].slot, model: "sonnet" })).error.code, "not_found");
+  assert.equal((await call(C, "threads.chat-stop", { chat })).error.code, "not_found");
+  const stopped = await call(B, "threads.chat-stop", { chat });
+  assert.ok(stopped.data, JSON.stringify(stopped.error));
+  // add carol: she reads it now
+  await grants.chats.change(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s-b" }), chat, { add_people: [CAROL] });
+  assert.equal((await call(C, "work.chat.get", { chat })).data.open, true);
+  assert.equal((await listed(C)).open, true);
+});

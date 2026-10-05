@@ -67,6 +67,18 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.create",
+        "summary": "start a chat: who is in it and which Project",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.change",
+        "summary": "add or remove people and agents in a chat you are in",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.rename",
         "summary": "rename a chat you are in: its record and every run agree",
         "reach": "anyone",

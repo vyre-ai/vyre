@@ -193,7 +193,7 @@ export default {
     const inChat = (/** @type {any} */ chain, /** @type {string} */ chat) => { try { kernelOf().chats.read(chain, chat); return true; } catch { return false; } };
     const rowOf = (/** @type {any} */ r) => ({ id: r.id, urn: r.urn, ...r.data });
     ctx.tool("work.chat.list", {
-      description: "The chats you may see in this Space: title, project, who, when, status and where it lives. `open: true` on the ones you are in (their messages are yours to read); the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.",
+      description: "The chats you may see in this Space: title, project (and its name), who, when, status and where it lives. `open: true` on the ones you are in, which also carry the providers of their runs and the last line; the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.",
       input: obj({ project: { type: "string" }, q: { type: "string" }, mine: { type: "boolean" }, limit: { type: "integer" } }),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
@@ -202,7 +202,15 @@ export default {
         const res = await k.records.query(chain, "chat-record", { page: { limit: Math.min(Number(input.limit) || 200, 500) } });
         const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
         let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
-        rows = rows.map((/** @type {any} */ r) => ({ ...rowOf(r), ...(inChat(chain, r.data.chat) ? { open: true } : {}) }));
+        // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)
+        const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
+        rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
+          const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
+          if (!inChat(chain, r.data.chat)) return base;
+          const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
+          const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
+          return { ...base, open: true, providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
+        }));
         if (input.mine) rows = rows.filter((/** @type {any} */ r) => r.open);
         rows.sort((/** @type {any} */ a, /** @type {any} */ b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
         return { chats: rows };
@@ -220,6 +228,26 @@ export default {
         const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
         const slots = runs.map((/** @type {any} */ r) => ({ slot: r.agent ? `agent:${r.agent}` : `model:${r.provider || "claude"}/${r.model || ""}#${r.thread.slice(0, 6)}`, thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
         return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}` };
+      },
+    });
+    ctx.tool("work.chat.create", {
+      description: "Start a chat: who is in it (people and agents of this Space, by id; you are always in it) and the Project it belongs to (General when none). Returns the chat's id.",
+      input: obj({ title: { type: "string" }, project: { type: "string" }, people: { type: "array", items: { type: "string" } }, agents: { type: "array", items: { type: "string" } }, models: { type: "array", items: { type: "object" } } }),
+      run: async (input, extra) => {
+        if (Array.isArray(input.models) && input.models.length) throw Object.assign(new Error("a model joins a chat when it is first asked in it; start the chat and ask it there"), { code: "bad_input" });
+        const chain = await chainOf(extra);
+        const made = await kernelOf().chats.create(chain, { people: input.people || [], assistants: input.agents || [] });
+        const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
+        return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
+      },
+    });
+    ctx.tool("work.chat.change", {
+      description: "Add or remove people and agents in a chat you are in. Only a person in the chat does it, acting directly; an owner or admin outside the chat cannot.",
+      input: obj({ chat: { type: "string" }, add_people: { type: "array", items: { type: "string" } }, remove_people: { type: "array", items: { type: "string" } }, add_agents: { type: "array", items: { type: "string" } }, remove_agents: { type: "array", items: { type: "string" } } }, ["chat"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        const c = await kernelOf().chats.change(chain, String(input.chat), { add_people: input.add_people, remove_people: input.remove_people, add_assistants: input.add_agents, remove_assistants: input.remove_agents });
+        return { chat: c.id, people: [...c.people], agents: [...c.assistants] };
       },
     });
     ctx.tool("work.chat.rename", {

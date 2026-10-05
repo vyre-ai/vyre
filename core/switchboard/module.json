@@ -38,6 +38,16 @@
         "reach": "anyone"
       },
       {
+        "name": "threads.chat-switch",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.chat-stop",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "threads.chat-of",
         "reach": "anyone",
         "effect": "read"

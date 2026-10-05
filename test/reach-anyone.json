@@ -1425,6 +1425,14 @@
    "module": "threads",
    "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; it names a run's chat and nothing in it"
   },
+  "threads.chat-stop": {
+   "module": "threads",
+   "reason": "guarded: a person's surface only (queuesFor), and the run is reached through its slot in a chat the person must be in (the kernel's chat read on the caller's own chain; not_found otherwise)"
+  },
+  "threads.chat-switch": {
+   "module": "threads",
+   "reason": "guarded: a person's surface only (queuesFor), and the run is reached through its slot in a chat the person must be in (the kernel's chat read on the caller's own chain; not_found otherwise)"
+  },
   "threads.commands": {
    "module": "threads",
    "reason": "read-only: the slash commands a thread offers"
@@ -1916,6 +1924,14 @@
   "work.call": {
    "module": "work",
    "reason": "held at the Gate: the call goes through the generated tool surface, so the caller's own grants decide and an outward act is held as a task for a person or asks for presence; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.chat.change": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
+  },
+  "work.chat.create": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's chat functions decide (a person acting directly, in the chat; an owner or admin outside it is refused)"
   },
   "work.chat.get": {
    "module": "work",

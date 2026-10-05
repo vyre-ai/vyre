@@ -587,8 +587,17 @@ export class Switchboard {
     const live = this.sessions.live(this.ours());
     return /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at").all(String(chat))).map(r => {
       const t = /** @type {any} */ (this.record(String(r.id)));
-      return { thread: t.id, name: t.name, agent: t.agent, provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns };
+      const said = /** @type {any[]} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.text' ORDER BY id DESC LIMIT 8").all(t.id)).map(e => { try { return JSON.parse(String(e.payload)); } catch { return null; } }).find(p => p && p.done && !p.notice && typeof p.text === "string" && p.text.trim());
+      return { thread: t.id, name: t.name, agent: t.agent, provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
     });
+  }
+
+  /** The chat a run (or a terminal session, by its session id) is in, or null. @param {string} id */
+  chatOf(id) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(String(id)));
+    if (r) return r.chat || null;
+    const t = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(id)));
+    return t ? t.chat : null;
   }
 
   record(id) {
@@ -3489,7 +3498,15 @@ export default {
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
     const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
-    const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
+    // One Chat (reviewer-3 G5): a person's call on a run is allowed only if the person is in the run's chat (the kernel's own chat read, on the caller's own chain); a chat they are not in does not exist for
+    // them. A first-party module's call is checked by that module (the stream asks the kernel for every asker); a run with no chat (an older one, a daemon without the kernel) is as before.
+    const chatGate = async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any} */ kchain) => {
+      if (!i || typeof i.thread !== "string" || !kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
+      const chat = sb.chatOf(i.thread);
+      if (!chat) return;
+      try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" }); throw e; }
+    };
+    const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; await chatGate(i, m, kchain); return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
@@ -3993,6 +4010,34 @@ export default {
     tool("threads.of-chat", "The runs inside one chat (its slots): thread, agent, provider, model, account, status. A first-party module's, which has already checked that the person is in the chat (work.chat.get).",
       { type: "object", required: ["chat"], properties: { chat: str } },
       async (i, meta) => { guard(meta.caller, "read a chat's runs"); return { runs: sb.ofChat(i.chat) }; }, ["module"]);
+    // The runs of a chat are reached by their slot: `agent:<id>` or `model:<provider>/<model>#<thread prefix>`, as work.chat.get names them. The person must be in the chat (the gate above, on the run).
+    const slotRun = async (/** @type {string} */ chat, /** @type {string} */ slot, /** @type {any} */ meta) => {
+      const runs = sb.ofChat(String(chat));
+      const hit = runs.filter(r => (r.agent ? `agent:${r.agent}` === slot : slot.startsWith("model:") && slot.endsWith(`#${r.thread.slice(0, 6)}`))).pop();
+      const v = /** @type {any} */ (calls.getStore());
+      await chatGate({ thread: hit ? hit.thread : "" }, meta, v && v.kchain);
+      if (!hit) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+      return hit;
+    };
+    tool("threads.chat-switch", "Switch one slot of a chat to another provider or model, between turns: the same chat, the new one given a brief of what was said. slot: agent:<id> or model:<provider>/<model>#<n>, as the chat lists them.",
+      { type: "object", required: ["chat", "slot"], properties: { chat: str, slot: str, provider: str, model: str, account: str } },
+      async (i, meta) => {
+        guard(meta.caller, "switch a chat's model");
+        if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface switches a chat's model"), { code: "denied" });
+        const run = await slotRun(i.chat, i.slot, meta);
+        if (i.provider && i.provider !== run.provider) return sb.switchProvider(run.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: null });
+        if (!i.model) throw Object.assign(new Error("say which model"), { code: "bad_input" });
+        return sb.switchModel(run.thread, i.model);
+      });
+    tool("threads.chat-stop", "Stop the turn a chat is running: one slot's, or every slot's. The chat stays and takes the next message.",
+      { type: "object", required: ["chat"], properties: { chat: str, slot: str } },
+      async (i, meta) => {
+        guard(meta.caller, "stop a chat's turn");
+        if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
+        const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.agent ? `agent:${r.agent}` : `model:${r.provider}/${r.model || ""}#${r.thread.slice(0, 6)}`, meta)));
+        for (const r of runs) if (r.live) await sb.interrupt(r.thread);
+        return { stopped: runs.filter(r => r.live).map(r => r.thread) };
+      });
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "read a run's chat"); const t = sb.record(String(i.thread)); const term = /** @type {any} */ (sb.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(i.thread))); return { chat: (t && t.chat) || (term && term.chat) || null }; }, ["module"]);
