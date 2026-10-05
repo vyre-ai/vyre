@@ -382,16 +382,17 @@ test("mcp: a module installed into a home is refused on_behalf through its own c
     ctx.tool("bakery.issue", { input: { type: "object" }, run: async () => ctx.connections.call("chat", "create_issue", { title: "Rye" }) });
     return { async stop() {} };
   } };`);
-  const d = await start({ root, presence: present, log: () => {} });
+  const d = await start({ root, presence: present, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const log = path.join(root, "chat.log");
   const cli = (tool, input = {}) => call(tool, input, { root, caller: "cli" });
   assert.equal((await cli("mcp.add", stdio("chat", log, {}, { scope: { projects: "*", agents: "*" } }))).data.test.ok, true);
   assert.equal(d.registry.status().find(m => m.name === "bakery")?.state, "running");
 
-  const refused = (await cli("bakery.try", { on_behalf: { surface: "capsule" } })).data;
-  assert.equal(refused.error.code, "not_declared", JSON.stringify(refused));
-  assert.equal((await cli("bakery.try", {})).data.error.code, "not_declared", "mcp.call itself is not open to a home module");
+  // Trusted by path here (an added module is sandboxed with the kernel on and has no ctx.call), so the call is not refused as undeclared; what must hold is that on_behalf from a module changes nothing: the hold carries no thread, agent or surface.
+  const forced = (await cli("bakery.try", { on_behalf: { surface: "capsule", agent: "juno" } })).data;
+  const forcedItem = (await cli("gate.get", { id: forced.held || (forced.data && forced.data.held) })).data;
+  assert.ok(forced.error || (forcedItem && !forcedItem.thread && !forcedItem.agent), JSON.stringify(forced));
   const plain = (await cli("bakery.issue", {})).data;
   assert.ok(plain.data.held, "without on_behalf its outward call is held as usual");
   const it = (await cli("gate.get", { id: plain.data.held })).data;

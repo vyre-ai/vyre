@@ -333,7 +333,7 @@
     {
       "name": "project",
       "label": "Project",
-      "icon": "IconBriefcase",
+      "icon": "IconFolder",
       "kind": "project",
       "fields": [
         {
@@ -343,11 +343,44 @@
           "required": true
         },
         {
+          "name": "slug",
+          "kind": "text",
+          "label": "Short name used in addresses",
+          "unique": true
+        },
+        {
+          "name": "status",
+          "kind": "choice",
+          "label": "Status",
+          "options": [
+            "active",
+            "archived"
+          ]
+        },
+        {
           "name": "client",
           "kind": "link",
-          "label": "Client",
-          "required": true,
-          "to": "contact"
+          "label": "Client"
+        },
+        {
+          "name": "drive_path",
+          "kind": "text",
+          "label": "Drive folder"
+        },
+        {
+          "name": "repo",
+          "kind": "text",
+          "label": "Repository"
+        },
+        {
+          "name": "memory_scope",
+          "kind": "text",
+          "label": "Memory scope"
+        },
+        {
+          "name": "archived_at",
+          "kind": "datetime",
+          "label": "Archived"
         },
         {
           "name": "owner",
