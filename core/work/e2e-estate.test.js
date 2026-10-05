@@ -1,6 +1,6 @@
 // End to end on the REAL gateway and tasks with records' Estate Kit: the tool surface, sealing, an outward act held and approved with a presence proof, the
 // situation, a teammate added under the adder's ceiling, the memory engine's authorized search and cited answer.
-// Only the model (scripted) and the language compiler's adapter are stand-ins; everything the kernel decides is the kernel's.
+// Only the model (scripted) is a stand-in; everything the kernel decides is the kernel's.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -22,7 +22,6 @@ const KIT = JSON.parse(fs.readFileSync(new URL("../../records/kits/estate-planni
 const SEND = { action: "email.send", resource_type: "message", risk: "outward.send", label: "send an email", gloss: "Sends an email from the firm." };
 const SSN = "123-45-6789";
 const sealedRef = { sealed: "us-ssn", ref: "seal_ssn_1", present: true, valid_format: true, set_at: 1 };
-
 
 async function world(t, over = {}) {
   const rig = await createRig({ defs: [...CORE_TYPES, ...KIT.types, NOTE], actions: [SEND], agents: ["juno", "research"] });
@@ -110,3 +109,4 @@ test("memory: search and answers only from sources the caller may read, with a c
   const blind = await engine.search(nobody, "Doe estate plan");
   assert.ok(blind.every(h => h.source !== undefined));
 });
+

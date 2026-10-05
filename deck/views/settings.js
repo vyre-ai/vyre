@@ -683,7 +683,7 @@ async function drawDevices(el, ctx) {
  * (docs/design/anywhere.md, work/anywhere 11328815). Reads onboard.status for machine, same
  * tool the "live" onboarding step already uses. Client-only against deck/fixtures/onboard.json
  * (machine) and deck/fixtures/federation.json (the move.* engine) until anywhere's onboard.
- * machine and federation's move.* tools land (asked, docs/work/launch-surfaces.md): the move.*
+ * machine and federation's move.* tools land (asked, team/archive/work-journals/launch-surfaces.md): the move.*
  * shapes here are launch's proposal, not yet confirmed. Only the Solo/Server -> Device direction
  * is built; "Move off this server" (the reverse move, back to Solo) is not, see the work doc's
  * Next. No auto-delete anywhere in this flow: the pre-move copy is only ever removed by the
@@ -723,7 +723,7 @@ async function drawServer(el, ctx) {
         : "No Tailscale, nothing else running, until you move to a server.")),
     h("div", { class: "set-server-card" }, panel, st));
 
-  // Event-driven, not polled: federation's contract (docs/work/federation.md) emits move.progress/
+  // Event-driven, not polled: federation's contract (team/archive/work-journals/federation.md) emits move.progress/
   // move.piece.done/move.failed/move.confirmed over the same stream every other Deck view reads
   // (deck/js/api.js's on()), so watching a move never needs to poll faster than 60 s (SPEC
   // principle 8) the way onboarding's history step has to (its loopback door carries no stream

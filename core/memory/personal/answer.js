@@ -1,5 +1,5 @@
 // @ts-check
-// personal/answer: memory.answer (docs/work/memory-iq.md). A question about the user's own life
+// personal/answer: memory.answer (team/archive/work-journals/memory-iq.md). A question about the user's own life
 // in, one line out: "Your wife is Jordan.", "You drive a blue Volvo XC40.", with how sure and how
 // many conversations said it.
 //

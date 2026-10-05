@@ -1,5 +1,5 @@
 // @ts-check
-// The app's side of a real-install pairing proof (docs/work/tailnet.md, "Real install"). Two real vyred daemons from this checkout in temp
+// The app's side of a real-install pairing proof (team/archive/work-journals/tailnet.md, "Real install"). Two real vyred daemons from this checkout in temp
 // homes, "app" (the person's computer) and "phone", driven over a 127.0.0.1 control port, so a script or a person can interleave their calls
 // with the real i.sh running on a box. Presence is FAKED the way test/wink.test.js does it (a lenient presence double accepts any proof);
 // that is the one stand-in: a headless box cannot give Touch ID. Nothing here is the product's own code path for presence.

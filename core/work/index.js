@@ -1,5 +1,5 @@
 // @ts-check
-// work: the 0.3 work layer as module tools (DESIGN-native-assistant, DESIGN-tasks). Four things, one module, all over the kernel contracts:
+// work: the 0.3 work layer as module tools (DESIGN-native-assistant, DESIGN-tasks). Three things, one module, all over the kernel contracts:
 //  - native.*   the tool surface generated from the Space's definitions and the action registry (kernel/tools), the situation and the component for a result
 //  - teammates.* what a teammate starts with, adding one under the adder's ceiling, the doing-now line
 //  - recall.*   the three-layer memory: lines, meaning search, answers with citations, fact proposals

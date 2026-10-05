@@ -97,7 +97,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
  * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
  * writable by any process at that uid, the same gap that already keeps relay hosting off by
- * default on local role (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse
+ * default on local role (core/relay/keys.js, team/archive/work-journals/tailnet.md "Needs from others"). Refuse
  * plainly rather than ship the gap on any of these paths.
  *
  * A pure function of an explicit platform, like installCommand/operator in core/names/tailscale.js,

@@ -1,6 +1,6 @@
 // @ts-check
 // computers: each agent's own computer, a shared pool of screens, and take-over (docs/SPEC.md
-// section 7.9, docs/work/computers.md, ADR 0003).
+// section 7.9, team/archive/work-journals/computers.md, ADR 0003).
 //
 // This file is the tool layer: it decides whose computer a caller may touch and hands the work
 // to the pool (containers and screens) and the keyboard (take-over). The switchboard and the

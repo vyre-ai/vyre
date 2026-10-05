@@ -866,7 +866,7 @@ async function serverTrusted(server, proofHeader, caller, registry) {
  * A socket caller as vyred takes it. Any label but a model's own (a surface's, core/modules
  * SURFACE_LABELS, or one no surface uses yet) from a process under a `claude` or a thread is that
  * model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the call
- * proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * proved its session), for every tool: a label is only a claim (team/archive/work-journals/e2e.md, the team
  * review). "anonymous" stays: the session could say "mcp" itself, so it gains nothing. An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
  * here, but a label alone is never a person: `outside` is false for it, so callerFacts builds no person chain for it, and it is a person only with a person session (LB-2). The person's own actions still refuse it (fromClaude). Asked once per connection.
  * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]

@@ -99,7 +99,7 @@ they are. Most of them encode a real, per-consumer decision about what "solo" sh
 that this ADR does not make unilaterally for every owner: e.g. should a Solo Mac's `core/term`
 default to `/work`-style roots or the home directory? That is a question for `core/term`'s
 owner, informed by this ADR, not a string swap. Each such file keeps working today and gets its
-own `machine`-aware pass, owner by owner, tracked under "Next" in docs/work/anywhere.md: this
+own `machine`-aware pass, owner by owner, tracked under "Next" in team/archive/work-journals/anywhere.md: this
 ADR unblocks that work without forcing it into one unreviewed commit.
 
 `computers` and `glass` (already `"roles": ["box"]`) stay additionally gated on Docker being
@@ -200,7 +200,7 @@ where it should end up. On the first device to successfully pair, `config.machin
 one machine flips from `"solo"` to `"server"` (still the same files, same vault, same
 `vyred`); the new device is simply `"device"`. Tailscale or the relay turns on right then, not
 before: a Solo person who never pairs anything never sees either. tailnet's `onboard.join` tool
-(agreed 28 Sep, see docs/work/anywhere.md) is exactly this trigger: its `verify` step, once a
+(agreed 28 Sep, see team/archive/work-journals/anywhere.md) is exactly this trigger: its `verify` step, once a
 device is confirmed reachable, is what flips the source's `machine`. `federation`'s move engine
 (section 4) is not called: there is nothing to copy.
 

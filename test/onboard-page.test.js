@@ -299,7 +299,7 @@ test("onboard page: \"How will Vyre run?\" Device shows \"Pair with a code\" as 
     // and relay.pair.ticket/relay.join are real and reviewer-cleared, so this platform now gets
     // the real, current design: relay ("Pair with a code") is the device-via default, and the
     // manual tailnet-name field moves under "Use my own Tailscale setup," an advanced fallback
-    // (the user's pivot, 28 Sep, docs/work/launch-surfaces.md). Rewritten to assert that.
+    // (the user's pivot, 28 Sep, team/archive/work-journals/launch-surfaces.md). Rewritten to assert that.
     const root = tempHome(t);
     const bins = fs.mkdtempSync(path.join(root, "bin-"));
     const env = { VYRE_TAILSCALE_BIN: process.env.VYRE_TAILSCALE_BIN, VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, CLOUDFLARE_VYRE_TOKEN: process.env.CLOUDFLARE_VYRE_TOKEN };
