@@ -22,7 +22,7 @@ import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
-import { serveApp, associationFile } from "./app.js";
+import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
@@ -1405,6 +1405,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     return serveApp(res, url.pathname);
   }
+  // config app.root with an export built for the root (npm run export:web:root): the app answers every page address the box
+  // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
+  // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
+  // then the Deck answers as before.
+  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
@@ -1466,6 +1471,9 @@ function stream(req, res, url, events, streams) {
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
   ".ttf": "font/ttf", ".map": "application/json" };
+
+/** At the root (config app.root) these stay the box's: the pre-app pages and what they load, and the signed release files. */
+const ROOT_BOX = /^\/(onboard|person|release|css|js|vendor|fonts|theme\.css|icon\.svg|favicon\.svg|icon-[^/]+|apple-touch-icon\.png|splash|kernel|lib)(\/|\.|$)/;
 
 /** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
 const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
