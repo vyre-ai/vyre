@@ -70,7 +70,7 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
  * `t` needs only `name` and `after(fn)`, so a script (deck/test/mac-world.js) can pass its own.
  * @param {any} t
  * @param {{ approve?: boolean, hold?: number, allow?: string[], macTranscripts?: boolean | any[], boxTranscripts?: any[], health?: any,
- *   boxName?: string, macHost?: string, heartbeat?: number, boxConfig?: any }} [opts]
+ *   boxName?: string, macHost?: string, heartbeat?: number, boxConfig?: any, kernel?: boolean }} [opts]
  *   hold: how long the box holds link.serve (short, so stopping is quick); allow: the box's list of
  *   tools it may ask the Mac for, to reach the Mac's own check; macTranscripts: the Mac indexes the
  *   fixture corpus (true), or these sessions in the corpus's shape, so it has sessions for the box
@@ -79,10 +79,10 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
  *   link.health's tests; boxName, macHost: the box's config name and the Mac's hostname (the name
  *   the box knows it by); heartbeat: the Mac's check-in interval in ms; boxConfig: more of the
  *   box's config.json; router: the box's tailnet goes through vyred's real router; boxPresence:
- *   the box's presence verifier.
+ *   the box's presence verifier; kernel: start both with the kernel on (the planner keeps its records there).
  */
 export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
-  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {} } = {}) {
+  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {}, kernel = undefined } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
@@ -112,9 +112,9 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
     if (server) await new Promise(r => { server.closeAllConnections(); server.close(() => r(undefined)); });
     if (box) await box.stop();
   });
-  box = await start({ presence: boxPresence, root: boxRoot, log: () => {} });
+  box = await start({ presence: boxPresence, root: boxRoot, log: () => {}, ...(kernel !== undefined ? { kernel } : {}) });
   server = await tailnet(box, net, 0, { router });
-  mac = await start({ presence: present, root: macRoot, log: () => {} });
+  mac = await start({ presence: present, root: macRoot, log: () => {}, ...(kernel !== undefined ? { kernel } : {}) });
   const address = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   net.address = address;
   for (const [n, d] of [["box", box], ["mac", mac]]) {
