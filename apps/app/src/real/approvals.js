@@ -113,7 +113,7 @@ export const heldAsk = (error, tool, input = {}) => {
  * Ask the owner's phone for the yes (approvals.ask { moment, request } -> { id, expires_in_s, line }), then wait while the phone answers: approvals.status gives { state } and NO proof (the server verifies and spends
  * the phone's proof itself). Resolves { approval } (the id approvals.status names) when approved: the caller retries its act with `approval: <id>` once. Or { ended }.
  * @param {(tool: string, input?: Record<string, unknown>) => Promise<any>} call
- * @param {{ moment: string, request: any, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
+ * @param {{ moment: string, request: any, onAsked?: (id: string) => Promise<void> | void, onWaiting?: (line: string) => void, signal?: { stopped: boolean }, sleep?: (ms: number) => Promise<void>, now?: () => number, pollMs?: number, limitMs?: number }} o
  * @returns {Promise<{ approval: string } | { ended: "refused" | "none" | "timeout" }>}
  */
 export async function askYes(call, o) {
@@ -122,6 +122,8 @@ export async function askYes(call, o) {
   const ask = await call("approvals.ask", { moment: o.moment, request: o.request });
   if (!ask || typeof ask.id !== "string") throw Object.assign(new Error("the ask did not open"), { code: "ask_failed" });
   o.onWaiting?.(typeof ask.line === "string" ? ask.line : "");
+  // A browser whose key is a passkey says its own yes: the caller answers the card it just opened. A failure leaves the ask for the phone.
+  if (o.onAsked) await Promise.resolve(o.onAsked(ask.id)).catch(() => {});
   const start = now();
   for (;;) {
     if (o.signal?.stopped) return { ended: "none" };

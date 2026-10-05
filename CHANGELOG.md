@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): a passkey browser says its own yes. A held act (a reveal, a send) is answered by the browser itself: it opens the ask, fetches its card, signs the kernel's proof with the passkey (signer webauthn_platform, the assertion's challenge SHA-256 of the proof's bytes, key id from the SPKI) and sends approvals.answer; any failure leaves the ask for the owner's phone. The hello offers the passkey as `key` (not public_key), as the box reads it.
+
 - feat(app): quoted replies, WhatsApp style, in every chat. Swipe a message on a phone, or long-press it (or press Reply under it) on desktop and web; the composer shows the message with an x to cancel; the sent message carries a small quote of the original above its text; tapping the quote scrolls to the original and lights it up. The reply stays in the same timeline (frame fields reply_to and quote; the send input reply_to). Built against the shape I proposed to chat; the real field names are not confirmed.
 
 - feat(app): the calendar's times are read by lib/time: the viewer's own zone ("9:30 am"), and, once a space has a zone of its own, "9:00 am PT · 9:00 pm your time". The space zone is not read yet (windows have not named the field).

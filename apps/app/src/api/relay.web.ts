@@ -17,12 +17,13 @@ export const relayCrypto = () => (provider ??= webCrypto());
 let store: ReturnType<typeof indexedDbKeyStore> | null = null;
 export const relayKeyStore = () => (store ??= indexedDbKeyStore());
 
-export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software"; key?: string; signer?: string; rp?: string } | undefined> {
+export async function presenceKey(): Promise<{ public_key: string; alg: number; storage?: "hardware" | "software" } | undefined> {
   try {
     // A browser whose identity is a passkey offers the passkey itself as its presence key (signer webauthn_platform); any other browser offers its person session's key.
     const mine = await loadIdentity().catch(() => null);
     const pk = passkeyPresenceKey(mine?.key?.keep?.() as never);
-    if (pk) return pk;
+    // The box reads `key` (a base64url SPKI) with signer and rp for a passkey; the relay client's typedef names only public_key, so the shape is passed as it is.
+    if (pk) return pk as unknown as { public_key: string; alg: number; storage?: "hardware" | "software" };
     const k = await personKey();
     return { public_key: b64url(await crypto.subtle.exportKey("spki", k.publicKey)), alg: -7 };
   } catch {

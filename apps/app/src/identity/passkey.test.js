@@ -189,8 +189,9 @@ test("a kept passkey offers its P-256 SPKI as the presence key, signer webauthn_
   assert.equal(k.signer, "webauthn_platform");
   assert.equal(k.rp, "app.vyre.run");
   assert.equal(k.alg, -7);
-  const der = Buffer.from(k.public_key, "base64url");
+  const der = Buffer.from(k.key, "base64url");
   assert.equal(der.length, 91);
+  assert.equal(k.public_key, undefined, "the box reads `key`");
   assert.equal(der.subarray(0, 26).toString("hex"), "3059301306072a8648ce3d020106082a8648ce3d030107034200");
   assert.deepEqual([...der.subarray(26)], [...pub]);
   // node can read it back as a P-256 public key

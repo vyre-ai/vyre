@@ -102,3 +102,16 @@ test("a no, a timeout and Stop waiting end it without an approval", async () => 
   assert.deepEqual(await askYes(ask("waiting"), { ...o, signal: { stopped: true } }), { ended: "none" });
   await assert.rejects(askYes(async () => ({}), o), (e) => e.code === "ask_failed");
 });
+
+test("askYes lets the caller answer its own ask (a passkey browser's yes) before it polls, and a failure there leaves the ask for the phone", async () => {
+  const { askYes } = await import("./approvals.js");
+  const calls = [];
+  const call = async (tool, input) => { calls.push(tool); if (tool === "approvals.ask") return { id: "ap_1", line: "Reveal" }; return { state: "approved", approval: "ap_1" }; };
+  const asked = [];
+  const r = await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, onAsked: async (id) => { asked.push(id); }, sleep: async () => {}, now: () => 0 });
+  assert.deepEqual(r, { approval: "ap_1" });
+  assert.deepEqual(asked, ["ap_1"]);
+  assert.deepEqual(calls.slice(0, 2), ["approvals.ask", "approvals.status"], "the answer comes between the ask and the poll");
+  const r2 = await askYes(call, { moment: "vault", request: { op: "vault.reveal", fields: {} }, onAsked: async () => { throw new Error("no passkey"); }, sleep: async () => {}, now: () => 0 });
+  assert.deepEqual(r2, { approval: "ap_1" }, "a failure to self-answer does not stop the ask");
+});
