@@ -691,6 +691,11 @@ export function createWink(inject = {}) {
     // relay clock stay absent here (they say "unknown", never a guess) until the daemon composes the node host (composeWinkHome).
     // The built-in network (core/wink/netd.js): Headscale, the gate and the Wink node, started in the background on a server home. It hands its node host to the
     // network status above; a box with no programs installed says "no-binary" there and the relay carries everything. `inject.netd === false` is a test seam that leaves it off.
+    const dirCall = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      const r = /** @type {any} */ (await ctx.call(tool, input));
+      if (r && r.error) throw Object.assign(new Error(r.error.message || String(r.error)), { code: r.error.code });
+      return r && "data" in r ? r.data : r;
+    };
     const netd = inject.netd === false ? null : createNetd({
       root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"),
       space: spaceId,
@@ -702,10 +707,21 @@ export function createWink(inject = {}) {
       log: m => ctx.log(m),
       relayUrl: ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "",
       enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
+      // the public gate: this box's name and the name directory's DNS calls, which the names module signs for (names.directory.*, this module only)
+      name: () => (ctx.config && typeof ctx.config.name === "string" && ctx.config.name && ctx.config.network && ctx.config.network.via === "vyre.run" ? ctx.config.name : null),
+      directory: {
+        acme: async (/** @type {string} */ token) => dirCall("names.directory.acme", { token }),
+        acmeClear: async () => dirCall("names.directory.acme-clear", {}),
+        publish: async () => dirCall("names.directory.publish", {}),
+      },
+      ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
+      ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
+      ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
       ...(inject.netd || {}),
     });
-    const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged())] : [];
+    const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
+      ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged())] : [];
     registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();

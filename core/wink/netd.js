@@ -21,9 +21,12 @@ import { createHeadscale as realHeadscale, headscaleBin as realHeadscaleBin, fre
 import { createGate as realGate } from "./control/gate.js";
 import { createHost as realHost } from "./node/host.js";
 import { compilePolicy } from "./control/policy.js";
+import { createPublicGate as realPublicGate } from "./control/publicgate.js";
 
 /** The port the home's door listens on, on its own node (the peer address a paired server dials is `<node ip>:8443`). */
 export const PEER_PORT = 8443;
+/** The public gate's default port (config wink.publicPort). Fixed, so a router mapping and the name's address agree on it; 443 needs a person who allows it. */
+export const PUBLIC_PORT = 7443;
 /** The name a paired device's node joins this network under: derived from the device's id, so the home can tell WHICH device row a node belongs to (Headscale names are lowercase labels). @param {string} device */
 export function nodeNameFor(device) { return "w-" + crypto.createHash("sha256").update(String(device)).digest("hex").slice(0, 20); }
 
@@ -66,19 +69,27 @@ export function findBinaries(env = process.env) {
  *   controlUrl?: string,                            a public https address peers can reach (config wink.controlUrl); without it only this box's own node uses the network
  *   binaries?: { headscale: string | null, forwarder: string | null },
  *   devices?: () => Promise<string[]> | string[],   the ids of the devices that have a live paired row now (core/wink pairing devices): a node reaches the door only while its device has one
+ *   name?: () => string | null,                     this box's claimed name ("alex" for alex.vyre.run), for the public gate; none means a loopback-only network
+ *   directory?: { acme(token: string): Promise<any>, acmeClear(): Promise<any>, publish(): Promise<any> },   the name directory's DNS calls for this box (names.directory.*)
+ *   domain?: string,                                the name's zone (default vyre.run)
+ *   publicGate?: boolean,                           false keeps the network loopback-only whatever the name
+ *   certDeps?: any,                                 test seam for the public gate ({ deps: { createGate, certs, acme, waitDns } })
+ *   publicPort?: number,                            the public gate's port (default 7443)
+ *   publish?: boolean,                              publish the name's address without the outside check (config wink.publish)
+ *   acme?: string,                                  "production", "staging" or a test CA's directory URL
  *   relayUrl?: string,                              the relay used for the outside reachability check
  *   reach?: any,                                    createReach (core/wink/reach.js) result, or a function creating it
- *   deps?: { createHeadscale?: any, createGate?: any, createHost?: any, freePort?: () => Promise<number> },
+ *   deps?: { createHeadscale?: any, createGate?: any, createHost?: any, createPublicGate?: any, freePort?: () => Promise<number> },
  * }} o
  */
 export function createNetd(o) {
   const log = o.log || (() => {});
   const retry = { retryMs: 30_000, ...o };
-  const D = { createHeadscale: realHeadscale, createGate: realGate, createHost: realHost, freePort: realFreePort, ...(o.deps || {}) };
+  const D = { createHeadscale: realHeadscale, createGate: realGate, createHost: realHost, createPublicGate: realPublicGate, freePort: realFreePort, ...(o.deps || {}) };
   /** @type {{ state: "off" | "no-binary" | "starting" | "up" | "failed", why: string | null, since: number }} */
   const st = { state: "starting", why: null, since: Date.now() };
   const set = (/** @type {typeof st.state} */ state, /** @type {string | null} */ why = null) => { st.state = state; st.why = why; st.since = Date.now(); };
-  /** @type {any} */ let hs = null, gate = null, host = null, reach = null;
+  /** @type {any} */ let hs = null, gate = null, host = null, reach = null, pub = null;
   /** @type {string} */ let space = "";
   /** @type {string} */ let control = "";
   /** @type {string[]} */ let ips = [];
@@ -105,21 +116,39 @@ export function createNetd(o) {
     const dir = path.join(o.root, "wink-net");
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 
-    // the public face: the gate, bound to loopback unless a public control address is configured (then 0.0.0.0, the gate is the only exposed piece)
+    // the public face. The loopback gate always runs (the home's own node joins through it). With a configured control address (wink.controlUrl) the gate is the one exposed piece;
+    // otherwise, a box with a name gets a second, TLS gate on the public port (control/publicgate.js) whose address is https://<name>.vyre.run:<port>. A box with no name yet stays
+    // loopback-only and says so; the relay carries everything meanwhile.
     const gatePort = await D.freePort();
+    const nameNow = o.name ? o.name() : null;
+    const pubPort = o.publicPort || PUBLIC_PORT;
     const publicUrl = o.controlUrl ? String(o.controlUrl) : "";
-    control = publicUrl || `http://127.0.0.1:${gatePort}`;
+    const wantPublic = !publicUrl && Boolean(nameNow) && Boolean(o.directory) && o.publicGate !== false;
+    control = publicUrl || (wantPublic ? `https://${nameNow}.${o.domain || "vyre.run"}:${pubPort}` : `http://127.0.0.1:${gatePort}`);
     const hsPort = await D.freePort();
     hs = D.createHeadscale({ dir: path.join(dir, "hs"), serverUrl: control, bin: bins.headscale, listenPort: hsPort, onLog: (/** @type {string} */ l) => log(`headscale: ${l}`) });
     await hs.start();
     gate = D.createGate({ listen: { host: publicUrl ? "0.0.0.0" : "127.0.0.1", port: gatePort }, tls: null, upstream: { port: hs.listen ? hs.listen.port : hsPort }, onEvent: (/** @type {any} */ e) => { if (e && e.type !== "accept") log(`gate: ${e.type}${e.addr ? " " + e.addr : ""}`); } });
     await gate.listen();
+    /** The ports the reachability helper must open: the public gate's when there is one, else the loopback gate's (a configured control address). */
+    const reachPort = wantPublic ? pubPort : gatePort;
+    const reachNow = () => Boolean(reach && reach.status && reach.status().state === "direct");
+    if (!publicUrl && o.directory && o.publicGate !== false) {
+      pub = D.createPublicGate({
+        name: () => (o.name ? o.name() : null), domain: o.domain, dir: path.join(dir, "certs"), directory: o.directory || { acme: async () => { throw new Error("no directory"); }, acmeClear: async () => {}, publish: async () => {} },
+        upstream: { port: hs.listen ? hs.listen.port : hsPort }, listen: { host: "0.0.0.0", port: pubPort }, ...(o.acme ? { acme: o.acme } : {}), ...(o.publish ? { publish: true } : {}),
+        reachable: reachNow, log, ...(o.certDeps || {}),
+      });
+      // started in the background below: a certificate can take a minute, and the network does not wait for it
+    }
     // the reachability helper (UPnP, IPv6, relay): optional and best effort; it never blocks the network from coming up
     try {
-      const r = typeof o.reach === "function" ? o.reach({ log, ports: [{ port: gatePort, proto: "tcp" }] }) : o.reach;
-      reach = r || (o.reach === undefined ? await loadReach(gatePort) : null);
+      const mk = (/** @type {any} */ x) => ({ ...x, onchange: (/** @type {any} */ s) => { try { x.onchange && x.onchange(s); } catch { /* a listener */ } if (pub) pub.reachChanged().catch(() => {}); } });
+      const r = typeof o.reach === "function" ? o.reach(mk({ log, ports: [{ port: reachPort, proto: "tcp" }] })) : o.reach;
+      reach = r || (o.reach === undefined ? await loadReach(reachPort) : null);
       if (reach && reach.start) Promise.resolve(reach.start()).catch(e => log(`wink net: reach did not start: ${/** @type {Error} */ (e).message}`));
     } catch (e) { log(`wink net: reach unavailable: ${/** @type {Error} */ (e).message}`); }
+    if (pub) Promise.resolve(pub.start()).catch(e => log(`wink net: public gate: ${/** @type {Error} */ (e).message}`));
 
     // the node: one wink-forwarder process joined with a one-time key; the door answers peers as device:<eid>
     host = D.createHost({ root: path.join(dir, "node"), forwarderBin: bins.forwarder, log });
@@ -144,7 +173,7 @@ export function createNetd(o) {
     // the outside check goes to the relay this box already uses (a self-hosted one answers /v1/reach/check; the hosted one does not, and then nothing is called direct)
     const url = String((o.relayUrl || "") || (o.ctx && o.ctx.config && o.ctx.config.relay && o.ctx.config.relay.url) || "").replace(/^ws/, "http");
     const verify = url && typeof m.relayVerifier === "function" ? m.relayVerifier(url) : undefined;
-    return m.createReach({ log, ports: [{ port: gatePort, proto: "tcp" }], ...(verify ? { verify } : {}) });
+    return m.createReach({ log, ports: [{ port: gatePort, proto: "tcp" }], ...(verify ? { verify } : {}), onchange: () => { if (pub) pub.reachChanged().catch(() => {}); } });
   }
 
   const v4 = (/** @type {string[] | undefined} */ l) => (l || []).find(x => /^\d+\.\d+\.\d+\.\d+$/.test(x)) || null;
@@ -182,7 +211,7 @@ export function createNetd(o) {
 
   async function teardown() {
     if (watch) { clearInterval(watch); watch = null; }
-    for (const f of [() => reach && reach.stop && reach.stop(), () => host && host.stopAll(), () => gate && gate.close(), () => hs && hs.stop()]) {
+    for (const f of [() => pub && pub.stop(), () => reach && reach.stop && reach.stop(), () => host && host.stopAll(), () => gate && gate.close(), () => hs && hs.stop()]) {
       try { await Promise.race([Promise.resolve().then(f), new Promise((_, rej) => { const t = setTimeout(() => rej(new Error("timed out")), 5000); t.unref && t.unref(); })]); } catch (e) { log(`wink net: stopping: ${/** @type {Error} */ (e).message}`); }
     }
   }
@@ -193,7 +222,7 @@ export function createNetd(o) {
       try { await bringUp(); return; }
       catch (e) {
         set("failed", String((e && e.message) || e).slice(0, 300)); log(`wink net: ${st.why}`);
-        await teardown(); hs = gate = reach = null; if (!host) host = bareHost();
+        await teardown(); hs = gate = reach = pub = null; if (!host) host = bareHost();
         if (stopped || !(retry.retryMs > 0)) return;
         await new Promise(r => { wake = r; retryTimer = setTimeout(r, retry.retryMs); });
         if (stopped) return;
@@ -209,13 +238,21 @@ export function createNetd(o) {
       return starting;
     },
     async stop() { stopped = true; if (retryTimer) clearTimeout(retryTimer); if (wake) wake(); if (starting) await starting.catch(() => {}); await teardown(); },
+    /** The box's name changed (claimed, released): the network starts again so the control address and the public gate follow it. */
+    async nameChanged() {
+      if (stopped || !starting) return;
+      await starting.catch(() => {});
+      await teardown(); hs = gate = reach = pub = null; host = null; set("starting");
+      starting = attempt();
+      return starting;
+    },
     /** The node host (status, whois, join, leave, acceptRelay): always present once start() has been called. */
     host: () => host,
     /** What `wink.network.status` and the doctor read, in plain fields. */
     status() {
       return {
         state: st.state, why: st.why, since: st.since, space: space || null, ips, controlUrl: control || null,
-        public: Boolean(o.controlUrl), reach: reach && reach.status ? reach.status() : null,
+        public: Boolean(o.controlUrl) || Boolean(pub && pub.status().state === "up"), publicGate: pub ? pub.status() : null, reach: reach && reach.status ? reach.status() : null,
       };
     },
     /**
@@ -234,10 +271,13 @@ export function createNetd(o) {
     deviceChanged() { return syncPolicy().catch(e => { log(`wink net: policy: ${/** @type {Error} */ (e).message}`); }); },
     syncPolicy,
     async handover(_q) {
-      if (st.state !== "up" || !hs || !o.controlUrl) return null;
+      // an address another machine can reach: the configured one, or the public gate's once it is up AND its name points here (published); else nothing, the relay carries everything
+      const ps = pub ? pub.status() : null;
+      const url = o.controlUrl ? String(o.controlUrl) : ps && ps.state === "up" && ps.published ? pub.controlUrl() : null;
+      if (st.state !== "up" || !hs || !url) return null;
       const key = await hs.createPreauthKey({ ttlMs: 300_000 });
       watchJoin(300_000);
-      return { controlUrl: control, authKey: key.key, space, box: await o.box(), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
+      return { controlUrl: url, authKey: key.key, space, box: await o.box(), ...(ps && ps.pin && !o.controlUrl ? { pin: ps.pin } : {}), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
     },
   };
 }

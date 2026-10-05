@@ -186,3 +186,86 @@ test("join policy: a node that joined inside a key's window waits for its row, a
   assert.deepEqual(f.policies.at(-1).acls[0].src, ["n-d-2"]);
   await n.stop();
 });
+
+/** A public gate stand-in that records how it was made and answers like the real one. */
+function fakePublic(/** @type {{ published?: boolean, state?: string }} */ { published = false, state = "up" } = {}) {
+  const made = /** @type {any[]} */ ([]);
+  const createPublicGate = (/** @type {any} */ o) => {
+    const g = { o, started: false, stopped: false,
+      async start() { g.started = true; return g.status(); },
+      status: () => ({ state: o.name() ? state : "no-name", why: o.name() ? null : "this box has no name yet", name: "alex.vyre.run", port: 7443, expires: 1, pin: "sha256/abc", published }),
+      controlUrl: () => "https://alex.vyre.run:7443", pin: () => "sha256/abc", reachChanged: async () => {}, async stop() { g.stopped = true; } };
+    made.push(g); return g;
+  };
+  return { made, createPublicGate };
+}
+const dirStub = { acme: async () => {}, acmeClear: async () => {}, publish: async () => {} };
+
+test("public gate: a named box tells Headscale its public address and starts the TLS gate; the loopback gate stays for the home's own node", async () => {
+  const f = fakes(), p = fakePublic();
+  const n = createNetd(base(f, { name: () => "alex", directory: dirStub, deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await n.start();
+  assert.match(f.calls[0], /^hs\.start https:\/\/alex\.vyre\.run:7443$/);
+  assert.match(f.calls[1], /^gate\.listen 127\.0\.0\.1/);
+  assert.equal(p.made.length, 1);
+  assert.equal(p.made[0].started, true);
+  assert.equal(p.made[0].o.listen.port, 7443);
+  assert.equal(p.made[0].o.dir.endsWith(path.join("wink-net", "certs")), true);
+  const s = n.status();
+  assert.equal(s.state, "up");
+  assert.equal(s.controlUrl, "https://alex.vyre.run:7443");
+  assert.equal(s.publicGate.state, "up");
+  await n.stop();
+  assert.equal(p.made[0].stopped, true);
+});
+
+test("public gate: a box with no name stays loopback-only and says so", async () => {
+  const f = fakes(), p = fakePublic();
+  const n = createNetd(base(f, { name: () => null, directory: dirStub, deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await n.start();
+  assert.match(f.calls[0], /^hs\.start http:\/\/127\.0\.0\.1:/);
+  const s = n.status();
+  assert.equal(s.publicGate.state, "no-name");
+  assert.match(s.publicGate.why, /no name yet/);
+  assert.equal(s.public, false);
+  assert.equal(await n.handover({}), null, "nothing another machine could reach: the relay carries everything");
+  await n.stop();
+});
+
+test("public gate: the hand-over carries the public address and the pin only once the name points here", async () => {
+  const f = fakes();
+  const unpublished = createNetd(base(f, { name: () => "alex", directory: dirStub, deps: { ...f.deps, createPublicGate: fakePublic({ published: false }).createPublicGate } }));
+  await unpublished.start();
+  assert.equal(await unpublished.handover({ device: "devB" }), null, "the name points nowhere reachable yet: no direct join is offered");
+  await unpublished.stop();
+  const f2 = fakes();
+  const ok = createNetd(base(f2, { name: () => "alex", directory: dirStub, deps: { ...f2.deps, createPublicGate: fakePublic({ published: true }).createPublicGate } }));
+  await ok.start();
+  const h = await ok.handover({ device: "devB" });
+  assert.equal(h.controlUrl, "https://alex.vyre.run:7443");
+  assert.equal(h.pin, "sha256/abc");
+  assert.equal(h.hostname, nodeNameFor("devB"));
+  assert.equal(h.authKey, "hskey-fake0123456789");
+  await ok.stop();
+});
+
+test("public gate: a configured control address wins and no second gate is made", async () => {
+  const f = fakes(), p = fakePublic();
+  const n = createNetd(base(f, { controlUrl: "https://hs.example.org", name: () => "alex", directory: dirStub, deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await n.start();
+  assert.match(f.calls[0], /^hs\.start https:\/\/hs\.example\.org$/);
+  assert.equal(p.made.length, 0);
+  await n.stop();
+});
+
+test("public gate: claiming a name restarts the network so the address follows it", async () => {
+  const f = fakes(), p = fakePublic();
+  let name = /** @type {string | null} */ (null);
+  const n = createNetd(base(f, { name: () => name, directory: dirStub, deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await n.start();
+  assert.equal(n.status().controlUrl?.startsWith("http://127.0.0.1"), true);
+  name = "alex";
+  await n.nameChanged();
+  assert.equal(n.status().controlUrl, "https://alex.vyre.run:7443");
+  await n.stop();
+});
