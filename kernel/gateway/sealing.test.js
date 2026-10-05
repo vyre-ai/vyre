@@ -122,11 +122,11 @@ test("the gateway refuses a door that was not built with the kernel's isChain", 
 test("sealing wiring: moving sealed values to another server goes through authorize and the log; a model's chain cannot, and nothing but the blob comes back", async () => {
   const { gw, calls } = rig();
   assert.equal((await gw.seal.wrapKey(owner(), { record: REC })).key, "K");
-  assert.equal((await gw.seal.exportApprove(owner(), { record: REC, upgrade_id: "u1", target_key: "K", refs: ["a", "b"], proof: { sig: "p" } })).approved, 2);
-  assert.deepEqual(await gw.seal.export(owner(), { record: REC, to_record: REC, field: "ssn", ref: "a", target_key: "K", upgrade_id: "u1" }), { blob: { ct: "x" } });
+  assert.equal((await gw.seal.exportApprove(owner(), { record: REC, plan_hash: "u1", target_key: "K", refs: ["a", "b"], proof: { sig: "p" } })).approved, 2);
+  assert.deepEqual(await gw.seal.export(owner(), { record: REC, to_record: REC, field: "ssn", ref: "a", target_key: "K", plan_hash: "u1" }), { blob: { ct: "x" } });
   assert.equal((await gw.seal.import(owner(), { record: REC, field: "ssn", blob: { ct: "x" } })).ref.ref, "sv_9");
   const before = calls.length;
-  for (const f of [() => gw.seal.export(agent(), { record: REC, field: "ssn", ref: "a", target_key: "K", upgrade_id: "u1" }), () => gw.seal.exportApprove(agent(), { record: REC, upgrade_id: "u2", target_key: "K", refs: ["a"] })])
+  for (const f of [() => gw.seal.export(agent(), { record: REC, field: "ssn", ref: "a", target_key: "K", plan_hash: "u1" }), () => gw.seal.exportApprove(agent(), { record: REC, plan_hash: "u2", target_key: "K", refs: ["a"] })])
     await assert.rejects(f);
   assert.equal(calls.length, before, "the sealing process is not touched for a chain with no grant");
 });

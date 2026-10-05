@@ -100,29 +100,29 @@ export class Sealer {
     return { priv, pub: crypto.createPublicKey(priv).export({ type: "spki", format: "der" }).toString("base64") };
   }
   /**
-   * One approval for a whole move (the Personal to My Cloud upgrade): the person's own proof, once, over the upgrade, the target's key and the exact list of sealed references it will carry. The sealing
+   * One approval for a whole move (the Personal to My Cloud upgrade): the person's own proof, once, over the upgrade's plan hash (which the surface signs in the same prompt as the upgrade itself), the target's key and the exact list of sealed references it will carry. The sealing
    * process keeps that grant in memory only (a restart loses it, and the upgrade is asked again), for a day, and each reference on the list may then be exported once, to that key only.
    */
   exportApprove(r) {
     const ctx = this.ctxOf(r.ctx);
     need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
-    need(typeof r.upgrade_id === "string" && r.upgrade_id.length > 0 && r.upgrade_id.length <= 100 && typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && Array.isArray(r.refs) && r.refs.length > 0 && r.refs.length <= 5000 && r.refs.every(x => typeof x === "string" && x.length <= 100), "bad_input");
+    need(typeof r.plan_hash === "string" && r.plan_hash.length > 0 && r.plan_hash.length <= 100 && typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && Array.isArray(r.refs) && r.refs.length > 0 && r.refs.length <= 5000 && r.refs.every(x => typeof x === "string" && x.length <= 100), "bad_input");
     const refs = [...new Set(r.refs)].sort();
-    const why = this.presence.refuse(r.proof, { op: "seal.export_approve", space: ctx.space, fields: { upgrade_id: r.upgrade_id, target_key: r.target_key, refs }, ctx });
+    const why = this.presence.refuse(r.proof, { op: "seal.export_approve", space: ctx.space, fields: { plan_hash: r.plan_hash, target_key: r.target_key, refs }, ctx });
     if (why) throw err(why === "no_proof" ? "needs_presence" : why);
     this.exports ??= new Map();
     const t = this.now();
     for (const [k, g] of this.exports) if (g.expires <= t) this.exports.delete(k);
-    this.exports.set(`${ctx.space}\0${r.upgrade_id}`, { person: ctx.person, target_key: r.target_key, refs: new Set(refs), used: new Set(), expires: t + 24 * 3600_000 });
+    this.exports.set(`${ctx.space}\0${r.plan_hash}\0${r.target_key}`, { person: ctx.person, target_key: r.target_key, refs: new Set(refs), used: new Set(), expires: t + 24 * 3600_000 });
     return { approved: refs.length, expires_at: t + 24 * 3600_000 };
   }
   export(r) {
     const ctx = this.ctxOf(r.ctx);
     need(ctx.one_person && !ctx.model_originated && (HUMAN_SURFACES.has(ctx.surface) || ctx.device), "human_only");
     need(typeof r.target_key === "string" && r.target_key.length > 20 && r.target_key.length < 200 && typeof r.record === "string" && typeof r.field === "string" && typeof r.ref === "string", "bad_input");
-    if (typeof r.upgrade_id === "string") {
+    if (typeof r.plan_hash === "string") {
       // Under an approved move: only a reference on its list, once, to its key, for the person who approved it, within its day.
-      const g = this.exports && this.exports.get(`${ctx.space}\0${r.upgrade_id}`);
+      const g = this.exports && this.exports.get(`${ctx.space}\0${r.plan_hash}\0${r.target_key}`);
       need(g && g.expires > this.now() && g.person === ctx.person && g.target_key === r.target_key && g.refs.has(r.ref) && !g.used.has(r.ref), "needs_presence");
       g.used.add(r.ref);
     } else {
