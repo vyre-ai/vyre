@@ -182,12 +182,12 @@ and the summary screen are correct once mobile's swipe-to-approve pairing lands.
 
 ### Step 10: A tour of the Capsule
 
-Press &#8997;Space (the corrected default hotkey, `docs/work/launch-surfaces.md`). The landing
+Press &#8997;Space (the corrected default hotkey, `team/archive/work-journals/launch-surfaces.md`). The landing
 page's hero Capsule demo (`site/index.html`, `site/app.js`'s `.keys`/demo wiring) is sample-data
 only and public-facing, but its shape, tabs (Typing/Recall/Held/Waiting) and the &#8997;Space
 open/close handling are a reasonable starting point for capsule-pro's real, signed-in tour.
 
-## Open items (tracked in `docs/work/launch-surfaces.md` "Needs from others")
+## Open items (tracked in `team/archive/work-journals/launch-surfaces.md` "Needs from others")
 
 - vault: tool shapes for step 5 and step 6.
 - connectors: confirm step 6's scope (which of today's connector flows this step wraps).

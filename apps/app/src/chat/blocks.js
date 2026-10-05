@@ -1,5 +1,5 @@
 // @ts-check
-// The Block contract (docs/work/chat.md, 0.3): a tool result becomes one of
+// The Block contract (team/archive/work-journals/chat.md, 0.3): a tool result becomes one of
 //   terminal | diff | files | record | task | draft | flow-change | answer | screen | text
 // `normalizeBlock` checks the shape and returns a typed block the components draw. Anything unknown
 // or malformed degrades to a short `text` block, never a JSON dump. A sealed field keeps no value:

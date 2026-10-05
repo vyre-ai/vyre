@@ -668,14 +668,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether each storage device is there"
  },
  {
-  "tool": "work.engineer.revise",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): edits the Engineer's proposed definition, which is checked again and gets its own card"
- },
- {
-  "tool": "work.engineer.talk",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): talks to the Engineer, which only admins can do; explain reads a definition back"
- },
- {
   "tool": "work.team.add",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen"
  }

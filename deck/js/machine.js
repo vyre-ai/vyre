@@ -1,5 +1,5 @@
 // @ts-check
-// Rows from the paired Mac (docs/work/federation.md, design 5). On the box, the catalogue, search,
+// Rows from the paired Mac (team/archive/work-journals/federation.md, design 5). On the box, the catalogue, search,
 // sessions and threads take in the Mac's rows too, each labelled `source: "mac"` and `machine`.
 // The Deck shows them with a machine chip and reads them, but never acts on them: a Mac thread
 // runs on the Mac, so sending, resuming, stopping or answering it from here would act on nothing
