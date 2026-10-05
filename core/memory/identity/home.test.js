@@ -57,7 +57,7 @@ test("an admin or root on the space server cannot read the identity memory: only
   // They hold the wrapped keys and the public keys. A wrap opens only with a private key they do not have: not another device's, not a made-up one.
   const admin = newDeviceKey();
   const mine = m.wraps.find(x => x.kind === "device");
-  assert.throws(() => unwrapWithDevice(mine.wrapped, admin.privateJwk, `vyre-identity-home/ident_alex/wrap:${mine.fp}`), { code: "cannot_open" });
+  await assert.rejects(() => unwrapWithDevice(mine.wrapped, admin.privateJwk, `vyre-identity-home/ident_alex/wrap:${mine.fp}`), { code: "cannot_open" });
   // They can try keys on the snapshot: a random key, the manifest's hashes as a key, a key from a copy of the wrap's own bytes.
   const snap = JSON.parse(fs.readFileSync(path.join(w.server.dir, "identity", "ident_alex", "snap-2.json"), "utf8"));
   for (const k of [newKey(), crypto.createHash("sha256").update(raw).digest(), Buffer.alloc(32), Buffer.from(mine.wrapped.ct, "base64url").subarray(0, 32)]) assert.throws(() => open(snap, k, "vyre-identity-home/ident_alex/snap:2"), { code: "cannot_open" });
