@@ -323,3 +323,33 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   await until(async () => { const row = (await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat); return row && row.status === "idle"; }, "the chat to be idle after the turn", 30_000);
   assert.ok(((await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat) || {}).last_active, "and last active is kept");
 });
+
+test("a message sent in the chat while its run works joins the running turn (steer) by default, waits for the turn's end when asked to queue, and is never refused", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const owner = kernelCaller(d, root);
+  const chat = (await owner("work.chat.create", { title: "Busy" })).data.chat;
+  assert.ok((await owner("stream.send", { chat, text: "demo" })).data);
+  const thread = await until(async () => { const r = (await owner("work.chat.get", { chat })).data.slots[0]; return r && r.thread; }, "the run");
+  await until(async () => (await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn to be busy");
+  const events = async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
+  // the default: the words join the running turn
+  assert.ok((await owner("stream.send", { chat, text: "and also this" })).data);
+  await until(async () => (await events()).some(e => e.type === "thread.sent" && e.payload.text === "and also this" && e.payload.via === "steer"), "the words to be steered into the turn");
+  // queue: they wait, and can be taken back
+  assert.ok((await owner("stream.send", { chat, text: "later please", mode: "queue" })).data);
+  await until(async () => (await events()).some(e => e.type === "thread.queued" && e.payload.text === "later please"), "the words to be queued");
+  // Stop through the chat: the busy slot's turn is interrupted, and the chat keeps taking messages
+  const stopped = await owner("threads.chat-stop", { chat });
+  assert.deepEqual(stopped.data && stopped.data.stopped, [thread], JSON.stringify(stopped.error));
+  await until(async () => !(await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn's open question to be cancelled");
+  assert.equal((await owner("threads.chat-stop", { chat, slot: "model:claude/nonesuch#9" })).error.code, "not_found");
+});

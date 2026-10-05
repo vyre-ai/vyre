@@ -4062,8 +4062,9 @@ export default {
         guard(meta.caller, "stop a chat's turn");
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
         const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
-        for (const r of runs) if (r.live) await sb.interrupt(r.thread);
-        return { stopped: runs.filter(r => r.live).map(r => r.thread) };
+        const busy = runs.filter(r => r.live || ["working", "asking", "starting"].includes(String(r.status)));
+        for (const r of busy) await sb.interrupt(r.thread);
+        return { stopped: busy.map(r => r.thread) };
       });
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
       { type: "object", required: ["thread"], properties: { thread: str } },
