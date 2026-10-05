@@ -29,17 +29,14 @@ export function modelChoices(providerRows, current = {}) {
 }
 
 /**
- * What switching one slot's model asks the box (CONTRACT-one-chat.md): chats.switch { chat, slot, provider, model, account? }. `old` is the same switch as the box's older calls (threads.model for the same
- * account's model, threads.switch for another account's), for a box that does not have chats.switch yet.
+ * What switching one slot's model asks the box (CONTRACT-one-chat.md): chats.switch { chat, slot, provider, model, account? }.
  * @param {string} chat @param {string} id @param {any} providerRows @param {{ provider?: string | null, account?: string | null }} [current] @param {string} [slot]
- * @returns {{ tool: string, input: Record<string, unknown>, old: { tool: string, input: Record<string, unknown> } } | null}
+ * @returns {{ tool: string, input: Record<string, unknown> } | null}
  */
 export function switchCall(chat, id, providerRows, current = {}, slot) {
   const [provider, account, model] = String(id).split("|");
   if (!provider || !model) return null;
-  const row = answerRows(providerRows, { provider: current.provider ?? null, account: current.account ?? null }).find((r) => r.provider === provider && (r.account ?? "") === account);
-  const old = row && row.now ? { tool: "threads.model", input: { thread: chat, model } } : { tool: "threads.switch", input: { thread: chat, provider, ...(account ? { account } : {}), model } };
-  return { tool: "chats.switch", input: { chat, ...(slot ? { slot } : {}), provider, model, ...(account ? { account } : {}) }, old };
+  return { tool: "chats.switch", input: { chat, ...(slot ? { slot } : {}), provider, model, ...(account ? { account } : {}) } };
 }
 
 /** The people and assistants to @mention: this chat's own first, then the space's actors and the person's agents, each once, never the viewer. @param {{ actors?: any, agents?: any, viewer?: string | null, here?: { name: string, family: string }[] }} o */

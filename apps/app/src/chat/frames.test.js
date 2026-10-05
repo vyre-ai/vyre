@@ -329,3 +329,12 @@ test("a person who joined late sees the chat from their join: placeholders hold 
   assert.deepEqual(f.rows.map((r) => f.item(r.key)?.text), ["chris joined", "and now?"]);
   assert.equal(f.last, 11);
 });
+
+test("a message the person's assistant sent for them keeps via, so it can be marked", () => {
+  cur = 0;
+  const f = createFolder();
+  f.apply({ ...fr("user-message", { message: "s1", text: "run the tests", state: "sent" }), author: "person:alex", via: "assistant" });
+  assert.equal(f.item(f.rows[0].key)?.via, "assistant");
+  f.apply({ ...fr("user-message", { message: "s2", text: "thanks", state: "sent" }), author: "person:alex" });
+  assert.equal(f.item(f.rows[1].key)?.via, undefined);
+});

@@ -71,3 +71,9 @@ test("a space is never called by its id: its name, its label, or Home", () => {
   assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", label: "harlow" }), "harlow");
   assert.equal(spaceNameOf({ id: "spc_x1", name: "x", displayName: "Harlow Legal" }), "Harlow Legal");
 });
+
+test("a space whose displayName or label is its own id is still called Home, never the id", async () => {
+  const { spaceName } = await import("./real-model.ts");
+  assert.equal(spaceName({ id: "spc_1", displayName: "spc_9zk4", label: "SPC_9ZK4", name: "spc_9zk4" }), "Home");
+  assert.equal(spaceName({ id: "spc_1", displayName: "spc_9zk4", label: "Harlow Legal" }), "Harlow Legal");
+});

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): one Chat, per the lead's rulings. One path only: the old session list and the threads.model / threads.switch fallbacks are deleted, and a box without work.chat.list shows "Update your server to use Chats". Add a teammate adds people and space or project agents (add_agents); the person's own assistant is never added. A message the assistant sent for the person (frame via: "assistant") reads "(Sent by Vyre Assistant)"; a fourth sample chat shows it. agent:<id> slot ids read as agents. An artifact made in a chat is a row that opens /a/<id>?v=<version>. A space whose label is its own id is called Home.
+
 - refactor(app): a chat frame's type is read and written in one place (src/chat/frame-type.js): the engine's later session. to chat. rename is one edit to its prefix, and reading accepts both.
 
 - feat(app): one Chat, A2 to A4 (CONTRACT-one-chat.md). The chat opens at /u/chats/<id> for solo and group alike; the old session store, rows and composer (threads.get / threads.send) are deleted. The header sheet is "In this chat" with Add a teammate (chats.change, a person by id to add_people, an assistant to add_assistants). A chat with several assistants or models has a composer chip per slot to switch that slot's model (chats.switch, with the older threads.* call as the fallback on a box without it), and "Ask both" for two. The sample world's three chats run on mock streams (solo, three models each with its provider, people only); render-check draws them.

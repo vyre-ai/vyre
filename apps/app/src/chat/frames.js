@@ -9,7 +9,7 @@
 
 /**
  * @typedef {{ v?: number, id?: string, cur: number, span?: number, session?: string, turn?: string|null, type: string, time?: number, corr?: string|null, t?: number,
- *   author?: string, acts_for?: string, message?: string, data: any }} Frame
+ *   author?: string, acts_for?: string, message?: string, via?: string, data: any }} Frame
  * @typedef {{ key: string, kind: string, [k: string]: any }} Item
  * @typedef {{ type: "item", key: string, kind: string }} LayoutRow
  */
@@ -35,7 +35,7 @@ export const plainName = (id) => {
   return s ? s[0].toUpperCase() + s.slice(1) : String(id);
 };
 /** Who wrote a frame, for the row. @param {Frame} f */
-const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}) });
+const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}), ...(f.via === "assistant" ? { via: "assistant" } : {}) });
 
 /** @param {string} b64 */
 function decode(b64) {

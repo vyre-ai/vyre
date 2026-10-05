@@ -15,13 +15,13 @@
  * @typedef {{ group: string, message: string | null, members: FanoutMember[], kept: string | null }} Fanout
  */
 
-/** "assistant:kit" -> { family: "assistant", id: "kit" }. A bare id is a person. @param {unknown} who */
+/** "agent:kit" (the contract's slot id) and "assistant:kit" (the older one) -> { family: "assistant", id: "kit" }. A bare id is a person. @param {unknown} who */
 export function parseWho(who) {
   const s = String(who ?? "");
   const i = s.indexOf(":");
   if (i < 0) return { family: /** @type {"person"} */ ("person"), id: s };
   const f = s.slice(0, i);
-  return { family: /** @type {"person" | "assistant" | "model"} */ (f === "assistant" || f === "model" ? f : "person"), id: s.slice(i + 1) };
+  return { family: /** @type {"person" | "assistant" | "model"} */ (f === "assistant" || f === "agent" ? "assistant" : f === "model" ? "model" : "person"), id: s.slice(i + 1) };
 }
 
 /** @param {string} id @param {Record<string, string>} [names] */
@@ -360,12 +360,12 @@ export function createGroup(viewer) {
 }
 
 /**
- * chats.change's input for adding one teammate (CONTRACT-one-chat.md): a person goes in add_people by id, an assistant in add_assistants by id. Nothing else about the chat changes.
+ * chats.change's input for adding one teammate (CONTRACT-one-chat.md): a person goes in add_people by id, a space or project agent in add_agents by id. The person's own assistant is never added to a chat (it acts as the person). Nothing else about the chat changes.
  * @param {string} chat @param {{ id?: string, name: string, family: string }} who
  */
 export function addTeammateInput(chat, who) {
   const id = String(who.id || who.name);
-  return who.family === "assistant" ? { chat, add_assistants: [id] } : { chat, add_people: [id] };
+  return who.family === "assistant" ? { chat, add_agents: [id] } : { chat, add_people: [id] };
 }
 
 /** Who could still be added: everyone offered who is not already in the chat, by name. @param {readonly { name: string, id?: string, family: string }[]} offered @param {readonly { name: string, id?: string }[]} inChat */

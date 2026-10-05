@@ -33,14 +33,6 @@ export function chatsFrom(data) {
   return out;
 }
 
-/** A row from the older list of sessions: one assistant or agent in a chat of its own, which the person is in. @param {any} t @returns {ChatRow} */
-export function fromThread(t) {
-  return {
-    id: String(t.id), title: str(t.name) || "Chat", project: str(t.projectName) || str(t.project), people: [], agents: t.agent ? [String(t.agent)] : [], models: t.model ? [String(t.model)] : [],
-    providers: PROVIDERS.filter((p) => String(t.model || "").toLowerCase().includes(p)), status: str(t.status) || "idle", last: Number(t.last) || 0, line: "", asks: Number(t.asks) || 0, open: true,
-  };
-}
-
 /** The state word, most urgent first. @param {ChatRow} c */
 export function chatState(c) {
   if (c.asks > 0) return "needs-you";
@@ -62,11 +54,18 @@ export function chatsOrdered(list) {
   return [...list].sort((a, b) => rank[chatState(a)] - rank[chatState(b)] || b.last - a.last);
 }
 
-/** The three scripted chats of the sample world (CONTRACT-one-chat.md section 4): a solo chat, a three-model chat and a people-only chat. @param {number} now @returns {ChatRow[]} */
+/** The three scripted chats of the sample world (CONTRACT-one-chat.md section 4): a solo chat, a three-model chat, a people-only chat and one where the assistant acted for the person. @param {number} now @returns {ChatRow[]} */
 export function sampleChats(now) {
   return [
     { id: "demo", title: "Lease reply", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 6 * 60_000, line: "Draft ready for your review", asks: 0, open: true },
     { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: ["claude", "codex", "grok"], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, open: true },
+    { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Assistant", asks: 0, open: true },
     { id: "demo-people", title: "Intake hand-off", project: "General", people: ["alex", "Sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "Sam: I will call them Monday", asks: 0, open: true },
   ];
 }
+
+/** What the Chats screen says on a box that has no work.chat.list: the app and the box ship together, so there is one path. */
+export const UNSUPPORTED = "Update your server to use Chats";
+
+/** Is this the refusal of a tool the box does not have? @param {{ code?: string } | null | undefined} e */
+export const noSuchTool = (e) => /unknown_tool|no_such_tool|not_found|unknown tool/.test(String(e?.code ?? ""));

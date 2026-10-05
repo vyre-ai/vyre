@@ -240,7 +240,7 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
 
 /** The source for a session id: the mock for `demo`, the real client against the box for every other id. */
 /** The sample world's three chats (CONTRACT-one-chat.md section 4) run on mock streams; every other id is a chat on the box. */
-const SAMPLE_SCENARIO: Record<string, "models" | "people" | undefined> = { demo: undefined, "demo-three": "models", "demo-people": "people" };
+const SAMPLE_SCENARIO: Record<string, "models" | "people" | "assistant" | undefined> = { demo: undefined, "demo-three": "models", "demo-people": "people", "demo-assistant": "assistant" };
 export const sourceFor = (sessionId: string): StreamSource => (sessionId in SAMPLE_SCENARIO ? createMockStream({ session: sessionId, scenario: SAMPLE_SCENARIO[sessionId] }) : boxStream(sessionId));
 
 /**

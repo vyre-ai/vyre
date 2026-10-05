@@ -34,8 +34,7 @@ export function useRealComposer(session: string | undefined, here: Person[] | un
     const c = session ? switchCall(session, id, provRows, current, slot) : null;
     if (!c) return;
     onNote(null);
-    // A box that does not have chats.switch yet answers it as no such tool: the older call does the same switch.
-    void tool(c.tool, c.input).catch((e: Error & { code?: string }) => (/unknown_tool|no_such_tool|not_found/.test(String(e.code)) ? tool(c.old.tool, c.old.input) : Promise.reject(e))).catch((e: Error) => onNote(e.message || "The model did not switch."));
+    void tool(c.tool, c.input).catch((e: Error) => onNote(e.message || "The model did not switch."));
   }, [session, provRows, current, onNote]);
   return real ? { people, records, models: models as ModelChoice[], model, onModel } : null;
 }

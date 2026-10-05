@@ -22,7 +22,7 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
   const n = Number(q.n) || 0;
   const at = Number(q.at) || 0;
   const source = useMemo(
-    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
+    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : sample === "demo-assistant" ? "assistant" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
     [n, at, q.tps, q.hold, group, sample],
   );
   const router = useRouter();
@@ -35,7 +35,7 @@ export default function ChatDemo({ sample }: { sample?: string } = {}) {
       <ChatScreen
         sessionId={sample ?? "demo"}
         onBack={() => router.back()}
-        title={sample === "demo-three" ? "Which clause is riskier?" : sample === "demo-people" ? "Intake hand-off" : group ? "Northwind lease, before the 3 pm call" : "Fix the intake date check"}
+        title={sample === "demo-three" ? "Which clause is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : group ? "Northwind lease, before the 3 pm call" : "Fix the intake date check"}
         about={group ? { record: { title: "Northwind Bakery, lease dispute", type: "Matter" }, space: "Harlow Legal", sealed: 2, runsOn: "server" } : undefined}
         initialAbout={q.about === "1"}
         showSealedNote={q.note === "0" ? false : undefined}

@@ -70,7 +70,7 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
             adding ? (
               <View style={{ gap: 4 }}>
                 {addable.length ? addable.map((a) => (
-                  <Row key={a.id ?? a.name} lead={<Face name={a.name} family={fam(a.family)} size={32} id={a.id ?? a.name} />} title={a.name} sub={a.family === "assistant" ? "Assistant" : "Person"}
+                  <Row key={a.id ?? a.name} lead={<Face name={a.name} family={fam(a.family)} size={32} id={a.id ?? a.name} />} title={a.name} sub={a.family === "assistant" ? "Agent" : "Person"}
                     end={<Button size="sm" kind="secondary" label="Add" loading={busy === (a.id ?? a.name)} onPress={async () => { setBusy(a.id ?? a.name); setProblem(""); const r = await onAdd(a); setBusy(""); if (r) setProblem(r); else setAdding(false); }} />} />
                 )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
                 {problem ? <Text tone="err">{problem}</Text> : null}

@@ -10,7 +10,9 @@ const ROLE: Record<string, string> = { owner: "Owner", admin: "Admin", manager: 
 export const roleWord = (r?: string): string => (r && ROLE[r]) || "Member";
 
 /** What a space is called: the name the person gave it, else its label, else "Home" (never its id). */
-export const spaceName = (s: SpaceRow): string => s.displayName || s.label || (s.name && !/^spc_/.test(s.name) ? s.name : "") || "Home";
+const idLike = (v: unknown) => typeof v === "string" && /^spc_/i.test(v.trim());
+const nameable = (v: unknown): string => (typeof v === "string" && v.trim() && !idLike(v) ? v.trim() : "");
+export const spaceName = (s: SpaceRow): string => nameable(s.displayName) || nameable(s.label) || nameable(s.name) || "Home";
 
 /** The line under a space in the switcher: the person's role there, or that it is still being set up. */
 export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));
