@@ -338,6 +338,7 @@
       "wink.pair-answered",
       "wink.pair-failed",
       "wink.server-adopted",
+      "wink.server-paired",
       "wink.server-released",
       "wink.server-reset",
       "wink.server-release",
