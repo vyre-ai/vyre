@@ -16,7 +16,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { createTwentyStore } from "./store.js";
 import { TwentyClient } from "./client.js";
-import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
+import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, autoProfile, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
 import { CORE_TYPES } from "../../records/core-types.js";
 import { helperPresent, helperRunner } from "./helper.js";
 import { isPackaged } from "../../kernel/devbuild.js";
@@ -31,6 +31,7 @@ export const storeMode = (env = process.env, o = {}) => {
   if (isPackaged(o.root)) return o.server === true ? "twenty" : "sqlite";
   return env.VYRE_STORE || "sqlite";
 };
+import { kitFromLibrary } from "../../records/kits/library.js";
 
 /** What a Space's Twenty needs on the box, in MB: the sum of the `small` profile plus headroom for the gateway and the OS. */
 export const REQUIRE = Object.freeze({ memoryMb: Object.values(/** @type {any} */ (MEMORY_PROFILES.small)).reduce((/** @type {number} */ a, /** @type {number} */ b) => a + b, 0) + 300, diskMb: 6144 });
@@ -40,8 +41,15 @@ export const SMALL_BOX_NOTE = "This machine cannot run the record store for a ne
 /** What the person may do about it: host the space on their server, or stop. ("create", the built-in store, is accepted when the owner asks for it by name, and is not offered.) */
 export const SMALL_BOX_CHOICES = Object.freeze(["server", "cancel"]);
 
+/** What one Space's Twenty has been MEASURED to hold at its peak, in MB, per profile (stores/twenty/live/measure-live.mjs on a real box). `small` is its caps (not measured). */
+export const MEASURED = Object.freeze({ tiny: 2221 });
+/** What a Space's Twenty needs now on a machine with `totalMb` of memory: the profile the machine gets (tiny under about 6 GB) with its measured peak plus headroom for the gateway and the OS. @param {number} [totalMb] */
+export const requireFor = (totalMb = os.totalmem() / 1048576) => (autoProfile(totalMb) === "tiny" ? Object.freeze({ memoryMb: MEASURED.tiny + 300, diskMb: REQUIRE.diskMb }) : REQUIRE);
+/** The one plain line a person reads when a server has no room for another Space's store. */
+export const SERVER_FULL = "This server is full. Use a bigger server for another space.";
+
 /** How many more Spaces' Twenty this box can take now: what is free beyond one Space's measured need, plus headroom, divided by the need. @param {number} availableMb */
-export const spacesThatFit = (availableMb) => Math.max(0, Math.floor((availableMb - 300) / (REQUIRE.memoryMb - 300)));
+export const spacesThatFit = (availableMb, totalMb = os.totalmem() / 1048576) => { const need = requireFor(totalMb).memoryMb; return Math.max(0, Math.floor((availableMb - 300) / (need - 300))); };
 
 /** `spc_abcdefghijkl` -> `spc-abcdefghijkl` (a compose project name has no underscore). @param {string} space */
 export const nameOf = (space) => space.replace(/_/g, "-");
@@ -52,7 +60,7 @@ const sh = (/** @type {string} */ cmd, /** @type {string[]} */ args) => new Prom
  * Can this box run a Space's Twenty? Never throws. `memoryMb` is what is available now (free plus reclaimable), not what is installed.
  * On a box the daemon runs in a container with no Docker of its own: the capability is the Space helper (a root helper on the host, reached through a spool), so the check asks for IT, not for `docker`.
  * On a Mac, Docker is Colima's, reached through the docker context the install set.
- * @param {{ dir: string, readMeminfo?: () => string, docker?: () => Promise<boolean>, helper?: { spool?: string, state?: string } | false, statfs?: (p: string) => { bavail: number, bsize: number } }} o
+ * @param {{ dir: string, totalMb?: number, readMeminfo?: () => string, docker?: () => Promise<boolean>, helper?: { spool?: string, state?: string } | false, statfs?: (p: string) => { bavail: number, bsize: number } }} o
  * @returns {Promise<{ ok: boolean, reasons: string[], facts: { memoryAvailableMb: number | null, diskFreeMb: number | null, docker: boolean, helper: boolean, root: boolean, platform: string } }>}
  */
 export async function preflight(o) {
@@ -65,7 +73,8 @@ export async function preflight(o) {
   const docker = helper || await (o.docker ?? (async () => (await sh("docker", ["info", "--format", "{{.ServerVersion}}"])) !== null))();
   const root = typeof process.getuid === "function" && process.getuid() === 0;
   if (!docker) reasons.push(process.platform === "darwin" ? "Docker is not running on this Mac (Twenty runs in Colima)" : "this machine cannot run Docker for the space's store (no Space helper here and no Docker for this user)");
-  if (mem !== null && mem < REQUIRE.memoryMb) reasons.push(`not enough free memory: ${mem} MB available, a Space's Twenty needs about ${REQUIRE.memoryMb} MB`);
+  const need = requireFor(o.totalMb);
+  if (mem !== null && mem < need.memoryMb) reasons.push(`${SERVER_FULL} (${mem} MB of memory free, a Space's Twenty needs about ${need.memoryMb} MB)`);
   if (disk !== null && disk < REQUIRE.diskMb) reasons.push(`not enough disk: ${disk} MB free, a Space's Twenty needs about ${REQUIRE.diskMb} MB`);
   return { ok: reasons.length === 0, reasons, facts: { memoryAvailableMb: mem, diskFreeMb: disk, docker, helper, root, platform: process.platform } };
 }
@@ -109,7 +118,7 @@ export function createStoreFor(cfg) {
     if (!chosen && mode === "sqlite") return undefined;
     const pf = await (cfg.preflight ?? preflight)({ dir, helper: cfg.helper });
     if (!pf.ok) {
-      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Twenty store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
       // a new Space the person has not agreed to put on the built-in store is not created: the answer comes first, never after
       if (opts.requireConfirm) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "sqlite", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
@@ -124,14 +133,14 @@ export function createStoreFor(cfg) {
     const runner = cfg.runner ?? (viaHelper ? helperRunner(name, { ...(cfg.helper || {}), log }) : realRunner());
     const reach = cfg.reach ?? (viaHelper || cfg.gatewayContainer ? "alias" : "ip");
     log(`store for ${space}: provisioning Twenty`);
-    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner, reach, memory: cfg.memory ?? "small", gatewayContainer: cfg.gatewayContainer ?? null, log });
+    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner, reach, memory: cfg.memory ?? "auto", gatewayContainer: cfg.gatewayContainer ?? null, log });
     // the Space's key lives a year: checked now and every day, rotated well before the end, and a failure to rotate is loud (never a quiet countdown)
     const checkKey = async () => {
       const h = keyHealth({ home: twentyHome, space: name });
       if (!h.rotate) { try { fs.rmSync(path.join(dir, "key-warning.json"), { force: true }); } catch { /* none */ } return h; }
       try { await (cfg.rotate ?? rotateApiKey)({ home: twentyHome, space: name, runner, reach, log }); try { fs.rmSync(path.join(dir, "key-warning.json"), { force: true }); } catch { /* none */ } }
       catch (e) {
-        const msg = `WARNING: the API key for ${space}'s Twenty could not be rotated (${/** @type {Error} */ (e).message}); it ${h.daysLeft === null ? "cannot be read" : h.daysLeft <= 0 ? "has expired" : `expires in ${h.daysLeft} days`}. Records will stop being readable when it does.`;
+        const msg = `WARNING: the API key for ${space}'s Records could not be rotated (${/** @type {Error} */ (e).message}); it ${h.daysLeft === null ? "cannot be read" : h.daysLeft <= 0 ? "has expired" : `expires in ${h.daysLeft} days`}. Records will stop being readable when it does.`;
         log(msg);
         fs.writeFileSync(path.join(dir, "key-warning.json"), JSON.stringify({ at: new Date().toISOString(), daysLeft: h.daysLeft, expiresAt: h.expiresAt, error: String(/** @type {Error} */ (e).message) }), { mode: 0o600 });
         if (!h.ok) throw Object.assign(new Error(msg), { code: "unavailable" });
@@ -144,16 +153,35 @@ export function createStoreFor(cfg) {
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
     const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
-    const tc = Date.now(); await store.define({ add_types: [...CORE_TYPES] }); log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
-    // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
-    { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
+    const tc = Date.now();
+    await defineCore(store, log);
+    log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
-    log(`store for ${space}: Twenty ready`);
+    log(`store for ${space}: Records ready`);
     /** @type {any} */ (store).keyCheck = checkKey;
     /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
     return store;
   };
   storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, server: cfg.server, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
   return storeFor;
+}
+
+/**
+ * A Space's own types at start: the core types it does not have yet, then (only when it had none) the base Kit, then links moved onto relations if the Space is older. Idempotent. Also what the saved
+ * database for new Spaces is built with (stores/twenty/live/build-golden.mjs), so a Space made from it has already done all of this.
+ * @param {any} store @param {(line: string) => void} [log]
+ */
+export async function defineCore(store, log = () => {}) {
+  // Only the ones this Space does not have yet: a core type a Kit extended (contact with its own fields) is never put back to its bare shape on a restart.
+  const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
+  const fresh = CORE_TYPES.filter((t) => !known.has(t.name));
+  if (fresh.length) await store.define({ add_types: [...fresh] });
+  // A new Space starts with the base Kit (Contact, Lead, Appointment, Client, Subscriber, Project): once, when its core types are made, never on a restart or on an older Space.
+  if (fresh.length === CORE_TYPES.length) {
+    const base = kitFromLibrary("base").includes.types;
+    await store.define({ add_types: base.filter((/** @type {any} */ t) => !known.has(t.name) && !CORE_TYPES.some((c) => c.name === t.name)), change_types: base.filter((/** @type {any} */ t) => CORE_TYPES.some((c) => c.name === t.name)) });
+  }
+  // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
+  { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
 }

@@ -1416,3 +1416,56 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   assert.equal((await d.ok("spaces.storage.usage", { space: HOME }, "cli", as(MEM))).used, 0);
   void w;
 });
+
+test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and the Personal row then points to My Cloud", async t => {
+  const { createKernel } = await import("../../kernel/index.js");
+  const { createSqliteStore } = await import("../../kernel/store/sqlite.js");
+  const { createTwentyStore } = await import("../../stores/twenty/store.js");
+  const { TwentyClient } = await import("../../stores/twenty/client.js");
+  const { FakeTwenty } = await import("../../stores/twenty/testing/fake-twenty.js");
+  const { DatabaseSync } = await import("node:sqlite");
+  const { CONTACT } = await import("../../kernel/conformance/suite.js");
+  const { payloadHash } = await import("../../kernel/seal/wire.js");
+  const { proofRequest } = await import("../../kernel/remote/proof.js");
+  const w = world(t);
+  const fake = await new FakeTwenty().start();
+  t.after(() => fake.stop());
+  const PERSONAL = "spc_" + "c".repeat(12), CLOUD = "spc_" + "d".repeat(12), ME = "per_" + "m".repeat(26);
+  const presence = () => { const used = new Set(); return { check: async ({ chain, op, fields, proof }) => (chain && proof && proof.payload_hash === payloadHash(op, chain.space, fields) && !used.has(proof.nonce) && (used.add(proof.nonce), true) ? null : "wrong_payload") }; };
+  let clock = 1_800_000_000_000; const tick = () => ++clock;
+  const pk = await createKernel({ space: PERSONAL, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 1), clock: tick, presence: presence(), store: createSqliteStore({ db: new DatabaseSync(":memory:") }) });
+  const client = new TwentyClient({ url: fake.url, key: () => fake.key, sleep: async () => {} });
+  const dir = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "upt-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const cloudStore = createTwentyStore({ client, space: CLOUD, dir, webhookSecret: "ab".repeat(8), graceMs: 0 });
+  await cloudStore.define({ add_types: [...(await import("../../records/core-types.js")).CORE_TYPES] }); // the core types are in My Cloud's Twenty before its kernel starts
+  const ck = await createKernel({ space: CLOUD, owner: ME, owner_uid: 501, key: Buffer.alloc(32, 2), clock: tick, presence: presence(), store: cloudStore });
+  const chainOf = (k) => k.chains.fromFacts({ kind: "device", device_key_id: "d1", person: ME, path: "direct" });
+  const kernelFor = () => ({
+    space: PERSONAL, owner: ME, membership: async () => ({ member: true, role: "owner" }),
+    chain: async () => chainOf(pk), chainIn: async () => chainOf(pk),
+    proofFrom: (meta) => (meta && meta.kernel_proof ? { presence: meta.kernel_proof } : {}), proofRequest: (call, ...a) => proofRequest(PERSONAL, call, ...a),
+    // My Cloud as a RemoteKernel is: the chain argument is ignored (the server mints it from the peer), so this stands in with the person's own chain there
+    for: (id) => (id === PERSONAL ? { space: id, hosted: true, gateway: pk.gateway } : id === CLOUD ? { space: id, hosted: false, gateway: { definitions: () => ck.gateway.definitions(chainOf(ck)), records: new Proxy({}, { get: (_t, name) => (_c, ...a) => ck.gateway.records[name](chainOf(ck), ...a) }) } } : (() => { throw new Error("no such space"); })()),
+    spaces: { hosts: () => false },
+  });
+  const d = await device(t, { kernelFor });
+  const person = { kernelFacts: { kind: "device", device_key_id: "d1", person: ME, path: "direct" } };
+  await pk.gateway.records.define(chainOf(pk), { add_types: [CONTACT] });
+  for (const n of ["Ada", "Bo", "Cy"]) await pk.gateway.records.create(chainOf(pk), "contact", { name: n });
+  const plan = await d.ok("spaces.upgrade.plan", { to: CLOUD }, "cli", person);
+  assert.deepEqual([plan.counts.total, plan.blockers, plan.hash.length], [3, [], 43]);
+  assert.equal((await d.call("spaces.upgrade.run", { to: CLOUD, plan_hash: "x".repeat(43) }, "cli", person)).error?.code, "plan_changed", "an approval for another plan is refused before anything");
+  const ask = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", person);
+  assert.equal(ask.needs_proof, true, "no proof: the device is asked for the person's approval of exactly this plan");
+  const proof = { payload_hash: ask.request.payload_hash, nonce: "n1" };
+  const done = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { ...person, kernel_proof: proof });
+  assert.deepEqual([done.upgraded, done.to, done.moved.records, done.notMoved, done.frozen], [true, CLOUD, { contact: 3 }, [], false]);
+  assert.match(done.not_frozen_because, /My Cloud has not confirmed/, "without My Cloud's signed receipt this space is not frozen");
+  assert.ok(done.notes.some(n => n.what === "My Cloud's receipt"), "and the answer says why no receipt was asked for");
+  assert.equal((await ck.gateway.records.query(chainOf(ck), "contact", { page: { limit: 10 } })).rows.length, 3, "the records are in My Cloud's Twenty");
+  await d.ok("spaces.identity.create", { name: "upgrader" });
+  const row = (await d.ok("spaces.list")).find(x => x.id === PERSONAL);
+  assert.equal(row.upgraded_to, undefined, "the Personal row does not point to My Cloud until My Cloud has confirmed");
+  void w;
+});

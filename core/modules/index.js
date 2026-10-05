@@ -215,6 +215,8 @@ export function validate(m, { firstParty = false } = {}) {
   // (string tool entries, a missing description) warns through addedWarnings(), never fails.
   if (!firstParty) out.push(...addedCheck(m).problems);
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
+  // the kernel's own service hop is the one that may write a kernel-owned field (a task's status): no module takes that name
+  if (String(m.name) === "kernel") out.push('name "kernel" is reserved for the kernel itself');
   if (!/^\d+\.\d+\.\d+/.test(String(m.version || ""))) out.push(`version "${m.version}" must be semver`);
   if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local", "mac", "windows"].includes(r)))) out.push("roles must be a list of box, local, mac and windows");
   if (m.requires && !Array.isArray(m.requires)) {
@@ -313,7 +315,7 @@ function checkCredentials(list) {
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!((name === "credentialsPort" && module === "vault") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -584,6 +586,17 @@ const inRepo = (dir, paths) => {
 
 /** Set only by Registry.callInSpace: a symbol key cannot arrive over the wire, so a call never claims to run in another Space by its own meta. */
 const IN_SPACE = Symbol("vyre.in_space");
+/** Set only by a module's `ctx.call(tool, input, { relay: true })`: the running call's proven person (its `kernelFacts` or session `token`) carried into the next call. A symbol key cannot come over the wire. */
+const RELAY = Symbol("vyre.relay");
+/**
+ * Which first-party module may relay the person it is acting for, and to which tools (a name, or a prefix ending in a dot). The Personal to My Cloud upgrade runs as the person in both Spaces: the spaces
+ * module relays them to the chat and memory ports, and those relay them on to the per-member storage. Nothing else is open, and a relay needs a running call that has a person.
+ */
+const RELAY_ALLOWED = Object.freeze({
+  spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
+  memory: ["spaces.storage."],
+  work: ["spaces.storage."],
+});
 
 export class Registry {
   /**
@@ -1122,6 +1135,14 @@ export class Registry {
         }
         // opts.onPartial: a tool that streams (threads.quick with stream: true) hands its partial text to
         // this function, on this call only. Never the events bus, and never over a connection.
+        if (opts && opts.relay === true) {
+          const allow = /** @type {Record<string, string[]>} */ (RELAY_ALLOWED)[m.name];
+          if (!fp || !allow || !allow.some(a => tool === a || (a.endsWith(".") && tool.startsWith(a)))) return Promise.reject(Object.assign(new Error(`${m.name} may not relay the person to ${tool}`), { code: "undeclared" }));
+          const cur = currentCall();
+          if (!cur || (!cur.kernelFacts && typeof cur.token !== "string")) return Promise.reject(Object.assign(new Error("there is no person on this call to relay"), { code: "denied" }));
+          const origin = captureOrigin();
+          return this.call(tool, input, `module:${m.name}`, { firstParty: fp, ...(origin ? { origin } : {}), [RELAY]: { kernelFacts: cur.kernelFacts, token: cur.token } });
+        }
         if (!as) {
           // A module hop carries the caller class the running call came from (reviewer-2's group D, 2): a tool the registry defaulted to person-only checks the ORIGINAL caller, so a module acting
           // for an agent is still an agent call. A call with no running call (a timer, a start) has no origin and is the module's own.
@@ -1231,7 +1252,7 @@ export class Registry {
         ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
-      ...(m.name === "relay" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
+      ...(m.name === "relay" || m.name === "wink" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
       // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
       // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.
       provide: (/** @type {string} */ name, /** @type {any} */ value) => provideOnce(this.deps, m.name, name, value),
@@ -1337,6 +1358,7 @@ export class Registry {
     // `in_space` and `in_space_chain` say the call is running in another hosted Space's instance, after that Space's authorize allowed it (callInSpace). Only the symbol that method sets can
     // make them: whatever a client or a module sends under those names is dropped here.
     delete meta.in_space; delete meta.in_space_chain;
+    { const relay = meta[RELAY]; delete meta[RELAY]; if (relay && String(caller).startsWith("module:")) { delete meta.kernelFacts; delete meta.token; if (relay.kernelFacts) meta.kernelFacts = relay.kernelFacts; if (typeof relay.token === "string") meta.token = relay.token; } }
     { const cross = meta[IN_SPACE]; delete meta[IN_SPACE]; if (cross && String(caller).startsWith("module:")) { meta.in_space = cross.space; meta.in_space_chain = cross.chain; } }
     // `meta.terminal`: the login terminal the daemon measured for this call (atTerminal), or null; only the daemon's own `terminal` argument sets it, never anything a client or a module sends in meta.
     delete meta.terminal;
