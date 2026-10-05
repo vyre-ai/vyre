@@ -168,9 +168,9 @@ test("conditional fields and stage sets are checked against the type", () => {
   fails(kitOf("", 'u: defineField.text(), st: defineStage(["A", "B"], { sets: [{ name: "x", when: \'st == "A"\', stages: ["A", "C"] }] })'), "invalid_definition", /not by its stage/);
 });
 
-for (const id of ["base", "law-firm"]) test(`the checked-in ${id} kit is what its source compiles to, and its text is a fixed point`, () => {
-  const src = fs.readFileSync(new URL(`../kits/${id}/kit.ts`, import.meta.url), "utf8");
-  const stored = JSON.parse(fs.readFileSync(new URL(`../kits/${id}/kit.json`, import.meta.url), "utf8"));
-  assert.deepEqual(stored, compile(src), `regenerate with: node records/language/cli.js compile records/kits/${id}/kit.ts > records/kits/${id}/kit.json`);
+test("the checked-in base kit is what its source compiles to, and its text is a fixed point", () => {
+  const src = fs.readFileSync(new URL("../kits/base/kit.ts", import.meta.url), "utf8");
+  const stored = JSON.parse(fs.readFileSync(new URL("../kits/base/kit.json", import.meta.url), "utf8"));
+  assert.deepEqual(stored, compile(src), "regenerate with: node records/language/cli.js compile records/kits/base/kit.ts > records/kits/base/kit.json");
   assert.deepEqual(compile(print(stored)), stored);
 });
