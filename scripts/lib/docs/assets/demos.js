@@ -2,7 +2,7 @@
 // links it with a content hash in its name). Each widget replaces the Markdown fallback inside
 // <div class="demo" data-demo="name">; without this script, or with an unknown name, the fallback
 // stays. Vanilla, no library, nothing polls, nothing is sent anywhere: the data is the made-up
-// sample world (alex, Harlow Legal, Northwind Bakery, juno, kit).
+// sample world (alex, Juniper Studio, Northwind Bakery, juno, kit).
 //
 //   capsule      a Capsule you can type into: results, @ completion, sums, memory in gold
 //   onboarding   the fallback's list of screenshots as Back/Next slides named by step
@@ -58,19 +58,19 @@
   // The sample world. `keys` are extra words a result answers to.
   var WORLD = [
     { kind: "assistant", label: "juno", sub: "Your assistant", keys: "assistant", open: "Opens a direct message with juno." },
-    { kind: "agent", label: "kit", sub: "Agent · Harlow Legal", keys: "agent", open: "Opens a direct message with kit." },
-    { kind: "project", label: "Harlow Legal", sub: "3 threads · kit", keys: "law firm", open: "Opens the Harlow Legal project in the Deck." },
+    { kind: "agent", label: "kit", sub: "Agent · Juniper Studio", keys: "agent", open: "Opens a direct message with kit." },
+    { kind: "project", label: "Juniper Studio", sub: "3 threads · kit", keys: "law firm", open: "Opens the Juniper Studio project in the Deck." },
     { kind: "project", label: "Northwind Bakery", sub: "2 threads · juno", keys: "bakery", open: "Opens the Northwind Bakery project in the Deck." },
-    { kind: "thread", label: "Intake emails", sub: "Harlow Legal", keys: "harlow intake", open: "Opens the Intake emails thread." },
-    { kind: "thread", label: "New client checklist", sub: "Harlow Legal", keys: "harlow", open: "Opens the New client checklist thread." },
+    { kind: "thread", label: "Intake emails", sub: "Juniper Studio", keys: "juniper intake", open: "Opens the Intake emails thread." },
+    { kind: "thread", label: "New client checklist", sub: "Juniper Studio", keys: "juniper", open: "Opens the New client checklist thread." },
     { kind: "thread", label: "Weekly orders", sub: "Northwind Bakery", keys: "northwind", open: "Opens the Weekly orders thread." },
     { kind: "memory", label: "Northwind Bakery delivers on Tuesdays and Fridays", sub: "Weekly orders · March", keys: "delivery deliver when days",
       answer: "Tuesdays and Fridays, before 9 am.", open: "Shows the turn this came from, in Weekly orders." },
-    { kind: "memory", label: "Harlow Legal wants intake replies within one day", sub: "Intake emails · April", keys: "promise promised reply replies how long",
+    { kind: "memory", label: "Juniper Studio wants intake replies within one day", sub: "Intake emails · April", keys: "promise promised reply replies how long",
       answer: "A reply to every intake email within one working day.", open: "Shows the turn this came from, in Intake emails." },
-    { kind: "vault", label: "Harlow Legal login", sub: "Vault · kit may use it", keys: "password", open: "Fills the Harlow Legal login into the app you were in. The password never shows." },
+    { kind: "vault", label: "Juniper Studio login", sub: "Vault · kit may use it", keys: "password", open: "Fills the Juniper Studio login into the app you were in. The password never shows." },
     { kind: "vault", label: "Northwind Bakery orders key", sub: "Vault", keys: "api key token", open: "Fills the Northwind Bakery orders key where your cursor was." },
-    { kind: "boxfile", label: "harlow-legal-retainer.pdf", sub: "Box · Harlow Legal", keys: "retainer file", open: "Opens harlow-legal-retainer.pdf from your box." },
+    { kind: "boxfile", label: "juniper-legal-retainer.pdf", sub: "Box · Juniper Studio", keys: "retainer file", open: "Opens juniper-legal-retainer.pdf from your box." },
     { kind: "boxfile", label: "northwind-menu.md", sub: "Box · Northwind Bakery", keys: "menu file", open: "Opens northwind-menu.md from your box." },
   ];
   var AT = WORLD.filter(function (r) { return r.kind === "assistant" || r.kind === "agent" || r.kind === "project" || r.kind === "thread"; });

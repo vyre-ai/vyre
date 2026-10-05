@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // @ts-check
-// docs-shots: the screenshots on docs.vyre.run, taken from the sample world (alex, Harlow Legal,
+// docs-shots: the screenshots on docs.vyre.run, taken from the sample world (alex, Juniper Studio,
 // Northwind Bakery, juno, kit) and never from anyone's real data.
 //
 //   scripts/docs-shots [--only NAME,NAME] [--list] [--cli]
@@ -114,12 +114,12 @@ function fakes(dir, start) {
   fs.writeFileSync(state, start);
   const node = ip => JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: [HOST],
     Self: { ID: "nAlexBox1CNTRL", HostName: "alex-box", DNSName: HOST + ".", TailscaleIPs: ip === "127.0.0.1" ? [ip] : [ip, "fd7a:115c:a1e0::1"], UserID: 1 },
-    User: { 1: { LoginName: "alex@harlowlegal.com" } },
+    User: { 1: { LoginName: "alex@juniperstudio.com" } },
     Peer: {
       mac: { ID: "n2", HostName: "alex-mbp", DNSName: "alex-mbp.tail0000.ts.net.", OS: "macOS", Online: true, UserID: 1, TailscaleIPs: ["100.64.0.2"] },
       phone: { ID: "n3", HostName: "alex-iphone", DNSName: "alex-iphone.tail0000.ts.net.", OS: "iOS", Online: true, UserID: 1, TailscaleIPs: ["100.64.0.3"] },
     } });
-  const whois = JSON.stringify({ Node: { Name: "alex-mbp.tail0000.ts.net.", StableID: "n2", Tags: [] }, UserProfile: { LoginName: "alex@harlowlegal.com" } });
+  const whois = JSON.stringify({ Node: { Name: "alex-mbp.tail0000.ts.net.", StableID: "n2", Tags: [] }, UserProfile: { LoginName: "alex@juniperstudio.com" } });
   const ts = path.join(dir, "tailscale");
   fs.writeFileSync(ts, `#!/bin/sh
 S=$(cat '${state}' 2>/dev/null)
@@ -168,17 +168,17 @@ const worldEnv = (home, bins, extra = {}) => {
 
 // ---- the Deck world --------------------------------------------------------------------------
 
-/** A stdio MCP server for the sample world: Harlow Legal's documents, two tools, no data. */
+/** A stdio MCP server for the sample world: Juniper Studio's documents, two tools, no data. */
 const FAKE_MCP = `import readline from "node:readline";
 const tools = [
-  { name: "search_docs", description: "Search Harlow Legal's documents.", inputSchema: { type: "object", properties: { query: { type: "string" } } } },
-  { name: "read_doc", description: "Read one Harlow Legal document.", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
+  { name: "search_docs", description: "Search Juniper Studio's documents.", inputSchema: { type: "object", properties: { query: { type: "string" } } } },
+  { name: "read_doc", description: "Read one Juniper Studio document.", inputSchema: { type: "object", properties: { id: { type: "string" } } } },
 ];
 const say = m => process.stdout.write(JSON.stringify(m) + "\\n");
 readline.createInterface({ input: process.stdin }).on("line", line => {
   let m; try { m = JSON.parse(line); } catch { return; }
   if (m.id === undefined) return;
-  if (m.method === "initialize") say({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: m.params?.protocolVersion || "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "harlow-docs", version: "1.0.0" } } });
+  if (m.method === "initialize") say({ jsonrpc: "2.0", id: m.id, result: { protocolVersion: m.params?.protocolVersion || "2025-06-18", capabilities: { tools: {} }, serverInfo: { name: "juniper-docs", version: "1.0.0" } } });
   else if (m.method === "tools/list") say({ jsonrpc: "2.0", id: m.id, result: { tools } });
   else if (m.method === "tools/call") say({ jsonrpc: "2.0", id: m.id, result: { content: [{ type: "text", text: "No documents in the sample world." }] } });
   else say({ jsonrpc: "2.0", id: m.id, result: {} });
@@ -214,10 +214,10 @@ async function deck() {
   // one Google account whose vault item is only named. Nothing reaches Google or any real server.
   const mcpDir = path.join(deckWorld.home, "mcp");
   fs.mkdirSync(mcpDir, { recursive: true });
-  fs.writeFileSync(path.join(mcpDir, "harlow-docs.mjs"), FAKE_MCP);
+  fs.writeFileSync(path.join(mcpDir, "juniper-docs.mjs"), FAKE_MCP);
   for (const [tool, input] of /** @type {[string, any][]} */ ([
-    ["mcp.add", { name: "harlow-docs", transport: "stdio", command: "node", args: [path.join(mcpDir, "harlow-docs.mjs")], scope: { projects: ["harlow-legal"], agents: "*" } }],
-    ["google.add", { name: "harlow", email: "alex@harlowlegal.com", auth: { type: "oauth", item: "harlow-google" } }],
+    ["mcp.add", { name: "juniper-docs", transport: "stdio", command: "node", args: [path.join(mcpDir, "juniper-docs.mjs")], scope: { projects: ["juniper-legal"], agents: "*" } }],
+    ["google.add", { name: "juniper", email: "alex@juniperstudio.com", auth: { type: "oauth", item: "juniper-google" } }],
   ])) {
     const x = await call(tool, input, { root: deckWorld.home, caller: "cli" });
     if (x.error) log(`docs-shots: ${tool}: ${x.error.message}`);
@@ -275,9 +275,9 @@ async function glassWorld() {
   const bins = fakes(path.join(home, "bin"), "up");
   const work = path.join(home, "alex", "Work");
   const files = {
-    "harlow-site/README.md": "# Harlow Legal site\n\nThe intake form sits above the fold on harlowlegal.com.\n",
-    "harlow-site/src/intake.tsx": "export function Intake() { return null; }\n",
-    "harlow-intake/routes.json": "{ \"leads\": \"crm\", \"summary\": \"07:00\" }\n",
+    "juniper-site/README.md": "# Juniper Studio site\n\nThe intake form sits above the fold on juniperstudio.com.\n",
+    "juniper-site/src/intake.tsx": "export function Intake() { return null; }\n",
+    "juniper-intake/routes.json": "{ \"leads\": \"crm\", \"summary\": \"07:00\" }\n",
     "northwind/invoices-week-35.csv": "date,amount\n2026-08-28,412.50\n2026-08-29,188.00\n",
     "northwind/weekly-total.md": "Week 35: 600.50\n",
     "Q3 report.md": "# Q3, the short version\n\nConsult bookings rose every month this quarter.\n",

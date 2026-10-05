@@ -114,7 +114,7 @@ vyre learn stats                       # working, not working, or still measurin
 vyre learn level 7 block               # raising is free
 vyre learn level 7 remind              # lowering is yours alone
 vyre learn scope 7 all                 # widening to everywhere is free
-vyre learn scope 7 project harlow-legal   # narrowing is yours alone
+vyre learn scope 7 project juniper-legal   # narrowing is yours alone
 vyre learn relax 7 max ask             # cap it; also: pin, paths, when, scope
 ```
 

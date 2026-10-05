@@ -37,11 +37,11 @@ before anything goes.
 From the terminal:
 
 ```sh
-vyre agents ask juno "What changed in the Harlow Legal project this week?"
+vyre agents ask juno "What changed in the Juniper Studio project this week?"
 ```
 
 ```output
-  juno › Two threads ran in Harlow Legal this week: ...
+  juno › Two threads ran in Juniper Studio this week: ...
   thread 3f9c2a71 · $0.0123
 ```
 
@@ -108,13 +108,13 @@ To store your own and point an agent at them:
 ## Make an agent
 
 ```sh
-vyre agents create kit --projects harlow-legal,northwind-bakery \
+vyre agents create kit --projects juniper-legal,northwind-bakery \
   --vault claude-setup-token --fallback anthropic-api-key --budget 20 \
-  --instructions "You keep the books for Harlow Legal and Northwind Bakery."
+  --instructions "You keep the books for Juniper Studio and Northwind Bakery."
 ```
 
 ```output
-  made kit  agent · harlow-legal, northwind-bakery
+  made kit  agent · juniper-legal, northwind-bakery
 ```
 
 A name is lowercase letters, digits and dashes, starting with a letter, 2 to 31 characters. Flags: `--projects a,b` (or `*`), `--model`, `--vault`, `--fallback`, `--budget` (dollars),

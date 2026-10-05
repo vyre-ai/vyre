@@ -45,7 +45,7 @@ only opens the vault, and a secret still needs its own proof to be released.
 1. Run `put` with the item's name, kind and the origins it may be sent to:
 
    ```
-   vyre vault put stripe-live --kind api-key --description "Harlow Legal Stripe" --host https://api.stripe.com
+   vyre vault put stripe-live --kind api-key --description "Juniper Studio Stripe" --host https://api.stripe.com
    ```
 
 2. Type the value at the hidden prompt, or pipe it on stdin. Never put a value on the command
@@ -77,8 +77,8 @@ Kinds say what an item is, so the vault knows which field to hand over and what 
 ```
 vyre vault put kit-github --kind pat --provider github --scope repo --scope read:org --expires 90d
 vyre vault put northwind-aws --kind cloud                # access key id, then the secret, hidden
-vyre vault put harlow-gcp --kind cloud --from sa.json   # a service account file
-vyre vault put harlow-tls --kind cert --from cert.pem --key-from key.pem
+vyre vault put juniper-gcp --kind cloud --from sa.json   # a service account file
+vyre vault put juniper-tls --kind cert --from cert.pem --key-from key.pem
 vyre vault put northwind-guest --kind wifi --ssid "Northwind Guest"
 ```
 
@@ -96,7 +96,7 @@ Other ways in:
 
 ```
 vyre vault import ~/Downloads/1password-export.csv   # any password manager's export, or .env files
-vyre vault generate --words 5 harlow-wifi             # stored, never printed, because it is named
+vyre vault generate --words 5 juniper-wifi             # stored, never printed, because it is named
 vyre vault ssh generate deploy-key                    # prints only the public key
 ```
 
@@ -111,13 +111,13 @@ nothing.
 A project's `.env` files come in the same way, a file or a whole folder at once:
 
 ```
-vyre vault import ~/code/harlow-intake --preview   # every .env under it, typed, never a value
-vyre vault import ~/code/harlow-intake --rewrite   # store them, then swap the values for references
+vyre vault import ~/code/juniper-intake --preview   # every .env under it, typed, never a value
+vyre vault import ~/code/juniper-intake --rewrite   # store them, then swap the values for references
 vyre run -- npm start                              # reads ./.env's references; same environment as before
 ```
 
-Each file becomes one env-set named after where it lives (`harlow-intake.env`,
-`harlow-intake-apps-web.env.local`). Only secrets move: API keys, tokens, passwords, database URLs
+Each file becomes one env-set named after where it lives (`juniper-intake.env`,
+`juniper-intake-apps-web.env.local`). Only secrets move: API keys, tokens, passwords, database URLs
 with a password, private keys. Plain settings such as `PORT` or a public URL stay in the file. The
 preview names each variable's type and provider (`api-key openai`, `db-url postgres`), flags a
 public name holding a secret value (`NEXT_PUBLIC_...=sk_live_...`), and says when a file is
@@ -129,7 +129,7 @@ file, and leaves a file alone when its values differ from the vault's (a conflic
 ## Leaks and rotation
 
 ```
-vyre vault sweep ~/code/harlow-intake --history   # files and every commit; places and names only
+vyre vault sweep ~/code/juniper-intake --history   # files and every commit; places and names only
 vyre vault sweep --shell                          # also ~/.zsh_history and friends
 vyre vault rotate kit-gitlab                      # a new token at GitLab, stored, the old one revoked
 ```
@@ -159,7 +159,7 @@ its current code and the next one, so a code about to roll over is never a guess
 
 ```
 vyre vault codes                         # every code: current, next, seconds left
-vyre vault totp harlow-google            # one
+vyre vault totp juniper-google            # one
 vyre vault codes import --from codes.txt # Google Authenticator's export, as scanned text
 ```
 
@@ -187,8 +187,8 @@ Each of these is for one value, and asks you to prove presence first:
 
 ```
 vyre vault get stripe-live --copy       # to the clipboard, cleared after 90 seconds
-vyre vault get harlow-portal --otp      # the current one-time code
-vyre vault totp harlow-portal           # the same
+vyre vault get juniper-portal --otp      # the current one-time code
+vyre vault totp juniper-portal           # the same
 vyre vault read vault://stripe-live/value   # one field alone on stdout, for $(...) and pipes
 ```
 
@@ -223,8 +223,8 @@ agent's setup token or API key is granted to `agents` (see [agents](agents.md)).
 
 ```
 vyre vault grant stripe-live billing                      # a module
-vyre vault grant billing-inbox watchers --watcher harlow-invoices
-vyre vault revoke billing-inbox watchers --watcher harlow-invoices
+vyre vault grant billing-inbox watchers --watcher juniper-invoices
+vyre vault revoke billing-inbox watchers --watcher juniper-invoices
 ```
 
 When Claude asks for a grant (`vault.grant`), it only creates a pending request. You approve it:
@@ -232,7 +232,7 @@ When Claude asks for a grant (`vault.grant`), it only creates a pending request.
 1. List what waits: `vyre vault pending`.
 
    ```output
-     g_4f2a  grant billing-inbox to watchers/harlow-invoices
+     g_4f2a  grant billing-inbox to watchers/juniper-invoices
 
      vyre vault approve <id>
    ```
@@ -294,7 +294,7 @@ vyre vault connections --surface agents
 ```output
   cn_Vq3k9x0aB2c  kit at Northwind kit@northwind.test · google-dwd · service-account
                   can send_mail, read_mail, calendar · capsule, chat
-  cn_Lm8Pz1yQw4r  Harlow Legal Gmail alex@harlowlegal.test · mcp · oauth
+  cn_Lm8Pz1yQw4r  Juniper Studio Gmail alex@juniperstudio.test · mcp · oauth
                   can send_mail, read_mail · capsule, chat
 ```
 
@@ -457,7 +457,7 @@ a payment provider's own frame (Stripe Elements and the like) are not filled yet
 ### Passkeys
 
 With the extension paired, a site that offers a passkey asks Vyre first: "Save a passkey for
-harlow.test in Vyre?" when you make one, and "Sign in to harlow.test as alex with Vyre?" when you
+juniper.test in Vyre?" when you make one, and "Sign in to juniper.test as alex with Vyre?" when you
 use one. Continue works inside your unlock window. **Use another device** hands the request to
 the browser's own authenticator (a phone, a security key, iCloud Keychain). Passkeys are items of
 kind `passkey`; their private keys stay in the vault and only sign, so nothing can show, copy or

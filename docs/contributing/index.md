@@ -60,7 +60,7 @@ The full tree is [Section 3 of the spec](../architecture/spec.md#3-repository-la
 - **Real data before merge.** Anything that talks to Claude Code or a network is exercised for real once before it merges, not only against a fake.
 - **The changelog** is updated with every change (see below).
 - **Conventional commits** (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`), one concern each, committed by path (`git commit -m "..." -- <paths>`) so parallel sessions never sweep up each other's files.
-- **No secrets and no personal data** in code, tests, fixtures or commits. `test/hygiene.test.js` fails when shipped code names a real person or business or holds something shaped like a key. Examples use the sample world: the user alex, Harlow Legal, Northwind Bakery, the agents juno and kit, and `example.com`.
+- **No secrets and no personal data** in code, tests, fixtures or commits. `test/hygiene.test.js` fails when shipped code names a real person or business or holds something shaped like a key. Examples use the sample world: the user alex, Juniper Studio, Northwind Bakery, the agents juno and kit, and `example.com`.
 - **Principles hold.** Public Claude Code surfaces only, local first, one process per machine, everything a module, light by default. A change that breaks one needs a spec change first. See [Section 2 of the spec](../architecture/spec.md#2-principles).
 - **Every feature merges with its doc page.** A feature is not done until the page that describes it says what it does. See [Writing the docs](../CONTRIBUTING-DOCS.md).
 

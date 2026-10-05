@@ -24,7 +24,7 @@ A module is a folder with a `module.json` and an entry file. The loader in `core
 {
   "name": "invoices",
   "version": "0.1.0",
-  "description": "Invoices for Harlow Legal, filed from the billing inbox.",
+  "description": "Invoices for Juniper Studio, filed from the billing inbox.",
   "roles": ["box"],
   "requires": ["projects"],
   "main": "index.js",

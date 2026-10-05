@@ -102,7 +102,7 @@ Tab always sends them on.
 
 ## Fill a login from the Vault
 
-1. Type part of the login's name, for example `harlow`.
+1. Type part of the login's name, for example `juniper`.
 2. With the Vault row highlighted, press Enter to fill it into the app you were in.
 3. For more (copy the password, copy the username, copy or show the one-time code, lock the
    vault), press the right arrow or Command-K instead.
@@ -140,7 +140,7 @@ Type `@` to name one. It completes agents, projects and threads:
 - `@juno what is left on the intake form?` asks the agent juno, in its current thread
   . If your words match one of juno's other threads, "Sends to" offers that one
   too.
-- `@harlow-intake run the tests` types into that session as you. While you type
+- `@juniper-intake run the tests` types into that session as you. While you type
   you hold the session's keyboard (its lease). If another surface holds it, Lumen says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.

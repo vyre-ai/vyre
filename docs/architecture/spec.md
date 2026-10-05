@@ -325,12 +325,12 @@ Declared by `<home>/.vyre/project.json`:
 
 ```json
 {
-  "name": "Harlow Legal",
+  "name": "Juniper Studio",
   "org": "Rivera Studio",
-  "workspaces": ["../harlow-site"],
+  "workspaces": ["../juniper-site"],
   "threads": ["<claude session id>"],
-  "people": [{ "name": "Dana Reyes", "email": "dana@harlowlegal.com" }],
-  "watchers": ["harlow-invoices"]
+  "people": [{ "name": "Dana Reyes", "email": "dana@juniperstudio.com" }],
+  "watchers": ["juniper-invoices"]
 }
 ```
 
@@ -396,7 +396,7 @@ A runtime, not a set of integrations. Vyre hosts watchers; Claude writes them.
 A watcher is a folder in `~/.vyre/watchers/<name>/` with `watcher.json` and `watch.js`:
 
 ```json
-{ "name": "harlow-invoices", "project": "harlow-legal",
+{ "name": "juniper-invoices", "project": "juniper-legal",
   "schedule": "*/15 * * * *", "needs": ["billing-inbox"], "emits": "invoice.seen" }
 ```
 

@@ -9,7 +9,7 @@ status: draft
 # Teammates
 
 A teammate is a role in one project, like `design`, `backend` or `qa`. It has a name
-(`design-harlow-legal` for the `design` role in Harlow Legal), a short brief on what work goes to it,
+(`design-juniper-legal` for the `design` role in Juniper Studio), a short brief on what work goes to it,
 and its own notes, which are the memory it keeps between jobs. It belongs to that project: it works on
 the project's folder and is not shared with another project. You can have a teammate stay on a long
 piece of work, where a one-off helper would forget everything when it finished.
@@ -48,7 +48,7 @@ vyre team ask design "Fix the footer" --urgent     # jumps this teammate's own q
 vyre team ask design "Summarise what you changed" --wait   # waits up to 30 seconds for the result
 vyre team status <request>              # one request's state and result
 vyre team cancel <request>              # cancel a queued request
-vyre team notes design-harlow-legal     # read its notes
+vyre team notes design-juniper-legal     # read its notes
 ```
 
 In a project's chat in the Vyre app, `@design make the intake form calmer` sends the same request without

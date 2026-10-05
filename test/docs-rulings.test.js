@@ -58,3 +58,11 @@ test("the new pages are in the docs navigation", () => {
   const pages = nav.sections.flatMap((/** @type {any} */ s) => s.pages);
   for (const p of ["using/spaces.md", "using/private-chats.md", "using/time-zones.md"]) assert.ok(pages.includes(p), p);
 });
+
+test("the sample world is not a law firm: no Harlow in the docs, the README or the site", () => {
+  const files = [...walk("docs", []).filter(f => !EXEMPT.test(f)), "README.md", "scripts/gen-site.mjs"];
+  const hits = [];
+  for (const f of files) read(f).split("\n").forEach((l, i) => { if (/harlow/i.test(l)) hits.push(`${f}:${i + 1}: ${l.trim().slice(0, 80)}`); });
+  assert.deepEqual(hits, [], "use a neutral example space, such as Juniper Studio and juniper.vyre.run");
+  for (const f of fs.readdirSync(path.join(REPO, "site"), { recursive: true }).map(String).filter(f => /\.(html|txt|md)$/.test(f) && !/^(box|setup)\//.test(f) && !/CHANGELOG/.test(f))) assert.ok(!/harlow/i.test(read(`site/${f}`)), `site/${f}`);
+});

@@ -106,7 +106,7 @@ itself.
 - Agents cannot change the planner's settings.
 
 Agents reach the planner through the `planner.*` tools. `planner.add` takes `at` as an ISO time
-or in words: `{ "kind": "reminder", "title": "Call Harlow Legal", "at": "6pm" }` is the next 6pm
+or in words: `{ "kind": "reminder", "title": "Call Juniper Studio", "at": "6pm" }` is the next 6pm
 in your zone, and "tomorrow at 9" and "in 20 minutes" work too. `planner.parse` reads words like
 "remind me to call the printer at 6" into `{ kind, title, at, tz }` without adding anything, and
 on a paired Mac it answers on the Mac. `planner.add` with `text` reads and adds in one step.

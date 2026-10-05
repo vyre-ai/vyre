@@ -37,8 +37,8 @@ Each hit shows the session's name, its full id, how long ago, who said it and th
 the matching words in gold:
 
 ```output
-  Harlow billing export
-    3f9c2a10-7d4e-4b1a-9c55-0e2f8a6b1d77 · 2d ago · user · /work/harlow-legal
+  Juniper billing export
+    3f9c2a10-7d4e-4b1a-9c55-0e2f8a6b1d77 · 2d ago · user · /work/juniper-legal
     the «stripe webhook» retries three times, then marks the invoice as failed
 
   resume one with: claude --resume <id>  ·  vyre call recall.thread '{"session":"<id>"}'
@@ -94,16 +94,16 @@ facts from the Mac's sessions.
 
 ```
 vyre memory                          # counts, and the most recent facts
-vyre memory "Harlow Legal"           # everything about one thing
-vyre memory "Dana Reyes" --project harlow-legal
+vyre memory "Juniper Studio"           # everything about one thing
+vyre memory "Dana Reyes" --project juniper-legal
 vyre why '<fact id>'                 # the turns a fact came from
 ```
 
 Each fact prints on two lines, then the commands for it:
 
 ```output
-  · Dana Reyes works at Harlow Legal
-      3 weeks ago · confidence 0.9 · Harlow intake #14
+  · Dana Reyes works at Juniper Studio
+      3 weeks ago · confidence 0.9 · Juniper intake #14
       vyre why '<fact id>' · vyre memory correct '<fact id>' wrong|ended|replace|confirm
 ```
 
@@ -152,9 +152,9 @@ vyre memory correct '<fact id>' wrong                  # never true
 vyre memory correct '<fact id>' ended --at 2026-08-01  # stopped being true
 vyre memory correct '<fact id>' replace Northwind Bakery
 vyre memory correct '<fact id>' confirm                # sure; it no longer fades
-vyre memory correct 'Dana Reyes|works_at|Harlow Legal' add   # a fact memory missed
+vyre memory correct 'Dana Reyes|works_at|Juniper Studio' add   # a fact memory missed
 vyre memory merge "D. Reyes" "Dana Reyes"              # two nodes are one
-vyre memory split "Dana Reyes" --project harlow-legal  # that project's Dana is someone else
+vyre memory split "Dana Reyes" --project juniper-legal  # that project's Dana is someone else
 vyre memory corrections
 vyre memory uncorrect <id>
 ```
@@ -169,7 +169,7 @@ A correction also teaches [learning](learning.md): a rule you keep correcting sh
 ## Steer what memory offers
 
 ```
-vyre memory pin "Harlow Legal"      # ranks first wherever it is relevant
+vyre memory pin "Juniper Studio"      # ranks first wherever it is relevant
 vyre memory mute "Old Vendor Inc"   # never offered
 vyre memory mute "Old Vendor Inc" --off
 ```

@@ -8,7 +8,7 @@ status: draft
 
 # Your first day
 
-Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `harlow-legal` and an agent called `kit`.
+Setup left you with a server at your own address, such as `https://alex.vyre.run`, your phone on it, and a Mac paired with it. If Now still shows **Create your assistant**, press it first and give your assistant a name such as `juno`. This page walks through the five things most people do next, each in the fewest steps. Most steps work from the terminal as well as from a screen; both are shown. The examples use a project called `juniper-legal` and an agent called `kit`.
 
 ## Check that everything is up
 
@@ -44,19 +44,19 @@ A project groups the sessions that belong together, and every new thread in it s
 If you made projects during onboarding, they are already there. To make one from the terminal, run this in the project's folder and pick the sessions that belong to it:
 
 ```
-cd ~/Work/harlow-legal
-vyre new harlow-legal
+cd ~/Work/juniper-legal
+vyre new juniper-legal
 ```
 
 Then start a thread:
 
 - **In the Vyre app:** open Chat, press **New chat**, and pick who you want to talk to.
-- **In the terminal:** in the project's folder, `vyre start` opens Claude Code in a new thread with the brief. `vyre open harlow-legal` shows what the brief says and lists the project's threads; `vyre resume <thread>` picks up an old one where it ran.
+- **In the terminal:** in the project's folder, `vyre start` opens Claude Code in a new thread with the brief. `vyre open juniper-legal` shows what the brief says and lists the project's threads; `vyre resume <thread>` picks up an old one where it ran.
 
 To see what a new thread will be told before you start one:
 
 ```
-vyre context harlow-legal
+vyre context juniper-legal
 ```
 
 A thread can run on Claude, Codex, Grok or OpenRouter, from the accounts you signed in to at setup. In Chat, the chip above the message box shows who answers, with its model and effort, and opens a menu to change them. Starting a message with `@codex` or `@grok` sends only that message to that provider, and the thread keeps its own. More in [Sessions](../using/sessions.md#one-message-on-another-provider).
@@ -71,8 +71,8 @@ An agent is a named, headless Claude Code worker that runs on the box. It uses y
 - **In the terminal:**
 
 ```
-vyre agents create kit --projects harlow-legal --budget 20 \
-  --instructions "Keep the Harlow Legal client folder tidy. Ask before deleting anything."
+vyre agents create kit --projects juniper-legal --budget 20 \
+  --instructions "Keep the Juniper Studio client folder tidy. Ask before deleting anything."
 vyre agents ask kit "List the documents that came in this week."
 ```
 
@@ -88,7 +88,7 @@ Put a credential in the vault once, and never paste it into a session again. Cla
 - **In the terminal:**
 
 ```
-vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
+vyre vault put juniper-stripe --kind api-key --description "Juniper Studio billing key"
 ```
 
 It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Vyre app, it is your passkey.
@@ -96,7 +96,7 @@ It prompts for the value without echoing it. Putting a value is a human-only act
 To use it from a script outside Vyre, let the vault hand it to that one process:
 
 ```
-vyre vault run STRIPE_KEY=harlow-stripe -- node sync-invoices.js
+vyre vault run STRIPE_KEY=juniper-stripe -- node sync-invoices.js
 ```
 
 The value reaches only that process's environment, and is scrubbed from its output. `vyre vault list` shows names and kinds, never values. More in [The vault](../using/vault.md), including how to share one item with another person without handing it over.
@@ -110,8 +110,8 @@ vyre recall "retainer template"
 ```
 
 ```output
-  Retainer template for Harlow Legal
-    6f1c2a90-1b7e-4c11-9a52-0d3e8b1f4a77 · 6d ago · user · /Users/alex/Work/harlow-legal
+  Retainer template for Juniper Studio
+    6f1c2a90-1b7e-4c11-9a52-0d3e8b1f4a77 · 6d ago · user · /Users/alex/Work/juniper-legal
     can you draft the retainer template from the one we used for Northwind Bakery
 
   resume one with: claude --resume <id>  ·  vyre call recall.thread '{"session":"<id>"}'

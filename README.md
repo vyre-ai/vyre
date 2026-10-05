@@ -11,11 +11,6 @@ Vyre is an open-source, self-hosted home for your AI agents. They run on a serve
 
 Use your own subscriptions: Claude, Codex, Grok or OpenRouter. Pick the model for each session, or add @codex or @grok to ask another one for a single message. Your keys stay in an encrypted vault on your server, and anything that sends a message, posts or pays waits for your Touch ID or Face ID.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-now.dark.png">
-  <img src="docs/using/shots/deck-now.png" alt="The Deck's Now page: what needs you, and which agents are working, for the Harlow Legal and Northwind Bakery projects" width="640">
-</picture>
-
 ## Set up
 
 Open [vyre.run/setup](https://vyre.run/setup). It gives you one line to paste on your server, then walks you through naming your server (you.vyre.run, or your own domain), signing in to your AI and adding your phone.
@@ -65,11 +60,6 @@ There is a Windows app for your Windows PC: a tray icon and an Alt-Space panel, 
 - **Agent computers.** An agent that gets its own computer is held to that computer, and only you can resume a paused one.
 - **Vyre for Chrome.** An extension that lets your agents use Chrome in a tab group of their own. It learns how sites work so later runs are faster, which you can see and forget under Memory, and it says plainly what it does not block. See [Learning](docs/using/learning.md).
 - **The vault.** Agents use a credential without seeing its value. You can share an item with another person's Vyre and revoke it. Pairing a device, revealing a secret, and anything that sends, posts or pays waits for Touch ID or Face ID. A spend cap limits what agents can spend.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/using/shots/deck-chat.dark.png">
-  <img src="docs/using/shots/deck-chat.png" alt="The Deck showing a session in the Harlow Legal project, with the thread and each reply's author" width="640">
-</picture>
 
 ## Updates
 

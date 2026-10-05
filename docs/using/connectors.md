@@ -170,7 +170,7 @@ through domain-wide delegation. Store its JSON key as a `note` or `secret` vault
 address it acts as:
 
 ```
-vyre connect add google work --email alex@harlowlegal.com --item harlow-google-sa --dwd
+vyre connect add google work --email alex@juniperstudio.com --item juniper-google-sa --dwd
 ```
 
 **Test** asks Google for each scope and lists which were refused. For a service account, the
@@ -261,7 +261,7 @@ one is a connection in Vault, Connections, where you choose which surfaces may u
 Lumen and chats by default, agents only when you turn them on.
 
 In Lumen, type **send an email**. You get one row per account you may send from, such as
-"Send from alex@harlow.example". Words you add are filled in: "email dana@northwind-bakery.example
+"Send from alex@juniper.example". Words you add are filled in: "email dana@northwind-bakery.example
 about the order" sets the address and the subject, "write to dana saying the rota is ready" finds
 Dana's address in your mail and sets the body. Press Return on a row and the message waits at the
 Gate, where you finish it and approve it with Touch ID. "email from dana" lists messages across

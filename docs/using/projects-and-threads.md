@@ -17,7 +17,7 @@ A thread belongs to a project in one of two ways:
 
 - **Picked**: you put it there. A pick is written into the project's marker file and only a
   person removes it. One thread can be picked into several projects, for example a weekly
-  planning session that covers Harlow Legal and Northwind Bakery.
+  planning session that covers Juniper Studio and Northwind Bakery.
 - **By folder**: it ran in one of the project's folders. This is worked out on every read, so
   adding a folder to a project brings that folder's sessions with it.
 
@@ -31,12 +31,12 @@ project's own repository.
 
 ```json
 {
-  "name": "Harlow Legal",
-  "org": "Harlow Legal",
-  "workspaces": ["../harlow-site"],
+  "name": "Juniper Studio",
+  "org": "Juniper Studio",
+  "workspaces": ["../juniper-site"],
   "threads": ["<claude session id>"],
-  "people": [{ "name": "Dana Reyes", "email": "dana@harlowlegal.com" }],
-  "watchers": ["harlow-invoices"]
+  "people": [{ "name": "Dana Reyes", "email": "dana@juniperstudio.com" }],
+  "watchers": ["juniper-invoices"]
 }
 ```
 
@@ -57,22 +57,22 @@ in `transcripts` (default `~/.claude/projects` and `~/.claude/projects-archive`)
 1. Run `vyre new` with the project's name:
 
    ```sh
-   vyre new "Harlow Legal"
+   vyre new "Juniper Studio"
    ```
 
 2. Give its home folder, or press Enter for a new folder in `~/Vyre/projects`.
 3. Pick sessions from the catalogue of every session on this machine, or pick none.
 
 ```output
-  made Harlow Legal at ~/Vyre/projects/harlow-legal
+  made Juniper Studio at ~/Vyre/projects/juniper-legal
 ```
 
 Every step has a flag, so a script or an agent can do the same without prompts. `--thread`,
 `--workspace` and `--person` can be given more than once:
 
 ```sh
-vyre new "Harlow Legal" --home ~/work/harlow --workspace ~/work/harlow-site \
-  --person "Dana Reyes <dana@harlowlegal.com>" --org "Harlow Legal" --no-pick
+vyre new "Juniper Studio" --home ~/work/juniper --workspace ~/work/juniper-site \
+  --person "Dana Reyes <dana@juniperstudio.com>" --org "Juniper Studio" --no-pick
 ```
 
 > [!SNAG] "... is already a project home"
@@ -88,10 +88,10 @@ The **catalogue** lists every session on this machine with its `/rename` name, f
 folder, last activity and the projects it is in. It is searchable by what was said.
 
 ```sh
-vyre threads harlow invoice        # search sessions by what was said
-vyre threads --project harlow-legal
-vyre pick harlow-legal 3f2a9c1e    # pick one or more threads into a project
-vyre unpick harlow-legal 3f2a9c1e  # remove a pick
+vyre threads juniper invoice        # search sessions by what was said
+vyre threads --project juniper-legal
+vyre pick juniper-legal 3f2a9c1e    # pick one or more threads into a project
+vyre unpick juniper-legal 3f2a9c1e  # remove a pick
 ```
 
 A thread can be named by the first characters of its id or by its name. `vyre unpick` removes
@@ -99,7 +99,7 @@ only picks. A thread that ran in the project's folders stays in the project by f
 command says so:
 
 ```output
-  1 unpicked from harlow-legal
+  1 unpicked from juniper-legal
   1 still in it: they ran in its folders
 ```
 
@@ -126,8 +126,8 @@ Agents, MCP clients and guests see only the box's own sessions, never the Mac's.
 
 ```sh
 vyre projects                 # every project, newest activity first
-vyre open harlow-legal        # what its threads are told, and its threads
-vyre context harlow-legal     # only the brief
+vyre open juniper-legal        # what its threads are told, and its threads
+vyre context juniper-legal     # only the brief
 ```
 
 The brief is short on purpose: what the project is, its people, what its other threads have been
@@ -148,7 +148,7 @@ tasks, team, linked records, chats and files) and a **Team** tab.
 ```sh
 vyre resume 3f2a9c1e          # opens it in Claude Code, in the folder it ran in, with the brief
 vyre start                    # a new thread in this folder's project
-vyre start --project harlow-legal "engagement letter"   # named "engagement letter"
+vyre start --project juniper-legal "engagement letter"   # named "engagement letter"
 ```
 
 `vyre resume` runs `claude --resume` in the folder the thread ran in, because Claude Code finds a
@@ -177,7 +177,7 @@ Vyre can also run a thread itself, headless, so it outlives every window. Any su
 it, and one surface at a time holds its keyboard.
 
 ```sh
-vyre threads start --project harlow-legal "Summarise this week's invoices"
+vyre threads start --project juniper-legal "Summarise this week's invoices"
 vyre threads send 3f2a9c1e "Now draft a reply to Dana"
 vyre threads watch 3f2a9c1e
 vyre threads answer <ask> allow   # answer a permission question

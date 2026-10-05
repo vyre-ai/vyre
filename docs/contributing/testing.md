@@ -83,7 +83,7 @@ The fakes themselves:
 - `core/switchboard/testing/fake-claude.js`: a `claude` that speaks `stream-json`, so the Switchboard and agents run end to end against a real `vyred`.
 - `core/computers/driver/fake.js`: an in-memory Docker driver that enforces the Engine's state rules (no pausing a stopped container), so a pool bug fails here as it would on the box.
 - `test/journey/`: the install journey rig. `rig.js` builds a fresh Mac and a fresh Linux server as two temp homes on this machine, with fake `ssh` and `docker` and a port forward. The `vyred` on each side, `vyre box add`, `vyre up`, the installer and the onboarding page are real. `test/journey.test.js` drives it.
-- `test/fixtures/corpus.js`: a small fictional corpus (alex, Harlow Legal, Northwind Bakery, the agents juno and kit), written as real Claude Code transcripts for the transcripts adapter and Recall.
+- `test/fixtures/corpus.js`: a small fictional corpus (alex, Juniper Studio, Northwind Bakery, the agents juno and kit), written as real Claude Code transcripts for the transcripts adapter and Recall.
 
 The rule from the spec still holds: anything that talks to Claude Code or a network is also exercised for real once before it merges. A fake proves the logic, not the integration.
 
