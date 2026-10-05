@@ -114,7 +114,7 @@ setup signs it in:
 3. The page notices when the server joins, says which tailnet it joined and as whom, and
    publishes your address. Press **Continue**.
 
-The whole step is in [Install, step 6](install.md#6-connect-tailscale). On the SSH path, the same
+The whole step is in [Install, step 6](install.md#6-see-your-network). On the SSH path, the same
 step is [Onboarding, step 3](onboarding.md#3-tailscale). To sign a headless box in
 without a browser, put `TS_AUTHKEY=tskey-auth-...` in `/srv/vyre/.env` before the first
 `vyre up`; see [Tailscale](../using/tailscale.md).

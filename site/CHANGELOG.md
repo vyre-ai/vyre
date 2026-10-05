@@ -8,6 +8,13 @@ the site itself still has no build step. `scripts/gen-og.sh` draws the social ca
 
 ## Unreleased
 
+- The setup page is one flow of ten steps with a timeline (#11): a rail beside the step at 900 px and wider, a segmented bar with
+  "All steps" below that. The order is now install, check the words, choose your address, Tailscale, your AI, your phone, passkey,
+  then steps 8 to 10 at your own address. Tailscale comes before the AI sign-in. The AI sign-in has a clear "Skip for now" (#52):
+  skipped steps stay listed as skipped and the finish names them. The step number comes only from the page's own stage, never from
+  a progress line.
+- The setup page's log now shows a line for every step as it moves (words matched, connected, address claimed, Tailscale joined,
+  address live, AI signed in or skipped, phone paired, passkey link made), in the page's own fixed words, above the server's lines (#21).
 ### vyre.run v2 (preview, not yet on production)
 
 - New home page in the bone theme (paper by day, graphite by night): the product as the hero (a Vyre Lumen window and a

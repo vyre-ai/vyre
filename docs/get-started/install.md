@@ -9,7 +9,7 @@ status: stable
 # Install
 
 Vyre runs your agents on a server you own. You open Vyre from the Lumen on your Mac, from your
-phone and from any browser on your tailnet, and the agents keep working when your Mac is asleep.
+phone and from any browser, and the agents keep working when your Mac is asleep.
 Setup starts in your browser at <https://vyre.run/setup>: it gives you one line to paste on the
 server, watches the install, and finishes at your own address, such as `https://alex.vyre.run`.
 The whole path takes about fifteen minutes. Other ways to install are at the end, in
@@ -24,23 +24,16 @@ The whole path takes about fifteen minutes. Other ways to install are at the end
 ## Before you start
 
 - [ ] A Linux server you can open a terminal on, with an account that can use `sudo`. Docker is
-      installed for you if it is missing, after you say yes. It needs a `/dev/net/tun` device,
-      which most servers have. Or a Mac that stays on and plugged in.
-- [ ] A Tailscale account. Signing in with Google, GitHub, Apple or Microsoft makes one, and the
-      free plan is enough. Setup needs it: Vyre reaches your server over Tailscale, and only over
-      Tailscale. New to Tailscale? See [Tailscale, from zero](tailscale.md).
-- [ ] Tailscale on the computer you set up from, signed in to that same account. Get it from
-      <https://tailscale.com/download>. Your address only opens on devices on your tailnet.
+      installed for you if it is missing, after you say yes. Or a Mac that stays on and plugged in.
 - [ ] A Claude, ChatGPT (Codex) or Grok account. One is enough to go on, and you can add the
       others later.
 - [ ] A current browser for the setup page: Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer, or Firefox 130 or newer.
 - [ ] A phone. You open Vyre on it after setup.
 
-> [!WHY] Why Tailscale?
-> Your server never opens a port to the internet. Tailscale puts your server, computer and phone
-> on one private network (your tailnet), and Vyre only answers devices on it. Vyre also uses your
-> Tailscale login to know it is you, so there is no Vyre password to steal. More in
-> [Tailscale, from zero](tailscale.md#what-tailscale-is).
+> [!WHY] Do I need a VPN or another network app?
+> No. Vyre has its own private network built in, so your server, your computers and your phone
+> find each other with nothing to install and nothing to sign in to. Where a direct path is not
+> possible, Vyre's relay carries the connection, end-to-end encrypted.
 
 ## 1. Start at vyre.run/setup
 
@@ -67,13 +60,13 @@ The installer asks for `sudo` itself, only for what needs it: Docker, the `/srv/
 
 It works through five steps, and the page shows each one as it happens:
 
-1. **Checking Docker**: Docker with Compose 2.24 or newer, and the TUN device.
+1. **Checking Docker**: Docker with Compose 2.24 or newer.
 2. **Downloading and verifying**: every file is checked against a published list of checksums,
    and the Vyre image's signature is checked against Vyre's release workflow before the image is
    pulled by its digest. A failed check stops the install, and nothing skips it.
 3. **Laying out /srv/vyre**: the stack goes in that folder, owned by your account.
 4. **Installing the vyre command**: `/usr/local/bin/vyre`.
-5. **Starting Vyre**: two containers start, one for Tailscale and one for Vyre.
+5. **Starting Vyre**: Vyre starts in a container on your server.
 
 Near the end the terminal prints four words:
 
@@ -92,12 +85,8 @@ the ones on your screen in step 3. Yours will differ.
 > [!SNAG] "that setup code does not look right. Copy the install line from your browser again."
 > The code in the line was cut short. Copy the whole line again, with the Copy button.
 
-> [!SNAG] This server has no /dev/net/tun, which the Tailscale container needs
-> Nothing was changed. On your own server run `sudo modprobe tun`. On a VPS or an LXC container,
-> turn on TUN in the provider's control panel. Then run the line again.
-
 > [!SNAG] "this Docker came from snap", "this Docker runs rootless", or "Podman answering as docker"
-> The Tailscale container needs the regular Docker Engine. Install it with
+> Vyre needs the regular Docker Engine. Install it with
 > `curl -fsSL https://get.docker.com | sh`, then run the line again.
 
 > [!SNAG] "Vyre is already running in /srv/vyre, so this installer leaves it alone."
@@ -175,22 +164,11 @@ later. Press **Continue**.
 > A sign-in nobody finishes ends after a while and the page says so. Press the provider's button
 > again for a fresh one.
 
-## 6. Connect Tailscale
+## 6. See your network
 
-Press **Connect my server**. The page shows a link to Tailscale's sign-in page. Sign in there
-with the same account as your computer. The page notices when your server joins, says which
-tailnet it joined and as whom, then **Publishing your address**, and finally `Your address is
-live`. Press **Continue**.
-
-If the tailnet is a work network, the page says so: your company's admins can see and reach this
-server, and a personal Tailscale account is usually what you want. If your tailnet asks for
-approval of new devices, the page says `Waiting for approval in your Tailscale admin`: approve
-the server in the Tailscale admin console, under
-[Machines](https://login.tailscale.com/admin/machines).
-
-> [!SNAG] The address could not be published
-> The page shows the reason on the same screen. Fix what it names, then press **Connect my
-> server** again.
+Vyre's private network is built in, so there is nothing to connect and nothing to sign in to.
+The page shows whether your server is reachable directly or through Vyre's relay. Press
+**Continue**.
 
 ## 7. Add your phone, or skip it
 
@@ -204,7 +182,7 @@ your server's own page.
 
 The page says your server has its own address. Press **Get my link**, then open
 `alex.vyre.run`. The link works once, for two minutes. Open it in the browser you will use with
-your server, on a computer that is on your tailnet. It asks for your fingerprint, face or
+your server. It asks for your fingerprint, face or
 security key, and that makes you its owner. Nothing else can. A QR code on the page opens the same
 link on your phone.
 
@@ -223,19 +201,20 @@ from the pool** if you want it to browse and use apps you can watch in Glass, an
 > Press **Get a new link** on the setup page.
 
 > [!SNAG] The address does not open in your browser
-> The browser must be on your tailnet: open the Tailscale menu on that computer and check it is
-> connected, as the same account you used in step 6. If it is, see
-> [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+> The setup page's network step says whether your server is reachable directly or through the
+> relay. If your browser still cannot open the address, run `vyre status` on the server.
 
 ## 9. Open Vyre on your phone
 
-Your address only opens on your own devices on your tailnet, so the phone needs Tailscale too.
+There is nothing to install and nothing to sign in to first.
 
-1. Install Tailscale from your app store, sign in with the same account as your computer, and
-   turn its switch on ([iPhone and Android steps](tailscale.md#2-install-tailscale-on-each-device)).
-2. Open `https://alex.vyre.run/now` in the phone's browser. On an iPhone, use Safari.
-3. On an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On Android, use Chrome's
-   **Install app**. Open Vyre from the Home Screen: it runs full screen, like an app.
+1. Open the Vyre app on your phone and scan the code your server or a computer you are signed in
+   on shows, or paste its long code. Both screens show the same three words; say yes only if
+   they match. Or open `https://alex.vyre.run/now` in the phone's browser, which reaches your
+   server through the relay. On an iPhone, use Safari.
+2. In the browser, on an iPhone, tap Share, then **Add to Home Screen**, then **Add**. On
+   Android, use Chrome's **Install app**. Open Vyre from the Home Screen: it runs full screen,
+   like an app.
 
 ![Now in the Deck on a phone: what needs you, with the tab bar at the bottom](../using/shots/phone-now.png)
 
@@ -243,9 +222,8 @@ Now shows a **Set up this phone** card for notifications and a passkey. More in
 [On your phone](../using/mobile.md).
 
 > [!SNAG] The phone says it cannot find the server, or the page never loads
-> Open the Tailscale app. Check three things: it is signed in as the same account as your
-> computer, the connection switch (the VPN) is on, and your phone is listed in Tailscale. Then
-> reload the page. On iPhone, allow the VPN configuration when iOS asks.
+> Check the phone has a connection, then reload the page. If it still fails, run `vyre status` on
+> the server.
 
 ## 10. Put the Lumen on your Mac
 
@@ -276,8 +254,8 @@ It asks the server to pair this Mac and shows a code:
   vyre link shows when it is done.
 ```
 
-(The Mac must be on your tailnet. Plain `vyre up` looks for a Vyre server on your tailnet
-instead, and asks which one to pair with when it finds more than one.)
+(Plain `vyre up` asks for your server's pairing code instead. It shows three words; confirm they
+match the server's screen, and approve with your passkey.)
 
 Approve it in the Deck. On your phone, Now shows a card, "A Mac wants to pair: alex-mac". Type
 the code, press **Approve**, and confirm with Face ID or your fingerprint. The same card is on Now
@@ -324,10 +302,6 @@ keeps the Lumen's permissions across updates.
 > Grant Input Monitoring to Vyre in System Settings, Privacy & Security, then run `vyre capsule`
 > again. Option-Space opens it meanwhile.
 
-> [!SNAG] "the box serves alex@example.com, and this Mac is signed in to Tailscale as ..."
-> The Mac and the server are on different Tailscale accounts. Sign the Mac in to Tailscale as the
-> account the server names, then run `vyre up`.
-
 That is the whole install. Next: [Your first day](first-day.md).
 
 ## A Windows PC
@@ -337,8 +311,7 @@ WSL2 on a Windows PC), or a Mac that stays on. The Windows app is a tray app. It
 code-signed at 0.2.0, so Windows says it does not recognize the app: choose **More info**, then
 **Run anyway**. Its installer, `VyreSetup.exe`, is on the latest release at
 <https://github.com/vyre-ai/vyre/releases>, and it is checked against the release's published
-checksums. You can also use your server from any browser on the PC, at your address, once
-Tailscale is installed and signed in there. The app, the CLI and WSL2 are in [Windows](../using/windows.md).
+checksums. You can also use your server from any browser on the PC, at your address. The app, the CLI and WSL2 are in [Windows](../using/windows.md).
 
 ## Looking after the box
 
@@ -362,8 +335,7 @@ that passphrase: keep the two apart. The steps are in [Box care](../using/box-ca
 ::: tabs
 ::: tab From my Mac over SSH
 Use this when you would rather start on the Mac than at vyre.run/setup. It needs the `vyre`
-command on the Mac ([step 10](#10-put-the-lumen-on-your-mac)) and Tailscale on the Mac, signed
-in. It sets the server up over SSH and holds the SSH tunnel to the server's own setup page for
+command on the Mac ([step 10](#10-put-the-lumen-on-your-mac)). It sets the server up over SSH and holds the SSH tunnel to the server's own setup page for
 you.
 
 ```sh
@@ -395,11 +367,8 @@ differ. Type `y`. Vyre copies its installer to the server and runs it there, the
 
 Your browser opens that link. Leave the terminal open: it holds the tunnel the page runs
 through. The page here is the server's own setup, six screens that name you and your assistant,
-sign in to Claude and Tailscale, give the server an HTTPS address on your tailnet (such as
-`https://vyre.tail1234.ts.net`), read your Claude Code history and put Vyre on your devices.
-Each screen is described in [Onboarding](onboarding.md). With this path the address is on
-`ts.net`, not `vyre.run`, and Tailscale's HTTPS certificates must be on for your tailnet
-([Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates)).
+sign in to Claude, read your Claude Code history and put Vyre on your devices. Each screen is
+described in [Onboarding](onboarding.md).
 
 When the address works, the terminal opens a tab to make your passkey, asks the server to pair
 with this Mac, and prints the ready block. Approve the Mac in the Deck, as in
@@ -430,9 +399,7 @@ vyre up --connect https://alex.vyre.run
 ```
 
 It asks the server to pair this Mac and shows the code to approve in the Deck, as in step 10.
-Plain `vyre up` looks for a Vyre server on the Mac's tailnet and takes the one it finds, with a
-line such as `found your box on the tailnet: https://vyre.tail1234.ts.net`; with several it asks
-which one. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
+Plain `vyre up` asks for your server's pairing code. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
 session (`vyre statusline install` does it later). Pick `3` at the question `vyre up` asks, if you
 would rather type the address there.
 ::: tab Only on this Mac
@@ -499,7 +466,7 @@ install Vyre on the Mac as in [step 10](#10-put-the-lumen-on-your-mac).
 > reach yet. Run `vyre box add alex@192.0.2.10` again and finish **Your address** in the browser.
 
 > [!SNAG] your box https://alex.vyre.run did not answer from here
-> The reason follows on the same line. "this Mac is not on the tailnet": sign in to Tailscale on
-> the Mac. "the box is offline or unreachable": on the server, run `vyre status`.
+> The reason follows on the same line. "the box is offline or unreachable": on the server, run
+> `vyre status`.
 
 More failures, and the message each one prints, are in [Troubleshooting](troubleshooting.md).
