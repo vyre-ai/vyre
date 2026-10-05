@@ -34,7 +34,7 @@ test("forms and docgen: installed from the examples, a webhook answer becomes a 
   await d.kernel.gateway.records.define(owner, { add_types: [
     { name: "lead", label: "Lead", fields: [f("name"), f("email"), f("message")] },
     { name: "contact", label: "Contact", fields: [f("name"), f("matter")] },
-    { name: "doc_template", label: "Template", fields: [f("name"), f("folder"), f("body")] },
+    { name: "doc_template", label: "Document template", fields: [f("name"), f("folder"), f("body")] },
   ] });
 
   // A Flow that starts when a lead is made (a record trigger: the module's work starts Flows through the records it files).

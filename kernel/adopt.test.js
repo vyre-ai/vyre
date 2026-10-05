@@ -20,7 +20,8 @@ const started = /** @type {any[]} */ ([]);
 afterEach(async () => { for (const d of started.splice(0)) await d.stop().catch(() => {}); });
 const boot = async (/** @type {string} */ root) => { const d = await start({ root, log: (/** @type {string} */ m) => { logs.push(m); }, kernel: true }); started.push(d); return d; };
 const person = (/** @type {any} */ d, /** @type {string} */ id) => d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-adopt", person: id, path: "direct", session: "s" });
-const events = (/** @type {any} */ d, /** @type {string} */ type) => d.kernel.log.read({ type });
+// The kernel's own events: the modules' activity on the bus is in the same log, marked `legacy`, and is not what these tests count.
+const events = (/** @type {any} */ d, /** @type {string} */ type) => d.kernel.log.read({ type }).filter((/** @type {any} */ e) => !(e.data && e.data.legacy === 1));
 
 test("AO-1, AO-2: adoption is once, with an owner.adopted marker and one owner.changed; another identity is refused; the same after a restart", { timeout: 120_000 }, async t => {
   const root = tempHome(t);
