@@ -155,11 +155,11 @@ export async function openRecords(o) {
   }
 
   // ---- Loading ---------------------------------------------------------------------------------
-  async function pages(/** @type {string} */ type, /** @type {any} */ spec = {}) {
+  async function pages(/** @type {string} */ type, /** @type {any} */ spec = {}, /** @type {any} */ as = chain()) {
     const out = [];
     let cursor;
     for (let i = 0; i < 500; i++) {
-      const r = await K.records.query(chain(), type, { ...spec, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+      const r = await K.records.query(as, type, { ...spec, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
       out.push(...r.rows);
       cursor = r.next_cursor;
       if (!cursor) break;
@@ -246,9 +246,10 @@ export async function openRecords(o) {
         known.delete(id);
         return true;
       },
-      /** The caller's removed events, newest removal first (the records' Bin, include_deleted). @returns {Promise<any[]>} */
-      async binned() {
-        const rows = await pages("event", { include_deleted: true });
+      /** The caller's removed events, newest removal first (the records' Bin, include_deleted), read under the CALLER's chain so the gateway's rules decide what they may see. @param {any} as @returns {Promise<any[]>} */
+      async binned(as) {
+        if (!as) return [];
+        const rows = await pages("event", { include_deleted: true }, as);
         return rows.filter(r => r.deleted_at).sort((a, b) => b.deleted_at - a.deleted_at).map(r => ({ id: r.id, title: r.data.title ?? "", starts_at: r.data.starts_at ?? null, removed_at: iso(r.deleted_at) }));
       },
       /** Bring an event back from the bin. @returns {Promise<any | null>} its calendar row, or null when it is not in the bin */

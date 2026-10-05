@@ -9,12 +9,14 @@ import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
-const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", MEMBER = "per_member";
+const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner", MEMBER = "per_member", THIRD = "per_third";
 let T = 1_800_000_000_000;
 const clock = () => ++T;
-const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 3), clock });
+const chains = createChainBuilder({ space: SPACE, owner: OWNER, owner_uid: 501, is_person: p => [OWNER, MEMBER, THIRD].includes(p), key: Buffer.alloc(32, 3), clock });
 const owner = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 501, pid: 1, inside_model_process: false, capsule_verified: true });
 const member = () => chains.fromFacts({ kind: "invitee", person: MEMBER, vouched: true });
+const third = () => chains.fromFacts({ kind: "invitee", person: THIRD, vouched: true });
+const assistantOf = (person) => chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "assistant", session: "s1" });
 const actor = (id) => ({ kind: "person", id, space: SPACE });
 let n = 0;
 const G = (who) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor(who) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active" });
@@ -22,8 +24,8 @@ const EVENT = { name: "event", label: "Event", fields: [{ name: "title", kind: "
 const make = (kind, roles) => {
   const store = kind === "memory" ? createMemoryStore({ clock }) : createSqliteStore({ db: new DatabaseSync(":memory:"), clock, hotRows: 10 });
   const log = createEventLog({ space: SPACE, clock });
-  const all = new Map([G(OWNER), G(MEMBER)].map(g => [g.id, g]));
-  const known = new Set([`person:${OWNER}`, `person:${MEMBER}`]);
+  const all = new Map([G(OWNER), G(MEMBER), G(THIRD), { ...G("assistant"), subject: { kind: "actor", actor: { kind: "agent", id: "assistant", space: SPACE } } }].map(g => [g.id, g]));
+  const known = new Set([`person:${OWNER}`, `person:${MEMBER}`, `person:${THIRD}`, `agent:assistant`]);
   const members = { has: a => known.has(`${a.kind}:${a.id}`), ...(roles ? { membership: a => ({ role: roles[a.id] || "member" }) } : {}) };
   const gw = createGateway({ space: SPACE, store, log, chains, clock, attrs: () => ({}),
     grants: { forSubject: a => [...all.values()].filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: id => all.get(id) },
@@ -61,5 +63,25 @@ for (const kind of ["memory", "sqlite"]) {
     await r.remove(member(), "event", theirs.id, theirs.version);
     assert.deepEqual(titles((await q(r, owner, { include_deleted: true })).rows), ["theirs"]);
     await assert.rejects(() => q(r, owner, { include_deleted: "yes" }), { code: "bad_input" });
+  });
+}
+
+for (const kind of ["memory", "sqlite"]) {
+  test(`bin (${kind}): the person on the chain owns what their assistant removed; another person through the shared assistant id, and an agent with no person, see none`, async () => {
+    const r = make(kind);
+    await r.define(owner(), { add_types: [EVENT] });
+    const byAssistant = await r.create(assistantOf(MEMBER), "event", { title: "assistant made it for member" });
+    const direct = await r.create(member(), "event", { title: "member made it" });
+    await r.remove(assistantOf(MEMBER), "event", byAssistant.id, byAssistant.version);
+    await r.remove(member(), "event", direct.id, direct.version);
+    const bin = async (who) => titles((await q(r, who, { include_deleted: true })).rows);
+    assert.deepEqual(await bin(member), ["assistant made it for member", "member made it"], "the member's own chain sees the row their assistant made");
+    assert.deepEqual(await bin(() => assistantOf(MEMBER)), ["assistant made it for member", "member made it"], "and so does their assistant acting for them");
+    assert.deepEqual(await bin(third), [], "another person sees neither");
+    assert.deepEqual(await bin(() => assistantOf(THIRD)), [], "another person's assistant (the same shared agent id) sees neither");
+    const bare = () => chains.fromFacts({ kind: "socket", surface: "deck", uid: 999, pid: 1, inside_model_process: true });
+    let seen = [];
+    try { seen = await bin(bare); } catch { seen = []; }
+    assert.deepEqual(seen, [], "an agent with no person on its chain sees none");
   });
 }

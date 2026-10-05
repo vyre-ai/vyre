@@ -907,7 +907,7 @@
   },
   "planner.bin": {
    "module": "planner",
-   "reason": "read-only; lists only the caller's own removed events (the gateway's include_deleted shows an owner or admin all, anyone else only what they made)"
+   "reason": "read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
   },
   "planner.agenda": {
    "module": "planner",

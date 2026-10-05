@@ -155,13 +155,17 @@ export function createRecords(cfg) {
     return chain.hops.length === 1 || chain.hops[chain.hops.length - 1].actor.kind === "service";
   };
   /**
-   * A removed row is listed (include_deleted) only to an owner or admin, or to whoever made it: the person themselves, or an assistant acting for them (any hop of the chain).
+   * A removed row is listed (include_deleted) only to an owner or admin, or to the person whose act made it: the person themselves, or an assistant acting for them. The record says who
+   * (`created_for`, the person on the creating chain), so a person's own chain sees what their assistant made and another person acting through the shared "assistant" agent id does not.
+   * A row made before `created_for` existed matches only the person who made it directly (`created_by` is the chain's last hop, which for an assistant is the shared agent id).
    * @param {any} chain @param {any} r
    */
   const ownsBinned = (chain, r) => {
     if (adminish(chain)) return true;
-    const made = String((kattrs.get(urn(r.type, r.id)) || {}).created_by || "");
-    return chain.hops.some((/** @type {any} */ h) => made === `${h.actor.kind}:${h.actor.id}`);
+    const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
+    if (!who) return false;
+    const a = kattrs.get(urn(r.type, r.id)) || {};
+    return String(a.created_for || a.created_by || "") === `person:${who.actor.id}`;
   };
   /** Was this row of a protected type made by a service or by a person who is an owner or admin? A row anyone else made (before a rule, or by a path that skipped it) is not shown. @param {string} u */
   const madeByTrusted = (u) => {
@@ -633,7 +637,8 @@ export function createRecords(cfg) {
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
     const last = chain.hops[chain.hops.length - 1].actor;
     // The attributes ride in the create event (the chain covers it), so the log, not the disk, says what a record's owner, project and sensitivity are.
-    const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
+    const forWho = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+    const attrs = { space, created_by: `${last.kind}:${last.id}`, ...(forWho ? { created_for: `person:${forWho.actor.id}` } : {}), ...a };
     const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
     return rec;

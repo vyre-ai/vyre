@@ -1009,7 +1009,7 @@ export default {
         if (!K && !local && !(role === "local" && (await checkLink()))) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
         if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
-        if (!local && !READS.has(name)) w.chain = await K.chain(meta).catch(() => null);
+        if (!local && (!READS.has(name) || name === "planner.bin")) w.chain = await K.chain(meta).catch(() => null);
         const out = await run(rest, w);
         // A write answers once the records have it; a write the gateway refused is the caller's error.
         if (!local && !READS.has(name)) await st.flush();
@@ -1077,7 +1077,7 @@ export default {
       }, { agents: true });
 
     tool("planner.bin", "The events you deleted that can still be restored (planner.delete with restore: true and the id), newest first.",
-      { type: "object", properties: {} }, async () => ({ events: await st.cal.binned() }), { agents: true });
+      { type: "object", properties: {} }, async (i, w) => ({ events: await st.cal.binned(w.chain) }), { agents: true });
 
     tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. Also returns last_event, the event cursor it is current to. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
       { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });
