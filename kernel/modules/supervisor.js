@@ -25,6 +25,9 @@ export function createSupervisor(cfg = {}) {
   const callMs = cfg.callMs ?? CALL_MS;
   /** @type {{ ok: boolean, mechanism: string | null, results?: Record<string, string>, why?: string } | null} */ let proof = null;
   /** @type {Map<string, any>} */ const running = new Map();
+  // What a self-test in progress holds (the probe, the sibling it must not signal, its listener): stopAll ends them, so a daemon that stops while its test is still running leaves nothing alive.
+  /** @type {Set<() => void>} */ const probing = new Set();
+  /** @type {Promise<any> | null} */ let testing = null;
 
   const api = {
     mechanism: () => mechanism(cfg.platform),
@@ -33,7 +36,8 @@ export function createSupervisor(cfg = {}) {
     proof: () => proof,
 
     /** Run the probe under the real sandbox command and require every attempt to fail. Never throws: a sandbox that cannot start is simply not available. */
-    async selfTest() {
+    selfTest() { const p = this.runSelfTest(); testing = p; p.finally(() => { if (testing === p) testing = null; }).catch(() => {}); return p; },
+    async runSelfTest() {
       const mech = mechanism(cfg.platform);
       if (!mech) { proof = { ok: false, mechanism: null, why: "no OS sandbox on this platform" }; return proof; }
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-sbx-"));
@@ -43,6 +47,8 @@ export function createSupervisor(cfg = {}) {
       // A process the sandbox must not let the module signal or see.
       const sibling = spawn(cfg.execPath || process.execPath, ["-e", "setTimeout(() => {}, 30000)"], { stdio: "ignore" });
       const srv = net.createServer(s => { hits++; s.destroy(); });
+      const stopProbe = () => { try { sibling.kill("SIGKILL"); } catch { /* gone */ } try { srv.close(); } catch { /* closed */ } };
+      probing.add(stopProbe);
       await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
       const port = /** @type {any} */ (srv.address()).port;
       try {
@@ -50,6 +56,7 @@ export function createSupervisor(cfg = {}) {
         if (!cmd) throw new Error("no command");
         const out = await new Promise((resolve, reject) => {
           const c = spawn(cmd.cmd, cmd.args, { stdio: ["ignore", "pipe", "ignore"], env: {} });
+          probing.add(() => { try { c.kill("SIGKILL"); } catch { /* gone */ } });
           let buf = ""; const t = setTimeout(() => { c.kill("SIGKILL"); reject(new Error("probe timed out")); }, 15_000);
           c.stdout.on("data", d => { buf += d; });
           c.on("exit", () => { clearTimeout(t); try { resolve(JSON.parse(buf.trim().split("\n").pop() || "{}")); } catch { reject(new Error("probe gave no answer")); } });
@@ -60,7 +67,7 @@ export function createSupervisor(cfg = {}) {
         if (hits > 0) failures.push("loopback_listener_was_reached");
         proof = failures.length ? { ok: false, mechanism: mech, results, why: `the sandbox let through: ${failures.join(", ")}` } : { ok: true, mechanism: mech, results };
       } catch (e) { proof = { ok: false, mechanism: mech, why: String(e && /** @type {any} */ (e).message) }; }
-      finally { srv.close(); try { sibling.kill("SIGKILL"); } catch { /* gone */ } fs.rmSync(tmp, { recursive: true, force: true }); }
+      finally { stopProbe(); probing.delete(stopProbe); fs.rmSync(tmp, { recursive: true, force: true }); }
       return proof;
     },
 
@@ -119,7 +126,12 @@ export function createSupervisor(cfg = {}) {
       try { await readyP; } catch (e) { await handle.stop(); throw e; }
       return handle;
     },
-    stopAll: () => Promise.all([...running.values()].map(h => h.stop())),
+    stopAll: async () => {
+      for (const end of probing) end();
+      probing.clear();
+      await Promise.all([...running.values()].map(h => h.stop()));
+      if (testing) await testing.catch(() => {});
+    },
   };
   return Object.freeze(api);
 }
