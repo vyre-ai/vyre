@@ -100,11 +100,15 @@ export function createDriveGateway(cfg) {
       const d1 = await gate(chain, "drive.write", `${file(a)}/*`);
       await gate(chain, "drive.write", `${file(b)}/*`);
       const entries = await run(async () => cfg.drive.list(a));
+      // Every file is checked BEFORE anything moves: read and write of the source, write of the destination, each under this chain. One refusal aborts the whole move (a file with its own
+      // restriction is never moved or tombstoned on a folder-wide grant).
+      const plan = entries.map((/** @type {any} */ e) => { const path = String(e.path ?? e.name ?? e); return { path, dest: `${b}/${path.slice(a.length + 1)}` }; });
+      for (const f of plan) {
+        if (!(await check(chain, "drive.read", file(f.path))) || !(await check(chain, "drive.write", file(f.path))) || !(await check(chain, "drive.write", file(f.dest)))) throw new KernelError("not_found", "that folder is not yours to move");
+      }
       let moved = 0;
-      for (const e of entries) {
-        const path = String(e.path ?? e.name ?? e);
-        const dest = `${b}/${path.slice(a.length + 1)}`;
-        await run(async () => { const bytes = await cfg.drive.get(path, {}); await cfg.drive.put(dest, bytes, { by: actor(chain) }); await cfg.drive.delete(path, { by: actor(chain) }); });
+      for (const f of plan) {
+        await run(async () => { const bytes = await cfg.drive.get(f.path, {}); await cfg.drive.put(f.dest, bytes, { by: actor(chain) }); await cfg.drive.delete(f.path, { by: actor(chain) }); });
         moved++;
       }
       note(chain, "file.moved", `${file(b)}`, { from: a, to: b, files: moved }, d1.decision);

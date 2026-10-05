@@ -55,3 +55,21 @@ test("folderName keeps a name usable as a Drive folder: no slashes, colons or co
   assert.equal(folderName("..hidden"), "hidden");
   assert.equal(folderName("///"), "Project");
 });
+
+test("a /rename inside Claude Code reaches the record: only a CHANGE in the transcript's name counts, and a stale one never overwrites a title set in Records", async () => {
+  const { kernel } = fake();
+  let name = "First";
+  const hub = createHub({ kernel, call: async (/** @type {string} */ tool) => (tool === "recall.sessions" ? { data: [{ id: "t1", name }] } : { data: null }) });
+  const p = await hub.createProject({ who: "p" }, { name: "Rivera" });
+  const rec = await kernel.records.create(null, "session-summary", { title: "First", thread: "t1", project: { urn: p.urn }, drive: p.data.drive_path });
+  const title = async () => (await kernel.records.query(null, "session-summary", { filter: { field: "thread", op: "eq", value: "t1" } })).rows[0].data.title;
+  await hub.onTurn({ session: "t1" });
+  assert.equal(await title(), "First", "the first look only records the name");
+  name = "Engagement letter";
+  await hub.onTurn({ session: "t1" });
+  assert.equal(await title(), "Engagement letter", "a /rename in the terminal reaches the record");
+  await hub.renameSession(await hub.sessionRecord("t1"), "Set in Records", "record");
+  await hub.onTurn({ session: "t1" });
+  assert.equal(await title(), "Set in Records", "the transcript's unchanged name does not overwrite it");
+  void rec;
+});

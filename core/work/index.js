@@ -94,6 +94,8 @@ export default {
       // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
       hear("project.changed", p => hubOf().onProjectChanged(p));
       hear("thread.renamed", p => hubOf().onThreadRenamed(p));
+      // a /rename inside Claude Code reaches the transcript, which Recall indexes: checked at each turn's end
+      hear("turn.completed", p => hubOf().onTurn(p));
       const k0 = ctx.kernel;
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
         try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "session-summary.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this build: the other directions still work */ }

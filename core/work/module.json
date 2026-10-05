@@ -140,7 +140,9 @@
         "records.create",
         "records.update",
         "events.read",
-        "drive.write"
+        "drive.write",
+        "grants.list",
+        "drive.read"
       ],
       "types": [
         {

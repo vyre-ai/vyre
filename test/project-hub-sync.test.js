@@ -24,6 +24,7 @@ async function boot(/** @type {any} */ t) {
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false } }));
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
@@ -32,7 +33,8 @@ async function boot(/** @type {any} */ t) {
   const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
   const meta = async () => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" }), {})).token });
   const rows = async (/** @type {string} */ type) => (await d.kernel.gateway.records.query(admin, type, { page: { limit: 100 } })).rows;
-  return { d, admin, meta, work, rows };
+  const memberChain = async (/** @type {string} */ id) => { await d.kernel.gateway.grants.setRole(admin, { person: id, role: "member" }, { presence: { method: "stand-in" } }); return d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-m", person: id, path: "direct", session: "s" }); };
+  return { d, admin, meta, work, rows, memberChain };
 }
 
 test("every session is a record with its ids, times, Drive folder and transcript address, filed in General when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
@@ -102,4 +104,41 @@ test("a project's name syncs both ways and the Drive folder follows, files and a
   assert.equal(r2.data.drive_path, "Projects/Rivera Trust and Estate");
   assert.equal(r2.urn, urn);
   await d.kernel.gateway.drive.get(admin, "Projects/Rivera Trust and Estate/retainer.txt");
+});
+
+test("PH-3: a member's edit of a Project record never moves a folder, and cannot point the hub at another one; an admin's direct edit in Records does move it", { timeout: 180_000 }, async t => {
+  const { d, admin, meta, rows, memberChain } = await boot(t);
+  const made = await d.registry.call("work.project.create", { name: "Rivera" }, "cli", await meta());
+  const urn = made.data.project, id = urn.split("/").pop();
+  await d.kernel.gateway.drive.put(admin, "Projects/Rivera/retainer.txt", new TextEncoder().encode("signed"));
+  await d.kernel.gateway.drive.put(admin, "Legal/Contracts/secret.txt", new TextEncoder().encode("do not move"));
+  const member = await memberChain("per_" + "m".repeat(26));
+  const rec = async () => (await rows("project")).find((/** @type {any} */ p) => p.urn === urn);
+  // a member renames the record: it stands in Records, and nothing else moves
+  let cur = await d.kernel.gateway.records.get(member, "project", id);
+  await d.kernel.gateway.records.update(member, "project", id, { name: "Rivera Renamed" }, cur.version);
+  await new Promise(r => setTimeout(r, 800));
+  assert.equal((await rec()).data.name, "Rivera Renamed");
+  assert.equal((await rec()).data.drive_path, "Projects/Rivera", "the folder stayed");
+  await d.kernel.gateway.drive.get(admin, "Projects/Rivera/retainer.txt");
+  // a member points drive_path at another folder, then renames: the field is put back, and Legal/Contracts is untouched
+  cur = await d.kernel.gateway.records.get(member, "project", id);
+  await d.kernel.gateway.records.update(member, "project", id, { drive_path: "Legal/Contracts", name: "Hijack" }, cur.version).catch(() => {});
+  await until(async () => (await rec()).data.drive_path === "Projects/Rivera" ? true : null, "drive_path to be put back");
+  await d.kernel.gateway.drive.get(admin, "Legal/Contracts/secret.txt");
+  // an admin's direct edit in Records moves the folder, as the admin could do
+  cur = await d.kernel.gateway.records.get(admin, "project", id);
+  await d.kernel.gateway.records.update(admin, "project", id, { name: "Rivera Family" }, cur.version);
+  await until(async () => (await rec()).data.drive_path === "Projects/Rivera Family" ? true : null, "the folder to follow an admin's edit");
+  await d.kernel.gateway.drive.get(admin, "Projects/Rivera Family/retainer.txt");
+});
+
+test("MV-1: moving a folder checks every file under the caller's own chain and aborts the whole move if any is refused", { timeout: 120_000 }, async t => {
+  const { d, admin, memberChain } = await boot(t);
+  await d.kernel.gateway.drive.put(admin, "Projects/A/one.txt", new TextEncoder().encode("1"));
+  const member = await memberChain("per_" + "n".repeat(26));
+  await assert.rejects(() => d.kernel.gateway.drive.moveFolder(member, "Projects/A", "Projects/B"), /no such record|not yours to move/i);
+  await d.kernel.gateway.drive.get(admin, "Projects/A/one.txt");
+  assert.equal((await d.kernel.gateway.drive.moveFolder(admin, "Projects/A", "Projects/B")).moved, 1);
+  await d.kernel.gateway.drive.get(admin, "Projects/B/one.txt");
 });

@@ -17,6 +17,10 @@ import os from "node:os";
 import { slugify, SLUG_RE } from "../../lib/project-id.js";
 
 const PROJECT = "project", SUMMARY = "session-summary", GENERAL = "general";
+/** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
+const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [SUMMARY]: ["thread", "transcript", "transcript_file", "machine", "drive", "started", "ended"] };
+/** The only part of the Drive the hub ever moves. */
+const underProjects = (/** @type {any} */ p) => typeof p === "string" && /^Projects\/[^/]+(?:\/[^/]+)*$/.test(p) && !p.split("/").some(x => x === ".." || x === ".");
 
 /** A name as a Drive folder name: no slashes, colons or control characters, no leading dots. @param {string} name */
 export const folderName = name => String(name).replace(/[\\/:*?"<>|\u0000-\u001f]/g, " ").replace(/\s+/g, " ").replace(/^[.\s]+|[.\s]+$/g, "").slice(0, 80) || "Project";
@@ -130,8 +134,10 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
       const status = /^exited \d/.test(reason) || reason === "restart" || /without starting/.test(reason) ? "failed" : reason === "stopped" ? "stopped" : "done";
       const turns = t && Number.isFinite(t.turns) ? t.turns : null;
       const facts = `${turns === null ? "A session" : `${turns} turn${turns === 1 ? "" : "s"}`}${have.data.model ? ` on ${have.data.model}` : ""}${reason ? `, ended: ${reason.slice(0, 80)}` : ""}.`;
-      const file = have.data.transcript_file ? null : await transcriptFile(p.thread);
-      return await kernel.records.update(chain(), SUMMARY, have.id, { status, ended: iso(now()), summary: facts.slice(0, 1500), ...(t && t.model ? { model: String(t.model) } : {}), ...(file ? { transcript_file: file, machine } : {}) }, have.version);
+      await syncNameFromTranscript(p.thread);
+      const have2 = await find(SUMMARY, "thread", p.thread) || have;
+      const file = have2.data.transcript_file ? null : await transcriptFile(p.thread);
+      return await kernel.records.update(chain(), SUMMARY, have.id, { status, ended: iso(now()), summary: facts.slice(0, 1500), ...(t && t.model ? { model: String(t.model) } : {}), ...(file ? { transcript_file: file, machine } : {}) }, have2.version);
     } catch (e) { log(`project hub: could not close the session record for ${p.thread}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
@@ -141,6 +147,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** Move a session's two folders from one place to another; a missing folder moves nothing. */
   async function moveSessionFolders(by, /** @type {string} */ fromRoot, /** @type {string} */ fromName, /** @type {string} */ toRoot, /** @type {string} */ toName) {
     if (!kernel.drive || typeof kernel.drive.moveFolder !== "function" || (fromRoot === toRoot && fromName === toName)) return;
+    if (!underProjects(fromRoot) || !underProjects(toRoot)) return;
     for (const k of KINDS) { try { await kernel.drive.moveFolder(by, `${fromRoot}/${k}/${fromName}`, `${toRoot}/${k}/${toName}`); } catch (e) { log(`project hub: could not move ${fromRoot}/${k}/${fromName}: ${/** @type {Error} */ (e).message}`); } }
   }
 
@@ -181,7 +188,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     const wantPath = await freeFolder(nm, cur.id);
     if (cur.data.drive_path !== wantPath) {
       if (kernel.drive && typeof kernel.drive.moveFolder === "function") {
-        try { if (cur.data.drive_path) await kernel.drive.moveFolder(by, cur.data.drive_path, wantPath); } catch (e) { log(`project hub: could not move the Drive folder of ${cur.data.slug}: ${/** @type {Error} */ (e).message}`); }
+        try { if (underProjects(cur.data.drive_path) && underProjects(wantPath)) await kernel.drive.moveFolder(by, cur.data.drive_path, wantPath); } catch (e) { log(`project hub: could not move the Drive folder of ${cur.data.slug}: ${/** @type {Error} */ (e).message}`); }
       }
       const old = cur.data.drive_path;
       cur = await kernel.records.update(by, PROJECT, cur.id, { drive_path: wantPath }, cur.version);
@@ -209,6 +216,29 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return cur;
   }
 
+  /** The last name the transcript showed for each session, so only a CHANGE in it counts as a rename (a stale transcript name never overwrites a title set in Records). @type {Map<string, string>} */
+  const seenName = new Map();
+  /**
+   * A /rename inside Claude Code lands in the transcript, which Recall indexes as the session's name. At each turn's end (and at the session's end) a name that differs from the one last seen
+   * is a rename made there, and the record's title follows. The first look only records the name.
+   * @param {string} thread
+   */
+  async function syncNameFromTranscript(thread) {
+    try {
+      const rec = await find(SUMMARY, "thread", thread);
+      if (!rec) return null;
+      const r = await tool("recall.sessions", { ids: [thread], limit: 1, machines: "local" });
+      const row = Array.isArray(r) ? r[0] : null;
+      const name = row && typeof row.name === "string" ? row.name.trim() : "";
+      if (!name) return null;
+      const before = seenName.get(thread);
+      seenName.set(thread, name);
+      if (before === undefined) return name !== rec.data.title && !rec.data.title ? renameSession(rec, name, "thread") : null;
+      return before !== name ? renameSession(rec, name, "thread") : null;
+    } catch (e) { log(`project hub: could not read the transcript's name for ${thread}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+  const onTurn = async (/** @type {any} */ p) => (p && typeof p.session === "string" ? syncNameFromTranscript(p.session) : null);
+
   /** Events that carry a name change from the other sides: the old project list's `project.changed` and the thread's `thread.renamed`. */
   async function onProjectChanged(p) {
     if (!p || typeof p.project !== "string" || typeof p.name !== "string") return null;
@@ -218,16 +248,54 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (!p || typeof p.thread !== "string" || typeof p.name !== "string") return null;
     try { const rec = await find(SUMMARY, "thread", p.thread); return rec ? await renameSession(rec, p.name, "thread") : null; } catch (e) { log(`project hub: rename of ${p.thread} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
   }
-  /** A record changed in Records itself: a Project's name, or a session's title. @param {any} ev a kernel event ({ type, subject }) */
+  /**
+   * Whether the person behind a change ("person:per_x@space") holds Drive access to the folders a move touches. The kernel asks for them as a chain that is the person plus this service, and a
+   * viewer chain can only be asked READ questions, so the question is `drive.read` on each folder: it is held by role by owners and admins only (a member has `drive.write` on no folder and
+   * `drive.read` on none), and the service holds it too, so the answer is the intersection. The move itself still runs under the service chain, with the actor's read as the check. Fails closed.
+   * @param {string} actor @param {string[]} folders
+   */
+  async function actorMayMove(actor, folders) {
+    const m = /^person:([^@]+)@/.exec(String(actor || ""));
+    if (!m || typeof kernel.chainForPerson !== "function" || typeof kernel.authorize !== "function") return false;
+    try {
+      const who = kernel.chainForPerson(m[1]);
+      for (const f of folders) {
+        const d = await kernel.authorize({ chain: who, action: "drive.read", resource: `vyre://${kernel.space}/file/${f}/*` });
+        if (d.effect !== "allow") return false;
+      }
+      return true;
+    } catch { return false; }
+  }
+  /** Whether the person behind a change is an owner or an admin: they alone reach other stores (the project list, a thread's name) on a record edit. */
+  const actorIsAdmin = (/** @type {string} */ actor) => actorMayMove(actor, ["Projects"]);
+
+  /**
+   * A record changed in Records itself. A person's edit of a system field is put back and nothing else happens. A name change moves the folder, renames the project list or the thread only
+   * when the person who made it is an owner or an admin (what the kernel would have let them do themselves); anyone else's rename stands in the record and reaches nothing else. The folder moved
+   * is always the one the record named BEFORE the edit (the event's own `before`), never a value the edit supplied.
+   * @param {any} ev a kernel event ({ type, subject, actor, data: { changed, before, after } })
+   */
   async function onRecordChanged(ev) {
     try {
       const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(ev && ev.subject));
-      if (!m) return null;
-      if (m[1] === PROJECT) { const rec = await kernel.records.get(chain(), PROJECT, m[2]); return rec ? await renameProject(rec, rec.data.name, "record") : null; }
-      if (m[1] === SUMMARY) { const rec = await kernel.records.get(chain(), SUMMARY, m[2]); return rec ? await renameSession(rec, rec.data.title, "record") : null; }
+      if (!m || (m[1] !== PROJECT && m[1] !== SUMMARY)) return null;
+      const changed = ev.data && Array.isArray(ev.data.changed) ? ev.data.changed : [];
+      const mine = /^service:work@/.test(String(ev.actor || ""));
+      let rec = await kernel.records.get(chain(), m[1], m[2]);
+      if (!rec) return null;
+      const bad = mine ? [] : SYSTEM_FIELDS[/** @type {"project"} */ (m[1])].filter(f => changed.includes(f));
+      if (bad.length) {
+        const before = (ev.data && ev.data.before) || {};
+        const patch = Object.fromEntries(bad.map(f => [f, before[f] === undefined ? null : before[f]]));
+        log(`project hub: put back ${bad.join(", ")} on ${ev.subject}, which only the system writes`);
+        return await kernel.records.update(chain(), m[1], m[2], patch, rec.version);
+      }
+      if (mine || !(await actorIsAdmin(ev.actor))) return null;
+      if (m[1] === PROJECT && changed.includes("name")) return await renameProject(rec, rec.data.name, "record");
+      if (m[1] === SUMMARY && changed.includes("title")) return await renameSession(rec, rec.data.title, "record");
     } catch (e) { log(`project hub: a change in Records did not reach its other places: ${/** @type {Error} */ (e).message}`); }
     return null;
   }
 
-  return Object.freeze({ createProject, ensureProject, generalProject, onStarted, onStopped, moveSession, renameProject, renameSession, onProjectChanged, onThreadRenamed, onRecordChanged, freeSlug, projectOf, sessionFolder, sessionRecord: (/** @type {string} */ thread) => find(SUMMARY, "thread", thread) });
+  return Object.freeze({ createProject, ensureProject, generalProject, onStarted, onStopped, moveSession, renameProject, renameSession, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, sessionFolder, sessionRecord: (/** @type {string} */ thread) => find(SUMMARY, "thread", thread) });
 }
