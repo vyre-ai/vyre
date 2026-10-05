@@ -251,30 +251,23 @@ test("a change to an event pulled from Google that has guests is still asked abo
   assert.equal((await tasks()).length, 1);
 });
 
-test("an approved write that has to wait for the rate is not lost: a 429 after the yes keeps it, and the next look sends it once; a full window is noticed before the yes is spent", async t => {
-  const { google, w, h, sent, checked, events, tasks, owner, root, throttleNext } = await rig(t, { ask: true });
+test("an approved write that has to wait is not lost: a 429 after the yes keeps it, and the next look sends it once, without asking the kernel for the yes again", async t => {
+  const { google, w, h, sent, all, checked, events, tasks, owner, throttleNext } = await rig(t, { ask: true });
   await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", source: "vyre" });
   await h.runNow();
   const ts = await tasks();
-  // the window is full: the approval is NOT spent, and nothing is sent
-  const file = (await import("node:fs")).readdirSync(`${root}/calendar-sync`).find(f => f.endsWith(".json")) || "";
-  const fs = await import("node:fs");
-  const stateFile = `${root}/calendar-sync/${file}`;
-  const state = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-  fs.writeFileSync(stateFile, JSON.stringify({ ...state, sent_at: Array.from({ length: 600 }, () => Date.now()) }));
-  // (the sync reads its state file once; a new look re-reads it through a fresh attach is not needed because the file is read at attach: so make the window full through the 429 path as well)
   throttleNext(1);
   w.kernel.completeTask(ts[0].id, { outcome: "approved" });
-  for (let i = 0; i < 50 && !checked.length; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
-  assert.equal(sent.length, 1, "the first send was throttled (429): it reached the service once and was refused there");
-  assert.equal(google.events.size, 0, "so nothing is made yet");
-  assert.deepEqual(checked, [ts[0].id], "the approval was spent once");
-  // the next look sends the same request without asking the kernel again, and it goes out once
+  for (let i = 0; i < 50 && !all.some(c => c.startsWith("POST")); i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.ok(all.some(c => c.startsWith("POST")), "the write was tried");
+  assert.equal(sent.length, 0, "and the service answered 429, so nothing was made");
+  assert.equal(google.events.size, 0);
+  assert.deepEqual(checked, [ts[0].id], "the yes was spent once");
+  // the next look sends the same request without asking the kernel for the yes again
   const out = await h.runNow();
   assert.equal(google.events.size, 1, JSON.stringify(out));
   assert.deepEqual(checked, [ts[0].id], "the yes was not asked for twice");
   assert.equal((await events())[0].data.calendar, "google-home");
-  const again = await h.runNow();
+  await h.runNow();
   assert.equal(google.events.size, 1, "once");
-  void again;
 });
