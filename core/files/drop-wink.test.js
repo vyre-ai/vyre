@@ -10,7 +10,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import { dropWink } from "./drop-wink.js";
 import { createDropStore } from "./drop-store.js";
 import { sender, receiver } from "./drop-seal.js";
-import { newDeviceKey, pointOf, ecdhFrom, b64 } from "../../lib/keywrap.js";
+import { newDeviceKey, pointOf, ecdhFrom, unwrapWithDevice, b64 } from "../../lib/keywrap.js";
 
 /** Stand-ins for the identity list: each device (A, B) has an entry whose key-agreement key is its own P-256 key; the list serves the public points, the device's own ECDH is its alone. */
 const KEYS = { A: newDeviceKey(), B: newDeviceKey(), X: newDeviceKey() };
@@ -19,7 +19,10 @@ const listDevices = () => ["A", "B"].map(e => ({ device: e, agree: pointOfEid(e)
 const identityCalls = async (tool, input, me) => {
   if (tool === "spaces.identity.id") return { data: { id: "per_alex", eid: me } };
   if (tool === "spaces.identity.devices.read") return { data: { devices: listDevices() } };
-  if (tool === "spaces.identity.ecdh") return { data: { secret: b64(await ecdhFrom(KEYS[me].privateJwk)(Buffer.from(input.epk, "base64url"))) } };
+  if (tool === "spaces.identity.unwrap-drop") {
+    if (!String(input.aad).startsWith("vyre-drop-wrap\n")) throw Object.assign(new Error("wrong purpose"), { code: "wrong_purpose" });
+    return { data: { key: b64(await unwrapWithDevice(input.wrap, ecdhFrom(KEYS[me].privateJwk), input.aad)) } };
+  }
   return undefined;
 };
 const dir = p => fs.mkdtempSync(path.join(SCRATCH, p));
@@ -62,7 +65,7 @@ const until = async (f, ms = 4000) => { const t0 = Date.now(); for (;;) { const 
 const allFiles = d => { const o = []; const w = x => { for (const n of fs.existsSync(x) ? fs.readdirSync(x) : []) { const p = path.join(x, n); fs.statSync(p).isDirectory() ? w(p) : o.push(p); } }; w(d); return o; };
 
 test("sealing: only the receiver's key opens a drop, a chunk cannot be moved, repeated or taken from another drop, and every drop has its own key", async () => {
-  const id = "d".repeat(30), mine = ecdhFrom(KEYS.A.privateJwk), theirs = ecdhFrom(KEYS.X.privateJwk);
+  const id = "d".repeat(30), unwrapBy = k => (w, aad) => unwrapWithDevice(w, ecdhFrom(KEYS[k].privateJwk), aad), mine = unwrapBy("A"), theirs = unwrapBy("X");
   const a = sender(id, pointOfEid("A"), "A"), b = sender(id, pointOfEid("A"), "A");
   assert.notEqual(a.eph, b.eph, "a fresh key for each drop");
   const c0 = a.seal(0, 3, Buffer.from("header")), c1 = a.seal(1, 3, Buffer.from("data"));

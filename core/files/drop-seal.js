@@ -4,7 +4,7 @@
 // Each drop has a fresh 32-byte file key wrapped to that point (ECDH-ES, so no two drops share a key); the chunks are AES-256-GCM under a key derived from it with the drop's id as salt, and a chunk's place in
 // the associated data, so a chunk cannot be moved, repeated, dropped or taken from another drop without the receiver noticing. Chunk 0 is the header (name, size, hash of the whole file), the rest are the file in order.
 import crypto from "node:crypto";
-import { newKey, wrapForDevice, unwrapWithDevice, jwkOfPoint, b64, unb64 } from "../../lib/keywrap.js";
+import { newKey, wrapForDevice, jwkOfPoint, unb64 } from "../../lib/keywrap.js";
 
 export const CHUNK = 512 * 1024;
 const bytesB64 = (/** @type {Buffer} */ b) => b.toString("base64url");
@@ -34,15 +34,15 @@ export function sender(id, toPoint, toEid) {
 }
 
 /**
- * The receiver's half: `open(i, total, blob)` the chunk's plaintext, or throws `bad_chunk` when it is not exactly the chunk the sender sealed for this place in this drop. `ecdh(epk)` is this device's
- * key-agreement step (the shared secret with the wrap's ephemeral point; the private key never leaves its keystore) and `eid` its own entry id.
- * @param {string} id @param {string} eph the wrapped file key @param {(epk: Uint8Array) => Promise<Uint8Array>} ecdh @param {string} eid
+ * The receiver's half: `open(i, total, blob)` the chunk's plaintext, or throws `bad_chunk` when it is not exactly the chunk the sender sealed for this place in this drop. `unwrap(wrap, aad)` is this device's
+ * key-agreement step in the identity module: the wrap and its associated data in, only the file key out (the private key and the shared secret never leave it) and `eid` is its own entry id.
+ * @param {string} id @param {string} eph the wrapped file key @param {(wrap: any, aad: string) => Promise<Uint8Array>} unwrap @param {string} eid
  */
-export async function receiver(id, eph, ecdh, eid) {
+export async function receiver(id, eph, unwrap, eid) {
   /** @type {any} */ let w;
   try { w = JSON.parse(Buffer.from(String(eph), "base64url").toString("utf8")); } catch { throw Object.assign(new Error("this drop's key is damaged"), { code: "bad_chunk" }); }
   /** @type {Uint8Array} */ let fileKey;
-  try { fileKey = await unwrapWithDevice(w, ecdh, wrapAad(id, eid)); } catch { throw Object.assign(new Error("this drop is not sealed to this computer's key"), { code: "bad_chunk" }); }
+  try { fileKey = await unwrap(w, wrapAad(id, eid)); } catch { throw Object.assign(new Error("this drop is not sealed to this computer's key"), { code: "bad_chunk" }); }
   const key = keyFor(fileKey, id);
   return {
     /** @param {number} i @param {number} total @param {Buffer} blob */

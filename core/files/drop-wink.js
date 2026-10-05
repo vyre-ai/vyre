@@ -125,12 +125,13 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     if (!eid) throw fail("not_ready", "this computer has no identity yet");
     return eid;
   };
-  /** This computer's key-agreement step: the shared secret with a wrap's ephemeral point, from the identity module; the private key never leaves it. @param {Uint8Array} epk */
-  const ecdh = async epk => {
-    const r = /** @type {any} */ (await ctx.call("spaces.identity.ecdh", { epk: Buffer.from(epk).toString("base64url") }));
-    if (!r || !r.data || typeof r.data.secret !== "string") throw fail("not_ready", "this computer has no key for receiving files yet");
-    return new Uint8Array(Buffer.from(r.data.secret, "base64url"));
+  /** This computer's key-agreement step, in the identity module: the wrap and its associated data go in and only the file key comes back (the private key and the shared secret never leave it). @param {any} wrap @param {string} aad */
+  const unwrap = async (wrap, aad) => {
+    const r = /** @type {any} */ (await ctx.call("spaces.identity.unwrap-drop", { wrap, aad }));
+    if (!r || !r.data || typeof r.data.key !== "string") throw fail("not_ready", "this computer has no key for receiving files yet");
+    return new Uint8Array(Buffer.from(r.data.key, "base64url"));
   };
+
   const home = async () => {
     const r = /** @type {any} */ (await ctx.call("wink.home.id", {}).catch(() => null));
     const sid = r && r.data && r.data.device;
@@ -186,7 +187,7 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     const eid = await ownEid();
     const h = await home();
     const m = await h.call("files.drop.meta", { id });
-    const open = await receiver(id, m.eph, ecdh, eid);
+    const open = await receiver(id, m.eph, unwrap, eid);
     const head = JSON.parse(open.open(0, m.total, Buffer.from((await h.call("files.drop.get", { id, index: 0 })).b64, "base64")).toString("utf8"));
     const name = landing(dir, head.name);
     const tmp = path.join(dir, `.${crypto.randomBytes(6).toString("hex")}.part`);

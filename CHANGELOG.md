@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(files): the receiver opens a drop's wrapped key through `spaces.identity.unwrap-drop { wrap, aad }` (platform-3: purpose-bound, only the file key comes back, the aad starts with `vyre-drop-wrap\n`), replacing the raw `spaces.identity.ecdh`. The wrap's aad is `vyre-drop-wrap\n<drop id>\n<receiving entry id>`. Merges work/entry-fields3 751cdc71c.
+
 - fix(wink): pairing passes a device's agree point on only when it is a real P-256 point: 65 bytes, uncompressed, and on the curve (noble's decoder throws off-curve), so a made-up point never reaches the identity list (reviewer-4's LOW). Test: an off-curve point, a short one and none are dropped.
 
 - feat(files,wink): VyreDrop seals to the receiving computer's key-agreement key on the person's identity list (the ruling to replace the interim drop key). The sender reads the receiver's `agree` point from the list (`spaces.identity.devices.read`), wraps a fresh file key to it with lib/keywrap.js (`wrapForDevice`, ECDH-ES), and seals the chunks under a key derived from it; the receiver opens it with its own key through `spaces.identity.ecdh` (the private key never leaves the identity module). A computer registers only its entry id (`files.drop.register { eid }`); the server can no longer name a key, and a drop sealed to another entry does not open on the real receiver. Deleted: the X25519 drop key and its file, `wink.identity.sign`, `wink.identity.check` and core/wink/drop-identity.js (the signing oracle reviewer-4 flagged). Takes lib/keywrap.js, lib/databox.js and the @noble dependencies from work/memory-noble 5d7eb572f, on work/entry-fields3 2deef60cd.
