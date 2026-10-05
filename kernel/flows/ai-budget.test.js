@@ -49,3 +49,13 @@ test("AI budget: one run may not keep asking past its own allowance", async () =
   assert.equal(run.error && run.error.code, "ai_budget", JSON.stringify(run.error));
   assert.match(run.error.message, /used its AI allowance/);
 });
+
+test("the context budget is a Space setting kept with the Space's Flows: default 1,200, set within 200 to 8,000", async () => {
+  const w = await world();
+  assert.equal((await w.runner.aiBudget()).context_tokens, 1200);
+  assert.equal((await w.runner.setContextTokens(3000)).context_tokens, 3000);
+  await assert.rejects(() => w.runner.setContextTokens(100), { code: "bad_input" });
+  await assert.rejects(() => w.runner.setContextTokens(9000), { code: "bad_input" });
+  const other = await world();
+  assert.equal((await other.runner.aiBudget()).context_tokens, 1200, "another Space is untouched");
+});

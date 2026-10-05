@@ -7,9 +7,6 @@
     "local"
   ],
   "requires": [],
-  "settings": [
-    {"key": "work.context.tokens", "group": "work", "label": "Context an agent gets about a record (tokens)", "help": "How much of the record's world (linked records, communications, history) an agent doing a task is shown, beside the situation. A task can ask for more.", "type": "number", "min": 200, "max": 8000, "default": 1200, "levels": ["account"], "apply": "live", "hidden": true}
-  ],
   "does": {
     "reads": [
       "work.know.search",
@@ -120,7 +117,10 @@
         "records.update",
         "events.read"
       ]
-    }
+    },
+    "daemon": [
+      "flowsHost"
+    ]
   },
   "teaches": {}
 }

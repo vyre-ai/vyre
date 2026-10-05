@@ -27,7 +27,7 @@ const WHAT = {
   "flows.resume": "Resume a paused Flow. A person's own.",
   "flows.runs": "Recent runs of a Flow, newest first.",
   "flows.run": "One run: its trigger, its steps, what it did.",
-  "flows.budget": "The Space's daily AI allowance for Flow steps and what is used today; an owner or an admin sets it with tokens_per_day.",
+  "flows.budget": "The Space's daily AI allowance for Flow steps and what is used today; an owner or an admin sets it with tokens_per_day, and with context_tokens how much of a record's world an agent is shown.",
   "flows.retry": "Retry a failed run. A person's own.",
   "flows.kit.card": "The install card for a Kit.",
   "flows.kit.propose": "Propose a Kit for approval: its types, templates, roles and Flows. A person, or their assistant for them; the person is asked and nothing installs until they say yes.",

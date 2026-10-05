@@ -115,11 +115,13 @@ export function createFlows(o) {
     "flows.run": async (chain, i) => { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { run: r, painted: v ? paintRun(v.flow, r, await cat()) : null }; },
     // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.
     "flows.budget": async (chain, i) => {
-      if (i && i.tokens_per_day !== undefined) {
+      if (i && (i.tokens_per_day !== undefined || i.context_tokens !== undefined)) {
         const who = personOf(chain);
         const holders = [...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "owner") : []), ...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "admin") : [])];
         if (!holders.some((/** @type {any} */ h) => h.id === who.id)) throw Object.assign(new Error("only an owner or an admin sets the AI budget"), { code: "not_allowed" });
-        return runner.setAiBudget(Number(i.tokens_per_day));
+        if (i.context_tokens !== undefined) await runner.setContextTokens(Number(i.context_tokens));
+        if (i.tokens_per_day !== undefined) await runner.setAiBudget(Number(i.tokens_per_day));
+        return runner.aiBudget();
       }
       return runner.aiBudget();
     },

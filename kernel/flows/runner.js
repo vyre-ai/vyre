@@ -921,12 +921,19 @@ export class FlowRunner {
     const day = this.#day(this.now());
     const set = this.store.getSchedule ? await this.store.getSchedule("ai:budget") : null;
     const used = this.store.getSchedule ? (await this.store.getSchedule(`ai:use:${day}`)) || 0 : 0;
-    return { tokens_per_day: set ?? this.limits.ai_tokens_per_day, used_today: used, day };
+    const ctxSet = this.store.getSchedule ? await this.store.getSchedule("set:context_tokens") : null;
+    return { tokens_per_day: set ?? this.limits.ai_tokens_per_day, used_today: used, day, context_tokens: ctxSet ?? 1200 };
   }
   /** An admin sets the daily allowance (a number of tokens; 0 turns AI steps off). @param {number} tokens */
   async setAiBudget(tokens) {
     if (!Number.isInteger(tokens) || tokens < 0 || tokens > 1_000_000_000) throw Object.assign(new Error("the budget is a whole number of tokens, 0 or more"), { code: "bad_input" });
     if (this.store.putSchedule) await this.store.putSchedule("ai:budget", tokens);
+    return this.aiBudget();
+  }
+  /** How much of a record's world an agent is shown in this Space (tokens, 200 to 8000; default 1200). @param {number} tokens */
+  async setContextTokens(tokens) {
+    if (!Number.isInteger(tokens) || tokens < 200 || tokens > 8000) throw Object.assign(new Error("the context budget is a whole number of tokens from 200 to 8000"), { code: "bad_input" });
+    if (this.store.putSchedule) await this.store.putSchedule("set:context_tokens", tokens);
     return this.aiBudget();
   }
   /** @param {any} ctx */
