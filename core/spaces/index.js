@@ -1632,6 +1632,7 @@ export default {
       if (pin && toName) moveContext.set(ctxKey, { name: String(toName), pin });
       let fin;
       try { fin = await gateway.upgrade.finish(local.chain, { upgrade_id: started.upgrade_id, counts: { records: report.moved.records, chats: report.moved.chats ?? null, memory: report.moved.memory ?? null }, failed: report.notMoved.map((/** @type {any} */ n) => `${n.what}: ${n.why}`), freeze: report.recordsComplete && report.notMoved.length === 0, ...(receipt ? { receipt } : {}) }); }
+      catch (e) { ctx.log.warn(`upgrade finish failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
       finally { moveContext.delete(ctxKey); }
       return { upgraded: true, to: fin.to, moved: report.moved, notMoved: report.notMoved, frozen: fin.frozen, ...(fin.not_frozen_because ? { not_frozen_because: fin.not_frozen_because } : {}), ...(notes.length ? { notes } : {}) };
     });
