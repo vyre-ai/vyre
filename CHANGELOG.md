@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- chore(web): the parked SwiftUI and Compose apps (apps/ios, apps/android, 182 files) and the ios.yml workflow are deleted; the one Expo app in apps/app is the only phone app. apps/RELEASE.md now describes building and releasing from it.
+
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
 
 - test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.
