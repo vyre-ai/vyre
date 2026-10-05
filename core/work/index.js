@@ -188,7 +188,7 @@ export default {
           };
         };
         const room = { offer: mem(to, "memory.room.offer"), export: mem(from, "memory.room.export"), import: mem(to, "memory.room.import"), forget: mem(from, "memory.room.forget") };
-        const memory = Object.values(room).every(Boolean) ? room : undefined;
+        const memory = process.env.VYRE_TEST_SKIP_MEMORY !== "1" && Object.values(room).every(Boolean) ? room : undefined; // SCRATCH switch
         // the Work engine's own lines: this module's tools, in each Space (the own Space through ctx.call, the other through its handle)
         const kn = { export: mem(from, "work.know.move-export"), import: mem(to, "work.know.move-import"), forget: mem(from, "work.know.move-forget") };
         const know = Object.values(kn).every(Boolean) ? kn : undefined;
