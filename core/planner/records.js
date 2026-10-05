@@ -109,7 +109,8 @@ export async function openRecords(o) {
   /** @type {Map<string, any>} */ const settings = new Map();
   const stateRefs = new Map();
   /** @type {Map<string, number>} writes queued and not yet done, by item: a change event that arrives meanwhile is ours and older than the working set */ const writing = new Map();
-  const busy = (/** @type {string} */ id, /** @type {number} */ d) => writing.set(id, Math.max(0, (writing.get(id) || 0) + d));
+  /** @type {Map<string, number>} a count that moves with every change the planner makes to an item: an outside change read before it moved is older than the working set */ const epoch = new Map();
+  const busy = (/** @type {string} */ id, /** @type {number} */ d) => { writing.set(id, Math.max(0, (writing.get(id) || 0) + d)); epoch.set(id, (epoch.get(id) || 0) + 1); };
 
   // ---- Writes, in order -----------------------------------------------------------------------
   let queue = Promise.resolve();
@@ -257,6 +258,7 @@ export async function openRecords(o) {
         const stateChange = fields.state && fields.state !== was ? fields.state : null;
         // In order: the words and form first, then the state, each under the chain that may do it. A refusal puts the working set back.
         if (Object.keys(edit).length || stateChange) {
+          busy(r.id, 1);
           void enqueue(async () => {
             try {
               const mine = r.assignee ? c : chain();
@@ -264,7 +266,7 @@ export async function openRecords(o) {
               if (stateChange === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
               else if (stateChange === "cancelled") { if (!c) throw Object.assign(new Error("a to-do is cancelled by the person"), { code: "denied" }); await K.tasks.skip(c, r.id, "cancelled in the planner"); }
               else if (stateChange === "open") { await K.tasks.reopen(c || chain(), r.id); }
-            } catch (e) { Object.assign(r, undo); throw e; }
+            } catch (e) { Object.assign(r, undo); throw e; } finally { busy(r.id, -1); }
           });
         }
         return;
@@ -359,7 +361,11 @@ export async function openRecords(o) {
     async external(/** @type {{ type: string, id: string }} */ e) {
       const same = (/** @type {any} */ a, /** @type {any} */ b) => { const strip = (/** @type {any} */ r) => { const { updated: _u, ...d } = toData(r); return JSON.stringify(d); }; return strip(a) === strip(b); };
       if (e.type === "task") {
+        // Our own change is still on its way: what the Task shows now is older than the working set.
+        if ((writing.get(e.id) || 0) > 0) return;
+        const seen = epoch.get(e.id) || 0;
         const t = await K.tasks.get(chain(), e.id).catch(() => null);
+        if ((writing.get(e.id) || 0) > 0 || (epoch.get(e.id) || 0) !== seen) return;
         const row = t && fromTask(t);
         const old = items.get(e.id);
         if (!row || !old || old.state === row.state) return;
@@ -370,7 +376,9 @@ export async function openRecords(o) {
       if (e.type !== "reminder" && e.type !== "note") return;
       // Our own writes are still on their way: whatever the record shows now is older than the working set.
       if ((writing.get(e.id) || 0) > 0) return;
+      const seen = epoch.get(e.id) || 0;
       const rec = await K.records.get(chain(), e.type, e.id).catch(() => null);
+      if ((writing.get(e.id) || 0) > 0 || (epoch.get(e.id) || 0) !== seen) return;
       if (!rec) { const old = items.get(e.id); if (old) { items.delete(e.id); o.onExternal?.(old, "removed"); } return; }
       if (known.get(e.id) === rec.version) return;
       known.set(e.id, rec.version); versions.set(e.id, rec.version);

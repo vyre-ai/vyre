@@ -36,7 +36,9 @@ import { TASK_TYPE } from "./tasks/type.js";
  *   drive?: any, resolveCredential?: any, forwardCredential?: any, routeAction?: any, templates?: any, destinations?: any, resolve?: any, actions?: any[], attrs?: any, sinks?: Set<string> }} cfg
  *   grants and members together replace the grants store (the retrofit path and test rigs); otherwise a grants store is made and, on an empty log, its first owner
  */
-export async function createKernel(cfg) {
+export async function createKernel(cfg0) {
+  // Tasks as records: asked for by the caller, or for a whole test run by VYRE_TASKS_RECORDS=1 (the proof that nothing else notices).
+  const cfg = cfg0.tasksAsRecords === undefined && process.env.VYRE_TASKS_RECORDS === "1" ? { ...cfg0, tasksAsRecords: true } : cfg0;
   const clock = cfg.clock || Date.now;
   const log = cfg.log || createEventLog({ space: cfg.space, clock });
   const store = cfg.store || createMemoryStore({ clock });
