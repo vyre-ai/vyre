@@ -702,6 +702,7 @@
  "kernel/gateway/gateway.test.js": 32,
  "kernel/gateway/leases.real.test.js": 3,
  "kernel/gateway/leases.test.js": 8,
+ "kernel/gateway/memory.test.js": 5,
  "kernel/gateway/sealing.test.js": 9,
  "kernel/grants/grants.test.js": 20,
  "kernel/grants/seal-put.test.js": 1,
