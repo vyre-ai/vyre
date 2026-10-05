@@ -8431,9 +8431,9 @@ The Vyre status line as it is right now, recomputed: what needs the user, the bo
 Keep one answer of a fan-out set; the others stay, quieter.
 
 - Input:
+  - `chat` string, required
   - `group` string, required
   - `keep` string, required
-  - `session` string, required
   - `as` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
@@ -8442,17 +8442,17 @@ Keep one answer of a fan-out set; the others stay, quieter.
 Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.
 
 - Input:
-  - `session` string, required
+  - `chat` string, required
   - `upto` integer, required
   - `as` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `stream.open`
 
-A one-use ticket (15 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.
+A one-use ticket (15 s) for a chat's stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.
 
 - Input:
-  - `session` string, required
+  - `chat` string, required
   - `as` string
   - `from` integer
 - Callers: `capsule`, `cli`, `deck`, `local`
@@ -8462,7 +8462,7 @@ A one-use ticket (15 s) for the session stream at path, resuming after cursor fr
 Open the session's stream over the Wink peer wire (for a paired device): answers { stream, session, viewer, head, floor }; the frames then arrive as peer stream messages for `stream`, resuming after cursor from. Only over the peer wire.
 
 - Input:
-  - `session` string, required
+  - `chat` string, required
   - `as` string
   - `from` integer
 - Callers: `capsule`, `cli`, `deck`, `local`
@@ -8472,8 +8472,8 @@ Open the session's stream over the Wink peer wire (for a paired device): answers
 Pin a message in a group chat (on: false unpins it).
 
 - Input:
+  - `chat` string, required
   - `message` string, required
-  - `session` string, required
   - `as` string
   - `on` boolean
 - Callers: `capsule`, `cli`, `deck`, `local`
@@ -8483,9 +8483,9 @@ Pin a message in a group chat (on: false unpins it).
 React to a message in a group chat with an emoji (on: false takes it back).
 
 - Input:
+  - `chat` string, required
   - `emoji` string, required
   - `message` string, required
-  - `session` string, required
   - `as` string
   - `on` boolean
 - Callers: `capsule`, `cli`, `deck`, `local`
@@ -8495,7 +8495,7 @@ React to a message in a group chat with an emoji (on: false takes it back).
 Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.
 
 - Input:
-  - `session` string, required
+  - `chat` string, required
   - `as` string
   - `assistants` list of any
   - `cwd` string

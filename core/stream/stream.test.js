@@ -54,7 +54,7 @@ test("stream module: thread events become frames a ticketed client reads, replay
   const { reg, port, say } = await world(t);
   say("thread.started", { provider: "claude" });
   say("thread.text", { message: "m1", block: 0, delta: "Hello " });
-  const o = await call(reg, "stream.open", { session: "thr_1", from: 0 });
+  const o = await call(reg, "stream.open", { chat: "thr_1", from: 0 });
   assert.equal(o.head, 2);
   assert.equal(o.floor, 0);
   assert.match(o.path, /^\/v1\/streams\/stream\/session\?ticket=/);
@@ -74,7 +74,7 @@ test("stream module: thread events become frames a ticketed client reads, replay
 
 test("stream module: a ticket works once, a stale or unknown one gets 403, and a session id is checked", async t => {
   const { reg, port } = await world(t);
-  const o = await call(reg, "stream.open", { session: "thr_2" });
+  const o = await call(reg, "stream.open", { chat: "thr_2" });
   const status = path => new Promise(resolve => {
     const r = http.request({ port, host: "127.0.0.1", path, headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", "sec-websocket-version": "13" } });
     r.on("response", res => resolve(res.statusCode));
@@ -85,14 +85,14 @@ test("stream module: a ticket works once, a stale or unknown one gets 403, and a
   assert.equal(await status(o.path), 101);
   assert.equal(await status(o.path), 403, "spent");
   assert.equal(await status("/v1/streams/stream/session?ticket=nope"), 403);
-  await assert.rejects(call(reg, "stream.open", { session: "bad id with spaces" }), /session must be a thread id/);
+  await assert.rejects(call(reg, "stream.open", { chat: "bad id with spaces" }), /chat must be a chat id/);
 });
 
 test("stream module: a reconnecting client resumes from its cursor across a dropped socket (ticket per attempt)", async t => {
   const { reg, port, say } = await world(t);
   let text = "";
   const c = connect({
-    open: async ({ from }) => { const o = await call(reg, "stream.open", { session: "thr_3", from }); return wsDuplex(`ws://127.0.0.1:${port}${o.path}`); },
+    open: async ({ from }) => { const o = await call(reg, "stream.open", { chat: "thr_3", from }); return wsDuplex(`ws://127.0.0.1:${port}${o.path}`); },
     onFrame: f => { if (f.type === "session.text-delta") text += f.data.text; },
     backoff: { base: 5, cap: 20 },
   });
@@ -112,6 +112,6 @@ test("stream module: events of other kinds or without a thread are not framed", 
   const { reg, say } = await world(t);
   say("settings.changed", { x: 1 });
   reg.deps.events.emit("switchboard", "thread.text", { message: "m", delta: "orphan" }, {});
-  const o = await call(reg, "stream.open", { session: "thr_1" });
+  const o = await call(reg, "stream.open", { chat: "thr_1" });
   assert.equal(o.head, 0);
 });
