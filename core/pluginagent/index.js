@@ -148,10 +148,8 @@ export default {
         db.prepare("DELETE FROM pluginagent_agents WHERE agent = ?").run(String(a.agent));
         setState("off", "1");
         try { fs.rmSync(keyPath(), { force: true }); } catch { /* the hash is gone: the key is already dead */ }
-        const k = ctx.kernel && ctx.kernel.grants && typeof ctx.kernel.grants.removeActor === "function" ? ctx.kernel : null;
-        if (k) { try { await k.grants.removeActor(await k.chain(meta), { kind: "agent", id: String(a.agent), space: k.space }, k.proofFrom(meta) || {}); } catch { /* not an actor (any more): nothing to remove */ } }
         // The person's own act (revoke needs presence): the delete runs as the person's surface that revoked (a device as "local", above), not as this module, so agents.delete's person-only rule is what decides.
-        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as });
+        const gone = await ctx.call("agents.delete", { agent: String(a.agent), ...(a.agent_id ? { id: String(a.agent_id) } : {}) }, { as, relay: meta });
         // not_found: that agent (or one with that id) is already gone, or the name is someone else's agent now: not ours to delete.
         if (gone && gone.error && gone.error.code !== "not_found") throw refuse(`Claude Code's reach is off, but its agent could not be removed: ${gone.error.message}`, String(gone.error.code || "failed"));
         try { ctx.events.emit("pluginagent.revoked", { agent: String(a.agent) }); } catch { /* an event never decides */ }
