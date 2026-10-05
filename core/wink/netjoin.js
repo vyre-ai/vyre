@@ -14,7 +14,7 @@ const SPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /**
  * @param {{ root: string, ownHandover: () => any, log?: (m: string) => void, deps?: { createHost?: any, findBinaries?: () => { forwarder: string | null }, },
- *   relayPeer?: (space: string) => Promise<any>, graceMs?: number, retryMs?: number }} o
+ *   relayPeer?: (space: string) => Promise<any>, graceMs?: number, retryMs?: number, settleMs?: number }} o
  */
 export function createNetJoin(o) {
   const log = o.log || (() => {});
@@ -49,10 +49,15 @@ export function createNetJoin(o) {
     try {
       const key = directKey(String(h.peerSecret));
       host = D.createHost({ root: path.join(o.root, "wink-net", "join"), forwarderBin: bins.forwarder, log: (/** @type {string} */ m) => log(`wink join: ${m}`),
-        device: { id: String(h.device), sign: key.sign }, ...(o.relayPeer ? { relayPeer: o.relayPeer } : {}), ...(o.graceMs !== undefined ? { graceMs: o.graceMs } : {}), ...(o.retryMs !== undefined ? { retryMs: o.retryMs } : {}) });
+        device: { id: String(h.device), sign: key.sign }, ...(o.relayPeer ? { relayPeer: o.relayPeer } : {}), ...(o.graceMs !== undefined ? { graceMs: o.graceMs } : {}),
+        // the home gives a joined node its door rule a moment after the node first appears, so the first dial can be early: try the direct path again soon, not after the host's minute for a dead path
+        retryMs: o.retryMs ?? 5000 });
       host.addSpace({ id: space, controlUrl: String(h.controlUrl), authKey: String(h.authKey), hostname: String(h.hostname), box: String(h.box || ""), ...(h.peerAddr ? { peerAddr: String(h.peerAddr) } : {}) });
       await host.start(space);
+      // the home gives a node its door rule a few seconds after the node first appears (it polls for new nodes), and a dial made before that hangs for its whole timeout: wait a moment
+      if ((o.settleMs ?? 4000) > 0) await new Promise(r => setTimeout(r, o.settleMs ?? 4000));
       link = host.connect(space);
+      if (typeof link.onchange === "function") link.onchange(() => { const t = link && link.status(); if (t) log(`wink join: link ${t.state}, direct ${t.direct || "-"}, relay ${t.relay || "-"}${t.lastError ? `, last error: ${t.lastError}` : ""}`); });
       set("up");
       log(`wink join: joined the home's network as ${h.hostname}`);
     } catch (e) {

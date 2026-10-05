@@ -465,7 +465,8 @@ async function startLocked(opts, root, p, release) {
         return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
+      const isServer = (/** @type {string} */ id) => { try { const w = registry.modules.get("wink"); return Boolean(w && w.handle && w.handle.peers && w.handle.peers.allow(id) === true); } catch { return false; } };
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, isServer });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.

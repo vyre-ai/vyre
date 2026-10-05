@@ -721,6 +721,7 @@ export function createWink(inject = {}) {
       ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
       ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
+      ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.gatePort) ? { gatePort: ctx.config.wink.gatePort } : {}),
       ...(inject.netd || {}),
     });
     const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
@@ -790,6 +791,7 @@ export function createWink(inject = {}) {
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
       ownHandover: () => pairing.ownHandover(),
       join: () => liveJoin,
+      netd: () => netdRef,
       async stop() {
         live = null;
         liveLinks = null;
@@ -818,6 +820,7 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
   Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
   Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
+  Object.defineProperty(mod, "netd", { enumerable: false, get: () => (live && live.netd ? live.netd() : null) });
   Object.defineProperty(mod, "join", { enumerable: false, get: () => (live && live.join ? live.join() : null) });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });

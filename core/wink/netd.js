@@ -74,6 +74,7 @@ export function findBinaries(env = process.env) {
  *   domain?: string,                                the name's zone (default vyre.run)
  *   publicGate?: boolean,                           false keeps the network loopback-only whatever the name
  *   certDeps?: any,                                 test seam for the public gate ({ deps: { createGate, certs, acme, waitDns } })
+ *   gatePort?: number,                              a fixed port for the gate behind a configured control address (config wink.gatePort; a router forward or a test names it); default a free one
  *   publicPort?: number,                            the public gate's port (default 7443)
  *   publish?: boolean,                              publish the name's address without the outside check (config wink.publish)
  *   acme?: string,                                  "production", "staging" or a test CA's directory URL
@@ -119,7 +120,7 @@ export function createNetd(o) {
     // the public face. The loopback gate always runs (the home's own node joins through it). With a configured control address (wink.controlUrl) the gate is the one exposed piece;
     // otherwise, a box with a name gets a second, TLS gate on the public port (control/publicgate.js) whose address is https://<name>.vyre.run:<port>. A box with no name yet stays
     // loopback-only and says so; the relay carries everything meanwhile.
-    const gatePort = await D.freePort();
+    const gatePort = o.gatePort || await D.freePort();
     const nameNow = o.name ? o.name() : null;
     const pubPort = o.publicPort || PUBLIC_PORT;
     const publicUrl = o.controlUrl ? String(o.controlUrl) : "";

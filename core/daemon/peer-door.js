@@ -24,7 +24,7 @@ const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, isServer?: (id: string) => boolean, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -39,6 +39,8 @@ export function createPeerDoor(o) {
     return s.server;
   };
   /** The device's own row at the relay, now: an app device that is not removed, or null. @param {string} id */
+  /** What a paired SERVER (a Wink device of kind server, not a relay app device) may ask its home on the direct door: the network's own read-only status, nothing else. A server belongs to an identity but never speaks for it. */
+  const SERVER_TOOLS = new Set(["network.wink.status", "network.wink.whois"]);
   const rowOf = async id => {
     try {
       const r = await o.registry.call("relay.device.info", { id }, "module:vyred"); const d = r && r.data;
@@ -156,7 +158,16 @@ export function createPeerDoor(o) {
      */
     serve: async (caller, tool, input) => {
       const id = String(caller || "").slice(7);
-      if (!String(caller).startsWith("device:") || !DEVICE.test(id) || !(await rowOf(id))) throw err("denied", "this device is not paired here any more");
+      if (!String(caller).startsWith("device:")) throw err("denied", "this device is not paired here any more");
+      if (!(DEVICE.test(id) && (await rowOf(id)))) {
+        // not an app device: a live paired server of this home may read the network's status (its direct-door key was checked at the node door), and nothing else
+        if (!(/^[A-Za-z0-9_-]{1,64}$/.test(id) && typeof o.isServer === "function" && o.isServer(id))) throw err("denied", "this device is not paired here any more");
+        if (!SERVER_TOOLS.has(String(tool))) throw err("denied", "a paired server may only read the network's status on its home");
+        // a server's id is not a device-class label (lib/caller.js), and it must not become one: the two reads run as the daemon, on this server's behalf, and nothing else does
+        const r = await o.registry.call(tool, input && typeof input === "object" ? input : {}, "module:vyred", { door: true, onBehalfOf: caller });
+        if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
+        return r ? r.data : null;
+      }
       return withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, null), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "wink" })(caller, tool, input);
     },
     /**

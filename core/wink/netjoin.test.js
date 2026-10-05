@@ -36,7 +36,7 @@ test("the direct key is derived from the peer secret: the home derives the same 
 
 test("a server that was handed no network stays on the relay: state none, nothing started", async () => {
   const calls = /** @type {string[]} */ ([]);
-  const j = createNetJoin({ root: root(), ownHandover: () => ({ relay: "x", device: "d" }), deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => ({ relay: "x", device: "d" }), deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
   await j.start();
   assert.equal(j.status().state, "none");
   assert.deepEqual(calls, []);
@@ -44,7 +44,7 @@ test("a server that was handed no network stays on the relay: state none, nothin
 
 test("a hand-over with controlUrl, key, node name and door joins as that name and dials the door", async () => {
   const calls = /** @type {string[]} */ ([]);
-  const j = createNetJoin({ root: root(), ownHandover: () => HAND, deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => HAND, deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
   await j.start();
   assert.equal(j.status().state, "up");
   assert.deepEqual(calls, ["createHost", "add w-abc http://10.0.0.5:7443 100.99.1.1:8443", "start"]);
@@ -59,7 +59,7 @@ test("a hand-over with controlUrl, key, node name and door joins as that name an
 test("a release (no hand-over any more) leaves the network", async () => {
   const calls = /** @type {string[]} */ ([]);
   let h = /** @type {any} */ (HAND);
-  const j = createNetJoin({ root: root(), ownHandover: () => h, deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => h, deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
   await j.start();
   h = null;
   await j.refresh();
@@ -70,10 +70,10 @@ test("a release (no hand-over any more) leaves the network", async () => {
 
 test("no node program: no-binary, the relay carries everything; a failed join says why and is torn down", async () => {
   const calls = /** @type {string[]} */ ([]);
-  const a = createNetJoin({ root: root(), ownHandover: () => HAND, deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: null }) } });
+  const a = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => HAND, deps: { createHost: fakeHost(calls), findBinaries: () => ({ forwarder: null }) } });
   await a.start();
   assert.equal(a.status().state, "no-binary");
-  const b = createNetJoin({ root: root(), ownHandover: () => HAND, deps: { createHost: fakeHost(calls, { fail: true }), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
+  const b = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => HAND, deps: { createHost: fakeHost(calls, { fail: true }), findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
   await b.start();
   assert.equal(b.status().state, "failed");
   assert.match(String(b.status().why), /did not come up/);
