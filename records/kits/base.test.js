@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { createMemoryStore } from "../../kernel/store/memory.js";
 import { createRecordsHost } from "../host.js";
 import fs from "node:fs";
+import { CORE_TYPES } from "../core-types.js";
 const BASE = JSON.parse(fs.readFileSync(new URL("./base/kit.json", import.meta.url), "utf8"));
 const LAW = JSON.parse(fs.readFileSync(new URL("./law-firm/kit.json", import.meta.url), "utf8"));
 
@@ -71,4 +72,9 @@ test("no legal words anywhere in the base Kit: its source, its stored form, its 
     assert.deepEqual(hits, [], "legal words in the base Kit");
   }
   for (const t of BASE.types) assert.equal(t.fields.some((f) => f.name === "practice_area"), false, `${t.name} has no practice area`);
+});
+
+test("no legal words in the core types either: their names, labels, options and descriptions", () => {
+  const WORDS = /practice|attorney|lawyer|\blaw\b|legal|\bcourt|\bcase\b|\bmatter|trust|estate|injury|accident|hearing|consult|retainer|litigation|plaintiff|settle|demand|signing|immigration|criminal|family|probate|counsel/i;
+  assert.equal(WORDS.test(JSON.stringify(CORE_TYPES)), false, "legal words in the core types");
 });
