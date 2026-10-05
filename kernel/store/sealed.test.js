@@ -134,4 +134,6 @@ test("sealed store: data crypto is @noble (synchronous, no node:crypto, no Buffe
   assert.deepEqual([...databox.fromB64(Buffer.from(bytes).toString("base64"))], [...bytes]);
   assert.equal(databox.sha256Hex(databox.utf8("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   assert.equal(databox.hmacHex(new Uint8Array(32), "x").length, 64);
+  assert.throws(() => databox.fromB64u("abcde"), { code: "bad_format" }, "a length of 1 mod 4 is not base64url");
+  assert.throws(() => databox.fromB64u("ab$d"), { code: "bad_format" });
 });
