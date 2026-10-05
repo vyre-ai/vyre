@@ -12,6 +12,7 @@
 //   child's stdout --translate--> thread.* / ask.* events --> /v1/events/stream --> every surface
 //   ask.raised --threads.answer (any human surface)--> a control_response on the child's stdin
 
+import { newId } from "../../lib/id.js";
 import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
@@ -764,7 +765,7 @@ export class Switchboard {
         const src = this.record(o.fork) || await this.adopt(o.fork);
         o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
       }
-      id = crypto.randomUUID(); box.id = id;
+      id = newId(); box.id = id; // a time-ordered id (lib/id.js)
       at("where (the project's folder)");
       const w = await this.where(o, id);
       const now = Date.now();
