@@ -248,6 +248,11 @@ export function validate(m, { firstParty = false } = {}) {
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   out.push(...checkCredentials(m.needs && m.needs.credentials));
+  if (m.needs && m.needs.kernel !== undefined) {
+    const k = m.needs.kernel;
+    if (!k || typeof k !== "object" || Array.isArray(k)) out.push("needs.kernel must be an object like { records: [type, ...] }");
+    else if (k.records !== undefined && (!Array.isArray(k.records) || k.records.some((/** @type {any} */ t) => typeof t !== "string" || !/^[a-z][a-z0-9_]{0,40}$/.test(t)))) out.push("needs.kernel.records must be a list of record type names (lowercase, letters, digits, underscores)");
+  }
   // setupTools: this module's own tools the setup channel may call (built in only, see addedCheck).
   if (m.setupTools !== undefined) {
     const own = new Set(toolEntries(m).map(t => t.name));
@@ -791,6 +796,13 @@ export class Registry {
   context(m) {
     const { db, events, config, log, paths } = this.deps;
     // The kernel handle (kernel/home.js `kernelFor`): only for a first-party module, and only when the daemon runs with the kernel on.
+    // An added module that declared `needs.kernel.records` (the record types it may make, read and change) gets narrow verbs, never the handle: they run under the person who installed it, with the module
+    // beside them as an external hop, and only on the declared types (the daemon's `moduleKernel` builds them). The rest of the kernel is not a door.
+    const addedKernel = (() => {
+      const r = this.modules.get(m.name);
+      const types = m.needs && m.needs.kernel && Array.isArray(m.needs.kernel.records) ? m.needs.kernel.records.filter((/** @type {any} */ t) => typeof t === "string") : [];
+      return types.length && r && !this.isFirstParty(r.dir) && this.deps.moduleKernel ? { records: this.deps.moduleKernel.records(m.name, types) } : undefined;
+    })();
     const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.deps.kernelFor(m) : undefined; })();
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
     const entries = new Map(toolEntries(m).map(e => [e.name, e]));
@@ -1108,7 +1120,7 @@ export class Registry {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
       },
-      ...(kernelHandle ? { kernel: kernelHandle } : {}),
+      ...(kernelHandle ? { kernel: kernelHandle } : (addedKernel ? { kernel: addedKernel } : {})),
       // The home's peer door for a paired device's stream, set by the daemon (core/daemon/peer-door.js); only the relay module bridges it.
       // This device's open peer session to a server it paired (`sessionFor(serverId)` -> { call, close }) and the kernel's remote client over it, handed up by the wink module; only the modules that
       // reach a paired server's kernel are given them (spaces: where a space is hosted; runner: lending), late-bound because wink starts after them.

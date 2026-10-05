@@ -366,6 +366,24 @@ async function startLocked(opts, root, p, release) {
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
     // The event bus becomes an adapter over the kernel's log: from here every event is a log entry and its id a log position (what was emitted before the boot moves in).
     events.attach(kernel.log, (/** @type {string} */ name) => kernel.gateway.serviceChain(name), kernel.id.space);
+    // The narrow record verbs an added module declared under needs.kernel.records: the module becomes a service of the Space with exactly create, read and update over the declared types (the
+    // kernel's own install grants, the same machinery a built-in module's needs.kernel uses), acts as itself with an EXTERNAL label (what it brings in is never trusted as the person's own), and
+    // has no `define`, no removal and no handle.
+    registry.deps.moduleKernel = {
+      records: (/** @type {string} */ name, /** @type {string[]} */ types) => {
+        const allowed = new Set(types);
+        const h = kernel.kernelFor({ name, needs: { kernel: { actions: ["records.read", "records.create", "records.update"], prefixes: types.map(t => `${t}/*`) } } });
+        const chain = () => kernel.chains.appendService(undefined, name, false);
+        const typeOf = (/** @type {string} */ urn) => String(urn).replace(/^vyre:\/\/[^/]+\//, "").split("/")[0];
+        const only = (/** @type {string} */ t) => { if (!allowed.has(String(t))) throw Object.assign(new Error(`${name}: ${t} is not a record type its needs.kernel.records lists`), { code: "undeclared" }); return String(t); };
+        return {
+          create: async (/** @type {string} */ type, /** @type {any} */ data) => h.records.create(chain(), only(type), data),
+          get: async (/** @type {string} */ urn) => h.records.get(chain(), only(typeOf(urn)), String(urn).split("/").pop()),
+          list: async (/** @type {string} */ type, /** @type {any} */ o = {}) => { const r = await h.records.query(chain(), only(type), { ...(o.filter ? { filter: o.filter } : {}), page: { limit: Math.min(Math.max(Number(o.limit) || 50, 1), 200) } }); return { rows: r.rows, next_cursor: r.next_cursor || null }; },
+          update: async (/** @type {string} */ urn, /** @type {any} */ patch, /** @type {number} */ base) => h.records.update(chain(), only(typeOf(urn)), String(urn).split("/").pop(), patch, base),
+        };
+      },
+    };
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
     // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
     db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");

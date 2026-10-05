@@ -604,6 +604,7 @@ function summary(m) {
     { label: "Vault items", value: list(needs.vault) },
     { label: "Network", value: list(needs.network) },
     { label: "Credentials", value: list(creds) },
+    { label: "Records", value: needs.kernel && Array.isArray(needs.kernel.records) && needs.kernel.records.length ? `makes, reads and changes ${needs.kernel.records.join(", ")} records, as you` : "none" },
     ...(m.replaces ? [{ label: "Replaces", value: `Vyre's own ${m.replaces}` }] : []),
   ];
 }

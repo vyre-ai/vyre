@@ -52,3 +52,38 @@ test("a sandboxed SDK module: its tools run, its own database works, and every d
   assert.equal(p.fetchPrivate.code, "undeclared", "ctx.vault.fetch is built in, not a door");
   assert.ok(fs.existsSync(path.join(root, "data", "bakery", "module.db")), "its own file in its own folder");
 });
+
+const FORMS = `export default { async start(ctx) {
+  ctx.tool("forms.submit", { input: { type: "object" }, run: async ({ name, email, other }) => {
+    const made = await ctx.kernel.records.create("lead", { name, email });
+    let blocked = null;
+    try { await ctx.kernel.records.create(other || "contact", { name }); } catch (e) { blocked = e.code; }
+    const page = await ctx.kernel.records.list("lead", { limit: 10 });
+    let defines = null, handle = null;
+    try { await ctx.kernel.records.define({ add_types: [] }); } catch (e) { defines = e.code; }
+    try { await ctx.kernel.gateway.records.define({}); } catch (e) { handle = e.code; }
+    return { urn: made.urn, count: page.rows.length, blocked, defines, handle };
+  } });
+  return {};
+} };`;
+
+test("needs.kernel.records: a sandboxed module makes and lists records of the types it declared, under the person who installed it, and nothing else", { skip: process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
+  process.env.VYRE_SEAL_DEV = "1";
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));
+  writeModule(path.join(root, "modules"), "forms", { vyre: "1", description: "A public form that files a lead.",
+    does: { tools: [{ name: "forms.submit", reach: "anyone" }] }, needs: { kernel: { records: ["lead"] } } }, FORMS);
+  const d = await start({ presence: present, root, log: () => {} });
+  t.after(() => d.stop());
+  assert.equal(d.registry.status().find(m => m.name === "forms")?.state, "running", JSON.stringify(d.registry.status().find(m => m.name === "forms")));
+  // The Space has a `lead` type (a person defined it); the module cannot define one.
+  const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  await d.kernel.gateway.records.define(owner, { add_types: [{ name: "lead", label: "Lead", fields: [{ name: "name", kind: "text", label: "Name" }, { name: "email", kind: "text", label: "Email" }] }, { name: "contact", label: "Contact", fields: [{ name: "name", kind: "text", label: "Name" }] }] });
+  const r = await d.registry.call("forms.submit", { name: "Dana", email: "dana@harlow.test" }, "local");
+  assert.ok(r.data, JSON.stringify(r));
+  assert.match(r.data.urn, /\/lead\//);
+  assert.equal(r.data.count, 1);
+  assert.equal(r.data.blocked, "undeclared", "a type it did not declare is refused");
+  assert.equal(r.data.defines, "undeclared", "it cannot define types");
+  assert.equal(r.data.handle, "undeclared", "it has no kernel handle");
+});
