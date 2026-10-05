@@ -15,7 +15,6 @@ import * as config from "../config/index.js";
 import * as certs from "./certs.js";
 import { names } from "./service.js";
 import { directory, authMessage, AUTH_TAG } from "./directory.js";
-import { codeHash } from "./rules.js";
 import worker, * as W from "../../names/worker/index.js";
 import { fakeDns } from "../../names/worker/fake-dns.js";
 import { createRuntime } from "../../relay/worker/fake-cf.js";
@@ -63,7 +62,7 @@ test("directory client: signs with the route key, and every failure carries a co
   assert.equal((await a.client.check("alex")).status, "ok");
   const r = await a.client.claim("alex");
   assert.equal(r.name, "alex");
-  assert.match(String(r.code), /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
+  assert.equal(r.fresh, true, "a new claim says so; there is no recovery code");
   assert.equal((await a.client.check("alex")).status, "mine");
   assert.equal((await h.box().client.check("alex")).status, "taken");
   await fail(h.box().client.claim("alex"), "taken");
@@ -124,18 +123,17 @@ function boxService(t, h, { ips = [], tun = true, resolver = undefined, accountU
   return { svc, ctx, cfg, emitted, log, state, box: b, root };
 }
 
-test("names.claim before Tailscale: named at once, the recovery code only in the answer", { skip }, async t => {
+test("names.claim before Tailscale: named at once, and there is no recovery code anywhere", { skip }, async t => {
   const h = hosted(t), a = boxService(t, h, { ips: [] });
   const out = /** @type {any} */ (await a.svc.claim("alex"));
-  assert.match(out.recoveryCode, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
+  assert.equal(out.recoveryCode, undefined, "no recovery code is made");
   await a.svc.wait();
   const s = a.svc.status();
   assert.equal(s.phase, "named");
   assert.match(String(s.why), /connect Tailscale/);
   assert.equal(a.cfg.name, "alex");
   assert.deepEqual(kinds(a.emitted), ["name.claimed"]);
-  const everywhere = JSON.stringify([s, a.emitted, a.log]);
-  assert.ok(!everywhere.includes(out.recoveryCode.replace(/-/g, "")) && !everywhere.includes(out.recoveryCode), "the code is in no status, event or log");
+  assert.ok(!/recovery/i.test(JSON.stringify([s, a.emitted, a.log])), "and no status, event or log speaks of one");
   assert.equal(h.dns.records.length, 0);
 });
 
@@ -145,7 +143,6 @@ test("names.claim once on the tailnet: the address, the certificate through dire
   await a.svc.wait();
   a.state.ips = ["100.101.1.2", "fd7a:115c:a1e0:ab12:4843:cd96:6265:f9d0"];
   const again = /** @type {any} */ (await a.svc.claim());
-  assert.equal(again.recoveryCode, null, "no second code");
   await a.svc.wait();
   assert.equal(a.svc.status().phase, "serving", a.svc.status().why || "");
   assert.deepEqual(h.dns.at("alex.vyre.run").map(r => [r.type, r.content]), [["A", "100.101.1.2"]], "the IPv6 address is not published: rebind filters drop it");
@@ -168,7 +165,6 @@ test("names.claim and names.check: taken, reserved, mine", { skip }, async t => 
   const h = hosted(t), a = boxService(t, h), b = boxService(t, h);
   await a.svc.claim("alex");
   const taken = /** @type {any} */ (await b.svc.claim("alex"));
-  assert.equal(taken.recoveryCode, null);
   assert.equal(b.svc.status().phase, "failed");
   assert.match(String(b.svc.status().why), /someone else/);
   assert.notEqual(b.cfg.name, "alex", "no name was saved on the loser");

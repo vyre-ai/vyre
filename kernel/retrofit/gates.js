@@ -9,12 +9,11 @@
 // It goes away at K6, when surfaces hand the kernel SurfaceFacts and nothing parses strings.
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
-import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst } from "../../core/modules/index.js";
+import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst, PERSON_FREE } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
 const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
 const urn = (/** @type {string} */ tool) => `vyre://${SPACE}/tool/${tool}`;
 const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind, id, space: SPACE });
@@ -65,7 +64,8 @@ export function createLegacyGates(cfg) {
         allowed = !(from && from.dir && def.module !== (from.manifest && from.manifest.name) && !reg.isFirstParty(from.dir) && (!def.declaredReach || def.reach === "modules"));
         break;
       }
-      case "outward": allowed = !(def.outward || agentAskFirst(tool, c)) || isPerson(c); break;
+      // the same test the registry's inline rule makes: only an older kind word (send, post, pay, delete) or an ask-first tool is held here; a plain `outward: true` goes on to the one yes's hold in the approvals queue
+      case "outward": allowed = !((typeof def.outward === "string" && def.outward) || agentAskFirst(tool, c)) || isPerson(c); break;
       case "visible": allowed = (!def.internal || isModule) && Boolean(def.hook) === (c === "hook"); break;
       case "callers": allowed = (callerAllowed(def.callers, c) || agentOpensPerson(tool, def, c, { thread: hop.via.thread })) && !personRefusesAgent(tool, def, c, { thread: hop.via.thread }); break;
       case "guest": allowed = !(c.startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || pr)); break;

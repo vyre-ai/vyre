@@ -60,7 +60,7 @@ export default {
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
     // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
-    const SYSTEM_TYPES = new Set(["goal", "flow-approval", "flow-state", "flow-schedule", "flow-run"]);
+    const SYSTEM_TYPES = new Set(["goal", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run"]);
     const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-");
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];
@@ -76,6 +76,10 @@ export default {
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.get(d.chain, u.type, u.id) };
+    }, byUrn);
+    tool("records.reference", "A record put in front of the AI (the # in the composer): the record as data, with every sealed part (and any part this room may not read) a {{field:urn#name}} placeholder, never a value. Null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
     }, byUrn);
     tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data) }));
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict).", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {

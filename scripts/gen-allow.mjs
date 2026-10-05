@@ -35,6 +35,7 @@ export const OPEN_NOTES = Object.freeze({
   "records.types": "lists the record types; the kernel hides what the caller may not see",
   "records.list": "lists records under the caller's own chain; the kernel decides every row",
   "records.get": "reads one record under the caller's own chain; the kernel decides",
+  "records.reference": "reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides",
   "records.create": "writes a record under the caller's own chain; an assistant's chain is narrowed by the kernel and a sealed value goes through a placeholder",
   "records.update": "edits a record under the caller's own chain; the kernel decides",
   "records.seal-put": "puts a sealed value through the sealing process: the kernel and the sealer decide, never the module",
