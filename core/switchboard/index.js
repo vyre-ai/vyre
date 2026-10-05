@@ -32,6 +32,7 @@ import { sessionTempDir, sessionsRoot } from "../../lib/session-temp.js";
 import { ownerDevice, ownerOverTailnet } from "../modules/index.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { personTurn, mentionsOf, resolveTags, textHash, tagNote } from "./said.js";
+import { recordTags } from "./record-tags.js";
 import { isPerson } from "../../lib/caller.js";
 import { heardActs } from "../../lib/said/hear.js";
 import { threadStatus, LIVE_STATUSES } from "../../lib/thread-status.js";
@@ -43,8 +44,6 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { ROLL, contextOf, decide as rollDecide, seedOf, indexOf as pointerIndex } from "./rollover.js";
-import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 import { withinOrThrow } from "../../lib/within.js";
 
@@ -144,31 +143,12 @@ export const MIGRATIONS = [
    ALTER TABLE threads_turns ADD COLUMN model TEXT;`,
   // A chat message queued behind another person's running turn keeps who asked and in which chat, so the next turn opens its kernel session for them (never the running turn's).
   `ALTER TABLE threads_inbox ADD COLUMN kturn TEXT;`,
-  // One Chat (team/0.3/DESIGN-one-chat.md): every thread is a run inside a chat. The kernel chat it belongs to; a thread with none (an older one, or a daemon without the kernel) gets one on its next start.
-  `ALTER TABLE threads_runs ADD COLUMN chat TEXT;
-   CREATE TABLE threads_terminal_chats (session TEXT PRIMARY KEY, chat TEXT NOT NULL);`,
-  // A run with no agent is a model slot in its chat: `model:<provider>/<model>#<n>`, minted here once and never changed (a model switch keeps it), the agent hop its kernel session carries.
-  `ALTER TABLE threads_runs ADD COLUMN slot TEXT;`,
-  // The person's current time zone (an IANA name, from the device that sent their last message), so a brief and a clock read the zone they are in now, not the server's.
-  `ALTER TABLE threads_runs ADD COLUMN tz TEXT;`,
-  // A rollover (Vyre's own, when a session's window fills; ./rollover.js): the thread keeps its id and its event log, and its agent starts a fresh native session
-  // (for Claude a new session id, native_to, because a session id names one transcript). One row per rollover, so a seed can point into every earlier window
-  // (native_from, oldest first) and a transcript under a native id still says which thread it belongs to.
-  `CREATE TABLE threads_rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, thread TEXT NOT NULL, at INTEGER NOT NULL, reason TEXT NOT NULL, native_from TEXT, native_to TEXT,
-     provider TEXT, model TEXT, used INTEGER, win INTEGER, share REAL, source TEXT, turn INTEGER, seed_chars INTEGER, seed_tail INTEGER);
-   CREATE INDEX threads_rolls_thread ON threads_rolls (thread, id);
-   CREATE INDEX threads_rolls_to ON threads_rolls (native_to);`,
-  // `vyre roll` (a Claude Code session in the person's own terminal, which Vyre does not own): the fresh session id it was told to start under, so a later seed reaches back through it.
-  `CREATE TABLE threads_terminal_rolls (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, cwd TEXT, native_from TEXT NOT NULL, native_to TEXT NOT NULL, seed_chars INTEGER);
-   CREATE INDEX threads_terminal_rolls_to ON threads_terminal_rolls (native_to);`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 /** What a provider is called in a line a person reads. @param {string} p */
-/** Is this an IANA time zone name this runtime knows? @param {string} z */
-export const validZone = z => { if (typeof z !== "string" || !z || z.length > 64) return false; try { new Intl.DateTimeFormat("en", { timeZone: z }); return true; } catch { return false; } };
 export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
 
 /** The things a provider can do that a person would miss, in the words a notice uses. */
@@ -286,7 +266,7 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account", "zone"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick", "account"];
 
 /** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
@@ -473,10 +453,6 @@ export class Switchboard {
     /** @type {Map<string, string | null>} who asked the chat turn now running on a thread, whether or not the kernel let their session open: nobody else's message joins it */ this.turnAsker = new Map();
     /** Words that go in front of a thread's next turn, once (what happened while its provider was away). @type {Map<string, string>} */
     this.carry = new Map();
-    /** A thread's rollover in flight (./rollover.js): a person's message to it waits for this, never racing a second start. @type {Map<string, Promise<any>>} */
-    this.rolling = new Map();
-    /** project (or "") -> { at, cfg }: the rollover settings, read at most every few seconds. @type {Map<string, { at: number, cfg: any }>} */
-    this.rollCfgs = new Map();
     /** provider:account -> when its limit was last hit here (ms), so a one-turn ask to it is refused at the door. @type {Map<string, number>} */
     this.limitedUntil = new Map();
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
@@ -554,15 +530,6 @@ export class Switchboard {
   }
 
   emitRaw(type, payload, thread, project) {
-    // The run's start, end, status and rename say which chat the run is in (One Chat): the Chat record is kept from these. Not on every event: a reply's deltas are many.
-    if ((type === "thread.started" || type === "thread.stopped" || type === "thread.renamed" || type === "thread.status") && payload && payload.chat === undefined) {
-      const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
-      if (row && row.chat) payload = { ...payload, chat: row.chat };
-    }
-    if (type === "thread.sent" && payload && payload.tz === undefined) {
-      const row = /** @type {any} */ (this.db.prepare("SELECT tz FROM threads_runs WHERE id = ?").get(thread));
-      if (row && row.tz) payload = { ...payload, tz: row.tz };
-    }
     const where = { thread, project: project || undefined };
     try { return this.deps.emit(type, { thread, ...payload }, where); }
     catch (e) {
@@ -574,82 +541,13 @@ export class Switchboard {
     }
   }
 
-  /**
-   * Every run lives in a chat (DESIGN-one-chat.md). A run the stream started for a chat already has it; any other start (the CLI, a Flow, the assistant, a resumed older thread) gets a chat of the
-   * person it runs for and the assistant it runs as, made by the daemon under that person's own chain (deps.chatFor). Without the kernel there is no chat to make and the thread is as before.
-   * Never throws: a start does not fail because a chat could not be made.
-   * @param {string} id @param {{ chat?: string } | null} turn the stream's chat for this run, when it has one
-   * @returns {Promise<string | null>}
-   */
-  async ensureChat(id, turn = null) {
-    try {
-      const have = /** @type {any} */ (this.db.prepare("SELECT chat, name, agent, agent_kind, project FROM threads_runs WHERE id = ?").get(id));
-      if (!have) return null;
-      const chat = turn && turn.chat ? turn.chat : have.chat || (this.deps.chatFor ? await this.deps.chatFor({ thread: id, agent: have.agent || null, agent_kind: have.agent_kind || null, name: have.name || null, project: have.project || null }) : null);
-      if (chat && chat !== have.chat) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ?").run(chat, id);
-      return chat || null;
-    } catch (e) { this.deps.log(`threads: no chat for ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
-  }
-
-  /**
-   * A terminal session (`claude` or `vyre start` outside vyred) is a run in a chat too. The Harness's SessionStart hook says `thread.started` for it, and the chat is made here, once, and
-   * remembered by the session id; adopting that session later (a resume here) takes the same chat. A session this Switchboard already runs has its own (ensureChat).
-   * @param {string} session @returns {Promise<string | null>}
-   */
-  async terminalChat(session) {
-    try {
-      if (this.record(session)) return await this.ensureChat(session);
-      const have = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(session));
-      if (have) return have.chat;
-      if (!this.deps.chatFor) return null;
-      const chat = await this.deps.chatFor({ thread: session, agent: null, name: null, project: null });
-      this.db.prepare("INSERT OR IGNORE INTO threads_terminal_chats (session, chat) VALUES (?,?)").run(session, chat);
-      return /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(session)).chat;
-    } catch (e) { this.deps.log(`threads: no chat for terminal session ${String(session).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
-  }
-
-  /**
-   * The slot of a run with no agent: `model:<provider>/<model>#<id prefix>`, made once (the stream may name it when it starts the run, so its own member id and the run's agree) and kept. A run with an
-   * agent has no slot of its own: its agent is the one in the chat. @param {string} id @param {string | null} [named]
-   * @returns {string | null}
-   */
-  ensureSlot(id, named = null) {
-    const r = /** @type {any} */ (this.db.prepare("SELECT slot, agent, provider, model, chat FROM threads_runs WHERE id = ?").get(String(id)));
-    if (!r || r.agent) return null;
-    if (r.slot) return String(r.slot);
-    // `#n` is the kernel's own shape (1 to 6 digits): the run's place among its chat's runs, so two slots of one model in a chat differ.
-    const nth = r.chat ? Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_runs WHERE chat = ?").get(r.chat)).n) || 1 : 1;
-    const model = String(r.model || "default").replace(/[^A-Za-z0-9._:-]/g, "-").replace(/^[^A-Za-z0-9]+/, "") || "default";
-    const slot = named && /^model:[a-z0-9][a-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._:-]*#[0-9]{1,6}$/.test(named) ? named : `model:${String(r.provider || "claude").toLowerCase().replace(/[^a-z0-9._-]/g, "-")}/${model}#${nth}`;
-    this.db.prepare("UPDATE threads_runs SET slot = ? WHERE id = ?").run(slot, String(id));
-    return slot;
-  }
-
-  /** The runs of one chat (a run is one assistant or model in it): the facts a chat's participants see as its slots. @param {string} chat */
-  ofChat(chat) {
-    const live = this.sessions.live(this.ours());
-    return /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at").all(String(chat))).map(r => {
-      const t = /** @type {any} */ (this.record(String(r.id)));
-      const said = /** @type {any[]} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.text' ORDER BY id DESC LIMIT 8").all(t.id)).map(e => { try { return JSON.parse(String(e.payload)); } catch { return null; } }).find(p => p && p.done && !p.notice && typeof p.text === "string" && p.text.trim());
-      return { thread: t.id, name: t.name, agent: t.agent, slot: t.agent ? `agent:${t.agent}` : (t.slot || null), provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns, ...(said ? { last_line: cut(said.text.replace(/\s+/g, " ").trim(), 140) } : {}) };
-    });
-  }
-
-  /** The chat a run (or a terminal session, by its session id) is in, or null. @param {string} id */
-  chatOf(id) {
-    const r = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(String(id)));
-    if (r) return r.chat || null;
-    const t = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(id)));
-    return t ? t.chat : null;
-  }
-
   record(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_runs WHERE id = ?").get(id));
     if (!r) return null;
     const holder = this.leases.holder(id);
     // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, tz: r.tz || null, status: r.status,
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
@@ -867,12 +765,10 @@ export class Switchboard {
       const stopReason = /** @type {any} */ (this.db.prepare("SELECT stopped_reason FROM threads_runs WHERE id = ?").get(id))?.stopped_reason;
       // Unclean ends: the process was killed (failed), or the daemon itself died under it (recover() at the next start marks such a thread stopped with reason "restart").
       if ((rec.canonical_status === "failed" || rec.status === "failed" || this.states.get(id) === "failed" || stopReason === "restart") && (rec.provider || "claude") === "claude") {
-        try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: this.nativeOf(id) })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
+        try { const r = /** @type {any} */ (await this.deps.call("runner.recover", { session: id })); if (r && r.data && r.data.turn !== undefined) this.deps.log(`threads: ${String(id).slice(0, 8)} was put back to its last sealed turn (${r.data.turn}) before resuming`); } catch { /* no runner here */ }
       }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
-      if (!rec.chat) { at("chat"); await this.ensureChat(id, o.kernelTurn || null); rec = this.must(id); }
-      this.ensureSlot(id);
     } else {
       // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its
       // folder and project, a new id, and never the other session's process or transcript.
@@ -905,9 +801,6 @@ export class Switchboard {
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ?, account = ? WHERE id = ?").run(o.provider, o.purpose, o.account || null, id);
-      at("chat");
-      await this.ensureChat(id, o.kernelTurn || null);
-      this.ensureSlot(id, o.slotName || null);
       // A project's default mode (sessions.mode.set), for a new session a person starts there.
       if (w.project && !o.agent && !o.lean) {
         const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
@@ -979,13 +872,10 @@ export class Switchboard {
     at("sandbox self-test");
     o = { ...o, sandboxSpawn: await this.sandboxFor(id, rec, o) };
     at("spawn");
-    // A thread rolled over and not yet written to has a fresh native session waiting for its first message, and the seed that rides with it: a restart in between must not try
-    // to resume a session that never began, and must not lose the seed.
-    if (o.fresh && o.roll_seed && !this.carry.has(id)) this.carry.set(id, String(o.roll_seed));
-    this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind && !o.fresh });
+    this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
-    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, chat: fresh.chat, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
+    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
       provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, effort: fresh.effort, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
@@ -1031,20 +921,14 @@ export class Switchboard {
     // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with
     // the launch's append read as its facts, versioned. Without the sessions module, as before.
     if (o.purpose === "capsule" && !o.agent) {
-      const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}), ...(o.zone ? { zone: String(o.zone) } : {}) }).catch(() => null);
+      const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}) }).catch(() => null);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text, version: r.data.version || null };
     }
     // A job (no settings, no plugin: Learning's distillation) is told only what its launch says.
     if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
     const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);
     try {
-      // A driver with no SessionStart hook (Codex, Grok over ACP) gets the project's own context as the third layer of its first prompt; Claude's hook adds it itself.
-      let context = "";
-      if (rec.provider && rec.provider !== "claude") {
-        const c = await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null);
-        context = c && !c.error && c.data ? (typeof c.data === "string" ? c.data : typeof c.data.text === "string" ? c.data.text : "") : "";
-      }
-      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context, zone: o.zone }).filter(([, v]) => v));
+      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append }).filter(([, v]) => v));
       const r = await this.deps.call("sessions.prompt.compose", input);
       if (r && r.error && r.error.code !== "no_such_tool") this.deps.log(`threads: the system prompt could not be composed (${r.error.message}); using Vyre's own`);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text };
@@ -1355,7 +1239,7 @@ export class Switchboard {
     if (rec.mode === BYPASS && !withPlugin) this.db.prepare("UPDATE threads_runs SET mode = 'default' WHERE id = ?").run(id);
     // A warm quick session (threads.quick) writes no transcript: nothing to resume, and nothing
     // for Recall to find its prompt (another question's passages) in.
-    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, ephemeral: Boolean(o.quick), resume: o.resume, native: o.native || null, forkFrom: o.forkFrom ? this.nativeOf(String(o.forkFrom)) : null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, ephemeral: Boolean(o.quick), resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, withPlugin, mode: mode || "default", message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
@@ -1382,7 +1266,7 @@ export class Switchboard {
     // thread is the person's own (no agent, and a recorded chat, project or capsule purpose: a record with no purpose is not): both come from this record, never from the session.
     const personal = !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || ""));
     const memory = async ({ prompt, first }) => {
-      const r = await this.deps.call("memory.prompt", { prompt: withoutSeed(prompt), first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true } : {}) }).catch(() => null);
+      const r = await this.deps.call("memory.prompt", { prompt, first: Boolean(first), thread: id, ...(rec.project ? { project: rec.project } : {}), ...(rec.agent ? { agent: rec.agent } : personal ? { person: true } : {}) }).catch(() => null);
       return r && !r.error && r.data && Array.isArray(r.data.blocks) ? r.data.blocks.filter(b => b && b.type === "text" && typeof b.text === "string").map(b => ({ type: "text", text: b.text })) : [];
     };
     const foreignOpts = foreign ? { floor, memory, ...(sock ? { mcpServers: [{ name: "vyre", command: process.execPath, args: [MCP_SERVER], env: Object.entries(mcpEnv).map(([name, value]) => ({ name, value: String(value) })) }] } : {}) } : {};
@@ -1454,7 +1338,7 @@ export class Switchboard {
     }
     for (const e of t.events) {
       if (e.type === "thread.text") this.flush(id, st);                // the whole text lands after its last delta
-      if (e.type === "thread.text" && e.payload.done && !e.payload.kind && !e.payload.notice) { st.lastText = String(e.payload.text || ""); this.mirror(id, "assistant", st.lastText, st.model || rec?.model || null); }
+      if (e.type === "thread.text" && e.payload.done && !e.payload.kind && !e.payload.notice) st.lastText = String(e.payload.text || "");
       if (e.type === "thread.finished") {
         this.flush(id, st);
         // The turn's own cost from the running total: a total below the last one is a new count
@@ -1704,277 +1588,6 @@ export class Switchboard {
     return { thread: id, provider, account: acct ? acct.id : null, resumed: had };
   }
 
-  // ---------------------------------------------------------------------------------------------
-  // Vyre's own rollover (./rollover.js; team/0.2.5/memory-context.md, section 3c). A session's window is Vyre's to manage, whatever agent or model runs it: between
-  // turns, before the window fills, the agent's session ends and a fresh one starts in the same folder, and the person's next message goes to it with a seed Vyre
-  // built from its own store in front. The thread, its folder and its event log do not change. Every turn of the window dropped stays stored (Recall), one
-  // memory_turn away.
-
-  /**
-   * The id of the native session a thread is running now: for Claude, a thread's own id until its first rollover and a fresh session id after each one (a session id names
-   * one transcript, so a fresh window is a new id); for any other provider, the thread's id (the provider keeps its own session ids).
-   * @param {string} id
-   */
-  nativeOf(id) {
-    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
-    const n = row ? optsOf(row).native : null;
-    return typeof n === "string" && n ? n : id;
-  }
-
-  /**
-   * The thread a native session id belongs to: the thread itself, or the one that rolled into or out of this id. Null for a session this Switchboard never rolled.
-   * @param {string} session
-   */
-  threadOfNative(session) {
-    if (session.startsWith("m-") && this.record(session.slice(2))) return session.slice(2);
-    const r = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_rolls WHERE native_to = ? OR native_from = ? ORDER BY id LIMIT 1").get(session, session));
-    return r ? String(r.thread) : null;
-  }
-
-  /**
-   * The sessions of a thread whose turns Recall can hold, oldest first: Claude's own (the thread's id, then each rollover's fresh id) and, when another provider has run it,
-   * the mirror of its conversation (mirror()).
-   * @param {string} id
-   */
-  nativeChain(id) {
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT native_from, native_to FROM threads_rolls WHERE thread = ? ORDER BY id").all(id));
-    const out = [];
-    for (const r of rows) { if (r.native_from && !out.includes(r.native_from)) out.push(String(r.native_from)); if (r.native_to && !out.includes(r.native_to)) out.push(String(r.native_to)); }
-    const cur = this.nativeOf(id);
-    if (!out.includes(cur)) out.push(cur);
-    const m = this.mirrorId(id);
-    if (m && fs.existsSync(this.mirrorFile(id))) out.push(m);
-    return out;
-  }
-
-  /** The session id a non-Claude thread's mirrored conversation goes by in Recall: not the thread's own id, which a Claude transcript may hold as well (a pointer's 8-character prefix must name one session). @param {string} id */
-  mirrorId(id) { return `m-${id}`; }
-
-  /** @param {string} id */
-  mirrorFile(id) {
-    const rec = this.record(id);
-    return path.join(String(this.deps.root || os.tmpdir()), "mirror", String((rec && rec.cwd) || "").replace(/[^A-Za-z0-9]/g, "-"), `${this.mirrorId(id)}.jsonl`);
-  }
-
-  /**
-   * Keep what a non-Claude thread said and was told, word for word, in Claude Code's own transcript layout under <home>/mirror, so Recall indexes it like any session and a
-   * rollover (or memory_turn) can read any of it back. Claude's own turns are in its own transcript already; the person's words come from write(), the assistant's from
-   * its finished messages. A Vyre block in front of a message (a handoff brief, a seed) is not part of what was said and is left out. Never fails a turn.
-   * @param {string} id @param {"user"|"assistant"} role @param {string} text @param {string|null} [model]
-   */
-  mirror(id, role, text, model = null) {
-    try {
-      const rec = this.record(id);
-      if (!rec || (rec.provider || "claude") === "claude") return;
-      const words = (role === "user" ? withoutVyre(text) : text).trim();
-      if (!words) return;
-      const file = this.mirrorFile(id);
-      fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-      const line = { type: role, cwd: rec.cwd, sessionId: this.mirrorId(id), timestamp: new Date().toISOString(), uuid: crypto.randomUUID(), provider: rec.provider,
-        message: role === "user" ? { role, content: words } : { role, ...(model ? { model: String(model).slice(0, 80) } : {}), content: [{ type: "text", text: words }] } };
-      fs.appendFileSync(file, JSON.stringify(line) + "\n", { mode: 0o600 });
-    } catch (e) { this.deps.log(`threads: could not mirror a turn of ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); }
-  }
-
-  /**
-   * The rollover settings in force for a project: sessions.rollover (on or off), sessions.rollover_at (percent of the window). A setting the settings module does not answer
-   * is its default. Read at most every few seconds per project.
-   * @param {string|null} project
-   */
-  async rollSettings(project) {
-    const key = project || "";
-    const hit = this.rollCfgs.get(key);
-    if (hit && Date.now() - hit.at < 5_000) return hit.cfg;
-    const cfg = { enabled: true, at: ROLL.at };
-    const ask = async (/** @type {string} */ k) => { try { const r = await this.deps.call("settings.get", { key: k, ...(project ? { project } : {}) }); return r && !r.error && r.data ? r.data.value : undefined; } catch { return undefined; } };
-    const [on, at] = await Promise.all([ask("sessions.rollover"), ask("sessions.rollover_at")]);
-    if (on === false) cfg.enabled = false;
-    if (typeof at === "number" && at >= 20 && at <= 90) cfg.at = at / 100;
-    this.rollCfgs.set(key, { at: Date.now(), cfg });
-    return cfg;
-  }
-
-  /** The characters of a thread's conversation (what was sent and said) since its last rollover, for a window count when the agent reports none. @param {string} id */
-  rollChars(id) {
-    const last = /** @type {any} */ (this.db.prepare("SELECT at FROM threads_rolls WHERE thread = ? ORDER BY id DESC LIMIT 1").get(id));
-    const r = /** @type {any} */ (this.db.prepare(`SELECT COALESCE(SUM(length(json_extract(payload, '$.text'))), 0) AS n FROM events WHERE thread = ? AND at > ?
-      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL))`).get(id, last ? Number(last.at) : 0));
-    return Number(r && r.n) || 0;
-  }
-
-  /**
-   * A turn just ended: is this session's window filling? Acts only at the boundary (nothing running a turn), when the thread is a conversation Vyre runs
-   * (a chat, project or agent session; a teammate rotates itself, a job is short), the setting is on, and the share has passed the threshold.
-   * @param {string} id @param {any} st @param {string|null} project
-   */
-  async rollCheck(id, st, project) {
-    const L = st.launch || {};
-    if (L.once || L.quick || L.rolls === false) return;
-    const rec0 = this.record(id);
-    if (!rec0 || (rec0.purpose && !["chat", "project", "agent"].includes(String(rec0.purpose)))) return;
-    const cfg = await this.rollSettings(rec0.project);
-    if (!cfg.enabled) return;
-    // Settled: the thread may have moved on while the settings were read.
-    if (this.live.get(id) !== st || st.turn || st.stopping || st.switching || this.rolling.has(id) || this.switches.has(id) || this.once.has(id)) return;
-    const rec = this.record(id);
-    if (!rec) return;
-    const ctx = contextOf({ used: st.used || 0, window: st.window || 0, chars: st.used ? 0 : this.rollChars(id), model: rec.model, provider: rec.provider });
-    const last = /** @type {any} */ (this.db.prepare("SELECT turn FROM threads_rolls WHERE thread = ? ORDER BY id DESC LIMIT 1").get(id));
-    const running = st.tasks ? [...st.tasks.values()].some((/** @type {any} */ t) => t && t.status === "running") : false;
-    const blocked = st.openTools && st.openTools.size ? "a tool is running" : running ? "a background job is running" : st.subSlots && st.subSlots.size ? "a subagent is running"
-      : this.asks.open(id).length ? "a question is open" : st.steers.size || this.db.prepare("SELECT 1 FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL LIMIT 1").get(id) ? "a message is waiting" : null;
-    const d = rollDecide({ ctx, at: cfg.at, force: Math.max(cfg.at, ROLL.force), blocked, waited: st.rollWaited || 0, sinceRoll: last ? Math.max(0, (Number(rec.turns) || 0) - Number(last.turn || 0)) : null });
-    if (d.wait) { st.rollWaited = (st.rollWaited || 0) + 1; return; }
-    if (!d.roll) { if (ctx.share < cfg.at) st.rollWaited = 0; return; }
-    st.rollWaited = 0;
-    this.startRoll(id, { reason: "window", why: d.why, ctx }).catch(() => {});   // said in the log by startRoll; the thread simply stays as it was
-  }
-
-  /**
-   * Begin a rollover, now: it is held in this.rolling so a person's message to the thread waits for it. Returns the promise (a manual roll waits for the answer).
-   * @param {string} id @param {{ reason: string, why?: string, ctx?: any }} o
-   */
-  startRoll(id, o) {
-    const p = this.doRollover(id, o).catch(e => { this.deps.log(`threads: rollover of ${id.slice(0, 8)} failed: ${e.message}`); throw e; }).finally(() => { this.rolling.delete(id); this.switches.delete(id); this.starting.delete(tracked); });
-    const tracked = p.catch(() => {});
-    this.rolling.set(id, p);
-    this.switches.add(id);
-    this.starting.add(tracked);
-    return p;
-  }
-
-  /**
-   * Roll a thread over now, at a person's word (threads.roll): between turns only, never one that is running.
-   * @param {string} id
-   */
-  async rollNow(id) {
-    const rec = this.must(id);
-    const st = this.live.get(id);
-    if (!st) throw Object.assign(new Error("this session is not running: send it a message, and it rolls over when its window fills"), { code: "bad_input" });
-    if (st.turn || ["working", "waiting"].includes(String(rec.status))) throw Object.assign(new Error("a turn is running: wait for it to end, then roll the window over"), { code: "busy" });
-    if (this.rolling.has(id) || this.switches.has(id)) throw Object.assign(new Error("this thread is already moving to a fresh session"), { code: "busy" });
-    const ctx = contextOf({ used: st.used || 0, window: st.window || 0, chars: st.used ? 0 : this.rollChars(id), model: rec.model, provider: rec.provider });
-    return this.startRoll(id, { reason: "asked", why: "asked", ctx });
-  }
-
-  /** The conversation as turns, newest last, from the event log (every provider writes it): what the person sent and what the assistant said. @param {string} id @param {number} [limit] */
-  rollTurns(id, limit = 400) {
-    const rows = /** @type {any[]} */ (this.db.prepare(`SELECT type, payload FROM events WHERE thread = ?
-      AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
-      ORDER BY id DESC LIMIT ?`).all(id, limit)).reverse();
-    return rows.map(r => ({ who: r.type === "thread.sent" ? "person" : "assistant", text: withoutSeed(String(JSON.parse(String(r.payload)).text || "").trim()) })).filter(t => t.text);
-  }
-
-  /**
-   * What the seed opens with: the person's own decisions for this thread's project, the plan as the agent last left it, the pointer index of the windows before, and the last turns.
-   * Built from Vyre's store only; a part that cannot be read (no memory module, nothing indexed yet) is left out, never invented.
-   * @param {string} id @param {any} rec
-   */
-  async rollSeed(id, rec) {
-    return this.seedFor({ chain: this.nativeChain(id), rec, thread: id, roll: (Number(/** @type {any} */ (this.db.prepare("SELECT COUNT(*) AS n FROM threads_rolls WHERE thread = ?").get(id)).n) || 0) + 1 });
-  }
-
-  /**
-   * The seed for a chain of sessions (a thread's windows, or a terminal session and the ones it rolled out of). The windows' native sessions are asked of Recall (it indexes each now):
-   * the last turns word for word and a pointer index of all before them, one cut for both. What Recall does not hold (a provider whose turns it never indexed) falls back to the
-   * thread's event log for its last turns, with no pointers; a terminal session with no thread has no plan or event log, only Recall.
-   * @param {{ chain: string[], rec: { project?: string|null, cwd: string, agent?: string|null }, thread?: string|null, roll?: number }} o
-   */
-  async seedFor({ chain, rec, thread = null, roll = 1 }) {
-    const [ptr, dec] = await Promise.all([
-      this.deps.call("recall.pointers", { sessions: chain, tail_chars: Math.floor(ROLL.tailChars * 0.8), lines: ROLL.lines }).catch(() => null),
-      this.deps.call("memory.decisions", { ...(rec.project ? { project: rec.project } : { project_cwds: [rec.cwd] }), ...(rec.agent ? { agent: rec.agent } : {}), limit: 20 }).catch(() => null),
-    ]);
-    const held = ptr && !ptr.error && ptr.data && Array.isArray(ptr.data.tail) && ptr.data.tail.length ? ptr.data : null;
-    const decisions = dec && !dec.error && dec.data && Array.isArray(dec.data.decisions)
-      ? dec.data.decisions.filter((/** @type {any} */ d) => d && d.by === "person" && d.state === "current" && !d.untrusted).map((/** @type {any} */ d) => ({ topic: d.topic, value: d.value, text: d.text, state: d.state, at: d.at })) : [];
-    let plan = [];
-    if (thread) {
-      const planRow = /** @type {any} */ (this.db.prepare("SELECT payload FROM events WHERE thread = ? AND type = 'thread.plan' ORDER BY id DESC LIMIT 1").get(thread));
-      try { plan = planRow ? (JSON.parse(String(planRow.payload)).items || []) : []; } catch { plan = []; }
-    }
-    const pointers = held ? pointerIndex(held.sessions.filter((/** @type {any} */ x) => x && (x.lines.length || x.files.length || x.commits.length || x.turns)), ROLL.lines) : {};
-    return { ...seedOf({ decisions, plan, pointers, tail: held ? held.tail : thread ? this.rollTurns(thread) : [], roll, folder: rec.cwd }), held: Boolean(held) };
-  }
-
-  /**
-   * Roll a Claude Code session the person runs in their own terminal (`vyre roll`): the seed for it and the windows it came from, and a fresh session id for the next window
-   * (`claude --session-id`), recorded so a later roll's seed reaches back through this one. Nothing is stopped or started here: Vyre does not own that session.
-   * @param {{ session: string, cwd?: string|null }} o
-   */
-  async rollTerminal({ session, cwd = null }) {
-    const chain = [String(session)];
-    for (let n = 0; n < 12; n++) {
-      const prev = /** @type {any} */ (this.db.prepare("SELECT native_from FROM threads_terminal_rolls WHERE native_to = ? ORDER BY id DESC LIMIT 1").get(chain[0]));
-      if (!prev || chain.includes(String(prev.native_from))) break;
-      chain.unshift(String(prev.native_from));
-    }
-    const folder = cwd || process.cwd();
-    const of = await this.deps.call("projects.of", { cwd: folder }).catch(() => null);
-    const seed = await this.seedFor({ chain, rec: { cwd: folder, project: of && of.data && of.data.slug ? String(of.data.slug) : null }, roll: chain.length });
-    if (!seed.held) throw Object.assign(new Error(`no session ${String(session).slice(0, 36)} that Recall holds: it indexes a session when its turn ends, or on vyre index`), { code: "not_found" });
-    const to = crypto.randomUUID();
-    this.db.prepare("INSERT INTO threads_terminal_rolls (at, cwd, native_from, native_to, seed_chars) VALUES (?,?,?,?,?)").run(Date.now(), folder, String(session), to, seed.chars);
-    return { seed: seed.text, session: to, from: String(session), windows: chain.length, seed_chars: seed.chars, tail: seed.tail, ...(of && of.data && of.data.slug ? { project: String(of.data.slug) } : {}) };
-  }
-
-  /**
-   * The rollover itself. The agent is idle (a turn boundary): build the seed while it still is, then end its session and start a fresh one with the same folder, mode, account and
-   * model; the seed waits to ride in front of the next message. Says so once in the transcript.
-   * @param {string} id @param {{ reason: string, why?: string, ctx?: any }} o
-   */
-  async doRollover(id, { reason, why = null, ctx = null }) {
-    const rec = this.must(id);
-    const st = this.live.get(id);
-    if (!st) return { rolled: false, why: "not running" };
-    const seed = await this.rollSeed(id, rec);
-    // The seed took a moment: a turn that began meanwhile (a queued message ran, a person's steer) is not a boundary any more.
-    if (this.live.get(id) !== st || st.turn || st.stopping) return { rolled: false, why: "a turn began first" };
-    // A seed bigger than the window's own threshold would roll again at once: refused, never looped.
-    const win = ctx ? ctx.window : contextOf({ model: rec.model, provider: rec.provider }).window;
-    if (seed.chars / 4 > win * ROLL.at * 0.5) { this.deps.log(`threads: rollover of ${id.slice(0, 8)} refused: its seed (${seed.chars} characters) is too big for the window`); return { rolled: false, why: "seed too big" }; }
-    const provider = rec.provider || "claude";
-    const from = this.nativeOf(id);
-    const to = provider === "claude" ? crypto.randomUUID() : null;
-    st.switching = true;
-    const proc = st.proc;
-    this.live.delete(id);
-    await proc.stop();
-    for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "window rolled over");
-    const row = /** @type {any} */ (this.db.prepare("SELECT opts, turns FROM threads_runs WHERE id = ?").get(id));
-    const kept = optsOf(row);
-    if (to) kept.native = to;
-    kept.fresh = true;
-    kept.roll_seed = seed.text;
-    this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
-    this.db.prepare(`INSERT INTO threads_rolls (thread, at, reason, native_from, native_to, provider, model, used, win, share, source, turn, seed_chars, seed_tail)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, Date.now(), why ? `${reason}: ${why}` : reason, from, to, provider, rec.model || null, ctx ? Math.round(ctx.used) : null, ctx ? Math.round(ctx.window) : null,
-      ctx ? Math.round(ctx.share * 1000) / 1000 : null, ctx ? ctx.source : null, Number(row && row.turns) || 0, seed.chars, seed.tail);
-    const pct = ctx ? Math.round(ctx.share * 100) : null;
-    const line = `Continued in a fresh session${pct !== null ? ` (the window was ${ctx.source === "estimated" ? "about " : ""}${pct}% full)` : ""}. It has the files as they are, your decisions, a plan, an index of what came before and the last turns word for word; every earlier turn is stored and one search away.`;
-    this.emit("thread.text", { message: "vyre", text: line, done: true, notice: true }, id, rec.project);
-    this.emit("thread.rolled", { thread: id, from, to, reason, ...(ctx ? { used: Math.round(ctx.used), window: Math.round(ctx.window), share: Math.round(ctx.share * 1000) / 1000, source: ctx.source } : {}), seed_chars: seed.chars, seed_tail: seed.tail, text: line }, id, rec.project);
-    // The seed rides in front of the next message (write() takes it); set before the launch, which hands over any queued words at once.
-    this.carry.set(id, seed.text);
-    // An agent's thread comes back with the agent's own credentials and scope, which only the agents module can give it (as sendOne does); the thread's saved options carry the fresh window.
-    if (rec.agent) {
-      const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
-      if (r && r.error) throw Object.assign(new Error(`could not start ${rec.agent}'s fresh window: ${r.error.message}`), { code: r.error.code || "failed" });
-    } else await this.launch({ resume: id, rebind: true });
-    return { rolled: true, thread: id, native: to || from, seed_chars: seed.chars };
-  }
-
-  /** The first message of a rolled session has gone out with its seed: nothing is waiting any more, so a later resume is a plain resume. @param {string} id @param {any} st */
-  settleRoll(id, st) {
-    if (st.launch) st.launch.fresh = false;
-    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
-    if (!row) return;
-    const kept = optsOf(row);
-    if (!kept.fresh && !kept.roll_seed) return;
-    delete kept.fresh; delete kept.roll_seed;
-    this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
-  }
-
   /**
    * A limit was hit: the next entry of this thread's routing list (agent, project, then the
    * machine's), one not already tried in this run of fallbacks. False when there is none, and the
@@ -2075,9 +1688,7 @@ export class Switchboard {
     if (shells) this.shellContext.delete(id);
     const carried = this.carry.get(id);
     if (carried) this.carry.delete(id);
-    if (carried && st.launch && st.launch.fresh) this.settleRoll(id, st);
     st.proc.write(userLine(`${carried ? `${carried}\n\n` : ""}${shells ? `${shells.join("\n")}\n\n` : ""}${text}${note ? `\n\n${note}` : ""}`, id, { uuid, ...(images ? { images } : {}) }));
-    this.mirror(id, "user", String(text));
     this.set(id, { status: "working" });
     const rec = this.record(id);
     this.emit("thread.turn", { turn: st.turn, uuid, text: cut(text, 2000) }, id, rec ? rec.project : null);
@@ -2113,8 +1724,6 @@ export class Switchboard {
     if (this.live.get(id) !== st || st.stopping) return;
     // One turn on another provider is over: the session goes back to its own, and carries what was said.
     if (this.once.has(id)) { this.revertOnce(id).catch(e => this.deps.log(`threads: could not go back after a one-turn ask on ${id.slice(0, 8)}: ${e.message}`)); return; }
-    // Vyre's own rollover: if the window is filling, look at it now (it settles after the settings are read, and only acts at a boundary).
-    void this.rollCheck(id, st, project).catch(e => this.deps.log(`threads: rollover check for ${id.slice(0, 8)} failed: ${e.message}`));
     if (st.steers.size) {
       const [[uuid, text], ...rest] = [...st.steers.entries()];
       st.turn = `${id}:${++st.turnNo}`;
@@ -2206,9 +1815,9 @@ export class Switchboard {
    * @param {string} id @returns {string|null} why it is, or null
    */
   elsewhere(id) {
-    const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
+    const t = findSession(this.deps.transcripts || [], id);
     const rec = this.record(id);
-    return openElsewhere({ id, mtime: t ? t.mtime : 0, boundPid: this.sessions.boundPid(this.nativeOf(id)), ours: this.ours(), alive, naming: this.deps.naming,
+    return openElsewhere({ id, mtime: t ? t.mtime : 0, boundPid: this.sessions.boundPid(id), ours: this.ours(), alive, naming: this.deps.naming,
       ourLast: rec && rec.stopped_reason !== "adopted" ? rec.last : null });
   }
 
@@ -2226,9 +1835,6 @@ export class Switchboard {
     const now = Date.now();
     this.db.prepare(`INSERT OR IGNORE INTO threads_runs (id, name, cwd, project, status, auth, started_at, last_at, stopped_reason)
       VALUES (?,?,?,?, 'stopped', 'ambient', ?,?, 'adopted')`).run(id, info.name, info.cwd, of.data?.slug || null, t.mtime, now);
-    // the terminal session's chat, when its SessionStart already made one; otherwise the adopted run gets its own
-    const term = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(id));
-    if (term) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ? AND chat IS NULL").run(term.chat, id); else await this.ensureChat(id);
     return this.must(id);
   }
 
@@ -2255,8 +1861,11 @@ export class Switchboard {
     this.emit("turn.said", { id: uuid, surface, at: Date.now(), text_hash: textHash(text) }, id, rec.project);
     await this.hearActs(id, text, uuid, pasted, rec.project);
     const names = mentionsOf(text, pasted);
-    if (!names.length && !chips.length) return [];
-    const tags = await resolveTags({ names, chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) });
+    // A picked record is checked by the kernel under the sender's own chain before the model hears of it; the rest go to their providers.
+    const picked = typeof this.deps.recordTags === "function" ? await this.deps.recordTags(chips) : { chips, tags: [] };
+    if (!names.length && !picked.chips.length && !picked.tags.length) return [];
+    const resolved = names.length || picked.chips.length ? await resolveTags({ names, chips: picked.chips, thread: id, said: uuid, call: (tool, input) => this.deps.call(tool, input) }) : [];
+    const tags = [...resolved, ...picked.tags];
     if (tags.length) this.emit("thread.mentioned", { uuid, mentions: tags.map(({ note, ...t }) => t) }, id, rec.project);
     return tags;
   }
@@ -2296,8 +1905,6 @@ export class Switchboard {
     // A start the limit gave up on sends nothing, and never resumes the thread it stopped.
     const given = () => { if (cancelled && cancelled()) throw Object.assign(new Error("the start was given up"), { code: "start_timeout" }); };
     given();
-    // A rollover in flight finishes first: its fresh session is what this message goes to, never a second start beside it.
-    { const r = this.rolling.get(id); if (r) await r.catch(() => {}); given(); }
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -2870,7 +2477,7 @@ export class Switchboard {
    */
   /** The user turn named by uuid, in this session's transcript here (rewind and forkAt share the lookup). */
   findLine(id, uuid) {
-    const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
+    const t = findSession(this.deps.transcripts || [], id);
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
     let line = null;
     for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
@@ -2900,7 +2507,7 @@ export class Switchboard {
 
   /** The last message a person typed in this session's transcript (a tool result is not one), or null. @param {string} id */
   lastUserLine(id) {
-    const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
+    const t = findSession(this.deps.transcripts || [], id);
     if (!t) return null;
     let last = null;
     for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
@@ -3260,9 +2867,7 @@ export class Switchboard {
     this.closeSocket(id);
     // The session's git worktree goes only when nothing is lost (github decides; safe to repeat). Not on stop.
     if (rec.project) await this.deps.call("github.session.cleanup", { project: rec.project, session: id, deleted: true }).catch(() => null);
-    // The conversation Vyre kept of a thread another provider ran (mirror()) is Vyre's own copy: it goes with the thread, and Recall forgets its session. (A Claude transcript is Claude Code's.)
-    try { const f = this.mirrorFile(id); if (fs.existsSync(f)) { fs.rmSync(f, { force: true }); await this.deps.call("recall.forget", { sessions: [this.mirrorId(id)] }).catch(() => null); } } catch { /* nothing kept */ }
-    for (const [table, col] of [["threads_asks", "thread"], ["threads_leases", "thread"], ["threads_watches", "thread"], ["threads_inbox", "thread"], ["threads_providers", "thread"], ["threads_rolls", "thread"],
+    for (const [table, col] of [["threads_asks", "thread"], ["threads_leases", "thread"], ["threads_watches", "thread"], ["threads_inbox", "thread"], ["threads_providers", "thread"],
       ["threads_sent", "thread"], ["threads_steers", "thread"], ["threads_turns", "thread"], ["events", "thread"], ["threads_runs", "id"]]) {
       try { this.db.prepare(`DELETE FROM ${table} WHERE ${col} = ?`).run(id); } catch (e) { if (!/no such (table|column)/.test(/** @type {Error} */ (e).message)) throw e; }
     }
@@ -3697,8 +3302,8 @@ export default {
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
-      // One Chat: makes the chat a run with none of its own lives in (the daemon, under the home owner's chain).
-      chatFor: ctx.chatFor || null,
+      // A record tag (# in the composer) is read under the sender's own chain, in this Space only.
+      recordTags: (/** @type {any[]} */ chips) => recordTags(chips, { kernel: ctx.kernel, chain: kchainNow() }),
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
@@ -3713,38 +3318,6 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
-    // One Chat (reviewer-3 G5, reviewer-5): EVERY tool of this module a person can call is checked against the chats the person is in, at this one point (whatever it takes: a thread, an ask, a watch or a
-    // session, or nothing at all and answers a list). A run in a chat the caller is not in does not exist for them: a call naming it is not_found, and a list or an answer that would show it leaves it out.
-    // Fail closed: with the kernel on, a call with no person chain sees only runs that are in no chat. A first-party module's call is exempt (it checks its own asker).
-    {
-      const rawTool = ctx.tool.bind(ctx);
-      const kernelOn = () => Boolean(ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.read === "function");
-      const personChain = async (/** @type {any} */ m) => { try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(m) : null; return c && Array.isArray(c.hops) && c.hops[0] && c.hops[0].actor && c.hops[0].actor.kind === "person" ? c : null; } catch { return null; } };
-      const targets = (/** @type {any} */ i) => {
-        /** @type {string[]} */ const out = [];
-        if (!i || typeof i !== "object") return out;
-        if (typeof i.thread === "string") out.push(i.thread);
-        if (typeof i.session === "string") out.push(i.session);
-        if (typeof i.ask === "string") { try { const a = /** @type {any} */ (sb.asks.get(i.ask)); if (a && a.thread) out.push(String(a.thread)); } catch { /* no such ask: the tool says so */ } }
-        if (typeof i.watch === "string") { const w = /** @type {any} */ (sb.db.prepare("SELECT thread FROM threads_watches WHERE id = ?").get(i.watch)); if (w && w.thread) out.push(String(w.thread)); }
-        return out;
-      };
-      const gated = (/** @type {string} */ name, /** @type {any} */ run) => async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any[]} */ ...rest) => {
-        if (!kernelOn() || (m && m.firstParty) || typeof run !== "function") return run(i, m, ...rest);
-        const chain = await personChain(m);
-        const chatOk = (/** @type {string | null} */ chat) => { if (!chat) return true; if (!chain) return false; try { ctx.kernel.chats.read(chain, chat); return true; } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") return false; throw e; } };
-        const threadOk = (/** @type {any} */ t) => chatOk(sb.chatOf(String(t)));
-        for (const t of targets(i)) if (!threadOk(t)) throw Object.assign(new Error(`no such thread ${t}`), { code: "not_found" });
-        const out = await run(i, m, ...rest);
-        if (name === "threads.list" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || chatOk(r.chat || null));
-        if (name === "threads.asks" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
-        if (name === "threads.live" && out && Array.isArray(out.sessions)) return { ...out, sessions: out.sessions.filter((/** @type {any} */ t) => threadOk(t)) };
-        if (name === "threads.history" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
-        if (name === "threads.pids") return { pids: [] };
-        return out;
-      };
-      ctx.tool = (/** @type {string} */ name, /** @type {any} */ def) => rawTool(name, def && typeof def.run === "function" ? { ...def, run: gated(name, def.run) } : def);
-    }
     // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
     const resumeTimer = setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500);
     resumeTimer.unref?.();
@@ -3758,10 +3331,6 @@ export default {
     // so cleaning its worktree up there would break resume outright unless resume also learned to
     // recreate a missing one, which is real, separate work, not done here. Flagged to github/
     // reviewer-2 rather than guessed at silently.
-    // One Chat: a terminal session's SessionStart (the Harness says `thread.started` with a `session` and no thread of ours) is a run in a chat of the person's.
-    const offTerminalChat = ctx.events.on("thread.started", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (e && !e.thread && typeof p.session === "string" && p.session) void sb.terminalChat(p.session).then(chat => { if (chat) ctx.events.emit("thread.chat", { session: p.session, chat, cwd: p.cwd || null }); }); });
-    // The rollover settings are read at most every few seconds per project; a change is seen at once.
-    const offRollSettings = ctx.events.on("settings.changed", e => { if (e.payload && String(e.payload.key || "").startsWith("sessions.rollover")) sb.rollCfgs.clear(); });
     const offGithubCleanup = ctx.events.on("thread.status", e => {
       if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
         ctx.call("github.project.of", { project: e.project }).then(gh => {
@@ -3865,18 +3434,7 @@ export default {
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
     const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
-    // One Chat (reviewer-3 G5, reviewer-5): with the kernel on, a call on a run that is in a chat needs a person in that chat, on the caller's OWN chain (the kernel's chat read). It fails closed: a chain
-    // that could not be built, or whose first hop is not a person, is not_found like a person outside the chat. Only a first-party module's call is exempt (it checks its own asker: the stream asks the
-    // kernel for every person), and a daemon with no kernel has no chats to protect.
-    const chatGate = async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any} */ kchain) => {
-      if (!i || typeof i.thread !== "string" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
-      const chat = sb.chatOf(i.thread);
-      if (!chat) return;
-      const refuse = () => Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" });
-      if (!kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person") throw refuse();
-      try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw refuse(); throw e; }
-    };
-    const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; await chatGate(i, m, kchain); return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
+    const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
     const spendGate = (caller, provider) => spendCheck(ctx, caller, provider);
     /** An admin: the owner's own surface (no verified peer) or the peer signed in as the box's owner. */
@@ -3891,14 +3449,12 @@ export default {
         agent_kind: { type: "string", description: "A person's own surface only: the kind of the agent named in `agent`. A model's call naming one is bad_input." },
         account: { type: "string", description: "A person's own surface only: the AI account the session runs on (scope-checked, never a silent fallback). A model's call naming one is bad_input." },
         effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
-        zone: { type: "string", description: "The person's own IANA time zone, from the device in use (\"Asia/Karachi\"): the brief tells the model what time it is for them. Taken from the calling device when left out." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." },
-        slot: { type: "string", description: "First-party stream only: the slot id (model:<provider>/<model>#<n>) of the chat member that starts this run. Anyone else's is ignored." },
         chat: { type: "string", description: "First-party stream only: the chat this session's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person id (per_...) of who asked (the kernel session is opened for them, in `chat`). Any other form is refused as bad_input. Anyone else's is ignored." },
         mentions: { type: "array", maxItems: 8, items: { type: "object", required: ["kind", "id"], properties: { kind: str, id: str, name: str } }, description: "The # tags the composer picked ({kind, id}) for the first prompt, from a person's own surface only; as threads.send." },
         pasted: { type: "array", maxItems: 20, items: str, description: "The spans of the prompt the person pasted: a #Name inside one tags nothing. As threads.send." },
         parent: { type: "string", description: "First-party modules only: the thread this one is started for (a teammate's thread for a person's). A session starting one is its own parent, from what vyred verified." } } },
-      async (i, { caller, thread, firstParty, agent, peerSession, granted, zone: deviceZone }) => {
+      async (i, { caller, thread, firstParty, agent, peerSession, granted }) => {
         guard(caller, "start sessions");
         await spendGate(caller, i.provider);
         // The parent is the calling session's own verified thread, or (a first-party module starting it
@@ -3906,7 +3462,7 @@ export default {
         const parent = thread ? String(thread) : (firstParty && typeof i.parent === "string" ? i.parent : undefined);
         // The first prompt is a person's own turn only when a person's surface started the thread; tags and pasted
         // spans ride with it from there and from nowhere else.
-        const { mentions, pasted, starter: _claimed, slot: _slot, ...restAll } = i;
+        const { mentions, pasted, starter: _claimed, ...restAll } = i;
         // HD-2: a model's call (a session, an agent, an mcp or harness caller) starts a NEW thread with the declared fields only. resume (writes into any live thread), fork, agent and agent_kind
         // (another agent's credentials and project grants), env, scope, account and the rest are the person's surfaces' and first-party modules'.
         const modelCall = Boolean(thread || agent || agentOf(caller) || /^(?:mcp|harness)(?::|$)/.test(String(caller || "")));
@@ -3928,9 +3484,7 @@ export default {
         const person = personTurn(caller) && i.prompt ? { chips: Array.isArray(mentions) ? mentions : [], pasted: Array.isArray(pasted) ? pasted.filter(x => typeof x === "string").slice(0, 20) : [] } : null;
         const kturn = kernelTurnOf(i, caller, firstParty);
         if (kturn) await sb.assertAsker(i.parent || "", null, kturn); // a person who is not in the chat starts nothing for it
-        // the slot id the stream gave the member that starts this run, honoured from the stream alone (the run is then that member)
-        const slotName = firstParty && String(caller || "") === "module:stream" && typeof i.slot === "string" ? i.slot : undefined;
-        return sb.launch({ ...rest, ...(rest.zone === undefined && typeof deviceZone === "string" && deviceZone ? { zone: deviceZone } : {}), ...(slotName ? { slotName } : {}), parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
+        return sb.launch({ ...rest, parent, ...(kturn ? { kernelTurn: kturn } : {}), ...(plain && typeof peerSession === "string" && peerSession ? { starter: `mcp:${peerSession}` } : {}), surface: surfaceOf(i, caller) }, person);
       });
 
     /**
@@ -4047,7 +3601,6 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
-        tz: { type: "string", description: "The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only." },
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
@@ -4068,7 +3621,6 @@ export default {
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
-        if (typeof i.tz === "string" && validZone(i.tz) && (queuesFor(caller) || firstParty)) sb.db.prepare("UPDATE threads_runs SET tz = ? WHERE id = ?").run(i.tz, i.thread);
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey))
           : firstParty && /^module:/.test(String(caller || "")) && typeof i.uuid === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.uuid) ? i.uuid.toLowerCase() : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
@@ -4203,29 +3755,6 @@ export default {
     tool("threads.switch", "Continue a thread on another provider (and account), between turns: the same thread, folder and files, the new provider given a brief of what was said. A person or an agent that may act on the thread can do it. provider: claude, codex or grok; account: one granted to this project or agent (never a guess between two); text: the next message to send there.",
       { type: "object", required: ["thread", "provider"], properties: { thread: str, provider: str, account: str, model: str, text: str } },
       async (i, { caller }) => { guard(caller, "switch a session's provider"); return sb.switchProvider(i.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: i.text || null }); });
-
-    tool("threads.roll", "Roll a session's window over now, between turns: its agent starts a fresh session in the same folder and the next message goes to it with a seed Vyre builds (your decisions, the plan, an index of what came before, the last turns word for word). The thread and its history do not change, and every earlier turn stays one memory_turn away. Vyre does this by itself when the window passes sessions.rollover_at; this is the same thing asked for. A person's surface only.",
-      { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => {
-        guard(caller, "roll a session's window over");
-        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can roll a session's window over"), { code: "denied" });
-        return sb.rollNow(String(i.thread));
-      });
-    tool("threads.roll-session", "Roll a Claude Code session in the person's own terminal over (`vyre roll`): the seed for a fresh window (their decisions, an index of what came before, the last turns word for word) and the session id to start it under. Vyre does not own that session, so nothing is stopped: the caller starts `claude --session-id <session>` with the seed. A person's surface only.",
-      { type: "object", required: ["session"], properties: { session: str, cwd: str } },
-      async (i, { caller }) => {
-        guard(caller, "roll a terminal session over");
-        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can roll a terminal session over"), { code: "denied" });
-        return sb.rollTerminal({ session: String(i.session), cwd: i.cwd ? String(i.cwd) : null });
-      });
-    tool("threads.rolls", "A thread's rollovers, newest first: when, why, how full the window was, the native session it left and the one it started. A person's surface only.",
-      { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, { caller }) => {
-        guard(caller, "read a session's rollovers");
-        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can read a session's rollovers"), { code: "denied" });
-        sb.must(String(i.thread));
-        return { thread: String(i.thread), native: sb.nativeOf(String(i.thread)), rolls: sb.db.prepare("SELECT id, at, reason, native_from, native_to, provider, model, used, win AS window, share, source, turn, seed_chars, seed_tail FROM threads_rolls WHERE thread = ? ORDER BY id DESC LIMIT 50").all(String(i.thread)) };
-      });
 
     tool("threads.unqueue", "Take back queued words before they are handed over: one (queued: the queued_id threads.send gave, or thread.queued's queued) or all of the thread's. Only a person's surface can.",
       { type: "object", required: ["thread"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
@@ -4406,41 +3935,6 @@ export default {
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
-    tool("threads.of-chat", "The runs inside one chat (its slots): thread, agent, provider, model, account, status. A first-party module's, which has already checked that the person is in the chat (work.chat.get).",
-      { type: "object", required: ["chat"], properties: { chat: str } },
-      async (i, meta) => { guard(meta.caller, "read a chat's runs"); return { runs: sb.ofChat(i.chat) }; }, ["module"]);
-    // The runs of a chat are reached by their slot: `agent:<id>` or `model:<provider>/<model>#<thread prefix>`, as work.chat.get names them. The person must be in the chat (the gate above, on the run).
-    const slotRun = async (/** @type {string} */ chat, /** @type {string} */ slot, /** @type {any} */ meta) => {
-      const runs = sb.ofChat(String(chat));
-      const hit = runs.filter(r => r.slot === slot).pop();
-      const v = /** @type {any} */ (calls.getStore());
-      await chatGate({ thread: hit ? hit.thread : "" }, meta, v && v.kchain);
-      if (!hit) throw Object.assign(new Error("no such chat"), { code: "not_found" });
-      return hit;
-    };
-    tool("threads.chat-switch", "Switch one slot of a chat to another provider or model, between turns: the same chat, the new one given a brief of what was said. slot: agent:<id> or model:<provider>/<model>#<n>, as the chat lists them.",
-      { type: "object", required: ["chat", "slot"], properties: { chat: str, slot: str, provider: str, model: str, account: str } },
-      async (i, meta) => {
-        guard(meta.caller, "switch a chat's model");
-        if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface switches a chat's model"), { code: "denied" });
-        const run = await slotRun(i.chat, i.slot, meta);
-        if (i.provider && i.provider !== run.provider) return sb.switchProvider(run.thread, { provider: i.provider, account: i.account || null, model: i.model || null, reason: "asked", text: null });
-        if (!i.model) throw Object.assign(new Error("say which model"), { code: "bad_input" });
-        return sb.switchModel(run.thread, i.model);
-      });
-    tool("threads.chat-stop", "Stop the turn a chat is running: one slot's, or every slot's. The chat stays and takes the next message.",
-      { type: "object", required: ["chat"], properties: { chat: str, slot: str } },
-      async (i, meta) => {
-        guard(meta.caller, "stop a chat's turn");
-        if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
-        const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
-        const busy = runs.filter(r => r.live || ["working", "asking", "starting"].includes(String(r.status)));
-        for (const r of busy) await sb.interrupt(r.thread);
-        return { stopped: busy.map(r => r.thread) };
-      });
-    tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
-      { type: "object", required: ["thread"], properties: { thread: str } },
-      async (i, meta) => { guard(meta.caller, "read a run's chat"); const t = sb.record(String(i.thread)); const term = /** @type {any} */ (sb.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(i.thread))); return { chat: (t && t.chat) || (term && term.chat) || null }; }, ["module"]);
     tool("threads.rename", "Give a thread a new name. The name is the session's title everywhere (the project's session list, its record in Records); thread.renamed is said, and a rename made in Records comes back here the same way.",
       { type: "object", required: ["thread", "name"], properties: { thread: str, name: str } },
       async (i, meta) => { guard(meta.caller, "rename sessions"); mayReach(meta, sb.must(i.thread)); return sb.rename(i.thread, i.name); });
@@ -4562,8 +4056,7 @@ export default {
       description: "The transcript file of a session this Switchboard started, and the provider projects folder it lives under, for the runner to seal each finished turn. A session it has no record of, or one whose provider keeps no such file, is null.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
       run: async i => {
-        // The session a rollover started is the thread's own: the file under its native id.
-        const rec = sb.record(sb.threadOfNative(String(i.session)) || String(i.session));
+        const rec = sb.record(String(i.session));
         if (!rec || (rec.provider || "claude") !== "claude") return null;
         let t = findSession(sb.deps.transcripts || [], String(i.session));
         // In the packaged box a session runs as an account's own uid and writes its transcript in THAT account's HOME (<accounts home>/<uid>/.claude/projects): vyred reads it through the
@@ -4581,9 +4074,7 @@ export default {
       description: "Whether a session id is a thread this Switchboard started for a person (and on which account), from its own record. A session it has no record of is not.", internal: true, callers: ["module"],
       input: { type: "object", required: ["session"], properties: { session: str } },
       run: async i => {
-        // A native session a rollover started is its thread's, whatever id it carries (threads_rolls).
-        const owner = sb.threadOfNative(String(i.session));
-        const rec = sb.record(owner || String(i.session));
+        const rec = sb.record(String(i.session));
         const human = Boolean(rec && !rec.agent && ["chat", "project", "capsule"].includes(String(rec.purpose || "chat")));
         // A terminal-only session bound to its claude process is known too: an unbound caller must not name it (harness own-session check).
         const bound = Boolean(sb.sessions.boundPid(String(i.session)));
@@ -4605,16 +4096,15 @@ export default {
       { type: "object", required: ["session", "pid"], properties: { session: str, pid: { type: "integer" } } },
       async (i, meta) => {
         // A live headless thread of Vyre's has its own verified socket; only that thread's own claude process may bind its id (anything else would get that thread's key).
-        const thread = sb.threadOfNative(String(i.session)) || String(i.session);   // a native session a rollover started binds as its thread
-        const rec = sb.record(thread);
-        const own = rec ? /** @type {any} */ (sb.db.prepare("SELECT pid FROM threads_runs WHERE id = ?").get(thread)) : null;
+        const rec = sb.record(String(i.session));
+        const own = rec ? /** @type {any} */ (sb.db.prepare("SELECT pid FROM threads_runs WHERE id = ?").get(String(i.session))) : null;
         const itsOwn = Boolean(own && own.pid && sb.sessions.claudeOf(Number(i.pid)) === Number(own.pid)); // the thread's own claude process binding itself
-        if (rec && sb.live.has(thread) && (meta || {}).thread !== thread && !itsOwn) throw Object.assign(new Error("that session is a live Vyre thread; it is bound only through its own socket"), { code: "denied" });
+        if (rec && sb.live.has(String(i.session)) && (meta || {}).thread !== String(i.session) && !itsOwn) throw Object.assign(new Error("that session is a live Vyre thread; it is bound only through its own socket"), { code: "denied" });
         return sb.sessions.bind(i.session, i.pid);
       }, ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { clearTimeout(resumeTimer); offRollSettings(); offGithubCleanup(); offTerminalChat(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { clearTimeout(resumeTimer); offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

@@ -66,7 +66,7 @@ export { nowCount } from "./tasks/model";
 export { Select } from "./components/Select";
 export { renderField, editField, registry as fieldRegistry, KINDS as FIELD_KINDS, filterOps, matches, sortKey, sortRows, kindLabel } from "./fields/registry";
 export type { FieldEnv, FieldProps, FieldMode } from "./fields/types";
-export { ListView, BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, titleOf, urnParam } from "./views";
+export { ListView, BoardView, CalendarView, DashboardView, RecordPage, useRecordsWorld, useRecordEvents, useFieldEnv, viewsOf, viewDefOf, storedViewsOf, viewRows, filterWords, isHiddenType, fieldStates, titleOf, urnParam } from "./views";
 export type { RecordsWorld } from "./views";
 export { SealedMask } from "./fields/Sealed";
 export { Ring } from "./components/Ring";

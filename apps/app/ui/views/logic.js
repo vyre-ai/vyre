@@ -1,14 +1,13 @@
 // @vyre/ui/views/logic: the pure half of the generated views (ui-primitives.md section 5), ported from deck/ui/views.js onto the kernel's shapes
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
-import { dayOf, timeOf } from "../../src/time/show.js";
-import { viewDefOf } from "./view-defs.js";
+import { viewDefOf, storedViewsOf } from "./view-defs.js";
 import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
-import { eventLine } from "../../src/store-core/kernel-view.js";
+import { eventLine } from "../../../../deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();
-export { viewDefOf, fieldStates };
+export { viewDefOf, storedViewsOf, fieldStates };
 
 /** The field of a type by name. @param {any} def @param {string} name */
 export const fieldOf = (def, name) => (def.fields || []).find((/** @type {any} */ f) => f.name === name);
@@ -25,8 +24,25 @@ export const isSealedField = (f) => f.kind === "sealed" || !!f.seal;
 /** The first letters of a title, for a person-like type's tile. @param {string} s */
 export const initialsOf = (s) => String(s).split(/[\s.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
 
+/** The Space's own bookkeeping (Flow definitions and state, installed Kits and the proposals waiting for a yes, goals): records, but never a screen of the person's. @param {any} t a type definition */
+export const isHiddenType = (t) => !!t.internal || /^(def-|flow-|kit-proposal$|kit-install$|goal$)/.test(String(t.name));
+
 /** Only the rows a view's stored `filter` (an Expression over the record's fields) holds for; every row when it has none. @param {any[]} rows @param {string | undefined} filter */
 export const viewRows = (rows, filter) => (filter ? rows.filter((r) => holds(filter, r?.data || {})) : rows);
+
+/**
+ * A view's stored filter in the words a person reads ("Stage is Intake and Fee is at least 100"), for the Filtered row. Names that are fields become their labels,
+ * the operators become words, quotes go. An expression this does not recognise is shown as it is written. @param {any} def @param {string} src
+ */
+export function filterWords(def, src) {
+  const label = (/** @type {string} */ n) => fieldOf(def, n)?.label || n;
+  return String(src)
+    .replace(/"([^"]*)"|'([^']*)'/g, (_m, a, b) => `\u0001${a ?? b}\u0002`)
+    .replace(/\bnot empty\((\w+)\)/g, (_m, n) => `${label(n)} is filled in`).replace(/\bempty\((\w+)\)/g, (_m, n) => `${label(n)} is empty`)
+    .replace(/\b([a-z][a-z0-9_]*)\b(?=\s*(==|!=|>=|<=|>|<))/g, (_m, n) => label(n))
+    .replace(/==/g, "is").replace(/!=/g, "is not").replace(/>=/g, "is at least").replace(/<=/g, "is at most").replace(/>/g, "is more than").replace(/</g, "is less than")
+    .replace(/\u0001|\u0002/g, "").replace(/\s+/g, " ").trim();
+}
 
 /** The columns of the list: the definition's, in order, only those the type has. @param {any} def @param {any} [vd] */
 export function listColumns(def, vd = viewDefOf(def)) {
@@ -146,38 +162,16 @@ export function filesOf(def, rec) {
 /** An event as a timeline line: who (by id), what, when, why. @param {any} e */
 export const timelineLine = (e) => eventLine(e);
 
-/**
- * What happened, in words: the event's own words when it has them, else the type of event ("walk_case.created" is "created this", "contact.updated" is "changed this"). Never a raw event name.
- * @param {string} what
- */
-export function eventWhat(what) {
-  const w = String(what ?? "");
-  if (/\s/.test(w)) return w;
-  const last = w.split(".").pop() ?? "";
-  const map = /** @type {Record<string, string>} */ ({ created: "created this", updated: "changed this", changed: "changed this", deleted: "removed this", removed: "removed this", forgotten: "forgot this", sealed: "sealed a field", revealed: "revealed a sealed field", linked: "linked a record", unlinked: "unlinked a record", moved: "moved this to another stage", restored: "put this back" });
-  return map[last] ?? (w.replace(/[._]+/g, " ").trim() || "changed this");
-}
-
-/** Who did it, in words: "You" for the person looking, a name when there is one, else the role ("The owner") or "Someone". A raw id is never shown. @param {string | undefined} actor @param {{ actors?: any[] } | undefined} world @param {string | undefined} me */
-export function actorWords(actor, world, me) {
-  if (!actor) return "Vyre";
-  if (me && actor === me) return "You";
-  const a = (world?.actors ?? []).find((/** @type {any} */ x) => x.id === actor);
-  const name = String(a?.name ?? "");
-  if (name && !/^(per|agt|spc|dev|usr)_[a-z0-9]+$/i.test(name)) return name;
-  if (a?.role === "owner") return "The owner";
-  return /^(per|agt|spc|dev|usr)_/i.test(actor) ? "Someone" : actor;
-}
-
 /** "Today", "Yesterday", "3 days ago", "Oct 3": when an event happened, for the timeline. @param {number} at @param {number} now */
 export function ago(at, now) {
   const day = (/** @type {number} */ t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const n = Math.round((day(now) - day(at)) / 86400_000);
-  const hm = timeOf(at);
+  const time = new Date(at);
+  const hm = `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
   if (n <= 0) return `Today, ${hm}`;
   if (n === 1) return `Yesterday, ${hm}`;
   if (n < 7) return `${n} days ago`;
-  return dayOf(at, { year: false });
+  return `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][time.getMonth()]} ${time.getDate()}`;
 }
 
 /** A field spec for the store's addField from the Add a field sheet. @param {{ label: string, kind: string }} draft @param {any} def */

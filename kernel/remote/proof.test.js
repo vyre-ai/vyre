@@ -73,3 +73,11 @@ test("join card: the Space's name and fingerprint words come from the module tha
   k.setLabel(() => ({ name: "Harlow Legal", words: "amber river stone lamp" }));
   assert.deepEqual((await g.invites.get(stranger, card.id)).space, { id: SPACE, name: "Harlow Legal", words: "amber river stone lamp" });
 });
+
+test("the wire's offer calls map to their proof requests, so a home's challenge for a lend carries the op, fields and payload hash the device must sign", async () => {
+  const { WIRE_TO_PROOF } = await import("./proof.js");
+  for (const [wire, proof] of [["grants.offers.lend", "lend"], ["grants.offers.unlend", "unlend"], ["grants.offers.offer", "offer"], ["grants.offers.unoffer", "unoffer"]]) {
+    assert.equal(WIRE_TO_PROOF[wire], proof);
+    assert.ok(PROOF_CALLS.includes(proof));
+  }
+});

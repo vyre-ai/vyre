@@ -101,6 +101,9 @@ export function addStage(/** @type {string[]} */ stages) {
   return [...stages, `Stage ${n}`];
 }
 
+/** Said under a type's fields when any field has a condition. A condition decides what the app shows and asks for; it is not a way to keep a value private. */
+export const CONDITION_HELP = "A condition hides a field in the app and asks for it only when it applies. It is not privacy: the value is still in the record. To keep a value private, make the field sealed or limit who can see it.";
+
 /** The line under a field. */
 export function fieldLine(/** @type {Field} */ f) {
   return [f.kind === "link" && f.to ? `Link to ${f.to}` : kindLabel(f.kind), f.required ? "required" : null, f.rule ?? null].filter(Boolean).join(" · ");

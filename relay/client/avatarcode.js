@@ -1,6 +1,6 @@
 // @ts-check
 // The typed Wink code as a picture (0.2.9: the Wink camera reader). The drawn avatar carries the SAME eight symbols the person would type, so the camera reads the code instead of the person typing it, and the
-// pairing that follows is the typed code's own (CPace over the relay, the ack typed back): no second secret, no second way to pair. lib/wink-code/payload.js protects 8 bytes with a CRC-8 and Reed-Solomon parity and
+// pairing that follows is the typed code's own (CPace over the relay, the ack typed back): no second secret, no second way to pair. deck/vyrecode/payload.js protects 8 bytes with a CRC-8 and Reed-Solomon parity and
 // the renderer draws them as the avatar's rings; this file is the 8 bytes' meaning. Pure and Node-free: it runs in the app, a browser and a phone.
 //
 //   byte 0      0xC1   the version and kind: "a typed Wink code"

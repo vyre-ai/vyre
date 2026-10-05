@@ -51,6 +51,8 @@ export const opOf = action => (String(action).startsWith("rules.") ? `grant.rule
 
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
+/** Gateway paths whose proof request has another name (the wire says `grants.offers.lend`, the request is `lend`). */
+export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend" });
 
 /**
  * What a surface shows and signs for one grants call: `{ op, space, fields, payload_hash }`. The signer signs `payload_hash` (and the rest of the PresenceProof

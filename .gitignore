@@ -28,3 +28,4 @@ local/hands-chrome-mac/native-host/sock-path
 web/release/
 .wrangler/
 .wrangler.dev.toml
+stores/twenty/golden/
