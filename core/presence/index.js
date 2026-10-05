@@ -49,7 +49,6 @@ export const HUMAN_ONLY = new Set([
   "files.drive.share", "files.drive.unshare",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
-  "computers.tailnet.set", "computers.egress.set",
   // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
   // weight a vault grant to an agent carries. Taking it away (projects.access.revoke) is
   // PERSON_ONLY below, instant, so revoking is never held up behind a prompt.

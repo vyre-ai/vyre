@@ -347,7 +347,7 @@ export default {
     /**
      * One merged tailnet policy snippet instead of one per feature (see docs/design/tailscale-plan.md,
      * "Simplest install"). Always covers SSH (vyre box add needs it) and Taildrive/Taildrop (on by
-     * default). Adds egress's tagOwners/grant only while computers.egress is turned on. Real names
+     * default).  Real names
      * where this machine already knows them (its own tailnet node, the paired Mac, the owner's
      * login); a bracketed placeholder where it does not, same as docs/adr/0014-tailnet.md's sample.
      * Read-only: never touches the tailnet itself (ADR 0014 rule 1).
@@ -387,12 +387,6 @@ export default {
         "For read-write Taildrive, change that grant's \"access\" to \"rw\", then run files.drive.access to match.",
         "The SSH rule's \"users\" is the unix account on the server itself, not a Tailscale login. Put the admin account you set it up with (never a service account like vyre or vyre-agent); \"check\" asks for a fresh sign-in each time rather than trusting the device forever.",
       ];
-      const egress = await tryCall("computers.egress.status");
-      if (!egress.__error && egress.enabled) {
-        policyOut.tagOwners = { "tag:vyre-egress": [owner] };
-        policyOut.grants.push({ src: ["tag:vyre-egress"], dst: ["autogroup:internet"], ip: ["*"] });
-        notes.push("Egress is on: tag:vyre-egress needs its own OAuth client or reusable ephemeral pre-authorized key, made separately in the admin console (Keys).");
-      }
       // ADR 0046: desktops paired over the relay join as tag:vyre-device, and reach this box's own
       // port and nothing else, never each other.
       const join = await tryCall("relay.tailnet.status");

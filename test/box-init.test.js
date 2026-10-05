@@ -38,7 +38,7 @@ test("box: the image's ENTRYPOINT is tini, and its CMD the spawner, which runs t
   assert.match(df, /apt-get install[^\n]*\btini\b/);
 });
 
-for (const f of ["box/compose.yml", "box/compose.egress.yml"]) {
+for (const f of ["box/compose.yml"]) {
   test(`box: no service on the vyre image in ${f} sets init: true, so tini is PID 1`, () => {
     const all = services(read(f));
     const onVyre = Object.entries(all).filter(([, lines]) => lines.some(l => /^\s+image:.*vyre-ai\/vyre/.test(l)));

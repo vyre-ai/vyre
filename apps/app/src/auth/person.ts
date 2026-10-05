@@ -334,7 +334,6 @@ export const HUMAN_ONLY = new Set([
   "files.drive.share", "files.drive.unshare",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
-  "computers.tailnet.set", "computers.egress.set",
   "projects.access.grant",
 ]);
 

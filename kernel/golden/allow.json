@@ -60,20 +60,12 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): carries the person's live speech to the Chrome panel while an agent works"
  },
  {
-  "tool": "computers.egress.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers' Chrome sends listed sites through the person's Mac"
- },
- {
   "tool": "computers.handback.status",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads after how many idle minutes a take-over hands the keyboard back"
  },
  {
   "tool": "computers.rename",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): renames an agent's computer, the person's own label for it"
- },
- {
-  "tool": "computers.tailnet.status",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads whether computers join the tailnet as their own tagged nodes"
  },
  {
   "tool": "files.deliver",
