@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { Pressable, View, useWindowDimensions } from "react-native";
 import { Avatar, AvatarStack, type AvatarRef } from "../components/Avatar";
 import { Banner } from "../components/Banner";
@@ -185,7 +186,7 @@ export function NowView({ world, onAction, onOpen, onEdit, onMore, notice }: Pro
             return (
               <View key={e.id} className="min-h-control flex-row items-center gap-s3 py-s1">
                 <ActorMark who={a} size="sm" />
-                <Text size="secondary" className="min-w-0 flex-1" numberOfLines={1}>{`${name} ${e.what}`}</Text>
+                <Text size="secondary" className="min-w-0 flex-1" numberOfLines={1}>{`${name}${e.via ? ` ${ASSISTANT_MARK}` : ""} ${e.what}`}</Text>
                 <Text mono size="caption" tone="faint">{whenLabel(e.at, world.now)}</Text>
               </View>
             );

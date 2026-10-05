@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ASSISTANT_MARK, actedVia } from "../../src/store-core/kernel-view.js";
 import { View } from "react-native";
 import { AskCard } from "../components/AskCard";
 import { Button } from "../components/Button";
@@ -37,7 +38,7 @@ export function TaskCard({ world, task, showSpace, hero, onAction, onOpen }: { w
       hero={hero}
       lead={<ActorMark who={who(world, m.lead)} size={hero ? 44 : 40} space={spTag ? spaceRef(spTag.text) : undefined} />}
       title={m.title}
-      why={`${asked}${m.why}`}
+      why={`${asked}${m.why}${actedVia(task) ? ` ${ASSISTANT_MARK}` : ""}`}
       tags={m.tags.filter((t) => t.tone === "warn").slice(0, 2).map((t) => ({ text: t.text, tone: t.tone as never }))}
       onTitlePress={onOpen}
       actions={actions.map((a) => ({ label: a.label, kind: a.kind, icon: a.icon as never, onPress: () => (a.id === "open" ? onOpen() : onAction(a.id, value)) }))}

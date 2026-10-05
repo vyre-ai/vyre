@@ -21,6 +21,7 @@ import { useStore } from "../store";
 import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
+import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { actorWords, ago, assistantNote, eventWhat, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 
@@ -146,7 +147,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
       <Card title="Timeline" actions={<Text size="caption" tone="label">Every change, who and why</Text>}>
         {events.length ? events.map((e) => {
           const l = timelineLine(e);
-          return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
+          return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} mark={l.via ? ASSISTANT_MARK : undefined} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
         }) : <Text tone="label">Nothing has happened yet.</Text>}
       </Card>
     </View>
