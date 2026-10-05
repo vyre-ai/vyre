@@ -127,7 +127,8 @@ export default {
       const chain = await k.chainIn(space, extra);
       // every Space, this one included, through its own gateway: its records, its Drive, its definitions and its moves
       const gw = (await k.for(space)).gateway;
-      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+      // the chats and members of that Space too, for a chat that moves with its project (core/work/chat-carry.js): the target's own, under the mover's own chain there
+      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []), ...(gw.grants && gw.grants.chats ? { chats: gw.grants.chats } : {}), ...(gw.members ? { members: gw.members } : {}) };
     };
     // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when the source's gateway has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
     // The record types a target lacks are installed from the source's own definitions, under the same approval (a plan that needs them says so in its hash).

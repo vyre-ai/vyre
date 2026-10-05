@@ -8,6 +8,7 @@
 //
 // A side is { space, records, drive?, chain }: a gateway's records and drive with the mover's chain in THAT Space. Sealed fields cannot be copied by this code (it never sees a value): they move only
 // through `ports.reseal`, the sealing process's own transfer between the two Spaces; with sealed fields in the plan and no such port, the plan has a blocker and nothing runs.
+import { carryChat, mapChatPath } from "./chat-carry.js";
 import crypto from "node:crypto";
 import { isSealedValue } from "../../lib/sealed.js";
 
@@ -152,6 +153,24 @@ export async function runMove({ from, to, plan, ports = {} }) {
     if (r.type === PROJECT) patch.moved_from = `${from.space}:${root.urn}`;
     if (Object.keys(patch).length) { const cur = await to.records.get(to.chain, np.type, np.id); await to.records.update(to.chain, np.type, np.id, patch, cur.version); }
   }
+  // chats: a chat-record that moved is made again in the target under a new chat id (core/work/chat-carry.js), and its record is rewritten; the old id maps to the new for the chat folders below
+  state.chatMap ||= {};
+  if (to.chats && typeof to.chats.create === "function") {
+    step("chats");
+    for (const r of wanted) {
+      if (r.type !== "chat-record") continue;
+      const m = state.map[r.urn]; if (!m) continue;
+      const np = urnParts(m);
+      const cur = await to.records.get(to.chain, np.type, np.id);
+      if (!cur) continue;
+      const old = String(cur.data.chat || "");
+      if (state.chatMap[old]) continue; // carried by an earlier attempt
+      const c = await carryChat({ to, src: cur.data, newRoot: target.data.drive_path });
+      state.chatMap[old] = c.chat;
+      await persist();
+      await to.records.update(to.chain, np.type, np.id, { chat: c.chat, people: c.people.join(","), agents: c.agents.join(","), former: c.former.join(","), drive: target.data.drive_path, location: `${target.data.drive_path}/chat/${c.chat}/` }, cur.version);
+    }
+  }
   // sealed fields: only through the sealing process, as references, never as values
   if (plan.counts.sealed_fields > 0 && !removing) {
     step("sealed");
@@ -186,7 +205,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
   if (plan.counts.chat_files && !removing && !state.chat_carried) {
     step("chat-files");
     const inv = (await from.drive.inventory(from.chain, oldRoot, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat);
-    const entries = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${newRoot}${e.path.slice(oldRoot.length)}`, sha256: e.sha256, size: e.size }));
+    const entries = inv.map((/** @type {any} */ e) => ({ path: e.path, dest: `${newRoot}${mapChatPath(e.path.slice(oldRoot.length), state.chatMap || {})}`, sha256: e.sha256, size: e.size }));
     if (entries.length !== plan.counts.chat_files) throw Object.assign(new Error("the chat folders changed since the move was approved; plan the move again"), { code: "stale_plan" });
     const got = await from.carry(entries, { move_id: ports.move_id, to: to.space });
     const byPath = new Map((got || []).map((/** @type {any} */ g) => [g.dest, g.sha256]));
@@ -199,7 +218,9 @@ export async function runMove({ from, to, plan, ports = {} }) {
       const m = state.map[r.urn]; if (!m) continue;
       const sp = urnParts(r.urn), tp = urnParts(m);
       const a = await from.records.get(from.chain, sp.type, sp.id), b = await to.records.get(to.chain, tp.type, tp.id);
-      const plain = (/** @type {any} */ d) => canonical(Object.fromEntries(Object.entries(d || {}).filter(([, v]) => !isSealedValue(v) && !(v && typeof v === "object" && !Array.isArray(v) && typeof /** @type {any} */ (v).urn === "string"))));
+      // a chat's own fields are rewritten for the target (new chat id, who is in it there, its folders): they are the carry's, compared by the carry, not by content
+      const CARRIED = r.type === "chat-record" ? new Set(["chat", "people", "agents", "former", "drive", "location"]) : new Set();
+      const plain = (/** @type {any} */ d) => canonical(Object.fromEntries(Object.entries(d || {}).filter(([k, v]) => !CARRIED.has(k) && !isSealedValue(v) && !(v && typeof v === "object" && !Array.isArray(v) && typeof /** @type {any} */ (v).urn === "string"))));
       if (!a || !b || plain(a.data) !== plain(b.data)) throw Object.assign(new Error(`a record did not arrive intact (${r.urn}); nothing was removed from the old Space`), { code: "verify_failed" });
     }
   }

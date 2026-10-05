@@ -19,7 +19,7 @@ import { slugify, SLUG_RE } from "../../lib/project-id.js";
 
 const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
-const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [CHAT]: ["chat", "people", "agents", "started", "last_active", "status", "drive", "location"] };
+const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [CHAT]: ["chat", "people", "agents", "former", "started", "last_active", "status", "drive", "location"] };
 /** The only part of the Drive the hub ever moves. */
 const underProjects = (/** @type {any} */ p) => typeof p === "string" && /^Projects\/[^/]+(?:\/[^/]+)*$/.test(p) && !p.split("/").some(x => x === ".." || x === ".");
 

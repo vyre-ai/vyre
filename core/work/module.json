@@ -293,6 +293,7 @@
             { "name": "chat", "kind": "text", "label": "Chat id", "unique": true },
             { "name": "people", "kind": "text", "label": "People" },
             { "name": "agents", "kind": "text", "label": "Agents" },
+            { "name": "former", "kind": "text", "label": "Former participants (people and agents who could not move with it)" },
             { "name": "started", "kind": "datetime", "label": "Started" },
             { "name": "last_active", "kind": "datetime", "label": "Last active" },
             { "name": "status", "kind": "choice", "label": "Status", "options": ["working", "idle", "stopped", "failed"] },
