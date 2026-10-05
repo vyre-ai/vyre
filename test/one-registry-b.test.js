@@ -95,7 +95,9 @@ test("the kernel's home space is a space in the device lists: pairing's list inc
   const made = (await deck("spaces.identity.create", { name: "alex" })).data;
   const home = d.kernel.id.space;
   assert.match(home, /^spc_/);
-  assert.ok((await deck("spaces.list")).data.every((/** @type {any} */ x) => x.id !== home), "the home is not listed as a space the person made");
+  // the person's own (home) space is listed, always with a name and a tier (app-wire's walk showed null names without it): label "personal", tier basic on a computer
+  const homeRow = (await deck("spaces.list")).data.find((/** @type {any} */ x) => x.id === home);
+  assert.ok(homeRow && homeRow.label === "personal" && homeRow.tier === "basic", "the home is listed as the Personal space");
   const sp = (await deck("spaces.create", { name: "homelist", home: { kind: "this-computer", confirmed: true } })).data;
   // pairing's list: every space the person is in, the home space included
   const set = await deck("spaces.devices.set", { device: made.eid, spaces: [sp.space, home] });
