@@ -11,6 +11,8 @@ import { KernelError } from "./errors.js";
 import { TRUST_ORDER } from "../contracts/index.js";
 
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
+/** The risk classes a held-act approval can stand for: outward acts, and the acts that give access (`grant`). Both use the one mechanism: a single-use approval of exactly the bound act, by its doer, from an approver who still stands. */
+const APPROVABLE = new Set([...OUTWARD, "grant"]);
 const PRESENCE_RANK = { none: 0, session: 1, fresh: 2 };
 const maxPresence = (/** @type {string} */ a, /** @type {string} */ b) => (PRESENCE_RANK[/** @type {'none'} */ (a)] >= PRESENCE_RANK[/** @type {'none'} */ (b)] ? a : b);
 // An obligation the kernel cannot recognise is never silently met: it makes the effect an ask (K1 item 8c).
@@ -238,7 +240,7 @@ export function createAuthorizer(cfg) {
 
       // An approval is a single-use authority for EXACTLY the bound act, given to the task's doer (the approval queue's own token, no new permission): when the doer presents an approved task whose decision was
       // signed by the right person, with the same bind, not expired and not spent, the act needs no standing grant of its own. It is only looked at here (nothing is spent); the one use is counted below.
-      const heldApproval = typeof input.approval === "string" && OUTWARD.has(risk) && typeof cfg.approvedPeek === "function"
+      const heldApproval = typeof input.approval === "string" && APPROVABLE.has(risk) && typeof cfg.approvedPeek === "function"
         && await cfg.approvedPeek({ id: input.approval, chain, action, resource, outward: true, ...(typeof input.bind === "string" ? { bind: input.bind } : {}) }) === true;
       // 2 and 3. Candidates and the effective grant per hop; the chain's authority is the intersection.
       const used = [];
@@ -311,7 +313,10 @@ export function createAuthorizer(cfg) {
 
       // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
       // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
-      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await (input.peek === true && cfg.approvedPeek ? cfg.approvedPeek : cfg.approvedAct)({ id: input.approval, chain, action, resource, ...(OUTWARD.has(risk) ? { outward: true } : {}), ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
+      // An act that GIVES access (risk grant) takes the same approval, with the bind required like an outward act's, and it stands in for the fresh proof the act otherwise needs. Foreign content driving a grant
+      // (tainted) is not waived by it, and a chain with a model in it never reaches here (model_chain above).
+      const grantApproval = risk === "grant" && !tainted && !askRule;
+      if ((ask || grantApproval) && (OUTWARD.has(risk) || grantApproval || askRule) && typeof input.approval === "string" && cfg.approvedAct && await (input.peek === true && cfg.approvedPeek ? cfg.approvedPeek : cfg.approvedAct)({ id: input.approval, chain, action, resource, ...(OUTWARD.has(risk) || grantApproval ? { outward: true } : {}), ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
         ask = null; presence = "none";
       }
 
