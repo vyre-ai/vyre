@@ -637,7 +637,13 @@ export function createRecords(cfg) {
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
     const last = chain.hops[chain.hops.length - 1].actor;
     // The attributes ride in the create event (the chain covers it), so the log, not the disk, says what a record's owner, project and sensitivity are.
-    const forWho = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
+    // A module writing on a person's behalf (the planner's events) names that person with `on_behalf`: the person's OWN kernel-built chain, which only the call being served holds (a chain
+    // cannot be made outside the kernel), and only a service chain may pass it. So `created_for` is never a value a caller types; a plain chain that passes one is refused.
+    if (opts.on_behalf !== undefined) {
+      if (!isChain(opts.on_behalf)) throw new KernelError("bad_input", "on_behalf is a kernel-built chain");
+      if (last.kind !== "service") throw new KernelError("denied", "only a module's own chain writes on a person's behalf");
+    }
+    const forWho = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || (opts.on_behalf ? opts.on_behalf.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : undefined);
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...(forWho ? { created_for: `person:${forWho.actor.id}` } : {}), ...a };
     const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);

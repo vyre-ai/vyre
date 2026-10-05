@@ -42,6 +42,9 @@ const presence = { check: async (/** @type {any} */ { chain, op, fields, proof: 
 
 /** The assistants of the test Space: actors the owner added, working under the person. */
 export const ASSISTANTS = ["juno", "kit"];
+/** Two members who are not the owner: they hold no admin role, so the Bin lists only what is theirs. */
+export const MEMBERS = ["per_member", "per_third"];
+export const memberFacts = (/** @type {string} */ person) => ({ kind: "invitee", person, vouched: true });
 
 /** What a Space has before the planner starts: the shared Event type, and the assistants the owner added with what they may do with tasks. */
 export async function prepareKernel(/** @type {any} */ k) {
@@ -53,6 +56,10 @@ export async function prepareKernel(/** @type {any} */ k) {
     // What the owner lets an assistant do with tasks: work the ones it is given.
     const g = { subject: { kind: "actor", actor: a }, actions: ["tasks.read", "tasks.work"], resource: { prefix: `vyre://${SPACE}/task/*` }, conditions: {}, source: "test" };
     await k.gateway.grants.create(owner, g, { presence: proofFor("grants.create", g, `vyre://${SPACE}/grant/new`) });
+  }
+  for (const id of MEMBERS) {
+    const m = { person: id, role: "member" };
+    await k.gateway.grants.setRole(owner, m, { presence: proofFor("grants.role", m, `vyre://${SPACE}/member/${id}`) });
   }
 }
 
@@ -94,6 +101,13 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
   const w = {
     k, events, clock, timers, fired, acked, logs, google, handle, owner, agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
     settled: () => handle.calendar.settled(),
+    /** Call as another person of the Space (a member, not the owner): `facts` is what the daemon proved about their connection. */
+    async callAs(/** @type {any} */ facts, /** @type {string} */ name, input = {}) {
+      const def = tools.get(name);
+      if (!def) return { error: { code: "no_such_tool" } };
+      try { return { data: await def.run(input, { caller: "deck", kernelFacts: facts }) }; }
+      catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
+    },
     async call(name, input = {}, caller = "cli") {
       const def = tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };

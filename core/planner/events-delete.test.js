@@ -4,7 +4,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { world, MIN, HOUR, DAY, T0, iso } from "./testing.js";
+import { world, MIN, HOUR, DAY, T0, iso, memberFacts } from "./testing.js";
 
 test("delete: the planner's own event goes to the bin and comes back, still ringing, and a connected calendar's event is not deleted here", async t => {
   const w = await world(t);
@@ -80,4 +80,24 @@ test("bin: a deleted event is listed by planner.bin (the gateway's include_delet
   await again.ok("planner.delete", { item: bin[0].id, restore: true });
   assert.deepEqual((await again.ok("planner.bin", {})).events, [], "restored, so no longer binned");
   assert.ok(kept.id);
+});
+
+test("bin: an event a member added is theirs in the Bin, they restore it, and another member, an assistant of someone else and the owner see what they may", async t => {
+  const w = await world(t);
+  const me = memberFacts("per_member"), other = memberFacts("per_third");
+  const start = T0 + 2 * HOUR;
+  const made = (await w.callAs(me, "planner.calendar.create", { title: "Dentist", start: iso(start), end: iso(start + HOUR) }));
+  assert.ok(!made.error, JSON.stringify(made.error));
+  const id = made.data.id;
+  const gone = await w.callAs(me, "planner.delete", { item: id });
+  assert.ok(!gone.error, JSON.stringify(gone.error));
+  const mine = (await w.callAs(me, "planner.bin", {})).data.events.map((/** @type {any} */ x) => x.id);
+  assert.deepEqual(mine, [id], "the member who deleted it finds it in their own Bin");
+  assert.deepEqual((await w.callAs(other, "planner.bin", {})).data.events, [], "another member does not");
+  assert.deepEqual((await w.ok("planner.bin", {}, "mcp:agent:juno")).events, [], "an agent with no person on its chain sees nothing");
+  assert.deepEqual((await w.ok("planner.bin", {})).events.map((/** @type {any} */ x) => x.id), [id], "the owner sees every removed event");
+  const back = await w.callAs(me, "planner.delete", { item: id, restore: true });
+  assert.ok(!back.error, JSON.stringify(back.error));
+  assert.equal(back.data.record, id);
+  assert.deepEqual((await w.callAs(me, "planner.bin", {})).data.events, [], "restored, so out of the Bin");
 });

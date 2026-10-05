@@ -24,14 +24,16 @@ const EVENT = { name: "event", label: "Event", fields: [{ name: "title", kind: "
 const make = (kind, roles) => {
   const store = kind === "memory" ? createMemoryStore({ clock }) : createSqliteStore({ db: new DatabaseSync(":memory:"), clock, hotRows: 10 });
   const log = createEventLog({ space: SPACE, clock });
-  const all = new Map([G(OWNER), G(MEMBER), G(THIRD), { ...G("assistant"), subject: { kind: "actor", actor: { kind: "agent", id: "assistant", space: SPACE } } }].map(g => [g.id, g]));
-  const known = new Set([`person:${OWNER}`, `person:${MEMBER}`, `person:${THIRD}`, `agent:assistant`]);
+  const all = new Map([G(OWNER), G(MEMBER), G(THIRD), { ...G("assistant"), subject: { kind: "actor", actor: { kind: "agent", id: "assistant", space: SPACE } } }, { ...G("planner"), subject: { kind: "actor", actor: { kind: "service", id: "planner", space: SPACE } } }].map(g => [g.id, g]));
+  const known = new Set([`person:${OWNER}`, `person:${MEMBER}`, `person:${THIRD}`, `agent:assistant`, `service:planner`]);
   const members = { has: a => known.has(`${a.kind}:${a.id}`), ...(roles ? { membership: a => ({ role: roles[a.id] || "member" }) } : {}) };
   const gw = createGateway({ space: SPACE, store, log, chains, clock, attrs: () => ({}),
     grants: { forSubject: a => [...all.values()].filter(g => g.subject.actor.kind === a.kind && g.subject.actor.id === a.id), get: id => all.get(id) },
     members, hasPresenceSession: () => true });
+  lastGateway = gw;
   return gw.records;
 };
+/** @type {any} */ let lastGateway;
 const q = (r, who, extra = {}) => r.query(who(), "event", { page: { limit: 50 }, ...extra });
 const titles = rows => rows.map(x => x.data.title).sort();
 
@@ -83,5 +85,28 @@ for (const kind of ["memory", "sqlite"]) {
     let seen = [];
     try { seen = await bin(bare); } catch { seen = []; }
     assert.deepEqual(seen, [], "an agent with no person on its chain sees none");
+  });
+}
+
+for (const kind of ["memory", "sqlite"]) {
+  test(`bin (${kind}): a module's own chain writes on a person's behalf with that person's chain; no other caller can name created_for`, async () => {
+    const r = make(kind);
+    await r.define(owner(), { add_types: [EVENT] });
+    const svc = lastGateway.serviceChain("planner");
+    const forMember = await r.create(svc, "event", { title: "planner made it for member" }, { on_behalf: member() });
+    const forNobody = await r.create(svc, "event", { title: "planner made it alone" });
+    await r.remove(svc, "event", forMember.id, forMember.version);
+    await r.remove(svc, "event", forNobody.id, forNobody.version);
+    const bin = async (who) => titles((await q(r, who, { include_deleted: true })).rows);
+    assert.deepEqual(await bin(member), ["planner made it for member"], "the person it was made for finds it in their Bin");
+    assert.deepEqual(await bin(() => assistantOf(MEMBER)), ["planner made it for member"], "and so does their assistant");
+    assert.deepEqual(await bin(third), [], "another person does not");
+    // Forging: a plain chain naming someone else, a service chain handed something that is not a chain, and a chain-shaped object the kernel did not build.
+    await assert.rejects(() => r.create(third(), "event", { title: "forged" }, { on_behalf: member() }), { code: "denied" });
+    await assert.rejects(() => r.create(owner(), "event", { title: "forged" }, { on_behalf: member() }), { code: "denied" });
+    await assert.rejects(() => r.create(svc, "event", { title: "forged" }, { on_behalf: { hops: [{ actor: actor(MEMBER) }] } }), { code: "bad_input" });
+    await assert.rejects(() => r.create(svc, "event", { title: "forged" }, { attrs: { created_for: `person:${MEMBER}` } }), { code: "bad_input" });
+    await assert.rejects(() => r.create(third(), "event", { title: "forged" }, { attrs: { created_for: `person:${MEMBER}` } }), { code: "bad_input" });
+    assert.deepEqual(await bin(member), ["planner made it for member"], "nothing a caller typed changed whose row it is");
   });
 }

@@ -232,8 +232,9 @@ export async function openRecords(o) {
       drop: (/** @type {string} */ id) => { cal.delete(String(id)); },
       patch: (/** @type {string} */ id, /** @type {any} */ f) => { const r = cal.get(String(id)); if (r) Object.assign(r, f); },
       /** An event of the planner's own: the record, and its calendar row. */
-      async create(/** @type {any} */ data) {
-        const rec = await K.records.create(chain(), "event", data);
+      async create(/** @type {any} */ data, /** @type {any} */ onBehalf = undefined) {
+        // The person the event is for (their own chain, when a person added it) is named so the Bin lists it to them; calendar sync has no person and leaves it to the owner.
+        const rec = await K.records.create(chain(), "event", data, onBehalf ? { on_behalf: onBehalf } : {});
         known.set(rec.id, rec.version);
         return fromEvent(rec, now());
       },
@@ -274,7 +275,7 @@ export async function openRecords(o) {
       }
       const type = typeOf(row);
       // A field with nothing in it is left out: a store may keep an empty field as no field (Twenty does), and a create that said null would then read back as something else.
-      const rec = await K.records.create(chain(), type, Object.fromEntries(Object.entries(toData(row)).filter(([, v]) => v !== null && v !== undefined)));
+      const rec = await K.records.create(chain(), type, Object.fromEntries(Object.entries(toData(row)).filter(([, v]) => v !== null && v !== undefined)), w.chain ? { on_behalf: w.chain } : {});
       versions.set(rec.id, rec.version); known.set(rec.id, rec.version);
       const made = { ...row, id: rec.id };
       items.set(rec.id, made);
