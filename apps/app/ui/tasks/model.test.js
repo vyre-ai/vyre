@@ -114,7 +114,7 @@ test("Now never greets a raw id, and Recent is plain sentences with kernel house
   const w = { me: id, actors: [{ id, name: id, family: "person" }], spaces: [{ id: "spc_1", name: "Home" }], types: new Map(), tasks: [], events: [], calendar: [], records: new Map(), now: NOW };
   assert.equal(isRawId(id), true);
   assert.equal(isRawId("Devbox"), false);
-  assert.equal(nowModel(w).greeting, "Good afternoon, there");
+  assert.equal(nowModel(w).greeting, "Good afternoon");
   assert.equal(nowModel({ ...w, actors: [{ id, name: "Devbox", family: "person" }] }).greeting, "Good afternoon, Devbox");
   assert.deepEqual(plainLine(w, { what: "owner.changed", actor: "Vyre", record: "vyre://spc_1/space/x" }), { what: "became the owner of Home", actor: "You", record: "vyre://spc_1/space/x" });
   assert.equal(plainLine(w, { what: "member.set", actor: "Vyre" }), null);

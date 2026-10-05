@@ -18,6 +18,7 @@ export const NAV: NavDef = {
     { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" },
     { id: "assistants", label: "Assistants", icon: "assistants", href: "/u/assistants" },
     { id: "kits", label: "Kits", icon: "box", href: "/u/kits" },
+    { id: "shared", label: "Shared", icon: "share", href: "/u/shared" },
   ],
   bottom: [
     { id: "search", label: "Search", icon: "search", href: "/u/search" },

@@ -124,6 +124,8 @@ export const seams = new Map();
 export default {
   async start(ctx, seam0 = {}) {
     const seam = { ...seam0, ...(seams.get(ctx.paths.root) || {}) };
+    /** A seam read when it is used, so a test can change it after the relay started (the invitee channel lifetimes). @param {string} k */
+    const liveSeam = k => (/** @type {any} */ (seams.get(ctx.paths.root)) || {})[k] ?? /** @type {any} */ (seam)[k];
     /** @type {Set<any>} the invitee channels open now (IV-5) */ const inviteePool = new Set();
     ctx.store.migrate(MIGRATIONS);
     const db = ctx.store.db;
@@ -606,8 +608,8 @@ export default {
         const timers = /** @type {any[]} */ ([]);
         const stop = () => { for (const t of timers) clearTimeout(t); timers.length = 0; inviteePool.delete(channel); };
         const end = (/** @type {string} */ why) => { stop(); try { channel.close(1000, why); } catch { /* closed */ } };
-        const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, seam.inviteeIdleMs ?? 30_000);
-        const total = setTimeout(() => end("invite channel time is up"), seam.inviteeTotalMs ?? 5 * 60_000);
+        const idle = setTimeout(() => { if (!opened) end("no invite stream opened"); }, liveSeam("inviteeIdleMs") ?? 30_000);
+        const total = setTimeout(() => end("invite channel time is up"), liveSeam("inviteeTotalMs") ?? 5 * 60_000);
         for (const t of [idle, total]) { if (t.unref) t.unref(); timers.push(t); }
         const prevClose = channel.onclose;
         channel.onclose = (/** @type {any[]} */ ...a) => { stop(); return typeof prevClose === "function" ? prevClose.apply(channel, a) : undefined; };

@@ -22,7 +22,7 @@ import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
 import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
-import { serveApp, associationFile } from "./app.js";
+import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
 import { readReleaseList } from "../../kernel/modules/release-list.js";
 import { acquire } from "./lock.js";
@@ -313,13 +313,13 @@ async function startLocked(opts, root, p, release) {
     // id is the spaces module's row (server-hosted/<id>); the open peer session comes from the Wink module (`wink.sessionFor`), or a test's `opts.sessionFor`. No row or no session function: not a remote space.
     const remoteFor = (/** @type {string} */ id) => {
       const sf = opts.sessionFor || /** @type {any} */ (registry.deps).winkSessionFor;
-      if (typeof sf !== "function") return null;
       let device = null;
-      try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ }
-      if (typeof device !== "string" || !device) return null;
+      if (typeof sf === "function") { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(`server-hosted/${id}`)); if (r) device = JSON.parse(r.value).device; } catch { /* no spaces table yet */ } }
+      // A space this person JOINED on someone else's server (an invite accepted here): the spaces module reaches it with a member stream to the home its record names (the module hands the remote up as `memberRemote`)
+      if (typeof device !== "string" || !device) { const mr = /** @type {any} */ (registry.deps).memberRemote; if (typeof mr === "function") { try { return mr(id) || null; } catch { return null; } } return null; }
       return createRemoteKernel({ space: id, transport: winkTransport({ sessionFor: async () => sf(device) }), signer: proofSigner });
     };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -459,7 +459,11 @@ async function startLocked(opts, root, p, release) {
         let entries = st && Array.isArray(st.entries) ? st.entries : [];
         if (!entries.length && name) { st = await ask("spaces.identity.lookup", { name, id: identity }); entries = st && Array.isArray(st.entries) ? st.entries : []; }
         const e = entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device");
-        return e && typeof e.pub === "string" ? { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}) } : null;
+        if (!e || typeof e.pub !== "string") return null;
+        // the signed time the entry was added and whether it founded the list, from the verified chain (the door applies the 24-hour newcomer rule with the sealing process's own clock); unknown stays unknown
+        let age = e;
+        if (typeof e.since !== "number" || typeof e.founder !== "boolean") { const ev = await ask("spaces.identity.evidence", { person: identity, ...(name ? { name } : {}) }); const f = ev && Array.isArray(ev.entries) ? ev.entries.find((/** @type {any} */ x) => x && x.eid === eid && x.kind === "device") : null; if (f) age = f; }
+        return { pub: e.pub, ...(e.alg ? { alg: e.alg } : {}), ...(e.held ? { held: e.held } : {}), ...(typeof age.since === "number" ? { since: age.since } : {}), ...(typeof age.founder === "boolean" ? { founder: age.founder } : {}) };
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId });
@@ -1401,6 +1405,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     return serveApp(res, url.pathname);
   }
+  // config app.root with an export built for the root (npm run export:web:root): the app answers every page address the box
+  // does not own, and the Deck's own pages (the owner wizard, device and passkey pages, sign-in, the signed release files and
+  // the assets they load) stay. An export built for /app/ cannot serve at / (its router and worker are rooted at /app), so
+  // then the Deck answers as before.
+  if (req.method === "GET" && cfg.app?.root && !url.pathname.startsWith("/v1/") && !ROOT_BOX.test(url.pathname) && appBase(APP_DIST) === "") return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname, cfg);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
@@ -1462,6 +1471,9 @@ function stream(req, res, url, events, streams) {
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
   ".ttf": "font/ttf", ".map": "application/json" };
+
+/** At the root (config app.root) these stay the box's: the pre-app pages and what they load, and the signed release files. */
+const ROOT_BOX = /^\/(onboard|person|release|css|js|vendor|fonts|theme\.css|icon\.svg|favicon\.svg|icon-[^/]+|apple-touch-icon\.png|splash|kernel|lib)(\/|\.|$)/;
 
 /** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
 const DECK_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);

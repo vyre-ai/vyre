@@ -72,6 +72,9 @@ test("service: a new version shows what changed in words, and a Kit goes through
   kernel.completeTask(p.task, { outcome: "approved" });
   await settle();
   assert.equal((await flows.tools["kits.list"](person, {}))[0].status, "installed");
+  const d = await flows.tools["kits.diff"](person, { kit: estateKit(2) });
+  assert.equal(d.installed, true);
+  assert.equal(d.newer, true);
 });
 
 test("service: simulation through the tool reports without writing", async () => {

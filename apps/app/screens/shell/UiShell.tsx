@@ -10,6 +10,7 @@ import { loadReal } from "./real";
 import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
 import { themeFor } from "./spaces.js";
+import { FindHost, openFind } from "../find/FindHost";
 import { startKeepingAppearance } from "../../src/state/keep-appearance";
 
 /** The frame of /u: the rail or tab bar, the space switcher, and the showing space's look applied to the theme. */
@@ -45,10 +46,11 @@ export function UiShell({ children }: { children: React.ReactNode }) {
   const look = looks[space === "all" ? "mine" : space];
   useEffect(() => { setSpace(themeFor(space, looks)); }, [space, look, looks, setSpace]);
   return (
-    <Shell {...nav} current={path} onNavigate={(href) => router.push(href as never)} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
+    <Shell {...nav} current={path} onNavigate={(href) => (href === "/u/search" ? openFind() : router.push(href as never))} spaces={DATA.spaces} space={space} onSpace={setShowing} user={{ name: DATA.me.name, sub: DATA.me.vyreName }}>
       <SessionNotice />
       {children}
       <ApprovalSheet />
+      <FindHost />
     </Shell>
   );
 }
