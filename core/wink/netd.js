@@ -61,6 +61,7 @@ export function findBinaries(env = process.env) {
  *   retryMs?: number,                               how long to wait before trying again after a failure (default 30 s; 0 tries once)
  *   controlUrl?: string,                            a public https address peers can reach (config wink.controlUrl); without it only this box's own node uses the network
  *   binaries?: { headscale: string | null, forwarder: string | null },
+ *   relayUrl?: string,                              the relay used for the outside reachability check
  *   reach?: any,                                    createReach (core/wink/reach.js) result, or a function creating it
  *   deps?: { createHeadscale?: any, createGate?: any, createHost?: any, freePort?: () => Promise<number> },
  * }} o
@@ -134,7 +135,11 @@ export function createNetd(o) {
   async function loadReach(gatePort) {
     let m;
     try { m = await import("./reach.js"); } catch { return null; }
-    return typeof m.createReach === "function" ? m.createReach({ log, ports: [{ port: gatePort, proto: "tcp" }] }) : null;
+    if (typeof m.createReach !== "function") return null;
+    // the outside check goes to the relay this box already uses (a self-hosted one answers /v1/reach/check; the hosted one does not, and then nothing is called direct)
+    const url = String((o.relayUrl || "") || (o.ctx && o.ctx.config && o.ctx.config.relay && o.ctx.config.relay.url) || "").replace(/^ws/, "http");
+    const verify = url && typeof m.relayVerifier === "function" ? m.relayVerifier(url) : undefined;
+    return m.createReach({ log, ports: [{ port: gatePort, proto: "tcp" }], ...(verify ? { verify } : {}) });
   }
 
   const v4 = (/** @type {string[] | undefined} */ l) => (l || []).find(x => /^\d+\.\d+\.\d+\.\d+$/.test(x)) || null;
