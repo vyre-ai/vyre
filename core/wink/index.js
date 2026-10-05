@@ -6,7 +6,7 @@
 //   Add a phone               wink.phone.open  a QR and a long code; the phone scans or pastes it, both sides show the same three words, the person says yes
 //                                              on the computer (wink.phone.pair.answer); no yes pairs nothing (core/wink/pairing.js). The ring (QR) path is the
 //                                              existing pairing window; this module registers its devices too (device.paired, device.removed).
-//   Typed code (development)  wink.code.open   a short typed code, two-sided (the PAKE of relay/client/code.js, wink.code.ack): off in a release build.
+//   Typed code  wink.code.open   a short typed code, two-sided (the PAKE of relay/client/code.js, wink.code.ack): on in a release build too, ten minutes, three wrong tries, one use; the kill switch is VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false.
 //   Invite a person           wink.invite      a Wink ticket with the offer sealed into it; the invited person's redemption becomes a membership
 //                                              grant here (a sensitive role waits for the admin's approval).
 //   Share a computer          wink.share       lend one of my computers to my own space: a node.host grant with limits.
@@ -20,7 +20,7 @@
 import crypto from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { createWinkCode } from "./code.js";
+import { createWinkCode, CODE_TTL_MS, MAX_ATTEMPTS } from "./code.js";
 import { codeToAvatarBytes } from "../../relay/client/avatarcode.js";
 import { createGrants, MIGRATIONS as GRANT_MIGRATIONS, spaceIdOf, timeId, base32 } from "./grants.js";
 import { card, removal, removed, words } from "./cards.js";
@@ -40,9 +40,7 @@ import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const OFFER_TTL = 5 * 60_000;
-/** A typed code lives 10 minutes, and three wrong tries close it (a fresh one replaces it). */
-const TYPED_TTL = 10 * 60_000;
-const TYPED_TRIES = 3;
+/** A typed code lives CODE_TTL_MS and MAX_ATTEMPTS wrong tries close it (a fresh one replaces it): both are stated once, in code.js. */
 const INVITE_TTL_DAYS = 7;
 const ROLES = new Set(["member", "contributor", "guest", "admin"]);
 const SENSITIVE_ROLES = new Set(["admin"]);
@@ -64,7 +62,7 @@ function owner(meta, what) {
  *   bridge      { createBridge, backendFor, home?, roots? } the pool engine'S bridge (kernel/storage/bridge.js, devices.js): a drive reached through another device (core/wink/storage/bridge.js)
  *   pool        the storage Pool engine (kernel/storage/pool.js) and poolBackend(credentials, offer) -> backend (kernel/storage/devices.js backendFor)
  *   ports       { typist, finish, adopt, callServer }   test seams for the typing flows
- *   typedCode   true switches the short typed code on (development; also VYRE_WINK_TYPED_CODE=1 or config wink.typedCode); off in a release build
+ *   typedCode   false switches the short typed code off (the kill switch; also VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false); on by default, in a release build too
  *   confirmAdopt false skips the person-at-the-server confirmation of a first adoption (a test seam; always on in a real box)
  *   releaseMaxMs how long a release the server never confirmed is retried before it is given up and the person is told (default 30 days)
  *   looseOwnerIds true (tests only) accepts owner ids of any length
@@ -163,7 +161,7 @@ export function createWink(inject = {}) {
       if (code) return code;
       const route = await ensureRoute();
       code = createWinkCode({
-        route, twoSided: true, level: 2, ttlMs: TYPED_TTL, maxAttempts: TYPED_TRIES,
+        route, twoSided: true, level: 2, ttlMs: CODE_TTL_MS, maxAttempts: MAX_ATTEMPTS,
         allocate: async () => { const r = /** @type {any} */ (await ctx.call("relay.code.alloc", {})); allocFail = r && r.error ? r.error : null; return r && r.data ? r.data : null; },
         release: () => { void ctx.call("relay.code.release", {}); },
         emit: (name, data) => {
@@ -194,7 +192,7 @@ export function createWink(inject = {}) {
       if (codeOffer) { const prev = readOffer(codeOffer); if (prev && ["offered", "found", "joining"].includes(prev.state)) writeOffer(codeOffer, "closed", { why: "replaced" }); }
       c.cancel();
       carried.clear();
-      codeOffer = newOffer(flow, "code", {}, TYPED_TTL);
+      codeOffer = newOffer(flow, "code", {}, CODE_TTL_MS);
       if (carry) carried.set(codeOffer, carry);
       const made = await c.open();
       if (!made) { writeOffer(codeOffer, "closed", {}); throw fail("unavailable", allocFail ? relayWords(allocFail) : words("relayNoCode")); }
@@ -225,7 +223,7 @@ export function createWink(inject = {}) {
     };
 
     ctx.tool("wink.code.open", {
-      description: "Show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
+      description: "Show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). On in a release build too: the code lives 10 minutes, three wrong tries close it, and it is used once; it is refused only when the kill switch is set (VYRE_WINK_TYPED_CODE=0 or the config wink.typedCode: false), then scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.",
       input: obj({ flow: { type: "string", enum: ["W1", "W2", "W3"] } }),
       presence: { summary: async () => "Show a code to add a new device to this server" },
       run: async (input, meta = {}) => {
@@ -316,12 +314,10 @@ export function createWink(inject = {}) {
         try { const r = await ctx.call("spaces.admin-list", { person: identity }); return (r && r.data && r.data.identity && r.data.identity.name) || null; } catch { return null; }
       },
     };
-    // The short typed code is switched off in a release build (ruling, 4 Oct 2026; its cryptography still needs an independent review, team/0.3/PAKE-choice.md). One flag
-    // for development: the env var VYRE_WINK_TYPED_CODE=1, or `wink.typedCode: true` in the config. Scan and paste always work.
-    // RC1 (user ruling, 5 Oct 2026): the typed code is allowed on a release build, with a 10 minute life, three wrong tries per code and one use. `typedCodeOn` says it is allowed (config `wink.typedCode: false`, or VYRE_WINK_TYPED_CODE=0,
-    // is the kill switch). `typedCodeDefault` is the older development switch: the install flow shows a typed code in place of the QR only when that is on.
+    // The short typed code ships in release and is the way in (user ruling, 5 Oct 2026): ten minutes, three wrong tries per code, one use (code.js states the numbers). `typedCodeOn` says it is allowed: on unless the
+    // kill switch is set (config `wink.typedCode: false`, or VYRE_WINK_TYPED_CODE=0). `typedCodeDefault` says the server shows it beside the QR and long code: the same answer, so a release server with no env set shows it.
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : !(process.env.VYRE_WINK_TYPED_CODE === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.typedCode === false));
-    const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
+    const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : typedCodeOn();
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
     /** @type {ReturnType<typeof createNetd> | null} */ let netdRef = null;
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
