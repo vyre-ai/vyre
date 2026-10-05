@@ -42,9 +42,11 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
     const own = role === "box" ? /** @type {any} */ (await ctx.call("wink.server.owner", {}).catch(() => null)) : null;
     const person = (me && me.data && me.data.id) || (own && own.data && /^per_/.test(String(own.data.identity)) ? String(own.data.identity) : null);
     if (!person) throw fail("not_ready", "this computer has no identity yet");
-    const r = /** @type {any} */ (await ctx.call("spaces.identity.devices.read", { person }).catch(() => null));
-    const e = r && r.data && Array.isArray(r.data.devices) ? r.data.devices.find((/** @type {any} */ d) => d && d.device === eid && typeof d.agree === "string") : null;
-    if (!e) throw fail("not_verified", "that computer is not on your identity list with a key for receiving files, so nothing was sent");
+    const r = /** @type {any} */ (await ctx.call("spaces.identity.devices.read", { person }).catch((/** @type {any} */ e) => ({ error: { code: e && e.code, message: e && e.message } })));
+    if (r && r.error) throw fail("not_verified", `your identity list could not be read (${String(r.error.code || "failed")}), so nothing was sent`);
+    const list = r && r.data && Array.isArray(r.data.devices) ? r.data.devices : [];
+    const e = list.find((/** @type {any} */ d) => d && d.device === eid && typeof d.agree === "string");
+    if (!e) throw fail("not_verified", `that computer is not on your identity list with a key for receiving files (the list has ${list.length} with keys), so nothing was sent`);
     return String(e.agree);
   };
   const dropCfg = () => (ctx.config && ctx.config.files && ctx.config.files.drop) || {};
