@@ -12,6 +12,7 @@ import { isProjectId } from "../../lib/project-id.js";
 import { ownerDevice } from "../modules/index.js";
 import { real } from "./folders.js";
 import { within } from "../../lib/within.js";
+import { backupSources } from "./backup.js";
 import { grantReach, revokeReach, reachGrants, mayReach, asPerson } from "../../lib/project-reach.js";
 
 const str = { type: "string" };
@@ -297,6 +298,15 @@ export default {
     const needKernel = () => { if (!K || !K.grants) throw refuse("project reach is a kernel grant, and there is no kernel here", "unavailable"); };
 
     // The Project record's address for a short name: what a kernel grant names. For the agents module, which makes grants in the person's own create or update.
+    ctx.tool("projects.backup.sources", {
+      description: "What the Basic encrypted backup reads of this computer's projects: { items: [{ kind: \"file\", name, size, mtime, path } and the project rows as rows/projects.jsonl], notices }. Ignore rules applied (build output, dependency folders, caches, logs), files over 2 GB skipped with a notice. The memory module's own.",
+      input: { type: "object", properties: {} },
+      callers: ["module"],
+      run: async (_i, meta = {}) => {
+        if (String((meta && meta.caller) || "") !== "module:memory") throw refuse("projects.backup.sources is the memory module's", "denied");
+        return backupSources(P.valid());
+      },
+    });
     ctx.tool("projects.record", {
       description: "The Project record for a short name: { urn }. Only the agents module asks.",
       input: { type: "object", required: ["project"], properties: { project: str } },

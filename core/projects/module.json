@@ -118,6 +118,12 @@
         "effect": "write"
       },
       {
+        "name": "projects.backup.sources",
+        "summary": "what the Basic backup reads of this computer's projects (the memory module only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "projects.record",
         "summary": "the Project record's address for a short name (the agents module only)",
         "reach": "modules",
