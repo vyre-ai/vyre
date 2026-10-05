@@ -32,7 +32,7 @@ async function world(t, spaceMem, extraConfig = {}, sources = null) {
     name: "memory", config: { me: { domains: ["riverastudio.com"] }, ...extraConfig }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
     events: { on: () => () => {}, emit: () => {}, since: () => [], prune: () => 0 },
     call: async (tool, input) => { calls.push(tool); if (tool === "projects.backup.sources") return sources ? { data: { items: sources() } } : { error: { code: "no_such_tool" } }; return tool === "recall.search" ? { data: [] } : tool === "recall.thread" ? { data: { turns: [] } } : tool === "work.know.search" ? { data: { hits: space.hits } } : tool === "work.know.answer" ? (space.answer || { data: { result: { text: "", citations: [] } } }) : fakeReachCall(tool, input, { agents: AGENTS, projects: [] }); },
-    tool: (name, def) => tools.set(name, def), kernel: Object.assign(Object.create(handle), { memory: spaceMem }), memoryRunner: null,
+    tool: (name, def) => tools.set(name, def), kernel: Object.create(handle, { memory: { value: spaceMem } }), memoryRunner: null,
     iqRunner: async ({ prompt }) => { prompts.push(prompt); return { text: JSON.stringify({ answer: null, cite: [], confidence: 0, abstain: true, known: [] }), usd: 0 }; },
   };
   const h = await memory.start(ctx);

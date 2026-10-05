@@ -1131,6 +1131,20 @@ export class Vault {
     return v;
   }
 
+  /**
+   * The key of an API-key account (kind "api-key": what `sessions.accounts.key` stores), for the Space's lent-computer credential route and nothing else (the credentials port in index.js is the one caller;
+   * no tool returns it). One request at a time, never cached by the caller. A sign-in token, a password or any other kind of item is not an API key and answers null. @param {string} name @returns {Promise<string | null>}
+   */
+  async apiKeyValue(name) {
+    await this.key();
+    const row = this.row(String(name)); if (!row || row.kind !== "api-key") return null;
+    const f = await this.fields(row);
+    const v = ["value", "api-key", "token"].map(k => f[k]).find(x => typeof x === "string" && x);
+    if (!v) return null;
+    this.audit("api-key-use", row.name, "lent", true, "handed to the lent-computer credential route");
+    return v;
+  }
+
   /** Which launcher sign-in tokens are stored and when each was added or last changed: names and times, never a value. */
   providerTokens() {
     return Object.entries(LAUNCHER_ITEMS).flatMap(([provider, spec]) => { const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(spec.item)); return r && this.rowOk("vault_items", r) ? [{ provider, item: spec.item, stored: true, added: r.updated }] : []; });
@@ -1397,6 +1411,16 @@ export class Vault {
   }
 
   /**
+   * Is this item granted to this module (and, for a watcher, to exactly that watcher)? The one check: `release` asks it before it hands a value over, and a caller that only needs the answer
+   * (a watcher reading through a service the vault does not hold the token of) asks it through `vault.granted`. A grant to the module as a whole is not a grant to a watcher.
+   * @param {{ name: string, module: string, watcher?: string, project?: string }} q
+   */
+  granted({ name, module, watcher = "", project }) {
+    return this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, module, watcher)
+      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
+  }
+
+  /**
    * Hand one value to one module. The grant is the boundary: the loader's needs.vault check is
    * only a courtesy, since a module could reach this tool through ctx.call directly.
    */
@@ -1412,8 +1436,7 @@ export class Vault {
     const who = watcher ? `${caller}/${watcher}` : String(caller);
     if (!mod) { this.audit("release", name, who, false, "not a module"); throw new Error("only modules may ask the vault for a value"); }
     await this.key();
-    const g = this.db.prepare("SELECT * FROM vault_grants WHERE item=? AND module=? AND watcher=? AND status='active'").all(name, mod, watcher)
-      .filter(x => this.rowOk("vault_grants", x)).some(x => !project || !x.project || x.project === project);
+    const g = this.granted({ name, module: mod, watcher, project });
     if (!g) {
       this.audit("release", name, who, false, "no grant");
       throw new Error(`${name} is not granted to ${watcher ? `${mod}/${watcher}` : mod} · vyre vault grant ${name} ${mod}${watcher ? ` --watcher ${watcher}` : ""}`);

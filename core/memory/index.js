@@ -1337,7 +1337,7 @@ export default {
       callers: idCallers,
       description: "Whether the person's identity memory is kept sealed on this server (as ciphertext only), whether it is unlocked right now, how many devices can unlock it, which servers the person has given it to, and where it was moved to. For the person and their assistant.",
       input: { type: "object", properties: { ...agentField } },
-      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null }; },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return { ...(identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null }), ...(identity && ctx.kernel && typeof ctx.kernel.space === "string" ? { space: ctx.kernel.space } : {}) }; },
     });
     ctx.tool("memory.identity.enroll", {
       effect: "write",
@@ -1359,7 +1359,9 @@ export default {
       run: async (input, extra = {}) => {
         await personalAccess(input, extra.caller, "memory.identity.grant");
         if (!identity || !identity.sealed) throw noIdentity();
-        const y = await oneYes("vault", { op: "memory.identity.unlock", fields: { identity: String(idCfg.id), server: String(identity.serverFp) } }, input.proof);
+        // The sealing process checks a proof against the person's kernel chain (its space is in the payload the phone signs), so the request carries the chain the kernel builds for this call.
+        const chain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain({ kernelFacts: extra.kernelFacts, ...(extra.token ? { token: extra.token } : {}) }).catch(() => null) : null;
+        const y = await oneYes("vault", { ...(chain ? { chain } : {}), op: "memory.identity.unlock", fields: { identity: String(idCfg.id), server: String(identity.serverFp) } }, input.proof);
         if (!y.ok) throw denied(`the person's yes was not given for this (${y.reason})`);
         return identity.grant();
       },
