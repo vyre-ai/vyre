@@ -1,7 +1,7 @@
 // @ts-check
 // The kernel's line budget for K3 (KERNEL-brief.md section 6: sealing process about 800 lines, inference door and ledger about 700), and the
 // dependency rule: nothing here imports a module, a library or the vault. Only node: built-ins and files inside kernel/. Counted as non-blank,
-// non-comment lines of non-test files; a new file or a raised cap needs reviewer-2's sign-off.
+// non-comment lines of non-test files; a new file or a raised cap needs reviewer-3's sign-off.
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,7 +17,7 @@ const GROUPS = {
   // The Android Keystore attestation verifier (276 lines): about 110 of them are Google's four pinned attestation roots as data (PEM), the rest is the DER walk, the chain and key-description checks and the revocation list. Own group, cap 300.
   androidattest: { cap: 300, files: ["seal/androidattest.js"] },
   // BG-1 (reviewer-2's sign-off, RC1): 900 is the CEILING for the sealing group, raised from 800 for what RC1 had to put inside the sealing process: the one key-strength rule (strength.js, by method and signer,
-  // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-2's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
+  // with the unattested phone-key mark), the nested payload hash, the invitee's first-key join and its undo, and the dry presence check. It is a ceiling, not a target: further growth needs reviewer-3's sign-off. 0.3.1 trims it back under 800 (team/BACKLOG.md).
   sealing: { cap: 900, files: ["seal/process.js", "seal/store.js", "seal/proof.js", "seal/wire.js", "seal/classes.js", "seal/normalise.js", "seal/client.js"] },
   door: { cap: 700, files: ["door/door.js", "door/stream.js", "seal/ledger.js"] },
   adapters: { cap: 300, files: ["seal/uses.js", "seal/placement.js"] },
