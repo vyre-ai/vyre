@@ -25,10 +25,11 @@ async function rig() {
   return { k, m, ownerChain, personChain, inviteeChain };
 }
 
-test("kernel members: an owner sets roles with a fresh proof; the kernel's refusals come back in plain words", async () => {
+test("kernel members: an owner sets roles with no proof below owner and a fresh proof for an owner; the kernel's refusals come back in plain words", async () => {
   const { m, ownerChain, personChain } = await rig();
   const k0 = { chain: ownerChain(), proof: {} };
-  await assert.rejects(m.setRole(k0, { person: KIT, role: "member" }), e => e.code === "presence_required" && /approval/.test(e.message));
+  await assert.rejects(m.setRole(k0, { person: KIT, role: "owner" }), e => e.code === "presence_required" && /approval/.test(e.message)); // making an owner asks; a role below owner does not
+  assert.ok(await m.setRole(k0, { person: JUNO, role: "member" }), "a role below owner needs no proof");
   const set = await m.setRole({ chain: ownerChain(), proof: sign("setRole", { person: KIT, role: "member" }) }, { person: KIT, role: "member" });
   assert.deepEqual([set.person, set.role, set.scope], [KIT, "member", null]);
   // a member cannot make anyone anything; a temp needs scope and an end date

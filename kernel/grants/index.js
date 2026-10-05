@@ -21,7 +21,10 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.create", resource_type: "grant", risk: "grant", label: "give access", gloss: "Give a person or an assistant access to something." },
   { action: "grants.revoke", resource_type: "grant", risk: "grant", label: "take access away", gloss: "Remove access, and everything given from it." },
   { action: "grants.narrow", resource_type: "grant", risk: "grant", label: "reduce access", gloss: "Make an existing access smaller." },
-  { action: "grants.role", resource_type: "grant", risk: "grant", label: "set a role", gloss: "Make someone an owner, admin, manager, member or temp." },
+  { action: "grants.role", resource_type: "grant", risk: "grant", label: "set the owner", gloss: "Make someone an owner, or hand ownership over." },
+  // Giving a role below owner and registering an actor ride on the person's own authenticated call: Touch ID is for pairing, the vault and outward acts, not for who is in the Space (lead ruling 5 Oct).
+  // Only an owner or an admin does either, and an admin sets only the roles below admin (MAY_SET); making an owner stays a presence act.
+  { action: "grants.member", resource_type: "grant", risk: "admin", label: "change who is in the Space", gloss: "Make someone an admin, manager, member or temp, take a member or an assistant out, add an assistant or service, or give one access." },
   { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
   // Taking access away asks for no fresh proof, only the person's live session (risk "admin" = session presence): withdrawing can only reduce what a computer may do.
   { action: "grants.unoffer", resource_type: "offer", risk: "admin", label: "stop sharing a computer", gloss: "Withdraw an offer of a computer for work." },
@@ -53,6 +56,9 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "rules.disable", resource_type: "rule", risk: "grant", label: "turn a standing rule off", gloss: "Stop a rule binding without deleting it." },
 ].map(a => Object.freeze(a)));
 
+
+/** The action a grant is gated under: an owner or an admin giving an assistant or a service access is `grants.member` (no fresh proof); everything else is `grants.create`. @param {any} input */
+export const grantActionOf = input => (input && !input.parent && input.subject && input.subject.kind === "actor" && input.subject.actor && ["agent", "service", "automation"].includes(input.subject.actor.kind) ? "grants.member" : "grants.create");
 
 /** Does a resource match a rule's pattern: equal, or the pattern ends in `/*` and the resource is under it. @param {string} pattern @param {string} resource */
 const urnMatches = (pattern, resource) => (pattern.endsWith("/*") ? resource === pattern.slice(0, -2) || resource.startsWith(pattern.slice(0, -1)) : pattern === resource);
@@ -286,7 +292,8 @@ export function createGrantsStore(cfg) {
     async create(chain, input, o = {}) {
       validateInput(input);
       const issuer = person(chain);
-      const d = await gate(chain, "grants.create", urn("grant"), input, o.presence);
+      // Giving an assistant or a service access (a Project's reach, an agent-reach grant) rides on the person's own authenticated call like adding the actor does; a grant to a person or a role, and a delegation, keep their presence.
+      const d = await gate(chain, grantActionOf(input), urn("grant"), input, o.presence);
       const draft = { subject: input.subject, actions: [...input.actions], action_set_version: version, resource: { prefix: input.resource.prefix, ...(input.resource.where ? { where: input.resource.where } : {}), ...(input.resource.fields ? { fields: [...input.resource.fields] } : {}) }, conditions: input.conditions || {}, source: input.source };
       if (input.subject.kind === "role" && input.subject.name === "temp" && !(draft.conditions.when && draft.conditions.when.expires > clock())) throw new KernelError("bad_input", "a temp grant needs an expiry");
       if (input.parent) {
@@ -390,7 +397,7 @@ export function createGrantsStore(cfg) {
     async setRole(chain, m, o = {}) {
       const issuer = person(chain);
       if (!m || typeof m.person !== "string" || !ROLE_IDS.includes(m.role)) throw new KernelError("bad_input", "a role needs a person and one of the five roles");
-      const d = await gate(chain, "grants.role", urn("member", m.person), m, o.presence);
+      const d = await gate(chain, m.role === "owner" ? "grants.role" : "grants.member", urn("member", m.person), m, o.presence);
       return applyRole(chain, issuer, m, d.decision);
     },
 
@@ -426,7 +433,7 @@ export function createGrantsStore(cfg) {
     async removeMember(chain, m, o = {}) {
       const issuer = person(chain);
       if (!m || typeof m.person !== "string") throw new KernelError("bad_input", "name the person to remove");
-      const d = await gate(chain, "grants.role", urn("member", m.person), { remove: m.person }, o.presence);
+      const d = await gate(chain, "grants.member", urn("member", m.person), { remove: m.person }, o.presence);
       const prior = memberships.get(m.person);
       if (!prior) throw new KernelError("not_found", "no such member");
       const mine = roleOf(issuer);
@@ -454,7 +461,7 @@ export function createGrantsStore(cfg) {
     async addActor(chain, actor, o = {}) {
       const issuer = person(chain);
       if (!actor || !["agent", "service", "automation"].includes(actor.kind) || actor.space !== cfg.space || typeof actor.id !== "string") throw new KernelError("bad_input", "an actor needs a kind, an id and this Space");
-      const d = await gate(chain, "grants.role", urn("member", actor.id), { actor }, o.presence);
+      const d = await gate(chain, "grants.member", urn("member", actor.id), { actor }, o.presence);
       if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin adds an actor");
       actors.add(actorKey(actor));
       await note(chain, "actor.added", urn("member", actor.id), { actor }, d.decision);
@@ -469,7 +476,7 @@ export function createGrantsStore(cfg) {
     async removeActor(chain, actor, o = {}) {
       const issuer = person(chain);
       if (!actor || !["agent", "service", "automation"].includes(actor.kind) || actor.space !== cfg.space || typeof actor.id !== "string") throw new KernelError("bad_input", "an actor needs a kind, an id and this Space");
-      const d = await gate(chain, "grants.role", urn("member", actor.id), { remove_actor: actor }, o.presence);
+      const d = await gate(chain, "grants.member", urn("member", actor.id), { remove_actor: actor }, o.presence);
       if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin removes an actor");
       if (!actors.has(actorKey(actor))) throw new KernelError("not_found", "no such actor");
       actors.delete(actorKey(actor));
