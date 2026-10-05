@@ -235,6 +235,8 @@ export const OPEN = new Set([
   "files.drive.space.list",
   "files.drive.space.read",
   "records.linked",
+  "records.roles",
+  "records.holders",
   "records.kits.library",
   "records.kits.get",
   "system.build",
