@@ -115,3 +115,35 @@ test("unsharing takes the file back at once, and only a participant or an admin 
   await g.shareFile(bob, `${dir}/shared.txt`);
   assert.deepEqual(await g.unshareFile(ada, `${dir}/shared.txt`), { unshared: 1 }, "an admin may take a share back");
 });
+
+test("the file seam a device sync or a lent request reads through meets the same check, and an agent that is not in the chat is refused even for a participant", async () => {
+  const { k, g, D, owner, bob, dan, ada, asst, dir } = await rig();
+  await D.put(bob, `${dir}/note.txt`, enc("hello"));
+  const read = async (/** @type {any} */ who, /** @type {string} */ p) => { const st = await D.files(who).read(p); const out = []; for await (const c of st.stream()) out.push(c); return Buffer.concat(out).toString(); };
+  assert.equal(await read(bob, `${dir}/note.txt`), "hello", "a participant's seam reads it");
+  for (const who of [owner, ada, dan]) await assert.rejects(() => read(who, `${dir}/note.txt`), { code: "not_found" }, "a non-participant's seam");
+  async function* src() { yield Buffer.from("x"); }
+  await assert.rejects(() => D.files(dan).write(`${dir}/new.txt`, src(), { maxBytes: 10 }), { code: "not_found" }, "and cannot write through it");
+  // an agent the chat does not list, acting for a participant
+  const scout = { kind: "agent", id: "scout", space: SPACE };
+  await g.addActor(owner, scout, { presence: proof("grants.role", { actor: scout }, `vyre://${SPACE}/member/scout`) });
+  const asScout = k.chains.fromFacts({ kind: "agent_session", vouched: true, person: BOB, agent: "scout", session: "s9" });
+  await assert.rejects(() => D.get(asScout, `${dir}/note.txt`), { code: "not_found" });
+  assert.equal(new TextDecoder().decode(await D.get(asst(BOB, "s10"), `${dir}/note.txt`)), "hello", "the listed assistant still reads");
+});
+
+test("a path guess does not get around the folder: dot segments, doubled slashes, encoded slashes, other case and trailing dots are refused or are another file that is not there", async () => {
+  const { D, dan, ada, owner, bob, dir } = await rig();
+  await D.put(bob, `${dir}/note.txt`, enc("hello"));
+  const id = dir.split("/").pop();
+  const guesses = [
+    `Projects/p1/chat/${id}/../${id}/note.txt`, `Projects/p1/chat/./${id}/note.txt`, `Projects/p1//chat/${id}/note.txt`, `Projects/p1/chat/${id}//note.txt`,
+    `Projects/p1/chat/${id}%2Fnote.txt`, `Projects/p1/chat/${id}/note.txt/`, `Projects/p1/chat/${id}/note.txt.`, `Projects/p1/CHAT/${id}/note.txt`, `Projects/p1/chat/${id.toUpperCase()}/note.txt`,
+    `Projects/p1/chat/${id}/%2e%2e/${id}/note.txt`, `/Projects/p1/chat/${id}/note.txt`,
+  ];
+  for (const who of [dan, ada, owner]) for (const p of guesses) {
+    let got = null;
+    try { got = new TextDecoder().decode(await D.get(who, p)); } catch (e) { assert.ok(["not_found", "bad_input"].includes(e.code), `${p}: ${e.code}`); }
+    assert.equal(got, null, `a guess read the file: ${p}`);
+  }
+});
