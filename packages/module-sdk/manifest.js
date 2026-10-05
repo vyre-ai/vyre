@@ -301,6 +301,7 @@ export function toolEntries(m) {
     if (typeof t.target === "string") extra.target = t.target;
     if (typeof t.projectArg === "string" || Array.isArray(t.projectArg)) extra.projectArg = t.projectArg;
     if (typeof t.cwdArg === "string" || Array.isArray(t.cwdArg)) extra.cwdArg = t.cwdArg;
+    if (t.projectIsRecord === true) extra.projectIsRecord = true;
     if (t.effect === "read" || t.effect === "write") extra.effect = t.effect;
     if (t.asks === true) extra.asks = true;
     if (typeof t.crossSpace === "string") extra.crossSpace = t.crossSpace;

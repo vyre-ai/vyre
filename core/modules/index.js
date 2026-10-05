@@ -1269,7 +1269,7 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, projectIsRecord: Boolean(e && e.projectIsRecord), declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
   }
@@ -1440,6 +1440,8 @@ export class Registry {
     }
     // One keying scheme: a project is named by its Project record's id (or its vyre:// address). The tools behind the project tabs still work on the short name, so a declared projectArg given as
     // an id or an address is turned into the short name here, once, for every module alike; a short name goes through as it is (a person at a terminal types it). An id Records does not know is not_found.
+    /** @type {Record<string, any> | null} what a record-keyed tool is handed back after the grant check, which judges the short name */
+    let recordKept = null;
     if (def.projectArg && input && typeof input === "object") {
       for (const arg of (Array.isArray(def.projectArg) ? def.projectArg : [def.projectArg])) {
         const v = input[arg];
@@ -1452,6 +1454,7 @@ export class Registry {
           if (!ref || ref.error || !ref.data || typeof ref.data.slug !== "string") return { error: { code: "not_found", message: "no such project" } };
           slugs.push(ref.data.slug);
         }
+        if (def.projectIsRecord) (recordKept ||= {})[arg] = v;
         input = { ...input, [arg]: Array.isArray(v) ? slugs : slugs[0] };
       }
     }
@@ -1521,6 +1524,7 @@ export class Registry {
         meta = { ...meta, reach: reach.all ? { all: true } : { all: false, projects: (Array.isArray(reach.projects) ? reach.projects : []).map((/** @type {any} */ p) => p && p.slug).filter(Boolean) } };
       }
     }
+    if (recordKept) input = { ...input, ...recordKept };
     if (this.deps.rules) {
       const verdict = await this.deps.rules({ tool, input, caller });
       if (!verdict.allow) return { error: { code: "denied", message: verdict.reason || "denied by rules" } };
