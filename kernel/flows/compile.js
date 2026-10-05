@@ -3,6 +3,7 @@
 // unknown types, fields, stages and actions are errors, expression names are checked, the Flow's caps must cover what its steps do,
 // and an effects summary says what the Flow reads, writes, sends and runs, for the approval card and for the simulation.
 
+import { opFor } from "./safe-write.js";
 import { nextCronZoned } from "./zone.js";
 import { triggerScopeNames } from "./triggers.js";
 import { checkFlow, walkSteps, canonical } from "./schema.js";
@@ -16,8 +17,10 @@ import { parse, roots, stepRefs } from "./expr.js";
  *   actions: Record<string, { risk: string, label?: string }>,
  *   roles?: readonly string[],
  *   teammates?: readonly string[],
+ *   pools?: readonly string[],
  *   templates?: readonly string[],
- *   connectors?: Record<string, { allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[], draft?: { method?: string, path: string } }>,
+ *   connectors?: Record<string, { allow?: { method?: string, path: string }[], deny?: { method?: string, path: string }[], draft?: { method?: string, path: string },
+ *     ops?: { name?: string, method: string, path: string, read?: boolean, outward?: boolean, idem?: { header?: string, param?: string }, readback?: { path: string, id: string, match: Record<string, string> } }[], rate?: { per_min: number } }>,
  * }} Catalog
  */
 
@@ -25,7 +28,7 @@ import { parse, roots, stepRefs } from "./expr.js";
 export const STEP_ACTIONS = Object.freeze({
   find: "records.read", pick: "records.read", create: "records.create", update: "records.update", upsert: "records.update",
   remove: "records.remove", stage: "records.update", ask: "ask.request", assign: "ask.request", agent: "ask.request",
-  classify: "model.call", service: "service.call", fn: "fn.run",
+  classify: "model.call", extract: "model.call", service: "service.call", fn: "fn.run",
 });
 
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -62,7 +65,7 @@ export function needs(flow, cat) {
     const action = /** @type {Record<string, string>} */ (STEP_ACTIONS)[s.kind];
     if (!action) return;
     if (["find", "pick", "create", "update", "upsert", "remove", "stage"].includes(s.kind)) out.push({ step: s.id, path, action, resource: typeUrn(cat.space, String(s.type)) });
-    else if (s.kind === "service") out.push({ step: s.id, path, action: serviceAction(s.method), resource: serviceResource(cat.space, s.connector) });
+    else if (s.kind === "service") out.push({ step: s.id, path, action: serviceActionOf(cat, s), resource: serviceResource(cat.space, s.connector) });
     else out.push({ step: s.id, path, action, resource: `vyre://${cat.space}/${action === "ask.request" ? "task" : action.split(".")[0]}/*` });
     if (s.kind === "upsert") out.push({ step: s.id, path, action: "records.create", resource: typeUrn(cat.space, String(s.type)) });
   });
@@ -71,6 +74,16 @@ export function needs(flow, cat) {
 
 /** A read (GET or HEAD) is `service.read`; anything else sends, posts, pays or changes, and is `service.call`, an outward act the vault holds for the ask-first task. @param {string} method */
 export const serviceAction = method => (method === "GET" || method === "HEAD" ? "service.read" : "service.call");
+/**
+ * The action a service step is judged by. When the connector declares operations (records/connectors), the matching operation's own `outward` flag decides: outward is `service.call` (held for a
+ * yes), anything else `service.read`, so a draft operation that writes is not outward. A connector with no declaration keeps the method rule.
+ * @param {any} cat @param {any} s
+ */
+export function serviceActionOf(cat, s) {
+  const conn = cat && cat.connectors && cat.connectors[s.connector];
+  const op = conn && conn.ops ? opFor(conn, String(s.method || "GET").toUpperCase(), String(s.path || "")) : null;
+  return op ? (op.outward ? "service.call" : "service.read") : serviceAction(s.method);
+}
 /** `vyre://<space>/service/<connector>` @param {string} space @param {string} connector */
 export const serviceResource = (space, connector) => `vyre://${space}/service/${connector}`;
 
@@ -178,6 +191,7 @@ export function compileFlow(flow, cat) {
         const who = String(s.kind === "agent" ? s.assistant : s.to);
         const [kind, name] = [who.split(":")[0], who.slice(who.indexOf(":") + 1)];
         if (kind === "teammate" && cat.teammates && !cat.teammates.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no teammate ${name}` });
+        if (kind === "pool" && cat.pools && !cat.pools.includes(name)) errors.push({ path: `${p}.${s.kind === "agent" ? "assistant" : "to"}`, message: `there is no pool ${name}` });
         if (kind === "role" && cat.roles && !cat.roles.includes(name)) errors.push({ path: `${p}.to`, message: `there is no role ${name}` });
         if (s.template && cat.templates && !cat.templates.includes(String(s.template))) errors.push({ path: `${p}.template`, message: `there is no template ${s.template}` });
         effects.assigns.push({ step: s.id, to: who, checker: s.checker || null, output: s.output && s.output.kind });
@@ -185,7 +199,7 @@ export function compileFlow(flow, cat) {
       if (s.kind === "ask") effects.asks++;
       if (s.kind === "service") {
         const route = cat.connectors && cat.connectors[s.connector];
-        const read = serviceAction(s.method) === "service.read";
+        const read = serviceActionOf(cat, s) === "service.read";
         if (!route) errors.push({ path: `${p}.connector`, message: `there is no connector ${s.connector}: a firm adds the credential and its route first` });
         else if (!routeAllows(route, s.method, s.path)) errors.push({ path: `${p}.path`, message: `the ${s.connector} connector does not allow ${s.method} ${s.path}` });
         const files = s.drive ? [...(s.drive.upload ? [{ way: "send", path: s.drive.upload.path, version: s.drive.upload.version ?? null }] : []), ...(s.drive.saveTo ? [{ way: "save", path: s.drive.saveTo, version: null }] : [])] : [];
@@ -194,7 +208,7 @@ export function compileFlow(flow, cat) {
         if (!read) effects.outward.push({ step: s.id, action: "service.call", risk: "outward.send", destination_constant: true });
       }
       if (s.kind === "fn") effects.code.push({ step: s.id, hash: s.hash || null, needs: s.needs || [], outputs: s.outputs });
-      if (s.kind === "classify" || s.kind === "agent") effects.model_steps.push(s.id);
+      if (s.kind === "classify" || s.kind === "extract" || s.kind === "agent") effects.model_steps.push(s.id);
       if (s.kind === "find" || s.kind === "pick") { if (t && !effects.reads.includes(s.type)) effects.reads.push(s.type); }
       if (["create", "update", "upsert", "remove", "stage"].includes(s.kind) && !effects.writes.includes(s.type)) effects.writes.push(s.type);
 
@@ -215,7 +229,8 @@ export function compileFlow(flow, cat) {
         case "agent": nm(s.title, "title"); nm(s.instructions, "instructions"); nm(s.record, "record"); break;
         case "call": nm(s.input, "input"); break;
         case "classify": nm(s.input, "input"); break;
-        case "service": nm(s.query, "query"); nm(s.headers, "headers"); nm(s.body, "body"); if (s.body !== undefined && !isConst(s.body) && serviceAction(s.method) === "service.call") effects.destinations.push({ step: s.id, note: "the body is read from records" }); break;
+        case "extract": nm(s.input, "input"); break;
+        case "service": nm(s.query, "query"); nm(s.headers, "headers"); nm(s.body, "body"); if (s.body !== undefined && !isConst(s.body) && serviceActionOf(cat, s) === "service.call") effects.destinations.push({ step: s.id, note: "the body is read from records" }); break;
         case "fn": nm(s.inputs, "inputs"); break;
         default: break;
       }

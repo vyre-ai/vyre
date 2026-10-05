@@ -113,6 +113,18 @@ export function createFlows(o) {
     "flows.resume": async (chain, i) => { personOf(chain); await runner.resumeFlow(i.id); return { ok: true }; },
     "flows.runs": async (chain, i) => (await runner.listRuns({ flow: i.id, state: i.state, limit: i.limit })).map(r => ({ id: r.id, flow: r.flow, version: r.version, state: r.state, started_at: r.started_at, finished_at: r.finished_at, tainted: r.tainted, error: r.error && r.error.code && r.error.code !== "note" ? r.error : null })),
     "flows.run": async (chain, i) => { const r = await runner.getRun(i.run); if (!r) throw Object.assign(new Error("no such run"), { code: "not_found" }); const v = await store.getVersion(r.flow, r.version); return { run: r, painted: v ? paintRun(v.flow, r, await cat()) : null }; },
+    // The Space's daily AI allowance for Flow steps: anyone in the Space may read it; an owner or an admin sets it.
+    "flows.budget": async (chain, i) => {
+      if (i && (i.tokens_per_day !== undefined || i.context_tokens !== undefined)) {
+        const who = personOf(chain);
+        const holders = [...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "owner") : []), ...(o.ports && o.ports.roles ? await o.ports.roles(who.space, "admin") : [])];
+        if (!holders.some((/** @type {any} */ h) => h.id === who.id)) throw Object.assign(new Error("only an owner or an admin sets the AI budget"), { code: "not_allowed" });
+        if (i.context_tokens !== undefined) await runner.setContextTokens(Number(i.context_tokens));
+        if (i.tokens_per_day !== undefined) await runner.setAiBudget(Number(i.tokens_per_day));
+        return runner.aiBudget();
+      }
+      return runner.aiBudget();
+    },
     "flows.retry": async (chain, i) => { personOf(chain); await runner.retry(i.run); return { ok: true }; },
     "kits.card": async (chain, i) => installCard(i.kit, await cat()),
     "kits.diff": async (chain, i) => kits.diff(i.kit),

@@ -28,6 +28,7 @@ export const step: {
   agent(id: string, p: { assistant: string; title: Value; instructions: Value; output: { kind: string; target?: string | readonly string[] }; record?: Value; await?: boolean; label?: string }): Step;
   call(id: string, p: { action: string; resource: string; input?: Value; label?: string }): Step;
   stage(id: string, p: { type: string; record: Value; to: string; label?: string }): Step;
+  extract(id: string, p: { input: Value; fields: readonly { name: string; kind?: "text" | "number" | "date" | "boolean"; description?: string }[]; label?: string }): Step;
   classify(id: string, p: { input: Value; labels: readonly string[]; label?: string }): Step;
   service(id: string, p: { connector: string; method: 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string; query?: { readonly [name: string]: Value }; headers?: Value; body?: Value; drive?: { upload?: { path: string; version?: string; contentType?: string } } | { saveTo: string }; label?: string }): Step;
   fn(id: string, p: { language: 'js'; source: string; inputs: { readonly [name: string]: Value }; outputs: readonly string[]; needs?: readonly string[]; label?: string }): Step;

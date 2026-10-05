@@ -22,7 +22,7 @@ import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
 import { simulatedProof } from "../../src/vendor/deck/ui/kernel-view.js";
-import { ago, assistantNote, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
+import { fieldStates, ago, assistantNote, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -56,7 +56,10 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
 
   const valueFor = (f: any) => (ai ? seen?.[f.name] : val(rec, f.name));
   const revealFor = (f: any) => (purpose: string) => store.reveal(rec.urn, f.name, purpose, simulatedProof({ decision: "reveal" })).then((r: any) => r.value as string);
+  // Conditional fields (visible_if, required_if): judged on the record as it is now, the same way the gateway judges a write.
+  const states = fieldStates(def, rec.data || {});
   const change = async (f: any, v: any) => {
+    if (f.kind !== "sealed" && isEmpty(v) && states[f.name]?.required) { showToast(`${f.label} is required`); return; }
     try {
       if (f.kind === "sealed") { if (v !== undefined) await store.putSealed(rec.urn, f.name, String(v)); }
       else await store.update(rec.urn, { [f.name]: v }, rec.version);
@@ -74,8 +77,8 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
   const files = filesOf(def, rec);
   const pool = world.byType[def.name] || [rec];
   // The stage strip above is the stage field's renderer, so the list leaves it out; empty fields wait behind one line, except the one being edited.
-  const listed = def.fields.filter((f: any) => !sf || f.name !== sf.name);
-  const isBlank = (f: any) => f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name;
+  const listed = def.fields.filter((f: any) => (!sf || f.name !== sf.name) && states[f.name]?.visible !== false);
+  const isBlank = (f: any) => f.kind !== "sealed" && isEmpty(val(rec, f.name)) && editing !== f.name && !states[f.name]?.required;
   const filled = listed.filter((f: any) => !isBlank(f));
   const empty = listed.filter(isBlank);
 
@@ -102,6 +105,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
         <View className={cn("flex-row flex-wrap items-center gap-s2", !phone && "flex-1")}>
           <Text tone="label">{f.label}</Text>
           {sealed ? <Chip tone="sealed" icon="vault">Sealed</Chip> : null}
+          {states[f.name]?.required && isEmpty(val(rec, f.name)) ? <Chip>Required</Chip> : null}
         </View>
         <View className={cn("min-w-0", !phone && "flex-[3]")}>
           {isEditing ? (

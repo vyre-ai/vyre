@@ -9,7 +9,7 @@ import { TRIGGER_ONS, checkTrigger as checkTriggerKind } from "./triggers.js";
 
 export const FLOW_FORMAT = 1;
 
-export const STEP_KINDS = Object.freeze(["find", "pick", "filter", "create", "update", "upsert", "remove", "decide", "repeat", "wait", "ask", "assign", "call", "stage", "agent", "classify", "service", "fn"]);
+export const STEP_KINDS = Object.freeze(["find", "pick", "filter", "create", "update", "upsert", "remove", "decide", "repeat", "wait", "ask", "assign", "call", "stage", "agent", "classify", "extract", "service", "fn"]);
 /** Steps that hold a nested list of steps. */
 export const BLOCK_KINDS = Object.freeze({ decide: ["then", "else"], repeat: ["steps"] });
 export const TRIGGER_KINDS = TRIGGER_ONS;
@@ -68,9 +68,9 @@ const STEP_KEYS = {
   create: ["type", "set"], update: ["type", "record", "set"], upsert: ["type", "match", "set"], remove: ["type", "record"],
   decide: ["if", "then", "else"], repeat: ["over", "as", "steps", "max"],
   wait: ["for_ms", "until", "event", "where", "timeout_ms", "on_timeout"],
-  ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await"],
+  ask: ["to", "title", "form", "record"], assign: ["to", "title", "record", "output", "how", "template", "checker", "await", "skills"],
   call: ["action", "resource", "input"], stage: ["type", "record", "to"],
-  agent: ["assistant", "title", "instructions", "record", "output", "await"], classify: ["input", "labels"],
+  agent: ["assistant", "title", "instructions", "record", "output", "await", "skills"], classify: ["input", "labels"], extract: ["input", "fields"],
   service: ["connector", "method", "path", "query", "headers", "body", "drive"],
   fn: ["language", "source", "hash", "inputs", "outputs", "needs"],
 };
@@ -136,7 +136,8 @@ function checkSteps(steps, path, out, ids, depth, budget) {
         if (s.form !== undefined) { if (!Array.isArray(s.form) || !s.form.every((f/** @type {any} */) => isObj(f) && typeof f.name === "string")) out.push({ path: `${p}.form`, message: "a form is a list of fields with names" }); }
         break;
       case "assign":
-        need("to", v => typeof v === "string" && /^(?:person|teammate|role):/.test(v), "assign to person:<id>, teammate:<name> or role:<name>");
+        need("to", v => typeof v === "string" && /^(?:person|teammate|role|pool):/.test(v), "assign to person:<id>, teammate:<name>, role:<name> or pool:<name>");
+        if (s.skills !== undefined && !(Array.isArray(s.skills) && s.skills.length <= 20 && s.skills.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 60))) out.push({ path: `${p}.skills`, message: "skills is a short list of words" });
         need("title", () => true, "give the title"); value("title");
         checkOutput(s.output, `${p}.output`, out);
         if (s.how !== undefined && !["template", "tailor", "assistant", "person"].includes(s.how)) out.push({ path: `${p}.how`, message: "how is template, tailor, assistant or person" });
@@ -144,7 +145,8 @@ function checkSteps(steps, path, out, ids, depth, budget) {
         value("record");
         break;
       case "agent":
-        need("assistant", v => typeof v === "string" && /^teammate:/.test(v), "name the assistant: teammate:<name>");
+        need("assistant", v => typeof v === "string" && /^(?:teammate|pool):/.test(v), "name the assistant: teammate:<name> or pool:<name>");
+        if (s.skills !== undefined && !(Array.isArray(s.skills) && s.skills.length <= 20 && s.skills.every((/** @type {any} */ x) => typeof x === "string" && x.length > 0 && x.length <= 60))) out.push({ path: `${p}.skills`, message: "skills is a short list of words" });
         need("title", () => true, "give the title"); value("title"); need("instructions", () => true, "say what to do"); value("instructions");
         checkOutput(s.output, `${p}.output`, out); value("record");
         break;
@@ -155,6 +157,10 @@ function checkSteps(steps, path, out, ids, depth, budget) {
         break;
       case "stage": need("type", typeName, "name the record type"); need("record", () => true, "name the record"); value("record"); need("to", v => typeof v === "string" && v.length > 0, "name the stage"); break;
       case "classify": need("input", () => true, "give the text to classify"); value("input"); need("labels", v => Array.isArray(v) && v.length >= 2 && v.every((x/** @type {any} */) => typeof x === "string"), "give at least two labels"); break;
+      case "extract":
+        need("input", () => true, "give the text to read"); value("input");
+        need("fields", v => Array.isArray(v) && v.length >= 1 && v.length <= 20 && v.every((x/** @type {any} */) => x && typeof x === "object" && typeof x.name === "string" && ID_RE.test(x.name) && (x.kind === undefined || ["text", "number", "date", "boolean"].includes(x.kind)) && (x.description === undefined || (typeof x.description === "string" && x.description.length <= 200))) && new Set(v.map((x/** @type {any} */) => x.name)).size === v.length, "name 1 to 20 fields (each a name, optionally a kind of text, number, date or boolean, and a short description)");
+        break;
       case "service":
         // The Flow names a connector (a vault credential and its route), never a web address or a credential: the home's vault holds the host and the key.
         need("connector", v => typeof v === "string" && /^[a-z][a-z0-9_-]{0,63}$/.test(v), "name the connector (lowercase letters, digits, - and _)");
