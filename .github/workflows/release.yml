@@ -248,6 +248,9 @@ jobs:
           outputs: ${{ needs.prepare.outputs.publish == 'true' && format('type=image,name={0},push-by-digest=true,name-canonical=true,push=true', env.COMPUTER_IMAGE) || 'type=docker,name=vyre-computer:dry' }}
           cache-from: type=gha,scope=release-computer-${{ matrix.arch }}
           cache-to: type=gha,scope=release-computer-${{ matrix.arch }},mode=max
+      - name: The box image carries the saved Twenty database (a fresh Space must not migrate Twenty from empty, #91)
+        if: needs.prepare.outputs.publish != 'true'
+        run: docker run --rm --entrypoint node vyre-box:dry -e 'import("/opt/vyre/stores/twenty/provision.js").then(m=>{const g=m.findGolden({image:m.TWENTY_TESTED_REF});if(!g){console.error("the image carries no saved Twenty database for "+m.TWENTY_TESTED_REF);process.exit(1)}console.log("saved database:",g.dump,g.meta.sha256)})'
       - name: A dry run boots the box image it built
         if: needs.prepare.outputs.publish != 'true'
         run: |
