@@ -320,3 +320,18 @@ test("a teammate's project is the Project record's id: its address names the sam
   await tool("team.retire", { teammate: tm.agent });
   await until(async () => (await members()).length === 0, "the team-member record to go");
 });
+
+test("one keying scheme: a tool that declares projectArg takes the Project record's id or address as well as the short name, and an id Records does not know is not_found", async t => {
+  const { tool, raw, project } = await boot(t);
+  const ref = await tool("work.project.ref", { project: project.slug });
+  for (const named of [project.record, ref.urn, project.slug]) {
+    const ctxt = await tool("projects.context", { project: named });
+    assert.equal(ctxt.project, project.slug, `projects.context for ${named}`);
+  }
+  const th = await tool("threads.start", { project: project.record, prompt: "hello there" });
+  const got = await tool("threads.get", { thread: th.id });
+  assert.equal(got.thread.project, project.slug, "the thread is in the project the id named");
+  const unknown = "0a7e4b1c-7d4e-4c63-9f3a-2f5b6c7d8e9f";
+  assert.equal((await raw("projects.context", { project: unknown })).error.code, "not_found");
+  assert.equal((await raw("threads.start", { project: unknown, prompt: "x" })).error.code, "not_found");
+});
