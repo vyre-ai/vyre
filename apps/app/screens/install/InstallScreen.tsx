@@ -227,7 +227,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         setElsewhere(setupElsewhere(all, mine));
       } catch (e) {
         // First run, naming yourself: there is no box yet, and none is needed (the name goes to the directory). Say nothing about it.
-        if (!(first && step === "name")) setWrong(said(e));
+        if (!(first && (step === "name" || step === "welcome" || step === "browser"))) setWrong(said(e));
       }
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps

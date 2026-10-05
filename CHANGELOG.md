@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the browser's start screen no longer shows "Failed to fetch" under the paste field when the page has no box of its own (the first-run box check says nothing there). test: scripts/app-walk-typed.mjs walks the typed-code browser screens on awbox's relay: the browser start screen pairs by a typed code (ack typed back as the owner) and a device with no name adds itself to a name by typed code, both PASS.
+
 - feat(app): the app reports the P-256 presence key when it pairs a device by typed code (add this device to a name, the browser's Type the code, the Mac's boxless server): platform-3's paired session signs with it. test: scripts/app-walk-paired-device.mjs pairs a device by typed code on awbox and walks the whole approval (6 of 6): person session, ask, stand-in phone approves, spend once, second spend refused, no.
 
 - fix(app): no fixed "5 minutes" about a code: the Mac's type-the-code help says the server shows how long it has left, and "Add your device" counts down from the box's own `code_expires`. The line to run on a server (Install, Add a device) is the release candidate's own `install-box.sh` line only when the bridge gives a version with a hyphen (`window.__vyreShell.version`, "0.3.0-rc.1"); a plain "0.3.0", no version, or anything that is not a version gets the stable `curl -fsSL vyre.run/i | sh` (first-run.js installLine).
