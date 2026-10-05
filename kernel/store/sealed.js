@@ -7,14 +7,8 @@
 // else holds it. A server stores, under `personal/<identity>/`: key.json (PK sealed under the IMK), types.json (sealed), rec/<id> (one sealed blob per record, named by an HMAC so a type and an
 // id do not show) and chg/<n> (the change log in sealed segments). The "due between" kind of question is the store's own query over a decrypted-in-process table: no index is written in the clear.
 // The fixed types a Personal person keeps here (`allow: PERSONAL_TYPES`) are the only ones defined when asked; with no `allow` it holds any type the kernel defines. A per-member cap (set by the space owner) refuses writes once the stored bytes reach it.
-import crypto from "node:crypto";
 import { createMemoryStore, CONFORMANCE_REVISION } from "./memory.js";
-import { newKey as nodeNewKey, seal as nodeSeal, open as nodeOpen } from "../../lib/keywrap.js";
-
-/** The primitives the store needs, all SYNCHRONOUS (its write-through hooks are): node's by default; a phone or a browser supplies its own (react-native-quick-crypto exposes node:crypto; a browser uses a sync library such as @noble/ciphers and @noble/hashes). @typedef {{ newKey(): Buffer, seal(plain: Uint8Array|string, key: Buffer, aad: string): any, open(box: any, key: Buffer, aad: string): Buffer, hkdf(key: Buffer, info: string): Buffer, hmacHex(key: Buffer, text: string): string, sha256Hex(bytes: Uint8Array): string }} Prims */
-/** @type {Prims} */
-export const NODE_PRIMS = { newKey: nodeNewKey, seal: nodeSeal, open: nodeOpen, hkdf: (key, info) => Buffer.from(crypto.hkdfSync("sha256", key, Buffer.alloc(0), Buffer.from(info), 32)),
-  hmacHex: (key, text) => crypto.createHmac("sha256", key).update(text).digest("hex"), sha256Hex: bytes => crypto.createHash("sha256").update(bytes).digest("hex") };
+import { newKey, seal, open, derive, hmacHex, sha256Hex, utf8, text } from "../../lib/databox.js";
 
 const SEG = 200;
 /** The types a Personal person keeps sealed on a server: Planner items, notes, to-dos, and the Planner's own bookkeeping (alarms, repeats, snoozes). */
@@ -23,22 +17,20 @@ export const PERSONAL_TYPES = Object.freeze(["reminder", "note", "task", "planne
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const dir = (/** @type {string} */ id) => `personal/${id}`;
 const aad = (/** @type {string} */ id, /** @type {string} */ what) => `vyre-personal-records/${id}/${what}`;
-const enc = (/** @type {any} */ v) => Buffer.from(JSON.stringify(v), "utf8");
-const dec = (/** @type {any} */ b) => (b ? JSON.parse(Buffer.from(b).toString("utf8")) : null);
-const bytes = (/** @type {any} */ b) => (b ? Buffer.byteLength(b) : 0);
+const enc = (/** @type {any} */ v) => utf8(JSON.stringify(v));
+const size = (/** @type {any} */ b) => (b ? (typeof b === "string" ? utf8(b).length : b.length) : 0);
+const dec = (/** @type {any} */ b) => (b ? JSON.parse(text(typeof b === "string" ? utf8(b) : b)) : null);
 
 /**
- * @param {{ backend: { put(n: string, b: Buffer|string): any, get(n: string): any, list(p: string): any, delete(n: string): any }, identity: string, imk: Buffer, allow?: readonly string[], prims?: Partial<Prims>, device?: string,
+ * @param {{ backend: { put(n: string, b: Uint8Array|string): any, get(n: string): any, list(p: string): any, delete(n: string): any }, identity: string, imk: Uint8Array, allow?: readonly string[], device?: string,
  *   cap?: () => number, clock?: () => number, create?: boolean }} cfg `cap()` is the owner's per-member limit in bytes (0 or absent: none); `create` makes the store the first time
  */
 export function createSealedStore(cfg) {
   const { backend, identity } = cfg;
-  const P = { ...NODE_PRIMS, ...(cfg.prims || {}) };
-  const { seal, open, newKey } = P;
   // `allow` limits which types may be defined (a personal Space passes PERSONAL_TYPES); left out, the store keeps whatever the kernel defines in it, as any store does (the suite holds it to that).
   const allow = cfg.allow ? new Set(cfg.allow) : null;
   const keyFile = `${dir(identity)}/key.json`;
-  /** @type {Buffer | null} */ let pk = null;
+  /** @type {Uint8Array | null} */ let pk = null;
   const raw = backend.get(keyFile);
   if (raw) {
     try { pk = open(dec(raw).box, cfg.imk, aad(identity, "key")); } catch { throw fail("denied", "the identity memory key does not open this store"); }
@@ -46,16 +38,16 @@ export function createSealedStore(cfg) {
     pk = newKey();
     backend.put(keyFile, enc({ v: 1, box: seal(pk, cfg.imk, aad(identity, "key")) }));
   } else throw fail("not_found", "no personal records store here");
-  const key = /** @type {Buffer} */ (pk);
-  const idKey = P.hkdf(key, "vyre-personal-record-name");
-  const nameOf = (/** @type {string} */ type, /** @type {string} */ id) => P.hmacHex(idKey, `${type}\u0000${id}`);
+  const key = /** @type {Uint8Array} */ (pk);
+  const idKey = derive(key, "vyre-personal-record-name");
+  const nameOf = (/** @type {string} */ type, /** @type {string} */ id) => hmacHex(idKey, `${type}\u0000${id}`);
   const sealed = (/** @type {any} */ v, /** @type {string} */ what) => enc(seal(JSON.stringify(v), key, aad(identity, what)));
-  const opened = (/** @type {any} */ b, /** @type {string} */ what) => JSON.parse(open(dec(b), key, aad(identity, what)).toString("utf8"));
+  const opened = (/** @type {any} */ b, /** @type {string} */ what) => JSON.parse(text(open(dec(b), key, aad(identity, what))));
 
   // What is on the server now, with each object's sha256 (what this device last saw, for the compare-and-set) and size (the cap and the status are exact).
   /** @type {Map<string, { sha: string, size: number }>} */ let known = new Map();
-  const sha = (/** @type {Buffer} */ b) => P.sha256Hex(b);
-  const noteKnown = (/** @type {string} */ name, /** @type {Buffer|null} */ b) => { if (b) known.set(name, { sha: sha(b), size: b.length }); else known.delete(name); };
+  const sha = (/** @type {Uint8Array} */ b) => sha256Hex(b);
+  const noteKnown = (/** @type {string} */ name, /** @type {Uint8Array|null} */ b) => { if (b) known.set(name, { sha: sha(b), size: b.length }); else known.delete(name); };
   const device = String(cfg.device || "d").replace(/[^A-Za-z0-9]/g, "").slice(0, 16) || "d";
   const typesName = `${dir(identity)}/types.json`;
   /** @type {Record<string, any>} */ let typeMap = {};
@@ -96,7 +88,7 @@ export function createSealedStore(cfg) {
   const WRITES = new Set(["create", "update", "remove", "restore", "define"]);
   const conflict = () => { stale = true; return fail("version_conflict", "another of the person's devices changed this: it was reloaded, try again"); };
   /** One write: only if the object is what this device last saw; a second device's write is never overwritten. */
-  const put = (/** @type {string} */ name, /** @type {Buffer} */ b) => {
+  const put = (/** @type {string} */ name, /** @type {Uint8Array} */ b) => {
     const was = known.get(name);
     if (typeof backend.putIf === "function") { if (!backend.putIf(name, b, was ? was.sha : null)) throw conflict(); } else backend.put(name, b);
     noteKnown(name, b);
@@ -185,12 +177,12 @@ export function usageOf(backend, identity) {
   const walk = (/** @type {string} */ p, /** @type {number} */ depth) => {
     for (const name of backend.list(p)) {
       const b = backend.get(name);
-      if (b) n += Buffer.byteLength(b); else if (depth < 3) walk(name, depth + 1);
+      if (b) n += size(b); else if (depth < 3) walk(name, depth + 1);
     }
   };
   const base = dir(identity);
-  const k = backend.get(`${base}/key.json`); if (k) n += Buffer.byteLength(k);
-  const t = backend.get(`${base}/types.json`); if (t) n += Buffer.byteLength(t);
+  const k = backend.get(`${base}/key.json`); if (k) n += size(k);
+  const t = backend.get(`${base}/types.json`); if (t) n += size(t);
   walk(`${base}/rec`, 1); walk(`${base}/chg`, 1);
   return n;
 }

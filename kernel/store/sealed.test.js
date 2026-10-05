@@ -113,17 +113,25 @@ test("two devices: the phone opens the same sealed objects on the server by itse
   for (const secret of ["dentist", "keys", "laptop won", "phone lost"]) assert.ok(!disk.includes(secret), secret);
 });
 
-import { NODE_PRIMS } from "./sealed.js";
-test("sealed store: the cryptographic primitives are injectable (a phone or a browser supplies its own synchronous ones) and the store uses only them", async t => {
-  const calls = { seal: 0, open: 0, hkdf: 0, hmac: 0, sha: 0, key: 0 };
-  const prims = { newKey: () => { calls.key++; return NODE_PRIMS.newKey(); }, seal: (...a) => { calls.seal++; return NODE_PRIMS.seal(...a); }, open: (...a) => { calls.open++; return NODE_PRIMS.open(...a); },
-    hkdf: (...a) => { calls.hkdf++; return NODE_PRIMS.hkdf(...a); }, hmacHex: (...a) => { calls.hmac++; return NODE_PRIMS.hmacHex(...a); }, sha256Hex: (...a) => { calls.sha++; return NODE_PRIMS.sha256Hex(...a); } };
-  const { dir, imk } = (() => { const d = tmp(t); return { dir: d, imk: newKey() }; })();
-  const s = createSealedStore({ backend: new FileBackend(dir), identity: "alex", imk, create: true, allow: PERSONAL_TYPES, prims });
-  await s.store.define({ add_types: [REMINDER] });
-  await s.store.create("reminder", ids[0], { text: "x", due_at: 1 });
-  assert.equal((await s.store.get("reminder", ids[0])).data.text, "x");
-  const again = createSealedStore({ backend: new FileBackend(dir), identity: "alex", imk, allow: PERSONAL_TYPES, prims });   // reading it back opens every object
-  assert.equal((await again.store.get("reminder", ids[0])).data.text, "x");
-  for (const k of Object.keys(calls)) assert.ok(calls[k] > 0, `${k} went through the injected primitives`);
+import fsSync from "node:fs";
+import { seal as keywrapSeal, open as keywrapOpen } from "../../lib/keywrap.js";
+import * as databox from "../../lib/databox.js";
+
+test("sealed store: data crypto is @noble (synchronous, no node:crypto, no Buffer) and its boxes are the same JSON the identity home and the rings use", () => {
+  for (const f of ["kernel/store/sealed.js", "core/memory/identity/remote-backend.js", "core/memory/identity/spaces-transport.js", "lib/databox.js"]) {
+    const src = fsSync.readFileSync(new URL(`../../${f}`, import.meta.url), "utf8").split("\n").filter(l => !l.trim().startsWith("//") && !l.trim().startsWith("*")).join("\n");
+    assert.ok(!/node:crypto|\bBuffer\b|require\(/.test(src), `${f} runs unchanged on a phone and in a browser`);
+  }
+  const key = newKey();
+  const aadText = "vyre-personal-records/alex/rec";
+  assert.equal(Buffer.from(keywrapOpen(databox.seal("from databox", key, aadText), key, aadText)).toString(), "from databox");
+  assert.equal(databox.text(databox.open(keywrapSeal("from keywrap", key, aadText), key, aadText)), "from keywrap");
+  assert.throws(() => databox.open(databox.seal("x", key, aadText), key, "other"), /cannot open/);
+  const bytes = new Uint8Array([0, 1, 2, 250, 251, 252, 253, 254, 255, 9]);
+  assert.deepEqual([...databox.fromB64u(databox.toB64u(bytes))], [...bytes]);
+  assert.equal(databox.toB64u(bytes), Buffer.from(bytes).toString("base64url"));
+  assert.equal(databox.toB64(bytes), Buffer.from(bytes).toString("base64"));
+  assert.deepEqual([...databox.fromB64(Buffer.from(bytes).toString("base64"))], [...bytes]);
+  assert.equal(databox.sha256Hex(databox.utf8("abc")), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  assert.equal(databox.hmacHex(new Uint8Array(32), "x").length, 64);
 });
