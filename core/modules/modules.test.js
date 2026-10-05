@@ -1228,3 +1228,40 @@ test("modules: the name \"kernel\" is reserved, because the kernel's own service
   const problems = validate({ name: "kernel", version: "1.0.0", description: "x", does: { tools: [] } }, { firstParty: true });
   assert.ok(problems.some((p) => /reserved for the kernel/.test(p)), problems.join("; "));
 });
+
+test("modules: each hosted Space gets the module its own database, data folder and kernel handle, so two Spaces' module rows never touch", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  const asked = [];
+  const gateway = { authorize: async () => ({ effect: "allow" }) };
+  const handleOf = (/** @type {string} */ space) => ({ space, for: (/** @type {string} */ id) => forOf(id), records: { whoami: () => space } });
+  const forOf = (/** @type {string} */ id) => (id === "spc_home" ? { space: id, hosted: true, gateway } : { space: id, hosted: true, gateway, kernel: { kernelFor: () => handleOf(id) } });
+  const kernelFor = () => handleOf("spc_home");
+  const notes = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "notes.put", crossSpace: "records.write" }, { name: "notes.get", crossSpace: "records.read" }, { name: "notes.dir", crossSpace: "records.read" }, "notes.call"] }, needs: { kernel: { actions: [] } } };
+  writeModule(root, "notes", notes, `export default { async start(ctx) {
+    ctx.store.migrate(["CREATE TABLE notes_row (k TEXT PRIMARY KEY, v TEXT)"]);
+    ctx.tool("notes.put", { effect: "write", input: { type: "object" }, run: async (i) => { ctx.store.db.prepare("INSERT OR REPLACE INTO notes_row (k, v) VALUES (?, ?)").run(i.k, i.v); return { ok: true, space: ctx.kernel.records.whoami() }; } });
+    ctx.tool("notes.get", { effect: "read", input: { type: "object" }, run: async () => ({ rows: ctx.store.db.prepare("SELECT k, v FROM notes_row ORDER BY k").all().map(r => [r.k, r.v]), space: ctx.kernel.records.whoami() }) });
+    ctx.tool("notes.dir", { effect: "read", input: { type: "object" }, run: async () => ({ dir: ctx.store.dir() }) });
+    ctx.tool("notes.call", { effect: "write", input: { type: "object" }, run: async (i) => ctx.kernel.for(i.space).call(i.tool, i.input || {}, i.chain) });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, kernelFor, firstPartyRoots: [root], spaceDir: id => path.join(home, "spaces", id) });
+  await reg.start(discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
+  t.after(() => { reg.stop(); db.close(); });
+  const chainOf = (/** @type {string} */ space) => ({ space, hops: [{ actor: { kind: "person", id: "per_member", space } }] });
+  const there = (/** @type {string} */ space, /** @type {string} */ tool, /** @type {any} */ input = {}) => reg.call("notes.call", { space, tool, input, chain: chainOf(space) }, "cli").then(r => { if (!r.data || !r.data.data) throw new Error(JSON.stringify(r)); return r.data.data; });
+  const first = await reg.call("notes.put", { k: "a", v: "home" }, "cli"); assert.ok(first.data, JSON.stringify(first));
+  assert.equal(first.data.space, "spc_home");
+  assert.equal((await there("spc_a", "notes.put", { k: "a", v: "in-a" })).space, "spc_a", "the kernel handle is the hosted Space's own");
+  assert.equal((await there("spc_b", "notes.put", { k: "a", v: "in-b" })).space, "spc_b");
+  assert.equal((await there("spc_b", "notes.put", { k: "b-only", v: "x" })).ok, true);
+  assert.deepEqual((await reg.call("notes.get", {}, "cli")).data.rows, [["a", "home"]], "the home's rows are untouched");
+  assert.deepEqual((await there("spc_a", "notes.get")).rows, [["a", "in-a"]]);
+  assert.deepEqual((await there("spc_b", "notes.get")).rows, [["a", "in-b"], ["b-only", "x"]]);
+  assert.ok(fs.existsSync(path.join(home, "spaces", "spc_a", "modules", "notes.db")) && fs.existsSync(path.join(home, "spaces", "spc_b", "modules", "notes.db")), "one database file per Space");
+  assert.equal((await there("spc_a", "notes.dir")).dir, path.join(home, "spaces", "spc_a", "modules", "notes"), "and a data folder per Space");
+  assert.notEqual((await there("spc_b", "notes.dir")).dir, (await there("spc_a", "notes.dir")).dir);
+  void asked;
+});
