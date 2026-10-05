@@ -14,7 +14,7 @@ import { nobleCrypto } from "@vyre/relay-client/noble.js";
 import { base64url, fromBase64url } from "@vyre/relay-client/bytes.js";
 import * as Keys from "../../modules/vyre-signer";
 import { keyStorage } from "../native/presence-model";
-import { fromB64url, spkiFromXY } from "../auth/person";
+import { fromB64url, spkiFromXY } from "../auth/person.ts"; // the explicit file: "../auth/person" resolves to person.native.ts on the phone, which exports neither
 import { readPairing, type Pairing } from "./pairing";
 
 const KEY = "vyre.relay.key";

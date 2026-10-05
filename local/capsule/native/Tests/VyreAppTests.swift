@@ -25,13 +25,17 @@ let vyreAppSuite = Suite("vyre app window") { t in
     }
 
     t.test("a command and a reply are sent to the page as valid JSON") {
-        t.eq(VyreAppWindow.js("/u/now"), "\"\\/u\\/now\"")
-        t.eq(VyreAppWindow.js("a\"b"), "\"a\\\"b\"")
-        t.eq(VyreAppWindow.json(["error": "No."]), "{\"error\":\"No.\"}")
-        t.eq(VyreAppWindow.json(NSObject()), "null")
+        MainActor.assumeIsolated {
+            t.eq(VyreAppWindow.js("/u/now"), "\"\\/u\\/now\"")
+            t.eq(VyreAppWindow.js("a\"b"), "\"a\\\"b\"")
+            t.eq(VyreAppWindow.json(["error": "No."]), "{\"error\":\"No.\"}")
+            t.eq(VyreAppWindow.json(NSObject()), "null")
+        }
     }
 
     t.test("the page's bridge names every call the window answers") {
-        for op in ["presence", "notify", "open", "_reply", "_command", "onCommand"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
+        MainActor.assumeIsolated {
+            for op in ["presence", "notify", "open", "_reply", "_command", "onCommand"] { t.ok(VyreAppWindow.bridgeSource.contains(op), op) }
+        }
     }
 }

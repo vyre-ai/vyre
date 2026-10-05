@@ -78,9 +78,9 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
       ? <PairWatch session={session} who={`A ${noun}`} onConfirmed={finish} onRejected={(say) => reset(say)} />
       : <Card className="gap-s3">
           <Text strong>Scan it, or paste the long code</Text>
-          <Text tone="muted">Run the installer on the server. It prints a QR code and a long code.</Text>
+          <Text tone="muted">It shows a code when it is ready. Scan it, or paste the long code.</Text>
           {targets.length > 1 ? <View className="flex-row flex-wrap gap-s2">{targets.map((t) => <Button key={t.id} size="sm" kind={target?.id === t.id ? "primary" : "secondary"} label={t.kind === "identity" ? "You" : t.label} onPress={() => setTarget(t)} />)}</View> : null}
-          {busy ? <Text tone="muted">Asking the server.</Text> : <PairEntry onCode={gotServerCode} />}
+          {busy ? <Text tone="muted">Asking your Vyre.</Text> : <PairEntry onCode={gotServerCode} />}
         </Card>;
   } else if (ask) {
     body = <PairWords session={answerer!} who={ask.name} onConfirmed={finish} onRejected={() => reset(COPY.rejected)} />;

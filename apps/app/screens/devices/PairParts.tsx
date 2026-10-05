@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CAMERA_SCAN } from "../install/first-run.js";
 import { Platform, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Banner, Button, Card, Field, Text } from "@vyre/ui";
@@ -19,7 +20,7 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
   const [text, setText] = useState("");
   const [say, setSay] = useState("");
   const [cam, setCam] = useState<ScanSupport | null>(null);
-  useEffect(() => { if (canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
+  useEffect(() => { if (CAMERA_SCAN && canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
 
   const take = (raw: string) => {
     const r = parseWinkCode(raw);
@@ -44,9 +45,9 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
 
   return (
     <View className="w-full gap-s3">
-      {canScanLive && ScanCamera && cam?.state === "granted" ? (
+      {CAMERA_SCAN && canScanLive && ScanCamera && cam?.state === "granted" ? (
         <View className="h-48 w-full overflow-hidden rounded-card"><ScanCamera style={{ flex: 1 }} {...scan} /></View>
-      ) : cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
+      ) : CAMERA_SCAN && cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
       <Field label="Or paste the long code" name="Long code" value={text} onChangeText={(v) => { setText(v); if (say) setSay(""); }} placeholder="vyre://wink/2?..." mono error={say || undefined} />
       <View className="flex-row flex-wrap gap-s2">
         <Button kind="primary" size="sm" label="Continue" onPress={() => take(text)} />

@@ -2,7 +2,7 @@
 // present and the TEE otherwise, user authentication per use). The server checks the signature against that key, so a hardware-held key opens a non-software session. Each
 // start asks for Face ID or the fingerprint once; a session lasts weeks, so the prompt is rare.
 import * as Keys from "../../modules/vyre-signer";
-import { derToP1363, fromB64url } from "./person";
+import { derToP1363, fromB64url } from "./person.ts"; // the explicit file: "./person" resolves to person.native.ts here, which exports neither
 import { keepPairedToken } from "./person.native";
 import { lowS } from "../../modules/vyre-signer/presence-proof.js";
 import type { PairedKey } from "./paired-key";

@@ -16,10 +16,10 @@ import os from "node:os";
 import path from "node:path";
 import { openTab } from "./cdp.js";
 import { avatarSource, ringBytes } from "../js/avatars.js";
-import { bitsToBytes, recoverId } from "../vyrecode/payload.js";
+import { bitsToBytes, recoverId } from "../../lib/wink-code/payload.js";
 import { levelsToBits } from "../vendor/vyrecode/vyrecode2.js";
-import { decodeCore2 } from "../vyrecode/decode-core2.js";
-import * as geo from "../vendor/vyrecode/geometry.js";
+import { decodeCore2 } from "../../lib/wink-code/decode-core2.js";
+import * as geo from "../../lib/wink-code/geometry.js";
 import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const args = process.argv.slice(2);

@@ -3,7 +3,8 @@
 // native source (SecRandomCopyBytes through vyre-signer) whatever else was loaded first. A boot self-check fails closed.
 
 import * as Keys from "../../modules/vyre-signer";
-import { fromB64url } from "../auth/person";
+// Not "../auth/person": on native Metro resolves that to person.native.ts, which does not export fromB64url (it was undefined here: the RC1 launch crash).
+import { fromB64url } from "../../modules/vyre-signer/presence-proof.js";
 import { install } from "./webcrypto-impl.js";
 
 /** n random bytes straight from the platform, in chunks (the native call takes 1 to 1024). */
@@ -13,4 +14,9 @@ export function nativeRandom(n: number): Uint8Array {
   return out;
 }
 
-install(globalThis, nativeRandom);
+// A missing or broken native source must not take the whole app down at launch: log it and leave crypto uninstalled, so only the identity calls that need it fail (closed).
+try {
+  install(globalThis, nativeRandom);
+} catch (e) {
+  console.error("webcrypto: not installed, identity operations will fail:", e);
+}
