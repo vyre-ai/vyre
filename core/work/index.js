@@ -363,9 +363,9 @@ export default {
     // Every file of a project lands in its Drive folder (core/work/files.js). Vyre's own modules hand files over: sessions (a chat's attachments, an image a tool returned), artifacts (what a model made).
     /** @type {any} */ let files = null;
     const filesOf = () => files || (files = createFiles({ kernel: kernelOf(), hub: hubOf(), call: callTool, log: ctx.log }));
-    // An exact list, not "any module": the work service chain may write into ANY chat's folder, so only the two modules that hand files over (artifacts: what a model made; switchboard: what the person dropped into a chat) may ask.
-    const FILE_SAVERS = ["module:artifacts", "module:switchboard"];
-    const fromModule = (/** @type {any} */ meta) => { kernelOf(); if (!(meta && typeof meta.caller === "string" && FILE_SAVERS.includes(meta.caller))) throw fail("denied", "only the artifacts and switchboard modules put files into a project's folder"); };
+    // An exact list, not "any module": the work service chain may write into ANY chat's folder, so only the two modules that hand files over (artifacts: what a model made; threads, which holds the Switchboard: what the person dropped into a chat) may ask.
+    const FILE_SAVERS = ["module:artifacts", "module:threads"];
+    const fromModule = (/** @type {any} */ meta) => { kernelOf(); if (!(meta && typeof meta.caller === "string" && FILE_SAVERS.includes(meta.caller))) throw fail("denied", "only the artifacts and threads modules put files into a project's folder"); };
     // Files follow a session when it is moved to another Project: the Drive moves its folders and says so (file.moved); the records of its files take the new place (core/work/files.js onMoved).
     if (ctx.kernel && ctx.kernel.events && typeof ctx.kernel.events.subscribe === "function" && typeof ctx.kernel.serviceChain === "function") {
       try { ctx.kernel.events.subscribe(ctx.kernel.serviceChain("work"), "work-files-moved", { type: "file.moved" }, async (/** @type {any} */ e) => { if (e && e.data) await filesOf().onMoved(e.data); }); }
