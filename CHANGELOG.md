@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(app): the provider marks file lives in apps/app/ui/marks/provider-art.js (copied unmodified), so the app no longer reads deck/js/provider-art.js.
+
 - feat(app): a record's sealed field has a Fill (Replace once filled) button and the line "Hidden from AI; your assistant sees a placeholder". Filling and revealing go to the box as held calls: the owner's phone answers the ask and the call goes again with the approval, as the Vault's held fields do. The simulated Face ID proof is gone from the record page.
 
 - feat(app): one Find. /u/search is web-2's Find page; the Search button and Cmd-K (Ctrl-K) open it as a command bar from <FindHost/> mounted once in UiShell; the app's own search screen is gone. Shared joins More. Now greets by name or not at all ("Good afternoon"), never "there".

@@ -1,7 +1,7 @@
 // @ts-check
-// The provider badge (docs/design/system/components/provider-badge.md): which AI account wrote a reply, drawn with the provider's own published mark (deck/js/provider-art.js, unmodified, never Vyre's own branding).
+// The provider badge (docs/design/system/components/provider-badge.md): which AI account wrote a reply, drawn with the provider's own published mark (./provider-art.js, copied unmodified from the old Deck, never Vyre's own branding).
 // Pure: the markup and the names, no DOM and no React. An unknown provider has no mark and gets a monogram; a reply that does not say who wrote it gets nothing, never a guess.
-import * as ART from "../../../../deck/js/provider-art.js";
+import * as ART from "./provider-art.js";
 
 /** @type {Record<string, { name: string, mono: string, dark?: string, paper?: string }>} */
 const KNOWN = {
