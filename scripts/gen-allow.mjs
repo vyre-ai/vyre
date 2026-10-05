@@ -184,7 +184,7 @@ export const DECLARED_NOTES = Object.freeze({
   "apps.send": "sends as the person, so it is outward: held for the person's presence proof for every caller that is not a module",
   "connectors.declared": "a read of the connectors this build ships as declarations and whether a credential of each exists; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
   "connectors.logging": "a read of the recipe for logging a mailbox or calendar to contacts, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (core/connectors/index.js)",
-  "capsule.status": "a read of whether the Capsule can run on this machine: build and autostart, no data",
+  "capsule.status": "a read of whether the Capsule can run on this machine: build and autostart, no data; callers are the person's surfaces, modules and a model, never a guest or an unknown caller (local/capsule/index.js)",
   "learn.add": "a model's lesson is proposed and never made active; the person accepts it",
   "memory.curate": "admits a project agent under the module's own guard: its own project's memory only",
   "memory.mute": "admits a project agent under the module's own guard: its own project's memory only",
