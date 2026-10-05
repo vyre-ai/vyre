@@ -336,6 +336,8 @@ export async function createKernel(cfg) {
         storePlan: () => reg().storePlan(),
         list: () => reg().list(),
         hosts: (/** @type {string} */ id) => reg().hosts(id),
+        /** The spaces module's checks for a project move or an upgrade that crosses homes (evidence, receipts), set once at its start. */
+        setMoveHooks: (/** @type {any} */ h) => reg().setMoveHooks(h),
       });
     }
     /**
