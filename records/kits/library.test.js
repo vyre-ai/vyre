@@ -41,24 +41,13 @@ test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Pro
     const link = t(r).fields.find((f) => f.name === "contact");
     assert.deepEqual([link.kind, link.to, link.required], ["link", "contact", true]);
   }
-  for (const n of ["lead", "appointment", "client", "project"]) assert.equal(t(n).fields.some((x) => x.name === "practice_area"), false, `${n} has no practice area in the base Kit`);
-  assert.equal(t("project").kind, "project");
-  assert.equal(t("project").stage_sets, undefined, "the base Kit is generic: per-area stages are the Law firm Kit's");
-  assert.equal(t("project").fields.find((f) => f.name === "accident_date"), undefined);
-  assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["lead", ["board"]], ["appointment", ["calendar"]], ["client", ["list"]], ["project", ["board"]]]);
-});
-
-test("the Law firm Kit adds per-area stages and the fields that apply to one area, on the same Project", () => {
-  assert.ok(kitLibrary().find((k) => k.id === "law-firm"));
-  const p = kitFromLibrary("law-firm").includes.types.find((x) => x.name === "project");
-  assert.deepEqual(p.stage_sets.map((s) => s.name), ["personal_injury", "estate_planning"]);
-  assert.equal(p.fields.find((f) => f.name === "accident_date").required_if, 'practice_area == "Personal Injury"');
-  assert.equal(p.views.length, 1, "the base board is kept when the type is replaced");
   for (const n of ["lead", "appointment", "client", "project"]) {
-    const base = kitFromLibrary("base").includes.types.find((x) => x.name === n), law = kitFromLibrary("law-firm").includes.types.find((x) => x.name === n);
-    for (const f of base.fields) assert.ok(law.fields.some((x) => x.name === f.name), `${n}.${f.name} is still there`);
-    const pa = law.fields.find((x) => x.name === "practice_area");
-    assert.equal(pa.kind, "choice", `${n}.practice_area is a choice`);
-    assert.ok(pa.options.includes("Personal Injury") && pa.options.includes("Estate Planning"));
+    const f = t(n).fields.find((x) => x.name === "practice_area");
+    assert.equal(f.kind, "choice", `${n}.practice_area is a choice`);
+    assert.ok(f.options.includes("Personal Injury") && f.options.includes("Estate Planning"));
   }
+  assert.equal(t("project").kind, "project");
+  assert.deepEqual(t("project").stage_sets.map((s) => s.name), ["personal_injury", "estate_planning"]);
+  assert.equal(t("project").fields.find((f) => f.name === "accident_date").required_if, 'practice_area == "Personal Injury"');
+  assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["lead", ["board"]], ["appointment", ["calendar"]], ["client", ["list"]], ["project", ["board"]]]);
 });

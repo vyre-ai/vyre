@@ -45,11 +45,6 @@
           "label": "Job title"
         },
         {
-          "name": "time_zone",
-          "kind": "text",
-          "label": "Time zone"
-        },
-        {
           "name": "organization",
           "kind": "link",
           "label": "Organization",
