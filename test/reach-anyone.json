@@ -857,9 +857,17 @@
    "module": "mail",
    "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
+  "memory.identity.grant": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; granting also needs the person's yes (lib/one-yes, the vault moment) over exactly this identity and server"
+  },
   "memory.identity.lock": {
    "module": "memory",
    "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.revoke": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess) and the person's own surface only (reader): an agent cannot revoke or grant; revoking only locks"
   },
   "memory.identity.status": {
    "module": "memory",
@@ -871,7 +879,7 @@
   },
   "memory.identity.unlock.finish": {
    "module": "memory",
-   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; accepted only while the person's grant for this server stands and for a request this process made, once; the key never leaves the process"
   },
   "names.check": {
    "module": "names",

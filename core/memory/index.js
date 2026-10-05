@@ -14,7 +14,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import fs from "node:fs";
 import path from "node:path";
 import { retriever } from "./iq/retrieve.js";
-import { IdentityLive, purgeTables } from "./identity/live.js";
+import { IdentityLive, newServerKey } from "./identity/live.js";
 import { FileBackend } from "./identity/home.js";
 import { yes as oneYes } from "../../lib/one-yes.js";
 import { projectMarker, spaceMarker, visible as visibleMarkers, find as findMarker } from "./markers.js";
@@ -90,14 +90,22 @@ export default {
     // threads.quick's warm sessions (memory.ask's own model calls) run in <home>/quick/<purpose>:
     // their prompts are passages of the user's history, so they are never read back.
     const quickDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "quick") : null;
+    // The identity home (identity/home.js, live.js): the person's identity memory sealed on a space server. Off unless memory.identity names the home (the server's blob folder) and the person's
+    // identity id. Built before anything reads the personal tables: once sealed they live only in process memory, never on this disk.
+    const idCfg = ctx.config.memory && ctx.config.memory.identity;
+    const identityKey = (() => {
+      if (!idCfg || !idCfg.id || !idCfg.home || !ctx.paths?.root) return null;
+      const f = path.join(String(ctx.paths.root), "identity-server-key.json");
+      try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { /* none yet */ }
+      const k = newServerKey();
+      fs.writeFileSync(f, JSON.stringify(k), { mode: 0o600 });
+      return k;
+    })();
+    const identity = idCfg && idCfg.id && idCfg.home ? new IdentityLive({ db: ctx.store.db, id: String(idCfg.id), backend: new FileBackend(String(idCfg.home), String(idCfg.name || "this server")), serverKey: identityKey,
+      serverName: String(idCfg.server || "this server"), log: ctx.log, ...(Number(idCfg.autosave_ms) > 0 ? { autosaveMs: Number(idCfg.autosave_ms) } : {}),
+      onAsk: ask => ctx.events.emit("memory.unlock-asked", { server: ask.server }) }) : null;
     const personal = new Personal(ctx.store.db, { log: ctx.log,
       trust: () => ({ scratch: askDir, quick: quickDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
-    // The identity home (identity/home.js): on a space server the person's identity memory is kept as ciphertext, unlocked only for their own assistant after their phone's yes. Off unless
-    // memory.identity names the home (the server's blob folder) and the person's identity id.
-    const idCfg = ctx.config.memory && ctx.config.memory.identity;
-    const identity = idCfg && idCfg.id && idCfg.home ? new IdentityLive({ db: ctx.store.db, id: String(idCfg.id), backend: new FileBackend(String(idCfg.home), String(idCfg.name || "this server")), log: ctx.log }) : null;
-    // A crash while unlocked left the rows where they were: sealed means they are not kept in the clear.
-    if (identity && identity.sealed && !identity.unlocked) { try { purgeTables(ctx.store.db); } catch (e) { ctx.log("identity memory: " + /** @type {Error} */ (e).message); } }
     /** Read every unread turn for personal facts, then derive if anything changed. */
     // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
     // Counts only; the lines themselves are read with memory.profile.
@@ -1142,18 +1150,20 @@ export default {
         return { marker: m.urn, layer: "project", ...r };
       },
     });
-    // ---- the identity home (identity/live.js): the person's identity memory sealed on a server, unlocked for their assistant by their phone's yes
+    // ---- the identity home (identity/live.js): the person's identity memory sealed on a server. On their own devices their device key unwraps it with no prompt. On a shared space server they say
+    // yes ONCE per server ("let my assistant use my memory here"); their phone then answers that server's requests by itself, after a restart too, until they revoke it from the phone.
     const noIdentity = () => Object.assign(new Error("this install keeps no sealed identity memory: memory.identity in config.json names the home"), { code: "not_found" });
+    const idCallers = [...PEOPLE_MOD, "mcp", "harness"];
     ctx.tool("memory.identity.status", {
       effect: "read",
-      callers: [...PEOPLE_MOD, "mcp", "harness"],
-      description: "Whether the person's identity memory is kept sealed on this server (as ciphertext only), whether it is unlocked right now, how many devices can unlock it and where it was moved to. For the person and their assistant.",
+      callers: idCallers,
+      description: "Whether the person's identity memory is kept sealed on this server (as ciphertext only), whether it is unlocked right now, how many devices can unlock it, which servers the person has given it to, and where it was moved to. For the person and their assistant.",
       input: { type: "object", properties: { ...agentField } },
-      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false }; },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.status"); return identity ? identity.status() : { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null }; },
     });
     ctx.tool("memory.identity.enroll", {
       effect: "write",
-      description: "Seal the person's identity memory: it moves into the identity home as ciphertext readable only with one of these devices' keys (or the recovery code), and leaves this server's database. The person's own act.",
+      description: "Seal the person's identity memory: it moves into the identity home as ciphertext readable only with one of these devices' keys (or the recovery code), and leaves this server's disk (in use it lives in process memory only). The person's own act.",
       input: { type: "object", required: ["devices"], properties: { devices: { type: "array", items: { type: "object", required: ["publicJwk"], properties: { label: { type: "string" }, publicJwk: { type: "object" } } } }, recovery_code: { type: "string" } } },
       run: async (input, extra = {}) => {
         if (!identity) throw noIdentity();
@@ -1161,31 +1171,48 @@ export default {
         return identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code) } : {}) });
       },
     });
+    ctx.tool("memory.identity.grant", {
+      effect: "write",
+      callers: idCallers,
+      description: "The person's one yes for this server: let their assistant use their memory here. It lasts until they revoke it from their phone; a restart is answered by the phone without asking again. Needs the person's yes over exactly this (a proof signed on their phone).",
+      input: { type: "object", required: ["proof"], properties: { proof: { type: "object" }, ...agentField } },
+      run: async (input, extra = {}) => {
+        await personalAccess(input, extra.caller, "memory.identity.grant");
+        if (!identity || !identity.sealed) throw noIdentity();
+        const y = await oneYes("vault", { op: "memory.identity.unlock", fields: { identity: String(idCfg.id), server: String(identity.serverFp) } }, input.proof);
+        if (!y.ok) throw denied(`the person's yes was not given for this (${y.reason})`);
+        return identity.grant();
+      },
+    });
+    ctx.tool("memory.identity.revoke", {
+      effect: "write",
+      callers: idCallers,
+      description: "Revoke this server's grant, from the person's phone: the identity memory locks now, no request from this server is answered again, and nothing stays in this server's process.",
+      input: { type: "object", properties: { ...agentField } },
+      run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.revoke"); if (!identity) throw noIdentity(); if (!reader(extra.caller)) throw denied("revoking is the person's own act, from their own surface or phone"); return identity.revoke(); },
+    });
     ctx.tool("memory.identity.unlock.begin", {
       effect: "write",
-      callers: [...PEOPLE_MOD, "mcp", "harness"],
-      description: "The person's assistant asks to read their identity memory: returns the request their phone shows as a card. After their yes (Face ID) the phone's answer goes to memory.identity.unlock.finish. Nothing is readable before that.",
+      callers: idCallers,
+      description: "The person's assistant asks to read their identity memory: returns the request, signed by this server, which the person's phone answers by itself for a server they granted. Nothing is readable before the answer arrives.",
       input: { type: "object", properties: { ...agentField } },
       run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.unlock.begin"); if (!identity || !identity.sealed) throw noIdentity(); return identity.begin(); },
     });
     ctx.tool("memory.identity.unlock.finish", {
       effect: "write",
-      callers: [...PEOPLE_MOD, "mcp", "harness"],
-      description: "The phone's answer to an unlock request, with the person's yes over exactly this request: the identity memory is readable for a short time, then locks again by itself.",
-      input: { type: "object", required: ["request", "answer", "proof"], properties: { request: { type: "string" }, answer: { type: "object" }, proof: { type: "object" }, ...agentField } },
+      callers: idCallers,
+      description: "The phone's answer to an unlock request. Accepted only while the person's grant for this server stands. The identity memory is then readable, in this process only, until it is locked or revoked.",
+      input: { type: "object", required: ["request", "answer"], properties: { request: { type: "string" }, answer: { type: "object" }, ...agentField } },
       run: async (input, extra = {}) => {
         await personalAccess(input, extra.caller, "memory.identity.unlock.finish");
         if (!identity || !identity.sealed) throw noIdentity();
-        // One yes, from the person's own device, over this request: nobody else's answer, and not an answer to some other request.
-        const y = await oneYes("vault", { op: "memory.identity.unlock", fields: { identity: String(idCfg.id), request: String(input.request) } }, input.proof);
-        if (!y.ok) throw denied(`the person's yes was not given for this (${y.reason})`);
         return identity.finish(String(input.request), input.answer);
       },
     });
     ctx.tool("memory.identity.lock", {
       effect: "write",
-      callers: [...PEOPLE_MOD, "mcp", "harness"],
-      description: "Lock the identity memory now: what changed is saved as ciphertext and the rows leave this server's database.",
+      callers: idCallers,
+      description: "Lock the identity memory now: the latest facts are sealed as ciphertext and the rows leave this server's process.",
       input: { type: "object", properties: { ...agentField } },
       run: async (input, extra = {}) => { await personalAccess(input, extra.caller, "memory.identity.lock"); return identity ? identity.lock() : { kept: "none", unlocked: false }; },
     });
@@ -1199,6 +1226,13 @@ export default {
         return identity.move(new FileBackend(String(input.to), String(input.name || input.to)));
       },
     });
+    // At start: the person's own device unwraps it with no prompt; otherwise, where they granted this server, the phone is asked and answers by itself (an event carries the request).
+    if (identity && identity.sealed) {
+      try {
+        if (idCfg.deviceKey) identity.unlockLocal(JSON.parse(fs.readFileSync(String(idCfg.deviceKey), "utf8")));
+        else identity.askPhone();
+      } catch (e) { ctx.log("identity memory: " + /** @type {Error} */ (e).message); }
+    }
     // Vyre Memory's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
     // the retrieved passages, checked by code. Questions have their own daily cap
     // (config.memory.model.askDailyUsd, $0.50, about 150 questions) in memory's budget table.

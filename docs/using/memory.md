@@ -176,9 +176,12 @@ summary, and following it is refused. `memory.profile` takes `class` (`working_s
 
 ### Where your identity memory lives
 
-On a space server, your identity memory is stored encrypted to your own key, so the people who run that server (admins, root) see only ciphertext at rest. It opens only for your own
-assistant, for a few minutes at a time, after you say yes on your phone with Face ID. If you have a server of your own, even a small one, it can live there instead: `memory.identity.move`
-copies the encrypted memory across and leaves only a marker behind; nothing is decrypted on the way and the same phone unlocks it there.
+On a space server, your identity memory is stored encrypted to your own key, so the people who run that server (admins, root) see only ciphertext at rest. On your own devices (phone,
+computer) your device key opens it with no prompt. On a shared space server you give one yes per server ("let my assistant use my memory here", `memory.identity.grant`), and it lasts until you
+revoke it from your phone (`memory.identity.revoke`). A server restart is answered by your phone without asking, unless you revoked. While it is open, the facts are held only in the
+server's memory, never written back to disk in the clear; new facts are stored as ciphertext, and after a crash the disk holds ciphertext only. In use, only the process memory is exposed, to
+the server's root, as the terms say. If you have a server of your own, even a small one, it can live there instead: `memory.identity.move` copies the encrypted memory across and leaves only a
+marker behind; nothing is decrypted on the way and the same phone unlocks it there.
 
 ```
 vyre call memory.identity.status '{}'

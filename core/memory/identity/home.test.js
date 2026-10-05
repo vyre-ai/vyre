@@ -10,7 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { tempHome } from "../../../test/helpers.js";
 import { newDeviceKey, newKey, seal, open, wrapForDevice, unwrapWithDevice, wrapWithCode, unwrapWithCode } from "./crypto.js";
-import { IdentityHome, FileBackend, Lease, approveUnlock, LEASE_MS } from "./home.js";
+import { IdentityHome, FileBackend, Lease, approveUnlock, Phone, newServerKey, signAsk, askSignedBy } from "./home.js";
 
 const SNAP = { v: 1, tables: { memory_me_facts: [{ id: "f1", subj: "me", rel: "lives_in", obj: "place:Lisbon" }, { id: "f2", subj: "me", rel: "uses", obj: "tool:Postgres" }] }, state: { assistant: "prefers short emails" } };
 const SECRETS = ["Lisbon", "Postgres", "prefers short emails", "lives_in", "memory_me_facts"];
@@ -73,24 +73,24 @@ test("an admin or root on the space server cannot read the identity memory: only
   assert.throws(() => w.home.load(lease), { code: "corrupt" });
 });
 
-test("the person's own assistant reads it after the person's phone says yes, for a short time, and not with a stale or someone else's answer", t => {
+test("the person's own assistant reads it once the phone answers, and nothing times out and asks again; a stranger's phone, another request's answer or the wrong secret open nothing", t => {
   const w = world(t);
   w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], snapshot: SNAP }).lock();
-  // The assistant's session asks; the phone (after Face ID) answers for exactly this request.
   const { ask, secret } = w.home.beginUnlock();
   const answer = approveUnlock(w.phone, ask);
   const lease = w.home.finishUnlock(ask, secret, answer);
   assert.deepEqual(w.home.load(lease).tables, SNAP.tables);
   assert.deepEqual(w.home.load(lease).state, SNAP.state);
-  // It writes what it learns, under the same key.
   assert.equal(w.home.save(lease, { ...SNAP, state: { assistant: "prefers short emails", pm: "async standups" } }), 2);
   assert.equal(w.home.load(lease).state.pm, "async standups");
   assert.ok(!everything(w.server.dir).includes("async standups"));
-  // The key lives 15 minutes in memory, then it is gone.
-  w.tick(LEASE_MS + 1);
+  // No lease timer: a day later it is still open (the person is not asked again).
+  w.tick(24 * 60 * 60_000);
+  assert.equal(lease.open, true);
+  assert.equal(w.home.load(lease).state.pm, "async standups");
+  // Locked, it is closed.
+  lease.lock();
   assert.throws(() => w.home.load(lease), { code: "locked" });
-  assert.equal(lease.open, false);
-  // A phone that is not the person's has no wrap; an answer made for another request does not open this one; a session with the wrong secret cannot open the answer.
   const stranger = newDeviceKey();
   assert.throws(() => approveUnlock(stranger, ask), { code: "unknown_key" });
   const other = w.home.beginUnlock();
@@ -102,6 +102,45 @@ test("the person's own assistant reads it after the person's phone says yes, for
   w.home.addDevice(l1, { label: "laptop", publicJwk: w.laptop.publicJwk });
   const again = w.home.beginUnlock();
   assert.deepEqual(w.home.load(w.home.finishUnlock(again.ask, again.secret, approveUnlock(w.laptop, again.ask))).state.pm, "async standups");
+});
+
+test("on the person's own device the device key unwraps with no prompt", t => {
+  const w = world(t);
+  w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }, { publicJwk: w.laptop.publicJwk }], snapshot: SNAP }).lock();
+  assert.deepEqual(w.home.load(w.home.unlockWithDevice(w.laptop)).tables, SNAP.tables);
+  assert.throws(() => w.home.unlockWithDevice(newDeviceKey()), { code: "unknown_key" });
+});
+
+test("on a shared server the person says yes once: the phone then answers that server's requests by itself, after a restart too, until it is revoked; only that server, only signed", t => {
+  const w = world(t);
+  w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], snapshot: SNAP }).lock();
+  const phone = new Phone(w.phone);
+  const server = { name: "the Space's server", ...newServerKey() };
+  const other = { name: "another server", ...newServerKey() };
+  // Not granted yet: the phone does not answer, and says why.
+  assert.throws(() => phone.answer(w.home.beginUnlock(server).ask), { code: "needs_yes" });
+  // The one yes.
+  const fp = phone.grant(server.publicJwk);
+  w.home.addGrant({ server: server.name, fp });
+  assert.deepEqual(w.home.grants().map(g => g.server), ["the Space's server"]);
+  w.home.save(w.home.unlockWithDevice(w.phone), SNAP);
+  assert.deepEqual(w.home.grants().map(g => g.server), ["the Space's server"], "a new revision keeps the grants");
+  const open = () => { const { ask, secret } = w.home.beginUnlock(server); return w.home.finishUnlock(ask, secret, phone.answer(ask)); };
+  assert.deepEqual(w.home.load(open()).tables, SNAP.tables);
+  // A restart is the same request again, answered the same way, with no prompt.
+  assert.deepEqual(w.home.load(open()).tables, SNAP.tables);
+  // Another server's request, an unsigned one, and a request someone altered are not answered.
+  assert.throws(() => phone.answer(w.home.beginUnlock(other).ask), { code: "needs_yes" });
+  const { ask } = w.home.beginUnlock(server);
+  assert.throws(() => phone.answer({ ...ask, sig: undefined }), { code: "bad_signature" });
+  assert.throws(() => phone.answer({ ...ask, sessionPub: newDeviceKey().publicJwk }), { code: "bad_signature" }, "a request carrying someone else's key is not the one the server signed");
+  assert.equal(askSignedBy(ask, server.publicJwk), true);
+  assert.equal(askSignedBy(ask, other.publicJwk), false);
+  // Revoked from the phone: nothing is answered again.
+  assert.equal(phone.revoke(fp), true);
+  w.home.removeGrant();
+  assert.deepEqual(w.home.grants(), []);
+  assert.throws(() => phone.answer(w.home.beginUnlock(server).ask), { code: "needs_yes" });
 });
 
 test("the recovery code unlocks it on the person's own device, and only the right code", t => {

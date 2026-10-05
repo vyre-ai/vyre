@@ -107,6 +107,8 @@
       "memory.markers",
       { "name": "memory.identity.status", "reach": "anyone", "effect": "read" },
       { "name": "memory.identity.enroll", "reach": "person", "effect": "write" },
+      { "name": "memory.identity.grant", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.revoke", "reach": "anyone", "effect": "write" },
       { "name": "memory.identity.unlock.begin", "reach": "anyone", "effect": "write" },
       { "name": "memory.identity.unlock.finish", "reach": "anyone", "effect": "write" },
       { "name": "memory.identity.lock", "reach": "anyone", "effect": "write" },
@@ -203,7 +205,7 @@
       "memory.forgot",
       "memory.written",
       "memory.site-learned",
-      "memory.graph-grew"
+      "memory.graph-grew", "memory.unlock-asked"
     ]
   },
   "shows": {
