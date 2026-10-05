@@ -5,12 +5,19 @@ import { DECLARATIONS } from "./index.js";
 import { checkDeclaration, defineConnector, toCredentialConfig, mergedCredentialConfig, serviceOf, buildRequest, opFor, readbackRequest, compareReadback, parseResponse, isOutward } from "./format.js";
 import { normalize, classify } from "../../core/vault/api-request.js";
 
-const stripe = DECLARATIONS.stripe, gmail = DECLARATIONS.gmail, cal = DECLARATIONS["google-calendar"];
+const stripe = DECLARATIONS.stripe;
+// Gmail and Calendar ship as `auth.type: "google"` (signed in through the google module, no vault credential). These tests exercise the format's OAuth and service-account ways of signing in, so they use the
+// same declarations with an OAuth sign-in, as a service like Clio would have.
+const OAUTH = { type: "oauth", authorize_uri: "https://accounts.google.com/o/oauth2/v2/auth", token_uri: "https://oauth2.googleapis.com/token", also: ["service-account"] };
+const asOauth = (/** @type {any} */ d) => ({ ...d, auth: { ...OAUTH, scopes: d.auth.scopes } });
+const gmail = asOauth(DECLARATIONS.gmail), cal = asOauth(DECLARATIONS["google-calendar"]);
 const minimal = (o = {}) => ({ id: "clio", label: "Clio", version: 1, base_url: "https://app.clio.com", auth: { type: "bearer" }, ops: { "matters.list": { method: "GET", path: "/api/v4/matters", kind: "read" } }, ...o });
 
 test("the shipped declarations are clean, and each becomes a credential the vault accepts", () => {
   for (const d of Object.values(DECLARATIONS)) {
     assert.deepEqual(checkDeclaration(d), [], d.id);
+    // a Google connector is not made in the vault at all: the google module signs in and holds the token
+    if (d.auth.type === "google") { assert.throws(() => toCredentialConfig(d, { client: "google-app" }), /Google module/, d.id); continue; }
     const cfg = d.auth.type === "bearer" ? toCredentialConfig(d, { item: d.id }) : toCredentialConfig(d, { client: "google-app" });
     const n = normalize(cfg);
     assert.deepEqual(n.hosts, [new URL(d.base_url).hostname]);
