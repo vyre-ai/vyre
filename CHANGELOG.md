@@ -4,7 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-- refactor(app): one function names a space (src/state/space-name.js): the switcher, Settings, Spaces, Devices, Install, tasks and the store all call it, and a test fails if a screen builds a name by hand. The "pro" tier value is gone (basic and cloud only). feat(app): in the Mac app, Settings has "Make this Mac a server" under the devices section: one line (it must stay on and will run Records for My Cloud), pressed by the person, then the same setup as /u/setup/server. Hidden everywhere else.
+- refactor(app): one function names a space (src/state/space-name.js): the switcher, Settings, Spaces, Devices, Install, tasks and the store all call it, and a test fails if a screen builds a name by hand. The "pro" tier value is gone (basic and cloud only). feat(app): in the Mac app, Settings has "Make this Mac a server" under the devices section: one line (it must stay on and will run Records for My Cloud); the press only opens /u/setup/server, and the Mac becomes a server at the end of that flow, after the person confirms. Hidden everywhere else.
 
 - fix(app): Drive reads files.drive.space.list's real extras (core/files/space-drive.js): `names` shows a folder by its name (a project's name, a chat's title) and `folders` lists a project's chat folders with `open`, greyed and not opened when false (the guessed entry fields are gone). "Set up My Cloud" goes to /u/setup/server (native-core's setup question). Merged work/ui f4fde8fdc.
 
