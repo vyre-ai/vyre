@@ -6,18 +6,21 @@ import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { wantsMacs, askMacs, mergeRows, sourcesOf } from "./federate.js";
+import { fakeChain } from "../../test/fake-chain-kernel.js";
 
-const box = { config: { role: "box", name: "juno" } };
+// the kernel's chain for a call, stood in by the test's caller label: a person's own surface is the one person; an agent session is the person plus an agent; the rest have no person
+const kernel = { chain: async (/** @type {any} */ meta) => fakeChain(meta) };
+const box = { config: { role: "box", name: "juno" }, kernel };
 
 test("federate: only the person, or a module that asks, on the box", async () => {
-  for (const caller of ["deck", "cli", "local", "capsule", "tailnet:alex@example.com"]) {
+  for (const caller of ["deck", "cli", "local", "capsule"]) {
     assert.equal(await wantsMacs(box, {}, caller), true, caller);
     assert.equal(await wantsMacs(box, { machines: "all" }, caller), true, caller);
     assert.equal(await wantsMacs(box, { machines: "local" }, caller), false, caller);
-    assert.equal(await wantsMacs({ config: { role: "local" } }, {}, caller), false, `${caller} on a Mac`);
+    assert.equal(await wantsMacs({ config: { role: "local" }, kernel }, {}, caller), false, `${caller} on a Mac`);
   }
   for (const caller of ["mcp", "mcp:agent:kit", "harness:agent:kit", "tailnet:agent:kit", "tailnet:alex@example.com agent:kit",
-    "tailnet-guest:sam@harlow.example", "hook", "unknown", "", undefined]) {
+    "tailnet-guest:sam@harlow.example", "tailnet:alex@example.com", "hook", "unknown", "", undefined]) {
     assert.equal(await wantsMacs(box, {}, caller), false, String(caller));
     assert.equal(await wantsMacs(box, { machines: "all" }, caller), false, String(caller));
   }

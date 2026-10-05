@@ -47,9 +47,9 @@ test("kernel on: the person's own chain passes the person check whatever the lab
   }
 });
 
-test("kernel off (legacy labels): the old refusal of agents, modules and guests still holds", async t => {
+test("with no kernel on the module there is no person: every label is refused", async t => {
   const call = await boot(t, null);
-  for (const caller of ["cli:agent:kit", "module:rogue", "tailnet:guest-1"]) await assert.rejects(call("runner.lock", { caller }), e => e.code === "denied");
+  for (const caller of ["cli", "deck", "cli:agent:kit", "module:rogue", "tailnet:guest-1"]) await assert.rejects(call("runner.lock", { caller }), e => e.code === "denied", caller);
 });
 
 test("RN-2: another member's person chain is not this computer's person: refused for every tool, the owner's passes", async t => {

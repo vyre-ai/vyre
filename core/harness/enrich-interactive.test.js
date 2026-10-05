@@ -32,18 +32,7 @@ async function rig({ kernelChain = undefined, lastUser = "yes" } = {}) {
   return { enrich };
 }
 
-test("kernel off (legacy labels): the hook's label, no thread, a session that is not headless, AND the transcript's last user line is this prompt", async () => {
-  assert.equal(await (await rig()).enrich({ session: "term-1", interactive: true }, { caller: "harness" }), true);
-  assert.equal(await (await rig({ lastUser: "something else" })).enrich({ session: "term-1", interactive: true }, { caller: "harness" }), false, "HD-4b: the model cannot make Claude Code write the line");
-  assert.equal(await (await rig({ lastUser: null })).enrich({ session: "term-1", interactive: true }, { caller: "harness" }), false, "no transcript line: no");
-  const r = await rig();
-  assert.equal(await r.enrich({ session: "term-1", interactive: true }, { caller: "mcp:thread:t1", thread: "term-1" }), false, "a model's own mcp call");
-  assert.equal(await r.enrich({ session: "t1", interactive: true }, { caller: "harness", thread: "t1" }), false, "a Vyre thread is a program's session");
-  assert.equal(await r.enrich({ session: "term-1", interactive: true, agent: "kit" }, { caller: "harness" }), false, "an agent's session never");
-  assert.equal(await r.enrich({ session: "term-1" }, { caller: "harness" }), false, "no claim, no yes");
-});
-
-test("kernel on: the person comes from the chain, never the label", async () => {
+test("the person comes from the chain, never the label", async () => {
   assert.equal(await (await rig({ kernelChain: person })).enrich({ session: "term-1", interactive: true }, { caller: "cli" }), true, "a person chain and the transcript line");
   assert.equal(await (await rig({ kernelChain: person, lastUser: "other" })).enrich({ session: "term-1", interactive: true }, { caller: "cli" }), false, "a person chain still needs the transcript line");
   // The attack: an agent sends the `harness` label. The chain says agent (or no person at all), so the label counts for nothing.
