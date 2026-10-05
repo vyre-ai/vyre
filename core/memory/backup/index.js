@@ -23,7 +23,7 @@ const aadManifest = (/** @type {string} */ id, /** @type {number} */ rev) => `vy
 const aadKey = (/** @type {string} */ id) => `vyre-backup/${id}/key`;
 const rev = (/** @type {number} */ n) => String(n).padStart(10, "0");
 const text = (/** @type {any} */ v) => Buffer.from(JSON.stringify(v), "utf8");
-const json = (/** @type {Buffer|null} */ b) => (b ? JSON.parse(b.toString("utf8")) : null);
+const json = (/** @type {Uint8Array|null} */ b) => (b ? JSON.parse(Buffer.from(b).toString("utf8")) : null);
 
 /**
  * @typedef {{ kind: "file"|"rows", name: string, size: number, mtime: number, read: () => Buffer|Promise<Buffer> }} Item
@@ -69,7 +69,7 @@ export class Backup {
     const names = (await this.backend.list(`${dir(this.id)}/manifests`)).filter((/** @type {string} */ n) => n.endsWith(".json")).sort();
     for (const n of names.reverse()) {
       const r = Number(n.split("/").pop()?.replace(".json", ""));
-      try { return JSON.parse(open(json(await this.backend.get(n)), this.key, aadManifest(this.id, r)).toString("utf8")); } catch { /* a torn or foreign one: the next older */ }
+      try { return JSON.parse(Buffer.from(open(json(await this.backend.get(n)), this.key, aadManifest(this.id, r))).toString("utf8")); } catch { /* a torn or foreign one: the next older */ }
     }
     return null;
   }
@@ -128,7 +128,7 @@ export class Backup {
     const keep = new Set(), live = new Set();
     for (const x of names.slice(-KEEP)) {
       const r = Number(x.split("/").pop()?.replace(".json", ""));
-      try { const m = JSON.parse(open(json(await this.backend.get(x)), this.key, aadManifest(this.id, r)).toString("utf8")); keep.add(x); for (const e of m.items) for (const c of e.chunks) live.add(c); } catch { /* unreadable: left for the next run */ }
+      try { const m = JSON.parse(Buffer.from(open(json(await this.backend.get(x)), this.key, aadManifest(this.id, r))).toString("utf8")); keep.add(x); for (const e of m.items) for (const c of e.chunks) live.add(c); } catch { /* unreadable: left for the next run */ }
     }
     if (keep.size === 0) return;
     for (const x of names) if (!keep.has(x) && Number(x.split("/").pop()?.replace(".json", "")) < n) await this.backend.delete(x);

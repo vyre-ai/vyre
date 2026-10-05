@@ -127,7 +127,7 @@ export class IdentityHome {
   }
 
   /** @returns {any|null} the manifest as stored (public: wrapped keys and hashes) */
-  manifest() { const b = this.backend.get(`${dir(this.id)}/manifest.json`); try { return b ? JSON.parse(b.toString("utf8")) : null; } catch { return null; } }
+  manifest() { const b = this.backend.get(`${dir(this.id)}/manifest.json`); try { return b ? JSON.parse(Buffer.from(b).toString("utf8")) : null; } catch { return null; } }
   exists() { const m = this.manifest(); return Boolean(m && !m.moved_to); }
   /** The servers the person has said yes to, as the manifest records them (the phone holds the standing grant itself; this is what a server shows and checks). @returns {{ server: string, fp: string, at: number }[]} */
   grants() { const m = this.manifest(); return m && Array.isArray(m.grants) ? m.grants : []; }
@@ -145,7 +145,7 @@ export class IdentityHome {
     this.backend.put(`${dir(this.id)}/manifest.json`, JSON.stringify({ ...m, grants: fp ? this.grants().filter(x => x.fp !== fp) : [] }, null, 1));
   }
   /** Where it went, if it was moved. */
-  movedTo() { const b = this.backend.get(`${dir(this.id)}/moved.json`); try { return b ? JSON.parse(b.toString("utf8")).to : null; } catch { return null; } }
+  movedTo() { const b = this.backend.get(`${dir(this.id)}/moved.json`); try { return b ? JSON.parse(Buffer.from(b).toString("utf8")).to : null; } catch { return null; } }
 
   /**
    * Make the home: a new key, wrapped to each device and to the recovery code, and an empty first snapshot. The caller is the person's own device (it holds the key only here).
@@ -220,7 +220,7 @@ export class IdentityHome {
     const name = `snap-${m.rev}.json`;
     const raw = this.backend.get(`${dir(this.id)}/${name}`);
     if (!raw || sha256(raw) !== (m.objects[name] || {}).sha256) throw Object.assign(new Error("the stored identity memory does not match its manifest"), { code: "corrupt" });
-    return JSON.parse(open(JSON.parse(raw.toString("utf8")), lease.key(), aadOf(this.id, `snap:${m.rev}`)).toString("utf8"));
+    return JSON.parse(Buffer.from(open(JSON.parse(Buffer.from(raw).toString("utf8")), lease.key(), aadOf(this.id, `snap:${m.rev}`))).toString("utf8"));
   }
 
   /** A new revision of the identity memory. @param {Lease} lease @param {any} snapshot @returns {number} the revision */

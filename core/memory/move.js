@@ -100,7 +100,7 @@ export function createMoves(d) {
       if (!o || o.project !== i.project || o.plan_hash !== i.plan_hash) throw bad("no offer is held for this move: ask memory.room.offer again", "not_found");
       const aad = `room-move:${i.move_id}:${i.plan_hash}`;
       let body;
-      try { body = JSON.parse(Buffer.from(open(i.package.box, unwrapWithDevice(i.package.wrap, o.privateJwk, aad), aad)).toString("utf8")); } catch { throw bad("the package does not open with this move's key"); }
+      try { body = JSON.parse(Buffer.from(open(i.package.box, await unwrapWithDevice(i.package.wrap, o.privateJwk, aad), aad)).toString("utf8")); } catch { throw bad("the package does not open with this move's key"); }
       const digest = sha256(canon(body));
       if (i.digest && i.digest !== digest) throw bad("the package does not match the digest export returned");
       if (done && JSON.parse(done.receipt).digest === digest) return JSON.parse(done.receipt);
