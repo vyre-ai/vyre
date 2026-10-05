@@ -18,7 +18,7 @@
 // Each entry of SHOTS:
 //   name     the file name: <dir>/shots/<name>.png, and <name>.dark.png for the dark theme
 //   dir      the docs folder the page lives in (get-started, using, ...)
-//   world    which sample world renders it: deck (the Deck, from deck/test/world.js), onboard
+//   world    which sample world renders it: deck (the Deck, from web/test/world.js), onboard
 //            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
 //            Deck once its setup is finished, with no assistant yet), glass (a box with
 //            a folder of sample files open to Glass)
@@ -42,24 +42,9 @@ import path from "node:path";
 export const MANIFEST = "docs/shots.json";
 export const RERUN = "run npm run docs:shots on testbox";
 
-const DECK = ["deck/css/deck.css", "deck/js/app.js", "deck/index.html"];
-const NOW = ["deck/views/now.js", "deck/css/views/now.css", "deck/js/needs.js"];
-const PAIR = ["deck/js/pair.js", "deck/css/pair.css", "core/link/box.js"];
-const PHONE = ["deck/js/phone-setup.js", "deck/css/views/phone-setup.css"];
-const ONBOARD = ["web/onboard/onboard.js", "web/onboard/onboard.css", "web/onboard/index.html", "deck/css/deck.css", "core/onboard/index.js"];
+const ONBOARD = ["web/onboard/onboard.js", "web/onboard/onboard.css", "web/onboard/index.html", "web/css/deck.css", "core/onboard/index.js"];
 const BOTH = ["light", "dark"];
 
-// Page scripts. The held email is the gate item sent via "mail"; its id is new every run.
-const HELD_EMAIL = `const r = await (await fetch("/v1/tools/gate.held", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" })).json();
-  const d = (r.data || []).find(x => x.via === "mail") || (r.data || [])[0];
-  if (!d) throw new Error("nothing held at the Gate");
-  go("/needs/" + encodeURIComponent(d.id));
-  // A phone opens the item as a sheet over Now (deck/views/needs.js, deck/js/need-sheet.js).
-  await until('document.querySelector(".nsh-title") || (document.querySelector(".view") && /dana@harlowlegal/i.test(document.querySelector(".view").innerText))');
-  await wait(800);`;
-const SEARCH = `const s = document.querySelector("header input[type=search], header input");
-  s.spellcheck = false; s.focus(); s.value = "harlow intake"; s.dispatchEvent(new Event("input", { bubbles: true }));
-  await wait(1500);`;
 
 /** @type {any[]} */
 export const SHOTS = [
@@ -92,7 +77,7 @@ export const SHOTS = [
       await wait(800);`,
     alt: "Step 5: Vyre has read the Claude Code sessions on the machine and offers to group them into first projects.",
     page: "get-started/onboarding.md", heading: "5. Your history" },
-  { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: "fit", maxHeight: 1300, themes: ["dark"], shows: [...ONBOARD, ...PAIR],
+  { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: "fit", maxHeight: 1300, themes: ["dark"], shows: [...ONBOARD, "web/js/phone-code.js", "web/css/phone-code.css"],
     script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(800);`,
     fit: ".ob-main",
     alt: "Step 6: the Pair this Mac card with alex-mbp asking to pair and a field for its code, and the Open Vyre on your phone card with a code for Tailscale and one for this box's address.",
@@ -102,110 +87,6 @@ export const SHOTS = [
     page: "get-started/onboarding.md", heading: "The last screen" },
 
   // ---- The Deck ----
-  { name: "deck-now", dir: "using", world: "deck", url: "/now", width: 1280, height: 900, themes: BOTH,
-    shows: [...DECK, ...NOW],
-    alt: "Now in the Deck: two things wait for you, an email to Dana at Harlow Legal and a spend for Northwind Bakery, both held at the Gate.",
-    page: "using/deck.md", heading: "What is on each view" },
-  { name: "deck-held", dir: "using", world: "deck", url: "/now", width: 1280, height: "fit", maxHeight: 1100, themes: BOTH, script: HELD_EMAIL,
-    shows: [...DECK, "deck/views/needs.js", "deck/css/views/needs.css", "deck/js/needs.js"],
-    alt: "A held email opened in the Deck: who it goes to, why it stopped, the draft you can edit, and Send or Discard.",
-    page: "using/deck.md", heading: "Approve or change a held draft" },
-  { name: "deck-search", dir: "using", world: "deck", url: "/now", width: 1280, height: 720, themes: BOTH, script: SEARCH,
-    shows: [...DECK],
-    alt: "The Deck's search finding the Harlow intake session by what was said in it.",
-    page: "using/deck.md", heading: "Search what was said" },
-  { name: "deck-projects", dir: "using", world: "deck", url: "/projects", width: 1280, height: 480, themes: BOTH,
-    shows: [...DECK, "deck/views/projects.js", "deck/css/views/projects.css"],
-    alt: "Projects in the Deck: Northwind Bakery and Harlow Legal, each with its person and thread count.",
-    page: "using/projects-and-threads.md", heading: "Make a project" },
-  { name: "deck-project", dir: "using", world: "deck", url: "/projects/harlow-legal", width: 1280, height: "fit", maxHeight: 1200, themes: BOTH,
-    shows: [...DECK, "deck/views/projects.js", "deck/css/views/projects.css"],
-    alt: "The Harlow Legal project: its threads, the open one with a box to carry it on, and the brief every new thread is told.",
-    page: "using/projects-and-threads.md", heading: "See a project and its brief" },
-  { name: "deck-memory", dir: "using", world: "deck", url: "/memory", width: 1280, height: "fit", maxHeight: 1200, themes: BOTH,
-    shows: [...DECK, "deck/views/memory.js", "deck/views/memory-data.js", "deck/views/memory-map.js", "deck/css/views/memory.css"],
-    alt: "Memory in the Deck as a map: Sam Okafor and Dana Reyes, their projects and the facts linking them.",
-    page: "using/memory.md", heading: "See what memory holds" },
-  { name: "deck-memory-sites", dir: "using", world: "deck", url: "/memory?tab=sites", width: 1280, height: "fit", maxHeight: 1200, themes: BOTH,
-    script: `await until('/Harlow CRM/.test(document.body.innerText)', 15000); click('[data-site] [data-act="details"]'); await wait(800);`,
-    shows: [...DECK, "deck/views/memory.js", "deck/views/memory-sites.js", "deck/css/views/memory.css", "deck/css/views/memory-sites.css", "deck/test/site-sample.js"],
-    alt: "The Sites tab in Memory: Harlow CRM with its host, its family, and what Vyre for Chrome has learned about it, with a Forget button.",
-    page: "using/memory.md", heading: "See what Vyre has learned about a site" },
-  { name: "deck-agents", dir: "using", world: "deck", url: "/agents", width: 1280, height: 440, themes: BOTH,
-    shows: [...DECK, "deck/views/agents.js", "deck/css/views/agents.css"],
-    alt: "Agents in the Deck: juno, the assistant on every project, and kit on Harlow Legal and Northwind Bakery.",
-    page: "using/agents.md", heading: "See what agents are doing and what they cost" },
-  { name: "deck-agent", dir: "using", world: "deck", url: "/agents/kit", width: 1280, height: 860, themes: BOTH,
-    // The job, talk, watchers, usage and model column; the computer panel beside it has no
-    // computer to describe in the sample world (no computer driver on the box that takes it).
-    clip: { x: 216, y: 48, width: 636, height: 760 },
-    shows: [...DECK, "deck/views/agents.js", "deck/css/views/agents.css"],
-    alt: "kit's page in the Deck: its job, its projects, a box to talk to it, what wakes it, its usage and its model.",
-    page: "using/deck.md", heading: "Look after an agent" },
-  { name: "deck-chat", dir: "using", world: "deck", url: "/chat", width: 1280, height: 640, themes: BOTH,
-    shows: [...DECK, "deck/views/chat.js", "deck/chat/index.js", "deck/chat/nav.js", "deck/chat/chat.css", "deck/css/views/chat.css"],
-    alt: "Chat in the Deck: recent sessions with their projects, and every session by project in the rail.",
-    page: "using/chat.md", heading: "Find a session" },
-  { name: "deck-vault", dir: "using", world: "deck", url: "/vault", width: 1280, height: 900, themes: BOTH,
-    shows: [...DECK, "deck/views/vault.js", "deck/vault/model.js", "deck/css/views/vault.css"],
-    alt: "The Vault in the Deck: a login, an API key, a card, a note, a secret and an env set, listed by name with no values shown.",
-    page: "using/vault.md", heading: "See what you have" },
-  { name: "deck-vault-item", dir: "using", world: "deck", url: "/vault?item=harlow-gmail", width: 1280, height: 900, themes: BOTH,
-    shows: [...DECK, "deck/views/vault.js", "deck/views/vault-item.js", "deck/vault/model.js", "deck/css/views/vault.css"],
-    alt: "One Vault item, harlow-gmail: its fields sealed until you reveal or copy them, who holds it and its history.",
-    page: "using/vault.md", heading: "Show, copy or fill a value yourself" },
-  { name: "deck-settings", dir: "using", world: "deck", url: "/settings", width: 1280, height: 1000, themes: BOTH,
-    shows: [...DECK, "deck/views/settings.js", "deck/css/views/settings.css"],
-    alt: "Settings in the Deck: the six setup steps, each with the vyre command that finishes it, then you and your address.",
-    page: "using/deck.md", heading: "Finish setup, or change it" },
-  { name: "settings-connections", dir: "using", world: "deck", url: "/settings#connections", width: 1280, height: 1000, themes: BOTH,
-    script: `await until('/harlow-docs/.test(document.querySelector("#connections") && document.querySelector("#connections").parentElement.innerText)', 15000); await wait(800);`,
-    shows: [...DECK, "deck/views/settings.js", "deck/views/connections.js", "deck/css/views/settings.css", "deck/css/views/connections.css"],
-    alt: "Settings, Connections: the harlow-docs MCP server with its tools and the projects it serves, and Harlow Legal's Google account, each with Test and Remove, and the buttons to add more.",
-    page: "using/connectors.md", heading: "Add an MCP server" },
-  { name: "glass-files", dir: "using", world: "glass", url: "/glass/box", width: 1280, height: 640, themes: BOTH,
-    script: `const open = async name => {
-        const el = await until('[...document.querySelectorAll(".view *")].find(e => !e.children.length && e.textContent.trim() === ' + JSON.stringify(name) + ')');
-        el.click(); el.dispatchEvent(new MouseEvent("dblclick", { bubbles: true })); await wait(1200);
-      };
-      await open("Work"); await open("Q3 report.md");`,
-    shows: [...DECK, "deck/views/glass.js", "deck/glass/index.js", "deck/glass/files.js", "deck/glass/glass.css"],
-    alt: "Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash.",
-    page: "using/glass.md", heading: "Browse and move files" },
-
-  // ---- The Deck on a phone ----
-  { name: "phone-now", dir: "using", world: "deck", url: "/now", width: 390, height: 844, phone: true, themes: BOTH,
-    shows: [...DECK, ...NOW, ...PHONE],
-    alt: "Now on a phone: the Set up this phone card (Home Screen, notifications, a passkey), what needs you, and the tab bar with Now, Projects, Chat, Find and Agents.",
-    page: "using/mobile.md", heading: "Set up the phone" },
-  { name: "phone-held", dir: "using", world: "deck", url: "/now", width: 390, height: 844, phone: true, themes: BOTH, script: HELD_EMAIL,
-    shows: [...DECK, "deck/views/needs.js", "deck/css/views/needs.css", "deck/js/needs.js"],
-    alt: "A held email on a phone, with Send and Discard in reach of your thumb.",
-    page: "using/mobile.md", heading: "Approving from the phone" },
-
-  { name: "phone-find", dir: "using", world: "deck", url: "/find", width: 390, height: 844, phone: true, themes: BOTH,
-    script: `const i = await until('document.querySelector(".view input")'); i.spellcheck = false; i.focus(); i.value = "harlow"; i.dispatchEvent(new Event("input", { bubbles: true })); await wait(1800); i.blur();`,
-    shows: [...DECK, "deck/views/find.js", "deck/css/views/find.css", "deck/js/commands.js"],
-    alt: "Find on a phone with harlow typed: ask juno first, then the Harlow sessions, and the projects that match.",
-    page: "using/mobile.md", heading: "What you can do from the phone" },
-
-  { name: "settings-devices", dir: "using", world: "deck", url: "/settings#devices", width: 1280, height: 800, themes: BOTH,
-    script: `await until('/alex-iphone/.test(document.body.innerText)', 15000); await wait(600);`,
-    shows: [...DECK, "deck/views/settings.js", "deck/css/views/settings.css", "core/onboard/index.js"],
-    alt: "Settings, Your devices: the iPhone alex-iphone, offline in Tailscale with how to turn it back on, and the Mac alex-mbp online, with Add a device.",
-    page: "using/deck.md", heading: "Finish setup, or change it" },
-
-  // ---- The Deck of a box whose setup just finished ----
-  { name: "deck-new-box", dir: "using", world: "fresh", url: "/now", width: 1280, height: 900, themes: BOTH, setup: "pair",
-    script: `await until('document.querySelector(".asst-title")', 15000); await wait(800);`,
-    shows: [...DECK, ...NOW, ...PAIR, "deck/js/assistant-setup.js"],
-    alt: "Now on a box whose setup just finished: the Create your assistant card, and the Mac alex-mbp asking to pair.",
-    page: "using/agents.md", heading: "Make the assistant later" },
-  { name: "deck-pair", dir: "using", world: "fresh", url: "/now", width: 1280, height: 900, themes: BOTH, setup: "pair", clip: ".pair-list", pad: 16,
-    script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(600);`,
-    shows: [...DECK, ...NOW, ...PAIR],
-    alt: "The card on Now when a Mac asks to pair: alex-mbp, a field for the code the Mac shows, Approve and Deny.",
-    page: "using/tailscale.md", heading: "Connect your Mac to the box" },
 ];
 
 /** CLI output is shown as text, not pictures: these are the commands docs-shots --cli prints from the sample world. */

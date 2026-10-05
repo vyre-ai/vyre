@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present, kernelCaller } from "../../test/helpers.js";
+import { asOwner, tempHome, present, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 
@@ -23,6 +23,7 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: m => { if (/no chat/.test(m)) console.log(m); }, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -68,6 +69,8 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   assert.match((await get(plain.data.id)).chat, /^chat_/);
 
   // an agent that runs in the Space is an actor of it (agents.create registers it, on the person's own call); its run's chat is the owner plus that agent, never an owner-only chat that drops it
+  // (until agents.create registers its actor itself, the owner adds it, with the kernel's own proof)
+  await grants.addActor(ownerChain, { kind: "agent", id: "kit", space: d.kernel.id.space }, { presence: { op: "x", fields: {}, n: 1 } }).catch(() => {});
   const made = await kernelCaller(d, root)("agents.create", { name: "kit", projects: "*" });
   assert.ok(made.data, JSON.stringify(made.error));
   const withKit = await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "cli", agent: "kit" }, "cli");
@@ -87,6 +90,7 @@ test("the person's own assistant is never a listed participant: its chat is the 
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -114,6 +118,7 @@ test("a terminal session's SessionStart leaves a chat of the person's, remembere
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -140,6 +145,7 @@ test("a person's call on a run needs the person to be in its chat: a member outs
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -158,6 +164,15 @@ test("a person's call on a run needs the person to be in its chat: a member outs
     const res = await d.registry.call(tool, input, "cli", await tokenOf(bobChain));
     assert.equal(res.error && res.error.code, "not_found", `${tool} for a member outside the chat: ${JSON.stringify(res.error)}`);
   }
+  // it fails closed: no person chain (a call with no facts and no token), a chain that cannot be built (a bad token, an unenrolled device) and a non-person first hop are all not_found
+  for (const [what, meta] of [["no facts and no token", {}], ["a token that does not verify", { token: "bad.token" }], ["a device that is not enrolled", { kernelFacts: { kind: "device", device_key_id: "dnotenrolled0000001", person: owner, path: "relay", session: "x" } }]]) {
+    for (const [tool, input] of [["threads.get", { thread: id, limit: 1 }], ["threads.send", { thread: id, text: "x", surface: "cli" }], ["threads.interrupt", { thread: id }]]) {
+      const res = await d.registry.call(tool, input, "cli", meta);
+      assert.equal(res.error && res.error.code, "not_found", `${tool} with ${what}: ${JSON.stringify(res.error || res.data).slice(0, 120)}`);
+    }
+  }
+  // a first-party module's own call is exempt (it checks its asker itself), and a thread in no chat is as before
+  assert.ok((await d.registry.call("threads.get", { thread: id, limit: 1 }, "module:work")).data, "a first-party module reads it");
   const mine = await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli", await tokenOf(ownerChain));
   assert.ok(mine.data && mine.data.thread.chat === chat, "the owner, who is in it, reads it");
   await grants.chats.change(ownerChain, chat, { add_people: [BOB] });
@@ -175,6 +190,7 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -244,6 +260,7 @@ test("a chat started outside the stream continues in it: the existing run is ado
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -280,6 +297,7 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
   const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
   t.after(() => d.stop());
   const owner = kernelCaller(d, root);
   const made = await owner("work.chat.create", { title: "Fresh" });
@@ -304,4 +322,134 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   // the chat's status follows its run: not "working" once the turn is over
   await until(async () => { const row = (await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat); return row && row.status === "idle"; }, "the chat to be idle after the turn", 30_000);
   assert.ok(((await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat) || {}).last_active, "and last active is kept");
+});
+
+test("a message sent in the chat while its run works joins the running turn (steer) by default, waits for the turn's end when asked to queue, and is never refused", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const owner = kernelCaller(d, root);
+  const chat = (await owner("work.chat.create", { title: "Busy" })).data.chat;
+  // presence: what the slot is doing, and who is typing, are ephemeral frames on the chat's log
+  const logs = d.registry.modules.get("stream").handle.logs;
+  /** @type {any[]} */ const seen = [];
+  const off = logs.get(chat).subscribe(f => { if (f.type === "chat.presence") seen.push(f.data); });
+  t.after(off);
+  assert.ok((await owner("stream.typing", { chat })).data);
+  await until(async () => seen.some(p => p.state === "typing"), "the typing frame");
+  assert.ok((await owner("stream.send", { chat, text: "demo" })).data);
+  const thread = await until(async () => { const r = (await owner("work.chat.get", { chat })).data.slots[0]; return r && r.thread; }, "the run");
+  await until(async () => seen.some(p => p.state === "doing" && p.who.startsWith("model:") && p.doing), "what the slot is doing");
+  await until(async () => (await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn to be busy");
+  const events = async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
+  // the default: the words join the running turn
+  assert.ok((await owner("stream.send", { chat, text: "and also this" })).data);
+  await until(async () => (await events()).some(e => e.type === "thread.sent" && e.payload.text === "and also this" && e.payload.via === "steer"), "the words to be steered into the turn");
+  // queue: they wait, and can be taken back
+  assert.ok((await owner("stream.send", { chat, text: "later please", mode: "queue" })).data);
+  await until(async () => (await events()).some(e => e.type === "thread.queued" && e.payload.text === "later please"), "the words to be queued");
+  // Stop through the chat: the busy slot's turn is interrupted, and the chat keeps taking messages
+  const stopped = await owner("threads.chat-stop", { chat });
+  assert.deepEqual(stopped.data && stopped.data.stopped, [thread], JSON.stringify(stopped.error));
+  await until(async () => !(await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn's open question to be cancelled");
+  assert.equal((await owner("threads.chat-stop", { chat, slot: "model:claude/nonesuch#9" })).error.code, "not_found");
+  await until(async () => seen.some(p => p.state === "idle" && p.who.startsWith("model:")), "the slot's line to clear when the turn ends");
+});
+
+test("a quoted reply stays in the chat's timeline: the frame carries reply_to and a short quote the box fills from the log, the model is told what it answers, and a message that is not in the chat is refused", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const owner = kernelCaller(d, root);
+  const chat = (await owner("work.chat.create", { title: "Quotes" })).data.chat;
+  const logs = d.registry.modules.get("stream").handle.logs;
+  assert.ok((await owner("stream.send", { chat, text: "hello there" })).data);
+  await until(async () => logs.get(chat).read(0).some(f => f.type === "chat.text-done"), "the first reply", 60_000);
+  const reply = logs.get(chat).read(0).find(f => f.type === "chat.text-done");
+  assert.equal((await owner("stream.send", { chat, text: "and why?", reply_to: "nonesuch-message" })).error.code, "not_found");
+  const sent = await owner("stream.send", { chat, text: "and why?", reply_to: reply.data.message });
+  assert.ok(sent.data, JSON.stringify(sent.error));
+  const frame = logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "and why?").pop();
+  assert.equal(frame.data.reply_to, reply.data.message);
+  assert.deepEqual(frame.data.quote, { message: reply.data.message, author: reply.author, text: "echo: hello there" });
+  assert.match(reply.author, /^model:/);
+  // the model got the quote as context; the person's own words stay as typed in the chat
+  const thread = (await owner("work.chat.get", { chat })).data.slots[0].thread;
+  await until(async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events.some(e => e.type === "thread.sent" && /Replying to .*: "echo: hello there"\s+and why\?/.test(String(e.payload.text))), "the run to be told what it answers", 30_000);
+  // quoting a person's own message works too
+  const mine = logs.get(chat).read(0).find(f => f.type === "chat.user-message" && f.data.text === "hello there");
+  const again = await owner("stream.send", { chat, text: "I mean the first one", reply_to: mine.data.message });
+  assert.ok(again.data, JSON.stringify(again.error));
+  assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "I mean the first one").pop().data.quote.text, "hello there");
+  // the sending device's time zone rides with the words: on the frame, on the run as the person's current zone, and on thread.sent; an unknown name is dropped, not stored
+  assert.ok((await owner("stream.send", { chat, text: "what time is it?", tz: "Asia/Kuala_Lumpur" })).data);
+  assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "what time is it?").pop().data.tz, "Asia/Kuala_Lumpur");
+  await until(async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events.some(e => e.type === "thread.sent" && /what time is it/.test(String(e.payload.text)) && e.payload.tz === "Asia/Kuala_Lumpur"), "thread.sent to say the zone", 30_000);
+  assert.equal((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.tz, "Asia/Kuala_Lumpur");
+  assert.ok((await owner("stream.send", { chat, text: "and now?", tz: "Mars/Olympus" })).data);
+  assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "and now?").pop().data.tz, undefined);
+  assert.equal((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.tz, "Asia/Kuala_Lumpur", "the last good zone stays");
+});
+
+test("a person outside a chat sees nothing of its runs through ANY threads tool: every tool that names a thread, an ask, a watch or a session says not_found, and the lists leave the run out", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const BOB = "per_" + "b".repeat(26);
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const bob = { token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s-b" }), {})).token };
+  // a busy run in the owner's chat, with an open ask and a watch on it
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "demo", surface: "cli" }, "cli");
+  assert.ok(r.data, JSON.stringify(r.error));
+  const thread = r.data.id;
+  const ask = await until(async () => (await d.registry.call("threads.asks", { thread }, "cli")).data.find(a => a.state === "open"), "an open ask");
+  const watch = (await d.registry.call("threads.watch", { thread, until: "finished" }, "cli")).data;
+  // the lists: the owner sees the run, bob sees nothing of it
+  assert.ok((await d.registry.call("threads.list", {}, "cli")).data.some(x => x.id === thread), "the owner lists it");
+  assert.deepEqual((await d.registry.call("threads.list", {}, "cli", bob)).data.filter(x => x.id === thread), [], "threads.list leaves it out for bob");
+  assert.deepEqual((await d.registry.call("threads.asks", {}, "cli", bob)).data.filter(x => x.thread === thread), [], "threads.asks leaves its ask out for bob");
+  assert.ok((await d.registry.call("threads.asks", {}, "cli")).data.some(x => x.thread === thread), "and the owner sees the ask");
+  // every tool that names a thread, an ask, a watch or a session: not_found for bob, built from the tool's own schema
+  const NOT_A_RUN = new Set(["threads.start", "threads.launch", "threads.quick", "threads.providers.learn", "threads.usage", "threads.history", "threads.live", "threads.list", "threads.asks", "threads.pids", "threads.vouch", "threads.contend", "threads.claimed", "threads.interrupt-in", "threads.busy", "threads.of-chat", "threads.chat-of", "threads.chat-switch", "threads.chat-stop", "threads.continue-here"]);
+  const sample = (/** @type {string} */ k, /** @type {any} */ p) => (k === "thread" || k === "session" ? thread : k === "ask" ? ask.id : k === "watch" ? String(watch.watch || watch.id || "w") : p.enum ? p.enum[0] : p.type === "integer" ? 1 : p.type === "boolean" ? true : p.type === "array" ? [] : "x");
+  /** @type {string[]} */ const walked = [];
+  for (const [name, def] of d.registry.tools) {
+    if (!name.startsWith("threads.") || NOT_A_RUN.has(name)) continue;
+    const schema = (def && def.input) || {};
+    const props = schema.properties || {};
+    const want = Object.keys(props).filter(k => ["thread", "session", "ask", "watch"].includes(k));
+    if (!want.length) continue;
+    const input = Object.fromEntries((schema.required || []).map((/** @type {string} */ k) => [k, sample(k, props[k] || {})]));
+    for (const k of want) input[k] = sample(k, props[k] || {});
+    const res = await d.registry.call(name, input, "cli", bob);
+    // a tool a person's surface cannot call at all (module-only) answers no_such_tool: it is not a way in
+    assert.ok(res.error && (["not_found", "no_such_tool"].includes(res.error.code) || (res.error.code === "denied" && /not available to/.test(res.error.message))), `${name} for a member outside the chat: ${JSON.stringify(res.error || res.data).slice(0, 140)}`);
+    if (res.error.code === "not_found") walked.push(name);
+  }
+  assert.ok(walked.length >= 20, `walked ${walked.length} tools: ${walked.join(", ")}`);
 });

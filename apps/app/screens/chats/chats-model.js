@@ -3,7 +3,7 @@
 // line. Solo, group and people-only chats are all the same row. work.chat.list answers these; until a box has it, the list is made from the box's older list of sessions (fromThread), so nothing
 // the person sees names a session, a thread or a room.
 
-/** @typedef {{ id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, open: boolean }} ChatRow */
+/** @typedef {{ id: string, title: string, project: string, people: string[], agents: string[], models: string[], providers: string[], status: string, last: number, line: string, asks: number, unread: number, open: boolean }} ChatRow */
 
 const str = (/** @type {unknown} */ v) => (typeof v === "string" ? v : "");
 /** A list the box sends as an array, or (work.chat.list) as one comma-joined string. */
@@ -31,7 +31,7 @@ export function chatsFrom(data) {
     out.push({
       id, title: str(d.title) || "New chat", project: str(d.project_name) || str(d.projectName) || projectName(d.project), people: strs(d.people), agents: strs(d.agents), models: strs(d.models),
       providers: strs(d.providers).filter((p) => PROVIDERS.includes(p)), status: str(d.status) || "idle",
-      last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, open: d.open === true,
+      last: Number(d.last_active ?? d.updated_at ?? d.last ?? 0) || 0, line: str(d.last_line) || str(d.summary), asks: Number(d.asks ?? 0) || 0, unread: Number.isInteger(d.unread) && d.unread > 0 ? d.unread : 0, open: d.open === true,
     });
   }
   return out;
@@ -61,10 +61,10 @@ export function chatsOrdered(list) {
 /** The three scripted chats of the sample world (CONTRACT-one-chat.md section 4): a solo chat, a three-model chat, a people-only chat and one where the assistant acted for the person. @param {number} now @returns {ChatRow[]} */
 export function sampleChats(now) {
   return [
-    { id: "demo", title: "Lease reply", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 6 * 60_000, line: "Draft ready for your review", asks: 0, open: true },
-    { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: ["claude", "codex", "grok"], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, open: true },
-    { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Assistant", asks: 0, open: true },
-    { id: "demo-people", title: "Intake hand-off", project: "General", people: ["alex", "Sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "Sam: I will call them Monday", asks: 0, open: true },
+    { id: "demo", title: "Lease reply", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude"], providers: ["claude"], status: "idle", last: now - 6 * 60_000, line: "Draft ready for your review", asks: 0, unread: 0, open: true },
+    { id: "demo-three", title: "Which clause is riskier?", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: ["kit on Claude", "kit on Codex", "Grok"], providers: ["claude", "codex", "grok"], status: "idle", last: now - 3_600_000, line: "Three answers, you kept one", asks: 0, unread: 2, open: true },
+    { id: "demo-assistant", title: "Tests before the call", project: "Northwind Bakery", people: ["alex"], agents: ["kit"], models: [], providers: ["claude"], status: "idle", last: now - 7_200_000, line: "Sent by Vyre Assistant", asks: 0, unread: 0, open: true },
+    { id: "demo-people", title: "Intake hand-off", project: "General", people: ["alex", "Sam"], agents: [], models: [], providers: [], status: "idle", last: now - 86_400_000, line: "Sam: I will call them Monday", asks: 0, unread: 0, open: true },
   ];
 }
 

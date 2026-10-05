@@ -11,8 +11,8 @@
  */
 export async function scanTicket(o) {
   const { mountWink } = await import("../../wink/page.js");
-  const startScan = o.startScan || (await import("../../../deck/js/scan.js")).startScan;
-  const { haptic } = await import("../../../deck/js/haptics.js");
+  const startScan = o.startScan || (await import("../../../web/js/scan.js")).startScan;
+  const { haptic } = await import("../../../web/js/haptics.js");
   document.head.append(Object.assign(document.createElement("link"), { rel: "stylesheet", href: "/relay/wink/wink.css" }));
   const host = document.createElement("div");
   host.id = "vyre-wink";

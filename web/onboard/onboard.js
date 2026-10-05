@@ -389,7 +389,7 @@ const SCREENS = {
   //     Both paths pass `becomeDevice:true` and land the same way. Neither existed as real
   //     tools when this screen was first built (28 Sep); onboard.join is real-shaped but not on
   //     main yet, relay.join is real-shaped and not on main yet either.
-  // Fixture-backed (deck/fixtures/onboard.json, deck/fixtures/relay.json): onboard.machine is
+  // Fixture-backed (web/fixtures/onboard.json, web/fixtures/relay.json): onboard.machine is
   // the only one of these four tools actually shipped on main so far.
   live(col, s) {
     col.append(
@@ -1183,7 +1183,7 @@ const SCREENS = {
     // relay.pair.ticket is built (tailnet, work/tailnet 2990a810, sent to their reviewer, "safe
     // to build against"): mint {} -> {ticket, expiresAt, connected}, HUMAN_ONLY (Touch ID at the
     // mint, matching relay.pair.start), single-use, refuses on darwin same as relay.join. Not
-    // merged to main yet, so `attempt` answers from deck/fixtures/relay.json's fallback until it
+    // merged to main yet, so `attempt` answers from web/fixtures/relay.json's fallback until it
     // is — same "missing tool" pattern every other real-but-unmerged tool in this file uses.
     // relay.paired {device, name, fingerprint} fires the instant a ticket pairing completes: no
     // separate pending/confirm step, so this reacts to the event directly rather than polling,

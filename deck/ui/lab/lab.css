@@ -1,5 +1,0 @@
-/* The lab's own: the fonts by relative path (the Deck's own rule names /fonts/..., which a file URL cannot reach), and a plain page around what is drawn. */
-@font-face { font-family: 'Instrument Sans'; font-style: normal; font-weight: 400 600; src: url(../../fonts/instrument-sans-latin.woff2) format('woff2'); }
-@font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 500; src: url(../../fonts/jetbrains-mono-latin.woff2) format('woff2'); }
-html, body { margin: 0; background: var(--bg); color: var(--text); font: 400 var(--fs-body)/var(--lh-body) var(--sans); }
-#lab { min-height: 100vh; }

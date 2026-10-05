@@ -166,7 +166,9 @@ export function createGroup(viewer) {
   let dividerCache = /** @type {{ rev: number, v: { key: string | null, count: number } } | null} */ (null);
 
   /** @param {string} message */ const keyOf = (message) => msgs.get(message)?.key;
-  const names = () => Object.fromEntries([...people.values()].map((p) => [`${p.family}:${p.id}`, p.name]));
+  /** Names the app learned from elsewhere (work.chat.get and the space's actors), keyed like `person:<id>`: a frame that only carries an id never overrides them. @type {Map<string, string>} */
+  const learned = new Map();
+  const names = () => ({ ...Object.fromEntries([...people.values()].map((p) => [`${p.family}:${p.id}`, p.name])), ...Object.fromEntries(learned) });
 
   function divider() {
     if (dividerCache && dividerCache.rev === rev) return dividerCache.v;
@@ -320,7 +322,11 @@ export function createGroup(viewer) {
     get readUpto() { return readUpto; },
     get viewer() { return viewer; },
     /** @param {string} v */ setViewer(v) { if (v && v !== viewer) { viewer = v; rev++; } },
-    /** @returns {Participant[]} */ participants: () => [...people.values()],
+    /** @returns {Participant[]} */ participants: () => [...people.values()].map((p) => (learned.has(p.id) ? { ...p, name: /** @type {string} */ (learned.get(p.id)) } : p)),
+    /** The name for an assistant row whose frame names no author: the chat's one model or agent when it has one, else "Assistant". */
+    assistantName() { for (const [id, name] of learned) if (id.startsWith("model:") || id.startsWith("agent:")) return name; return "Assistant"; },
+    /** Teach the group names it was not told by a frame. @param {{ id: string, name: string }[]} list ids as `person:<id>`, `agent:<id>` or a slot id */
+    learn(list) { let changed = false; for (const m of list) { if (m && m.id && m.name && learned.get(m.id) !== m.name) { learned.set(m.id, m.name); changed = true; } } if (changed) rev++; return changed; },
     names,
     presence: () => presence,
     presenceLine: () => presenceLine(presence, viewer, names()),

@@ -26,8 +26,6 @@ Connections. MCP servers, Google accounts and catalog apps also work from the te
 
 ## Add an MCP server
 
-![Settings, Connections: the harlow-docs MCP server with its tools and the projects it serves, and Harlow Legal's Google account, each with Test and Remove, and the buttons to add more.](shots/settings-connections.png)
-
 Put the server's credential in the vault first. Values are never typed on the command line:
 
 ```

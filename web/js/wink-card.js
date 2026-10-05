@@ -1,6 +1,6 @@
 // @ts-check
 // Wink's card: the live Vyre code ring, shared between onboarding's devices step and
-// Settings > Devices (one card, two homes; deck/css/phone-code.css is the shared stylesheet).
+// Settings > Devices (one card, two homes; web/css/phone-code.css is the shared stylesheet).
 // The ring draws relay.pair.ticket's raw secret while it's live (deck/js/phone-code.js), so this
 // module is built around reviewer's pre-review points (relayed by the lead, 28 Sep), not just
 // the visual mechanics:
@@ -36,7 +36,7 @@ const MAX_RENEWS = 6;
 const parser = new DOMParser();
 // wink.vyre.run is the camera page (relay/wink); phone.vyre.run redirects to it.
 const SCAN_LINE = "Open wink.vyre.run on your phone and scan this code. On an iPhone, add Vyre to your Home Screen first.";
-/** SVG markup -> a real node (the Deck's own rule, deck/js/dom.js: no innerHTML). @param {string} src */
+/** SVG markup -> a real node (the Deck's own rule, web/js/dom.js: no innerHTML). @param {string} src */
 const parseSvg = src => /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));
 
 /**

@@ -34,6 +34,7 @@ import { addTeammateInput, addable } from "./group.js";
 import { excerpt, jumpIndex } from "./reply.js";
 import { ChatExtras } from "./ChatExtras";
 import { useChatMembers } from "./useChatMembers";
+import { useChatKeyLease } from "./useChatKeyLease";
 import { queueFrom } from "./extras.js";
 import { tool } from "../real/box";
 
@@ -87,6 +88,11 @@ export function ChatScreen(p: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const { store, rows, meta, loading } = useSessionStream(p.sessionId, { source: p.source, perf: p.perf, viewer: p.viewer });
   const viewer = store.group.viewer;
+  // Who is in this chat before the stream says, and the run's thread for the per-run controls (both from work.chat.get).
+  const here = useChatMembers(p.sessionId, meta.busy);
+  useChatKeyLease(p.sessionId);
+  // The names the stream's frames do not carry: the people and agents of the chat and its model slots.
+  useEffect(() => { if (allowsMock()) return; if (here.me) store.group.setViewer(`person:${here.me}`); store.learnNames([...here.members.map((m) => ({ id: m.id, name: m.name })), ...here.slots]); }, [store, here.me, here.members, here.slots]);
   const [note, setNote] = useState<string | null>(null);
   const [aboutOpen, setAboutOpen] = useState(!!p.initialAbout);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -97,9 +103,9 @@ export function ChatScreen(p: ChatScreenProps) {
   useEffect(() => {
     if (!toolsOpen || allowsMock()) return;
     let live = true;
-    tool("threads.queue", { thread: p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
+    tool("threads.queue", { thread: here.thread ?? p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
     return () => { live = false; };
-  }, [toolsOpen, p.sessionId]);
+  }, [toolsOpen, p.sessionId, here.thread]);
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
@@ -149,7 +155,7 @@ export function ChatScreen(p: ChatScreenProps) {
     [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
   );
   const onSend = useCallback(
-    async (text: string, o?: { to: string[]; fanout: boolean; mentions?: { kind: string; id: string; name: string }[] }) => {
+    async (text: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
       setNote(null);
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
@@ -164,7 +170,7 @@ export function ChatScreen(p: ChatScreenProps) {
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
-      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, o?.mentions?.length ? { mentions: o.mentions } : undefined);
+      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
       if (why) setNote(why);
     },
     [store, editing, actions, replyTo, highlights],
@@ -176,7 +182,6 @@ export function ChatScreen(p: ChatScreenProps) {
   const group = store.group;
   const found = group.participants();
   // Before the stream says who is here: a real chat asks the box (work.chat.get); only the sample world shows its sample people.
-  const here = useChatMembers(p.sessionId);
   const sample = [{ id: viewer, name: parseName(viewer), family: "person" as const }, { id: "assistant:juno", name: "juno", family: "assistant" as const }];
   const faces = found.length ? found : allowsMock() ? sample : here.members;
   const viewerId = found.length || allowsMock() || !here.me ? viewer : `person:${here.me}`;
@@ -190,7 +195,7 @@ export function ChatScreen(p: ChatScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={p.title ?? "Chat"} participants={faces} viewer={viewerId} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={queued} onForked={p.onBranched}
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={here.thread ?? p.sessionId} session={here.thread ?? p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
@@ -290,6 +295,7 @@ export function ChatScreen(p: ChatScreenProps) {
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
           people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}

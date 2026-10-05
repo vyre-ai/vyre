@@ -17,7 +17,7 @@ import { isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
 export const APP_DIST = path.join(REPO, "apps", "app", "dist");
-const DECK_MANIFEST = path.join(REPO, "deck", "manifest.webmanifest");
+const DECK_MANIFEST = path.join(REPO, "web", "manifest.webmanifest");
 const WORKER = path.join(HERE, "app-sw.js");
 const PRECACHE_MAX = 2000;
 // The signed list of the build's files (lib/app-build.js): a packaged daemon serves a file of /app/ only when it is on the release's signed list and its bytes match (MW-5).
@@ -91,9 +91,9 @@ export function appManifest({ dir = APP_DIST, deckManifest = DECK_MANIFEST, base
  * the export is ever served, whatever the path says.
  * @param {import("node:http").ServerResponse} res
  * @param {string} pathname
- * @param {{ dir?: string, deckManifest?: string, base?: string, build?: import("./build.js").Build, gate?: { check(rel: string, bytes: Buffer): null | { code: string, message: string } } }} [opts]
+ * @param {{ csp?: string, dir?: string, deckManifest?: string, base?: string, build?: import("./build.js").Build, gate?: { check(rel: string, bytes: Buffer): null | { code: string, message: string } } }} [opts]
  */
-export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, base: b, build, gate = GATE } = {}) {
+export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, base: b, build, gate = GATE, csp = CSP } = {}) {
   const dir = path.resolve(d);
   const base = b ?? appBase(dir);
   if (base && pathname === base) { res.writeHead(301, { location: base + "/", "cache-control": "no-cache" }); return res.end(); }
@@ -101,7 +101,7 @@ export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, base:
   let rel;
   try { rel = decodeURIComponent(pathname).slice(base.length + 1); } catch { return send(res, 404, { error: { code: "not_found", message: pathname } }); }
   const head = (/** @type {string} */ type, cache = "no-cache", extra = {}) => ({ "content-type": type, "cache-control": cache,
-    "x-content-type-options": "nosniff", "content-security-policy": CSP, ...extra });
+    "x-content-type-options": "nosniff", "content-security-policy": csp, ...extra });
   if (rel === "sw.js") {
     // The two generated files are on the signed list too (MW-5): what this daemon makes must hash to what the release signed.
     const sw = appWorker({ dir, build, base });

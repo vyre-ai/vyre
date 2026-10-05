@@ -147,12 +147,16 @@ export const MIGRATIONS = [
    CREATE TABLE threads_terminal_chats (session TEXT PRIMARY KEY, chat TEXT NOT NULL);`,
   // A run with no agent is a model slot in its chat: `model:<provider>/<model>#<n>`, minted here once and never changed (a model switch keeps it), the agent hop its kernel session carries.
   `ALTER TABLE threads_runs ADD COLUMN slot TEXT;`,
+  // The person's current time zone (an IANA name, from the device that sent their last message), so a brief and a clock read the zone they are in now, not the server's.
+  `ALTER TABLE threads_runs ADD COLUMN tz TEXT;`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
 export const modelName = m => (typeof m === "string" && m.trim() ? m.slice(0, 200).trim().replace(/\[[^\]]*\]$/, "").slice(0, 80) : null);
 
 /** What a provider is called in a line a person reads. @param {string} p */
+/** Is this an IANA time zone name this runtime knows? @param {string} z */
+export const validZone = z => { if (typeof z !== "string" || !z || z.length > 64) return false; try { new Intl.DateTimeFormat("en", { timeZone: z }); return true; } catch { return false; } };
 export const providerName = p => (p === "openrouter" ? "OpenRouter" : String(p || "claude")[0].toUpperCase() + String(p || "claude").slice(1));
 
 /** The things a provider can do that a person would miss, in the words a notice uses. */
@@ -539,6 +543,10 @@ export class Switchboard {
       const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
       if (row && row.chat) payload = { ...payload, chat: row.chat };
     }
+    if (type === "thread.sent" && payload && payload.tz === undefined) {
+      const row = /** @type {any} */ (this.db.prepare("SELECT tz FROM threads_runs WHERE id = ?").get(thread));
+      if (row && row.tz) payload = { ...payload, tz: row.tz };
+    }
     const where = { thread, project: project || undefined };
     try { return this.deps.emit(type, { thread, ...payload }, where); }
     catch (e) {
@@ -625,7 +633,7 @@ export class Switchboard {
     const holder = this.leases.holder(id);
     // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, status: r.status,
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, slot: r.slot || null, tz: r.tz || null, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
@@ -3401,6 +3409,38 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
+    // One Chat (reviewer-3 G5, reviewer-5): EVERY tool of this module a person can call is checked against the chats the person is in, at this one point (whatever it takes: a thread, an ask, a watch or a
+    // session, or nothing at all and answers a list). A run in a chat the caller is not in does not exist for them: a call naming it is not_found, and a list or an answer that would show it leaves it out.
+    // Fail closed: with the kernel on, a call with no person chain sees only runs that are in no chat. A first-party module's call is exempt (it checks its own asker).
+    {
+      const rawTool = ctx.tool.bind(ctx);
+      const kernelOn = () => Boolean(ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.read === "function");
+      const personChain = async (/** @type {any} */ m) => { try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(m) : null; return c && Array.isArray(c.hops) && c.hops[0] && c.hops[0].actor && c.hops[0].actor.kind === "person" ? c : null; } catch { return null; } };
+      const targets = (/** @type {any} */ i) => {
+        /** @type {string[]} */ const out = [];
+        if (!i || typeof i !== "object") return out;
+        if (typeof i.thread === "string") out.push(i.thread);
+        if (typeof i.session === "string") out.push(i.session);
+        if (typeof i.ask === "string") { try { const a = /** @type {any} */ (sb.asks.get(i.ask)); if (a && a.thread) out.push(String(a.thread)); } catch { /* no such ask: the tool says so */ } }
+        if (typeof i.watch === "string") { const w = /** @type {any} */ (sb.db.prepare("SELECT thread FROM threads_watches WHERE id = ?").get(i.watch)); if (w && w.thread) out.push(String(w.thread)); }
+        return out;
+      };
+      const gated = (/** @type {string} */ name, /** @type {any} */ run) => async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any[]} */ ...rest) => {
+        if (!kernelOn() || (m && m.firstParty) || typeof run !== "function") return run(i, m, ...rest);
+        const chain = await personChain(m);
+        const chatOk = (/** @type {string | null} */ chat) => { if (!chat) return true; if (!chain) return false; try { ctx.kernel.chats.read(chain, chat); return true; } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") return false; throw e; } };
+        const threadOk = (/** @type {any} */ t) => chatOk(sb.chatOf(String(t)));
+        for (const t of targets(i)) if (!threadOk(t)) throw Object.assign(new Error(`no such thread ${t}`), { code: "not_found" });
+        const out = await run(i, m, ...rest);
+        if (name === "threads.list" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || chatOk(r.chat || null));
+        if (name === "threads.asks" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
+        if (name === "threads.live" && out && Array.isArray(out.sessions)) return { ...out, sessions: out.sessions.filter((/** @type {any} */ t) => threadOk(t)) };
+        if (name === "threads.history" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
+        if (name === "threads.pids") return { pids: [] };
+        return out;
+      };
+      ctx.tool = (/** @type {string} */ name, /** @type {any} */ def) => rawTool(name, def && typeof def.run === "function" ? { ...def, run: gated(name, def.run) } : def);
+    }
     // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
     const resumeTimer = setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500);
     resumeTimer.unref?.();
@@ -3519,13 +3559,16 @@ export default {
     // The tools a model session reaches (SESSION_MUTATING and SESSION_READS) are scoped in their body by sessionMay (a session its own thread and the threads it started, a project's reads): the registry
     // would otherwise default every write tool to a person's surfaces and modules, which refused the assistant that starts and drives sessions, so they declare who may CALL them and the body decides.
     const MODEL_REACH = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "link", "link:box", "mcp", "harness"];
-    // One Chat (reviewer-3 G5): a person's call on a run is allowed only if the person is in the run's chat (the kernel's own chat read, on the caller's own chain); a chat they are not in does not exist for
-    // them. A first-party module's call is checked by that module (the stream asks the kernel for every asker); a run with no chat (an older one, a daemon without the kernel) is as before.
+    // One Chat (reviewer-3 G5, reviewer-5): with the kernel on, a call on a run that is in a chat needs a person in that chat, on the caller's OWN chain (the kernel's chat read). It fails closed: a chain
+    // that could not be built, or whose first hop is not a person, is not_found like a person outside the chat. Only a first-party module's call is exempt (it checks its own asker: the stream asks the
+    // kernel for every person), and a daemon with no kernel has no chats to protect.
     const chatGate = async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any} */ kchain) => {
-      if (!i || typeof i.thread !== "string" || !kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
+      if (!i || typeof i.thread !== "string" || (m && m.firstParty) || !ctx.kernel || !ctx.kernel.chats || typeof ctx.kernel.chats.read !== "function") return;
       const chat = sb.chatOf(i.thread);
       if (!chat) return;
-      try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" }); throw e; }
+      const refuse = () => Object.assign(new Error(`no such thread ${i.thread}`), { code: "not_found" });
+      if (!kchain || !Array.isArray(kchain.hops) || !kchain.hops[0] || kchain.hops[0].actor.kind !== "person") throw refuse();
+      try { ctx.kernel.chats.read(kchain, chat); } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") throw refuse(); throw e; }
     };
     const tool = (name, description, input, run, callers0, extra = {}) => { const callers = callers0 === undefined && (SESSION_MUTATING.has(name) || SESSION_READS.has(name)) ? MODEL_REACH : callers0; const inner = scoped(name, run); return ctx.tool(name, { description, input, run: async (i, m, ...r) => { const kchain = ctx.kernel && typeof ctx.kernel.chain === "function" ? await Promise.resolve(ctx.kernel.chain(m)).catch(() => null) : undefined; await chatGate(i, m, kchain); return calls.run({ ...m, kchain }, () => inner(i, m, ...r)); }, callers, ...extra }); };
 
@@ -3697,6 +3740,7 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         chat: { type: "string", description: "First-party stream only: the chat this turn's reply belongs to. Anyone else's is ignored." }, asker: { type: "string", description: "First-party stream only: the person who asked this turn (the kernel session is opened for them, in `chat`). Anyone else's is ignored." },
         uuid: { type: "string", description: "First-party modules only: the message's own id, so a delivery they retry (core/stream group chats) is handed over once. Anyone else's is ignored; use an Idempotency-Key." },
+        tz: { type: "string", description: "The IANA time zone of the device that sent these words (Europe/London): kept as the person's current zone for this thread, and said on thread.sent. A person's surface or the stream only." },
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
           description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
@@ -3717,6 +3761,7 @@ export default {
         const had = (i.model || i.effort) ? sb.record(i.thread) : null;
         if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
         if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
+        if (typeof i.tz === "string" && validZone(i.tz) && (queuesFor(caller) || firstParty)) sb.db.prepare("UPDATE threads_runs SET tz = ? WHERE id = ?").run(i.tz, i.thread);
         const uuid = idempotencyKey ? keyUuid(String(caller || ""), String(idempotencyKey))
           : firstParty && /^module:/.test(String(caller || "")) && typeof i.uuid === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(i.uuid) ? i.uuid.toLowerCase() : crypto.randomUUID();
         // The person's own words, and only theirs: said, and the credentials they let this thread use.
@@ -4059,8 +4104,9 @@ export default {
         guard(meta.caller, "stop a chat's turn");
         if (!queuesFor(meta.caller)) throw Object.assign(new Error("only a person's surface stops a chat's turn"), { code: "denied" });
         const runs = i.slot ? [await slotRun(i.chat, i.slot, meta)] : await Promise.all(sb.ofChat(String(i.chat)).map(r => slotRun(i.chat, r.slot || `agent:${r.agent}`, meta)));
-        for (const r of runs) if (r.live) await sb.interrupt(r.thread);
-        return { stopped: runs.filter(r => r.live).map(r => r.thread) };
+        const busy = runs.filter(r => r.live || ["working", "asking", "starting"].includes(String(r.status)));
+        for (const r of busy) await sb.interrupt(r.thread);
+        return { stopped: busy.map(r => r.thread) };
       });
     tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
       { type: "object", required: ["thread"], properties: { thread: str } },

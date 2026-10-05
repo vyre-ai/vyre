@@ -1,5 +1,5 @@
-// The contract between the sessions layer (core/switchboard, core/sessions) and Chat (deck/chat,
-// deck/js/api.js), checked from the source on both sides so a rename on either fails here first.
+// The contract between the sessions layer (core/switchboard, core/sessions) and Chat (the app's chat core,
+// apps/app/src/chat and src/session), checked from the source on both sides so a rename on either fails here first.
 //
 // Server side: every tool("name", ...) registered under core/ and every event name emitted there.
 // Chat side: every "threads.*" / "sessions.*" tool name chat's code names, every event name it
@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { NOT_OFFERED, SESSION_TOOLS } from "../deck/chat/core/caps.js";
+import { NOT_OFFERED, SESSION_TOOLS } from "../apps/app/src/chat/core/caps.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -25,7 +25,7 @@ function sources(dir) {
   for (const e of fs.readdirSync(path.join(root, dir), { withFileTypes: true })) {
     const rel = path.join(dir, e.name);
     if (e.isDirectory()) { if (e.name !== "node_modules" && e.name !== "fixtures" && e.name !== "testing" && e.name !== "vendor") out.push(...sources(rel)); }
-    else if (e.name.endsWith(".js") && !e.name.endsWith(".test.js")) out.push(rel);
+    else if (/\.(js|ts|tsx)$/.test(e.name) && !/\.(test\.js|d\.ts)$/.test(e.name)) out.push(rel);
   }
   return out;
 }
@@ -41,7 +41,7 @@ const core = sources("core");
 const serverTools = names(core, /\btool\(\s*"([a-z]+\.[a-z.-]+)"/g);
 const serverEvents = names(core, /\b(?:emit|emitRaw|fire)\(\s*"([a-z]+\.[a-z._-]+)"/g);
 
-const chat = [...sources("deck/chat"), "deck/js/api.js"];
+const chat = [...sources("apps/app/src/chat"), ...sources("apps/app/src/session"), ...sources("apps/app/screens/chat-tools")];
 const chatTools = names(chat, /"((?:threads|sessions)\.[a-z_-]+(?:\.[a-z_-]+)*)(?::[a-z]+)?"/g);
 const chatEvents = names(chat, /"((?:thread|ask|mode|model|thinking)\.[a-z_-]+)"/g);
 
@@ -102,8 +102,8 @@ test("chat hears every session event the sessions layer emits", () => {
 test("the payload fields chat keys on are the ones the server sends", () => {
   const sb = read("core/switchboard/index.js");
   const tr = read("core/switchboard/translate.js");
-  const st = read("deck/chat/core/session-state.js");
-  const comp = read("deck/chat/composer.js");
+  const st = read("apps/app/src/chat/core/session-state.js");
+  const comp = read("apps/app/src/chat/composer-model.js") + read("apps/app/src/chat/real-composer.js");
   // The queue: the send answer names the row queued_id; events name it queued.
   assert.match(sb, /queued_id\b/, "threads.send answers queued_id");
   assert.match(comp + st, /queued_id\b/, "chat reads queued_id from the send answer");
@@ -127,7 +127,7 @@ test("the payload fields chat keys on are the ones the server sends", () => {
   // The ahead keys, strict once core has them: rewind's restore and files, commands' shape, the context share.
   assert.match(st, /files_changed/, "chat counts the restored files");
   assert.match(st, /\bshare\b/, "chat reads the context share");
-  assert.match(read("deck/chat/core/commands.js"), /argumentHint/, "chat reads a command's argumentHint");
+  assert.match(read("apps/app/src/chat/core/commands.js"), /argumentHint/, "chat reads a command's argumentHint");
   if (serverTools.has("threads.model")) {
     assert.match(sb, /files_changed/, "threads.rewind answers files {restored, files_changed}");
     assert.match(sb, /enum: \["conversation", "code", "both"\]/, "threads.rewind takes restore conversation, code or both");
@@ -140,21 +140,8 @@ test("the payload fields chat keys on are the ones the server sends", () => {
 test("sessions 034c71e5's shapes: images, ! shell, # memory, thinking, background tasks", () => {
   const sb = read("core/switchboard/index.js");
   const tr = read("core/switchboard/translate.js");
-  const st = read("deck/chat/core/session-state.js");
-  const comp = read("deck/chat/composer.js");
-  const cs = read("deck/chat/core/composer-state.js");
-  const view = read("deck/chat/session.js");
-  // Chat's side, always: the names and keys it sends and reads.
-  assert.match(comp, /images: sendImages\(imgs\)/, "threads.send carries images");
-  assert.match(cs, /media_type: a\.media_type, data: a\.data/, "each image is {media_type, data}");
-  assert.match(cs, /MAX_IMAGES = 5\b/, "at most 5 images");
-  assert.match(cs, /MAX_IMAGE_BYTES = 5 \* 1024 \* 1024/, "5 MB each");
-  assert.match(comp, /"threads\.shell", \{ thread, command \}/, "threads.shell {thread, command}");
-  assert.match(comp, /d\.code/, "chat reads the shell's code");
-  assert.match(comp, /"threads\.remember", \{ thread, text, scope \}/, "threads.remember {thread, text, scope}");
-  assert.match(comp, /"threads\.thinking", \{ thread, on: want \}/, "threads.thinking {thread, on}");
-  assert.match(view, /"threads\.kill-task", \{ thread, task: t\.id \}/, "threads.kill-task {thread, task}");
-  assert.match(view, /"threads\.tasks", \{ thread \}/, "threads.tasks {thread}");
+  const st = read("apps/app/src/chat/core/session-state.js");
+  // Chat's side: the session state the app's chat core keeps. (The Deck's composer and session view that these checked for images, ! shell, # memory, thinking and background tasks are gone; the app's composer is covered by apps/app/src/chat/composer-model.test.js.)
   assert.match(st, /p\.kind === "reasoning" \? "reasoning"/, "chat keys reasoning apart from text");
   assert.match(st, /case "thread\.thinking": onText\(s, \{ \.\.\.p, kind: "reasoning"/, "thread.thinking is a reasoning row");
   assert.match(st, /prefix = kind === "reasoning" \? "r" : "m"/, "reasoning is r:<message>:<block>, text m:<message>:<block>");

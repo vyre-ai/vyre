@@ -179,3 +179,14 @@ test("an agent: slot id reads as an assistant-family author, like the older assi
   assert.deepEqual(parseWho("agent:kit"), { family: "assistant", id: "kit" });
   assert.deepEqual(parseWho("model:codex/gpt-5#1"), { family: "model", id: "codex/gpt-5#1" });
 });
+
+test("names learned from elsewhere are shown, a frame that only has an id never overrides them, and an unnamed assistant row takes the chat's one slot", () => {
+  const g = createGroup({ viewer: "person:per_me" });
+  g.apply({ v: 1, cur: 1, type: "session.participant-joined", data: { who: "person:per_me" } });
+  g.apply({ v: 1, cur: 2, type: "session.participant-joined", data: { who: "model:claude/default#1" } });
+  assert.equal(g.assistantName(), "Assistant");
+  g.learn([{ id: "person:per_me", name: "You" }, { id: "model:claude/default#1", name: "Claude" }]);
+  assert.equal(g.participants().find((p) => p.id === "person:per_me").name, "You");
+  assert.equal(g.names()["model:claude/default#1"], "Claude");
+  assert.equal(g.assistantName(), "Claude");
+});

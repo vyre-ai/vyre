@@ -5,6 +5,7 @@ import { TRIGGER_REGISTRY, TRIGGER_ONS, kindOf, describeTrigger, whyRan, recordT
 import { checkFlow } from "./schema.js";
 import { compileFlow, nextCron } from "./compile.js";
 import { paintRun } from "./canvas.js";
+import { describeSchedule } from "./schedule-words.js";
 import { printFlow, parseFlowText } from "./text.js";
 import { world, install, settle, ALEX } from "./testing/world.js";
 import { catalog, onPayment } from "./testing/fixtures.js";
@@ -56,21 +57,52 @@ test("schedule: cron is read in the zone (07:15 on weekdays in Los Angeles), not
   assert.equal(iso(sat), "2026-10-12T14:15Z");
   assert.equal(iso(nextCron("15 7 * * 1-5", Date.UTC(2026, 9, 5, 0, 0))), "2026-10-05T07:15Z", "UTC when no zone");
 });
-test("schedule: spring forward runs a time that does not exist once, at the first real minute after the gap, and never twice", () => {
+test("schedule: spring forward moves a time that does not exist on by the gap (lib/time, as a phone does), once, and never twice", () => {
   const tz = "America/New_York";                                                      // 8 Mar 2026: 02:00 EST jumps to 03:00 EDT (07:00Z)
   const before = Date.UTC(2026, 2, 8, 6, 0);                                         // 01:00 EST
   const first = nextCron("30 2 * * *", before, tz);
-  assert.equal(iso(first), "2026-03-08T07:00Z", "02:30 does not exist: it runs at 03:00 EDT");
+  assert.equal(iso(first), "2026-03-08T07:30Z", "02:30 does not exist: it runs at 03:30 EDT");
   const second = nextCron("30 2 * * *", first, tz);
   assert.equal(iso(second), "2026-03-09T06:30Z", "the next day it is 02:30 EDT as usual");
-  const both = nextCron("0,30 2 * * *", before, tz); assert.equal(both, first);
-  assert.equal(iso(nextCron("0,30 2 * * *", first, tz)), "2026-03-09T06:00Z", "02:00 and 02:30 in the gap are one run, not two");
+  const a = nextCron("0,30 2 * * *", before, tz);
+  assert.equal(iso(a), "2026-03-08T07:00Z", "02:00 moves to 03:00 EDT");
+  assert.equal(iso(nextCron("0,30 2 * * *", a, tz)), "2026-03-08T07:30Z", "02:30 to 03:30 EDT: each time once, none doubled");
+  assert.equal(iso(nextCron("0,30 2 * * *", first, tz)), "2026-03-09T06:00Z", "and the next run is the next day's");
 });
 test("schedule: fall back runs a time that happens twice once, the first time", () => {
   const tz = "America/New_York";                                                      // 1 Nov 2026: 02:00 EDT falls back to 01:00 EST
   const first = nextCron("30 1 * * *", Date.UTC(2026, 10, 1, 4, 0), tz);
   assert.equal(iso(first), "2026-11-01T05:30Z", "the first 01:30 (EDT)");
   assert.equal(iso(nextCron("30 1 * * *", first, tz)), "2026-11-02T06:30Z", "not the second 01:30 (EST, 06:30Z): the next is tomorrow");
+});
+
+test("schedule: a weekday 9am flow keeps 9:00 on the Space's wall across both daylight-saving changes, on a UTC server", () => {
+  // the process zone is never read: run under TZ=UTC (the test box) and under any other, the answers are the same
+  const tz = "America/New_York";
+  const wall9 = (/** @type {number} */ t) => new Intl.DateTimeFormat("en-US", { timeZone: tz, hour: "numeric", minute: "numeric", hourCycle: "h23", weekday: "short" }).format(t);
+  let t = Date.UTC(2026, 2, 4, 12, 0);                                               // Wed 4 Mar 2026, before spring forward (8 Mar)
+  /** @type {string[]} */ const seen = [];
+  for (let n = 0; n < 8; n++) { const next = /** @type {number} */ (nextCron("0 9 * * 1-5", t, tz)); seen.push(`${iso(next)} ${wall9(next)}`); t = next; }
+  assert.deepEqual(seen, [
+    "2026-03-04T14:00Z Wed 09:00", "2026-03-05T14:00Z Thu 09:00", "2026-03-06T14:00Z Fri 09:00",
+    "2026-03-09T13:00Z Mon 09:00", "2026-03-10T13:00Z Tue 09:00", "2026-03-11T13:00Z Wed 09:00", "2026-03-12T13:00Z Thu 09:00", "2026-03-13T13:00Z Fri 09:00",
+  ], "Friday 14:00Z is 9:00 EST; Monday 13:00Z is 9:00 EDT: the UTC time moved an hour, the wall did not");
+  let u = Date.UTC(2026, 9, 28, 12, 0);                                              // Wed 28 Oct, before fall back (1 Nov)
+  /** @type {string[]} */ const fall = [];
+  for (let n = 0; n < 5; n++) { const next = /** @type {number} */ (nextCron("0 9 * * 1-5", u, tz)); fall.push(`${iso(next)} ${wall9(next)}`); u = next; }
+  assert.deepEqual(fall, ["2026-10-28T13:00Z Wed 09:00", "2026-10-29T13:00Z Thu 09:00", "2026-10-30T13:00Z Fri 09:00", "2026-11-02T14:00Z Mon 09:00", "2026-11-03T14:00Z Tue 09:00"]);
+  // a Space with no zone runs in UTC, never the server's
+  assert.equal(iso(nextCron("0 9 * * 1-5", Date.UTC(2026, 2, 6, 15, 0))), "2026-03-09T09:00Z");
+});
+test("schedule: a schedule's description shows its next run on both clocks, the Space's and the reader's", () => {
+  const now = Date.UTC(2026, 9, 5, 12, 0);                                           // Mon 5 Oct 2026, 12:00Z
+  const text = describeSchedule({ on: "time", cron: "0 9 * * 1-5" }, { space: "America/New_York", person: "Asia/Karachi", now });
+  assert.match(text, /On a schedule \(0 9 \* \* 1-5\)/);
+  assert.match(text, /next .*9:00 am ET · .*6:00 pm.* your time/, text);
+  const same = describeSchedule({ on: "time", cron: "0 9 * * 1-5" }, { space: "America/New_York", person: "America/New_York", now });
+  assert.match(same, /9:00 am/);
+  assert.doesNotMatch(same, /your time/, "one clock when the reader is in the Space's zone");
+  assert.equal(describeSchedule({ on: "event", event: "record.created" }, { now }), describeTrigger({ on: "event", event: "record.created" }), "other triggers are untouched");
 });
 
 // ---- the runner: schedule survives a restart and catches up once ----

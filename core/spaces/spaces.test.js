@@ -985,41 +985,40 @@ test("the transport's ports: a paired device is an entry, the entry port answers
 });
 
 
-test("space creation asks the kernel which store it would use: a server too small for the larger one needs a confirmation in the kernel's words, and only 'create' makes the space, with the flag", async t => {
+test("space creation asks the kernel which store it would use: a machine that cannot run Twenty makes nothing and offers the person's server in the kernel's words", async t => {
   const w = world(t);
-  const TEXT = "This server has room for the built-in store only. Everything works, and very large record sets will be slower. A space can't be moved to the larger store yet, so add memory first if you expect this space to grow.";
+  const TEXT = "This machine cannot run the record store for a new space (Twenty), so the space was not made here. Put it on your server instead.";
   const hosts = [];
   let small = true;
   const kernel = { space: "spc_bbbbbbbbbbbb", for: () => ({ space: "spc_bbbbbbbbbbbb", hosted: true, gateway: {} }), chain: async () => ({}), proofFrom: () => ({}), serviceChain: () => ({}),
     spaces: {
-      storePlan: async () => (small ? { store: "builtin", confirm: { text: TEXT, choices: ["create", "cancel"] } } : { store: "twenty" }),
-      host: async o => { if (small && !o.accept_builtin_store) throw Object.assign(new Error("needs confirmation"), { code: "needs_confirmation" }); hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
+      storePlan: async () => (small ? { store: "none", confirm: { text: TEXT, choices: ["server", "cancel"] } } : { store: "twenty" }),
+      host: async o => { hosts.push(o); return { space: `spc_${"b".repeat(12)}`.replace(/b/g, hosts.length === 1 ? "b" : "c") }; },
     } };
   const d = await device(t, { kernelFor: () => kernel, records: true });
   await d.ok("spaces.identity.create", { name: "alex" });
   const args = { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } };
-  // too small: nothing is made, and the person is shown exactly the kernel's words and the two choices
+  // cannot run Twenty: nothing is made, and the person is shown exactly the kernel's words and the two choices
   const ask = await d.ok("spaces.create", args);
   assert.equal(ask.status, "needs_confirmation");
-  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["create", "cancel"] });
+  assert.deepEqual(ask.confirm, { text: TEXT, choices: ["server", "cancel"] });
   assert.equal(hosts.length, 0, "the Space is never made first and explained after");
   assert.equal((await d.ok("spaces.list")).length, 0);
   // cancel: still nothing
   assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "cancel" })).status, "cancelled");
   assert.equal(hosts.length, 0);
-  // create: hosted with the flag
-  const made = await d.ok("spaces.create", { ...args, storeChoice: "create" });
-  assert.equal(made.status, "done", JSON.stringify(made));
-  assert.deepEqual(hosts.map(h => [h.name, h.accept_builtin_store === true]), [["harlow", true]]);
-  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
-  const label = await d.ok("spaces.label", {}, "module:vyred");
-  assert.equal(label.name, "harlow.vyre.run");
-  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
-  // a server with room for the larger store: no question, no flag
+  // server: pointed at the person's server, still nothing here
+  assert.equal((await d.ok("spaces.create", { ...args, storeChoice: "server" })).status, "use_server");
+  assert.equal(hosts.length, 0);
+  // a machine that can run Twenty: no question
   small = false;
   const big = await d.ok("spaces.create", { name: "northwind", home: { kind: "this-computer", confirmed: true } });
   assert.equal(big.status, "done", JSON.stringify(big));
-  assert.equal(hosts[1].accept_builtin_store, undefined);
+  assert.deepEqual(hosts.map(h => h.name), ["northwind"]);
+  // the join card's label: with no space named, this home's own Space (the one the kernel keeps here), its name and four words
+  const label = await d.ok("spaces.label", {}, "module:vyred");
+  assert.equal(label.name, "northwind.vyre.run");
+  assert.match(label.words, /^\w+ \w+ \w+ \w+$/);
   void w;
 });
 
@@ -1334,10 +1333,11 @@ test("spaces.list tier: a space on this computer is cloud when this machine is a
 test("spaces.tier: the home's tier from the machine role, the Cloud spaces the person is in, and an unknown space refused", async t => {
   const w = world(t);
   const dev = await device(t);
-  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [] }, "a device with no space: Basic, no Cloud spaces");
+  assert.deepEqual(await dev.ok("spaces.tier", {}, "module:planner"), { tier: "basic", cloud: [], time_zone: null }, "a device with no space: Basic, no Cloud spaces, no zone");
   await dev.ok("spaces.identity.create", { name: "alex" });
+  const systemZoneNow = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; // no device zone sent: the creating machine's own
   const s = await dev.ok("spaces.create", { name: "northwind", displayName: "Northwind Bakery", home: { kind: "this-computer", confirmed: true } });
-  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [] }, "a space on a device is Basic");
+  assert.deepEqual(await dev.ok("spaces.tier", { space: s.space }, "module:planner"), { tier: "basic", cloud: [], time_zone: systemZoneNow }, "a space on a device is Basic");
   assert.equal((await dev.call("spaces.tier", { space: "spc_zzzzzzzzzzzz" }, "module:planner")).error?.code, "not_found");
   const srv = await device(t, { machine: "server" });
   await srv.ok("spaces.identity.create", { name: "sam" });
@@ -1346,5 +1346,20 @@ test("spaces.tier: the home's tier from the machine role, the Cloud spaces the p
   assert.equal(r.tier, "cloud");
   assert.deepEqual(r.cloud.map(x => [x.id, x.label]), [[c.space, "harbor"]]);
   assert.deepEqual(Object.keys(r.cloud[0]).sort(), ["id", "label", "name"], "id, name and label, nothing else");
+  void w;
+});
+
+test("a space's home time zone: the creator's device zone at creation, an owner changes it, a bad zone is refused, and it reaches list, get and tier", async t => {
+  const w = world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "alex" });
+  const s = await d.ok("spaces.create", { name: "zonal", displayName: "Zonal", home: { kind: "this-computer", confirmed: true } }, "cli", { zone: "Asia/Kuala_Lumpur" });
+  assert.equal((await d.ok("spaces.list")).find(x => x.id === s.space).time_zone, "Asia/Kuala_Lumpur", "the creator's device zone");
+  assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "Asia/Kuala_Lumpur");
+  assert.equal((await d.ok("spaces.tier", { space: s.space }, "module:planner")).time_zone, "Asia/Kuala_Lumpur");
+  assert.deepEqual(await d.ok("spaces.time-zone.set", { space: s.space, zone: "America/Los_Angeles" }), { space: s.space, time_zone: "America/Los_Angeles" });
+  assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "America/Los_Angeles");
+  assert.equal((await d.call("spaces.time-zone.set", { space: s.space, zone: "Mars/Olympus" })).error?.code, "bad_input");
+  assert.equal((await d.ok("spaces.get", { space: s.space })).time_zone, "America/Los_Angeles", "a refused zone changes nothing");
   void w;
 });

@@ -73,14 +73,14 @@ export function renewSession(): Promise<boolean> {
 /** Drop the open peer (sign out, a removed device). */
 export function closePeer(): void { try { peer?.close(); } catch { /* closed */ } peer = null; }
 
-/** The duplex the resumable stream client (core/stream/client.js) opens: a chat stream followed over the peer wire (tool stream.follow). Frames come as server messages; a send is ignored (the subscription is the open call's `from`). */
+/** The duplex the resumable stream client (core/stream/client.js) opens: a chat stream followed over the peer wire (tool stream.open-peer { chat, from }, answering { stream, chat, session, viewer, head, floor }). Frames come as server messages; a send is ignored (the subscription is the open call's `from`). */
 export async function peerDuplex(session: string, from: number): Promise<{ send(m: unknown): void; onMessage(cb: (m: unknown) => void): void; onClose(cb: () => void): void; close(): void; info: { viewer?: string; head?: number; floor?: number } }> {
   const p = await openPeer();
   const msg: Array<(m: unknown) => void> = [];
   const shut: Array<() => void> = [];
   let ended = false;
   const end = () => { if (ended) return; ended = true; for (const cb of shut) cb(); };
-  const s = await p.openStream("stream.follow", { session, from }, { onframe: (data) => { for (const cb of msg) cb(data); }, onend: end });
+  const s = await p.openStream("stream.open-peer", { chat: session, from }, { onframe: (data) => { for (const cb of msg) cb(data); }, onend: end });
   const r = (s.result ?? {}) as { viewer?: string; head?: number; floor?: number };
   return { send() {}, onMessage: (cb) => { msg.push(cb); }, onClose: (cb) => { shut.push(cb); if (ended) cb(); }, close: () => { try { s.close(); } catch { /* closed */ } end(); }, info: { viewer: r.viewer, head: r.head, floor: r.floor } };
 }

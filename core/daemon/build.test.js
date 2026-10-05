@@ -52,9 +52,9 @@ test("build: /v1/health and system.info report version and commit", async t => {
   assert.deepEqual(i.network, { origins: ["https://app.vyre.run"] }, "the hosted app's origin, when config names none");
 });
 
-test("build: the Deck's service worker carries the build, so a release is a new sw.js", () => {
-  const src = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "deck", "sw.js"), "utf8");
-  assert.match(src, /const BUILD = "dev";/, "deck/sw.js has the placeholder vyred replaces");
+test("build: the app's service worker carries the build, so a release is a new sw.js", () => {
+  const src = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "app-sw.js"), "utf8");
+  assert.match(src, /const BUILD = "dev";/, "app-sw.js has the placeholder vyred replaces");
   const a = swWithBuild(src, { version: "0.0.1", commit: "1a2b3c4d5e6f7a8b", dirty: false });
   assert.match(a, /const BUILD = "1a2b3c4d5e6f";/);
   assert.match(swWithBuild(src, { version: "0.0.1", commit: "1a2b3c4d5e6f7a8b", dirty: true }), /const BUILD = "1a2b3c4d5e6f-dirty";/);
@@ -62,11 +62,10 @@ test("build: the Deck's service worker carries the build, so a release is a new 
   assert.notEqual(a, swWithBuild(src, { version: "0.0.1", commit: "9f8e7d6c5b4a3210", dirty: false }), "two builds, two service workers");
 });
 
-test("build: the Deck's page carries the same build id, so a page cached by an older worker knows it (deck/js/build-check.js)", () => {
-  const src = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "deck", "index.html"), "utf8");
-  assert.match(src, /<meta name="vyre-build" content="dev">/, "deck/index.html has the placeholder vyred replaces");
+test("build: a page carries the same build id, so a page cached by an older worker knows it", () => {
+  const src = '<!doctype html><meta name="vyre-build" content="dev">';
   const b = { version: "0.2.0", commit: "1a2b3c4d5e6f7a8b", dirty: false, stamped: true };
   assert.match(htmlWithBuild(src, b), /<meta name="vyre-build" content="1a2b3c4d5e6f">/);
-  const sw = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "deck", "sw.js"), "utf8");
+  const sw = fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname), "app-sw.js"), "utf8");
   assert.match(swWithBuild(sw, b), /const BUILD = "1a2b3c4d5e6f";/, "the page and the worker say the same id");
 });

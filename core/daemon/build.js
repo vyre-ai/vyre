@@ -51,12 +51,12 @@ export function buildId(/** @type {Build} */ b = build()) {
   return id.replace(/[^\w.-]/g, "");
 }
 
-/** deck/sw.js with BUILD set to this build's id. Also sets SHELL_SIGNED true when deck/release/SHA256SUMS.sig
+/** deck/sw.js with BUILD set to this build's id. Also sets SHELL_SIGNED true when web/release/SHA256SUMS.sig
  * exists (put there by the release: vyre update, the phone.vyre.run deploy), so the worker checks a new
  * shell against the signed release (reviewer's N-H1). No such file (every dev checkout and testbox) leaves it false. @param {string} repo */
 export function swWithBuild(/** @type {string} */ src, b = build(), repo = REPO) {
   let out = src.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(buildId(b))};`);
-  if (fs.existsSync(path.join(repo, "deck", "release", "SHA256SUMS.sig"))) out = out.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
+  if (fs.existsSync(path.join(repo, "web", "release", "SHA256SUMS.sig"))) out = out.replace("const SHELL_SIGNED = false;", "const SHELL_SIGNED = true;");
   return out;
 }
 

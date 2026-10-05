@@ -54,3 +54,26 @@ export function hostChoices(t) {
   const current = typeof t?.personal_host === "string" && options.some(([id]) => id === t.personal_host) ? t.personal_host : null;
   return { options, current };
 }
+
+const UNITS = ["B", "KB", "MB", "GB", "TB"];
+/** A size in words: 1.5 GB. @param {number} n */
+export function sizeWords(n) {
+  let v = Math.max(0, Number(n) || 0), i = 0;
+  while (v >= 1024 && i < UNITS.length - 1) { v /= 1024; i++; }
+  return `${i === 0 ? Math.round(v) : v >= 10 ? Math.round(v) : Math.round(v * 10) / 10} ${UNITS[i]}`;
+}
+
+/** The storage line for the space that keeps a Personal space's items: spaces.storage.usage answers { used, cap } in bytes (cap 0 for none). @param {any} u @param {string} host */
+export function storageLine(u, host) {
+  if (!u || typeof u.used !== "number") return null;
+  const cap = typeof u.cap === "number" && u.cap > 0 ? ` of ${sizeWords(u.cap)}` : "";
+  return `Using ${sizeWords(u.used)}${cap} on ${host}`;
+}
+
+/** The caps an owner may pick for every member, in bytes (0 is no cap); the current one is listed even when it is not one of these. @param {number} current @returns {[string, string][]} */
+export function capChoices(current) {
+  const GB = 1024 ** 3;
+  const base = [0, 1 * GB, 5 * GB, 10 * GB, 50 * GB, 100 * GB];
+  const all = base.includes(current) || !Number.isFinite(current) ? base : [...base, current].sort((a, b) => a - b);
+  return all.map((n) => [String(n), n === 0 ? "No cap" : sizeWords(n)]);
+}

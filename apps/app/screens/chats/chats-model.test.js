@@ -65,3 +65,8 @@ test("the viewer is left out of a chat's people", () => {
   const rows = chatsFrom({ chats: [{ chat: "c1", title: "t", people: "per_me,per_2", agents: "", open: true }] });
   assert.deepEqual(withNames(rows, { actors: [{ id: "per_2", name: "Dana Okafor" }] }, "per_me")[0].people, ["Dana Okafor"]);
 });
+
+test("unread is a count on the row when the box sends one, and nothing when it does not", () => {
+  const rows = chatsFrom({ chats: [{ chat: "c1", title: "a", unread: 3, open: true }, { chat: "c2", title: "b", open: true }, { chat: "c3", title: "c", unread: "x", open: true }, { chat: "c4", title: "d", unread: 0, open: true }] });
+  assert.deepEqual(rows.map((r) => r.unread), [3, 0, 0, 0]);
+});

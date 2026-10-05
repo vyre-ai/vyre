@@ -36,7 +36,7 @@ fs.writeFileSync(process.argv[1]+"/proof.pub",k.publicKey.export({type:"spki",fo
 OLD=$(sed -n 's/^export const RELEASE_KEY = "\(.*\)";/\1/p' "$HERE/lib/release-sig.js")
 NEW=$(cat "$WORK/proof.pub")
 [ -n "$OLD" ] || { echo "packaged-boot-proof: could not read the pinned key" >&2; exit 1; }
-for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh deck/sw.js; do [ -f "$SRC/$f" ] && sed -i "s#$OLD#$NEW#g" "$SRC/$f"; done
+for f in core/vyre-core/release.js box/vyre lib/release-sig.js scripts/install-mac-server.sh; do [ -f "$SRC/$f" ] && sed -i "s#$OLD#$NEW#g" "$SRC/$f"; done
 grep -q "$NEW" "$SRC/lib/release-sig.js" "$SRC/box/vyre"
 
 ( cd "$SRC" && npm ci --no-audit --no-fund >/dev/null && (cd apps/app && npm ci --no-audit --no-fund >/dev/null) \
@@ -109,7 +109,7 @@ sudo -n vyre up >"$WORK/rootrun.log" 2>&1 || { tail -20 "$WORK/rootrun.log"; ech
 ready || { docker logs vyre-vyre-1 2>&1 | tail -30; echo "vyred did not come back after a root-run update"; exit 1; }
 sleep 5
 docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || { echo "after a root-run update the daemon lost VYRE_KERNEL=1"; exit 1; }
-docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || { echo "after a root-run update the daemon lost VYRE_STORE=auto"; exit 1; }
+docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=twenty' || { echo "after a root-run update the daemon lost VYRE_STORE=twenty"; exit 1; }
 check_modules
 
 # A box is a server: the daemon reports machine server, so no server module is switched off by a wrong config.

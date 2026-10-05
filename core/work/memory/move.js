@@ -43,6 +43,8 @@ export function importKnow(db, rows, { map, from, to }) {
 /** @param {any} db @param {{ records: string[], receipt: { digest: string, count: number } }} o @returns {{ forgotten: number }} */
 export function forgetKnow(db, { records, receipt }) {
   const now = linesOf(db, records);
+  // already forgotten (an earlier attempt finished or got as far as emptying the table): nothing is left to drop, which is what the caller wanted
+  if (!now.length && receipt) return { forgotten: 0 };
   if (!receipt || receipt.digest !== digestOf(now)) throw Object.assign(new Error("the Space's memory of this project changed since it was exported; export it again"), { code: "conflict" });
   db.exec("BEGIN");
   try {

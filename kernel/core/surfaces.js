@@ -31,6 +31,9 @@ export function createSurfaces(cfg) {
         if (typeof o.chat !== "string" || !cfg.chatMember || !cfg.chatMember(chain.hops[0].actor.id, o.chat)) throw new KernelError("not_found", "no such chat");
         chat = o.chat;
       }
+      // SL-1: a session opened by a caller never takes a model slot name (an unlisted `model:` agent hop is a delegate): only vyred's own daemon door (the Switchboard's kernel session) opens a slot, and says so
+      // with `slot_open: true`, which nothing a model or a module can reach supplies.
+      if (typeof o.agent === "string" && o.agent.startsWith("model:") && o.slot_open !== true) throw new KernelError("bad_input", "a session's agent is not a model slot: slots come only from the Switchboard's own model_slot");
       // A model slot (`model:<provider>/<model>#<n>`, minted by the Switchboard) lives in one chat and acts as the person who opened it, narrowed to a Project the opener names. The Project can only NARROW what the
       // person already holds, so it is taken from the opener (the Switchboard reads it from the chat's record); a caller picks nothing wider by naming one.
       const slot = typeof o.agent === "string" && o.agent.startsWith("model:");
