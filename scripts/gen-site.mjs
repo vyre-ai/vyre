@@ -457,7 +457,7 @@ const homeBody = `
       <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Records</h3><p>Contacts, projects, tasks and anything you define, with flows and watchers to run them.</p></div>
       <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Chats</h3><p>One place for you, your team and every AI model, with each chat encrypted to the people in it.</p></div>
       <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>A built-in network</h3><p>Pair a device with one typed code, with no VPN to install.</p></div>
-      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Lend a computer</h3><p>Lend a computer to a team; your work on it stays encrypted and is removed when access ends.</p></div>
+      <div class="piece"><span class="num">Now &middot; 0.2.9</span><h3>Lend a computer</h3><p>Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.</p></div>
       <div class="piece"><span class="num">Next &middot; 0.3.1</span><h3>Screen Share</h3><p>Watch and take over your agents\' computers and Chrome, on every device.</p></div>
       <div class="piece"><span class="num">Later</span><h3>A Vyre-hosted home</h3><p>A Vyre-hosted home for people without a server.</p></div>
     </div>
@@ -673,7 +673,7 @@ const DIR = `
   <div class="wrap">
     <h2 id="road-h" class="lbl" style="margin-bottom:28px">The road from ${VERSION}</h2>
     <div class="road">
-      <div class="stop now rv"><p class="ver">${VERSION} &middot; Now</p><h3>The first release of the 0.3 work</h3><p>0.2.9 is the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.</p><ul><li><b>Spaces</b>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</li><li><b>Records</b>Contacts, projects, tasks and anything you define, with flows and watchers to run them.</li><li><b>Chats</b>One place for you, your team and every AI model, with each chat encrypted to the people in it.</li><li><b>A built-in network</b>Pair a device with one typed code, with no VPN to install.</li><li><b>Lend a computer</b>Lend a computer to a team; your work on it stays encrypted and is removed when access ends.</li></ul></div>
+      <div class="stop now rv"><p class="ver">${VERSION} &middot; Now</p><h3>The first release of the 0.3 work</h3><p>0.2.9 is the first release of the 0.3 work: Spaces, Wink, the objects layer and the one-yes approvals.</p><ul><li><b>Spaces</b>Personal on your devices, My Cloud on your own server, and Cloud spaces for teams.</li><li><b>Records</b>Contacts, projects, tasks and anything you define, with flows and watchers to run them.</li><li><b>Chats</b>One place for you, your team and every AI model, with each chat encrypted to the people in it.</li><li><b>A built-in network</b>Pair a device with one typed code, with no VPN to install.</li><li><b>Lend a computer</b>Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.</li></ul></div>
       <div class="stop rv"><p class="ver">Next &middot; 0.3.1</p><h3>Screen Share</h3><p>Watch and take over your agents\' computers and Chrome, on every device.</p></div>
       <div class="stop rv"><p class="ver">Later</p><h3>A Vyre-hosted home</h3><p>A Vyre-hosted home for people without a server.</p></div>
     </div>
@@ -935,7 +935,7 @@ Sessions, memory and the vault stay on your machines. vyre.run holds your name's
 ${RELEASE_LINE ? '- ' + RELEASE_LINE : ''}
 
 ## Direction (not a promise of dates)
-- Now, 0.2.9: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it stays encrypted and is removed when access ends.
+- Now, 0.2.9: Spaces (Personal on your devices, My Cloud on your own server, and Cloud spaces for teams). Records (contacts, projects, tasks and anything you define, with flows and watchers to run them). Chats (one place for you, your team and every AI model, with each chat encrypted to the people in it). A built-in network (pair a device with one typed code, with no VPN to install). Lend a computer to a team; your work on it is encrypted at rest on your computer and on the server, and deleted from your computer when access ends.
 - Next, 0.3.1: Screen Share. Watch and take over your agents' computers and Chrome, on every device.
 - Later: a Vyre-hosted home for people without a server.
 
