@@ -2,7 +2,7 @@
 // steps 1 to 7 are done by the time anyone is here, so these are the three that remain (you and your assistant, your computers, your history)
 // and the ending. Pure: no React, no network. The state comes from onboard.status, the box's own record, and onboard.setup when the box has it.
 
-export type StepId = "install" | "words" | "address" | "tailscale" | "ai" | "phone" | "passkey" | "assistant" | "computers" | "history";
+export type StepId = "install" | "words" | "address" | "network" | "ai" | "phone" | "passkey" | "assistant" | "computers" | "history";
 export type StepState = "done" | "current" | "skipped" | "todo";
 export type Step = { id: StepId; title: string; where: string; optional: boolean };
 export type StepView = Step & { n: number; status: StepState };
@@ -12,7 +12,7 @@ export const STEPS: readonly Step[] = Object.freeze([
   { id: "install", title: "Install", where: "On your server", optional: false },
   { id: "words", title: "Check the words", where: "On your server", optional: false },
   { id: "address", title: "Choose your address", where: "In your browser", optional: false },
-  { id: "tailscale", title: "Connect Tailscale", where: "In your browser", optional: false },
+  { id: "network", title: "Your network", where: "In your browser", optional: false },
   { id: "ai", title: "Sign in to your AI", where: "In your browser", optional: false },
   { id: "phone", title: "Add your phone", where: "In your browser", optional: true },
   { id: "passkey", title: "Create your passkey", where: "At your address", optional: false },
