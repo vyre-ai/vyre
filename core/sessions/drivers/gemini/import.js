@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { subdirs, files, allowed, readAllowed, line, textOf } from "./shared.js";
+import { subdirs, files, allowed, readAllowed, line, textOf } from "../import-shared.js";
 
 export const source = "gemini-cli";
 const ALLOW = /^tmp\/[0-9a-f]{64}\/chats\/session-[A-Za-z0-9._:-]+\.jsonl?$/;

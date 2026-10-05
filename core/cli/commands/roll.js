@@ -14,6 +14,7 @@ import { home } from "../../config/index.js";
 import { out, dim, bold } from "../style.js";
 import { json, emit, fail, failTool, usage, parse } from "../kit.js";
 import { claude } from "./projects.js";
+import { startHint, startCommand, startArgs } from "../../sessions/drivers/claude/terminal.js";
 
 /** A seed this long or shorter goes in as the first message itself; a longer one is written to a file the first message names (an argument has a limit). */
 export const INLINE_BYTES = 60_000;
@@ -89,14 +90,14 @@ export default {
       fs.writeFileSync(file, d.seed + "\n", { mode: 0o600 });
     }
     if (json() || flags["no-start"]) {
-      const res = { from: d.from, session: d.session, windows: d.windows, seed_chars: d.seed_chars, ...(file ? { file } : {}), start: `claude --session-id ${d.session}` };
+      const res = { from: d.from, session: d.session, windows: d.windows, seed_chars: d.seed_chars, ...(file ? { file } : {}), start: startHint(d.session) };
       if (json()) return emit(res);
       out(`  seed for ${dim(String(d.from).slice(0, 8))} written to ${file}`);
-      out(dim(`  start it with: claude --session-id ${d.session} "$(cat ${file})"`));
+      out(dim(`  start it with: ${startCommand(d.session, file)}`));
       return 0;
     }
     out(`  ${bold("rolling")} ${dim(String(d.from).slice(0, 8))} into a fresh window ${dim(`(${d.windows} window${d.windows === 1 ? "" : "s"}, ${d.tail} turns carried word for word${file ? `, seed in ${file}` : ""})`)}`);
     // The same hand-over `vyre resume` makes: claude in this folder, with the Harness plugin loaded so its hooks (the window warning among them) run.
-    return claude(["--session-id", d.session, firstMessage(d.seed, file)], cwd, "", of(d));
+    return claude(startArgs(d.session, firstMessage(d.seed, file)), cwd, "", of(d));
   },
 };

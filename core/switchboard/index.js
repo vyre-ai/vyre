@@ -43,6 +43,7 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
+import { copyFile, findTranscript } from "../sessions/drivers/claude/terminal.js";
 import { ROLL, contextOf, decide as rollDecide, seedOf, indexOf as pointerIndex } from "./rollover.js";
 import { withoutSeed, withoutVyre } from "../../lib/seed.js";
 import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
@@ -1745,7 +1746,7 @@ export class Switchboard {
   /** @param {string} id */
   mirrorFile(id) {
     const rec = this.record(id);
-    return path.join(String(this.deps.root || os.tmpdir()), "mirror", String((rec && rec.cwd) || "").replace(/[^A-Za-z0-9]/g, "-"), `${this.mirrorId(id)}.jsonl`);
+    return copyFile(String(this.deps.root || os.tmpdir()), String((rec && rec.cwd) || ""), this.mirrorId(id));
   }
 
   /**
@@ -1891,7 +1892,7 @@ export class Switchboard {
 
   /**
    * Roll a Claude Code session the person runs in their own terminal (`vyre roll`): the seed for it and the windows it came from, and a fresh session id for the next window
-   * (`claude --session-id`), recorded so a later roll's seed reaches back through this one. Nothing is stopped or started here: Vyre does not own that session.
+   * (started under a given id), recorded so a later roll's seed reaches back through this one. Nothing is stopped or started here: Vyre does not own that session.
    * @param {{ session: string, cwd?: string|null }} o
    */
   async rollTerminal({ session, cwd = null }) {
@@ -2198,7 +2199,7 @@ export class Switchboard {
    * @param {string} id @returns {string|null} why it is, or null
    */
   elsewhere(id) {
-    const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
+    const t = findTranscript(this.deps.transcripts || [], this.nativeOf(id));
     const rec = this.record(id);
     return openElsewhere({ id, mtime: t ? t.mtime : 0, boundPid: this.sessions.boundPid(this.nativeOf(id)), ours: this.ours(), alive, naming: this.deps.naming,
       ourLast: rec && rec.stopped_reason !== "adopted" ? rec.last : null });
@@ -2862,7 +2863,7 @@ export class Switchboard {
    */
   /** The user turn named by uuid, in this session's transcript here (rewind and forkAt share the lookup). */
   findLine(id, uuid) {
-    const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
+    const t = findTranscript(this.deps.transcripts || [], this.nativeOf(id));
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
     let line = null;
     for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
@@ -2892,7 +2893,7 @@ export class Switchboard {
 
   /** The last message a person typed in this session's transcript (a tool result is not one), or null. @param {string} id */
   lastUserLine(id) {
-    const t = findSession(this.deps.transcripts || [], this.nativeOf(id));
+    const t = findTranscript(this.deps.transcripts || [], this.nativeOf(id));
     if (!t) return null;
     let last = null;
     for (const l of fs.readFileSync(t.file, "utf8").split("\n")) {
@@ -4166,7 +4167,7 @@ export default {
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can roll a session's window over"), { code: "denied" });
         return sb.rollNow(String(i.thread));
       });
-    tool("threads.roll-session", "Roll a Claude Code session in the person's own terminal over (`vyre roll`): the seed for a fresh window (their decisions, an index of what came before, the last turns word for word) and the session id to start it under. Vyre does not own that session, so nothing is stopped: the caller starts `claude --session-id <session>` with the seed. A person's surface only.",
+    tool("threads.roll-session", "Roll a session in the person's own terminal over (`vyre roll`): the seed for a fresh window (their decisions, an index of what came before, the last turns word for word) and the session id to start it under. Vyre does not own that session, so nothing is stopped: the caller starts `claude --session-id <session>` with the seed. A person's surface only.",
       { type: "object", required: ["session"], properties: { session: str, cwd: str } },
       async (i, { caller }) => {
         guard(caller, "roll a terminal session over");

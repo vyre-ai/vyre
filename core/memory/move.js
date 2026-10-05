@@ -36,18 +36,20 @@ export function slugOf(ref, projects) {
 const canon = v => Array.isArray(v) ? `[${v.map(canon).join(",")}]` : v && typeof v === "object" ? `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}` : JSON.stringify(v ?? null);
 
 /**
- * @param {{ db: any, events: (type: string) => any[], clock?: () => number, space: string }} d `events(type)` reads this Space's own log.
+ * @param {{ db: any, events: (type: string) => any[] | Promise<any[]>, clock?: () => number, space: string, offers?: Map<string, any> }} d `events(type)` reads the log of the Space the call runs in; `offers` is the module's one map of
+ *   the keys it holds in memory (shared across calls: this object is built per call, once for the Space the call is for).
  */
 export function createMoves(d) {
   const clock = d.clock || Date.now;
   const db = d.db;
   /** move_id to { key, at } for offers held in memory only. @type {Map<string, { privateJwk: any, publicJwk: any, at: number, project: string, plan_hash: string }>} */
-  const offers = new Map();
+  const offers = d.offers || new Map();
+  const key = (/** @type {string} */ moveId) => `${d.space}/${moveId}`;
 
   /** The kernel's event for this move in this Space's own log, or a refusal. @param {"project.move_started"|"project.move_in"} type @param {{ move_id: string, plan_hash: string, project: string }} i */
-  const proof = (type, i) => {
+  const proof = async (type, i) => {
     if (!UUID.test(String(i.move_id)) || !HASH.test(String(i.plan_hash))) throw bad("a move names its move id and plan hash");
-    const ev = d.events(type).find(e => e && e.data && e.data.move_id === i.move_id);
+    const ev = (await d.events(type)).find(e => e && e.data && e.data.move_id === i.move_id);
     const ok = ev && ev.data.plan_hash === i.plan_hash && (type === "project.move_started" ? ev.subject === i.project : ev.data.project === i.project) && clock() - Number(ev.time || 0) <= HOUR * 24;
     if (!ok) throw bad("no such move", "not_found");
     return ev;
@@ -66,20 +68,20 @@ export function createMoves(d) {
 
   return Object.freeze({
     /** Target side: a key for this move. @param {{ move_id: string, plan_hash: string, project: string }} i */
-    offer(i) {
-      proof("project.move_in", i);
+    async offer(i) {
+      await proof("project.move_in", i);
       for (const [k, v] of offers) if (clock() - v.at > HOUR) offers.delete(k);
       // The key stays for the move's hour, so a project that changed before forget can be exported and imported again to the same key.
-      const held = offers.get(i.move_id);
+      const held = offers.get(key(i.move_id));
       if (held && held.project === i.project && held.plan_hash === i.plan_hash) return { move_id: i.move_id, to_key: held.publicJwk };
       const k = newDeviceKey();
-      offers.set(i.move_id, { privateJwk: k.privateJwk, publicJwk: k.publicJwk, at: clock(), project: i.project, plan_hash: i.plan_hash });
+      offers.set(key(i.move_id), { privateJwk: k.privateJwk, publicJwk: k.publicJwk, at: clock(), project: i.project, plan_hash: i.plan_hash });
       return { move_id: i.move_id, to_key: k.publicJwk };
     },
 
     /** Source side. @param {{ move_id: string, plan_hash: string, project: string, slug: string, to_key: any }} i */
-    export(i) {
-      proof("project.move_started", i);
+    async export(i) {
+      await proof("project.move_started", i);
       if (!i.to_key || i.to_key.kty !== "EC") throw bad("seal to the key the target's memory.room.offer returned");
       const plain = gather(i.slug);
       const body = canon({ v: 1, slug: i.slug, project: i.project, ...plain });
@@ -90,9 +92,9 @@ export function createMoves(d) {
     },
 
     /** Target side. @param {{ move_id: string, plan_hash: string, project: string, slug?: string, package: any, digest?: string }} i */
-    import(i) {
-      proof("project.move_in", i);
-      const o = offers.get(i.move_id);
+    async import(i) {
+      await proof("project.move_in", i);
+      const o = offers.get(key(i.move_id));
       const done = db.prepare("SELECT receipt FROM memory_moves WHERE move_id = ? AND side = 'in'").get(i.move_id);
       if (!o && done) { const r = JSON.parse(done.receipt); if (!i.digest || i.digest === r.digest) return r; }
       if (!o || o.project !== i.project || o.plan_hash !== i.plan_hash) throw bad("no offer is held for this move: ask memory.room.offer again", "not_found");
@@ -128,8 +130,8 @@ export function createMoves(d) {
     },
 
     /** Source side. @param {{ move_id: string, plan_hash: string, project: string, slug: string, receipt: any, to?: string }} i */
-    forget(i) {
-      proof("project.move_started", i);
+    async forget(i) {
+      await proof("project.move_started", i);
       const r = i.receipt;
       if (!r || r.move_id !== i.move_id || r.project !== i.project || r.plan_hash !== i.plan_hash) throw bad("forgetting needs the receipt memory.room.import returned for this move");
       const now = gather(i.slug);

@@ -1156,19 +1156,33 @@ export default {
     });
     // ---- a project's memory moves between Spaces (move.js): offer (target), export (source), import (target, returns the receipt), forget (source, needs the receipt). One approval was given where the move
     // started; each call refuses unless this Space's own log holds the kernel's event for the move. Flows runs them inside its move, under the mover's chain.
-    const moves = createMoves({ db: ctx.store.db, space: rawCtx.kernel && rawCtx.kernel.space ? String(rawCtx.kernel.space) : "local",
-      events: type => { try { return rawCtx.kernel && rawCtx.kernel.log ? rawCtx.kernel.log.read({ type }) : []; } catch { return []; } } });
+    // Built per call, for the Space the call runs in: a project move crosses Spaces, and each hosted Space has its own memory store (ctx.store.db follows the call) and its own log. The one thing kept across
+    // calls is the map of one-use keys the target holds in memory.
+    const roomOffers = new Map();
+    const logOf = async (/** @type {string} */ type, /** @type {any} */ extra) => {
+      const k = rawCtx.kernel;
+      try {
+        if (k && k.events && typeof k.events.read === "function") {
+          const chain = extra && extra.in_space_chain ? extra.in_space_chain : typeof k.serviceChain === "function" ? k.serviceChain("memory") : null;
+          if (chain) return await k.events.read(chain, { type });
+        }
+        if (k && k.log && typeof k.log.read === "function") return k.log.read({ type });
+      } catch { /* no log, no move */ }
+      return [];
+    };
+    const movesFor = (/** @type {any} */ extra) => createMoves({ db: ctx.store.db, offers: roomOffers,
+      space: extra && typeof extra.in_space === "string" ? extra.in_space : rawCtx.kernel && rawCtx.kernel.space ? String(rawCtx.kernel.space) : "local", events: type => logOf(type, extra) });
     const moveOf = { type: "object", required: ["move_id", "plan_hash", "project"], properties: { move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string", description: "the project's record urn in the Space the move starts from" } } };
     const mover = (/** @type {any} */ extra, /** @type {string} */ what) => { if (!reader(extra.caller)) throw denied(`${what} is the person's own act, run by the move`); };
-    const roomTool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {(i: any, slug: (r: string) => Promise<string>) => any} */ run) =>
-      ctx.tool(name, { effect: "write", callers: ["module"], description, input, run: async (i, extra = {}) => { mover(extra, name); const slug = async (/** @type {string} */ r) => slugOf(r, await projectList().catch(() => [])); return run(i, slug); } });
-    roomTool("memory.room.offer", "Target side of a project memory move: makes a one-use key for this move and returns its public half (to_key); the private half stays in this process's memory. Refused unless this Space's log holds project.move_in for the move.", moveOf, i => moves.offer(i));
+    const roomTool = (/** @type {string} */ name, /** @type {string} */ description, /** @type {any} */ input, /** @type {(i: any, slug: (r: string) => Promise<string>, moves: any) => any} */ run) =>
+      ctx.tool(name, { effect: "write", callers: ["module"], description, input, run: async (i, extra = {}) => { mover(extra, name); const slug = async (/** @type {string} */ r) => slugOf(r, await projectList().catch(() => [])); return run(i, slug, movesFor(extra)); } });
+    roomTool("memory.room.offer", "Target side of a project memory move: makes a one-use key for this move and returns its public half (to_key); the private half stays in this process's memory. Refused unless this Space's log holds project.move_in for the move.", moveOf, (i, _s, moves) => moves.offer(i));
     roomTool("memory.room.export", "Source side: reads the project's portable memory (writes, decisions, corrections) and seals it to the target's to_key. Returns { counts, digest, package }; only ciphertext leaves. Refused unless this Space's log holds project.move_started for the move. The graph is derived and is not carried.",
-      { ...moveOf, required: [...moveOf.required, "to_key"], properties: { ...moveOf.properties, to_key: { type: "object" } } }, async (i, slug) => moves.export({ ...i, slug: await slug(i.project) }));
+      { ...moveOf, required: [...moveOf.required, "to_key"], properties: { ...moveOf.properties, to_key: { type: "object" } } }, async (i, slug, moves) => moves.export({ ...i, slug: await slug(i.project) }));
     roomTool("memory.room.import", "Target side: opens the package with the move's key, writes the rows under the target project in one transaction (a repeat is a no-op) and returns the receipt { move_id, project, plan_hash, space, slug, digest, counts, at }. `into` names the target project when its slug differs.",
-      { ...moveOf, required: [...moveOf.required, "package"], properties: { ...moveOf.properties, package: { type: "object" }, digest: { type: "string", description: "the digest export returned: the package must match it" }, into: { type: "string" } } }, async (i, slug) => moves.import({ ...i, ...(i.into ? { slug: await slug(i.into) } : {}) }));
+      { ...moveOf, required: [...moveOf.required, "package"], properties: { ...moveOf.properties, package: { type: "object" }, digest: { type: "string", description: "the digest export returned: the package must match it" }, into: { type: "string" } } }, async (i, slug, moves) => moves.import({ ...i, ...(i.into ? { slug: await slug(i.into) } : {}) }));
     roomTool("memory.room.forget", "Source side, after the target imported: needs the receipt; refuses if the project's memory changed since the export; removes the moved rows for good and leaves moved_to. Returns { forgotten: counts, moved_to }.",
-      { ...moveOf, required: [...moveOf.required, "receipt"], properties: { ...moveOf.properties, receipt: { type: "object" } } }, async (i, slug) => moves.forget({ ...i, slug: await slug(i.project) }));
+      { ...moveOf, required: [...moveOf.required, "receipt"], properties: { ...moveOf.properties, receipt: { type: "object" } } }, async (i, slug, moves) => moves.forget({ ...i, slug: await slug(i.project) }));
     // ---- the Space layer's own memory (the kernel's memory.file / memory.read / memory.retire, kernel/gateway/memory.js): thin doors over the gateway. Who may file, read or retire is a grant on the caller's
     // chain, never decided here; a fact keeps its source and its filer from the chain. Nothing is copied across Spaces: a call is for the Space it is asked in.
     const spaceMemory = async (/** @type {any} */ extra) => {
