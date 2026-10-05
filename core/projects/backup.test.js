@@ -8,7 +8,7 @@ import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { backupSources } from "./backup.js";
 
-test("backupSources lists a project's files, skips dependency and build folders and caches, notes a big file, never follows a symlink", t => {
+test("backupSources lists a project's files, keeps .git, skips dependency and build folders and caches, notes a big file, never follows a symlink", t => {
   const root = fs.realpathSync(tempHome(t));
   const home = path.join(root, "northwind"), other = path.join(root, "secret");
   for (const d of ["src", "node_modules/x", ".git/objects", "dist"]) fs.mkdirSync(path.join(home, d), { recursive: true });
@@ -17,7 +17,7 @@ test("backupSources lists a project's files, skips dependency and build folders 
   fs.writeFileSync(path.join(home, "src/app.js"), "x");
   fs.writeFileSync(path.join(home, "notes.md"), "hello");
   fs.writeFileSync(path.join(home, "node_modules/x/i.js"), "no");
-  fs.writeFileSync(path.join(home, ".git/objects/o"), "no");
+  fs.writeFileSync(path.join(home, ".git/objects/o"), "kept");
   fs.writeFileSync(path.join(home, "dist/out.js"), "no");
   fs.writeFileSync(path.join(home, "run.log"), "no");
   fs.writeFileSync(path.join(home, ".DS_Store"), "no");
@@ -25,7 +25,7 @@ test("backupSources lists a project's files, skips dependency and build folders 
   fs.symlinkSync(other, path.join(home, "link"));
   const { items, notices } = backupSources([{ slug: "northwind", name: "Northwind", workspaces: [home], home, archived_at: null, org: null }], { maxFile: 10 });
   const names = items.filter(i => i.kind === "file").map(i => i.name).sort();
-  assert.deepEqual(names, ["northwind/northwind/notes.md", "northwind/northwind/src/app.js"]);
+  assert.deepEqual(names, ["northwind/northwind/.git/objects/o", "northwind/northwind/notes.md", "northwind/northwind/src/app.js"]);
   assert.equal(notices.length, 1);
   assert.match(notices[0], /big\.bin/);
   const rows = items.find(i => i.name === "rows/projects.jsonl");

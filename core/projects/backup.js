@@ -4,8 +4,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Folder names that are rebuilt from the project or are only caches: never backed up. */
-export const IGNORED_DIRS = new Set([".git", "node_modules", ".next", ".nuxt", ".svelte-kit", "dist", "build", "out", "target", "venv", ".venv", "__pycache__", ".cache", ".turbo", ".parcel-cache", ".gradle", "Pods", "DerivedData", ".idea", ".vscode"]);
+/** Folder names that are rebuilt (`.git` is kept, so a restored project is still a working repository) from the project or are only caches: never backed up. */
+export const IGNORED_DIRS = new Set(["node_modules", ".next", ".nuxt", ".svelte-kit", "dist", "build", "out", "target", "venv", ".venv", "__pycache__", ".cache", ".turbo", ".parcel-cache", ".gradle", "Pods", "DerivedData", ".idea", ".vscode"]);
 export const IGNORED_FILES = /(^\.DS_Store$|^Thumbs\.db$|\.log$|\.pyc$|\.tmp$|~$)/;
 /** Past this a file is skipped with a notice (a person can still keep it elsewhere). */
 export const MAX_FILE = 2 * 1024 ** 3;
