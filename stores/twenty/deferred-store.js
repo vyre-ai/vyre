@@ -7,6 +7,8 @@
 // Never a quiet fallback: this store holds nothing and invents nothing. A read is an error, not an empty list. The one thing it accepts is a type definition made
 // while the kernel is still starting (`bootDone()` not yet called): it is remembered and applied when the real store attaches.
 
+/** The most definitions kept while the store is away; past it a define is refused in words, never dropped quietly. */
+export const MAX_DEFS = 500;
 const unavailable = (/** @type {string} */ why) => Object.assign(new Error(why), { code: "unavailable", name: "StoreError" });
 
 /**
@@ -29,8 +31,9 @@ export function createDeferredStore(o) {
       if (real || attaching) return;
       attaching = true;
       try {
-        for (const diff of defs) await store.define(diff);
-        defs.length = 0;
+        // A define that arrives while this replay runs is pushed to the same queue, so take from the front until it is empty; `real` is set in the
+        // same turn as the last empty check (no await between), so nothing can be queued after the loop and lost.
+        while (defs.length) await store.define(/** @type {any} */ (defs.shift()));
         real = store;
         log("the record store is ready; the definitions made while it was away were applied");
       } finally { attaching = false; }
@@ -39,6 +42,7 @@ export function createDeferredStore(o) {
     async define(/** @type {any} */ diff, /** @type {any} */ opt) {
       if (real) return real.define(diff, opt);
       if (!booting) throw refuse();
+      if (defs.length >= MAX_DEFS) throw unavailable("the store is not ready and too many changes are waiting");
       defs.push(diff);
       return { applied: false, changes: [] };
     },

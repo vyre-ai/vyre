@@ -1618,9 +1618,12 @@ sp_do() {
     printf '%s %s\n' "$mn" $((cnt + 1)) >"$r"
   fi
   lk=$SP_PRIV/lock-$n
-  if [ -d "$lk" ] && [ -n "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then rm -rf "${lk:?}" 2>/dev/null || true; fi
+  # A dead lock is taken by renaming it away first: of two runs that find the same dead lock only the one whose rename succeeds goes on, and neither can delete
+  # the fresh lock the other has made since (a plain rm -rf by both could).
+  sp_reap_lock() { _d="$1.dead.$$"; if mv "$1" "$_d" 2>/dev/null; then rm -rf "${_d:?}" 2>/dev/null || true; return 0; fi; return 1; }
+  if [ -d "$lk" ] && [ -n "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; then sp_reap_lock "$lk" || true; fi
   # A lock names the run that took it. One whose run is gone (killed, a reboot, an earlier install) is not busy: it is taken over now, not after two hours.
-  if [ -d "$lk" ]; then lp=$(cat "$lk/pid" 2>/dev/null || true); case "$lp" in ""|*[!0-9]*) ;; *) kill -0 "$lp" 2>/dev/null || { rm -rf "${lk:?}" 2>/dev/null || true; sp_log "took over a lock whose run was gone"; } ;; esac; fi
+  if [ -d "$lk" ]; then lp=$(cat "$lk/pid" 2>/dev/null || true); case "$lp" in ""|*[!0-9]*) ;; *) kill -0 "$lp" 2>/dev/null || { sp_reap_lock "$lk" && sp_log "took over a lock whose run was gone"; } ;; esac; fi
   mkdir "$lk" 2>/dev/null || { sp_status "$id" busy "that Space is busy"; sp_log "busy: $v"; return 0; }
   printf '%s\n' "$$" >"$lk/pid" 2>/dev/null || true
   sp_status "$id" running "$v"
