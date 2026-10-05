@@ -14,7 +14,7 @@ Each chat and its files are encrypted to the people in that chat. A space's owne
 
 - **A key for each chat.** A chat has its own key. The key is wrapped to the keys of the devices that belong to the people in the chat, so only those devices can open it.
 - **A key for each file.** Every file in a chat has a key of its own, sealed under the chat's key. The name of the file is sealed as well; the server sees a stable id, not the name.
-- **The server holds no key.** It stores documents and ciphertext. The keys live on your devices and, while an agent you allowed is working, in the running program's memory only. They are never written out, and they are wiped when you lock.
+- **No key is written to the server's disk.** It stores documents and ciphertext. Keys live on your devices and, while an agent you allowed is working, in the running program's memory only. A chat started on the server gets its key from the server's own running process, which wraps it to each person's device and keeps it in memory only. Keys are never written out, and they are wiped when you lock.
 - **Owners and admins are not special.** The owner, an admin and a member of the project who are not in the chat are refused when they try to read it, list it, change it or delete it, whether they ask through the server or look at its disk. The log keeps no file names.
 
 ## Changing who is in a chat

@@ -178,3 +178,5 @@ Publish only when windows' upgrade merges to devbox (A2-0 gate). Shapes from win
 > **After the move.** Vyre reports what moved. Personal stays readable but takes no new changes; new work goes to My Cloud. Anything that could not come along is named with the reason. Private fields travel still encrypted.
 
 Open: sealed field values carry by ruling (platform's export built, windows wiring it): the "private fields travel still encrypted" sentence goes in only after windows' wiring merges; chats and memory carry only when their owners' upgrade tools exist (chats.upgrade.*, memory.upgrade.*), so the page claims them only after those merge; the real-Twenty re-run on testbox5 must pass.
+
+Chats row copy rule (reviewer-5, memory-cw2 be91231c4): a chat started on the server makes its own key in the server process, wrapped to each participant's device, in memory only, never on disk. "Owners and admins can't read chats they're not in, even with access to the server's disk" stays true. Never write that the server never sees a chat's key.
