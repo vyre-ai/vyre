@@ -175,6 +175,6 @@ Publish only when windows' upgrade merges to devbox (A2-0 gate). Shapes from win
 >
 > **One approval.** You approve once, and the approval covers exactly the list you saw. If anything changed since, Vyre stops and shows the list again.
 >
-> **After the move.** Vyre reports what moved. Personal stays readable but takes no new changes; new work goes to My Cloud. Anything that could not come along is named with the reason. Today that is the value of a sealed field: the record moves without it and the report says so.
+> **After the move.** Vyre reports what moved. Personal stays readable but takes no new changes; new work goes to My Cloud. Anything that could not come along is named with the reason. Private fields travel still encrypted.
 
-Open: sealed field values (a bug-class gap until platform's reseal carries them; the page says what the report says, only if Personal types hold sealed fields); chats and memory carry only when their owners' upgrade tools exist (chats.upgrade.*, memory.upgrade.*), so the page claims them only after those merge; the real-Twenty re-run on testbox5 must pass.
+Open: sealed field values carry by ruling (platform's export built, windows wiring it): the "private fields travel still encrypted" sentence goes in only after windows' wiring merges; chats and memory carry only when their owners' upgrade tools exist (chats.upgrade.*, memory.upgrade.*), so the page claims them only after those merge; the real-Twenty re-run on testbox5 must pass.
