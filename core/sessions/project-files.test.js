@@ -18,7 +18,7 @@ async function world(/** @type {any} */ t, /** @type {any} */ o = {}) {
   const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", name: "Draft the welcome email" })).data;
   await w.finished(th.id);
   // the thread's chat: its folders are named by the chat id
-  const chat = (await w.internal("threads.chat-of", { thread: th.id })).data.chat;
+  const chat = (await w.d.registry.call("threads.chat-of", { thread: th.id }, "module:work")).data.chat;
   assert.ok(chat, "the thread has a chat");
   // the Project record is made with the chat (the hub); its Drive folder is named by its id, and so is each chat's
   const root = await until(async () => { const r = (await w.d.kernel.gateway.records.query(admin, "project", { page: { limit: 20 } })).rows.find((/** @type {any} */ x) => x.data.slug === "northgate-intake"); return r ? r.data.drive_path : null; }, "the project folder");
