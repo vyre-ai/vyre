@@ -10,7 +10,7 @@
 // `featureInkFor(headColor)` instead of a fixed ink, and `rimFor(headColor, theme)` for an edge
 // treatment when a tone would otherwise wash into its backdrop. `character()` gained a third
 // `theme` param (default "dark", matching vyrecode2.js's own convention) to pick the right rim.
-import { SKIN_TONES, featureInkFor, rimFor } from "./identity.js";
+import { SKIN_TONES, featureInkFor, rimFor } from "../../../lib/wink-code/identity.js";
 // The project-colour badge (the user's 5th-family addition, 28 Sep): a teammate carries its
 // project's colour as a small ring or badge, never a hue of its own (avatar.md already turned
 // that down for teammates directly - this is the project's identity showing through, not the

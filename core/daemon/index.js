@@ -1472,7 +1472,7 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".ttf": "font/ttf", ".map": "application/json" };
 
 /** The lib files vyred serves to the Deck (pure, import-free, shared with Node). */
-const DECK_LIBS = new Set(["/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
+const DECK_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.js", "/lib/wink-code/rs.js", "/lib/wink-code/decode-core2.js", "/lib/wink-code/vyrecode2.js", "/lib/wink-code/identity.js", "/lib/avatar-seed/index.js", "/lib/caps-flags/index.js", "/lib/theme/contrast.js", "/kernel/contracts/index.js"]);
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
