@@ -377,7 +377,12 @@ export default {
       description: "What agents could reach before reach became a kernel grant, still waiting for your approval to carry over: { rows, grants }. Read only.",
       input: { type: "object", properties: {} },
       callers: [...OWNER, "module"],
-      run: async () => { const rows = legacyRows(); return { pending: rows.length, rows: rows.map(r => ({ project: r.project, agent: r.agent || "(every agent)", status: r.status })) }; },
+      run: async () => {
+        const rows = legacyRows();
+        /** @type {Record<string, number>} */ const byProject = {};
+        for (const r of rows) if (r.status === "granted") byProject[String(r.project)] = (byProject[String(r.project)] || 0) + 1;
+        return { pending: rows.length, granted: Object.values(byProject).reduce((n, c) => n + c, 0), by_project: byProject, rows: rows.map(r => ({ project: r.project, agent: r.agent || "(every agent)", status: r.status })) };
+      },
     });
     ctx.tool("projects.access.restore", {
       description: "Carry what your agents could reach before into kernel grants, in your own call: every granted row becomes a project.reach grant (an agent by its stable id), an explicit revoke stays revoked, and the old rows are then cleared. { restored, skipped }.",

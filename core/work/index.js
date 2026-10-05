@@ -117,6 +117,7 @@ export default {
         try {
           const r = await ctx.call("projects.access.pending", {});
           const n = r && r.data ? Number(r.data.pending) : 0;
+          const per = r && r.data && r.data.by_project ? Object.entries(r.data.by_project).map(([p, c]) => `${p} (${c})`).join(", ") : "";
           if (!n) return;
           const dbh = ctx.store.db;
           dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL)");
@@ -126,7 +127,7 @@ export default {
           await k.ask.request(k.serviceChain("work"), {
             title: "Restore who could see your projects", record: general.urn,
             doer: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "manual",
-            note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
+            note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project${per ? `: ${per}` : ""}. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
           });
           dbh.prepare("INSERT INTO work_flags (key, at) VALUES ('access-restore', ?)").run(Date.now());
         } catch (e) { ctx.log(`work: the access-restore item was not raised: ${/** @type {Error} */ (e).message} ${String(/** @type {Error} */ (e).stack).split("\n").slice(1, 4).join(" | ")}`); /* a start never fails for this: the rows wait, and projects.access.pending says so */ }

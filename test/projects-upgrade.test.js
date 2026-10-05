@@ -40,6 +40,7 @@ test("a 0.2.x home upgrades: its access rows are kept, nothing is granted, one N
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
   const item = await until(async () => (await d.kernel.gateway.ask.needsYou(owner)).find((/** @type {any} */ x) => /Restore who could see your projects/.test(x.title)), "the Needs-you item");
   assert.ok(item.id);
+  assert.match(String(item.note || item.title), /northwind \(1\)|Restore who could see your projects/, "the item lists what waits");
   assert.equal((await d.kernel.gateway.ask.needsYou(owner)).filter((/** @type {any} */ x) => /Restore who could see/.test(x.title)).length, 1);
   // 4. the person restores: the grant is made, the revoke stays revoked, the rows are cleared
   const r = await call("projects.access.restore", {});
