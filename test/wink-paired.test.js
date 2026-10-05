@@ -1002,7 +1002,8 @@ test("a pairing refused twice in a minute says its reason both times in the serv
   await until(async () => f.w.logs.filter(l => /relay: refused (a hello|again) \(this pairing code has expired/.test(l)).length >= 2);
 });
 
-test("typed pair on the kernel: the typed-paired, acked device defines a record type and reads records.me over its own paired session", async t => {
+/** A device paired by the typed code on a kernel world (typed pair, signed ack, confirmed by its owner): { w, done, dk, ks, sign }. @param {any} t */
+async function typedPairedOnKernel(t) {
   const { addThisDevice } = await import("../relay/client/phonepair.js");
   const savedTyped = process.env.VYRE_WINK_TYPED_CODE;
   delete process.env.VYRE_WINK_TYPED_CODE;
@@ -1010,9 +1011,13 @@ test("typed pair on the kernel: the typed-paired, acked device defines a record 
   process.env.VYRE_KERNEL_PATH_RULE = "1";
   t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; if (savedTyped !== undefined) process.env.VYRE_WINK_TYPED_CODE = savedTyped; else delete process.env.VYRE_WINK_TYPED_CODE; });
   const w = await world(t, { kernel: true });
-  const open = (await w.call("wink.phone.open", {}, "cli", PROOF)).data;
+  const opened = await w.call("wink.phone.open", {}, "cli", PROOF);
+  assert.ok(opened.data && opened.data.code, `wink.phone.open gives a code: ${JSON.stringify(opened.error || opened.data).slice(0, 200)}`);
+  const open = opened.data;
   const dk = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const presenceKey = { public_key: dk.publicKey.export({ format: "der", type: "spki" }).toString("base64url"), alg: -7, storage: "software" };
+  // the same key for the app's WebCrypto calls below
+  const pkey = { privateKey: await globalThis.crypto.subtle.importKey("pkcs8", dk.privateKey.export({ format: "der", type: "pkcs8" }), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]) };
   const idKey = crypto.generateKeyPairSync("ed25519").publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
   const ks = keystore(t);
   let ack = "";
@@ -1023,6 +1028,11 @@ test("typed pair on the kernel: the typed-paired, acked device defines a record 
   assert.equal((await w.call("wink.code.ack", { offer: open.code_offer, typed: ack }, "cli", PROOF)).data.ok, true);
   const done = await joining;
   const sign = m => crypto.sign("sha256", Buffer.from(m), { key: dk.privateKey, dsaEncoding: "ieee-p1363" }).toString("base64url");
+  return { w, done, dk, ks, sign, pkey };
+}
+
+test("typed pair on the kernel: the typed-paired, acked device defines a record type and reads records.me over its own paired session", async t => {
+  const { w, done, ks, sign } = await typedPairedOnKernel(t);
   const links = createServerLinks({ connect, options: { crypto: nodeCrypto(), keyStore: ks }, name: "Sam's phone", sign, channelOf: sid => (sid === "srv" ? { relay: w.status.url, route: done.route, box: done.box } : null) });
   t.after(() => links.close());
   assert.ok((await links.startPaired("srv")).id);
@@ -1040,4 +1050,22 @@ test("typed pair on the kernel: the typed-paired, acked device defines a record 
   assert.ok(facts, "a confirmed paired device is given person facts");
   const viaFacts = await w.d.registry.call("records.define", { diff: { add_types: [{ name: "company", label: "Company", fields: [{ name: "name", kind: "text", label: "Name" }] }] } }, `device:${done.device}`, { kernelFacts: facts, person: { id: "ps", kind: "bearer" } });
   assert.equal(viaFacts.data && viaFacts.data.applied, true, JSON.stringify(viaFacts));
+});
+
+test("typed pair on the kernel, over the relay as the app calls: the paired session's bearer and signed proof reach records.me and records.define as the person", async t => {
+  const { w, done, ks, pkey } = await typedPairedOnKernel(t);
+  // and HTTP over the relay, the way the app calls: the paired session's bearer token and a signed proof per request (the daemon builds the person's chain from the device facts, never from the session id)
+  const { startPaired } = await import("../apps/app/src/auth/paired.ts");
+  const { proofWith } = await import("../apps/app/src/auth/person.ts");
+  const conn = connect({ relay: done.relay, route: done.route, box: done.box, name: "Sam's phone", crypto: nodeCrypto(), keyStore: ks });
+  t.after(() => conn.close());
+  const rawCall = async (tool, i) => { const x = await conn.fetch(`/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(i) }); return x.json().catch(() => ({})); };
+  const st = await startPaired({ device: done.device, call: rawCall, privateKey: pkey.privateKey, label: "Sam's phone" });
+  assert.ok(st.token, JSON.stringify(st));
+  const signer = async m => new Uint8Array(await globalThis.crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, pkey.privateKey, new TextEncoder().encode(m)));
+  const http = async (tool, input) => { const body = JSON.stringify(input), url = `/v1/tools/${tool}`; const r = await conn.fetch(url, { method: "POST", headers: { "content-type": "application/json", authorization: `Vyre ${st.token}`, "x-vyre-proof": await proofWith(signer, { method: "POST", url, body }) }, body }); return r.json().catch(() => ({})); };
+  const meHttp = await http("records.me", {});
+  assert.equal(meHttp.data && meHttp.data.person, w.d.kernel.id.owner, `records.me over the relay answers the owner: ${JSON.stringify(meHttp)}`);
+  const defHttp = await http("records.define", { diff: { add_types: [{ name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }] }] } });
+  assert.equal(defHttp.data && defHttp.data.applied, true, JSON.stringify(defHttp));
 });
