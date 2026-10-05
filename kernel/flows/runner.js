@@ -18,8 +18,10 @@ import { BLOCK_KINDS, LIMITS as SCHEMA_LIMITS, canonical as canonicalOf } from "
 import { runIdFor, newId } from "./store.js";
 import { recordTrigger } from "./triggers.js";
 import { taskIdOf } from "./stages.js";
+import { chooseDoer } from "./assign.js";
+import { opFor, isDeclared, takesKey, readbackRequest, compareReadback, retryAfterMs } from "./safe-write.js";
 
-export const LIMITS = Object.freeze({ depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
+export const LIMITS = Object.freeze({ ai_tokens_per_step: 2_000, ai_tokens_per_run: 20_000, ai_tokens_per_day: 200_000, depth: 8, rate_per_minute: 60, steps_per_run: 500, scan: 2000, wait_max_ms: 366 * 86_400_000 });
 /** Denials that mean the approver can no longer do this: the Flow pauses and says why. */
 const PAUSE_REASONS = new Set(["revoked", "not_a_member", "expired", "no_grant", "wrong_space"]);
 const OUTWARD = new Set(["outward.send", "outward.pay", "outward.publish", "outward.delete", "outward.share"]);
@@ -28,6 +30,11 @@ class Suspend extends Error { constructor() { super("suspended"); this.name = "S
 class StepFail extends Error {
   /** @param {string} code @param {string} message */
   constructor(code, message) { super(message); this.name = "StepFail"; this.code = code; }
+}
+/** A port's own failure (the sandbox's timeout, the door's refusal) keeps its code as the step's. @param {any} e @returns {never} */
+function portFail(e) {
+  if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
+  throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
 }
 class PauseFlow extends Error {
   /** @param {string} reason */
@@ -348,6 +355,8 @@ export class FlowRunner {
       const run = await this.store.getRun(runId);
       if (!run || (run.state !== "paused" && run.state !== "failed")) return;
       run.state = "running"; run.error = undefined; run.finished_at = undefined; run.updated_at = this.now();
+      // A person retrying a run whose write may or may not have gone out has looked and said go: the record that it might have been sent is cleared, so the call is made again.
+      for (const l of Object.values(run.steps)) if (l && l.status === "started" && l.sent_at) l.sent_at = null;
       await this.store.putRun(run);
       await this.#execLocked(runId);
     });
@@ -483,6 +492,7 @@ export class FlowRunner {
         return draftAs ? { draft: true, via: draftAs, result: r } : r;
       }, { input: val(s.input) }); break;
       case "classify": out = await this.#classify(ctx, s, key, val); break;
+      case "extract": out = await this.#extract(ctx, s, key, val); break;
       case "service": out = await this.#service(ctx, s, key, val); break;
       case "fn": out = await this.#fn(ctx, s, key, val); break;
       default: throw new StepFail("bad_step", `unknown step kind ${s.kind}`);
@@ -597,10 +607,66 @@ export class FlowRunner {
       if (rules && rules.draftOnly) {
         const dr = ctx.cat.connectors && ctx.cat.connectors[s.connector] && /** @type {any} */ (ctx.cat.connectors[s.connector]).draft;
         if (!dr || typeof dr.path !== "string") throw new StepFail("draft_only", `a rule of this space allows drafts only${rules.draftOnly.label ? ` (${rules.draftOnly.label})` : ""}, and ${s.connector} has no way to prepare a draft, so nothing was sent`);
-        req = { ...request, method: dr.method || "POST", path: dr.path }; asDraft = true;
+        req = { ...request, method: dr.method || "POST", path: dr.path, ...(typeof dr.wrap === "string" && request.body !== undefined ? { body: { [dr.wrap]: request.body } } : {}) }; asDraft = true;
       }
-      const r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: req, idem: asDraft ? `${idem}:draft` : idem, ...(asDraft ? { draft: true } : {}), ...(approval && !asDraft ? { approval } : {}) }));
-      if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
+      // Safe outside writes (the connector's declaration, kernel/flows/safe-write.js). A connector that declares nothing keeps the old behaviour: the route rules decide and the vault dedupes by key.
+      const conn = /** @type {any} */ (ctx.cat.connectors && ctx.cat.connectors[s.connector]);
+      const declared = !asDraft && isDeclared(conn);
+      const method = String(req.method || "GET").toUpperCase();
+      const op = declared ? opFor(conn, method, req.path) : null;
+      const write = op ? !op.read : method !== "GET" && method !== "HEAD";
+      const run = ctx.run;
+      const led = this.#led(ctx, key) || {};
+      /** @type {any} */ let r;
+      if (declared && write && led.written) {
+        // The write was done before the server stopped: it is NOT sent again; only what is missing after it (the read-back) is finished.
+        r = { status: led.written.status, ok: led.written.ok, headers: led.written.headers || {}, body: led.written.body ?? "" };
+      } else {
+        // A 429 or 503 the provider asked us to wait out: the run sleeps until then (it survives a restart), then the same step sends again with the same key.
+        if (declared && led.backoff) await this.#sleepOnce(ctx, led.backoff, 0);
+        // A write whose outcome the ledger cannot tell (sent, never recorded) is repeated only where the provider takes an idempotency key. Otherwise it is not sent again: a duplicate matter or payment
+        // is worse than a Flow that stopped and told the owner.
+        if (declared && write && led.sent_at && !takesKey(conn, op)) {
+          await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name}: check ${s.connector} before this goes again`, { kind: "outcome_unknown", flow: run.flow, run: run.id, step: s.id, connector: s.connector, method, path: req.path }, `${run.id}:${key}:unknown`);
+          throw new StepFail("outcome_unknown", `the call ${method} ${req.path} to ${s.connector} may or may not have gone through before the server stopped, and ${s.connector} takes no idempotency key, so it was not sent again; check it, then retry the run`);
+        }
+        // The provider's own idempotency header is added by the vault from this key (connector.idempotency); the runner keeps passing `idem` and records it.
+        const sendReq = req, sendIdem = idem;
+        // The key and the attempt are in the ledger BEFORE the call, so a crash after the send leaves a record that it may have gone out.
+        if (declared && write) await this.#mark(ctx, key, { idem: sendIdem, attempts: (led.attempts || 0) + 1, sent_at: this.now() });
+        try {
+          r = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: sendReq, idem: asDraft ? `${sendIdem}:draft` : sendIdem, ...(asDraft ? { draft: true } : {}), ...(approval && !asDraft ? { approval } : {}) }));
+        } catch (e) {
+          // The vault waited out the provider's Retry-After as far as it would and gave up (`rate_limited`, `retryAfter` seconds): nothing was done, so the run sleeps that long and sends again.
+          const x = /** @type {any} */ (e);
+          if (!(declared && x && x.code === "rate_limited" && (led.attempts || 0) + 1 < 6)) throw e;
+          const rkey = `${key}?retry${(led.attempts || 0) + 1}`;
+          await this.#mark(ctx, key, { sent_at: null, backoff: rkey });
+          await this.#sleepOnce(ctx, rkey, Math.max(1, Number(x.retryAfter) || 5) * 1000);
+          throw e;
+        }
+        if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
+        // A 503 can come AFTER the provider did the work, so a write that cannot be repeated safely (no idempotency key) is never sent again on one: it stops and tells the owner, as after a crash.
+        // A 429 is a refusal before anything happened, and a read has nothing to duplicate, so those wait and go again.
+        if (declared && write && r && r.status === 503 && !takesKey(conn, op)) {
+          await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name}: check ${s.connector} before this goes again`, { kind: "outcome_unknown", flow: run.flow, run: run.id, step: s.id, connector: s.connector, method, path: req.path }, `${run.id}:${key}:unknown`);
+          throw new StepFail("outcome_unknown", `${s.connector} answered 503 to ${method} ${req.path}, which may have been done already, and ${s.connector} takes no idempotency key, so it was not sent again; check it, then retry the run`);
+        }
+        if (declared && r && (r.status === 429 || r.status === 503) && (led.attempts || 0) + 1 < 6) {
+          const lower = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
+          const wait = retryAfterMs(lower, this.now()) ?? (r.status === 429 ? 5000 * ((led.attempts || 0) + 1) : null);
+          if (wait !== null) {
+            // refused, so nothing was done: it is safe to send again after the wait
+            const rkey = `${key}?retry${(led.attempts || 0) + 1}`;
+            await this.#mark(ctx, key, { sent_at: null, backoff: rkey });
+            await this.#sleepOnce(ctx, rkey, wait);
+          }
+        }
+        if (declared && write && r && r.status >= 200 && r.status < 300 && !r.saved) {
+          const body = typeof r.body === "string" && r.body.length <= SERVICE_BODY_CAP ? r.body : undefined;
+          await this.#mark(ctx, key, { sent_at: null, written: { status: Number(r.status), ok: true, headers: r.headers || {}, ...(body !== undefined ? { body } : {}) } });
+        }
+      }
       ctx.run.tainted = true; // what came back is content from outside
       if (r && r.saved) return { saved: { path: String(r.saved.path), version: r.saved.version, size: r.saved.size, sha256: r.saved.sha256 } };
       const headers = Object.fromEntries(Object.entries((r && r.headers) || {}).filter(([k]) => !/^(set-cookie|authorization|proxy-authenticate|www-authenticate|x-api-key)$/i.test(k)).map(([k, v]) => [k.toLowerCase(), String(v)]));
@@ -608,8 +674,54 @@ export class FlowRunner {
       const text = raw.length > SERVICE_BODY_CAP ? raw.slice(0, SERVICE_BODY_CAP) : raw;
       let json = null;
       if (/json/i.test(headers["content-type"] || "") && raw.length <= SERVICE_BODY_CAP) { try { json = JSON.parse(raw); } catch { json = null; } }
-      return { ...(asDraft ? { draft: true } : {}), response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(files.length ? { files } : {}) };
+      // Read-back: the connector pairs this write with a read; the record is read again and the fields it names compared with what was sent. A difference stops the Flow and tells the owner.
+      /** @type {any} */ let readback;
+      if (op && write && op.readback && r && r.status >= 200 && r.status < 300) {
+        const pair = readbackRequest(op, req, json);
+        const mismatch = async (/** @type {string} */ why) => {
+          const reason = `${s.connector} did not keep what step ${s.id} wrote (${why})`;
+          await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name} was stopped: ${s.connector} does not match what was sent`, { kind: "readback_mismatch", flow: run.flow, run: run.id, step: s.id, connector: s.connector, why }, `${run.id}:${key}:readback`);
+          await this.pauseFlow(run.flow, reason);
+          throw new StepFail("readback_mismatch", `${reason}; the Flow is paused`);
+        };
+        if (pair === null) await mismatch("the answer to the write did not carry what the read-back needs, so it could not be read back");
+        const rr = /** @type {any} */ (await this.ports.service({ chain: this.#chain(ctx), connector: s.connector, request: { method: pair.method, path: pair.path }, idem: `${idem}:readback` }));
+        const rraw = rr && typeof rr.body === "string" ? Buffer.from(rr.body, "base64").toString("utf8") : "";
+        let rjson = null; try { rjson = JSON.parse(rraw); } catch { rjson = null; }
+        if (!rr || !(rr.status >= 200 && rr.status < 300)) await mismatch(`reading it back answered ${rr ? rr.status : "nothing"}`);
+        const cmp = compareReadback(op, req, rjson, json);
+        if (!cmp.ok) await mismatch(`these fields differ: ${cmp.mismatches.map(m => m.field).join(", ")}`);
+        readback = { ok: true, path: pair.path, checked: Object.keys((op.readback && op.readback.compare) || {}).length };
+      }
+      return { ...(asDraft ? { draft: true } : {}), response: { status: Number(r && r.status) || 0, ok: Boolean(r && (r.ok ?? (r.status >= 200 && r.status < 300))), headers, body: text, json, truncated: raw.length > SERVICE_BODY_CAP }, ...(readback ? { readback } : {}), ...(files.length ? { files } : {}) };
     }, { input: request.body === undefined ? null : request.body });
+  }
+
+  /**
+   * Sleep inside a step: the run is suspended until `ms` from now and the same step runs again when it wakes (the timer wakes it, a restart keeps it). The sleep has its own ledger entry,
+   * so a second pass finds it done and goes on.
+   * @param {any} ctx @param {string} rkey @param {number} ms
+   */
+  async #sleepOnce(ctx, rkey, ms) {
+    const now = this.now();
+    const l = this.#led(ctx, rkey);
+    if (l && l.status === "done") return;
+    if (l && l.status === "waiting") {
+      if (l.wait && (l.wait.result || l.wait.until <= now)) { await this.#mark(ctx, rkey, { status: "done" }); return; }
+      throw this.#suspendOn(ctx, rkey, l.wait);
+    }
+    if (ms <= 0) return;
+    const wait = { kind: "time", until: now + Math.min(ms, this.limits.wait_max_ms) };
+    await this.#mark(ctx, rkey, { status: "waiting", wait });
+    this.#emit("step.waiting", { run: ctx.run.id, step: rkey, until: wait.until }, ctx.run, `vyre://${ctx.run.space}/flow-run/${ctx.run.id}`);
+    throw this.#suspendOn(ctx, rkey, wait);
+  }
+
+  /** Put a card in front of the Flow's approver, once per key: the way a stopped Flow tells its owner. @param {any} ctx @param {string} title @param {any} form @param {string} idem */
+  async #alert(ctx, title, form, idem) {
+    const run = ctx.run;
+    const chain = this.chains.forFlow({ flow: run.flow, space: run.space, approver: run.approver, tainted: false, run: run.id, source_spaces: [run.space] });
+    await this.k.ask.request(chain, { title, doer: run.approver, output: { kind: "decision" }, source: "flow_step", form }, { idem });
   }
 
   // ------------------------------------------------------------------ record steps
@@ -724,37 +836,57 @@ export class FlowRunner {
       if (!res) throw this.#suspendOn(ctx, key, led.wait);
       if (res.timeout) throw new StepFail("timed_out", `nobody finished step ${s.id}`);
       const t = res.task || {};
-      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null };
+      return { task: led.task, state: t.state, outcome: t.outcome ?? null, answer: t.answer ?? null, output: t.output ?? null, ...(led.chosen ? { chosen: led.chosen } : {}) };
     }
     const who = s.kind === "agent" ? s.assistant : s.to;
     const need = { action: "ask.request", resource: `vyre://${ctx.cat.space}/task/*` };
     return this.#effect(ctx, s, key, need, async idem => {
       if (ctx.dry) { ctx.dryTasks = [...(ctx.dryTasks || []), { step: s.id, to: who, kind: s.kind }]; return { dry: true, task: "sim_" + key }; }
-      const { doer, helpers } = await this.#actor(ctx, who);
       const title = String(val(s.title) ?? "");
       const record = s.record !== undefined ? urnOf(ctx, val(s.record), s.type) : undefined;
+      const { doer, helpers, why } = await this.#actor(ctx, who, { skills: s.skills, record });
       const spec = s.kind === "ask"
         ? { title, doer, ...(helpers.length ? { helpers } : {}), output: { kind: "decision" }, source: "flow_step", ...(record ? { record } : {}), ...(s.form ? { form: s.form } : {}) }
         : { title, doer, ...(helpers.length ? { helpers } : {}), output: s.output, how: s.kind === "agent" ? "assistant" : s.how, ...(s.template ? { template: s.template } : {}), ...(s.checker ? { checker: await this.#checker(ctx, s.checker) } : {}), source: "flow_step", ...(record ? { record } : {}), ...(s.kind === "agent" ? { form: { instructions: String(val(s.instructions) ?? "") } } : {}) };
-      const task = await this.k.ask.request(this.#chain(ctx), { ...spec, flow: { run: run.id, step: s.id } }, { idem });
-      if (!awaiting) return { task: task.id };
-      await this.#mark(ctx, key, { status: "waiting", task: task.id, wait: { kind: "task", task: task.id } });
+      // A task given to a role or a pool says who was chosen and why, on the task itself (what its doer sees) and on the run
+      const withWhy = why ? { ...spec, form: { ...(spec.form || {}), chosen: why } } : spec;
+      const task = await this.k.ask.request(this.#chain(ctx), { ...withWhy, flow: { run: run.id, step: s.id } }, { idem });
+      if (why) this.#emit("step.assigned", { run: run.id, step: key, doer: doer.id, why }, run, `vyre://${run.space}/flow-run/${run.id}`);
+      if (!awaiting) return { task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}) };
+      await this.#mark(ctx, key, { status: "waiting", task: task.id, ...(why ? { chosen: { doer: doer.id, why } } : {}), wait: { kind: "task", task: task.id } });
       this.#emit("step.waiting", { run: run.id, step: key, task: task.id }, run, `vyre://${run.space}/flow-run/${run.id}`);
       throw this.#suspendOn(ctx, key, { kind: "task", task: task.id });
     }, { input: s.kind === "agent" ? val(s.instructions) : val(s.title) });
   }
 
-  /** @param {any} ctx @param {string} ref @returns {Promise<{ doer: ActorRef, helpers: ActorRef[] }>} */
-  async #actor(ctx, ref) {
+  /**
+   * Who does a task. A person or a teammate is named; a role or a pool is CHOSEN: of its candidates, the ones with the skills the step asks for, then the one who has worked most on this record,
+   * then the lightest open workload (kernel/flows/assign.js), and the choice comes back with its reason. With no skills and no signals the first holder is chosen, and a role's other
+   * holders help, as before.
+   * @param {any} ctx @param {string} ref @param {{ skills?: string[], record?: string }} [o] @returns {Promise<{ doer: ActorRef, helpers: ActorRef[], why?: string }>}
+   */
+  async #actor(ctx, ref, o = {}) {
     const space = ctx.run.space;
     const [kind, ...rest] = String(ref).split(":");
     const name = rest.join(":");
     if (kind === "person") return { doer: { kind: "person", id: name, space }, helpers: [] };
     if (kind === "teammate") return { doer: { kind: "agent", id: name, space }, helpers: [] };
-    const holders = this.ports.roles ? await this.ports.roles(space, name) : [];
-    const people = holders.filter(h => h.kind === "person");
-    if (!people.length) throw new StepFail("nobody", `nobody holds the role ${name} in this Space, so there is no one to ask`);
-    return { doer: people[0], helpers: people.slice(1) };
+    /** @type {{ actor: ActorRef, name?: string, skills?: string[] }[]} */ let candidates;
+    if (kind === "pool") {
+      candidates = this.ports.pool ? await this.ports.pool(space, name) : [];
+      if (!candidates.length) throw new StepFail("nobody", `nobody is in the pool ${name}, so there is no one to give this to`);
+    } else {
+      const holders = this.ports.roles ? await this.ports.roles(space, name) : [];
+      candidates = holders.filter((/** @type {any} */ h) => h.kind === "person").map((/** @type {any} */ h) => ({ actor: h }));
+      if (!candidates.length) throw new StepFail("nobody", `nobody holds the role ${name} in this Space, so there is no one to ask`);
+    }
+    const sig = this.ports.signals ? await this.ports.signals(space, o.record).catch(() => null) : null;
+    const skills = Array.isArray(o.skills) ? o.skills : [];
+    const c = chooseDoer({ candidates, skills, involvement: (sig && sig.involvement) || {}, load: (sig && sig.load) || {} });
+    if (!c.pick) throw new StepFail("nobody", `no one fits: ${c.why}`);
+    // a role keeps its other holders as helpers; a pool is a choice of one
+    const helpers = kind === "role" ? candidates.filter(x => x.actor.id !== c.pick.actor.id).map(x => x.actor) : [];
+    return { doer: c.pick.actor, helpers, ...(kind === "pool" || skills.length || sig ? { why: c.why } : {}) };
   }
 
   /** A checker is a person or a role; a role stays a role for the kernel to expand to humans. @param {any} ctx @param {string} ref */
@@ -769,11 +901,80 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, need, async () => {
       if (ctx.dry) return { dry: true, label: null };
       const m = this.ports.model || { provider: "default", model: "default" };
-      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "classify", provider: m.provider, model: m.model,
-        messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: String(val(s.input) ?? "") }] });
+      // AI is metered: a step may spend little, a run a bit more, a Space a day's worth (an admin sets it; kernel/flows `flows.budget`). Refused plainly before anything is sent.
+      await this.#aiGuard(ctx);
+      const text = String(val(s.input) ?? "").slice(0, 16_000);
+      // The door's refusal (a budget, a residency rule, a value it would not let through) is the step's failure with its own code, so the owner reads the rule and not "error".
+      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "classify", provider: m.provider, model: m.model, max_tokens: 64,
+        messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: text }] }).catch(portFail);
+      const u = r && r.usage || {};
+      const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
+      await this.#aiSpend(ctx, Math.min(spent, this.limits.ai_tokens_per_step * 50));
       const label = String(r.content || "").trim();
       return { label: s.labels.includes(label) ? label : null, raw_ok: s.labels.includes(label) };
     }, { input_class: "text" });
+  }
+
+  /**
+   * Extract: named fields read out of a message or document, through the same model door as classify (sealed values placeholders, no tools, the same AI budget). The model is asked for a JSON object of
+   * exactly the declared fields, null where the text does not say; each value is coerced to its declared kind and anything else is dropped, so the step's output is the declared shape and nothing more.
+   * @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val
+   */
+  async #extract(ctx, s, key, val) {
+    const need = { action: "model.call", resource: `vyre://${ctx.cat.space}/model/*` };
+    return this.#effect(ctx, s, key, need, async () => {
+      const names = s.fields.map((/** @type {any} */ f) => f.name);
+      if (ctx.dry) return { dry: true, fields: Object.fromEntries(names.map((/** @type {string} */ n) => [n, null])) };
+      const m = this.ports.model || { provider: "default", model: "default" };
+      await this.#aiGuard(ctx);
+      const text = String(val(s.input) ?? "").slice(0, 16_000);
+      const spec = s.fields.map((/** @type {any} */ f) => `${f.name} (${f.kind || "text"})${f.description ? `: ${f.description}` : ""}`).join("\n");
+      const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "extract", provider: m.provider, model: m.model, max_tokens: 400,
+        messages: [{ role: "system", content: `Read the user's text and answer with ONE JSON object and nothing else. Its keys are exactly these fields; a value is null when the text does not say. Dates are YYYY-MM-DD.\n${spec}` }, { role: "user", content: text }] }).catch(portFail);
+      const u = r && r.usage || {};
+      const spent = Number(u.total_tokens) || (Number(u.input_tokens) || 0) + (Number(u.output_tokens) || 0) || Math.ceil((text.length + String(r.content || "").length) / 4);
+      await this.#aiSpend(ctx, Math.min(spent, this.limits.ai_tokens_per_step * 50));
+      /** @type {any} */ let parsed = null;
+      try { const raw = String(r.content || "").trim().replace(/^```(?:json)?\s*|\s*```$/g, ""); parsed = JSON.parse(raw); } catch { parsed = null; }
+      const ok = parsed && typeof parsed === "object" && !Array.isArray(parsed);
+      /** @type {Record<string, any>} */ const fields = {};
+      for (const f of s.fields) fields[f.name] = ok ? coerce(parsed[f.name], f.kind || "text") : null;
+      return { fields, found: names.filter((/** @type {string} */ n) => fields[n] !== null), raw_ok: Boolean(ok) };
+    }, { input_class: "text" });
+  }
+
+  /** @param {number} now */
+  #day(now) { return new Date(now).toISOString().slice(0, 10); }
+  /** The Space's daily AI allowance in tokens: what an admin set, else the default. */
+  async aiBudget() {
+    const day = this.#day(this.now());
+    const set = this.store.getSchedule ? await this.store.getSchedule("ai:budget") : null;
+    const used = this.store.getSchedule ? (await this.store.getSchedule(`ai:use:${day}`)) || 0 : 0;
+    const ctxSet = this.store.getSchedule ? await this.store.getSchedule("set:context_tokens") : null;
+    return { tokens_per_day: set ?? this.limits.ai_tokens_per_day, used_today: used, day, context_tokens: ctxSet ?? 1200 };
+  }
+  /** An admin sets the daily allowance (a number of tokens; 0 turns AI steps off). @param {number} tokens */
+  async setAiBudget(tokens) {
+    if (!Number.isInteger(tokens) || tokens < 0 || tokens > 1_000_000_000) throw Object.assign(new Error("the budget is a whole number of tokens, 0 or more"), { code: "bad_input" });
+    if (this.store.putSchedule) await this.store.putSchedule("ai:budget", tokens);
+    return this.aiBudget();
+  }
+  /** How much of a record's world an agent is shown in this Space (tokens, 200 to 8000; default 1200). @param {number} tokens */
+  async setContextTokens(tokens) {
+    if (!Number.isInteger(tokens) || tokens < 200 || tokens > 8000) throw Object.assign(new Error("the context budget is a whole number of tokens from 200 to 8000"), { code: "bad_input" });
+    if (this.store.putSchedule) await this.store.putSchedule("set:context_tokens", tokens);
+    return this.aiBudget();
+  }
+  /** @param {any} ctx */
+  async #aiGuard(ctx) {
+    const b = await this.aiBudget();
+    if (b.used_today >= b.tokens_per_day) throw new StepFail("ai_budget", "This space's AI budget for today is used up");
+    if ((ctx.run.ai_tokens || 0) >= this.limits.ai_tokens_per_run) throw new StepFail("ai_budget", "This run has used its AI allowance, so it did not ask the model again");
+  }
+  /** @param {any} ctx @param {number} tokens */
+  async #aiSpend(ctx, tokens) {
+    ctx.run.ai_tokens = (ctx.run.ai_tokens || 0) + tokens;
+    if (this.store.putSchedule) { const k = `ai:use:${this.#day(this.now())}`; await this.store.putSchedule(k, ((await this.store.getSchedule(k)) || 0) + tokens); }
   }
 
   /** @param {any} ctx @param {any} s @param {string} key @param {(v: any) => any} val */
@@ -782,7 +983,7 @@ export class FlowRunner {
       if (ctx.dry) return { dry: true };
       if (!this.ports.sandbox) throw new StepFail("unavailable", "this Space has no code sandbox yet");
       const inputs = val(s.inputs);
-      const r = await this.ports.sandbox({ language: s.language, source: s.source, hash: s.hash, inputs, outputs: s.outputs, needs: s.needs || [] });
+      const r = await this.ports.sandbox({ language: s.language, source: s.source, hash: s.hash, inputs, outputs: s.outputs, needs: s.needs || [] }).catch(portFail);
       const out = {};
       for (const name of s.outputs) out[name] = Object.hasOwn(r.outputs || {}, name) ? r.outputs[name] : null;
       for (const k of Object.keys(r.outputs || {})) if (!s.outputs.includes(k)) throw new StepFail("bad_output", `step ${s.id} returned ${k}, which it did not declare`);
@@ -937,6 +1138,14 @@ const slim = e => ({ id: e.id, seq: e.seq, type: e.type, subject: e.subject, act
 
 /** How much of a service's response a run keeps (a Flow reads data, it does not store documents; a big file goes by Drive reference). */
 const SERVICE_BODY_CAP = 64 * 1024;
+/** A model's value as the declared kind, or null when it is not that kind (an extracted field is never a guess dressed as another type). @param {any} v @param {string} kind */
+function coerce(v, kind) {
+  if (v === undefined || v === null || v === "") return null;
+  if (kind === "number") { const n = typeof v === "number" ? v : Number(String(v).replace(/[,\s$]/g, "")); return Number.isFinite(n) ? n : null; }
+  if (kind === "boolean") return typeof v === "boolean" ? v : /^(true|yes)$/i.test(String(v)) ? true : /^(false|no)$/i.test(String(v)) ? false : null;
+  if (kind === "date") { const d = String(v).trim(); return /^\d{4}-\d{2}-\d{2}$/.test(d) && Number.isFinite(Date.parse(d)) ? d : null; }
+  return typeof v === "object" ? null : String(v).slice(0, 2000);
+}
 
 /** @param {any} step @param {import('./compile.js').Catalog} cat */
 /** The task events that end a wait: the checker's answer either way, the doer's completion, a skip. */

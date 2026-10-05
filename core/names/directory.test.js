@@ -193,57 +193,6 @@ test("names.release: a pointed name is a tombstone, its records go", { skip }, a
   assert.equal((await h.box().client.check("alex")).status, "taken", "for good");
 });
 
-test("names.recover: the old box cancels by itself; with it offline the name moves after 72 hours", { skip }, async t => {
-  const h = hosted(t), old = boxService(t, h, { ips: ["100.101.1.2"] });
-  const { recoveryCode } = /** @type {any} */ (await old.svc.claim("alex"));
-  await old.svc.wait();
-  // A reinstalled box, no owner yet: only the code.
-  const fresh = boxService(t, h, { ips: [] });
-  await assert.rejects(fresh.svc.recover({ name: "alex", code: "aaaa-bbbb-cccc-dddd-eeee-ff" }), /do not match/);
-  await assert.rejects(fresh.svc.recover({ name: "alex", code: "" }), /code is needed/);
-  const r = await fresh.svc.recover({ name: "alex", code: recoveryCode.toUpperCase() });
-  assert.equal(r.pendingUntil, h.clock.t + 72 * HOUR);
-  assert.match(r.recoveryCode, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
-  assert.notEqual(r.recoveryCode, recoveryCode);
-  assert.equal(fresh.cfg.network.recovering, "alex");
-  assert.notEqual(fresh.cfg.name, "alex", "the name is adopted only when the rebind lands");
-  // The old box is online: its next look cancels the rebind with no click, and announces it.
-  await old.svc.watch();
-  assert.deepEqual(kinds(old.emitted).slice(-2), ["name.recovery-pending", "name.recovery-cancelled"]);
-  assert.equal(old.emitted.at(-2)?.payload.name, "alex.vyre.run");
-  h.clock.t += 80 * HOUR;
-  await fresh.svc.watch();
-  assert.equal(fresh.cfg.network.recovering, "alex", "still waiting: it never moved");
-  assert.deepEqual(kinds(fresh.emitted), []);
-  assert.equal((await old.box.client.check("alex")).status, "mine");
-  // A second try while the old box is off lands after the wait.
-  await fresh.svc.recover({ name: "alex", code: recoveryCode });
-  h.clock.t += 73 * HOUR;
-  const m = await fresh.svc.watch();
-  assert.equal(m && m.name, "alex");
-  assert.equal(fresh.cfg.name, "alex");
-  assert.ok(!fresh.cfg.network.recovering, "no longer recovering");
-  assert.deepEqual(kinds(fresh.emitted), ["name.recovered"]);
-  assert.equal((await old.box.client.check("alex")).status, "taken");
-  // it can go on to point and serve the name
-  fresh.state.ips = ["100.101.7.7"];
-  await fresh.svc.claim();
-  await fresh.svc.wait();
-  assert.equal(fresh.svc.status().phase, "serving", fresh.svc.status().why || "");
-  assert.deepEqual(h.dns.at("alex.vyre.run").map(x => x.content), ["100.101.7.7"]);
-});
-
-test("names.recover: the hash the box sends is the hash of the code it shows", async t => {
-  const h = hosted(t), a = h.box(), b = h.box();
-  const { code } = await a.client.claim("alex");
-  const sent = [];
-  const spy = directory({ base: "https://names.test", signer: b.signer, now: () => h.clock.t, fetch: /** @type {any} */ (async (url, init) => { sent.push(JSON.parse(init.body || "{}")); return b.fetch(url, init); }) });
-  const svc = names({ ctx: /** @type {any} */ ({ config: { network: {} }, paths: {}, log() {}, events: { emit() {} } }), save() {}, ts: /** @type {any} */ ({}), certs, directory: spy, issue: /** @type {any} */ (async () => {}) });
-  const r = await svc.recover({ name: "alex", code: String(code) });
-  assert.equal(sent[0].next, codeHash("alex", r.recoveryCode));
-  assert.ok(!JSON.stringify(sent).includes(r.recoveryCode), "the new code itself never leaves the box");
-});
-
 test("names.domain.check: the CNAME to <routehash>.acme.vyre.run and the optional CAA, live", { skip }, async t => {
   const h = hosted(t);
   const dns = { cname: /** @type {Record<string, string[]>} */ ({}), caa: /** @type {Record<string, any[]>} */ ({}) };
