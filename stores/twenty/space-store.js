@@ -73,7 +73,7 @@ export async function preflight(o) {
   const root = typeof process.getuid === "function" && process.getuid() === 0;
   if (!docker) reasons.push(process.platform === "darwin" ? "Docker is not running on this Mac (Twenty runs in Colima)" : "this machine cannot run Docker for the space's store (no Space helper here and no Docker for this user)");
   const need = requireFor(o.totalMb);
-  if (mem !== null && mem < need.memoryMb) reasons.push(`${SERVER_FULL} (${mem} MB free, a Space's Twenty needs about ${need.memoryMb} MB)`);
+  if (mem !== null && mem < need.memoryMb) reasons.push(`${SERVER_FULL} (${mem} MB of memory free, a Space's Twenty needs about ${need.memoryMb} MB)`);
   if (disk !== null && disk < REQUIRE.diskMb) reasons.push(`not enough disk: ${disk} MB free, a Space's Twenty needs about ${REQUIRE.diskMb} MB`);
   return { ok: reasons.length === 0, reasons, facts: { memoryAvailableMb: mem, diskFreeMb: disk, docker, helper, root, platform: process.platform } };
 }
