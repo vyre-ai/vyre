@@ -130,7 +130,7 @@ export function createFolder() {
           // Taken back before it was picked up: it leaves the queue and was never a message.
           if (queued.delete(key)) { queueSnap = [...queued.values()]; bump("@queue"); }
         } else if (d.state === "queued") {
-          queued.set(key, { key, kind: "user", text: String(d.text ?? ""), queued: true, queuedAt: d.queued_at ?? f.time ?? 0, ...(Number.isInteger(d.queued_id) ? { qid: d.queued_id } : {}) });
+          queued.set(key, { key, kind: "user", text: String(d.text ?? ""), queued: true, queuedAt: d.queued_at ?? f.time ?? 0 });
           queueSnap = [...queued.values()];
           bump("@queue");
         } else {

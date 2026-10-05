@@ -30,6 +30,9 @@ import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
 import { useRealComposer } from "./useRealComposer";
 import { ChatToolsSheet } from "../../screens/chat-tools";
 import { readDraft, writeDraft } from "./drafts";
+import { ChatExtras } from "./ChatExtras";
+import { queueFrom } from "./extras.js";
+import { tool } from "../real/box";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -86,6 +89,14 @@ export function ChatScreen(p: ChatScreenProps) {
   const [toolsOpen, setToolsOpen] = useState(false);
   // A mention picked in the tools sheet goes on the end of the draft; the composer reads the draft when it mounts, so a new key shows it.
   const [draftN, setDraftN] = useState(0);
+  // The queued words come from the box when the sheet opens: Send now takes a row's id, which the stream's frames do not carry.
+  const [queued, setQueued] = useState<{ queued: number; text: string }[]>([]);
+  useEffect(() => {
+    if (!toolsOpen || allowsMock()) return;
+    let live = true;
+    tool("threads.queue", { thread: p.sessionId }).then((d) => { if (live) setQueued(queueFrom(d)); }).catch(() => { if (live) setQueued([]); });
+    return () => { live = false; };
+  }, [toolsOpen, p.sessionId]);
   const [muted, setMuted] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [runsOn, setRunsOn] = useState<"mac" | "server">(p.about?.runsOn ?? "server");
@@ -154,7 +165,7 @@ export function ChatScreen(p: ChatScreenProps) {
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
       <ChatHeader title={p.title ?? "Session"} participants={faces} viewer={viewer} line={line} phone={phone} onBack={p.onBack} onOpen={() => setAboutOpen(true)} onTools={() => setToolsOpen(true)} />
-      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={meta.queue.filter((q) => typeof q.qid === "number").map((q) => ({ queued: q.qid as number, text: q.text }))} onForked={p.onBranched}
+      <ChatToolsSheet open={toolsOpen} onClose={() => setToolsOpen(false)} thread={p.sessionId} session={p.sessionId} queued={queued} onForked={p.onBranched}
         onMention={(t) => { const d = readDraft(p.sessionId); writeDraft(p.sessionId, d && !/\s$/.test(d) ? `${d} ${t} ` : `${d}${t} `); setDraftN((n) => n + 1); setToolsOpen(false); }} />
       <AboutSheet
         open={aboutOpen}
@@ -241,6 +252,7 @@ export function ChatScreen(p: ChatScreenProps) {
         </View>
       ) : null}
 
+      <ChatExtras thread={p.sessionId} empty={!loading && rows.length === 0} busy={meta.busy} />
       <View style={{ paddingBottom: insets.bottom }}>
         <ChatComposer
           key={draftN}

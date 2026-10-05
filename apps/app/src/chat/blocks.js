@@ -1,6 +1,6 @@
 // @ts-check
 // The Block contract (docs/work/chat.md, 0.3): a tool result becomes one of
-//   terminal | diff | files | record | task | draft | flow-change | watcher | spend-cap | welcome | answer | screen | text
+//   terminal | diff | files | record | task | draft | flow-change | answer | screen | text
 // `normalizeBlock` checks the shape and returns a typed block the components draw. Anything unknown
 // or malformed degrades to a short `text` block, never a JSON dump. A sealed field keeps no value:
 // only its typed placeholder (class, present) survives here, so nothing downstream can render one.
@@ -13,9 +13,6 @@
  *  | { block: "task", id: string, title: string, doer: string | null, state: string, why: string | null, face: boolean, approve: string, tags: string[] }
  *  | { block: "draft", kind: string, to: string | null, subject: string | null, body: string }
  *  | { block: "flow-change", title: string, steps: { op: string, label: string }[] }
- *  | { block: "watcher", name: string }
- *  | { block: "spend-cap", provider: string, cap: number | null, line: string }
- *  | { block: "welcome" }
  *  | { block: "answer", text: string, sources: { title: string, url: string | null }[] }
  *  | { block: "screen", label: string, live: boolean, frames: string[] }
  *  | { block: "field", label: string, kind: string, state: "value" | "sealed" | "hidden", value: string, cls: string, present: boolean }
@@ -80,9 +77,6 @@ export function normalizeBlock(raw, fallback = "Done") {
       const steps = arr(o.steps).map((s) => rec(s)).filter(Boolean).map((s) => ({ op: ["add", "remove", "change"].includes(s?.op) ? s?.op : "change", label: str(s?.label, 200) }));
       return steps.length ? { block: "flow-change", title: str(o.title, 200) || "Flow change", steps } : text();
     }
-    case "watcher": return typeof o.name === "string" && o.name ? { block: "watcher", name: str(o.name, 120) } : text();
-    case "spend-cap": return { block: "spend-cap", provider: str(o.provider, 60), cap: typeof o.cap === "number" ? o.cap : null, line: str(o.line, 300) };
-    case "welcome": return { block: "welcome" };
     case "answer": {
       const t = str(o.text, 8000);
       return t ? { block: "answer", text: t, sources: arr(o.sources).map((s) => rec(s)).filter(Boolean).map((s) => ({ title: str(s?.title, 200) || "Source", url: typeof s?.url === "string" ? s.url : null })).slice(0, 12) } : text();

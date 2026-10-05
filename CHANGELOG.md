@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): the chat's cards and Send now read the box's real shapes. The queued words come from threads.queue ({ queued: [{ queued, uuid, text }] }) when the tools sheet opens; a spend.capped event naming this chat shows its SpendCapCard; the watcher cards come from watchers.shown for the thread; the welcome shows in an empty chat. The invented block kinds are gone. test(app): extras.test.js uses those shapes. fix(app): metro watches kernel/expr. test: scripts/app-walk-paired.mjs pairs by typed code, not relay.pair.start.
+
 - feat(app): Now shows a "Finish setting up Vyre" banner, leading to /u/install/setup, when the box says onboarding is not finished (onboard.status finished is false). A box that cannot answer shows nothing.
 
 - feat(app): a browser claims and recovers a name with a passkey by default (0.2.9): EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 now turns it off, where it used to be =1 to turn it on. Merged native-core's move of the Wink code renderer to lib/wink-code.
