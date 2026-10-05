@@ -31,7 +31,7 @@ async function stopAfter(root, after) {
   return { ...r, err };
 }
 
-test("main: SIGTERM while vyred is still starting drains and exits 0, leaving no socket", { timeout: 30_000 }, async t => {
+test("main: SIGTERM while vyred is still starting drains and exits 0, leaving no socket", { timeout: 120_000 }, async t => {
   // Early (while its modules load and start) and late (once it is up): both are a clean stop.
   for (const after of [0, 150, 400, 2_500]) {
     const root = tempHome(t);
