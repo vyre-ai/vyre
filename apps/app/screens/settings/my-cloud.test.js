@@ -2,12 +2,12 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
+import { plural, serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
 
-const plan = { hash: "h1", counts: { records: { note: 3, reminder: 1, planner_alarm: 2 }, total: 6, chats: { chats: 2 } }, extend: [{ type: "contact", fields: ["job_title"] }], skippedTypes: [{ type: "legacy", why: "its link names a type that does not exist" }], sealed: ["a", "b"], blockers: [] };
+const plan = { hash: "h1", counts: { records: { note: 3, reminder: 1, planner_alarm: 2 }, total: 6, chats: { chats: 2 } }, extend: [{ type: "contact", fields: ["job_title", "other_emails"] }], skippedTypes: [{ type: "legacy", why: "its link names a type that does not exist" }], sealed: ["a", "b"], blockers: [] };
 
 test("my cloud: the plan reads line by line, and nothing the plan lacks is invented", () => {
-  assert.deepEqual(planLines(plan), ["3 notes", "1 reminder", "2 planner alarms", "Your chats, with their history", "2 private fields, moved still sealed", "contact gains job_title in My Cloud", "legacy stays in Personal: its link names a type that does not exist"]);
+  assert.deepEqual(planLines(plan), ["3 notes", "1 reminder", "2 planner alarms", "Your chats, with their history", "2 private fields, moved still sealed", "contact gains job title, other emails in My Cloud", "legacy stays in Personal: its link names a type that does not exist"]);
   assert.deepEqual(planLines({}), []);
   assert.deepEqual(planLines({ counts: { records: { note: 0 } } }), []);
 });
@@ -49,4 +49,9 @@ test("my cloud: the offer follows the rows: setup, then move, then done", () => 
 test("my cloud: only paired servers can host it", () => {
   assert.deepEqual(serversOf({ devices: [{ id: "a", name: "iPhone", kind: "app" }, { id: "srv", name: "Studio mini", kind: "server" }] }), [{ id: "srv", name: "Studio mini" }]);
   assert.deepEqual(serversOf(null), []);
+});
+
+test("my cloud: plurals follow a small rule", () => {
+  assert.deepEqual(["note", "company", "category", "address", "box", "match", "day", "planner alarm"].map(plural), ["notes", "companies", "categories", "addresses", "boxes", "matches", "days", "planner alarms"]);
+  assert.deepEqual(planLines({ counts: { records: { company: 2, category: 1, address: 3 } } }), ["2 companies", "1 category", "3 addresses"]);
 });

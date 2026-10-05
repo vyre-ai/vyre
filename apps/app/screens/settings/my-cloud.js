@@ -13,6 +13,8 @@ export const runInput = (plan, to) => ({ to, plan_hash: plan.hash });
 
 /** @param {number} n @param {string} one @param {string} many */
 const count = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+/** The plural of a record type's name: a consonant then y is "ies", s, x, ch and sh take "es", the rest "s". @param {string} w */
+export const plural = (w) => (/[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : /(s|x|ch|sh)$/i.test(w) ? `${w}es` : `${w}s`);
 /** A record type's name as a person reads it: "planner_alarm" is "planner alarm". @param {string} t */
 const typeWords = (t) => t.replace(/_/g, " ");
 
@@ -23,11 +25,11 @@ const typeWords = (t) => t.replace(/_/g, " ");
 export function planLines(plan) {
   /** @type {string[]} */ const out = [];
   const rec = plan?.counts?.records && typeof plan.counts.records === "object" ? Object.entries(plan.counts.records) : [];
-  for (const [type, n] of rec) if (typeof n === "number" && n > 0) out.push(count(n, typeWords(type), `${typeWords(type)}s`.replace(/ss$/, "s")));
+  for (const [type, n] of rec) if (typeof n === "number" && n > 0) out.push(count(n, typeWords(type), plural(typeWords(type))));
   if (plan?.counts?.chats) out.push("Your chats, with their history");
   if (plan?.counts?.memory) out.push("What your assistant remembers about you, still encrypted");
   if (Array.isArray(plan?.sealed) && plan.sealed.length) out.push(`${count(plan.sealed.length, "private field", "private fields")}, moved still sealed`);
-  for (const e of Array.isArray(plan?.extend) ? plan.extend : []) if (e && typeof e.type === "string" && Array.isArray(e.fields) && e.fields.length) out.push(`${typeWords(e.type)} gains ${e.fields.join(", ")} in My Cloud`);
+  for (const e of Array.isArray(plan?.extend) ? plan.extend : []) if (e && typeof e.type === "string" && Array.isArray(e.fields) && e.fields.length) out.push(`${typeWords(e.type)} gains ${e.fields.map(typeWords).join(", ")} in My Cloud`);
   for (const s of Array.isArray(plan?.skippedTypes) ? plan.skippedTypes : []) if (s && typeof s.type === "string") out.push(`${typeWords(s.type)} stays in Personal${s.why ? `: ${s.why}` : ""}`);
   return out;
 }
