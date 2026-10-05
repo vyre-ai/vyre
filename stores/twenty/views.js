@@ -137,13 +137,14 @@ export async function syncFieldOrder(client, obj, p) {
   const idx = views.find((/** @type {any} */ v) => v.key === "INDEX");
   if (!idx) return 0;
   const have = (await gql("query VFs($v: String!) { getViewFields(viewId: $v) { id fieldMetadataId position isVisible } }", { v: idx.id })).getViewFields;
+  // The Records give a type's own system fields their positions, so a field's absolute position never equals its index here; what matters is the order of ours among themselves and their visibility.
+  // A type made in one go has its fields appended in definition order already: nothing to write. Otherwise the positions our fields hold are handed out again in definition order.
+  const mine = p.fields.map((/** @type {any} */ f) => { const fid = obj.fields.get(f.twenty); return { f, vf: have.find((/** @type {any} */ x) => x.fieldMetadataId === fid), visible: f.def.hidden !== true }; }).filter((/** @type {any} */ x) => x.vf);
+  const slots = mine.map((/** @type {any} */ x) => x.vf.position).sort((/** @type {number} */ a, /** @type {number} */ b) => a - b);
   let n = 0;
-  for (const [i, f] of p.fields.entries()) {
-    const fid = obj.fields.get(f.twenty); const vf = have.find((/** @type {any} */ x) => x.fieldMetadataId === fid);
-    if (!vf) continue;
-    const visible = f.def.hidden !== true;
-    if (vf.position === i && vf.isVisible === visible) continue;
-    await gql("mutation UpVF($i: UpdateViewFieldInput!) { updateViewField(input: $i) { id } }", { i: { id: vf.id, update: { position: i, isVisible: visible } } });
+  for (const [i, x] of mine.entries()) {
+    if (x.vf.position === slots[i] && x.vf.isVisible === x.visible) continue;
+    await gql("mutation UpVF($i: UpdateViewFieldInput!) { updateViewField(input: $i) { id } }", { i: { id: x.vf.id, update: { position: slots[i], isVisible: x.visible } } });
     n++;
   }
   return n;

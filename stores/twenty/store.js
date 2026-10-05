@@ -685,8 +685,8 @@ export class TwentyStore {
     const bad = checkData(p, data); if (bad) throw new StoreError(bad.code, bad.message);
     const P = pascal(p.singular);
     return this.#t(async () => {
-      if (await this.#row(p, id, "any")) throw new StoreError("invalid", `${type} ${id} already exists`);
-      const d = await this.client.gql("graphql", `mutation Create_${p.singular}($d: ${P}CreateInput!) { create${P}(data: $d) { ${selection(p)} } }`, { d: { id, ...toInput(p, data), [VERSION_FIELD]: 1 } });
+      // no read first: the primary key refuses an id that is taken (a removed record keeps its id too), and that is the one answer
+      const d = await this.client.gql("graphql", `mutation Create_${p.singular}($d: ${P}CreateInput!) { create${P}(data: $d) { ${selection(p)} } }`, { d: { id, ...toInput(p, data), [VERSION_FIELD]: 1 } }).catch((e) => { throw e && e.code === "id_exists" ? new StoreError("invalid", `${type} ${id} already exists`) : e; });
       let row = d[`create${P}`];
       if (row.id !== id) throw new StoreError("invalid", `Twenty replaced our id: sent ${id}, got ${row.id}`);
       this.#mine(id, row.updatedAt);
