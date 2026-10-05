@@ -1304,16 +1304,16 @@ test("modules: a relayed call is judged as the relayed person, firstParty false;
   const spaces = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "spaces.relayed", reach: "anyone" }, { name: "spaces.plain", reach: "anyone" }, { name: "spaces.storage.put", reach: "anyone" }] } };
   writeModule(root, "spaces", spaces, `export default { async start(ctx) {
     const asRefusal = e => ({ refused: e.code || e.message });
-    ctx.tool("spaces.relayed", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.gated", {}, { relay: true }).then(r => ({ r }), asRefusal) });
-    ctx.tool("spaces.plain", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.gated", {}).then(r => ({ r }), asRefusal) });
+    ctx.tool("spaces.relayed", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.plan", {}, { relay: true }).then(r => ({ r }), asRefusal) });
+    ctx.tool("spaces.plain", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.upgrade.plan", {}).then(r => ({ r }), asRefusal) });
     ctx.tool("spaces.storage.put", { effect: "write", input: { type: "object" }, run: async () => ({}) });
     return {};
   } };`);
-  const memory = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "memory.upgrade.gated", reach: "anyone" }] } };
+  const memory = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "memory.upgrade.plan", reach: "anyone" }] } };
   // a gate like the switchboard's chat gate: first-party callers pass, everyone else must be a member of the chat
   writeModule(root, "memory", memory, `export default { async start(ctx) {
     const MEMBERS = ["per_alex"];
-    ctx.tool("memory.upgrade.gated", { effect: "read", input: { type: "object" }, run: async (_i, meta) => {
+    ctx.tool("memory.upgrade.plan", { effect: "read", input: { type: "object" }, run: async (_i, meta) => {
       const person = meta.kernelFacts && meta.kernelFacts.person;
       if (meta.firstParty === true) return { passed: "first-party", relayedBy: meta.relayedBy || null };
       if (!MEMBERS.includes(person)) throw Object.assign(new Error("not a member"), { code: "denied" });
@@ -1327,7 +1327,7 @@ test("modules: a relayed call is judged as the relayed person, firstParty false;
   t.after(() => db.close());
   const stranger = { kind: "device", device_key_id: "d9", person: "per_mallory", path: "direct" };
   const alex = { kind: "device", device_key_id: "d1", person: "per_alex", path: "direct" };
-  assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: stranger })).data, { refused: "denied" }, "a relayed non-member is refused, not waved through as first-party");
+  assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: stranger })).data, { r: { error: { code: "denied", message: "not a member" } } }, "a relayed non-member is refused, not waved through as first-party");
   assert.deepEqual((await reg.call("spaces.relayed", {}, "cli", { kernelFacts: alex })).data, { r: { data: { passed: "member", relayedBy: "module:spaces" } } }, "a relayed member passes as a member, the module named for audit only");
   // a plain module call (no relay) is still first-party, and carries no relayedBy
   assert.deepEqual((await reg.call("spaces.plain", {}, "cli", { kernelFacts: stranger })).data, { r: { data: { passed: "first-party", relayedBy: null } } });
