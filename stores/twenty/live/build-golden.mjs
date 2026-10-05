@@ -6,8 +6,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { provisionSpace, names, spaceDir, realRunner, TWENTY_TESTED_REF, tagOfRef } from "../provision.js";
+import { provisionSpace, names, spaceDir, realRunner, TWENTY_TESTED_REF, tagOfRef, CORE_USER_TABLE, CORE_USER_PROBE } from "../provision.js";
 import { createTwentyStore } from "../store.js";
 import { defineCore } from "../space-store.js";
 import { TwentyClient } from "../client.js";
@@ -26,6 +27,9 @@ try {
   const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: path.join(spaceDir(home, space), "state"), webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
   await defineCore(store, lap);
   lap(`types made: ${(await store.types()).map((/** @type {any} */ t) => t.name).join(", ")}`);
+  // the repair in box/vyre (sp_schema) and the helper's mark ask for this table: if a pinned Twenty ever renames it, this build fails instead of every Space reading as empty
+  const hasUser = execFileSync("docker", ["exec", `${n.project}-db-1`, "psql", "-U", "postgres", "-d", "default", "-tAc", CORE_USER_PROBE]).toString().replace(/\s/g, "");
+  if (!hasUser) throw new Error(`the pinned Twenty image has no ${CORE_USER_TABLE}: box/vyre's sp_schema must change with it`);
   await store.prepare();
   lap("mirror columns made");
   const sdir = path.join(spaceDir(home, space), "state");
@@ -37,7 +41,7 @@ try {
   sh(["cp", `${db}:/tmp/golden.dump`, path.join(out, `${tag}.dump`)]);
   fs.chmodSync(path.join(out, `${tag}.dump`), 0o644); // read by the unprivileged generator in the image: not a secret (no password in it)
   const admin = JSON.parse(fs.readFileSync(path.join(spaceDir(home, space), "admin.secret"), "utf8"));
-  fs.writeFileSync(path.join(out, `${tag}.json`), JSON.stringify({ image, email: admin.email, workspaceId: p.workspaceId, builtAt: new Date().toISOString(), state }, null, 2), { mode: 0o644 });
+  fs.writeFileSync(path.join(out, `${tag}.json`), JSON.stringify({ image, email: admin.email, workspaceId: p.workspaceId, builtAt: new Date().toISOString(), sha256: crypto.createHash("sha256").update(fs.readFileSync(path.join(out, `${tag}.dump`))).digest("hex"), state }, null, 2), { mode: 0o644 });
   lap(`saved ${path.join(out, `${tag}.dump`)} (${(fs.statSync(path.join(out, `${tag}.dump`)).size / 1e6).toFixed(1)} MB)`);
   ok = true;
 } finally {

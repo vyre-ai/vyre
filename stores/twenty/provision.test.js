@@ -2,6 +2,7 @@ import "../../scripts/mac-test-guard.mjs";
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { TWENTY_TESTED_REF, isPinnedRef, composeFile, findGolden, tagOfRef, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG, autoProfile, memoryOf, MEMORY_PROFILES } from "./provision.js";
@@ -245,7 +246,8 @@ test("findGolden returns a saved database only for exactly the image the Space w
   const dir = tmp(), tag = tagOfRef(TWENTY_TESTED_REF);
   assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "none saved");
   fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
-  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t", state: { "types.json": [] } }));
+  const sha = (/** @type {string} */ t) => crypto.createHash("sha256").update(t).digest("hex");
+  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t", sha256: sha("x"), state: { "types.json": [] } }));
   const g = findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] });
   assert.equal(g?.dump, path.join(dir, `${tag}.dump`));
   assert.equal(g?.meta.email, "service@x.vyre.invalid");
@@ -253,6 +255,12 @@ test("findGolden returns a saved database only for exactly the image the Space w
   assert.equal(findGolden({ image: other, dirs: [dir] }), null, "a different image (same tag, another digest) is not used");
   fs.writeFileSync(path.join(dir, `${tag}.dump`), "");
   assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "an empty dump is not a saved database");
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "y");
+  assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "a dump that is not the file the build hashed is not used");
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
+  assert.ok(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), "the hashed dump is");
+  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t" }));
+  assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "a saved database with no recorded hash is not used");
 });
 
 test("no compose file publishes a Twenty port: not a plain Space, not one made from the saved database, and a Mac server's proxy publishes on 127.0.0.1 only and never from the server", () => {
@@ -270,7 +278,7 @@ test("no compose file publishes a Twenty port: not a plain Space, not one made f
 test("on a server the saved database is root's: nothing is written for it here, the password root left is the one signed in with, and with none left the Space is a plain one", async () => {
   const dir = tmp(), tag = tagOfRef(TWENTY_TESTED_REF);
   fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
-  const golden = findGolden({ image: TWENTY_TESTED_REF, dirs: [(() => { fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t", state: { "types.json": [{ "def": { name: "contact", fields: [] }, "plural": "contacts" }] } })); return dir; })()] });
+  const golden = findGolden({ image: TWENTY_TESTED_REF, dirs: [(() => { fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t", sha256: crypto.createHash("sha256").update("x").digest("hex"), state: { "types.json": [{ "def": { name: "contact", fields: [] }, "plural": "contacts" }] } })); return dir; })()] });
   assert.ok(golden);
   // root used the saved database and left the password: the Space adopts the saved user
   const fake = await new FakeTwenty().start(); const home = tmp(); const calls = [];

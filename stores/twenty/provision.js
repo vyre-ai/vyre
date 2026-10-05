@@ -217,7 +217,7 @@ export function spaceDir(home, space) { need(space); return path.join(home, "spa
  * @typedef {{ home: string, space: string, runner?: Runner, image?: string, gatewayContainer?: string | null,
  *   reach?: "alias" | "ip" | "loopback", publish?: "loopback", pickPort?: () => Promise<number>, memory?: Parameters<typeof memoryOf>[0], log?: (line: string) => void,
  *   golden?: false | { dump: string, meta: GoldenMeta } }} ProvisionOptions
- * @typedef {{ image: string, email: string, workspaceId: string, builtAt: string, state?: Record<string, any> }} GoldenMeta
+ * @typedef {{ image: string, email: string, workspaceId: string, builtAt: string, sha256: string, state?: Record<string, any> }} GoldenMeta
  * @typedef {{ space: string, dir: string, url: string, origin: string, keyFile: string, workspaceId: string, network: string,
  *   serverAlias: string, gatewayAlias: string, webhookSecretFile: string, image: string, port?: number }} Provisioned
  */
@@ -298,7 +298,7 @@ export async function provisionSpace(o) {
 }
 
 /**
- * Where a saved database for an image is kept: `<tag>.dump` (pg_dump custom format, no owners) and `<tag>.json` ({ image, email, workspaceId, builtAt }) in one folder. The folders looked in,
+ * Where a saved database for an image is kept: `<tag>.dump` (pg_dump custom format, no owners) and `<tag>.json` ({ image, email, workspaceId, builtAt, sha256 of the dump }) in one folder. The folders looked in,
  * in order: VYRE_TWENTY_GOLDEN_DIR, then stores/twenty/golden in this checkout. The file is only used when its image is exactly the one the Space will run.
  * @param {{ image: string, dirs?: string[] }} o @returns {{ dump: string, meta: GoldenMeta } | null}
  */
@@ -309,11 +309,19 @@ export function findGolden(o) {
     try {
       const meta = JSON.parse(fs.readFileSync(path.join(d, `${tag}.json`), "utf8"));
       const dump = path.join(d, `${tag}.dump`);
-      if (meta && meta.image === o.image && typeof meta.email === "string" && fs.statSync(dump).size > 0) return { dump, meta };
+      // Used only when it is for exactly this image (tag and digest) AND the dump is the file the build hashed: a dump that was changed, cut short or swapped is not a saved database.
+      if (meta && meta.image === o.image && typeof meta.email === "string" && /^[0-9a-f]{64}$/.test(String(meta.sha256)) && sha256File(dump) === meta.sha256) return { dump, meta };
     } catch { /* not here */ }
   }
   return null;
 }
+
+/** The table the Space helper asks for to know a Space's database was migrated (box/vyre sp_schema: `select to_regclass($$core."user"$$)`). The golden build checks the pinned image still has it. */
+export const CORE_USER_TABLE = 'core."user"';
+export const CORE_USER_PROBE = `select to_regclass($$${CORE_USER_TABLE}$$)`;
+
+/** The sha256 of a file, hex. @param {string} f */
+const sha256File = (f) => crypto.createHash("sha256").update(fs.readFileSync(f)).digest("hex");
 
 /**
  * A Space started from the saved database already has its user and workspace, and the restore step has put this Space's own password on the user: sign in with it, make this Space's API key and name the

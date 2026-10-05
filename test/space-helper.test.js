@@ -817,7 +817,7 @@ const goldenIn = (/** @type {ReturnType<typeof rig>} */ r) => {
   const g = path.join(r.F, "golden-src"); fs.mkdirSync(g, { recursive: true });
   const tag = TWENTY_TESTED_REF.split("@")[0].split(":").pop();
   fs.writeFileSync(path.join(g, `${tag}.dump`), "PGDMP-fake");
-  fs.writeFileSync(path.join(g, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t" }));
+  fs.writeFileSync(path.join(g, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@golden.vyre.invalid", workspaceId: "w", builtAt: "t", sha256: crypto.createHash("sha256").update("PGDMP-fake").digest("hex") }));
   r.flag("golden-dir", g);
   return g;
 };
