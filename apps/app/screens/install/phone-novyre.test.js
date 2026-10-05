@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { CAMERA_SCAN, NO_VYRE, deviceKind, offersNoVyre } from "./first-run.js";
+import { CAMERA_SCAN, DRAWN_CODE_SCAN, NO_VYRE, deviceKind, offersNoVyre } from "./first-run.js";
 import { backOf } from "./flow.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -51,11 +51,12 @@ test("a phone's connect step offers typing the code (not a browser), before the 
   assert.ok(scan.indexOf("<TypeCode") < scan.indexOf("offersNoVyre(dk, MOCK) ?"));
 });
 
-test("PairEntry offers the camera reader only with CAMERA_SCAN, a reader on this platform and a ticket handler, and hands the ticket on once", () => {
-  const src = read("../devices/PairParts.tsx");
-  assert.match(src, /const canDraw = CAMERA_SCAN && canReadDrawnCode && !!onTicket;/);
-  assert.match(src, /\{canDraw \? \(reading/);
+test("TypeCode offers Scan the code on a phone, and a code the camera reads goes through the typed code's own pairing", () => {
+  const src = read("../devices/TypeCode.tsx");
+  assert.match(src, /const canScan = DRAWN_CODE_SCAN && canReadDrawnCode;/);
   assert.match(src, /label="Scan the code"/);
-  assert.match(src, /if \(e\.type === "ticket"\) \{ setReading\(false\); setHint\(""\); onTicket\?\.\(e\.ticket\); \}/);
-  assert.equal(CAMERA_SCAN, false, "off until a real-phone walk");
+  assert.match(src, /const code = avatarBytesToCode\(e\.ticket\);/);
+  assert.match(src, /setText\(code\); void go\(code\);/);
+  assert.equal(DRAWN_CODE_SCAN, true);
+  assert.equal(CAMERA_SCAN, false, "the old QR camera view in PairEntry stays off: no plain QR");
 });

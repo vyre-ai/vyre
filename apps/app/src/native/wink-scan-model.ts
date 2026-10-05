@@ -29,5 +29,6 @@ export const SCAN_SAY = {
   denied: "The camera is off for Vyre. Turn it on in your phone's settings, then come back.",
   no_camera: "This phone's camera did not open. Type the code instead.",
   scan_worker: "Reading the code stopped. Close this and try again, or type the code.",
+  not_a_code: "That drawing is not a code to connect with. Show the one from the screen you are connecting to.",
   slow: "Hold your phone straight on to the screen, with the whole drawing in view.",
 } as const;
