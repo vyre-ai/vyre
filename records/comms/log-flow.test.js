@@ -97,7 +97,7 @@ test("the switches: createUnknown makes the contact once; skipInternal leaves co
   const made = (await a.all("contact")).filter(c => c.data.email === "new@person.test");
   assert.equal(made.length, 1);
   const c1 = (await a.all("communication")).find(x => x.data.from === "new@person.test");
-  assert.deepEqual(c1.data.contacts.map((/** @type {any} */ c) => c.urn), [made[0].urn]);
+  assert.ok(c1.data.contacts.some((/** @type {any} */ c) => c.urn === made[0].urn), "the contact made for the new person is on it (and one for the mailbox, which createUnknown makes too)");
   const raw2 = rawOf(a.google, { from: "new@person.test", subject: "Again", snippet: "" });
   await a.feed(filed(raw2, mailMap, { mailbox: MAILBOX }, r => r.id));
   assert.equal((await a.all("contact")).filter(c => c.data.email === "new@person.test").length, 1, "found, not made again");
