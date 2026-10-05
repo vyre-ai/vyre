@@ -8,7 +8,7 @@ import { creature } from "../../src/vendor/deck/vendor/vyrecode/creature.js";
 import { character } from "../../src/vendor/deck/vendor/vyrecode/characters.js";
 import { emblem } from "../../src/vendor/deck/vendor/vyrecode/emblem.js";
 import { agentV2 } from "../../src/vendor/deck/vendor/vyrecode/agent2.js";
-import { PROJECT_COLORS } from "../../src/vendor/deck/vendor/vyrecode/identity.js";
+import { PROJECT_COLORS } from "../../../../lib/wink-code/identity.js";
 import { projectBytes } from "../../../../lib/avatar-seed/index.js";
 
 /** @typedef {"person" | "assistant" | "teammate" | "agent" | "project" | "space" | "device"} MarkKind */

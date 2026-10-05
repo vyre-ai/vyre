@@ -215,7 +215,9 @@ export async function applyOp(state, op, ctx = {}) {
   /** The time an age is counted from: the op's own, or the first time this verifier saw it if that is later. */
   const eff = ctx.seenAt && Number.isInteger(op.seq) ? Math.max(op.ts, ctx.seenAt(op.seq) ?? 0) : op.ts;
   const msg = messageOf(op);
-
+  // The directory keeps no device labels (0.2.9, the name list holds public keys only): a device, recovery code or contact entry that carries a label is refused where ops are ACCEPTED now. A label stays on the device that
+  // named the entry. History that already holds labels (an older chain) still verifies, since `live` is false when a client or the Worker re-reads what was accepted before.
+  if (ctx.live) for (const raw of [op.entry, op.code]) if (raw && typeof raw === "object" && raw.label !== undefined && raw.kind !== "owner") throw chainError("bad_entry", "an entry carries no label: a device's name stays on that device, never in the public list");
   if (op.type === "genesis") {
     if (state) throw chainError("bad_op", "a chain has one genesis");
     if (op.seq !== 0 || op.prev !== null || !["person", "space"].includes(op.kind)) throw chainError("bad_op", "a genesis is seq 0 with no prev");

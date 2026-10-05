@@ -4,11 +4,11 @@ import { Platform } from "react-native";
 
 export const RC = {
   sites: false,
-  // A build made with EXPO_PUBLIC_VYRE_BROWSER_CLAIM=1 may claim and recover a name in a browser (a walk of the recovery screens needs it). Read as process.env.NAME exactly: Expo inlines only that form.
-  browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM === "1",
+  // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
+  browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM !== "0",
 };
 
-/** True when this build is a browser and may not claim a name. */
+/** True only for a browser build made with the claim switched off. */
 export const claimBlocked = (): boolean => Platform.OS === "web" && !RC.browserClaim;
 
 /** What the person reads in each hidden path. Specific, and it says where to go. */

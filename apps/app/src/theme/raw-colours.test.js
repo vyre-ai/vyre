@@ -14,6 +14,7 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 /** Files that may hold literal colours, and why. Keep it short; a new entry needs a reviewer to agree the colour is not a role. */
 export const EXCEPTIONS = Object.freeze({
   "src/terminal/palettes.ts": "the terminal's ANSI colours: a terminal needs its reds and greens to carry meaning, they are not roles",
+  "ui/marks/provider-art.js": "the AI providers' own published marks, drawn unmodified in their brand colours",
   "ui/marks/source.js": "the avatar illustration (skin, hair, clothes and background palettes): art, drawn the same under either scheme",
 });
 

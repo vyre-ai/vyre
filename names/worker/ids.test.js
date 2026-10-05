@@ -52,7 +52,7 @@ async function key(label) {
   const pubText = Buffer.from(pub).toString("base64url");
   const eid = await C.eidOf(pub);
   const sign = m => crypto.sign(null, Buffer.from(m), privateKey);
-  return { label, pub: pubText, eid, sign, sig64: m => sign(m).toString("base64url"), entry: kind => ({ eid, kind, pub: pubText, label }) };
+  return { label, pub: pubText, eid, sign, sig64: m => sign(m).toString("base64url"), entry: kind => ({ eid, kind, pub: pubText }) };
 }
 
 /** A person (or space) client over the directory: it holds the chain it has built and talks plain HTTP with nothing signed at the request level. */

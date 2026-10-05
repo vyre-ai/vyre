@@ -143,7 +143,7 @@ final class BoxSocket: @unchecked Sendable {
             if wake[0] >= 0 { Darwin.close(wake[0]); Darwin.close(wake[1]) }
             onClose(code, reason)
         }
-        t.name = "vyred websocket"
+        t.name = "stream socket"
         t.qualityOfService = .userInitiated
         t.stackSize = 512 * 1024
         t.start()
