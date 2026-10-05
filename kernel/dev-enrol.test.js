@@ -115,7 +115,7 @@ test("dev-sign-proof takes its op names from kernel/remote/proof.js: --call repr
   const sample = /** @type {Record<string, any[]>} */ ({
     create: [{ x: 1 }], revoke: ["g1", "why"], narrow: ["g1", { a: 1 }], setRole: [{ person: "per_b", role: "member" }], ruleSet: [{ id: 1 }], ruleRemove: ["r1"], ruleEnable: ["r1"], ruleDisable: ["r1"], ruleAccept: ["r1"], ruleDismiss: ["r1"],
     transferOwner: [{ to: "per_b" }], removeMember: [{ person: "per_b" }], removeActor: [{ id: "a1", kind: "agent" }], addActor: [{ id: "a1", kind: "agent" }], offer: [{ x: 1 }], unoffer: ["o1"],
-    lend: [{ member: "per_b", device: "d1", device_key: "k" }], unlend: [{ member: "per_b", device: "d1" }], inviteCreate: [{ role: "member" }], inviteConfirm: ["i1", { words: "w" }],
+    lend: [{ member: "per_b", device: "d1", device_key: "k" }], unlend: [{ member: "per_b", device: "d1" }], inviteCreate: [{ role: "member" }], moveOut: [{ project: "vyre://spc_dg3xdpn6yc5w/project/0190c3f2-1111-4abc-8def-000000000001", to: "spc_aaaaaaaaaaaa", plan_hash: "p".repeat(43) }], upgrade: [{ to: "spc_aaaaaaaaaaaa", plan_hash: "p".repeat(43) }], moveOutMany: [{ projects: ["vyre://spc_dg3xdpn6yc5w/project/0190c3f2-1111-4abc-8def-000000000001", "vyre://spc_dg3xdpn6yc5w/project/0190c3f2-1111-4abc-8def-000000000002"], to: "spc_aaaaaaaaaaaa", plan_hash: "p".repeat(43) }], inviteConfirm: ["i1", { words: "w" }],
   });
   assert.deepEqual(Object.keys(sample).sort(), [...PROOF_CALLS].sort(), "a new proof call needs a sample here, so the script keeps up");
   const space = "spc_dg3xdpn6yc5w";

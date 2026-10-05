@@ -50,7 +50,7 @@ export function createCalendarSync(o) {
         for (const g of res.body.items || []) {
           const existing = await byExternal(g.id);
           if (g.status === "cancelled") { if (existing) { await R.remove(o.chain(), "event", existing.id, existing.version); out.removed++; } continue; }
-          const data = fromGoogle(g, route);
+          const data = fromGoogle(g, route, typeof res.body.timeZone === "string" ? res.body.timeZone : undefined);
           if (!data) continue;
           if (existing) {
             const mine = synced()[existing.id];

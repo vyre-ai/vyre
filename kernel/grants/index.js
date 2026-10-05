@@ -26,6 +26,13 @@ export const GRANT_ACTIONS = Object.freeze([
   // Taking access away asks for no fresh proof, only the person's live session (risk "admin" = session presence): withdrawing can only reduce what a computer may do.
   { action: "grants.unoffer", resource_type: "offer", risk: "admin", label: "stop sharing a computer", gloss: "Withdraw an offer of a computer for work." },
   { action: "grants.invite", resource_type: "invite", risk: "grant", label: "invite someone", gloss: "Invite a person to join with a role." },
+  // Moving a project to another of the person's Spaces on this home (kernel/gateway/moves.js): the move is approved once, where it starts; the receiving Space asks only the role.
+  { action: "project.move_out", resource_type: "project", risk: "grant", label: "move a project to another space", gloss: "Start moving a project out of this Space. You approve once, for the whole move." },
+  { action: "project.move_in", resource_type: "project", risk: "admin", label: "receive a moved project", gloss: "Accept a project moved here from another of your Spaces, after the approval given there." },
+  { action: "project.move_finish", resource_type: "project", risk: "admin", label: "finish moving a project", gloss: "Say a project has fully arrived (here) or that its move is done and the original may be cleared (where it started), after the approval given at the start." },
+  { action: "space.upgrade", resource_type: "space", risk: "grant", label: "move this space to My Cloud", gloss: "Carry your Personal space's records, chats and memory to your own server. You approve once, for the whole move." },
+  { action: "space.upgrade_finish", resource_type: "space", risk: "admin", label: "finish moving to My Cloud", gloss: "Say the move to My Cloud is done and this space now points there." },
+  { action: "records.import", resource_type: "record", risk: "admin", label: "bring records in with their ids", gloss: "Receive records moved from another space of yours, keeping their ids so links and chats still point at them." },
   { action: "grants.list", resource_type: "grant", risk: "read", label: "see who has access", gloss: "List access you may see." },
   // Standing rules for a Space (DESIGN-flows-joints 5a): an owner sets them with presence; they only ever tighten.
   { action: "rules.set", resource_type: "rule", risk: "grant", label: "set a standing rule", gloss: "Make a rule the whole Space must keep: never, draft only, or always ask." },

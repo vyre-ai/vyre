@@ -114,9 +114,10 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   const deps = { peerPid: async () => 4242, delayMs: 1, alive: () => true, processTable: () => () => null,
     insideClaude: () => (++n <= 3 ? { inside: false, unknown: true } : { inside: true, by: 700 }) };  // three looks per answer: first, two retries
   const first = await asTaken("cli", socket, registry, undefined, deps);
-  assert.deepEqual(first, { caller: "cli", model: false }, "unknown keeps the label for this call");
+  const mini = (/** @type {any} */ v) => ({ caller: v.caller, model: v.model });
+  assert.deepEqual(mini(first), { caller: "cli", model: false }, "unknown keeps the label for this call");
   const second = await asTaken("cli", socket, registry, undefined, deps);
-  assert.deepEqual(second, { caller: "mcp", model: true }, "and is asked again on the next call");
+  assert.deepEqual(mini(second), { caller: "mcp", model: true }, "and is asked again on the next call");
   n = 0;
   const outside = {};
   const clean = { ...deps, insideClaude: () => ({ inside: false }) };
@@ -132,7 +133,7 @@ test("peer race: only a definite answer is kept for the connection", async () =>
   assert.equal(one.model, true, "unreadable is a model's this time");
   await new Promise(r => setImmediate(r));
   const two = await asTaken("cli", flaky, registry, undefined, fdeps);
-  assert.deepEqual(two, { caller: "cli", model: false }, "and is asked again, not kept");
+  assert.deepEqual(mini(two), { caller: "cli", model: false }, "and is asked again, not kept");
 });
 
 test("peer race: a named server keeps its label when the chain is unreadable", async () => {
@@ -237,4 +238,16 @@ test("peer race: a forger that sends and exits before the check is a model's, no
   await Promise.all(Array.from({ length: 40 }, (_, i) => forger(dir, d.paths.socket, i, { fireAndForget: true })));
   await new Promise(r => setTimeout(r, 500));
   assert.equal(globalThis.__probeMineRan, 0, "a fire-and-forget forger ran a person's tool");
+});
+
+test("peer race: when Vyre could not tell who called, it says which half failed (the kernel gave no pid, or the chain was unreadable)", async () => {
+  const noPid = await asTaken("cli", {}, registry, undefined, { peerPid: async () => null, delayMs: 1, peerRetryMs: 1, alive: () => true });
+  assert.equal(noPid.couldNotTell, true);
+  assert.equal(noPid.why, "peer_pid_unread");
+  const unreadable = await asTaken("cli", {}, registry, undefined, { peerPid: async () => 4242, delayMs: 1, alive: () => true, processTable: () => () => null, insideClaude: () => ({ inside: false, unknown: true, unreadable: true }) });
+  assert.equal(unreadable.couldNotTell, true);
+  assert.equal(unreadable.why, "process_chain_unreadable");
+  const fine = await asTaken("cli", {}, registry, undefined, { peerPid: async () => 4242, delayMs: 1, alive: () => true, insideClaude: () => ({ inside: false }) });
+  assert.equal(fine.couldNotTell, false);
+  assert.equal(fine.why, undefined);
 });
