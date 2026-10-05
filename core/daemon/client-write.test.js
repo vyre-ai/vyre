@@ -18,12 +18,12 @@ function counter(root) {
 test("write: a send made while vyred is restarting lands once when it is back", { timeout: 30_000 }, async t => {
   const root = tempHome(t);
   counter(root);
-  let d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  let d = await start({ root, log: () => {} });
   t.after(async () => { await d.stop(); });
   await d.stop();
   const pending = write("count.add", { n: 1 }, { root, key: "key-restart-1", caller: "cli" });
   await new Promise(r => setTimeout(r, 600));
-  d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  d = await start({ root, log: () => {} });
   const r = await pending;
   assert.deepEqual(r.data, { n: 1 });
   // The same intent again (a retry after a lost answer) is the first answer, not a second write.

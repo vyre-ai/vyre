@@ -9,7 +9,6 @@
 
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
-import { createHub } from "./hub.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
 import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
@@ -84,58 +83,6 @@ export default {
       return (engineer = createEngineer({ kernel: k, compile: k.compile, simulate: k.simulate || null, ...(k.engineerChain ? { engineerChain: k.engineerChain } : {}) }));
     };
 
-    // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
-    /** @type {any} */ let hub = null;
-    const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
-    if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
-      const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
-      hear("thread.started", p => hubOf().onStarted(p));
-      hear("thread.stopped", p => hubOf().onStopped(p));
-      // a name changed in the old project list or on a thread reaches Records; a name changed in Records reaches them (core/work/hub.js)
-      hear("project.changed", p => hubOf().onProjectChanged(p));
-      hear("thread.renamed", p => hubOf().onThreadRenamed(p));
-      // a /rename inside Claude Code reaches the transcript, which Recall indexes: checked at each turn's end
-      hear("turn.completed", p => hubOf().onTurn(p));
-      const k0 = ctx.kernel;
-      if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
-        try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "session-summary.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this build: the other directions still work */ }
-      }
-      // every Space has a General project, made with it
-      void hubOf().generalProject().catch(() => {});
-    }
-    ctx.tool("work.project.create", {
-      description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
-      input: obj({ name: { type: "string" }, repo: { type: "string" }, client: { type: "string" }, slug: { type: "string" } }, ["name"]),
-      run: async (input, extra) => {
-        const rec = await hubOf().createProject(await chainOf(extra), { name: input.name, repo: input.repo, client: input.client, slug: input.slug });
-        return { project: rec.urn, slug: rec.data.slug, drive_path: rec.data.drive_path, memory_scope: rec.data.memory_scope };
-      },
-    });
-    ctx.tool("work.project.rename", {
-      description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
-      input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
-      run: async (input, extra) => {
-        const rec = await hubOf().projectOf(input.project);
-        if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
-        const r = await hubOf().renameProject(rec, input.name, "record", await chainOf(extra));
-        return { project: r.urn, slug: r.data.slug, name: r.data.name, drive_path: r.data.drive_path };
-      },
-    });
-    ctx.tool("work.session.rename", {
-      description: "Rename a session, from Records' side: the record's title and the thread's name agree, the session's id does not change.",
-      input: obj({ thread: { type: "string" }, title: { type: "string" } }, ["thread", "title"]),
-      run: async (input, extra) => {
-        const rec = await hubOf().sessionRecord(input.thread);
-        if (!rec) throw Object.assign(new Error("no record of that session"), { code: "not_found" });
-        const r = await hubOf().renameSession(rec, input.title, "record", await chainOf(extra));
-        return { thread: r.data.thread, title: r.data.title };
-      },
-    });
-    ctx.tool("work.session.move", {
-      description: "Move to project: file a session under another Project (a short name or a record address). Its record, Drive folder and the project's session list follow; its id, times and transcript pointer stay.",
-      input: obj({ thread: { type: "string" }, project: { type: "string" } }, ["thread", "project"]),
-      run: async (input, extra) => { const r = await hubOf().moveSession(input.thread, input.project, await chainOf(extra)); return { thread: r.data.thread, project: r.data.project && r.data.project.urn, drive: r.data.drive }; },
-    });
     ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",
       input: obj(),
@@ -154,28 +101,15 @@ export default {
         return { result, component: toComponent(String(input.tool), normal, { types }) };
       },
     });
-    /** The named assistant a chain acts as (its last hop), or null: project memory is read for an agent. @param {any} chain */
-    const agentOf = chain => { const h = chain && chain.hops && chain.hops[chain.hops.length - 1]; return h && h.actor && h.actor.kind === "agent" ? String(h.actor.id) : null; };
-    // The Space's own context budget (a Space setting kept with its Flows; an owner or admin sets it through flows.budget { context_tokens }); 1,200 when there is no Flows assembly.
-    const spaceContextTokens = async (/** @type {any} */ k, /** @type {any} */ chain) => { try { const h = ctx.flowsHost && ctx.flowsHost.get(k.space); const b = h && await h.flows.tools["flows.budget"](chain, {}); return b && b.context_tokens || 1200; } catch { return 1200; } };
     ctx.tool("work.situation", {
-      description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why. With `context: true`, or a `task`, also the record's world: the records it links to and that link to it, recent communications with the people on it, and what happened to it lately.",
-      input: obj({ project: { type: "string" }, record: { type: "string" }, context: { type: "boolean" }, task: { type: "string" }, context_tokens: { type: "number" } }),
+      description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why.",
+      input: obj({ project: { type: "string" }, record: { type: "string" } }),
       run: async (input, extra) => {
         const k = kernelOf();
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
-        let project = ref(input.project), record = ref(input.record);
-        const chain = await chainOf(extra);
-        let asked = Number.isFinite(input.context_tokens) ? input.context_tokens : undefined;
-        // A task names the record it is about: an agent doing it gets that record's world as well
-        if (typeof input.task === "string" && input.task && !record) {
-          const t = await k.ask.get(chain, input.task).catch(() => null);
-          if (t && typeof t.record === "string") record = ref(t.record);
-          // a task may ask for more of the record's world (form.context_tokens), within the ceiling
-          if (asked === undefined && t && t.form && Number.isFinite(t.form.context_tokens)) asked = t.form.context_tokens;
-        }
+        const project = ref(input.project), record = ref(input.record);
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), memory: agentOf(chain) ? async (/** @type {string} */ slug) => { const r = await ctx.call("memory.brief", { project: slug, agent: agentOf(chain) }); const d = r && (r.data !== undefined ? r.data : r); return d && typeof d.text === "string" ? d.text : null; } : null, context: (input.context === true || typeof input.task === "string") ? { budget: Math.max(200, Math.min(8000, Math.trunc(asked ?? await spaceContextTokens(k, chain)))) } : false });
+        return buildSituation(k, await chainOf(extra), { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra) });
       },
     });
 

@@ -3,7 +3,7 @@
     "name": "Vyre",
     "slug": "vyre",
     "scheme": "vyre",
-    "version": "0.2.9",
+    "version": "0.1.0",
     "orientation": "default",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -19,7 +19,6 @@
         { "action": "VIEW", "autoVerify": true, "data": [{ "scheme": "https", "host": "app.vyre.run", "pathPrefix": "/app/join" }, { "scheme": "https", "host": "app.vyre.run", "pathPrefix": "/app/pair" }], "category": ["BROWSABLE", "DEFAULT"] }
       ],
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": true,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.USE_BIOMETRIC",

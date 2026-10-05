@@ -2,24 +2,21 @@
 // and add a file from the browser (the web app; a phone has no picker in the app yet, so no Upload button there rather than a dead one).
 import { useCallback, useEffect, useState } from "react";
 import { Platform, View } from "react-native";
-import * as Clipboard from "expo-clipboard";
-import { AskCard, Banner, Button, Card, Divider, EmptyState, IconTile, Row, Sheet, Text, showToast } from "@vyre/ui";
-import { boxOrigin } from "../../src/api/box";
+import { Banner, Button, Card, Divider, EmptyState, IconTile, Row, Sheet, Text, showToast } from "@vyre/ui";
 import { bytesOf, textOf } from "./real-model";
-import { children, itemLine, linkAddress, linkAsk, linkRefusal, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
-import { linkCreate, spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
+import { children, itemLine, spaceDriveRefusal, toBase64, uploadPath, versionLine, MAX_UPLOAD, type Item, type Version } from "./space-model";
+import { spaceList, spaceRead, spaceRestore, spaceUpload, spaceVersions } from "./real";
 
 const say = (e: unknown) => spaceDriveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 const TEXT = /\.(txt|md|csv|json|xml|ya?ml|html?|log)$/i;
 
-export function SpaceDrive({ onLink }: { onLink?: () => void }) {
+export function SpaceDrive() {
   const [prefix, setPrefix] = useState("");
   const [items, setItems] = useState<Item[] | null>(null);
   const [more, setMore] = useState(false);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState<{ item: Item; versions: Version[] | null; text: string | null; note: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [asking, setAsking] = useState(false);
 
   const load = useCallback(() => {
     setErr("");
@@ -37,13 +34,6 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
     if (!open) return;
     setBusy(true);
     spaceRestore(undefined, open.item.path, v.ver).then((r) => { showToast(`Version ${v.ver} is back as version ${r.version}. Nothing was lost.`); setOpen(null); load(); }).catch((e) => setOpen((o) => (o ? { ...o, note: say(e) } : o))).finally(() => setBusy(false));
-  };
-  const share = () => {
-    if (!open) return;
-    setBusy(true);
-    linkCreate(undefined, open.item.path)
-      .then(async (l) => { try { await Clipboard.setStringAsync(linkAddress(boxOrigin() || "", l)); showToast("Link made and copied. It is under Shared links."); } catch { showToast("Link made. It is under Shared links."); } setAsking(false); setOpen(null); onLink?.(); })
-      .catch((e) => setOpen((o) => (o ? { ...o, note: linkRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "") } : o))).finally(() => setBusy(false));
   };
   const pick = () => {
     const doc = (globalThis as { document?: Document }).document;
@@ -85,14 +75,10 @@ export function SpaceDrive({ onLink }: { onLink?: () => void }) {
           {more ? <View className="p-s3"><Text size="caption" tone="label">This folder is large. The first files are shown.</Text></View> : null}
         </Card>
       ) : null}
-      <Sheet open={!!open} onClose={() => { setOpen(null); setAsking(false); }} title={open?.item.name}>
+      <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.item.name}>
         {open ? (
           <View className="gap-s3">
             {open.text != null ? <Text mono size="caption" selectable>{open.text}</Text> : null}
-            {asking ? (
-              <AskCard lead={<IconTile name="share" tone="accent" />} {...linkAsk(open.item.name)}
-                actions={[{ label: busy ? "Making it" : "Make the link", kind: "primary", onPress: busy ? () => {} : share }, { label: "Not now", kind: "ghost", onPress: () => setAsking(false) }]} />
-            ) : <View className="self-start"><Button kind="ghost" size="sm" icon="share" label="Share a link" onPress={() => setAsking(true)} /></View>}
             <Text size="caption" strong tone="label">Versions</Text>
             {open.versions === null ? <Text tone="muted">Loading.</Text> : open.versions.length === 0 ? <Text tone="muted">No versions listed.</Text> : (
               <Card flush>

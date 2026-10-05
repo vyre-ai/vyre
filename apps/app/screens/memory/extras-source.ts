@@ -2,7 +2,6 @@
 // memory.ask (a question, with its sources or an honest abstain), memory.graph (the floor plan), memory.pin and memory.mute (a node, everywhere),
 // memory.corrections and memory.uncorrect (what the person corrected, with Undo).
 import type { CorrectionRow, GraphOut, Asked } from "./extras-model";
-import type { Why } from "./why-model";
 
 export type Call = <T = unknown>(tool: string, input?: Record<string, unknown>) => Promise<{ data?: T; error?: { code: string; message: string } }>;
 
@@ -14,8 +13,6 @@ export function memoryExtras(call: Call) {
   }
   return {
     askReal: (question: string) => ask<Asked>("memory.ask", { question }),
-    /** The turns and modules behind one fact (memory.why). */
-    whyReal: (fact: string, limit = 10) => ask<Why>("memory.why", { fact, limit }),
     graphReal: (limit = 150) => ask<GraphOut>("memory.graph", { limit }),
     /** Pin or mute a node everywhere; off undoes it. */
     async steerReal(mode: "pin" | "mute", node: string, off: boolean): Promise<void> {

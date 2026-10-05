@@ -132,7 +132,7 @@ export class Presence {
   }
   async bindOk(st, person, b, key_id, spki) {
     const e = st.entries.find(x => x.eid === b?.eid && x.kind === "device");
-    return !!e && !this.barred.has(e.eid) && await verifyWith(e.pub, bindBytes(person, key_id, spki), b.sig, e);
+    return !!e && !this.barred.has(e.eid) && await verifyWith(e.pub, bindBytes(person, key_id, spki), b.sig);
   }
   /** Take a newer verified chain: keys bound to a device the list no longer holds are dropped (fail closed), and listed devices bind keys. No proof needed: this only narrows. */
   async sync({ person, ops, binds = [], ctx }) {
@@ -200,7 +200,7 @@ export class Presence {
     const e = ev.st.entries.find((/** @type {any} */ x) => x.eid === bind.eid && x.kind === "device");
     if (!e || this.barred.has(e.eid)) return { refused: "not_listed" };
     if (youngAt(e, this.now())) return { refused: "young_device" };
-    if (!await verifyWith(e.pub, joinBytes(invite, ctx.space, person, key_id, spki), bind.sig, e)) return { refused: "bad_binding" };
+    if (!await verifyWith(e.pub, joinBytes(invite, ctx.space, person, key_id, spki), bind.sig)) return { refused: "bad_binding" };
     // Every await is behind us: the state checks that decided "a stranger" are made again here, in the same synchronous block as the write, so two joins at once cannot both pass them.
     if (this.recovery) return { refused: "needs_recovery" };
     if (this.keys.has(key_id)) return { refused: "exists" };

@@ -27,7 +27,7 @@ export const DEFAULT_TIMEOUT_S = 60;
 /**
  * A watcher's spec. `on` and `where` are for schedule "event": the event type it runs on, and the
  * payload fields that must match for it to run (hook.received needs a route).
- * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number, memory?: boolean,
+ * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
  *   net: Record<string, { vault?: string, credential?: string, field?: string, header: string, scheme: string }>|null,
  *   ask: { dailyUsd: number }|null, params: Record<string, any>|null, summary: { when: string, check?: string, do: string }|null,
@@ -93,7 +93,6 @@ function check(raw, name, problems) {
     if (ok) params = raw.params; else problems.push("params is a small object of strings, numbers, booleans and short lists of strings, at most 2000 characters; it is a preset's settings, never a credential");
   }
   const summary = checkSummary(raw.summary, problems);
-  if (raw.memory !== undefined && typeof raw.memory !== "boolean") problems.push("memory is true or false: false files the items without teaching them to Memory (a log of mail is for the records, not for recall)");
   let ask = null;
   if (raw.ask !== undefined) {
     const a = raw.ask;
@@ -103,13 +102,13 @@ function check(raw, name, problems) {
   if (raw.instruction !== undefined && (typeof raw.instruction !== "string" || !raw.instruction.trim() || raw.instruction.length > 2000)) problems.push("instruction is plain words, at most 2000 characters");
   if (raw.act !== undefined && typeof raw.act !== "boolean") problems.push("act is true or false");
   if (raw.act !== undefined && !owner) problems.push("act is for a teammate's duty or a watcher that wakes a session: it needs owner");
-  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake", "source", "memory"].includes(k));
+  const extra = Object.keys(raw).filter(k => !["name", "project", "schedule", "needs", "emits", "timeout", "description", "on", "where", "net", "owner", "instruction", "act", "when", "ask", "summary", "params", "about", "wake", "source"].includes(k));
   if (extra.length) problems.push(`watcher.json has keys the runtime does not read: ${extra.join(", ")}. Credentials go in the vault and are named under net`);
   // A vault item named by net is fetched by the parent and attached to that host's requests only,
   // so it counts as a need: the same per-watcher grant covers it.
   const needed = new Set(Array.isArray(needs) ? needs : []);
   for (const h of Object.values(net || {})) { if (h.vault) needed.add(h.vault); if (h.credential) needed.add(h.credential); }
-  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, memory: raw.memory !== false, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
+  return { name, project: String(raw.project || "").trim(), schedule, needs: [...needed], net, ask, summary, params, owner, about, wake, source, when: typeof raw.when === "string" ? raw.when.slice(0, 200) : null, instruction: typeof raw.instruction === "string" ? raw.instruction.trim() : null, act: raw.act === true, emits: raw.emits || "watcher.item", timeout: Number(timeout),
     on: typeof on === "string" ? on : null, where };
 }
 

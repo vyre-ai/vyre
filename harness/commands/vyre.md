@@ -44,8 +44,8 @@ The user ran `/vyre $ARGUMENTS`.
   it with `vyre learn accept <id>` in their own terminal. Never say it is in force.
 - `lessons`: call `learn_lessons` and show each lesson on one line: its id, rule, level and its
   applied, caught and broken counts. Accepting, retiring or loosening one is the user's call, and
-  you cannot do it: a plain yes typed here does not keep a lesson. The user keeps or drops one with a tap in the Vyre app, or with
-  `vyre learn accept|retire <id>` in their own terminal. For the rest, point them at `vyre learn accept|retire|level <id>` in their own terminal.
+  you cannot do it: a proposed lesson is kept when the user answers a plain yes, and dropped on a
+  plain no. For the rest, point them at `vyre learn accept|retire|level <id>` in their own terminal.
   Never call `learn_accept`, `learn_retire` or `learn_relax`.
 - `statusline`: a plugin cannot set Claude Code's status line, so tell the user to run
   `vyre statusline install` in their own terminal. It asks first, and if they already have a

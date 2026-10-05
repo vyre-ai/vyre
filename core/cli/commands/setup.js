@@ -2,14 +2,14 @@
 // `vyre setup --name <n> --yes`: the setup page's naming step with no browser, for scripted installs and e2e journeys.
 //
 // It is a front for the exact flow the page runs: names.check, then names.claim, the same two tools through the same registry
-// (so the same validation, the same refusals). There is no second path. The passkey step that makes a
+// (so the same validation, the same one-time recovery code, the same refusals). There is no second path. The passkey step that makes a
 // person the box's owner stays in a browser by design (it is the person's fingerprint, face or key), so this command names the box and
 // stops there; the box is claimed by the person at its address afterwards.
 //
-// A name that is taken, not valid, or fails to claim exits 1 with the
+// The recovery code is printed once, with a plain line to store it. A name that is taken, not valid, or fails to claim exits 1 with the
 // reason in words. Claiming is for good, so without --yes a terminal is asked and a script is refused.
 //
-// --json: { name, address, phase, why? } or { error }.
+// --json: { name, address, phase, recoveryCode, why? } or { error }.
 //
 // With no --name it is the way back into setup (#11): `sudo vyre setup` prints where setup stands, in the same ten steps the page draws, read from the list the
 // box holds (onboard.setup), and the one place to continue. `--new-link` makes a fresh one-time link to carry on from if the page was closed.
@@ -44,7 +44,7 @@ async function where(newLink) {
 
 export default [
   {
-    name: "setup", order: 29, usage: "vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]", summary: "where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run",
+    name: "setup", order: 29, usage: "vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]", summary: "where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs)",
     async run(args) {
       /** @type {string|null} */ let name = null;
       let yes = false;
@@ -81,6 +81,7 @@ export default [
       const claimed = await call("names.claim", { name: want });
       if (claimed.error) return failTool(claimed.error);
       let d = claimed.data || {};
+      const recoveryCode = d.recoveryCode ? String(d.recoveryCode) : null;
       if (d.phase === "failed") return fail(`could not claim ${want}.vyre.run: ${d.why || "no reason given"}`, { code: "claim_failed" });
 
       // The claim answers at once and carries on in the background (address, certificate). Wait for it to rest.
@@ -93,8 +94,14 @@ export default [
       }
       if (d.phase === "failed") return fail(`${want}.vyre.run was claimed, but it could not be served: ${d.why || "no reason given"}`, { code: "serve_failed" });
 
-      if (json()) return emit({ name: want, address: d.address || c.address || null, phase: d.phase, ...(d.why ? { why: String(d.why) } : {}) });
+      if (json()) return emit({ name: want, address: d.address || c.address || null, phase: d.phase, recoveryCode, ...(d.why ? { why: String(d.why) } : {}) });
       out(`  ${signal(d.address || c.address || `https://${want}.vyre.run`)} ${dim(`· ${d.phase}`)}`);
+      if (recoveryCode) {
+        out("");
+        out(`  Recovery code: ${bold(recoveryCode)}`);
+        out("  Store it somewhere safe now (a password manager). It is shown once and cannot be shown again; with it you can take this name back after a reinstall.");
+        out("");
+      } else out(dim("  This box already held that name, so there is no new recovery code."));
       if (d.phase === "named" && d.why) out(dim(`  ${d.why}`));
       return 0;
     },

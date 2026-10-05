@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { springConfig, springs, resolveReducedMotion, staggerDelay, entrance, pressScale, skeletonPlan, pressFeel, holdDuration, swipeActions, revealWidth } from "./logic.js";
+import { springConfig, springs, resolveReducedMotion, staggerDelay, entrance, pressScale, skeletonPlan, holdDuration, swipeActions, revealWidth } from "./logic.js";
 import { HAPTICS, HAPTIC_NAMES } from "./haptic-map.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
@@ -86,11 +86,4 @@ test("haptics: four moments, none for the web to play", () => {
   assert.deepEqual(HAPTIC_NAMES.sort(), ["approve", "selection", "stage", "warn"]);
   assert.equal(HAPTICS.approve.kind, "notification");
   assert.equal(HAPTICS.selection.kind, "selection");
-});
-
-test("Android presses ripple (no scale, no pressed fill); other platforms spring and fill; no colour keeps the spring", () => {
-  assert.deepEqual(pressFeel("android", "#00000022"), { ripple: { color: "#00000022", foreground: true }, scale: false, pressedFill: false });
-  assert.deepEqual(pressFeel("ios", "#00000022"), { ripple: null, scale: true, pressedFill: true });
-  assert.deepEqual(pressFeel("web", "#00000022"), { ripple: null, scale: true, pressedFill: true });
-  assert.deepEqual(pressFeel("android", undefined), { ripple: null, scale: true, pressedFill: true });
 });

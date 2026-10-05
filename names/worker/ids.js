@@ -111,7 +111,7 @@ export const idOps = {
     let key;
     try { key = await C.signerKey(state, String(r.by), r.via ? String(r.via) : undefined, Number(r.ts), this.idLive(), { seq: r.vseq, head: r.vhead }); } catch (e) { throw err(403, "bad_signature", String(/** @type {any} */ (e).message)); }
     const sealedHash = await C.sha256hex(sealed);
-    if (!await C.verifyWith(key.pub, recordMessage({ name: rec.name, id: state.id, by: String(r.by), via: r.via ? String(r.via) : undefined, ts: r.ts, sealedHash, vseq: r.vseq, vhead: r.vhead }), r.sig, key.signing)) throw err(403, "bad_signature", "the record's signature does not check out");
+    if (!await C.verifyWith(key.pub, recordMessage({ name: rec.name, id: state.id, by: String(r.by), via: r.via ? String(r.via) : undefined, ts: r.ts, sealedHash, vseq: r.vseq, vhead: r.vhead }), r.sig)) throw err(403, "bad_signature", "the record's signature does not check out");
     const out = { by: String(r.by), via: r.via ? String(r.via) : undefined, ...(r.vseq !== undefined ? { vseq: r.vseq, vhead: r.vhead } : {}), ts: Number(r.ts), sig: r.sig };
     // Not stored: whether the signing device was a newcomer, for the caller's rule (a record update by a young device).
     Object.defineProperty(out, "young", { value: key.young === true, enumerable: false });
@@ -140,7 +140,7 @@ export const idOps = {
     const state = await C.verifyChain(rec.ops, { ...this.idCtx(), now: this.now() + C.SKEW_MS });
     let key;
     try { key = await C.signerKey(state, String(act.by), act.via ? String(act.via) : undefined, this.now(), this.idLive()); } catch (e) { throw err(403, "not_yours", "that name is not held by this entry"); }
-    if (!await C.verifyWith(key.pub, actMessage({ action, name: rec.name, domain, ts: act.ts }), act.sig, key.signing)) throw err(403, "bad_signature", "the signature does not check out");
+    if (!await C.verifyWith(key.pub, actMessage({ action, name: rec.name, domain, ts: act.ts }), act.sig)) throw err(403, "bad_signature", "the signature does not check out");
     if (fresh && key.young) throw err(403, "newcomer", "a sign-in under 24 hours old cannot do that");
     return state;
   },
@@ -255,7 +255,7 @@ export const idOps = {
       if (!m || m[1] !== rec.name || m[2] !== rec.id) continue;
       try {
         const key = await C.signerKey(state, m[3], m[4] === "-" ? undefined : m[4], this.now(), this.idLive());
-        if (await C.verifyWith(key.pub, aliasMessage({ name: rec.name, domain, id: rec.id }), m[5], key.signing)) { proven = true; break; }
+        if (await C.verifyWith(key.pub, aliasMessage({ name: rec.name, domain, id: rec.id }), m[5])) { proven = true; break; }
       } catch { /* not an entry */ }
     }
     if (!proven) throw err(403, "not_proven", `put the TXT record at _vyre-id.${domain} that your device shows, then try again`);

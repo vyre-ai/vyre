@@ -3,7 +3,6 @@
 // / commands), how candidates rank, what a record's sealed fields say, and what Send does while a
 // turn is on (it queues; the composer is never disabled). Reuses chat core's finders.
 
-import { vaultTokens } from "../../../../deck/chat/core/composer-state.js";
 import { findMention, findVaultMention, applyMention, applyVault } from "../../../../deck/chat/core/composer-state.js";
 import { findCommand, rankCommands, applyCommand } from "../../../../deck/chat/core/commands.js";
 import { busyState } from "./frames.js";
@@ -76,13 +75,4 @@ export function sendTargets({ text, askAll = false, people }) {
   const all = people.filter((p) => p.family === "assistant").map((p) => p.name);
   const to = askAll ? all : mentionedAssistants(text, people);
   return { to, fanout: to.length > 1 };
-}
-
-/**
- * The # tags to send: the ones picked from the list that are still in the words (typed names that were never picked tag nothing), each once, at most eight. `picked` maps the name typed to { kind, id, name }.
- * @param {string} text @param {Map<string, { kind: string, id: string, name: string }>} picked
- */
-export function mentionsIn(text, picked) {
-  const seen = [...new Set(vaultTokens(text, new Set(picked.keys())).map((/** @type {{ name: string }} */ x) => x.name))];
-  return seen.map((n) => picked.get(n)).filter((m) => Boolean(m)).slice(0, 8);
 }

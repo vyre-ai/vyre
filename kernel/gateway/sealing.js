@@ -56,13 +56,7 @@ export function createSealing(cfg) {
       if (!door) throw new KernelError("unavailable", "the inference door is not wired");
       await gate(chain, "seal.reveal", i.record, { presence: i.proof });
       const ledger_key = door.ledgerKey(chain, i.session ?? `reveal_${i.ref}`);
-      const shown = await run(() => sealer.api.reveal({ chain, ref: i.ref, purpose: i.purpose, proof: i.proof, ledger_key }));
-      // A reveal is always in the log (who, which field, why; never the value), and a reveal that cannot be logged is not shown.
-      const ev = shown && shown.event;
-      try {
-        cfg.log.append(chain, { type: "field.revealed", sv: 1, subject: i.record, data: { ref: i.ref, ...(ev ? { field: ev.field, class: ev.class, purpose: ev.purpose } : { purpose: i.purpose }) }, vis: "owner", red: "internal" });
-      } catch { throw new KernelError("unavailable", "this reveal could not be logged, so nothing was shown"); }
-      return shown;
+      return run(() => sealer.api.reveal({ chain, ref: i.ref, purpose: i.purpose, proof: i.proof, ledger_key }));
     },
 
     /** Merge a sealed value into a template for a verified destination. The call names only the approval; everything else is looked up. */

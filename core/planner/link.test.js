@@ -72,11 +72,7 @@ function stream(t, root) {
 
 test("planner over the link: the Mac adds on the box, hears the box ring, and its done acks there", async t => {
   const c = fakeClocks(t);
-  // The kernel on, with this development tree counted as first party (the rule the daemon tests of records.* use): the planner keeps its records there.
-  process.env.VYRE_SEAL_DEV = "1";
-  process.env.VYRE_KERNEL_PATH_RULE = "1";
-  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
-  const s = await pair(t, { kernel: true });
+  const s = await pair(t);
   const macPlanner = () => /** @type {any} */ (s.mac.registry.modules.get("planner")).handle;
   const boxPlanner = () => /** @type {any} */ (s.box.registry.modules.get("planner")).handle;
   // Paired: the Mac's scheduler goes idle and leaves the ringing to the box.
@@ -94,8 +90,7 @@ test("planner over the link: the Mac adds on the box, hears the box ring, and it
   assert.ok(!onBox.error, JSON.stringify(onBox.error));
   assert.equal(onBox.data.item.title, "Call Northwind Bakery");
   assert.equal(onBox.data.item.next_fire, at);
-  const macOwner = s.mac.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: s.mac.kernel.id.owner, path: "direct", session: "s" });
-  const macRows = (await s.mac.kernel.gateway.records.query(macOwner, "reminder", { page: { limit: 5 } })).rows.length;
+  const macRows = /** @type {any} */ (s.mac.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM planner_items").get()).n;
   assert.equal(macRows, 0, "nothing is stored on the Mac");
   assert.equal(macPlanner().scheduler.timer, null, "the Mac's scheduler holds no timer");
   assert.deepEqual(c.macArms, [], "the Mac's scheduler never armed");
@@ -125,5 +120,5 @@ test("planner over the link: the Mac adds on the box, hears the box ring, and it
   const after = (await s.boxCall("planner.get", { firing })).data;
   assert.equal(after.firing.state, "acked");
   assert.equal(after.item.state, "done", "a one-off alarm ends when it is done");
-  assert.equal((await s.mac.kernel.gateway.records.query(macOwner, "planner_firing", { page: { limit: 5 } })).rows.length, 0, "no firing on the Mac");
+  assert.equal(/** @type {any} */ (s.mac.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM planner_firings").get()).n, 0, "no firing on the Mac");
 });

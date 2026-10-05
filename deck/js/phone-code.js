@@ -20,8 +20,8 @@
 // dots) carries it; callers must stop drawing it (swap back to the placeholder/idle state) once
 // it expires or a phone redeems it, not go on re-rendering an already-spent or stale ticket.
 import { buildCodeword, bytesToBits } from "../vendor/vyrecode/payload.js";
-import { renderCode2, bitsToLevels } from "../../lib/wink-code/vyrecode2.js";
-import { userAvatar } from "../../lib/wink-code/identity.js";
+import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
+import { userAvatar } from "../vendor/vyrecode/identity.js";
 
 /** A relay.pair.ticket `ticket` string (base64url) to its 8 raw bytes. Any string that doesn't
  * decode to exactly 8 bytes (a placeholder, or a still-mismatched real shape) is coerced by

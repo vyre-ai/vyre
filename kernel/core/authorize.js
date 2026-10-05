@@ -18,8 +18,6 @@ const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", 
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
-/** Actions only a Flow run may ask (see `byRunner`). */
-const RUNNER_ONLY = new Set(["fn.run", "model.call"]);
 export function patternCovers(pattern, action, since = 0, version = undefined, risk = undefined) {
   const a = action.split("."), p = pattern.split(".");
   const ok = pattern === "*" || (p.length === 2 && a.length === 2 && p.every((s, i) => s === "*" || s === a[i]));
@@ -163,7 +161,7 @@ export function clampTo(parent, child, since = () => 0, riskOf = () => undefined
  * @property {(urn: string) => any} [attrs] kernel attributes of a resource: space, owner, sensitivity, project, created_by
  * @property {(urn: string) => string[]} [sealedFields]
  * @property {(service: string, action: string, resource: string) => boolean} [standing] whether a service declared a standing read of this family of resources; a service with no declaration gets nothing
- * @property {(i: { id: string, chain: any, action: string, resource: string, bind?: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
+ * @property {(i: { id: string, chain: any, action: string, resource: string }) => boolean | Promise<boolean>} [approvedAct] does this approval (an approved held-act task) cover exactly this act by this chain? It is USED here: the hook marks it spent atomically as it answers yes, so an approval is one decision, whoever calls `authorize` (the gate or a Flow runner), and cannot be replayed for a second act.
  * @property {{ match(i: { chain: any, action: string, resource: string }): any[] | Promise<any[]> }} [rules] the Space's standing rules (kernel/grants): asked BEFORE grants; a rule only tightens (never, always ask, draft only) and never allows
  * @property {(waiver: any, q: { chain: any, action: string, resource: string }) => boolean} [waives] does a live Kit-install waiver stand for presence on this act
  * @property {(proof: any, ctx: any) => boolean | { ok: boolean, reason?: string } | Promise<boolean | { ok: boolean, reason?: string }>} [verifyPresence] the hardware-signer check (core/presence.js); default none
@@ -198,11 +196,6 @@ export function createAuthorizer(cfg) {
       const { chain, action, resource } = input;
       const def = reg.get(action);
       if (!def) return deny("unknown_action");
-      // Running a Code step and asking a model are what a Flow RUN does, never what a person does directly: only a chain that carries a run's automation hop may ask, and what it needs from its
-      // approver is the right to run Flows (so a member cannot run arbitrary code or spend AI by calling these themselves).
-      const byRunner = typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "automation");
-      if (RUNNER_ONLY.has(action) && !byRunner) return deny("runner_only");
-      const grantAction = RUNNER_ONLY.has(action) ? "flows.run" : action;
       // 1. Space check.
       if (chain.space !== cfg.space || spaceOf(resource) !== cfg.space || !segments(resource)) return deny("wrong_space");
       for (const h of chain.hops) if (h.actor.space !== cfg.space) return deny("wrong_space");
@@ -263,7 +256,7 @@ export function createAuthorizer(cfg) {
         const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
-          const r = await evaluate(g, h, ms, chain, grantAction, resource, attrs, now, 0, input.probe === true);
+          const r = await evaluate(g, h, ms, chain, action, resource, attrs, now, 0, input.probe === true);
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }
@@ -304,7 +297,7 @@ export function createAuthorizer(cfg) {
 
       // A held act the person approved (a task, by id) is the evidence that satisfies the outward ask for exactly that act by exactly that chain, once. The
       // approval stands in for the person's confirmation too: they gave it when they approved. Nothing else is waived (a deny stays a deny).
-      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(typeof input.bind === "string" ? { bind: input.bind } : {}), ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
+      if (ask && (OUTWARD.has(risk) || askRule) && typeof input.approval === "string" && cfg.approvedAct && await cfg.approvedAct({ id: input.approval, chain, action, resource, ...(askRule ? { rule: { id: askRule.id, approver: askRule.approver } } : {}) }) === true) {
         ask = null; presence = "none";
       }
 

@@ -104,34 +104,6 @@ for (const which of ["real"]) {
     await w.kernel.records.update(sys(w), "matter", r.id, { stage: "Engagement" }, cur.version); await settle(w);
     assert.equal((await tasksOf(w)).length, 2);
   });
-
-  const withRules = (patch) => () => { const c = stagedCatalog(); c.types.matter = { ...c.types.matter, ...patch(c.types.matter) }; return c; };
-
-  test(`stages (${which}): a stage's entry condition holds the record where it is until the record meets it`, async () => {
-    const w = await world({ kernel: which, cat: withRules((m) => ({ stages: m.stages.map((s) => s.name === "Engagement" ? { ...s, enter_if: 'client == "Joan"' } : s) }))() });
-    const r = await open(w);
-    await fill(w, r);
-    await finish(w, "Research the client");
-    await finish(w, "Welcome email");
-    assert.equal(await stageOf(w, r), "Intake", "the client is Jane, so Engagement cannot be entered");
-    assert.ok(w.stageEvents.some((e) => e.type === "stage.blocked" && /cannot be entered yet/.test(e.data.why)));
-    const cur = await w.kernel.records.get(sys(w), "matter", r.id);
-    await w.kernel.records.update(sys(w), "matter", r.id, { client: "Joan" }, cur.version);
-    await w.stages.settle(w.stages.entries()[0].key); await settle(w);
-    assert.equal(await stageOf(w, r), "Engagement", "once it holds, the same entry moves on");
-  });
-
-  test(`stages (${which}): a stage set decides which stage comes next for that record`, async () => {
-    const estate = { name: "estate", when: 'practice_area == "Estate"', stages: [{ name: "Intake" }, { name: "Review" }, { name: "Closed" }] };
-    const w = await world({ kernel: which, cat: withRules(() => ({ stage_sets: [estate] }))() });
-    const r = await open(w);
-    await fill(w, r);
-    await finish(w, "Research the client");
-    await finish(w, "Welcome email");
-    assert.equal(await stageOf(w, r), "Review", "the estate set goes Intake to Review, the default would go to Engagement");
-    const other = await open(w);
-    assert.equal(await stageOf(w, other), "Intake");
-  });
 }
 
 test("stages: the task id comes from the data or, for the kernel's own events, from the subject", () => {

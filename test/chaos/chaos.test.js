@@ -41,14 +41,14 @@ function chaosModule(root) {
 async function world(t, paths = 1) {
   const root = tempHome(t);
   chaosModule(root);
-  let d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  let d = await start({ root, log: () => {} });
   const proxies = [];
   for (let i = 0; i < paths; i++) proxies.push(await proxy(d.paths.socket));
   const w = {
     root, proxies, get d() { return d; },
     applied: () => d.events.since(0, { type: "chaos.added", limit: 1000 }).map(e => e.payload.n),
     emit: n => d.events.emit("test", "thread.text", { n }),
-    async restart() { await d.stop(); d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] }); },
+    async restart() { await d.stop(); d = await start({ root, log: () => {} }); },
   };
   t.after(async () => { for (const p of proxies) await p.close(); await d.stop(); });
   return w;

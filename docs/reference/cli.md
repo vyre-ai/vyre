@@ -39,7 +39,7 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
-| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run |
+| [`vyre setup`](#vyre-setup) | where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs) |
 | [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
@@ -331,7 +331,7 @@ vyre unpick <project> <thread>...
 
 ### vyre setup
 
-Where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run.
+Where setup stands and where to continue (--new-link: a fresh link); with --name, name this box with no browser: <n>.vyre.run (--json prints the recovery code on stdout: keep it out of logs).
 
 ```
 vyre setup [--new-link] | vyre setup --name <n> [--yes] [--json]

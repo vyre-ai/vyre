@@ -1,18 +1,18 @@
 // @ts-check
-// planner: alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings
-// when the Mac is shut (docs/adr/0025-planner.md). The planner keeps no tables: reminders and notes
-// are the Space's Reminder and Note records, to-dos are its Tasks, the calendar is its Event records
-// (records.js). One scheduler (scheduler.js) reads them, and delivery is one event, planner.fired,
-// that push, the Capsule and the Deck each act on. A Mac paired with a box forwards every tool there
-// and keeps its scheduler idle; an unpaired Mac runs the planner itself.
+// planner: alarms, timers, reminders, todos, notes and the planner's own calendar, kept on the box
+// so something rings when the Mac is shut (docs/adr/0025-planner.md). One store, one scheduler
+// (scheduler.js), and delivery by one event, planner.fired, that push, the Capsule and the Deck
+// each act on. A Mac paired with a box forwards every tool there and keeps its scheduler idle;
+// an unpaired Mac runs the planner itself.
 
-import { KINDS, STATES, shape, shapeFiring, newId, ringKey, readKey } from "./items.js";
-import { openRecords, fromEvent } from "./records.js";
+import { MIGRATIONS, KINDS, STATES, store, shape, shapeFiring, newId, ringKey, readKey } from "./store.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
-import { calendar, shapeCal } from "./events.js";
+import { calendarCache, shapeCal } from "./calendar.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
 import { isPerson } from "../../lib/caller.js";
+
+export { MIGRATIONS };
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: a fake clock and timer. Anything left
@@ -53,15 +53,13 @@ async function loadParser(log) {
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    // The planner's data is the Space's records. With no kernel there is nowhere to keep it: the tools are still declared (so they are listed and documented) and each answers, plainly, that the kernel is off.
-    const K = ctx.kernel || null;
-    const offline = { space: null, owner: null, serviceChain: () => { throw fail("the planner keeps its records in the kernel, which is off here", "unavailable"); } };
+    ctx.store.migrate(MIGRATIONS);
+    const db = ctx.store.db;
+    const st = store(db);
     const seam = seams.get(ctx.paths && ctx.paths.root) || {};
     const now = seam.now || Date.now;
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
-    const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how) });
-    if (K) await st.load();
 
     // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
     // zone data (about 8 MB of RSS), which an idle planner never needs.
@@ -120,7 +118,7 @@ export default {
       emit("planner.task-run", { item: item.id, ok, result: last_result }, item);
     };
 
-    const scheduler = new Scheduler({ st, settings, now, setTimer: seam.setTimer, clearTimer: seam.clearTimer, log: ctx.log,
+    const scheduler = new Scheduler({ db, st, settings, now, setTimer: seam.setTimer, clearTimer: seam.clearTimer, log: ctx.log,
       fired: (f, item) => {
         emit("planner.fired", { firing: f.id, key: ringKey(item.id, f.due), item: item.id, kind: item.kind, title: item.title, due: f.due, ring: f.ring,
           missed: Boolean(f.missed), actions: ["done", "snooze"], ...(item.source_name ? { added_by: item.source_name } : {}) }, item);
@@ -146,7 +144,7 @@ export default {
       if (!e.payload || !Array.isArray(e.payload.fields) || !e.payload.fields.includes("state")) return;
       const done = st.item(e.payload.item);
       if (!done || done.state !== "done" || done.done_at == null) return;
-      for (const row of /** @type {any[]} */ (st.waitingOn(e.payload.item))) {
+      for (const row of /** @type {any[]} */ (db.prepare("SELECT * FROM planner_items WHERE kind = 'task' AND waits_on = ? AND state = 'open' AND deleted_at IS NULL").all(e.payload.item))) {
         if (row.waits_on_fired === done.done_at) continue; // already ran for this exact completion
         st.patch(row.id, { waits_on_fired: done.done_at });
         await runTask(shape(row)).catch(err => ctx.log(`planner: chained task ${row.id} did not run (${err.message})`));
@@ -285,7 +283,7 @@ export default {
      * carry - `as.thread` rides along the same way, so taskScope sees the ORIGINAL calling thread
      * on the box, not the Mac-to-box link call's own (meaningless, for this) thread.
      * @param {string} thread the caller's own calling thread (vyred's meta.thread), direct or none
-     * @returns {Promise<{ person: boolean, source: string, name: string|null, thread: string|null, chain?: any }>}
+     * @returns {Promise<{ person: boolean, source: string, name: string|null, thread: string|null }>}
      */
     const who = async (i, caller, thread = null, agent = null) => {
       if (isPerson(caller)) {
@@ -405,62 +403,25 @@ export default {
       let title = String(input.title ?? "").trim().slice(0, 500);
       if (!title) title = kind === "alarm" ? "Alarm" : kind === "timer" ? "Timer" : "";
       if (!title) throw fail(`a ${kind} needs a title`);
-      if (input.parent) throw fail("a to-do has no sub-items: make each one a to-do of its own");
+      if (input.parent && !st.item(input.parent)) throw fail("no such parent item", "not_found");
       if (input.waits_on && !st.item(input.waits_on)) throw fail("no such item to wait on", "not_found");
-      if (kind === "todo" && time.repeat) throw fail("a to-do does not repeat: set a reminder that repeats");
-      if (kind === "event") return addEvent({ ...input, title, at: time.at, tz: time.tz || undefined }, w, t);
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
         tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name,
         waits_on: input.waits_on ? String(input.waits_on) : null, paused: Boolean(input.paused) };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
-      const made = await st.create({ ...row, next_fire: n.next_fire }, w);
+      st.insert({ ...row, next_fire: n.next_fire });
       counted(w);
-      emit("planner.added", { item: made.id, kind, title, ...(made.at != null ? { at: made.at } : {}), ...(w.name ? { added_by: w.name } : {}) }, made);
+      emit("planner.added", { item: row.id, kind, title, ...(row.at != null ? { at: row.at } : {}), ...(w.name ? { added_by: w.name } : {}) }, row);
       scheduler.arm();
-      return shape(st.item(made.id));
-    };
-
-    /** An event of the planner's own: an Event record (source "vyre"), the same record a connector's sync writes for an outside event. */
-    const addEvent = async (input, w, t) => {
-      const tz = input.tz || settings().timezone;
-      if (input.at == null) throw fail("an event needs a start");
-      const end = input.end != null ? input.end : input.at + (input.duration_ms ? Number(input.duration_ms) : 3_600_000);
-      const row = await st.cal.create({ title: input.title, starts_at: new Date(input.at).toISOString(), ends_at: new Date(end).toISOString(), all_day: false, time_zone: tz, source: "vyre",
-        ...(input.where ? { place: clip(input.where, 500) } : {}) });
-      const shown = cal.add({ ...row, own: true });
-      counted(w);
-      emit("planner.added", { item: row.id, kind: "event", title: input.title, at: input.at, ...(w.name ? { added_by: w.name } : {}) }, { project: input.project, thread: input.thread });
-      void t;
-      return { ...shapeCal(shown), tz, project: input.project ?? null, thread: input.thread ?? null, added_by: w.name ?? null };
+      return shape(st.item(row.id));
     };
 
     const EDITABLE = ["title", "body", "list", "priority", "pinned", "tags", "project", "thread", "parent", "state", "waits_on", "paused"];
     const TIME_FIELDS = ["at", "in_ms", "wall", "date", "repeat", "tz", "floating", "due"];
 
-    /** Change one of the planner's own events: its Event record. An outside calendar's event is changed on that calendar. */
-    const updateEvent = async (row, i, w) => {
-      if (!w.person) throw fail("an agent may change only the items it added", "denied");
-      if (!row.own) throw fail("that event belongs to an outside calendar: change it there", "denied");
-      const patch = {};
-      if (i.title !== undefined) { const title = String(i.title).trim().slice(0, 500); if (!title) throw fail("the title cannot be empty"); patch.title = title; }
-      if (i.where !== undefined) patch.place = clip(i.where, 500);
-      const timed = i.at !== undefined || i.date !== undefined || i.wall !== undefined;
-      if (timed) {
-        const time = resolveTime("event", { at: i.at, date: i.date, wall: i.wall, tz: i.tz }, settings(), now());
-        patch.starts_at = new Date(time.at).toISOString();
-        patch.ends_at = new Date(time.at + (row.end != null ? row.end - row.start : 3_600_000)).toISOString();
-      }
-      const made = await st.cal.update(row.id, patch);
-      const shown = cal.add({ ...made, own: true });
-      emit("planner.changed", { item: row.id, kind: "event", fields: Object.keys(patch) }, {});
-      return shapeCal(shown);
-    };
-
     const update = async (i, w) => {
-      const ev = cal.row(i.item);
-      if (ev && !st.item(i.item)) return updateEvent(ev, i, w);
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
       owns(item, w);
@@ -504,11 +465,6 @@ export default {
         if (item.kind === "timer" && ti.in_ms === undefined) throw fail("give a timer a new in_ms");
         Object.assign(patch, resolveTime(item.kind, ti, settings(), t), { snooze_until: null });
       }
-      if (item._task) {
-        const fixed = Object.keys(patch).filter(k => k !== "state" && k !== "done_at");
-        if (fixed.length || timeChanged) throw fail("a to-do is a Task: its words, list and time are fixed once made. Finish or cancel it, or make a new one", "bad_input");
-        if (patch.state === "open") throw fail("a finished to-do does not reopen: make a new one", "bad_input");
-      }
       patch.updated = t;
       const next = { ...item, ...patch, tags: JSON.stringify(patch.tags ?? JSON.parse(item.tags)), repeat: patch.repeat !== undefined ? (patch.repeat ? JSON.stringify(patch.repeat) : null) : item.repeat };
       if (timeChanged || patch.state !== undefined) {
@@ -516,7 +472,7 @@ export default {
         patch.next_fire = n.next_fire;
         if (next.repeat && n.at != null) patch.at = n.at;
       }
-      st.patch(item.id, patch, w);
+      st.patch(item.id, patch);
       if (patch.state && patch.state !== "open") cancelRinging(item.id);
       emit("planner.changed", { item: item.id, kind: item.kind, fields: Object.keys(patch).filter(k => k !== "updated") }, next);
       scheduler.arm();
@@ -623,7 +579,7 @@ export default {
         st.patch(item.id, patch);
         emit("planner.changed", { item: item.id, kind: item.kind, fields: Object.keys(patch).filter(k => k !== "updated") }, item);
       } else if (item.state === "open") {
-        st.patch(item.id, { state: "done", done_at: t, next_fire: null, snooze_until: null, updated: t }, w);
+        st.patch(item.id, { state: "done", done_at: t, next_fire: null, snooze_until: null, updated: t });
         emit("planner.changed", { item: item.id, kind: item.kind, fields: ["state", "done_at"] }, item);
       }
       scheduler.arm();
@@ -661,7 +617,7 @@ export default {
       const t = now();
       // A one-off alarm, timer, reminder or event is over once dismissed; a todo stays to be done.
       if (oneOffEnds(item) && item.kind !== "todo" && item.state === "open") {
-        st.patch(item.id, { state: "done", done_at: t, next_fire: null, snooze_until: null, updated: t }, w);
+        st.patch(item.id, { state: "done", done_at: t, next_fire: null, snooze_until: null, updated: t });
         emit("planner.changed", { item: item.id, kind: item.kind, fields: ["state", "done_at"] }, item);
       } else st.patch(item.id, { snooze_until: null, updated: t });
       scheduler.arm();
@@ -675,7 +631,6 @@ export default {
       const t = now();
       if (i.restore) {
         if (!item.deleted_at) return shape(item);
-        if (item._task) throw fail("a cancelled to-do does not come back: make a new one");
         const back = { ...item, deleted_at: null };
         st.patch(item.id, { deleted_at: null, updated: t, next_fire: schedule(back, t).next_fire });
         emit("planner.added", { item: item.id, kind: item.kind, title: item.title, ...(item.at != null ? { at: item.at } : {}) }, item);
@@ -684,8 +639,7 @@ export default {
       }
       if (item.deleted_at) return shape(item);
       cancelRinging(item.id);
-      // A to-do is a Task: deleting it cancels it (a Task has no bin).
-      st.patch(item.id, { deleted_at: t, next_fire: null, snooze_until: null, updated: t, ...(item._task && item.state === "open" ? { state: "cancelled" } : {}) }, w);
+      st.patch(item.id, { deleted_at: t, next_fire: null, snooze_until: null, updated: t });
       emit("planner.removed", { item: item.id, kind: item.kind }, item);
       scheduler.arm();
       return { removed: item.id, restore_until: t + 30 * 86_400_000 };
@@ -693,14 +647,14 @@ export default {
 
     // ---- Agenda -------------------------------------------------------------------------------
 
-    const agenda = async i => {
+    const agenda = i => {
       const s = settings();
       const tz = s.timezone;
       const t = now();
       if (i.next !== undefined) {
         const n = Number(i.next);
         if (!Number.isInteger(n) || n < 1 || n > 100) throw fail("next is 1 to 100");
-        const ahead = await agenda({ from: t, to: t + 60 * 86_400_000 });
+        const ahead = agenda({ from: t, to: t + 60 * 86_400_000 });
         return { tz, from: t, entries: ahead.entries.filter(e => e.at >= t).slice(0, n) };
       }
       const edge = (v, end) => {
@@ -719,8 +673,8 @@ export default {
       if (to - from > 400 * 86_400_000) throw fail("an agenda covers at most 400 days");
 
       const entries = [];
-      const rows = st.all().filter(r => r.deleted_at == null && ["alarm", "timer", "reminder"].includes(r.kind)
-        && (r.repeat != null || (r.at != null && r.at >= from && r.at < to) || (r.snooze_until != null && r.snooze_until >= from && r.snooze_until < to)));
+      const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE deleted_at IS NULL AND kind IN ('alarm','timer','reminder','event')
+        AND (repeat IS NOT NULL OR (at >= ? AND at < ?) OR (snooze_until >= ? AND snooze_until < ?))`).all(from, to, from, to));
       for (const r of rows) {
         const base = { source: "planner", item: r.id, kind: r.kind, title: r.title, state: r.state, repeat: Boolean(r.repeat), all_day: false,
           where: r.where_ ?? null, url: null };
@@ -739,9 +693,10 @@ export default {
           if (r.snooze_until != null && r.state === "open") entries.push({ ...base, at: r.snooze_until, start: r.snooze_until, end: null, snoozed: true });
         }
       }
-      for (const c of await st.eventsBetween(from, to)) {
+      const copies = /** @type {any[]} */ (db.prepare("SELECT * FROM planner_calendar WHERE start < ? AND COALESCE(end, start) >= ? ORDER BY start").all(to, from));
+      for (const c of copies) {
         const e = shapeCal(c);
-        entries.push({ source: e.source, ...(e.account ? { account: e.account } : {}), event: e.event, item: e.id, kind: "event", title: e.title, at: e.at, start: e.start, end: e.end,
+        entries.push({ source: e.source, account: e.account, event: e.event, item: e.id, kind: "event", title: e.title, at: e.at, start: e.start, end: e.end,
           all_day: e.all_day, where: e.where, url: e.url });
       }
       // By start; on the same instant, all-day first, then the planner's own, then by title.
@@ -764,8 +719,8 @@ export default {
 
       // Todos due by the end of the range, overdue ones included: what needs doing is still due.
       const toDate = dateString(localDate(to - 1, tz));
-      const todos = st.all().filter(r => r.deleted_at == null && r.kind === "todo" && r.state === "open" && ((r.at != null && r.at < to) || (r.at == null && r.due != null && r.due <= toDate)))
-        .sort((a, b) => String(a.due ?? "").localeCompare(String(b.due ?? "")) || b.priority - a.priority).map(shape);
+      const todos = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE deleted_at IS NULL AND kind = 'todo' AND state = 'open'
+        AND ((at IS NOT NULL AND at < ?) OR (at IS NULL AND due IS NOT NULL AND due <= ?)) ORDER BY COALESCE(due, ''), priority DESC`).all(to, toDate)).map(shape);
       return { tz, from, to, entries, todos };
     };
 
@@ -777,7 +732,7 @@ export default {
      */
     const cursor = () => Number(ctx.events.latestId()) || 0;
 
-    const RINGS = ["alarm", "timer", "reminder", "todo"];
+    const RINGS = ["alarm", "timer", "reminder", "todo", "event"];
     /**
      * Every ring the box expects in the next `hours` (48 by default, at most 72), for a device to
      * schedule as local notifications so an alarm rings with the box out of reach. Each entry has
@@ -795,8 +750,8 @@ export default {
         if (at <= from || at > to || st.firingAt(e.item, due)) return;
         entries.push({ key: ringKey(e.item, due), ...e, due: Math.floor(due / 1000), at, loud: e.kind === "alarm" || e.kind === "timer" });
       };
-      const rows = st.all().filter(r => r.state === "open" && r.deleted_at == null && RINGS.includes(r.kind)
-        && ((r.next_fire != null && r.next_fire <= to) || (r.snooze_until != null && r.snooze_until <= to) || r.repeat != null));
+      const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE state = 'open' AND deleted_at IS NULL AND kind IN (${RINGS.map(() => "?").join(",")})
+        AND ((next_fire IS NOT NULL AND next_fire <= ?) OR (snooze_until IS NOT NULL AND snooze_until <= ?) OR repeat IS NOT NULL)`).all(...RINGS, to, to));
       for (const r of rows) {
         const e = { item: r.id, kind: r.kind, title: String(r.title ?? ""), ...(r.source_name ? { added_by: r.source_name } : {}) };
         if (r.snooze_until != null) put({ ...e, snoozed: true }, r.snooze_until, r.snooze_until);
@@ -808,8 +763,9 @@ export default {
           n = r.repeat && r.wall ? nextFire(r, n, s).next : null;
         }
       }
-      for (const c of st.cal.rows().filter(c => !c.all_day && ((c.next_fire != null && c.next_fire <= to) || (c.snooze_until != null && c.snooze_until <= to)))) {
-        const e = { item: c.id, kind: "event", title: String(c.title ?? ""), ...(c.account ? { account: c.account } : {}), start: c.start };
+      for (const c of /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_calendar WHERE all_day = 0
+        AND ((next_fire IS NOT NULL AND next_fire <= ?) OR (snooze_until IS NOT NULL AND snooze_until <= ?))`).all(to, to))) {
+        const e = { item: c.id, kind: "event", title: String(c.title ?? ""), account: c.account, start: c.start };
         if (c.snooze_until != null) put({ ...e, snoozed: true }, c.snooze_until, c.snooze_until);
         // A ring found inside its lead is set for now, but its moment (and key) is still start less the lead.
         if (c.next_fire != null && c.rung_start !== c.start) put(e, c.start - s.event_lead * 60_000, Math.max(c.next_fire, c.start - s.event_lead * 60_000));
@@ -837,7 +793,8 @@ export default {
       if (after.timezone !== cur.timezone || after.event_lead !== cur.event_lead) {
         // Floating items follow the new zone; events move with a new lead.
         const t = now();
-        const rows = st.all().filter(r => r.state === "open" && r.deleted_at == null && r.next_fire != null && r.floating && r.wall != null);
+        const rows = /** @type {any[]} */ (db.prepare(`SELECT * FROM planner_items WHERE state = 'open' AND deleted_at IS NULL AND next_fire IS NOT NULL
+          AND ((floating = 1 AND wall IS NOT NULL) OR kind = 'event')`).all());
         for (const r of rows) {
           const n = nextFire(r, t, after);
           st.patch(r.id, { next_fire: n.next, ...(n.at != null && (r.repeat || r.floating) ? { at: n.at } : {}), updated: t });
@@ -851,7 +808,7 @@ export default {
 
     // ---- Calendar -----------------------------------------------------------------------------
 
-    const cal = calendar({ ctx, K, st, scheduler, settings, now, emit, active: () => role === "box" || !linked });
+    const cal = calendarCache({ ctx, db, st, scheduler, settings, now, emit, cancelRinging, active: () => role === "box" || !linked });
 
     /** An agent may only ask for an invite on a connected calendar, which the google module holds at the Gate. */
     const createCheck = (i, w) => {
@@ -884,28 +841,18 @@ export default {
           endAt = ms(i.end);
           if (!Number.isFinite(endAt) || !(endAt > startAt)) throw fail("end must be a time after start");
         }
-        return await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread, duration_ms: endAt != null ? endAt - startAt : 3_600_000, where: i.where }, w);
+        const item = await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread }, w);
+        st.patch(item.id, { duration_ms: endAt != null ? endAt - item.at : 3_600_000, where_: clip(i.where, 500) });
+        return shape(st.item(item.id));
       }
       const input = { title: String(i.title ?? ""), start: googleTime(i.start, tz), account: String(i.account), time_zone: tz,
         ...(i.end !== undefined ? { end: googleTime(i.end, tz) } : {}), ...(i.where ? { where: String(i.where) } : {}),
         ...(i.attendees !== undefined ? { attendees: i.attendees } : {}), ...(i.why ? { why: String(i.why) } : {}) };
       const r = await ctx.call("google.calendar.create", input);
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
-      // Written at once (no invite): the connectors' sync brings it in as an Event record; look again so its reminder is set now.
-      if (r.data && r.data.event) cal.sync().catch(() => {});
+      // Written at once (no invite): keep it in the copy so the agenda and its reminder have it now.
+      if (r.data && r.data.event) cal.upsert(r.data.event, String(i.account));
       return r.data;
-    };
-
-    /** A reminder, note or to-do the records say changed from outside: its next ring follows its time, and a finished one stops ringing. */
-    const external = (row, how) => {
-      if (how === "removed") { cancelRinging(row.id); scheduler.arm(); return; }
-      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null && !row._task) {
-        const n = schedule(row, now());
-        if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
-      }
-      if (row.state !== "open" || row.deleted_at != null) cancelRinging(row.id);
-      emit(how === "added" ? "planner.added" : "planner.changed", how === "added" ? { item: row.id, kind: row.kind, title: row.title, ...(row.at != null ? { at: row.at } : {}) } : { item: row.id, kind: row.kind, fields: ["records"] }, row);
-      scheduler.arm();
     };
 
     // ---- Tools --------------------------------------------------------------------------------
@@ -933,14 +880,8 @@ export default {
       run: async (i, meta) => {
         const w = await who(i, meta.caller, meta.thread || null, meta.agent || null);
         const { as: _as, ...rest } = i || {};
-        if (!K && !local && !(role === "local" && (await checkLink()))) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
         if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
-        // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
-        if (!local && !READS.has(name)) w.chain = await K.chain(meta).catch(() => null);
-        const out = await run(rest, w);
-        // A write answers once the records have it; a write the gateway refused is the caller's error.
-        if (!local && !READS.has(name)) await st.flush();
-        return out;
+        return run(rest, w);
       },
     });
 
@@ -962,9 +903,7 @@ export default {
         const f = i.firing ? st.firing(i.firing) : null;
         const item = st.item(f ? f.item : i.item);
         if (!item) {
-          let row = cal.row(f ? f.item : i.item);
-          // An event outside the window the planner rings for is still an event record.
-          if (!row && i.item) { const rec = await K.records.get(K.serviceChain(), "event", String(i.item)).catch(() => null); row = rec ? fromEvent(rec, now()) : null; }
+          const row = cal.row(f ? f.item : i.item);
           if (row) return { item: shapeCal(row), firings: st.firingsOf(row.id).map(shapeFiring), ...(f ? { firing: shapeFiring(f) } : {}) };
           throw fail("no such item", "not_found");
         }
@@ -1000,7 +939,7 @@ export default {
       { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => remove(i, w), { agents: true });
 
     tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. Also returns last_event, the event cursor it is current to. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
-      { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });
+      { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...agenda(i), last_event }; }, { agents: true });
 
     tool("planner.upcoming", "Every ring expected in the next hours (48 by default, 1 to 72), for a device to schedule as its own notifications so alarms ring with the box out of reach. Entries: key (planner-<item>-<due>, the push's tag too), item, kind, title, due (seconds), at (ms), loud, snoozed?, start and account for events. Refresh on any planner event but planner.fired, and on foreground. Also returns last_event.",
       { type: "object", properties: { hours: int } }, async i => upcoming(i), { agents: true });
@@ -1024,22 +963,8 @@ export default {
     if (role === "local") {
       try { await checkLink(); } catch { linked = false; }
     }
-    if (!K) return { async stop() {} };
-    // A to-do's time is not stored on its Task: it rings from the working set, so its next ring is worked out again at start.
-    for (const r of st.all()) if (r._task && r.state === "open" && r.at != null) r.next_fire = schedule(r, now()).next_fire;
     if (!linked) scheduler.start();
-    offs.push(cal.watch());
-    // The records are the truth: a reminder, note or to-do changed from the app, a Flow or another device is read back in.
-    for (const [type, consumer] of [["reminder.*", "planner-reminders"], ["note.*", "planner-notes"], ["task.*", "planner-tasks"]]) {
-      const off = K.events.subscribe(K.serviceChain(), consumer, { type }, e => {
-        // What the planner itself wrote is already in its working set.
-        if (String(e.actor || "").startsWith("service:planner")) return;
-        const parts = String(e.subject || "").split("/");
-        const id = parts.pop(), kind = parts.pop();
-        if (id && kind) return st.external({ type: kind, id }).catch(err => ctx.log(`planner: a change to ${kind} ${id} was not read (${err.message})`));
-      });
-      offs.push(() => { if (typeof off === "function") off(); });
-    }
+    offs.push(...cal.watch());
 
     return {
       scheduler,

@@ -112,26 +112,6 @@ test("kits: an update shows the diff with every widening named, and applies new 
   assert.equal(mine(w, "template").length, 1);
 });
 
-test("kits: diff is read only and answers before anything is proposed: not installed, then newer, then current", async () => {
-  const { w, kits, caller } = await kitWorld();
-  const before = await kits.diff(estateKit(1));
-  assert.deepEqual(before, { installed: false, from: null, to: 1, newer: false, diff: null });
-  const p1 = await kits.propose(estateKit(1), ALEX, caller);
-  w.kernel.completeTask(p1.task, { outcome: "approved" });
-  await settle(w); await settle(w);
-  const tasksBefore = [...(w.kernel.tables.get("task") || new Map()).values()].length;
-  const up = await kits.diff(estateKit(2));
-  assert.equal(up.installed, true);
-  assert.equal(up.newer, true);
-  assert.deepEqual([up.from, up.to], [1, 2]);
-  assert.deepEqual(up.diff.added.map(a => a.name), ["weekly_digest"]);
-  assert.ok(up.diff.widenings.some(x => /merges the sealed field ssn/.test(x.what)));
-  assert.equal([...(w.kernel.tables.get("task") || new Map()).values()].length, tasksBefore, "asking for a diff creates no task");
-  const same = await kits.diff(estateKit(1));
-  assert.equal(same.newer, false);
-  assert.deepEqual(same.diff.added, []);
-});
-
 test("kits: an update that drops a part removes it, and names the removals and field changes as risks", () => {
   const w = { cat: { space: SPACE, types: {}, actions: { "email.send": { risk: "outward.send" } }, roles: [], teammates: [], templates: [] } };
   const v1 = estateKit(2), v2 = estateKit(1);

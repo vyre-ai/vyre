@@ -38,11 +38,6 @@ test("records.*: a signed-in device creates and queries records in its Space und
   assert.equal(page.rows.length, 1);
   const got = (await ok("records.get", { urn: made.urn })).record;
   assert.equal(got.data.name, "Jane");
-  // #contact: the same record put in front of the AI, with the reference as a tool; a bad urn is refused like records.get
-  const refd = (await ok("records.reference", { urn: made.urn })).reference;
-  assert.equal(refd.title, "Jane");
-  assert.ok(refd.text.includes("Name: Jane") && Array.isArray(refd.placeholders));
-  assert.equal((await call("records.reference", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
   const upd = (await ok("records.update", { urn: made.urn, patch: { age: 41 }, base_version: got.version })).record;
   assert.equal(upd.data.age, 41);
   const stale = await call("records.update", { urn: made.urn, patch: { age: 42 }, base_version: got.version }, { root, caller: "cli" });
@@ -143,53 +138,4 @@ test("records.linked and records.kits.*: the reverse of a link under the caller'
   assert.equal(kit.id, "estate-planning");
   assert.equal((await call("records.kits.get", { id: "nope" }, { root, caller: "cli" })).error.code, "not_found");
   assert.ok((await call("records.kits.library", {}, { root, caller: "mcp" })).error, "a model caller is refused");
-});
-
-test("records.roles and records.holders: what a contact is to the Space, and who holds a role, under the caller's chain", async t => {
-  process.env.VYRE_SEAL_DEV = "1";
-  process.env.VYRE_KERNEL_PATH_RULE = "1";
-  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true });
-  t.after(() => d.stop());
-  const { call } = await import("../daemon/client.js");
-  const ok = async (tool, input, caller = "cli") => { const r = await call(tool, input, { root, caller }); assert.ok(!r.error, `${tool}: ${JSON.stringify(r)}`); return r.data; };
-  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
-  const role = name => ({ name, label: name, role: { link: "contact", ended: ["Ended"] }, fields: [
-    { name: "contact", kind: "link", to: "contact", label: "Contact", required: true },
-    { name: "stage", kind: "stage", label: "Stage", options: ["New", "Active", "Ended"] },
-  ], stages: [{ name: "New" }, { name: "Active" }, { name: "Ended" }] });
-  await d.kernel.gateway.records.define(ownerChain, { add_types: [CONTACT, role("prospect"), role("client")] });
-  const jane = (await ok("records.create", { type: "contact", data: { name: "Jane" } })).record;
-  const sam = (await ok("records.create", { type: "contact", data: { name: "Sam" } })).record;
-  await ok("records.create", { type: "prospect", data: { contact: { urn: jane.urn }, stage: "Ended" } });
-  await ok("records.create", { type: "client", data: { contact: { urn: jane.urn }, stage: "Active" } });
-  await ok("records.create", { type: "client", data: { contact: { urn: sam.urn }, stage: "New" } });
-  const mine = await ok("records.roles", { urn: jane.urn });
-  assert.deepEqual(mine.roles.map(r => [r.role, r.current]), [["client", true], ["prospect", false]], "current first, an ended one is still shown");
-  assert.deepEqual((await ok("records.roles", { urn: jane.urn, include_ended: false })).roles.map(r => r.role), ["client"]);
-  const held = await ok("records.holders", { role: "client" });
-  assert.equal(held.rows.length, 2);
-  assert.deepEqual((await ok("records.holders", { role: "client", stage: "Active" })).rows.map(r => r.holder), [jane.urn]);
-  assert.equal((await ok("records.holders", { role: "prospect" })).rows.length, 0, "an ended role is left out unless asked for");
-  assert.equal((await ok("records.holders", { role: "prospect", include_ended: true })).rows.length, 1);
-  assert.equal((await call("records.holders", { role: "contact" }, { root, caller: "cli" })).error.code, "bad_input", "a type that is not a role");
-  assert.equal((await call("records.roles", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
-  for (const caller of ["mcp", "tailnet-guest:x", "anonymous"]) {
-    assert.ok((await call("records.roles", { urn: jane.urn }, { root, caller })).error, `${caller} is refused`);
-    assert.ok((await call("records.holders", { role: "client" }, { root, caller })).error, `${caller} is refused`);
-  }
-});
-
-test("every Space has the core types (contact, communication, event ...) the calendar sync and the logging Flow write to", async t => {
-  process.env.VYRE_SEAL_DEV = "1";
-  process.env.VYRE_KERNEL_PATH_RULE = "1";
-  t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; });
-  const root = tempHome(t);
-  const d = await start({ root, log: () => {}, kernel: true });
-  t.after(() => d.stop());
-  const { call } = await import("../daemon/client.js");
-  const types = (await call("records.types", {}, { root, caller: "cli" })).data.types.map(x => x.name);
-  for (const n of ["contact", "contact_point", "organization", "communication", "participant", "event"]) assert.ok(types.includes(n), `${n} is defined in a fresh Space`);
-  assert.ok(d.registry.deps.flowsHost.get(d.kernel.id.space).calendar, "and the calendar sync is started for the Space");
 });

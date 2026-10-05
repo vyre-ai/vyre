@@ -10,4 +10,3 @@ expo-env.d.ts
 public/term/
 /dist-android/
 /dist-ios/
-public/glass/

@@ -21,7 +21,7 @@ import { offlineTool, offlineTouched, offlineStop } from "../../core/learn/offli
 import { home, paths } from "../../core/config/index.js";
 import { writeKey } from "../../core/switchboard/sessions.js";
 
-const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", fail: "PostToolUseFailure", stop: "Stop", end: "SessionEnd" };
+const EVENT = { brief: "SessionStart", enrich: "UserPromptSubmit", rules: "PreToolUse", learn: "PostToolUse", fail: "PostToolUseFailure", stop: "Stop" };
 const piece = /** @type {keyof typeof EVENT} */ (process.argv[2]);
 
 async function stdin() {
@@ -120,9 +120,6 @@ async function main() {
     await call("harness.learn", { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ok: false,
       ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}),
       ...(typeof h.error === "string" ? { error_head: h.error.slice(0, 200) } : {}), ...(h.is_interrupt === true ? { interrupted: true } : {}) }, opts);
-  } else if (piece === "end") {
-    // SessionEnd (clear, logout, exit): the Project hub closes this session's summary. Said once, never blocks, says nothing to Claude.
-    await call("harness.end", { ...base, ...(typeof h.reason === "string" ? { reason: h.reason.slice(0, 40) } : {}) }, opts);
   } else if (piece === "stop") {
     const text = typeof h.last_assistant_message === "string" ? h.last_assistant_message : undefined;
     // Our own headless child (VYRE_THREAD is its session id) has no one to decline a call.

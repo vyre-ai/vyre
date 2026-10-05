@@ -10,7 +10,6 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
-import { call } from "../core/daemon/client.js";
 import { interactiveFrom } from "../core/harness/index.js";
 import { HUMAN_ONLY } from "../core/presence/index.js";
 import { socketPath } from "../core/config/index.js";
@@ -113,7 +112,7 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const env = { VYRE_HOME: root };
-  assert.ok((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id);
+  assert.ok((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id);
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
   const payload = {
     session_id: "s1", transcript_path: path.join(root, "s1.jsonl"), cwd: "/w/harlow-site", prompt_id: "p1",
@@ -133,8 +132,8 @@ test("hooks: a broken lesson sends the turn back from Stop, in Claude Code's top
 test("hooks: with vyred down, the accepted lessons still hold, from the snapshot in the home", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id, 1);
-  assert.equal((await call("learn.add", { text: "update CHANGELOG.md whenever you change code" }, { root, caller: "cli", timeout: 20_000 })).data.id, 2);
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id, 1);
+  assert.equal((await d.registry.call("learn.add", { text: "update CHANGELOG.md whenever you change code" }, "cli")).data.id, 2);
   await d.stop();
   const env = { VYRE_HOME: root };
   // Exactly the fields Claude Code 2.1.283 sends to a Stop hook.
@@ -163,7 +162,7 @@ test("hooks: with vyred down, the accepted lessons still hold, from the snapshot
 test("hooks: with vyred down and lessons.json deleted, the lessons still hold, read from vyre.db", async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
-  assert.equal((await call("learn.add", { text: "never use em dashes in anything you write" }, { root, caller: "cli", timeout: 20_000 })).data.id, 1);
+  assert.equal((await d.registry.call("learn.add", { text: "never use em dashes in anything you write" }, "cli")).data.id, 1);
   await d.stop();
   fs.rmSync(path.join(root, "lessons.json"));
   const env = { VYRE_HOME: root };
@@ -253,21 +252,8 @@ test("hooks: a plain yes accepts a lesson only when a person typed it into an in
   assert.match(await tellThenYes({ tty: true, env: { VYRE_THREAD: "s1" } }), refused, "our own headless thread");
   assert.match(await tellThenYes({ tty: false }), refused, "no terminal");
   assert.equal(status(), "proposed");
-  // RC1 (lead ruling, reviewer-3 on HOLD): with the kernel on a plain yes never accepts a lesson, not even from a person at an interactive claude. The hook reaches vyred as `harness`, and a model's shell
-  // can replay the last user line through that path, so typedBy is never set from it. A lesson is kept by a tap in the app or by `vyre learn accept`. An unforgeable hook proof is BACKLOG 0.3.1.
-  const kernelOn = Boolean(d.kernel);
-  const answered = await tellThenYes({ tty: true });
-  if (kernelOn) {
-    assert.match(answered, refused, "a person at an interactive claude: still not accepted, the kernel is on");
-    assert.equal(status(), "proposed");
-    for (const caller of ["mcp", "cli", "hook", "module:x", "tailnet:alex", "mcp:agent:kit", "harness:agent:juno", "deck", "harness"]) {
-      await d.registry.call("harness.enrich", { session: "s1", cwd: "/w", prompt_id: `p-x-${caller}`, prompt: "yes", interactive: true }, caller);
-      assert.equal(status(), "proposed", `${caller} cannot make a plain yes count`);
-    }
-  } else {
-    assert.match(answered, /The user said yes: lesson 1 is in force now/, "a person at an interactive claude (kernel off)");
-    assert.equal(status(), "active");
-  }
+  assert.match(await tellThenYes({ tty: true }), /The user said yes: lesson 1 is in force now/, "a person at an interactive claude");
+  assert.equal(status(), "active");
 });
 
 test("mcp: initialize, list and call over stdio; harness tools are not offered", async t => {

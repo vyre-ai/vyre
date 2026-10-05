@@ -8,21 +8,18 @@ import { memo, useMemo, useRef, useState, type ReactNode } from "react";
 import { Image, Pressable, ScrollView, TextInput, View, StyleSheet } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Button, Chip, Icon, IconButton, Text, haptic, useUiTheme } from "@vyre/ui";
-import { tokens } from "../theme/tokens";
-import { ANSI_BLOCK as ANSI } from "../terminal/palettes";
 import { parseAnsi, stripAnsi } from "./ansi.js";
 import { readSelection } from "./highlight.js";
 import { countDiff, fileTree, parseUnified, sealedCount, sideBySide, TREE_AT, type Block, type DiffFile, type RecordField } from "./blocks.js";
 
-const TERM_RULE = tokens.color.dark.rule;
 const S = StyleSheet.create({
   s1: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 44, paddingVertical: 4 },
   s2: { flex: 1, minWidth: 0 },
   s3: { alignSelf: "center" },
-  s4: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: TERM_RULE },
+  s4: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, minHeight: 40, borderBottomWidth: 1, borderBottomColor: "#2A2825" },
   s5: { flex: 1, minWidth: 0, minHeight: 40, justifyContent: "center" },
   s6: { minHeight: 28, justifyContent: "center" },
-  s7: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: TERM_RULE },
+  s7: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 6, borderTopWidth: 1, borderTopColor: "#2A2825" },
   s8: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 8 },
   s9: { flex: 1 },
   s10: { minHeight: 40, justifyContent: "center", paddingHorizontal: 8 },
@@ -82,7 +79,7 @@ function RoomNote({ note, dark }: { note?: string; dark?: boolean }) {
   if (!note) return null;
   return (
     <View style={dark ? { paddingHorizontal: 14, paddingBottom: 8 } : { paddingHorizontal: 12, paddingVertical: 6 }}>
-      <Text size="caption" tone="label" style={dark ? { color: tokens.color.dark.label } : undefined}>{note}</Text>
+      <Text size="caption" tone="label" style={dark ? { color: "#6B665D" } : undefined}>{note}</Text>
     </View>
   );
 }
@@ -107,8 +104,9 @@ function Shell({ icon, title, sub, right, children, flush, tint }: { icon: "term
 
 // ---------------------------------------------------------------- terminal
 
-const TERM_BG = tokens.color.dark.codeBg;
-const TERM_INK = tokens.color.dark.text;
+const ANSI: Record<string, string> = { black: "#6B665D", red: "#F2796B", green: "#7FD08A", yellow: "#E3B26B", blue: "#8FB7E8", magenta: "#D6A5E8", cyan: "#7BD3D3", white: "#D8D3C8" };
+const TERM_BG = "#0B0A09";
+const TERM_INK = "#D8D3C8";
 const TERM_LINE = 20;
 
 export function TerminalBlock({ block, ctx, output, running }: { block: Extract<Block, { block: "terminal" }>; ctx: BlockCtx; output?: string; running?: boolean }) {
@@ -122,7 +120,7 @@ export function TerminalBlock({ block, ctx, output, running }: { block: Extract<
   const hidden = lines.length - shown.length;
   const exit = block.exit;
   return (
-    <View style={{ borderWidth: 1, borderColor: TERM_RULE, backgroundColor: TERM_BG, borderRadius: 12, overflow: "hidden", minWidth: 0 }}>
+    <View style={{ borderWidth: 1, borderColor: "#2A2825", backgroundColor: TERM_BG, borderRadius: 12, overflow: "hidden", minWidth: 0 }}>
       <View style={S.s4}>
         <Icon name="terminal" tone="label" />
         <Pressable accessibilityRole="button" accessibilityLabel={open ? "Collapse output" : "Expand output"} accessibilityState={{ expanded: open }} onPress={() => setOpen((o) => !o)} style={S.s5}>

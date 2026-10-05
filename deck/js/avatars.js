@@ -32,13 +32,13 @@
 // gradient ids, so a template's gradient never resolves to a hidden copy elsewhere on the page. A
 // theme switch redraws the avatars on the page in place (installAvatars).
 
-import { userAvatar, USER_GRADIENTS, PROJECT_COLORS, defaultAvatarOption } from "../../lib/wink-code/identity.js";
+import { userAvatar, USER_GRADIENTS, PROJECT_COLORS, defaultAvatarOption } from "../vendor/vyrecode/identity.js";
 import { creature } from "../vendor/vyrecode/creature.js";
 import { character } from "../vendor/vyrecode/characters.js";
 import { emblem } from "../vendor/vyrecode/emblem.js";
 import { agentV2 } from "../vendor/vyrecode/agent2.js";
-import { renderCode2, bitsToLevels } from "../../lib/wink-code/vyrecode2.js";
-import { buildCodeword, bytesToBits } from "../../lib/wink-code/payload.js";
+import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
+import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
 // A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
 // Lumen ports it against its vectors). core/daemon serves it at /lib/avatar-seed/index.js.
 import { projectBytes, entityBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";

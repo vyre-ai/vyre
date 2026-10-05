@@ -88,34 +88,6 @@ export function createDriveGateway(cfg) {
       note(chain, "file.written", file(p), { path: p, version: r.version, conflict: Boolean(r.conflict), bytes: bytes.length }, d.decision);
       return r;
     },
-    /** One folder to another: `moveFolders` with a single pair. @returns {Promise<{ moved: number }>} */
-    async moveFolder(chain, /** @type {string} */ from, /** @type {string} */ to) { return this.moveFolders(chain, [[from, to]]); },
-    /**
-     * Move folders: every file under each `from` is written under its `to` and the old path is tombstoned (the Drive keeps every version, so nothing is lost). EVERY file of EVERY pair is
-     * checked first, under this chain (`drive.read` and `drive.write` on the source, `drive.write` on the destination), and one refusal aborts the whole move before anything moves, so a set of
-     * folders is never left split. One event says what moved, never the bytes.
-     * @param {any} chain @param {[string, string][]} pairs @returns {Promise<{ moved: number }>}
-     */
-    async moveFolders(chain, pairs) {
-      mustChain(chain);
-      if (!Array.isArray(pairs) || !pairs.length || pairs.length > 10) throw new KernelError("bad_input", "name the folders to move");
-      /** @type {{ path: string, dest: string }[]} */ const plan = [];
-      /** @type {{ a: string, b: string, d: any }[]} */ const folders = [];
-      for (const [from, to] of pairs) {
-        const a = String(from).replace(/\/+$/, ""), b = String(to).replace(/\/+$/, "");
-        if (!a || !b || a === b || b.startsWith(a + "/") || a.startsWith(b + "/")) throw new KernelError("bad_input", "name two different folders, neither inside the other");
-        const d1 = await gate(chain, "drive.write", `${file(a)}/*`);
-        await gate(chain, "drive.write", `${file(b)}/*`);
-        folders.push({ a, b, d: d1 });
-        for (const e of await run(async () => cfg.drive.list(a))) { const path = String(e.path ?? e.name ?? e); plan.push({ path, dest: `${b}/${path.slice(a.length + 1)}` }); }
-      }
-      for (const f of plan) {
-        if (!(await check(chain, "drive.read", file(f.path))) || !(await check(chain, "drive.write", file(f.path))) || !(await check(chain, "drive.write", file(f.dest)))) throw new KernelError("not_found", "that folder is not yours to move");
-      }
-      for (const f of plan) await run(async () => { const bytes = await cfg.drive.get(f.path, {}); await cfg.drive.put(f.dest, bytes, { by: actor(chain) }); await cfg.drive.delete(f.path, { by: actor(chain) }); });
-      for (const f of folders) note(chain, "file.moved", file(f.b), { from: f.a, to: f.b, files: plan.filter(p => p.path.startsWith(f.a + "/")).length }, f.d.decision);
-      return { moved: plan.length };
-    },
     /** A restore is a new version, and its own admin act: an assistant's `drive.write` never reaches it. */
     async restore(chain, /** @type {string} */ p, /** @type {number} */ version, /** @type {{ presence?: any }} */ opt = {}) {
       mustChain(chain);

@@ -215,9 +215,7 @@ export async function applyOp(state, op, ctx = {}) {
   /** The time an age is counted from: the op's own, or the first time this verifier saw it if that is later. */
   const eff = ctx.seenAt && Number.isInteger(op.seq) ? Math.max(op.ts, ctx.seenAt(op.seq) ?? 0) : op.ts;
   const msg = messageOf(op);
-  // The directory keeps no device labels (0.2.9, the name list holds public keys only): a device, recovery code or contact entry that carries a label is refused where ops are ACCEPTED now. A label stays on the device that
-  // named the entry. History that already holds labels (an older chain) still verifies, since `live` is false when a client or the Worker re-reads what was accepted before.
-  if (ctx.live) for (const raw of [op.entry, op.code]) if (raw && typeof raw === "object" && raw.label !== undefined && raw.kind !== "owner") throw chainError("bad_entry", "an entry carries no label: a device's name stays on that device, never in the public list");
+
   if (op.type === "genesis") {
     if (state) throw chainError("bad_op", "a chain has one genesis");
     if (op.seq !== 0 || op.prev !== null || !["person", "space"].includes(op.kind)) throw chainError("bad_op", "a genesis is seq 0 with no prev");
@@ -380,17 +378,17 @@ export async function signerKey(state, by, via, ts, ctx = {}, pos = {}) {
     const dev = typeof via === "string" ? find(at, via) : undefined;
     if (!dev || dev.kind !== "device") throw chainError("not_on_list", "that device is not on the owner's list");
     if (ctx.live) await stillOnList(ctx, ops, dev);
-    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e, signing: dev };
+    return { pub: /** @type {string} */ (dev.pub), young: youngAt(dev, ts), entry: e };
   }
   if (e.kind === "contact") throw chainError("not_allowed", "a recovery contact only approves a recovery");
-  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e, signing: e };
+  return { pub: /** @type {string} */ (e.pub), young: e.kind === "code" || youngAt(e, ts), entry: e };
 }
 
 /** The position of a person's chain a space op relies on: its head. @param {any[]} ownerOps */
 export async function viaOf(ownerOps) { return { via_seq: ownerOps.length - 1, via_head: await hashOf(ownerOps[ownerOps.length - 1]) }; }
 
-/** Does `sig` over `message` check out under the key `signerKey` names? Pass the entry that signed (`signing` in signerKey's answer) so a passkey's assertion is checked as one. @param {string} pub @param {Uint8Array} message @param {string} sig @param {Entry} [entry] */
-export const verifyWith = (pub, message, sig, entry) => (entry && entry.alg === "webauthn-es256" ? verifyWebAuthn(/** @type {string} */ (entry.pub), String(entry.rp || ""), message, sig) : verifySig(pub, message, sig));
+/** Does `sig` over `message` check out under the key `signerKey` names? @param {string} pub @param {Uint8Array} message @param {string} sig */
+export const verifyWith = (pub, message, sig) => verifySig(pub, message, sig);
 
 /** Verify a whole chain from its genesis and return its state. @param {any[]} ops @param {Ctx} [ctx] */
 export async function verifyChain(ops, ctx = {}) {

@@ -202,7 +202,7 @@ test("link: a listener's tailnet peer reaches the tool through vyred's router, n
       globalThis.__peerprobePort = server.address().port;
       return { async stop() { server.closeAllConnections(); await new Promise(r => server.close(r)); } };
     } };`);
-  const d = await start({ presence: present, root, firstPartyRoots: [path.join(root, "modules")], log: () => {} });
+  const d = await start({ presence: present, root, log: () => {} });
   t.after(() => d.stop());
   const port = /** @type {any} */ (globalThis).__peerprobePort;
   const r = await fetch(`http://127.0.0.1:${port}/v1/tools/peerprobe.who`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ peer: "forged" }) });

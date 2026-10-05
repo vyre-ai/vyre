@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { inviteReasonSay, leftOf, phaseOf, redeemSay } from "./typed-model.js";
+import { leftOf, phaseOf, redeemSay } from "./typed-model.js";
 
 test("each refusal has its own sentence, none from the box and none naming a server", () => {
   const all = ["bad_input", "refused", "unavailable", "typed_code_off", "relay_old", "presence_required", "other"].map(redeemSay);
@@ -18,11 +18,6 @@ test("a pairing's status becomes what the screen does next", () => {
   assert.equal(phaseOf({ state: "failed" }).phase, "failed");
   assert.match(phaseOf({ state: "expired" }).say, /ran out of time/);
   assert.equal(phaseOf(null).phase, "waiting");
-});
-
-test("each invite redeem reason has its own sentence", () => {
-  const all = ["format", "busy", "offline", "expired", "not_an_invite", "refused"].map(inviteReasonSay);
-  assert.equal(new Set(all).size, all.length);
 });
 
 test("the countdown reads m:ss and goes empty at the deadline", () => {

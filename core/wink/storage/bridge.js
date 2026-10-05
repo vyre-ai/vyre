@@ -24,8 +24,6 @@ export const BRIDGE_TOOL = "wink.storage.bridge";
 export const ACCEPT_TOOL = "wink.storage.bridge.accept";
 /** What a person runs on the home: use a drive through another device (the home picks the drive and names the device). */
 export const DRIVE_TOOL = "wink.storage.bridge.drive";
-/** The home asks a device that holds a connection what drives it can see from where it sits (the device answers down the connection; the home lists them beside its own). */
-export const SCAN_TOOL = "wink.storage.bridge.scan";
 /** Bodies travel as base64 in a JSON call (peer-wire carries up to 32 MB a message). The pool's chunks are far smaller; this stops a frame that could not fit. */
 export const MAX_FRAME_BODY = 20 * 1024 * 1024;
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -309,9 +307,9 @@ export async function pairFromHome({ secrets, linkTo }, d) {
  * mounted on this device, keeps the secret, and starts serving it to that home only. Two steps (see pairFromHome): `open` checks and answers a one-time key
  * (kept in memory for `ttlMs`, used once), `seal` opens the sealed secret with it. A plain `secret` input is refused.
  * `roots` are the folders a drive may be mounted under on this device (the home names a mount, it never gets to name any folder it likes).
- * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean, roots?: string[], ttlMs?: number, now?: () => number, hooks?: { afterCheck?: () => void }, onServed?: (r: { offer: string, dir: string, capacity: number, caller: string }) => Promise<void> | void }} o
+ * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, secrets: ReturnType<typeof createBridgeSecrets>, home: () => string | null, exists?: (p: string) => boolean, roots?: string[], ttlMs?: number, now?: () => number, hooks?: { afterCheck?: () => void } }} o
  */
-export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volumes", "/mnt", "/media"], ttlMs = 60_000, now = Date.now, hooks, onServed }) {
+export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volumes", "/mnt", "/media"], ttlMs = 60_000, now = Date.now, hooks }) {
   /** @type {Map<string, { priv: crypto.KeyObject, until: number }>} */
   const open = new Map();
   return async (/** @type {string} */ caller, /** @type {any} */ input) => {
@@ -345,7 +343,6 @@ export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volume
       try { fs.mkdirSync(target, { mode: 0o700 }); } catch { /* it exists already, or the engine makes it; rootedDir looks at what is there */ }
       const rooted = rootedDir({ dir: target, roots, hooks });
       await endpoint.serve({ offer: input.offer, dir: rooted.real, capacity: cap, caller, guard: rooted.check });
-      if (onServed) { try { await onServed({ offer: input.offer, dir: rooted.real, capacity: cap, caller }); } catch { /* a record that could not be kept only costs a re-pair after a restart */ } }
     }
     catch (e) { await secrets.remove(input.offer); throw e; }
     return { ok: true };
@@ -355,33 +352,15 @@ export function acceptDrive({ endpoint, secrets, home, exists, roots = ["/Volume
 /**
  * What the device with the drive answers when the home calls back on its held connection: `(tool, input)` of a peer session, answered as the home it holds
  * the connection to (the connection is the identity: the device dialled that home and nobody else can call down it).
- * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, drive: ReturnType<typeof acceptDrive>, home: () => string | null, scan?: () => Promise<any> }} o
+ * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, drive: ReturnType<typeof acceptDrive>, home: () => string | null }} o
  */
-export function bridgeServe({ endpoint, drive, home, scan }) {
+export function bridgeServe({ endpoint, drive, home }) {
   return async (/** @type {string} */ tool, /** @type {any} */ input) => {
     const h = home();
     if (!h) throw err("denied", "This device is not paired to a space's home.");
     const caller = `device:${h}`;
     if (tool === BRIDGE_TOOL) return endpoint.handle(caller, input);
     if (tool === ACCEPT_TOOL) return drive(caller, input);
-    if (tool === SCAN_TOOL && scan) return scan();
     throw err("denied", "This connection answers storage calls only.");
   };
-}
-
-/**
- * After a restart: serve again each drive this device had accepted (`onServed` kept them). The folder is checked against the roots again, and an offer whose secret or folder is gone is dropped from
- * the list, so a drive that went away is not served by what is left of an old record. Answers the offers served.
- * @param {{ endpoint: ReturnType<typeof createBridgeEndpoint>, kept: { offer: string, dir: string, capacity: number, caller: string }[], roots?: string[], forget: (offer: string) => void, hooks?: { afterCheck?: () => void } }} o
- */
-export async function resumeServing({ endpoint, kept, roots = ["/Volumes", "/mnt", "/media"], forget, hooks }) {
-  /** @type {string[]} */ const served = [];
-  for (const k of kept) {
-    try {
-      const rooted = rootedDir({ dir: k.dir, roots, hooks });
-      await endpoint.serve({ offer: k.offer, dir: rooted.real, capacity: k.capacity, caller: k.caller, guard: rooted.check });
-      served.push(k.offer);
-    } catch { forget(k.offer); }
-  }
-  return served;
 }

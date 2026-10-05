@@ -19,8 +19,8 @@ import url from "node:url";
 import http from "node:http";
 import crypto from "node:crypto";
 import * as payload from "../payload.js";
-import { renderCode2, bitsToLevels, levelsToBits } from "../../../lib/wink-code/vyrecode2.js";
-import * as geo from "../../../lib/wink-code/geometry.js";
+import { renderCode2, bitsToLevels, levelsToBits } from "../../vendor/vyrecode/vyrecode2.js";
+import * as geo from "../../vendor/vyrecode/geometry.js";
 
 /** A stand-in for a real public-key fingerprint (test-only: payload.js itself must stay
  * browser-safe, since deck/js/scan.js imports it for the real on-phone decode). */

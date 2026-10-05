@@ -48,29 +48,14 @@ function field(f, d, t) {
 }
 /** The label is left out when it is the default made from the name. @param {string} name @param {any} o */
 function labelless(name, o) { const { label, ...r } = o; return label !== undefined && label !== labelOf(name) ? { label, ...r } : r; }
-/** One list of stages as text. @param {any[]} stages @param {number} d */
-function stageItems(stages, d) {
-  return stages.map((/** @type {any} */ s) => {
-    if (!s.tasks && s.enter_if === undefined) return pad(d + 1) + q(s.name);
-    const parts = [`${pad(d + 2)}name: ${q(s.name)}`];
-    if (s.enter_if !== undefined) parts.push(`${pad(d + 2)}enter_if: ${q(s.enter_if)}`);
-    if (s.tasks) parts.push(`${pad(d + 2)}tasks: [\n${s.tasks.map((/** @type {any} */ tk) => pad(d + 3) + "defineTask(" + lit(taskOut(tk), d + 3) + ")").join(",\n")},\n${pad(d + 2)}]`);
-    return `${pad(d + 1)}{\n${parts.join(",\n")},\n${pad(d + 1)}}`;
-  });
-}
 /** @param {any} f @param {number} d @param {any} t */
 function stage(f, d, t) {
   const opts = labelless(f.name, { label: f.label, ...(f.description ? { description: f.description } : {}) });
-  if (t.stage_sets?.length) opts.sets = t.stage_sets.map((/** @type {any} */ x) => ({ name: x.name, when: x.when, stages: x.stages }));
-  const optText = Object.keys(opts).length ? ", " + litStages(opts, d) : "";
-  return `defineStage([\n${stageItems(t.stages ?? [], d).join(",\n")},\n${pad(d)}]${optText})`;
-}
-/** Print the options of defineStage; a stage set's stages are printed as a stage list. @param {any} o @param {number} d */
-function litStages(o, d) {
-  const { sets, ...rest } = o;
-  const parts = Object.entries(rest).map(([k, v]) => `${pad(d + 1)}${key(k)}: ${lit(v, d + 1)}`);
-  if (sets) parts.push(`${pad(d + 1)}sets: [\n${sets.map((/** @type {any} */ x) => `${pad(d + 2)}{\n${pad(d + 3)}name: ${q(x.name)},\n${pad(d + 3)}when: ${q(x.when)},\n${pad(d + 3)}stages: [\n${stageItems(x.stages, d + 3).join(",\n")},\n${pad(d + 3)}],\n${pad(d + 2)}}`).join(",\n")},\n${pad(d + 1)}]`);
-  return `{\n${parts.join(",\n")},\n${pad(d)}}`;
+  const items = (t.stages ?? []).map((/** @type {any} */ s) => {
+    if (!s.tasks) return pad(d + 1) + q(s.name);
+    return `${pad(d + 1)}{\n${pad(d + 2)}name: ${q(s.name)},\n${pad(d + 2)}tasks: [\n${s.tasks.map((/** @type {any} */ tk) => pad(d + 3) + "defineTask(" + lit(taskOut(tk), d + 3) + ")").join(",\n")},\n${pad(d + 2)}],\n${pad(d + 1)}}`;
+  });
+  return `defineStage([\n${items.join(",\n")},\n${pad(d)}]${Object.keys(opts).length ? ", " + lit(opts, d) : ""})`;
 }
 /** A stored task template back to the SDK's names. @param {any} t */
 function taskOut(t) {
@@ -80,7 +65,7 @@ function taskOut(t) {
 
 /** @param {any} t */
 function type(t) {
-  const { fields, stages, stage_sets, rules, ...head } = t;
+  const { fields, stages, rules, ...head } = t;
   const h = Object.entries(head).filter(([k, v]) => !(k === "label" && v === labelOf(t.name)));
   const parts = h.map(([k, x]) => `  ${key(k)}: ${lit(x, 1)}`);
   parts.push("  fields: {\n" + fields.map((/** @type {any} */ f) => `    ${key(f.name)}: ${field(f, 2, t)}`).join(",\n") + ",\n  }");

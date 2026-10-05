@@ -18,7 +18,7 @@ export const OUTWARD_RISKS = f(["outward.send", "outward.pay", "outward.publish"
 export const EFFECTS = f(["allow", "deny", "ask"]);
 export const REASON_CODES = f([
   "ok", "no_grant", "expired", "wrong_space", "wrong_node", "needs_presence", "needs_approval", "sealed", "tainted", "limit",
-  "undeclared", "not_a_member", "chain_not_person", "revoked", "pattern_not_covered", "not_contained", "unknown_action", "runner_only", "bad_input", "not_found",
+  "undeclared", "not_a_member", "chain_not_person", "revoked", "pattern_not_covered", "not_contained", "unknown_action", "bad_input", "not_found",
 ]);
 export const VISIBILITY_KINDS = f(["space", "members", "actor", "subject", "owner"]);
 

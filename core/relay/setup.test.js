@@ -154,6 +154,45 @@ test("setup gate: the setup page mints no pairing ticket (one pairing path: the 
   assert.equal(over.body.error.code, "setup_over");
 });
 
+test("setup gate: names.recover runs from the setup channel with the code alone, one at a time, five at most, and never once an owner exists", async () => {
+  const { code } = await newCode();
+  const s = new SetupSession({ code });
+  let owner = false, hold = null; const got = [];
+  const gate = setupGate({ session: () => s, ownerExists: () => owner, mintTicket: async () => ({}), handlerFor: () => () => {},
+    recoverCode: async input => { got.push(input); if (hold) await hold; if (input.code === "bad") throw Object.assign(new Error("wrong code"), { code: "denied" }); return { name: input.name, pendingUntil: 1 }; } });
+  const post = async body => {
+    const rs = res(); const handlers = {};
+    const rq = { method: "POST", url: "/v1/tools/names.recover", headers: {}, resume() {}, on: (e, f) => { handlers[e] = f; } };
+    await gate(rq, rs, "device:x", {});
+    if (handlers.data) handlers.data(JSON.stringify(body)); if (handlers.end) handlers.end();
+    await new Promise(r => setTimeout(r, 20)); return rs;
+  };
+  let r = await post({ name: "alex", code: "good" });
+  assert.equal(r.status, 200);
+  assert.deepEqual(got[0], { name: "alex", code: "good" });
+  r = await post({ name: "alex" });
+  assert.equal(r.status, 400);
+  r = await post({ name: "alex", code: "bad" });
+  assert.equal(r.status, 400);
+  assert.equal(r.body.error.code, "denied");
+  // concurrent: the second is refused while the first runs
+  let release; hold = new Promise(res2 => { release = res2; });
+  const first = post({ name: "alex", code: "slow" });
+  await new Promise(x => setTimeout(x, 5));
+  r = await post({ name: "alex", code: "slow2" });
+  assert.equal(r.status, 429);
+  release(); await first; await new Promise(x => setTimeout(x, 20)); hold = null;
+  r = await post({ name: "alex", code: "again" });
+  assert.equal(r.status, 200);
+  r = await post({ name: "alex", code: "fifth" });
+  assert.equal(r.status, 200);
+  r = await post({ name: "alex", code: "sixth" });
+  assert.equal(r.status, 429, "five attempts a session");
+  owner = true;
+  r = await post({ name: "alex", code: "good" });
+  assert.equal(r.status, 403);
+});
+
 // ---- end to end ----
 
 const lenient = {
@@ -497,7 +536,7 @@ async function fakeDirectory(t) {
         const msg = authMessage({ route: String(h["x-vyre-route"]), ts: String(h["x-vyre-ts"]), nonce: String(h["x-vyre-nonce"]), method: String(req.method), target: url.pathname + url.search, bodyHash: crypto.createHash("sha256").update(body).digest("hex") });
         if (!crypto.verify(null, msg, pub, Buffer.from(String(h["x-vyre-sig"]), "base64url"))) throw new Error("bad signature");
       } catch { out.unsigned++; res.writeHead(401, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { code: "denied", message: "unsigned" } })); }
-      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, fresh: first }); }
+      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, code: first ? "abcd-efgh-ijkl-mnop-qrst-uv" : null }); }
       if (url.pathname === "/v1/names/mine") return send({ name: "alex", state: "live", pointed: false, ips: {}, pending: null, notices: [] });
       res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "not_found", message: url.pathname } }));
     });
@@ -529,7 +568,7 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const claim = async () => (await a.call("names.claim", { name: "alex" }));
   const c1 = await claim();
   assert.equal(c1.status, 200, JSON.stringify(c1));
-  assert.equal(c1.data.recoveryCode, undefined, "no recovery code is made");
+  assert.equal(c1.data.recoveryCode, "abcd-efgh-ijkl-mnop-qrst-uv", "the first claim shows the one-time code");
   await settle(200);
   assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "the name is held and nothing is published");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
@@ -541,6 +580,7 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
   const c2 = await claim();
   assert.equal(c2.status, 200, JSON.stringify(c2));
+  assert.equal(c2.data.recoveryCode, null, "the code is shown once");
   assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
   assert.equal(dirFake.unsigned, 0, "each signed by the box's route key");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");

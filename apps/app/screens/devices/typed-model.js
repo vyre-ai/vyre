@@ -23,16 +23,6 @@ export function redeemSay(code) {
   return "That did not work. Nothing was paired.";
 }
 
-/** The words for why a typed invite code did not work, from relay/client/join.js redeemInviteCode. @param {string} reason */
-export function inviteReasonSay(reason) {
-  if (reason === "format") return redeemSay("bad_input");
-  if (reason === "busy") return "Too many tries. Wait a minute, then try again.";
-  if (reason === "offline") return redeemSay("unavailable");
-  if (reason === "expired") return "The code ran out of time, so nothing was joined. Ask for a new one.";
-  if (reason === "not_an_invite") return "That code is not an invitation to a space.";
-  return redeemSay("refused");
-}
-
 /**
  * What wink.pair.status says, as what the screen does next.
  * @param {any} s @returns {{ phase: "waiting" | "confirm" | "done" | "failed", ack?: string, words?: string[], invite?: { link: string, space?: string }, say?: string }}

@@ -1,20 +1,16 @@
-// The one app's service worker (ADR 0027), scope /app/ (or / when config app.root serves the app at the root,
-// BASE ""). vyred serves this file at <BASE>/sw.js (core/daemon/app.js appWorker) with BASE, PRECACHE and BUILD
-// filled in from the app's export (precache.json), so every build is a new worker with a fresh cache. It never
-// answers for anything outside the app: at /app/ the Deck at / keeps its own worker (deck/sw.js); at the root the
-// box's own paths (DENY) are left alone; and no /v1/ call is ever cached here. Self-contained on purpose: a worker cannot share the Deck's
+// The one app's service worker (ADR 0027), scope /app/. vyred serves this file at /app/sw.js
+// (core/daemon/app.js appWorker) with PRECACHE and BUILD filled in from the app's export
+// (apps/app/dist/precache.json), so every build is a new worker with a fresh cache. It never
+// answers for anything outside /app/: the Deck at / keeps its own worker (deck/sw.js), and no
+// /v1/ call is ever cached here. Self-contained on purpose: a worker cannot share the Deck's
 // modules, and this one must run before anything else loads.
 
-const BASE = "/app";
 const PRECACHE = [];
 const BUILD = "dev";
-// At the root the app shares the origin with the box's own paths, which are never the app's.
-const DENY = ["/v1", "/onboard", "/person", "/release", "/kernel", "/lib", "/.well-known"];
-const inApp = p => BASE ? p === BASE || p.startsWith(BASE + "/") : !DENY.some(d => p === d || p.startsWith(d + "/"));
 const CACHE = "vyre-app-" + BUILD;
-const SHELL = BASE + "/index.html";
+const SHELL = "/app/index.html";
 // Hashed by the export, so a file there never changes under its name.
-const STATIC = BASE + "/_expo/static/";
+const STATIC = "/app/_expo/static/";
 
 self.addEventListener("install", e => e.waitUntil((async () => {
   const cache = await caches.open(CACHE);
@@ -29,10 +25,10 @@ self.addEventListener("activate", e => e.waitUntil((async () => {
   await self.clients.claim();
 })()));
 
-/** A notification's path as an address in the app: "/needs/x" is "/app/needs/x" (unchanged at the root). */
+/** A notification's path as an address in the app: "/needs/x" is "/app/needs/x". */
 function appPath(p) {
   const s = typeof p === "string" && p.startsWith("/") ? p : "/now";
-  return !BASE || s === BASE || s.startsWith(BASE + "/") ? s : BASE + s;
+  return s === "/app" || s.startsWith("/app/") ? s : "/app" + s;
 }
 
 // Push: the same payload as the Deck's worker, {kind, title, path, tag, at} and for a labelled
@@ -46,7 +42,7 @@ self.addEventListener("push", e => {
   if (d.kind === "planner-ack") {
     const tag = String(d.tag || "");
     e.waitUntil((async () => {
-      await self.registration.showNotification("Vyre", { body: "Answered.", tag, silent: true, data: { path: BASE + "/now" }, icon: "/icon-192.png", badge: "/icon-192.png" });
+      await self.registration.showNotification("Vyre", { body: "Answered.", tag, silent: true, data: { path: "/app/now" }, icon: "/icon-192.png", badge: "/icon-192.png" });
       for (const n of await self.registration.getNotifications({ tag })) n.close();
     })());
     return;
@@ -67,7 +63,7 @@ self.addEventListener("notificationclick", e => {
     const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const c of clients) {
       const u = new URL(c.url);
-      if (u.origin !== location.origin || !inApp(u.pathname)) continue;
+      if (u.origin !== location.origin || !(u.pathname === "/app" || u.pathname.startsWith("/app/"))) continue;
       await c.focus();
       c.postMessage({ type: "vyre:navigate", path });
       return;
@@ -79,7 +75,7 @@ self.addEventListener("notificationclick", e => {
 self.addEventListener("fetch", e => {
   const req = e.request;
   const url = new URL(req.url);
-  if (url.origin !== location.origin || req.method !== "GET" || !inApp(url.pathname) || url.pathname === BASE + "/sw.js") return;
+  if (url.origin !== location.origin || req.method !== "GET" || !url.pathname.startsWith("/app/") || url.pathname === "/app/sw.js") return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     // Every page address is the one shell: from the cache first, else the network.

@@ -208,8 +208,8 @@ test("alerts: every existing device is told of a new sign-in; a newcomer cannot 
   // each older device learns of BOTH new entries on its own next check, whatever the thief's device does or does not do afterwards
   for (const d of [laptop, mac, phone]) {
     const told = await d.ops.sync();
-    assert.ok(told.alerts.length >= 2, `${d.label} was told of the new entries`);
-    assert.ok(told.alerts.every(a => a.entry.label === null), "no device name rides the public list");
+    const labels = told.alerts.map(a => a.entry.label);
+    assert.ok(labels.includes("more") && labels.includes("unknown"), `${d.label} was told of both new entries`);
     assert.equal((await d.ops.sync()).alerts.length, 0);
   }
   // the alert that would ring each device's phones: fixed words, a one-tap remove, rings through quiet hours, and nothing secret
@@ -246,24 +246,4 @@ test("personOf: the identity list read live maps a device to its person, and a r
   assert.equal(await personOf("a".repeat(26)), null);
   await phone.ops.removeEntry(laptopEid);
   assert.equal(await personOf(laptopEid), null, "removed: nobody, at once");
-});
-
-test("a device's name stays on the device that gave it: the public chain holds no label, entries() shows the name locally, and the directory refuses an op that carries one", async t => {
-  const w = world(t), phone = w.device("phone"), laptop = w.device("laptop");
-  await phone.ops.create({ name: "alex", password: "four plain words here", deviceLabel: "alex's phone" });
-  await w.pair(phone, laptop, "alex's laptop");
-  // what the directory holds: public keys only, no device name anywhere in the list
-  const r = await w.dir.resolve("alex");
-  assert.equal(r.ok, true);
-  assert.ok(r.state.entries.every(e => e.label === undefined), `no label in the public list: ${JSON.stringify(r.state.entries.map(e => e.label))}`);
-  assert.ok(!JSON.stringify(r).includes("alex's phone") && !JSON.stringify(r).includes("alex's laptop"), "the names are not in anything the directory returns");
-  // the device that named them still shows the names, from its own store
-  const list = await phone.ops.entries();
-  assert.deepEqual(list.filter(e => e.kind === "device").map(e => e.label).sort(), ["alex's laptop", "alex's phone"]);
-  // an op that carries a label is refused by the directory (a client built before this change)
-  const key = laptop.store.newDeviceKey();
-  const state = (await w.dir.resolve("alex")).state;
-  const C = await import("../../kernel/identity/chain.js");
-  const op = await C.makeOp(state, { type: "add", entry: { eid: key.eid, kind: "device", pub: key.publicKey, label: "leaky name" } }, { by: phone.store.status().eid, ts: w.clock.t, sign: m => phone.store.sign(Buffer.from(m)) });
-  await assert.rejects(w.dir.append("alex", [op]), e => /label/.test(String(e.message)) || e.code === "bad_entry");
 });

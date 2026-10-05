@@ -22,7 +22,6 @@ import { SCRATCH } from "../../../test/scratch.mjs";
 import { formatEvent, pendingQueue, sendArgs, queuedId, usageLine, watchBackoff, MODES,
   routeLine, imagesFrom, rewindTurns, turnFor, modelOf, IMAGES } from "./threads.js";
 import { modelScope, promptScope, previewInput } from "./sessions.js";
-process.env.VYRE_SESSION_SANDBOX_OFF = "1"; // a session in a temp home needs the development opt-out; with the kernel on it is otherwise confined by bwrap (the sandbox has its own tests)
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");

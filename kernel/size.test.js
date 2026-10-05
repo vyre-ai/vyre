@@ -34,7 +34,6 @@ const NOT_BASE_DIRS = {
   contracts: "constants shared with the UI",
   gateway: "adapters (leases, drive, runner ports): out with their modules",
   store: "the reference memory store and conformance helpers",
-  placement: "the scheduler: a decision over node records, never an enforcement (the grants are); moves to a first-party module with the runner",
 };
 
 const files = (/** @type {string} */ dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {

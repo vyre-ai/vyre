@@ -3,7 +3,6 @@
 // JSON. Without ?perf=1 it renders nothing and runs no timer, so it costs nothing.
 
 import { useEffect, useState } from "react";
-import { tokens } from "../theme/tokens";
 import { meter, perfOn } from "./index";
 
 type View = { fps: number; dropped: number; pass: number; fail: number; open: number; failed: string[] };
@@ -65,9 +64,9 @@ function Badge() {
         right: 6,
         zIndex: 1000,
         font: "600 11px/14px ui-monospace, Menlo, monospace",
-        color: tokens.color.dark.text,
-        background: v.fail ? tokens.color.dark.ruleStrong : tokens.color.dark.scrim,
-        border: `1px solid ${tokens.color.dark.ruleStrong}`,
+        color: "#F1EEE6",
+        background: v.fail ? "rgba(58,55,51,0.92)" : "rgba(14,13,12,0.86)",
+        border: "1px solid #3A3733",
         borderRadius: 6,
         padding: "3px 6px",
         pointerEvents: "auto",

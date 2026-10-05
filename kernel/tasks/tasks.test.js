@@ -526,22 +526,6 @@ test("idempotency: a repeated key returns the first task and makes one; the same
   assert.notEqual(c.id, a.id);
 });
 
-test("approval bind: an approval that recorded the bind of what the person saw releases only a request that carries that same bind; approve A and send B is refused, whatever else matches", async () => {
-  const r = rig();
-  const t = await toNeedsCheck(r, draftTask({ form: { kind: "held_act", bind: "bind-of-request-A" } }));
-  await r.tasks.decide(alice(), t.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t) });
-  const act = { chain: asIntake(), action: "email.send", resource: `vyre://${SPACE}/message/m1` };
-  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, bind: "bind-of-request-A" }), true, "the request that was approved");
-  assert.equal(r.tasks.approvedAct({ id: t.id, ...act, bind: "bind-of-request-B" }), false, "approve A, send B: refused");
-  assert.equal(r.tasks.approvedAct({ id: t.id, ...act }), false, "a request that states no bind is not the approved one either");
-  assert.equal(r.tasks.useApproval({ id: t.id, ...act, bind: "bind-of-request-B" }), false, "and a refused use spends nothing");
-  assert.equal(r.tasks.useApproval({ id: t.id, ...act, bind: "bind-of-request-A" }), true, "the approved request still goes, once");
-  // an approval that recorded no bind is judged as before (the action, the resource, the doer, the age)
-  const t2 = await toNeedsCheck(r);
-  await r.tasks.decide(alice(), t2.id, { outcome: "approved", proof: r.proof(alice(), ALICE, t2) });
-  assert.equal(r.tasks.approvedAct({ id: t2.id, ...act, bind: "anything" }), true);
-});
-
 test("approval on authorize: an approved held-act task allows exactly that act by its doer once, and nothing else", async () => {
   const r = rig();
   const t = await toNeedsCheck(r);

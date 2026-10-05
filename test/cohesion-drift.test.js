@@ -30,6 +30,7 @@ const RULES = {
 /** Today's copies, by rule, file and count. Shrink it as surfaces read the owner instead. */
 const ALLOWED = {
   models: {
+    "apps/ios/Vyre/Screens/Common.swift": 1, // debt: mobile, after 0.1.0
     "deck/views/agents.js": 3,
     // The Capsule's one fallback pair when sessions.models.get is missing (ModelFallback; CapsuleModel.models).
     "local/capsule/native/Sources/Vyred/Route.swift": 2,

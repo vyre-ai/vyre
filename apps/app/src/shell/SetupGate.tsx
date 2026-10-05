@@ -2,7 +2,6 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { router, usePathname } from "expo-router";
 import { boxOrigin } from "../api/box";
-import { shell } from "./shell";
 import { loadPairing } from "../api/relay";
 import { useTheme } from "../theme/theme";
 import { readSkipped } from "../state/setup-progress";
@@ -14,16 +13,14 @@ import { gateTarget } from "./setup-gate.js";
  */
 export function SetupGate({ children }: { children: ReactNode }) {
   const path = usePathname();
-  // The phone, and the Mac app's window on a server Mac (no vyred of its own); a browser page is its box's own origin and never gates.
-  const gated = Platform.OS !== "web" || !!shell()?.boxless;
   const { color } = useTheme();
-  const [checked, setChecked] = useState(!gated);
+  const [checked, setChecked] = useState(Platform.OS === "web");
   useEffect(() => {
-    if (!gated) return;
+    if (Platform.OS === "web") return;
     let live = true;
     void Promise.all([loadPairing(), readSkipped()]).then(([p, skipped]) => {
       if (!live) return;
-      const to = gateTarget({ path, paired: !!p, direct: Platform.OS !== "web" && !!boxOrigin(), skipped });
+      const to = gateTarget({ path, paired: !!p, direct: !!boxOrigin(), skipped });
       setChecked(true);
       if (to) router.replace(to as never);
     });

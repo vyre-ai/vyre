@@ -15,10 +15,8 @@ import { MASK } from "./index.js";
 import { settingTo, settingIntents } from "../../lib/said/setting.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
-async function world(t, { disable = [], kernel = false } = {}) {
+async function world(t, { disable = [] } = {}) {
   const root = tempHome(t);
-  // The planner keeps its records in the kernel: a world that sets one of its keys starts with the kernel on, this development tree counted as first party.
-  if (kernel) { process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1"; t.after(() => { delete process.env.VYRE_KERNEL_PATH_RULE; }); }
   const projects = path.join(root, "projects");
   const home = path.join(projects, "northwind");
   fs.mkdirSync(path.join(home, ".vyre"), { recursive: true });
@@ -26,7 +24,7 @@ async function world(t, { disable = [], kernel = false } = {}) {
   const claudeDir = path.join(root, "claude");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn", ...disable] },
     projectsDir: projects, settings: { claude_dir: claudeDir } }));
-  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")], ...(kernel ? { kernel: true } : {}) });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   return { root, home, claudeDir, c, d };
@@ -186,7 +184,7 @@ test("a broken Claude Code file is never written over", { timeout: 30_000 }, asy
 });
 
 test("another module's keys go through its own tool, and a missing module reads as unavailable", { timeout: 30_000 }, async t => {
-  const { c } = await world(t, { kernel: true });
+  const { c } = await world(t);
   await c("settings.set", { key: "push.watch", value: false });
   assert.equal((await c("push.settings")).data.kinds.watch, false);
   assert.ok(!(await c("settings.set", { key: "planner.event_lead", value: 20 })).error);
@@ -293,8 +291,7 @@ export default { async start(ctx) {
   return { async stop() {} };
 } };`);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  // A home module is third party here (the kernel runs it in its sandbox); the second start below trusts the home's folder so the oven, written for the in-process API, can run.
-  let d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
 
@@ -305,25 +302,18 @@ export default { async start(ctx) {
   assert.match(bakery.error, /store\.tool\.set must be one of bakery's own tools/);
   const keys = (await c("settings.schema")).data.keys.map(k => k.key);
   assert.ok(!keys.some(k => k.startsWith("bakery.")), "an invalid module's settings never appear");
-  await d.stop();
-  d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
-  assert.ok((await c("settings.schema")).data.keys.some((/** @type {any} */ k) => k.key === "oven.heat"));
+  assert.ok(keys.includes("oven.heat"));
 
   let r = await c("settings.set", { key: "oven.heat", value: 200 });
   assert.equal(r.error, undefined, r.error && r.error.message);
   assert.equal(r.data.value, 200);
   r = await c("oven.get");
   assert.ok(r.data.seen.length >= 2, JSON.stringify(r.data.seen));
-  // The oven is trusted by path in this second start, so it is first party and its declared setter hears the person ("local": the settings module passes the person on to a first-party setter, as the next test pins).
-  // A home module that is not trusted runs in the sandbox, never reaches this path, and never appears in settingTools (checked below).
-  assert.deepEqual([...new Set(r.data.seen)].sort(), ["cli", "local"], "a first-party setter hears the person's own surfaces, and nothing else");
-  await d.stop();
-  d = await start({ root, log: () => {} });
-  assert.ok(!d.registry.settingTools().has("oven.set"), "an untrusted home module's tool is no setting tool, so settings never passes the person to it");
+  assert.deepEqual([...new Set(r.data.seen.slice(0, -1))], ["module:settings"], "the settings module, never the person, reached the home module's tools");
 });
 
 test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", { timeout: 30_000 }, async t => {
-  const { d, c } = await world(t);
+  const { d } = await world(t);
   const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, caller);
   for (const tool of ["settings.set", "settings.reset"]) {
     const input = tool === "settings.set" ? { key: "sessions.mode", value: "bypassPermissions", confirm: true } : { key: "sessions.mode" };
@@ -338,8 +328,7 @@ test("only a person changes a setting: agent labels, mcp, anonymous and an unsig
   const mode = (await d.registry.call("settings.get", { key: "sessions.mode" }, "cli")).data;
   assert.notEqual(mode.value, "bypassPermissions", "no refused call changed the mode");
   // A person with confirm goes through.
-  // The person's own surface is the socket (with the kernel on a registry call labelled "cli" has no person chain).
-  assert.ok(!(await c("settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
+  assert.ok(!(await as("cli", "settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
 });
 
 test("settings passes the person on only to the getters and setters first-party settings declare", { timeout: 30_000 }, async t => {
@@ -358,7 +347,7 @@ test("settings passes the person on only to the getters and setters first-party 
 });
 
 test("a secret setting's values reach only the person: agents and a device without a session see names, never values", { timeout: 30_000 }, async t => {
-  const { d, c, claudeDir } = await world(t);
+  const { d, claudeDir } = await world(t);
   fs.mkdirSync(claudeDir, { recursive: true });
   fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ env: { NORTHWIND_TOKEN: "nw-secret-123", LOG_LEVEL: "debug" } }));
   const get = (/** @type {string} */ caller, /** @type {any} */ opts = {}) => d.registry.call("settings.get", { key: "sessions.env" }, caller, opts);
@@ -373,8 +362,8 @@ test("a secret setting's values reach only the person: agents and a device witho
   const all = await d.registry.call("settings.get", {}, "mcp:agent:kit");
   assert.ok(!JSON.stringify(all).includes("nw-secret-123"), "the list leaks nothing");
   // The person, on the box's own surfaces or on their device with a person session, sees values.
-  assert.equal((await c("settings.get", { key: "sessions.env" })).data.value.NORTHWIND_TOKEN, "nw-secret-123");
-  // A device's person session is a kernel chain: a registry call carries no chain, so the paired-device read is covered by the kernel's own tests.
+  assert.equal((await get("cli")).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  assert.equal((await get("tailnet:alex", { person: { id: "p1" } })).data.value.NORTHWIND_TOKEN, "nw-secret-123");
   // A plain key is not masked for anyone.
   assert.equal((await d.registry.call("settings.get", { key: "sessions.mode" }, "mcp:agent:kit")).data.value, "default");
 });

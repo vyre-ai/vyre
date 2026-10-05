@@ -12,19 +12,17 @@
 // and no more, and the runner's declared caps narrow it further.
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
-import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 
 const MIN_TICK_MS = 60_000;
 
 /**
- * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined, calendarSync?: { attach: (s: any) => any, stop: () => void },
+ * @param {{ log?: (m: string) => void, clock?: () => number, tzFor?: (space: string) => string | undefined,
  * }} o
  */
 export function createFlowsHost(o) {
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
   /** @type {Map<string, any>} */ const spaces = new Map();
-  const sandbox = o.sandbox || createCodeSandbox();
 
   /** @param {string} space @param {any} k the Space's kernel (kernel/index.js) @param {string} ownerId the Space's first owner */
   async function attach(space, k, ownerArg) {
@@ -44,9 +42,7 @@ export function createFlowsHost(o) {
     const kernel = {
       records: gw.records, ask: gw.ask, ...(gw.kits ? { kits: gw.kits } : {}), authorize: (/** @type {any} */ i) => gw.authorize(i), grants: gw.grants,
       events: { read: (/** @type {any} */ c, /** @type {any} */ f) => gw.events.read(c, f), subscribe: (/** @type {any} */ c, /** @type {string} */ n, /** @type {any} */ f, /** @type {any} */ cb) => gw.events.subscribe(c, n, f, cb), latestSeq: async () => k.log.latestSeq() },
-      // The model door is the kernel's own (gateway.model, present when the home was booted with the inference door): every classify step goes through its scan, so a sealed field reaches the
-      // model only as a placeholder, and the step passes no tools. Without a door the step fails plainly and the owner is told.
-      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run"), { code: "unavailable" }); } },
+      model: { call: async () => { throw Object.assign(new Error("no model door is wired to Flows yet"), { code: "unavailable" }); } },
     };
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
@@ -64,30 +60,7 @@ export function createFlowsHost(o) {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
     };
     const ports = {
-      // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
-      sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
-      // A pool is the team members (people and assistants) whose `role` is the pool's name, on any project: the same records the team screen shows. A member's skills are the words in its
-      // `skills` field (comma separated) and its role.
-      pool: async (/** @type {string} */ _space, /** @type {string} */ name) => {
-        try {
-          const rows = (await gw.records.query(owner(), "team-member", { filter: { field: "role", op: "eq", value: name }, page: { limit: 200 } })).rows;
-          const seen = new Set(), out = [];
-          for (const r of rows) {
-            const a = r.data && r.data.actor && r.data.actor.actor;
-            if (!a || seen.has(a.id)) continue; seen.add(a.id);
-            out.push({ actor: a, name: r.data.name || a.id, skills: [String(r.data.role || ""), ...String(r.data.skills || "").split(",")].map(x => x.trim()).filter(Boolean) });
-          }
-          return out;
-        } catch { return []; }
-      },
-      // What the choice leans on: how many tasks each actor has had on this record, and how many open tasks each has now.
-      signals: async (/** @type {string} */ _space, /** @type {string | undefined} */ record) => {
-        const involvement = /** @type {Record<string, number>} */ ({}), load = /** @type {Record<string, number>} */ ({});
-        for (const t of await gw.ask.list(owner(), { state: ["waiting", "ready", "working", "needs_check", "stuck"] })) load[t.doer.id] = (load[t.doer.id] || 0) + 1;
-        if (record) for (const t of await gw.ask.list(owner(), { record })) involvement[t.doer.id] = (involvement[t.doer.id] || 0) + 1;
-        return { involvement, load };
-      },
       // "Call a service": the gateway authorizes it for the run's chain against the route (service.read, or service.call held as outward) BEFORE the vault is asked, then the vault's
       // forward does it with the Space's own credential (kernel/gateway/leases.js forward).
       service: async (/** @type {{ chain: any, connector: string, request: any, idem?: string, approval?: string }} */ q) => {
@@ -106,8 +79,7 @@ export function createFlowsHost(o) {
       // definition change of its own for them: only the Kit's own types are defined at install, under the approved-Kit waiver.
       const { CORE_TYPES } = await import("../../records/core-types.js");
       const defType = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, label, fields: [{ name: "name", kind: "text", label: "Name" }, { name: "body", kind: "text", label: "Definition" }, { name: "kit", kind: "text", label: "From Kit" }] });
-      // Every Space has the core types (contact, organization, communication, event ...): the objects layer the calendar sync and "Log communications" write to. `template` is also the Kit's storage.
-      const kitStorage = [...CORE_TYPES, defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
+      const kitStorage = [CORE_TYPES.find((/** @type {any} */ t) => t.name === "template"), defType("def-role", "Role definition"), defType("def-view", "View definition")].filter(Boolean);
       const missing = [...FLOW_TYPES, ...KIT_TYPES, ...kitStorage].filter(t => !have.has(t.name));
       if (missing.length) await gw.records.define(owner(), { add_types: [...missing] }).catch((/** @type {any} */ e) => { log(`flows: could not define the Flow record types for ${space}: ${e && e.message}`); });
     }
@@ -148,12 +120,8 @@ export function createFlowsHost(o) {
       chainForToken: async (/** @type {string} */ token) => { try { return await k.surfaces.chainFor(token); } catch { return null; } },
       /** The Space owner's own chain for a call the module has itself checked came from the person's own surface (no presence session: approving still asks for the person's proof). */
       personChain: () => personChain(ownerOf()),
-      /** This Space's calendar sync (core/daemon/calendar-sync.js), or null. */
-      get calendar() { return o.calendarSync ? o.calendarSync.get(space) : null; },
       stop: () => { stopped = true; if (timer) clearTimeout(timer); } });
     spaces.set(space, host);
-    // The Space's calendar is kept in step with an outside calendar by default (core/daemon/calendar-sync.js): it looks at the vault for a calendar connector every few minutes.
-    if (o.calendarSync) { try { o.calendarSync.attach({ space, gw, chains, ownerChain: owner, personChain, ownerId: ownerOf, service: ports.service, subscribe: (/** @type {(e: any) => any} */ cb) => k.log.subscribe("calendar-sync", {}, cb) }); } catch (err) { log(`flows ${space}: calendar sync did not start (${/** @type {Error} */ (err).message})`); } }
     return host;
   }
 
@@ -161,6 +129,6 @@ export function createFlowsHost(o) {
     attach,
     get: (/** @type {string} */ space) => spaces.get(space) || null,
     spaces: () => [...spaces.keys()],
-    stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); if (o.calendarSync) o.calendarSync.stop(); },
+    stop: () => { for (const h of spaces.values()) h.stop(); spaces.clear(); },
   });
 }

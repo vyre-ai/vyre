@@ -14,8 +14,7 @@ import { Drive } from "./storage/drive.js";
 import { dirBackend } from "./storage/backends.js";
 import { createSpaceKernels } from "./spaces/index.js";
 import { KernelError } from "./core/errors.js";
-import { isExactlyPerson, isChain } from "./core/chain.js";
-import { createDoor } from "./door/door.js";
+import { isExactlyPerson } from "./core/chain.js";
 import { sealerPresence, payloadHash } from "./core/presence.js";
 import { createSupervisor } from "./modules/supervisor.js";
 import { createModuleHost } from "./modules/host.js";
@@ -82,10 +81,7 @@ export async function bootHomeKernel(cfg) {
       drive = new Drive(pool);
     } catch (e) { log(`kernel: no Drive on this home (${/** @type {Error} */ (e).message})`); }
   }
-  // The inference door (contract 8.4): every model call, and the ledger a reveal records what a person was shown in. Built here, over the sealing process this home runs, with the kernel's own isChain;
-  // a caller that passes its own `door` (a test, a stand-in) replaces it. `modelDrivers` is the providers by name (the daemon's), `modelSinks` the services that may call a model as themselves.
-  const door = cfg.door || (sealer ? createDoor({ sealer, drivers: cfg.modelDrivers || {}, sinks: cfg.modelSinks || [], isChain, emit: typeof cfg.emitModel === "function" ? cfg.emitModel : () => {} }) : undefined);
-  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, ...(sealer ? { checkpoints: true } : {}), door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), ...(cfg.runnerHost ? { runnerHost: cfg.runnerHost } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { const moved = adoptedOwner(to, from); if (typeof cfg.onOwnerAdopted === "function") { try { cfg.onOwnerAdopted(to, from); } catch { /* a listener never stops an adoption */ } } return moved; }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
+  const k = await bootKernel({ db: cfg.db, space: id.space, ...(drive ? { drive } : {}), ...(cfg.presence ? { presence: cfg.presence } : {}), owner: id.owner, owner_uid: process.getuid ? process.getuid() : 0, ...(key ? { key } : {}), legacyKeys, sealer, ...(sealer ? { checkpoints: true } : {}), door: cfg.door, ...(cfg.forwardCredential ? { forwardCredential: cfg.forwardCredential } : {}), ...(personalStore ? { store: personalStore } : {}), ...(cfg.deviceEnrolled ? { deviceEnrolled: cfg.deviceEnrolled } : {}), ...(cfg.standIn ? { standIn: cfg.standIn } : {}), ...(cfg.runnerHost ? { runnerHost: cfg.runnerHost } : {}), onOwnerAdopted: (/** @type {string} */ to, /** @type {string} */ from) => { const moved = adoptedOwner(to, from); if (typeof cfg.onOwnerAdopted === "function") { try { cfg.onOwnerAdopted(to, from); } catch { /* a listener never stops an adoption */ } } return moved; }, ...(cfg.onStageEnter ? { onStageEnter: cfg.onStageEnter } : {}), ...(cfg.stageTasks ? { stageTasks: cfg.stageTasks } : {}) });
   // BL-2: the restart's checks. The log against the last signed checkpoint, and against the anchor the sealing process keeps outside the database. A packaged build that finds the log
   // rolled back, rewritten or broken does not start: the owner's own `anchor.reset` (a presence-gated act on the sealing process) is the way out after a restore from backup. A development
   // build says so and goes on.
@@ -110,12 +106,8 @@ export async function bootHomeKernel(cfg) {
   /** What the owner's phone shows and signs to drop the accepted counter (a rollback): the op, the Space and the counter it forgets, with the hash the signer signs. Null when this build has no signed list. @type {() => { op: string, space: string, fields: { counter: number }, payload_hash: string } | null} */
   let modulesListReset = () => null;
   if (!firstPartyCheck) {
-    // Module trust follows the build kind (the same gate as the presence stand-in, isPackaged): a development build trusts the modules in the checkout's own folders by path (a checkout
-    // has no module.sig), unless VYRE_KERNEL_PATH_RULE=0 or cfg.pathRule === false asks for the signature check; a release build requires the signature and ignores the variable, once in the log.
-    const packaged = isPackaged(cfg.packageRoot);
-    if (packaged && process.env.VYRE_KERNEL_PATH_RULE === "1") log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
-    const devPathRule = !packaged && cfg.pathRule !== false && process.env.VYRE_KERNEL_PATH_RULE !== "0";
-    if (!packaged && (cfg.pathRule === true || devPathRule)) log("kernel: DEVELOPMENT build, first-party modules are trusted by path (VYRE_KERNEL_PATH_RULE=0 asks for the signature check); a release build requires the signature");
+    if (process.env.VYRE_KERNEL_PATH_RULE === "1" && !devSwitch("1")) log("kernel: VYRE_KERNEL_PATH_RULE ignored (this is a packaged daemon)");
+    if (cfg.pathRule === true || devSwitch(process.env.VYRE_KERNEL_PATH_RULE)) (cfg.log || (() => {}))("kernel: DEVELOPER path rule for first-party modules (VYRE_KERNEL_PATH_RULE=1); never the default, never for a real home");
     else {
       // M-1: the highest counter accepted, with the minimums that came with it, is kept in the kernel's own log (`kernel.minimums` events), not in a file the user can write. An
       // event carries the release-SIGNED document itself and is re-verified against the release key at every boot: the counter and the minimums come from the verified
@@ -217,7 +209,7 @@ export async function bootHomeKernel(cfg) {
   // home's sealing client namespaced per Space (kernel.mac and verify cover "<space>\n<data>"), so no key file exists for any of them; without a sealing process the registry
   // refuses a hosted Space unless this boot is the developer file-key one.
   const audit = (/** @type {string} */ type, /** @type {any} */ data) => k.log.append(k.chains.fromFacts({ kind: "module", module: "home", first_party: true }), { type, sv: 1, subject: `vyre://${id.space}/space/${data.space}`, data, vis: "owner", red: "internal" });
-  const spaces = createSpaceKernels({ root: cfg.root, audit, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(door ? { doorFor: () => door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}), ...(cfg.remote ? { remote: cfg.remote } : {}) });
+  const spaces = createSpaceKernels({ root: cfg.root, audit, personal: { space: id.space, kernel: k }, openDb: (/** @type {string} */ f) => new DatabaseSync(f), ...(cfg.stageFactory ? { stageFactory: cfg.stageFactory } : {}), ...(sealer ? { sealer } : { fileKey: true }), ...(cfg.door ? { doorFor: () => cfg.door } : {}), ...(cfg.storeFor ? { storeFor: cfg.storeFor } : {}), ...(cfg.standIn ? { bootOptions: { standIn: cfg.standIn } } : {}), ...(cfg.remote ? { remote: cfg.remote } : {}) });
   await spaces.start();
   hostedAdopt = (to, from) => spaces.adoptOwner(to, from);
   // at every start: the home's adoption (the log) reaches the Spaces it hosts, including ones made before the claim or cut short by a restart

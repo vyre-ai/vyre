@@ -11,34 +11,28 @@
 // Both grants are the identity studs: Offer side space_allows (the space) and side member_accepts (this member, this device).
 // Limits are the device page's: only when plugged in, only when awake, a CPU and a memory ceiling.
 
-import { placeWorkload, nodeBlock, DEFAULT_LEND } from "../../kernel/placement/index.js";
-
 /**
  * @typedef {{ onPower: boolean, awake: boolean, cpuPct: number, memPct: number }} DeviceState
  * @typedef {{ onlyOnPower?: boolean, onlyAwake?: boolean, cpuMaxPct?: number, memMaxPct?: number }} DeviceLimits
  * @typedef {{ where: "here"|"server"|"wait", reason: string }} Placement
  */
 
-export const DEFAULT_LIMITS = DEFAULT_LEND;
-
-// The decision is the scheduler's (kernel/placement): this file only turns the runner's facts into node records and the answer back into here, server or wait.
-const HERE = "this-computer", SERVER = "space-server";
-const stub = (/** @type {string} */ id, /** @type {"device"|"server"} */ kind, /** @type {any} */ lend = {}) => ({ id, name: id, kind, capabilities: ["compute"], resources: {}, residency: [], posture: {}, lend, key: "local" });
-
-/** This computer as a node fact: its descriptor from the device's limits, its live state, and the two grants. */
-const hereNode = (/** @type {any} */ o) => ({
-  descriptor: stub(HERE, "device", { ...DEFAULT_LEND, ...(o.limits || {}) }),
-  status: { online: true, awake: o.state.awake, onPower: o.state.onPower, cpuPct: o.state.cpuPct, memPct: o.state.memPct },
-  consent: { spaceAllows: Boolean(o.spaceAllows), nodeHosts: Boolean(o.memberAccepts) },
-  notReady: o.runnerReady || undefined,
-});
+export const DEFAULT_LIMITS = { onlyOnPower: true, onlyAwake: true, cpuMaxPct: 70, memMaxPct: 80 };
 
 /**
  * Why this computer cannot take the session now, or "" when it can.
  * @param {{ spaceAllows: boolean, memberAccepts: boolean, state: DeviceState, limits?: DeviceLimits, runnerReady?: string }} o
  */
 export function hereBlock(o) {
-  return nodeBlock(hereNode(o), {}, { space: "" })?.reason || "";
+  const l = { ...DEFAULT_LIMITS, ...(o.limits || {}) };
+  if (!o.spaceAllows) return "this space has not allowed members to run its work on their own computers";
+  if (!o.memberAccepts) return "this computer is not set to run this space's work";
+  if (o.runnerReady) return o.runnerReady;
+  if (l.onlyAwake && !o.state.awake) return "this computer is asleep";
+  if (l.onlyOnPower && !o.state.onPower) return "this computer is on battery and is set to run work only when plugged in";
+  if (o.state.cpuPct > l.cpuMaxPct) return `this computer is busy (${Math.round(o.state.cpuPct)}% CPU, your limit is ${l.cpuMaxPct}%)`;
+  if (o.state.memPct > l.memMaxPct) return `this computer is short of memory (${Math.round(o.state.memPct)}% used, your limit is ${l.memMaxPct}%)`;
+  return "";
 }
 
 /**
@@ -47,17 +41,12 @@ export function hereBlock(o) {
  * @returns {Placement}
  */
 export function place(o) {
-  const here = hereNode(o);
+  const block = o.pinnedToServer ? "this session is pinned to the server" : hereBlock(o);
+  if (!block) return { where: "here", reason: "this computer is allowed, awake and has room" };
   const s = o.server;
-  /** @type {any[]} */ const nodes = [here];
-  if (s) nodes.push({ descriptor: stub(SERVER, "server"), status: { online: s.available, why: s.why }, full: !s.hasRoom, consent: { spaceAllows: true, nodeHosts: true } });
-  const r = placeWorkload({ space: "", requireSigned: false, nodes, workload: { at: HERE, pinnedTo: o.pinnedToServer ? "server" : undefined } });
-  const block = (/** @type {string} */ id) => r.reasons.find(x => x.node === id)?.reason || "";
-  if (r.placed && r.node === HERE) return { where: "here", reason: "this computer is allowed, awake and has room" };
-  const why = block(HERE);
-  if (r.placed) return { where: "server", reason: `on the space's server, because ${why}` };
-  const sWhy = !s ? "the space has no server" : block(SERVER);
-  return { where: "wait", reason: `waiting: ${why}, and ${sWhy}` };
+  if (s && s.available && s.hasRoom) return { where: "server", reason: `on the space's server, because ${block}` };
+  const why = !s ? "the space has no server" : !s.available ? (s.why || "the space's server is not reachable") : "the space's server is full";
+  return { where: "wait", reason: `waiting: ${block}, and ${why}` };
 }
 
 /**

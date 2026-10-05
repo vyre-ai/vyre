@@ -15,7 +15,7 @@
 // filed into an existing project, it takes that project's own tile instead, dropping the chat's
 // seed entirely - that's a caller-side choice (which seed to pass in), not something this
 // function decides.
-import { PROJECT_COLORS, featureInkFor, needsRim, RIM } from "../../../lib/wink-code/identity.js";
+import { PROJECT_COLORS, featureInkFor, needsRim, RIM } from "./identity.js";
 
 const MARKS = ["square", "triangle", "diamond", "cross", "bars", "grid"];
 // Deliberately geometric and inanimate - no eyes, no organic curve - and a different shape set

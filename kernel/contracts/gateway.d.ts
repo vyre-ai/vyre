@@ -20,24 +20,9 @@ export interface GatewayRecord extends StoredRecord {
   readonly modified_outside?: boolean;
 }
 
-export interface RecordReference {
-  readonly urn: Urn;
-  readonly type: string;
-  readonly id: RecordId;
-  readonly version: number;
-  readonly title: string;
-  readonly fields: readonly ({ readonly name: string; readonly label: string; readonly kind: string } & ({ readonly value: FieldValue } | { readonly placeholder: true; readonly reason: "sealed" | "room"; readonly present: boolean; readonly token: string }))[];
-  readonly placeholders: readonly string[];
-  readonly labels: Labels;
-  /** What the model reads: the record as data, with the placeholders in place of the values it may not hold. */
-  readonly text: string;
-}
-
 export interface RecordsApi {
   define(chain: Chain, diff: DefineDiff): Promise<DefineResult>;
   get(chain: Chain, type: string, id: RecordId): Promise<GatewayRecord | null>;
-  /** A record put in front of the AI (the composer's `#`): one read under the caller's grants, with every sealed part (and any part the room may not read) a `{{field:urn#name}}` placeholder in `fields` and `text`, never a value. Null when the caller cannot read it. */
-  reference(chain: Chain, type: string, id: RecordId): Promise<RecordReference | null>;
   query(chain: Chain, type: string, spec: QuerySpec): Promise<Page<GatewayRecord>>;
   aggregate(chain: Chain, type: string, spec: AggregateSpec): Promise<readonly AggregateRow[]>;
   search(chain: Chain, spec: SearchSpec): Promise<Page<SearchHit>>;

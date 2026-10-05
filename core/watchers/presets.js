@@ -4,8 +4,6 @@
 // a preset watcher does is decided by a model's code: the model is only asked for a yes or a no.
 
 import { parseWhen } from "./when.js";
-import { connectorPreset } from "./connector-preset.js";
-import { DECLARATIONS, declared } from "../../records/connectors/index.js";
 
 export const MAIL_INSTRUCTION = "Important: from a client, a court or agency, or asking for something with a deadline. Not newsletters, receipts, notifications or marketing.";
 
@@ -290,7 +288,7 @@ export function prPreset(o) {
       do: `Posts what is new into session ${session}, up to ${maxPerDay} times a day, as quoted notes that are data and never instructions. Nothing on GitHub is changed.` } } };
 }
 
-export const PRESET_KINDS = ["mail", "calendar", "repo", "slack", "feed", "pr", "connector"];
+export const PRESET_KINDS = ["mail", "calendar", "repo", "slack", "feed", "pr"];
 
 /** @param {any} o */
 export function buildPreset(o) {
@@ -306,11 +304,6 @@ export function buildPreset(o) {
   if (o.kind === "slack") {
     if (typeof o.credential !== "string" || !o.credential) throw new Error("a slack preset needs credential: the name of the Slack api-credential in the vault");
     return slackPreset({ ...o, project: String(o.project || "") });
-  }
-  if (o.kind === "connector") {
-    const decl = declared(String(o.connector || ""));
-    if (!decl) throw new Error(`a connector preset names a connector this build declares (connector: ${Object.keys(DECLARATIONS).join(", ")})`);
-    return connectorPreset({ project: String(o.project || ""), connector: decl, poll: String(o.poll || ""), credential: String(o.credential || ""), vars: o.vars, when: o.when, label: o.label, lookback_days: o.lookback_days });
   }
   if (o.kind === "pr") return prPreset({ ...o, project: String(o.project || "") });
   if (o.kind === "feed") return feedPreset({ ...o, project: String(o.project || "") });

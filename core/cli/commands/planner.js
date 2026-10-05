@@ -91,8 +91,8 @@ function setLine(kind, item, tz) {
   out(`  ${signal(kind)} ${bold(when(t, tz))}${rep}${title}  ${dim(item.id)}`);
 }
 
-/** An item id as the planner makes them (a record's id; "i_..." before the planner moved onto records), so `edit` and `rm` are never read as words. */
-const isId = s => /^(i_\S+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(String(s || ""));
+/** An item id as the planner makes them ("i_..."), so `edit` and `rm` are never read as words. */
+const isId = s => /^i_\S+$/.test(String(s || ""));
 
 /** A kind's name as a person says it, and the command that owns it. */
 const NAMES = { alarm: ["alarm", "alarm"], timer: ["timer", "timer"], reminder: ["reminder", "remind"], todo: ["todo", "todo"], note: ["note", "notes"] };

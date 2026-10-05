@@ -1,6 +1,6 @@
 // @ts-check
-// grants: where storage grants are written: this module's own small table, with the contract's fields (kernel/contracts/grant.d.ts). They are never handed to the kernel: `storage.hold` is
-// not a kernel action (the kernel refuses a grant for an action it does not know, and wants a chain it built), and what lets a storage device hold chunks is the pool's own credential, not a kernel grant.
+// grants: where storage grants are written. With the kernel wired in (`ctx.kernel.grants`) they go to the kernel; until then they live in this
+// module's own small table with the contract's fields (kernel/contracts/grant.d.ts), exactly as core/wink/grants.js does for the Wink module.
 
 import { checkGrantInput, timeId } from "../grants.js";
 
@@ -16,6 +16,7 @@ export function storageGrants({ ctx, space, now = Date.now }) {
     /** @param {any} input @param {any} issuer */
     async create(input, issuer) {
       checkGrantInput(input);
+      if (ctx.kernel && ctx.kernel.grants) return ctx.kernel.grants.create(issuer, input);
       const t = now();
       const g = { id: timeId("gr_", t), space: space(), subject: input.subject, actions: [...input.actions], action_set_version: 1, resource: input.resource, conditions: input.conditions || {}, issuer, source: input.source, status: "active", created_at: t, ...(input.reason ? { reason: input.reason } : {}) };
       db.prepare("INSERT INTO wink_storage_grants (id, status, body) VALUES (?, 'active', ?)").run(g.id, JSON.stringify(g));
@@ -24,6 +25,7 @@ export function storageGrants({ ctx, space, now = Date.now }) {
     },
     /** @param {string} id @param {string} reason */
     async revoke(id, reason) {
+      if (ctx.kernel && ctx.kernel.grants) return ctx.kernel.grants.revoke(id, reason);
       const g = row(db.prepare("SELECT body FROM wink_storage_grants WHERE id = ?").get(String(id)));
       if (!g) throw Object.assign(new Error("no such grant"), { code: "not_found" });
       if (g.status === "revoked") return g;
@@ -34,6 +36,7 @@ export function storageGrants({ ctx, space, now = Date.now }) {
     },
     /** @param {string} id */
     async get(id) {
+      if (ctx.kernel && ctx.kernel.grants && ctx.kernel.grants.get) return ctx.kernel.grants.get(id);
       return row(db.prepare("SELECT body FROM wink_storage_grants WHERE id = ?").get(String(id))) || null;
     },
   };

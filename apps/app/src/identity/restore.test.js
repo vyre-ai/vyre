@@ -39,7 +39,7 @@ test("recover: a wrong code is refused and changes nothing; the right code retur
   assert.equal(after.ops.length, 2);
   const state = await C.verifyChain(after.ops, { now: Date.now() + C.SKEW_MS });
   assert.equal(state.entries.filter(e => e.kind === "device").length, 2, "one more device on the list");
-  assert.ok(state.entries.every(e => e.label === undefined || e.kind === "owner"), "the directory holds no device label: a device's name stays on that device");
+  assert.ok(state.entries.find(e => e.label === "new phone"), "the new device is on the list under its label");
   const kept = await loadIdentity();
   assert.equal(kept.id, made.id);
   assert.notEqual(kept.eid, made.eid, "this device's own key, not the first device's");

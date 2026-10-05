@@ -286,7 +286,7 @@ test("daemon: a request cannot claim the hook caller to reach a webhook-only too
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "hooky", { does: { tools: ["hooky.in"] } },
     `export default { async start(ctx) { ctx.tool("hooky.in", { hook: true, run: async () => ({ reached: true }) }); return {}; } };`);
-  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const r = await request("POST", "/v1/tools/hooky.in", {}, { root, caller: "hook" });
   assert.equal(r.error && r.error.code, "no_such_tool");
@@ -314,7 +314,7 @@ test("daemon: vyred checks presence, so a forged caller cannot run a human-only 
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "held", { does: { tools: ["held.release"] } },
     `export default { async start(ctx) { ctx.tool("held.release", { effect: "read", presence: true, input: { type: "object" }, run: async i => ({ released: i.id }) }); return {}; } };`);
-  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const sock = d.paths.socket;
   const input = { id: "a1" };
@@ -353,7 +353,7 @@ test("daemon: the presence challenge route refuses what it cannot start", async 
   const root = tempHome(t);
   // A terminal code is for a Mac (a box takes passkeys only), and Linux defaults to the box.
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "local" }));
-  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const sock = d.paths.socket;
   assert.equal((await raw(sock, "/v1/presence/challenge", { tool: "nope.none", input: {}, method: "tty", tty: "/dev/ttys003" }, {})).status, 404);
@@ -368,7 +368,7 @@ test("daemon: every non-person call passes the floor's rules, not only Claude Co
     ctx.tool("probe.echo", { effect: "read", input: { type: "object", properties: { path: { type: "string" }, command: { type: "string" } } }, run: async input => ({ got: input }) });
     return { async stop() {} };
   } };`);
-  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const secret = { path: path.join(root, "vault", "items", "x.json") };
   const approve = { command: "vyre gate approve 7" };

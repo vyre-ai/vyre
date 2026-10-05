@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // vyred serves core/resilience/*.js and lib/avatar-seed/index.js beside the Deck's own files
 // (core/daemon), and the Deck imports them.
-const SERVED = ["core/resilience/", "lib/avatar-seed/", "lib/wink-code/"];
+const SERVED = ["core/resilience/", "lib/avatar-seed/"];
 const file = (/** @type {string} */ f) => path.join(SERVED.some(d => f.startsWith(d)) ? path.join(DECK, "..") : DECK, f);
 const read = (/** @type {string} */ f) => fs.readFileSync(file(f), "utf8");
 const exists = (/** @type {string} */ p) => fs.existsSync(file(p === "/" ? "index.html" : p.slice(1)));

@@ -7,8 +7,6 @@ import { createRunner, reconcile } from "./runner.js";
 import { unavailable } from "./sandbox.js";
 import { workspaceUnavailable } from "./workspace.js";
 import { createTurnSeal } from "./ownserver.js";
-import path from "node:path";
-import fs from "node:fs";
 import { createLenderHost } from "./lender-host.js";
 
 /** Test and wiring seam, keyed by the module's root folder: { ports: { vault, sync, grants, server, requestServer }, platform }. */
@@ -41,23 +39,6 @@ const person = async (ctx, meta, what) => {
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
 
-/**
- * The program a Space's definition names, on THIS computer. A name with no folder in it ("claude") is the agent the person has here: `VYRE_CLAUDE_BIN`, else the program of that name on PATH; the Space never
- * names a path on a computer it cannot see. A script (.js) runs under this computer's node. Its folder (and node's) is readable inside the sandbox, nothing else is added.
- * @param {{ command: string, args?: string[], readOnly?: string[] }} spec
- */
-export function resolveAgent(spec) {
-  const args = Array.isArray(spec.args) ? spec.args : [];
-  const ro = Array.isArray(spec.readOnly) ? spec.readOnly : [];
-  if (spec.command.includes("/")) return { command: spec.command, args, readOnly: ro };
-  let bin = spec.command === "claude" && process.env.VYRE_CLAUDE_BIN ? process.env.VYRE_CLAUDE_BIN : "";
-  if (!bin) for (const d of String(process.env.PATH || "").split(path.delimiter)) { const f = path.join(d, spec.command); try { fs.accessSync(f, fs.constants.X_OK); bin = f; break; } catch { /* next */ } }
-  if (!bin) throw Object.assign(new Error(`this computer has no ${spec.command} to run the session with`), { code: "unavailable" });
-  const dirs = [...new Set([path.dirname(bin), ...ro])];
-  if (bin.endsWith(".js")) return { command: process.execPath, args: [bin, ...args], readOnly: [...new Set([...dirs, path.dirname(process.execPath)])] };
-  return { command: bin, args, readOnly: dirs };
-}
-
 export default {
   async start(ctx) {
     const seam = (ctx.paths && seams.get(ctx.paths.root)) || {};
@@ -79,13 +60,10 @@ export default {
       if (!l) {
         const k = ctx.kernel?.for?.(space);
         if (!k || typeof k.call !== "function") return null;   // a Space this computer hosts itself: not lent over a wire
-        await h.identity();   // this computer has claimed an identity (it may lend at all)
-        // The Offers for this computer are made under the id the Space's home gives it, read from what the transport proved: the home answers it, this computer never chooses it.
-        const me = await k.call("lent.whoami", []);
-        if (!me || typeof me.device !== "string" || !me.device) throw Object.assign(new Error("the Space's home did not say which computer this is"), { code: "unavailable" });
-        l = createLenderHost({ invoke: k.call, deviceId: me.device, deviceKey: me.device, ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
+        const id = await h.identity();
+        l = createLenderHost({ invoke: k.call, deviceId: id.deviceId, deviceKey: id.deviceKey, ...(h.lenderCap ? { lenderCap: h.lenderCap } : {}) });
         await l.ready; lenders.set(space, l);
-        l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} runners.delete(space); } });
+        l.ports.onRevoke(async () => { const r = runners.get(space); if (r) { try { await r.revoke(); } catch {} } });
       }
       return l.ports;
     };
@@ -132,8 +110,7 @@ export default {
         const p = await portsFor(space); const r = await forSpace(space);
         const spec = await p.spec({ space, session });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
-        const run = resolveAgent(spec);
-        const h = await r.start({ session, resume: Boolean(resume), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
+        const h = await r.start({ session, resume: Boolean(resume), command: spec.command, args: spec.args, env: spec.env, routes: spec.routes, readOnly: spec.readOnly, labels: spec.labels, network: spec.network });
         return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
       },
     });
@@ -143,14 +120,6 @@ export default {
     ctx.tool("runner.lock", { description: "Close the workspace on this computer. The data stays encrypted.", input: obj({ space: str }, ["space"]),
       run: async ({ space }, meta) => {
         await person(ctx, meta, "closing the workspace"); await (await forSpace(space)).lock(); return { locked: true }; } });
-    // The Space's home tells this computer at once that its grant ended (an Offer withdrawn, the member removed or left): stop the sessions and delete the workspace, now, without waiting for the next
-    // poll. Only the Wink module calls it, for a message that arrived down the connection this computer holds to that Space's home (core/wink/index.js).
-    ctx.tool("runner.revoke", { description: "The home says this computer's grant for a space ended: stop its sessions and delete the local work and keys.", input: obj({ space: str }, ["space"]),
-      run: async ({ space }, meta) => {
-        if (!meta || meta.caller !== "module:wink") throw Object.assign(new Error("the Wink module calls this"), { code: "denied" });
-        const r = runners.get(space); if (!r) return { revoked: false, why: "nothing here for that space" };
-        await r.revoke(); runners.delete(space); return { revoked: true };
-      } });
     ctx.tool("runner.move", { description: "Move a session to the space's server, after a last checkpoint here.", input: obj({ space: str, session: str }, ["space", "session"]),
       run: async ({ space, session }, meta) => {
         await person(ctx, meta, "moving a session"); await (await forSpace(space)).moveToServer(session); return { moved: true }; } });

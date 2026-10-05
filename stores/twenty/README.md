@@ -32,7 +32,7 @@ Every write is a compare-and-set on `vyreVersion` and on Twenty's `updatedAt`. A
 
 - Offline: `node --test "stores/**/*.test.js"` (the live file skips itself).
 - Live, on testbox: `stores/twenty/live/run-on-testbox.sh twspike` (any Space's compose project, with the volume that holds `twenty.key`).
-- Needs on the machine: Docker with compose. The images are named by tag and digest (provision.js: `TWENTY_TESTED_REF`, `POSTGRES_IMAGE`, `REDIS_IMAGE`: twentycrm/twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine), the exact images the live suite passes against. An upgrade names a full `name:tag@sha256:...` reference, never a bare tag.
+- Needs on the machine: Docker with compose, the images `twentycrm/twenty:v2.44.0`, `postgres:16`, `redis:7`.
 
 ## Operator notes
 

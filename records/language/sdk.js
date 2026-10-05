@@ -25,7 +25,7 @@ export const FLOW_VERBS = ["find", "create", "update", "remove", "decide", "repe
 export const ROLE_KINDS = ["teammate", "role"];
 export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 export const VIEW_TYPES = ["list", "board", "calendar", "page", "dashboard"];
-const COMMON = ["label", "description", "required", "unique", "visible_if", "required_if"];
+const COMMON = ["label", "description", "required", "unique"];
 /** Options each field kind takes besides the common ones. Exactly what the kernel's FieldDefinition can say. */
 const FIELD_OPTS = { choice: [], multi_choice: [], link: ["to"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
 
@@ -53,7 +53,7 @@ const strList = (v, path, max = 100) => { if (!Array.isArray(v) || v.length > ma
 const expr = (v, path) => { const s = str(v, path, { max: 2000 }); try { parseExpr(/** @type {string} */ (s)); } catch (e) { bad(path, /** @type {Error} */ (e).message); } return s; };
 /** Copy defined keys in the given order. @param {Record<string, any>} o @param {string[]} order */
 /** the order a stored field is written in */
-export const FIELD_ORDER = ["kind", "label", "description", "required", "required_if", "visible_if", "unique", "options", "to", "seal"];
+export const FIELD_ORDER = ["kind", "label", "description", "required", "unique", "options", "to", "seal"];
 const ordered = (o, order) => { /** @type {Record<string, any>} */ const out = {}; for (const k of order) if (o[k] !== undefined) out[k] = o[k]; return out; };
 /** "full_name" -> "Full name" */
 export const labelOf = (/** @type {string} */ n) => { const w = n.replace(/_/g, " "); return w[0].toUpperCase() + w.slice(1); };
@@ -65,9 +65,7 @@ function fieldBuilder(kind) {
     if (kind === "choice" || kind === "multi_choice") { main = args[0]; opts = args[1] ?? {}; if (!Array.isArray(main)) bad(`defineField.${kind}`, "Give the list of options first"); }
     else { opts = args[0] ?? {}; }
     onlyKeys(opts, [...COMMON, ...(FIELD_OPTS[kind] ?? [])], `defineField.${kind}`);
-    /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`), unique: opts.unique === undefined ? undefined : bool(opts.unique, `defineField.${kind}.unique`), visible_if: opts.visible_if === undefined ? undefined : expr(opts.visible_if, `defineField.${kind}.visible_if`), required_if: opts.required_if === undefined ? undefined : expr(opts.required_if, `defineField.${kind}.required_if`) };
-    if (f.required_if !== undefined && f.required) bad(`defineField.${kind}`, "A field is required, or required_if something, not both");
-    if (f.visible_if !== undefined && f.required) bad(`defineField.${kind}`, "A field that is only sometimes shown cannot be required always: use required_if");
+    /** @type {Record<string, any>} */ const f = { kind, label: opts.label === undefined ? undefined : str(opts.label, `defineField.${kind}.label`, { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, `defineField.${kind}.description`), required: opts.required === undefined ? undefined : bool(opts.required, `defineField.${kind}.required`), unique: opts.unique === undefined ? undefined : bool(opts.unique, `defineField.${kind}.unique`) };
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
     if (kind === "link") f.to = name(opts.to, "defineField.link.to");
     if (kind === "sealed") {
@@ -103,40 +101,23 @@ function defineTask(t) {
   return { $: "task", ...ordered(out, ["title", "doer", "checker", "output", "how", "template", "depends_on", "due_offset_ms", "required"]) };
 }
 
-/** One list of stages (the default set or a stage set): names, or `{ name, tasks, enter_if }`. @param {any[]} stages @param {string} where */
-function stageList(stages, where) {
-  if (!Array.isArray(stages) || stages.length < 2 || stages.length > 40) bad(where, "A stage list needs 2 to 40 stages");
+/** @param {any[]} stages @param {any} [opts] */
+function defineStage(stages, opts = {}) {
+  if (!Array.isArray(stages) || stages.length < 2 || stages.length > 40) bad("defineStage", "A stage field needs a list of 2 to 40 stages");
+  onlyKeys(opts, ["label", "description"], "defineStage");
   const seen = new Set();
   /** @type {any[]} */ const list = [];
   const titlesBefore = (/** @type {string} */ title) => list.some((s) => (s.tasks ?? []).some((/** @type {any} */ t) => t.title === title));
   stages.forEach((s, i) => {
-    const path = `${where}[${i}]`;
+    const path = `defineStage[${i}]`;
     if (typeof s === "string") { str(s, path, { max: 80 }); if (seen.has(s)) bad(path, `Two stages are named ${s}`); seen.add(s); list.push({ name: s }); return; }
-    onlyKeys(s, ["name", "tasks", "enter_if"], path);
+    onlyKeys(s, ["name", "tasks"], path);
     const nm = str(s.name, `${path}.name`, { max: 80 }); if (seen.has(nm)) bad(path, `Two stages are named ${nm}`); seen.add(nm);
     const tasks = s.tasks === undefined ? undefined : (Array.isArray(s.tasks) ? s.tasks.map((t, j) => { if (!isObj(t) || t.$ !== "task") bad(`${path}.tasks[${j}]`, "Each entry in tasks must be a defineTask(...) call"); const { $, ...rest } = t; return rest; }) : bad(`${path}.tasks`, "tasks must be a list"));
     if (tasks) { const titles = new Set(); for (const t of tasks) { if (titles.has(t.title)) bad(`${path}.tasks`, `Two tasks in ${nm} are titled ${t.title}`); titles.add(t.title); for (const d of t.depends_on ?? []) if (!titles.has(d) && !titlesBefore(d)) bad(`${path}.tasks`, `Task "${t.title}" depends on "${d}", which is not an earlier task in this or a previous stage`); } }
-    list.push(ordered({ name: nm, enter_if: s.enter_if === undefined ? undefined : expr(s.enter_if, `${path}.enter_if`), tasks: tasks && tasks.length ? tasks : undefined }, ["name", "enter_if", "tasks"]));
+    list.push(ordered({ name: nm, tasks: tasks && tasks.length ? tasks : undefined }, ["name", "tasks"]));
   });
-  return list;
-}
-
-/** @param {any[]} stages @param {any} [opts] `sets` are stage sets: `{ name, when, stages }`, the first whose `when` holds for a record gives that record's stages. */
-function defineStage(stages, opts = {}) {
-  onlyKeys(opts, ["label", "description", "sets"], "defineStage");
-  const list = stageList(stages, "defineStage");
-  /** @type {any[] | undefined} */ let sets;
-  if (opts.sets !== undefined) {
-    if (!Array.isArray(opts.sets) || !opts.sets.length || opts.sets.length > 20) bad("defineStage.sets", "sets is a list of 1 to 20 stage sets");
-    const names = new Set();
-    sets = opts.sets.map((/** @type {any} */ s, /** @type {number} */ i) => {
-      const path = `defineStage.sets[${i}]`;
-      onlyKeys(s, ["name", "when", "stages"], path);
-      const nm = name(s.name, `${path}.name`); if (names.has(nm)) bad(path, `Two stage sets are named ${nm}`); names.add(nm);
-      return { name: nm, when: expr(s.when, `${path}.when`), stages: stageList(s.stages, `${path}.stages`) };
-    });
-  }
-  return { $: "stage", label: opts.label === undefined ? undefined : str(opts.label, "defineStage.label", { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, "defineStage.description"), stages: list, ...(sets ? { sets } : {}) };
+  return { $: "stage", label: opts.label === undefined ? undefined : str(opts.label, "defineStage.label", { max: 120 }), description: opts.description === undefined ? undefined : str(opts.description, "defineStage.description"), stages: list };
 }
 
 function defineRule(r) {
@@ -165,11 +146,11 @@ function defineType(t) {
     if (v.$ === "stage") {
       if (stageDef) bad(`defineType(${nm})`, "A type has at most one stage field");
       stageDef = v;
-      fields.push(ordered({ name: k, kind: "stage", label: v.label ?? labelOf(k), description: v.description, options: [...new Set([...v.stages, ...(v.sets ?? []).flatMap((/** @type {any} */ x) => x.stages)].map((/** @type {any} */ s) => s.name))] }, ["name", "kind", "label", "description", "options"]));
+      fields.push(ordered({ name: k, kind: "stage", label: v.label ?? labelOf(k), description: v.description, options: v.stages.map((/** @type {any} */ s) => s.name) }, ["name", "kind", "label", "description", "options"]));
     } else { const { $, ...rest } = v; fields.push({ name: k, ...ordered({ ...rest, label: rest.label ?? labelOf(k) }, FIELD_ORDER) }); }
   }
   const rules = (t.rules ?? []).map((/** @type {any} */ r, /** @type {number} */ i) => { if (!isObj(r) || r.$ !== "rule") bad(`defineType(${nm}).rules[${i}]`, "Each entry in rules must be a defineRule(...) call"); const { $, ...rest } = r; return rest; });
-  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), fields, stages: stageDef ? stageDef.stages : undefined, stage_sets: stageDef && stageDef.sets ? stageDef.sets : undefined, rules: rules.length ? rules : undefined, role: t.role === undefined ? undefined : defineRoleMark(nm, t.role), kind: t.kind === undefined ? undefined : (t.kind === "project" ? "project" : bad(`defineType(${nm}).kind`, 'kind is "project" (a type that holds work) or left out')) }, ["name", "label", "icon", "kind", "fields", "stages", "stage_sets", "rules", "role"]) };
+  return { $: "type", ...ordered({ name: nm, label: t.label === undefined ? labelOf(nm) : str(t.label, "defineType.label", { max: 120 }), icon: t.icon === undefined ? undefined : str(t.icon, "defineType.icon", { max: 60 }), fields, stages: stageDef ? stageDef.stages : undefined, rules: rules.length ? rules : undefined, role: t.role === undefined ? undefined : defineRoleMark(nm, t.role), kind: t.kind === undefined ? undefined : (t.kind === "project" ? "project" : bad(`defineType(${nm}).kind`, 'kind is "project" (a type that holds work) or left out')) }, ["name", "label", "icon", "kind", "fields", "stages", "rules", "role"]) };
 }
 
 function defineTemplate(t) {

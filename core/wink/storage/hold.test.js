@@ -82,16 +82,3 @@ test("P-1: nothing in hold.js recurs under 60 s: a held session and a connected 
   await quietHolds.linkTo("dev_q").call("t", {});
   assert.equal(n, 1, "one ping before the call, after the silence");
 });
-
-test("devices() lists the devices with a connection open now", async () => {
-  const holds = createHolds({ waitMs: 50 });
-  assert.deepEqual(holds.devices(), []);
-  const { device, home } = pipePair();
-  peerSession(/** @type {any} */ (device), { first: 1, serve: async () => ({}) });
-  const side = peerSession(/** @type {any} */ (home), { first: 2, serve: async () => ({}) });
-  holds.onSession("device:dev_mini", side);
-  assert.deepEqual(holds.devices(), ["dev_mini"]);
-  side.close("done");
-  await new Promise(r => setTimeout(r, 30));
-  assert.deepEqual(holds.devices(), [], "a closed session is not listed");
-});

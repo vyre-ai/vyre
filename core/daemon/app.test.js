@@ -11,7 +11,7 @@ import path from "node:path";
 import vm from "node:vm";
 import { tempHome } from "../../test/helpers.js";
 import { socketPath } from "../config/index.js";
-import { serveApp, appWorker, appManifest, appBase } from "./app.js";
+import { serveApp, appWorker, appManifest } from "./app.js";
 import { start } from "./index.js";
 
 /** A response that records what serveApp wrote. */
@@ -247,46 +247,4 @@ test("the verified-link files: absent until the signing identities are set, then
   const l = JSON.parse(/** @type {string} */ (associationFile("/.well-known/assetlinks.json", { VYRE_ANDROID_CERT_SHA256: fp })));
   assert.equal(l[0].target.package_name, "sh.vyre.app"); assert.deepEqual(l[0].target.sha256_cert_fingerprints, [fp]);
   assert.equal(associationFile("/.well-known/assetlinks.json", { VYRE_ANDROID_CERT_SHA256: "12:34" }), null);
-});
-
-test("app at the root (config app.root, an export built with the root base): files, the shell for any route, a worker rooted at /", t => {
-  const dir = dist(t, { build: "r1", base: "", files: ["/index.html", "/_expo/static/js/web/entry-abc.js"] });
-  assert.equal(appBase(dir), "", "precache.json names the root");
-  const js = get("/_expo/static/js/web/entry-abc.js", { dir });
-  assert.deepEqual([js.status, js.headers["cache-control"]], [200, "public, max-age=31536000, immutable"]);
-  for (const p of ["/", "/u/now", "/session/42"]) {
-    const r = get(p, { dir });
-    assert.equal(r.status, 200, p);
-    assert.match(r.body, /<title>Vyre<\/title>/, p);
-  }
-  assert.equal(get("/_expo/static/js/web/entry-gone.js", { dir }).status, 404, "a stale hashed file is a 404, not the shell");
-  assert.equal(get("/../package.json", { dir }).status, 404, "a path above dist is refused");
-  assert.ok(!get("/../package.json", { dir }).body.includes("secret"));
-  const sw = get("/sw.js", { dir });
-  assert.equal(sw.headers["service-worker-allowed"], "/");
-  assert.match(sw.body, /const BASE = "";/);
-  assert.match(sw.body, /const PRECACHE = \["\/index\.html","\/_expo\/static\/js\/web\/entry-abc\.js"\];/);
-  const mf = JSON.parse(get("/manifest.webmanifest", { dir }).body);
-  assert.deepEqual([mf.start_url, mf.scope, mf.id], ["/", "/", "/"]);
-});
-
-test("app worker at the root: only the app's pages, never the box's own paths or /v1/", t => {
-  const dir = dist(t, { build: "r2", base: "", files: ["/index.html"] });
-  const src = appWorker({ dir });
-  /** @type {Record<string, Function>} */ const on = {};
-  const hits = [];
-  const self = { addEventListener: (/** @type {string} */ n, /** @type {Function} */ f) => { on[n] = f; }, registration: {}, clients: {} };
-  const ctx = vm.createContext({ self, caches: { open: async () => ({ match: async () => null, put: async () => {} }) }, fetch: async () => { throw new Error("offline"); }, Response: { error: () => 0 }, URL, location: { origin: "https://box.example" } });
-  vm.runInContext(src, ctx);
-  const handled = (/** @type {string} */ p, mode = "navigate") => { let r = false; on.fetch({ request: { url: "https://box.example" + p, method: "GET", mode }, respondWith: (/** @type {Promise<unknown>} */ p) => { r = true; p.catch(() => {}); }, waitUntil() {} }); return r; };
-  assert.equal(handled("/"), true);
-  assert.equal(handled("/u/now"), true);
-  for (const p of ["/v1/events", "/onboard/passkey", "/person/signin", "/release/SHA256SUMS", "/.well-known/assetlinks.json", "/sw.js"]) assert.equal(handled(p), false, p);
-  void hits;
-});
-
-test("app at /app/ is unchanged by the root support: a worker with BASE /app", t => {
-  const dir = dist(t);
-  assert.equal(appBase(dir), "/app", "no base in precache.json means /app");
-  assert.match(appWorker({ dir }), /const BASE = "\/app";/);
 });

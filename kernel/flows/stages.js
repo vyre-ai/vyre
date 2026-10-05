@@ -17,8 +17,6 @@
 // - A stuck or rejected task simply is not done: nothing advances, nothing is made twice. A record that was moved by hand before the tasks
 //   finished is left alone. Coming back into a stage later is a new entry with new tasks.
 
-import { holds, stagesFor } from "../../lib/expr/conditions.js";
-
 /** The task id an event is about: the data says it, or the subject's last segment does (the kernel's own task events carry only the subject). @param {any} env */
 export function taskIdOf(env) {
   const d = env && env.data;
@@ -50,10 +48,7 @@ export function createStages(o) {
   /** @type {Promise<void>} */ let queue = Promise.resolve();
   const serial = (/** @type {() => Promise<void>} */ fn) => { const p = queue.then(fn, fn); queue = p.catch(() => {}); return p; };
 
-  /** The record's values, or undefined when it cannot be read. @param {string} type @param {string} id */
-  const recordData = async (type, id) => { try { const r = await o.kernel.records.get(o.chain(), type, id); return r && r.data; } catch { return undefined; } };
-  /** The stages one record follows: its stage set (the first whose `when` holds for its values) or the type's default stages. @param {string} type @param {any} [data] */
-  const stagesOfRecord = async (type, data) => { const c = await o.catalog(); const t = c.types && c.types[type]; if (!t) return []; return t.stage_sets && t.stage_sets.length && data ? stagesFor(t, data).stages : t.stages || []; };
+  const stagesOf = async (/** @type {string} */ type) => { const c = await o.catalog(); const t = c.types && c.types[type]; return (t && t.stages) || []; };
 
   /** @param {string} spec @param {string} space */
   async function actorFor(spec, space, ctx) {
@@ -77,7 +72,7 @@ export function createStages(o) {
 
   /** A record entered a stage: make its tasks. `templates` are the ones the gateway handed over (onStageEnter); otherwise the catalog's. @param {{ urn: string, type: string, id: string, stage: string, entry: string, templates?: any[] }} e */
   async function enter(e) {
-    const stage = e.templates ? { tasks: e.templates } : (await stagesOfRecord(e.type, await recordData(e.type, e.id))).find((/** @type {any} */ s) => s.name === e.stage);
+    const stage = e.templates ? { tasks: e.templates } : (await stagesOf(e.type)).find((/** @type {any} */ s) => s.name === e.stage);
     const key = `${e.urn}|${e.stage}|${e.entry}`;
     if (entries.has(key)) return;
     const space = (await o.catalog()).space;
@@ -123,19 +118,14 @@ export function createStages(o) {
     const required = rows.filter(r => r.required);
     const ok = required.length ? required.every(r => DONE.has(r.state)) : rows.every(r => FINISHED.has(r.state));
     if (!ok) { if (rows.some(r => r.state === "stuck")) emit("stage.blocked", { record: ent.urn, stage: ent.stage, tasks: rows.filter(r => r.state === "stuck").map(r => r.id) }); return; }
-    const cur = await o.kernel.records.get(chain, ent.type, ent.id);
-    // The stages this record follows: its stage set when the type has sets, else the type's own list.
-    if (!cur) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: undefined }); return; }
-    const stages = await stagesOfRecord(ent.type, cur.data);
+    const stages = await stagesOf(ent.type);
     const at = stages.findIndex((/** @type {any} */ s) => s.name === ent.stage);
     const next = stages[at + 1];
-    if (at < 0) { ent.advanced = true; emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage, why: "the stage is not in the set this record follows now" }); return; }
-    // The next stage has an entry condition the record does not meet yet: it stays where it is, and the gateway would refuse the move anyway.
-    if (next && typeof next.enter_if === "string" && !holds(next.enter_if, cur.data)) { emit("stage.blocked", { record: ent.urn, stage: ent.stage, why: `${next.name} cannot be entered yet: ${next.enter_if}` }); return; }
     ent.advanced = true;
     if (!next) { emit("stage.finished", { record: ent.urn, stage: ent.stage }); return; }
+    const cur = await o.kernel.records.get(chain, ent.type, ent.id);
     // The record was moved by hand (or removed) while the tasks were open: leave it where the person put it.
-    if (cur.data.stage !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur.data.stage }); return; }
+    if (!cur || cur.data.stage !== ent.stage) { emit("stage.left-alone", { record: ent.urn, stage: ent.stage, now: cur && cur.data.stage }); return; }
     try { await o.kernel.records.update(chain, ent.type, ent.id, { stage: next.name }, cur.version, { idem: `advance:${key}` }); }
     catch (e) { ent.advanced = false; throw e; }
     emit("stage.advanced", { record: ent.urn, from: ent.stage, to: next.name });

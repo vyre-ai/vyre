@@ -40,8 +40,8 @@ export async function verifyRevocation(spaceOps, r, ctx) {
     const now = ctx.now ?? Date.now();
     const state = await chain.stateAt(spaceOps, r.ts, { now, ownerOps: ctx.ownerOps });
     if (!state || state.kind !== "space" || state.id !== r.space) throw new Error("not this Space");
-    const { pub, signing } = await chain.signerKey(state, r.by, r.via, r.ts, { ownerOps: ctx.ownerOps, live: true, now }, { seq: r.via_seq, head: r.via_head });
-    if (!(await chain.verifyWith(pub, revocationBytes(r), r.sig, signing))) throw new Error("bad signature");
+    const { pub } = await chain.signerKey(state, r.by, r.via, r.ts, { ownerOps: ctx.ownerOps, live: true, now }, { seq: r.via_seq, head: r.via_head });
+    if (!(await chain.verifyWith(pub, revocationBytes(r), r.sig))) throw new Error("bad signature");
   } catch (err) { throw new KernelError("bad_revocation", "that is not an owner's revocation of the Space key", String(err && /** @type {any} */ (err).message)); }
   return { space: r.space, key_id: r.key_id };
 }
@@ -71,8 +71,8 @@ export async function verifyEndorsement(spaceOps, e, ctx) {
     if (!state || state.kind !== "space" || state.id !== e.space) throw new Error("not this Space");
     if (crypto.createHash("sha256").update(Buffer.from(e.pub, "base64")).digest("hex").slice(0, 16) !== e.key_id) throw new Error("key id does not match the key");
     // `live`: the device must still be on the owner's current list as well as at the position it named, so a removed device cannot endorse.
-    const { pub, signing } = await chain.signerKey(state, e.by, e.via, e.ts, { ownerOps: ctx.ownerOps, live: true, now }, { seq: e.via_seq, head: e.via_head });
-    const ok = await chain.verifyWith(pub, endorsementBytes(e), e.sig, signing);
+    const { pub } = await chain.signerKey(state, e.by, e.via, e.ts, { ownerOps: ctx.ownerOps, live: true, now }, { seq: e.via_seq, head: e.via_head });
+    const ok = await chain.verifyWith(pub, endorsementBytes(e), e.sig);
     if (!ok) throw new Error("bad signature");
   } catch (err) { throw new KernelError("bad_endorsement", "the Space key is not endorsed by an owner of the Space", String(err && /** @type {any} */ (err).message)); }
   return { space: e.space, key_id: e.key_id, pub: e.pub };

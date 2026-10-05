@@ -69,7 +69,7 @@ while (Date.now() < until) {
     if (answer === "ignore") result = { left: true };
     else if (answer === "no") result = await call("approvals.answer", { id: c.id, approve: false }, cookie);
     else {
-      try { result = await call("approvals.answer", { id: c.id, approve: true }, { ...cookie, "x-vyre-kernel-proof": proofHeader(c.sign ?? { op: c.op, space: c.space, fields: c.fields }) }); }
+      try { result = await call("approvals.answer", { id: c.id, approve: true }, { ...cookie, "x-vyre-kernel-proof": proofHeader(c.sign) }); }
       catch (e) { result = { error: { code: "no_signature", message: String(/** @type {Error} */ (e).message) } }; }
     }
     process.stdout.write(JSON.stringify({ card: c.id, op: c.request?.op ?? c.op, line: c.line, answer, result: result.data ?? result.error ?? result }) + "\n");

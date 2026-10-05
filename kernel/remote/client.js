@@ -5,7 +5,7 @@
 import { KernelError } from "../core/errors.js";
 import { CALLS, CACHEABLE, WIRE_VERSION, MAX_RESPONSE_BYTES, PRESENCE_CODES } from "./wire.js";
 import { canonical, sha256 } from "../core/canonical.js";
-import { proofRequest, PROOF_CALLS, WIRE_TO_PROOF } from "./proof.js";
+import { proofRequest, PROOF_CALLS } from "./proof.js";
 
 /** @typedef {{ send(space: string, request: any): Promise<any> }} RemoteTransport the port the Wink connection (or the relay) fills; it delivers to the home and returns its reply */
 
@@ -59,7 +59,7 @@ export function createRemoteKernel(cfg) {
     try {
       if (ch.call !== call || ch.space !== cfg.space || ch.args_hash !== sha256(canonical(sent))) return false;
       if (cfg.home && ch.home !== cfg.home) return false;
-      const short = WIRE_TO_PROOF[call] || call.split(".").slice(1).join(".");
+      const short = call.split(".").slice(1).join(".");
       if (call.startsWith("grants.") && PROOF_CALLS.includes(short)) {
         const r = proofRequest(cfg.space, short, ...sent);
         if (ch.op !== r.op || ch.payload_hash !== r.payload_hash || canonical(ch.fields) !== canonical(r.fields)) return false;

@@ -10,12 +10,9 @@
 //   run     the Kit's Flow for payment.received (find or create the contact, then the matter) runs on the kernel's runner
 
 import crypto from "node:crypto";
-import declaration from "./declaration.js";
 
 const TOLERANCE_SEC = 300;
-// What Stripe pushes, and what it becomes, is the declaration's (./declaration.js): this file is the small mapping code the declaration points at.
-export const HANDLED = declaration.inbound?.webhook.events ?? [];
-const EMITS = declaration.inbound?.webhook.emits ?? "payment.received";
+export const HANDLED = ["checkout.session.completed", "payment_intent.succeeded", "invoice.paid", "charge.succeeded"];
 
 /**
  * @param {string} rawBody @param {string | undefined} header @param {string} secret
@@ -105,7 +102,7 @@ export function createStripeHandler(o) {
     // delivery resumes that same run rather than starting another.
     const run = async () => {
       const key = `stripe:payment:${pay.payment}`;
-      const { event, duplicate } = await o.host.emit(EMITS, pay, { source: "connector:stripe", key, subject: `vyre://${o.host.space}/payment/${pay.payment}` });
+      const { event, duplicate } = await o.host.emit("payment.received", pay, { source: "connector:stripe", key, subject: `vyre://${o.host.space}/payment/${pay.payment}` });
       await o.host.settle();
       let { runs, bad } = await runsOf(event.id);
       if (duplicate && bad.length) {

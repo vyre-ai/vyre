@@ -5,14 +5,12 @@ import { View } from "react-native";
 import { Banner, Button, Card, Chip, Divider, EmptyState, Row, Sheet, Text, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { IconTile } from "../places/Page";
 import { Frame, Sec } from "../places/Frame";
-import { useRouter } from "expo-router";
-import { addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, updatesOf, type KitRow, type LibraryKit } from "./kits-model";
+import { addsLine, available, cardLines, kitLine, kitName, kitRefusal, listed, proposeNote, statusWord, type KitRow, type LibraryKit } from "./kits-model";
 import { kitCard, listKits, listLibrary, proposeKit, removeKit } from "./kits";
 
 const say = (e: unknown) => kitRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export function RealKits() {
-  const router = useRouter();
   const [rows, setRows] = useState<KitRow[] | null>(null);
   const [err, setErr] = useState("");
   const [lib, setLib] = useState<LibraryKit[] | null>(null);
@@ -34,7 +32,6 @@ export function RealKits() {
   const remove = (k: KitRow) => { setBusy(true); removeKit(k.id).then(() => { showToast(`${kitName(k.id)} is removed. Your records stay.`); load(); }).catch((e) => showToast(say(e))).finally(() => setBusy(false)); };
   const shown = rows ? listed(rows) : [];
   const offer = lib && rows ? available(lib, rows) : [];
-  const newer = lib && rows ? updatesOf(rows, lib) : {};
   return (
     <Frame back="/u/flows" title="Kits" sub="Ready-made record types, Flows and views for a kind of work. Installing one is a grant you approve.">
       <Sec title="Installed">
@@ -46,7 +43,7 @@ export function RealKits() {
             {shown.map((k, i) => (
               <View key={k.id}>{i ? <Divider /> : null}
                 <Row lead={<IconTile icon="box" />} title={kitName(k.id)} sub={kitLine(k)}
-                  end={k.status === "installed" ? <View className="flex-row items-center gap-s2">{newer[k.id] ? <Button kind="primary" size="sm" label={`Update to v${newer[k.id]}`} onPress={() => router.push(`/u/kits/${k.id}` as never)} /> : null}<Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => remove(k)} /></View> : <Chip>{statusWord(k.status)}</Chip>} />
+                  end={k.status === "installed" ? <Button kind="holdText" size="sm" label="Remove" disabled={busy} onPress={() => remove(k)} /> : <Chip>{statusWord(k.status)}</Chip>} />
               </View>
             ))}
           </Card>

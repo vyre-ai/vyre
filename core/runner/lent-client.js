@@ -42,8 +42,6 @@ export function createLentClient(o) {
     getCheckpoint: session => o.invoke("lent.getCheckpoint", [session]),
   };
   return {
-    /** The id the Space's home gives this computer (from what the transport proved): the Offers are made for it. */
-    whoami: () => o.invoke("lent.whoami", []),
     sync,
     vault: {
       lease: async () => { const r = await o.invoke("leases.issue", [{ device: o.device, device_key: o.deviceKey }]); if (r && r.id) lease = r.id; return r; },

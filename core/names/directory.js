@@ -58,7 +58,7 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     base: root,
     /** ok, taken, reserved, invalid or mine. @param {string} name */
     check: name => call("GET", `/v1/names/check?name=${encodeURIComponent(name)}`),
-    /** Bind the name to this box's route. `fresh` is false when this box already held it. @param {string} name @returns {Promise<{ name: string, mine: boolean, fresh: boolean }>} */
+    /** Bind the name to this box's route. `code` is the one-time recovery code, null when it was already claimed here. @param {string} name @returns {Promise<{ name: string, mine: boolean, code: string|null }>} */
     claim: name => call("POST", "/v1/names/claim", { name }),
     /** @param {string} name @param {string} ip */
     point: (name, ip) => call("POST", "/v1/names/point", { name, ip }),
@@ -69,9 +69,15 @@ export function directory({ base = DEFAULT_BASE, signer, fetch = globalThis.fetc
     /** A challenge for the person's own domain, under <routehash>.acme.vyre.run. @param {string} token */
     acmeOwn: token => call("POST", "/v1/names/acme", { own: true, token }),
     acmeOwnClear: () => call("DELETE", "/v1/names/acme", { own: true }),
+    /** @param {{ name: string, code: string, next: string }} r @returns {Promise<{ name: string, pendingUntil: number }>} */
+    recover: r => call("POST", "/v1/names/recover", r),
+    /** @param {string} name */
+    cancel: name => call("POST", "/v1/names/recover/cancel", { name }),
+    /** @param {string} name @param {string} next the hash of the new recovery code */
+    rotate: (name, next) => call("POST", "/v1/names/code", { name, next }),
     /** @param {string} name */
     release: name => call("POST", "/v1/names/release", { name }),
-    /** This route's name, its state and the notices. */
+    /** This route's name, its state, a pending recovery and the notices. */
     mine: () => call("GET", "/v1/names/mine"),
   };
 }

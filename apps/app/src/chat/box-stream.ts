@@ -27,7 +27,7 @@ export type SessionActions = {
   /** A new session with the conversation up to (not including) `at`; resolves with its id. */
   branch(at: string): Done;
   /** Send a message; resolves with why it was refused, or null. */
-  sendText(text: string, o?: { mentions?: Mention[] }): Promise<string | null>;
+  sendText(text: string): Promise<string | null>;
   stopSession(): Promise<string | null>;
   answerAsk(ask: string, decision: "approve" | "deny"): Promise<string | null>;
 };
@@ -41,8 +41,6 @@ export type GroupActions = {
   /** Move this person's read marker forward; their other open connections hear it. */
   markReadTo(upto: number): Promise<string | null>;
 };
-/** A # tag picked in the composer. */
-export type Mention = { kind: string; id: string; name: string };
 export type BoxStream = StreamSource & SessionActions & GroupActions;
 
 const reason = (e: { code?: string; message?: string }) => e.message || e.code || "Refused";
@@ -97,8 +95,7 @@ export function boxStream(session: string): BoxStream {
     ...source,
     viewer: () => viewer,
     head: () => head,
-    // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
-    sendText: (text, o) => note("threads.send", { thread: session, text, surface: SURFACE, uuid: newUuid(), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8) } : {}) }),
+    sendText: (text) => note("threads.send", { thread: session, text, surface: SURFACE, uuid: newUuid() }),
     stopSession: () => note("threads.stop", { thread: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),

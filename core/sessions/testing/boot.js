@@ -26,9 +26,6 @@ fs.chmodSync(FAKE, 0o755);
 export const SDK = process.env.VYRE_SESSIONS_SDK_DIR || "";
 export const noSdk = !SDK || !installed(SDK) ? "the Agent SDK is not installed here (set VYRE_SESSIONS_SDK_DIR)" : false;
 
-// A development build opts out of the session sandbox (daemon/index.js, VYRE_SESSION_SANDBOX_OFF): with the kernel on a session is confined by bwrap, which hides the fake claude's log and transcript folders in the temp home. The sandbox has its own tests.
-process.env.VYRE_SESSION_SANDBOX_OFF = "1";
-
 export const until = async (fn, what, ms = 15_000) => {
   const end = Date.now() + ms;
   for (;;) {

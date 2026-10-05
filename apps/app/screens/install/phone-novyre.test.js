@@ -44,9 +44,8 @@ test("the step shares NO_VYRE.share through the system share sheet, and Not now 
   assert.match(src, /offersNoVyre\(dk, MOCK\) \? <Button kind="ghost" label=\{NO_VYRE\.have\} onPress=\{\(\) => setStep\("novyre"\)\}/);
 });
 
-test("a phone's connect step offers typing the code (not a browser), before the no-Vyre action", () => {
+test("a phone's connect step leads with typing the code, before the pasted code's alternatives", () => {
   const src = read("./InstallScreen.tsx");
-  const scan = src.slice(src.indexOf('step === "scan"'), src.indexOf('step === "novyre"'));
-  assert.match(scan, /claimBlocked\(\) \? null : <TypeCode redeem=\{\(code, onAck\) => addDeviceToName/);
-  assert.ok(scan.indexOf("<TypeCode") < scan.indexOf("offersNoVyre(dk, MOCK) ?"));
+  assert.match(src, /isPhone\(dk\) && !MOCK \? <TypeCode kind="phone"/);
+  assert.ok(src.indexOf('<TypeCode kind="phone" onDone={() => { noId.current = false; setStep("spaces")') < src.indexOf("offersNoVyre(dk, MOCK) ?"));
 });

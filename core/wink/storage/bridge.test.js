@@ -7,7 +7,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../../test/scratch.mjs";
-import { createBridgeSecrets, createBridgeEndpoint, makeBridgeSend, bridgeMakeBackend, pairFromHome, acceptDrive, localDriveDir, bridgeServe, resumeServing, SCAN_TOOL, resilientBackend, sealSecret, BRIDGE_TOOL, ACCEPT_TOOL } from "./bridge.js";
+import { createBridgeSecrets, createBridgeEndpoint, makeBridgeSend, bridgeMakeBackend, pairFromHome, acceptDrive, localDriveDir, bridgeServe, resilientBackend, sealSecret, BRIDGE_TOOL, ACCEPT_TOOL } from "./bridge.js";
 import { createHolds, holdDrive } from "./hold.js";
 import { bridgedCard, bridgeAwayWords } from "./bridge-cards.js";
 import { FORBIDDEN } from "../cards.js";
@@ -335,33 +335,4 @@ test("Z-1: a folder swapped for a link after it was opened is refused on the nex
     hooks: { afterCheck: () => { const m = path.join(disk2, `vyre-${OFFER.id}`); fs.rmSync(m, { recursive: true, force: true }); fs.symlinkSync(outside, m); } } });
   await assert.rejects(() => offerVia(w2, swapper, { path: disk2 }), { code: "denied" }, "swapped for a link between check and open");
   assert.equal(fs.readdirSync(outside).length, 0, "nothing was ever written outside the root");
-});
-
-test("a drive this device accepted is kept, served again after a restart, and dropped when its folder is gone", async () => {
-  const w = world();
-  const kept = [];
-  const drive = acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home", roots: [w.dirD], onServed: r => { kept.push(r); } });
-  await pairFromHome({ secrets: w.homeSecrets, linkTo: () => ({ call: async (tool, input) => (tool === ACCEPT_TOOL ? drive("device:dev_home", input) : w.endpoint.handle("device:dev_home", input)) }) }, { offer: OFFER.id, device: "dev_mini", kind: "usb-disk", location: { path: w.dirD }, capacity: 1e9 });
-  assert.equal(kept.length, 1);
-  assert.deepEqual(Object.keys(kept[0]).sort(), ["caller", "capacity", "dir", "offer"], "the record holds the folder, the room and the one caller, never the secret");
-  // a restart: a new endpoint with the same vault serves the kept record again
-  const again = createBridgeEndpoint({ createBridge: o => fakeCreateBridge(o), secrets: w.devSecrets, live: () => true });
-  const forgotten = [];
-  assert.deepEqual(await resumeServing({ endpoint: again, kept, roots: [w.dirD], forget: o => forgotten.push(o) }), [OFFER.id]);
-  assert.equal(again.has(OFFER.id), true);
-  // the folder moved out from under the roots: not served, and forgotten
-  const gone = createBridgeEndpoint({ createBridge: o => fakeCreateBridge(o), secrets: w.devSecrets, live: () => true });
-  assert.deepEqual(await resumeServing({ endpoint: gone, kept, roots: [path.join(w.dirD, "elsewhere")], forget: o => forgotten.push(o) }), []);
-  assert.deepEqual(forgotten, [OFFER.id]);
-  assert.equal(gone.has(OFFER.id), false);
-});
-
-test("a device answers the home's scan with what it sees, and only the home it is paired with can ask", async () => {
-  const w = world();
-  const serve = bridgeServe({ endpoint: w.endpoint, drive: acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home" }), home: () => "dev_home", scan: async () => ({ from: "Mini", candidates: [{ name: "usbdisk1", kind: "usb-disk" }], notes: [] }) });
-  assert.deepEqual((await serve(SCAN_TOOL, {})).candidates.map(/** @type {any} */ c => c.name), ["usbdisk1"]);
-  const unpaired = bridgeServe({ endpoint: w.endpoint, drive: acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => null }), home: () => null, scan: async () => ({ candidates: [] }) });
-  await assert.rejects(unpaired(SCAN_TOOL, {}), /not paired/);
-  const noScan = bridgeServe({ endpoint: w.endpoint, drive: acceptDrive({ endpoint: w.endpoint, secrets: w.devSecrets, home: () => "dev_home" }), home: () => "dev_home" });
-  await assert.rejects(noScan(SCAN_TOOL, {}), /storage calls only/);
 });

@@ -6,13 +6,11 @@
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import planner, { seams } from "./index.js";
-import { createKernel } from "../../kernel/index.js";
-import { CORE_TYPES } from "../../records/core-types.js";
 import { CAP_MS } from "./scheduler.js";
 import { localParts } from "./time.js";
+import { migrate } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { callerAllowed } from "../modules/index.js";
 
@@ -20,23 +18,12 @@ const MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
 const Z = (/** @type {number[]} */ ...a) => Date.UTC(a[0], a[1] - 1, a[2], a[3] ?? 0, a[4] ?? 0);
 const T0 = Z(2026, 9, 24, 5); // Thursday 10:00 in Karachi
 let homes = 0;
-const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
-const NEEDS = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs;
-/** The person's own chain, for reading the records the planner keeps. */
-export const ownerChain = k => k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" });
-/** A kernel with the Event type defined (the connectors' calendar sync writes it), the planner's own types declared by its module. */
-export async function newKernel() {
-  const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 4) });
-  await k.gateway.records.define(ownerChain(k), { add_types: CORE_TYPES.filter(t => t.name === "event") });
-  return k;
-}
 
 /**
  * A planner on a fake clock. `boot()` starts (or restarts, after downtime) the module on the same
  * store; `advance(ms)` runs every timer that falls due on the way, in order.
  */
-async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, remote = null, start = T0, kernel = null } = {}) {
-  const k = kernel || await newKernel();
+async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, remote = null, start = T0 } = {}) {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
   const events = new Events(db);
@@ -55,7 +42,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
   events.on("planner.acked", e => acked.push(e.payload));
   events.on("planner.task-run", e => taskRuns.push(e.payload));
   const w = {
-    k, db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
+    db, events, clock, timers, logs, fired, acked, taskRuns, calls, linked, remote, handle: /** @type {any} */ (null),
     agents: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent", projects: "*" }],
     /** @type {(tool: string, input: any) => Promise<any>|any} */ onCall: null,
     /** @type {Map<string, any>} */ tools: new Map(),
@@ -63,11 +50,11 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
       w.tools = new Map();
       const ctx = {
         name: "planner", config: { role, planner: { timezone: tz } }, paths: { root },
-        kernel: k.kernelFor({ name: "planner", needs: NEEDS }),
+        store: { db, migrate: steps => migrate(db, "planner", steps) },
         log: m => logs.push(m),
         events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
         tool: (name, def) => w.tools.set(name, def),
-        // No Google account connected: the calendar slice stays asleep (core/planner/events.test.js covers it).
+        // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
         call: async (tool, input) => {
           calls.push({ tool, input });
           if (tool === "link.status") return { data: { linked: w.linked } };
@@ -94,9 +81,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
       const def = w.tools.get(name);
       if (!def) return { error: { code: "no_such_tool" } };
       if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${name} is not for ${caller}` } };
-      // A person's call carries the facts the daemon proved about the connection: their own chain, which is what finishing a to-do needs.
-      const facts = ["cli", "local", "deck", "capsule"].includes(caller) ? { kernelFacts: { kind: "device", device_key_id: "d-owner", person: OWNER, path: "direct", session: "s1" } } : {};
-      try { return { data: await def.run(input, { caller, ...facts, ...meta }) }; }
+      try { return { data: await def.run(input, { caller, ...meta }) }; }
       catch (e) { const err = /** @type {any} */ (e); return { error: { code: err.code || "failed", message: err.message } }; }
     },
     async ok(name, input = {}, caller = "cli", meta = {}) {
@@ -248,9 +233,9 @@ test("planner: after downtime, what fell due rings once, marked missed; a day st
   await w.boot();
   const got = w.fired.map(f => [f.item, f.missed, new Date(f.due).toISOString()]);
   assert.deepEqual(got, [[daily.id, true, "2026-09-27T02:00:00.000Z"]], "one ring for the daily alarm, for this morning's 07:00");
-  const firings = async id => (await w.ok("planner.get", { item: id })).firings.map(f => ({ state: f.state, missed: f.missed, ring: f.ring }));
-  assert.deepEqual(await firings(soon.id), [{ state: "missed", missed: true, ring: 0 }]);
-  assert.deepEqual(await firings(old.id), [{ state: "missed", missed: true, ring: 0 }]);
+  const firings = id => w.db.prepare("SELECT state, missed, ring FROM planner_firings WHERE item = ?").all(id).map(r => ({ ...r }));
+  assert.deepEqual(firings(soon.id), [{ state: "missed", missed: 1, ring: 0 }]);
+  assert.deepEqual(firings(old.id), [{ state: "missed", missed: 1, ring: 0 }]);
   assert.equal((await w.ok("planner.get", { item: daily.id })).item.next_fire, Z(2026, 9, 28, 2));
 
   // Down for two hours only: that rings, marked missed.
@@ -308,14 +293,9 @@ test("planner: anyone adds alarms, reminders, todos and notes; an agent changes 
   assert.equal((await w.call("planner.add", { kind: "event", title: "x", at: T0 + HOUR }, kit)).error.code, "denied", "an event is an invite");
 
   // kit edits, snoozes, finishes and deletes what kit added.
-  const rem = await w.ok("planner.add", { kind: "reminder", title: "Check in with Northwind Bakery", wall: "17:00" }, kit);
-  await w.ok("planner.update", { item: rem.id, priority: 3 }, kit);
+  await w.ok("planner.update", { item: todo.id, priority: 3 }, kit);
   await w.ok("planner.snooze", { item: alarm.id, minutes: 5 }, kit);
-  await w.ok("planner.done", { item: rem.id }, kit);
-  // A to-do is a Task: finishing it is the person's act, and its words are fixed once made.
-  assert.equal((await w.call("planner.done", { item: todo.id }, kit)).error.code, "not_allowed", "an assistant does not finish a to-do");
-  assert.equal((await w.ok("planner.get", { item: todo.id })).item.state, "open", "and it stays open");
-  assert.match((await w.call("planner.update", { item: todo.id, priority: 3 }, kit)).error.message, /fixed once made/);
+  await w.ok("planner.done", { item: todo.id }, kit);
   await w.ok("planner.delete", { item: alarm.id }, kit);
   await w.ok("planner.delete", { item: alarm.id, restore: true }, kit);
   // Nothing anyone else added: the person's, the assistant's, another module's.
@@ -359,7 +339,7 @@ test("planner: a paired Mac forwards to the box and keeps its timer idle; an unp
   const mac = await world(t, { role: "local", linked: true, remote: box });
   assert.deepEqual(await mac.ok("planner.add", { kind: "reminder", title: "Call kit", wall: "18:00" }), { id: "i_box", kind: "reminder" });
   assert.deepEqual(sent, [["planner.add", { kind: "reminder", title: "Call kit", wall: "18:00" }]]);
-  assert.equal((await mac.k.gateway.records.query(ownerChain(mac.k), "reminder", { page: { limit: 5 } })).rows.length, 0, "nothing kept on the Mac");
+  assert.equal(mac.db.prepare("SELECT COUNT(*) AS n FROM planner_items").get().n, 0, "nothing kept on the Mac");
   assert.equal(mac.timers.size, 0, "the Mac's scheduler is idle");
   // The box sees a forwarded call as the owner, so an agent's call names the agent (as), and the
   // box holds it to the agent's rules. A person's call carries nothing, and nobody can forge as.
@@ -423,21 +403,20 @@ test("planner: at in words is the next such time in the item's zone", async t =>
 });
 
 test("planner: an idle planner never asks Intl for a zone (ICU's zone data is about 8 MB)", async () => {
-  const NEEDS_JSON = NEEDS;
   // A fresh process, since time.js keeps its formatters: start the planner on an empty store, let
   // its scheduler tick, then add an alarm, counting zoned Intl formatters made on the way.
   const { execFileSync } = await import("node:child_process");
   const script = `
     const Real = Intl.DateTimeFormat; let zoned = 0;
     Intl.DateTimeFormat = function (l, o) { if (o && o.timeZone) zoned++; return new Real(l, o); };
-    const { createKernel } = await import(${JSON.stringify(new URL("../../kernel/index.js", import.meta.url).href)});
-    const { CORE_TYPES } = await import(${JSON.stringify(new URL("../../records/core-types.js", import.meta.url).href)});
+    const { DatabaseSync } = await import("node:sqlite");
+    const { migrate } = await import(${JSON.stringify(new URL("../store/index.js", import.meta.url).href)});
     const planner = (await import(${JSON.stringify(new URL("./index.js", import.meta.url).href)})).default;
-    const k = await createKernel({ space: "spc_aaaaaaaaaaaa", owner: "per_owner", owner_uid: 501, key: Buffer.alloc(32, 4) });
-    await k.gateway.records.define(k.chains.fromFacts({ kind: "device", device_key_id: "d-owner", person: "per_owner", path: "direct", session: "s1" }), { add_types: CORE_TYPES.filter(t => t.name === "event") });
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
     const tools = new Map();
     const h = await planner.start({ name: "planner", config: { role: "box", planner: { timezone: "Asia/Karachi" } }, paths: { root: "/idle" },
-      kernel: k.kernelFor({ name: "planner", needs: ${JSON.stringify(NEEDS_JSON)} }), log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
+      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
       tool: (n, d) => tools.set(n, d), call: async t => t === "google.accounts" ? { data: [] } : { error: { code: "x" } }, remote: async () => ({}) });
     await tools.get("planner.list").run({}, { caller: "cli" });
     const idle = zoned;
@@ -685,7 +664,7 @@ test("planner: a chained task (waits_on) runs when its dependency is marked done
 
 test("planner: reopening a chained task's dependency and finishing it again does not re-fire it a second time for the same completion", async t => {
   const w = await world(t);
-  const first = await w.ok("planner.add", { kind: "reminder", title: "Sign the contract", project: "harlow-legal", at: T0 + 10 * HOUR });
+  const first = await w.ok("planner.add", { kind: "todo", title: "Sign the contract", project: "harlow-legal" });
   await w.ok("planner.add", { kind: "task", title: "Kick off onboarding", thread: "s1", waits_on: first.id });
   await w.ok("planner.done", { item: first.id });
   await new Promise(r => setImmediate(r));

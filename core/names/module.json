@@ -25,6 +25,15 @@
         "effect": "write"
       },
       {
+        "name": "names.recover",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "names.recover.code",
+        "reach": "modules"
+      },
+      {
         "name": "names.domain.check",
         "reach": "person",
         "effect": "read"
@@ -39,6 +48,9 @@
   "watches": {
     "emits": [
       "name.claimed",
+      "name.recovered",
+      "name.recovery-pending",
+      "name.recovery-cancelled",
       "name.moved",
       "name.released"
     ]

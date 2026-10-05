@@ -62,11 +62,3 @@ test("two assistants (or ask all) make a fan-out; one or none does not", () => {
   assert.deepEqual(sendTargets({ text: "hello", people: CHAT }), { to: [], fanout: false });
   assert.deepEqual(sendTargets({ text: "summarise", askAll: true, people: CHAT }), { to: ["kit", "juno"], fanout: true });
 });
-
-import { mentionsIn } from "./composer-model.js";
-test("only the # tags picked from the list and still in the words are sent, once each", () => {
-  const picked = new Map([["Jane Doe", { kind: "record", id: "vyre://s/contact/c1", name: "Jane Doe" }], ["Okafor estate", { kind: "record", id: "vyre://s/matter/m1", name: "Okafor estate" }]]);
-  assert.deepEqual(mentionsIn('Summarise #"Jane Doe" and #"Jane Doe" again, and #Nobody', picked).map((m) => m.id), ["vyre://s/contact/c1"]);
-  assert.deepEqual(mentionsIn("nothing tagged", picked), []);
-  assert.deepEqual(mentionsIn('#"Okafor estate" first', picked).map((m) => m.name), ["Okafor estate"]);
-});

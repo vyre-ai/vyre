@@ -25,8 +25,7 @@ async function world(t, { before } = /** @type {{ before?: (root: string) => voi
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, projectsDir: projects, settings: { claude_dir: path.join(root, "claude") } }));
   before?.(root);
-  // The oven and friends are written for the in-process API, so the home's folder is trusted by path (a third-party module runs in the sandbox with the kernel on).
-  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   const file = path.join(root, "hub.json");
@@ -153,13 +152,6 @@ export default { async start(ctx) {
 } };`);
 }
 
-// With the kernel on the phone is the facts the listener proves (a paired app row and a person session), not its label.
-const phoneMeta = (/** @type {any} */ d) => {
-  if (!d.kernel) return { person: { id: "p1" } };
-  d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'phone', 'p', 1, 'app', 0, NULL)").run("aaaaaaaaaaaaaaaa");
-  return { person: { id: "p1" }, kernelFacts: { kind: "device", device_key_id: "aaaaaaaaaaaaaaaa", person: d.kernel.id.owner, path: "wink", session: "p1" } };
-};
-
 test("a device's value beats the account's for that device only; the owner's device reads its own by default", async t => {
   const { d, c, hub, edit } = await world(t, { before: root => oven(root) });
   assert.ok(!(await c("settings.set", { key: "oven.look", value: "crumb", device: "tailnet:alex-phone" })).error);
@@ -167,9 +159,9 @@ test("a device's value beats the account's for that device only; the owner's dev
   assert.equal((await c("settings.get", { key: "oven.look", device: "tailnet:alex-phone" })).data.value, "crumb");
   assert.equal((await c("settings.get", { key: "oven.look", device: "mac:alex-mbp" })).data.value, "crust", "another device keeps the account's");
   // The phone over the tailnet, signed in, names no device and still reads its own.
-  const phone = await d.registry.call("settings.get", { key: "oven.look" }, "tailnet:alex-phone", phoneMeta(d));
+  const phone = await d.registry.call("settings.get", { key: "oven.look" }, "tailnet:alex-phone", { person: { id: "p1" } });
   assert.deepEqual([phone.data.value, phone.data.source, phone.data.device_id], ["crumb", "device", "tailnet:alex-phone"]);
-  const snap = await d.registry.call("settings.snapshot", {}, "tailnet:alex-phone", phoneMeta(d));
+  const snap = await d.registry.call("settings.snapshot", {}, "tailnet:alex-phone", { person: { id: "p1" } });
   assert.equal(snap.data.device, "tailnet:alex-phone", "the id it resolved is echoed");
   assert.equal(snap.data.values["oven.look"], "crumb");
   assert.equal(snap.data.sources["oven.look"], "device");

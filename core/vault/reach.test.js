@@ -57,7 +57,7 @@ test("person-reach vault tools refuse a model, an agent and a module at the door
 
 // With the kernel on, an ADDED module runs in the sandbox supervisor (`export const handlers`, no ctx: kernel/modules/child.js), so it cannot call any vault tool: the refusal is structural. Without the kernel it is the legacy
 // in-process module and the registry's not_declared; the positive control (vault.list is not refused as not_declared) applies only there.
-const KERNEL_ON = process.env.VYRE_KERNEL !== "0"; // the kernel is on by default (a development build)
+const KERNEL_ON = process.env.VYRE_KERNEL === "1";
 test("an added module that lists the vault's put, totp and relay in needs.tools is still refused them", { skip: KERNEL_ON && process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", vault: { keystore: "file" } }));

@@ -21,10 +21,12 @@ All JSON. Success is `{ "data": ... }`, failure `{ "error": { "code", "message" 
 | `POST /v1/names/point {name, ip}` | Sets the A record (100.64.0.0/10). The tailnet's IPv6 address is refused (`ipv4_only`): resolvers that filter DNS rebinding drop it. Everything else is refused, IPv4-mapped and private ranges included. |
 | `POST /v1/names/acme {name, token}` | Sets `_acme-challenge.<name>` TXT, for a name the route holds. `{own: true, token}` writes under `<routehash>.acme.vyre.run` instead, for the person's own domain. |
 | `DELETE /v1/names/acme {name}` or `{own: true}` | Clears it. |
+| `POST /v1/names/recover {name, code, next}` | A 72-hour pending rebind to the caller's route. `next` is the hash of the new recovery code the box chose. |
+| `POST /v1/names/recover/cancel {name}` | The current owner's route cancels it. A box that is online does this by itself. |
 | `POST /v1/names/admin/rebind {name, route}` | Support only. Needs the `x-vyre-admin` header to equal the Worker secret `ADMIN_SECRET` (404 when none is set, 401 otherwise). Moves the name to the route at once (make the secret with `openssl rand -hex 32`; the deploy workflow refuses one shorter than 32 characters), logs `admin-rebind`, keeps the recovery code, and leaves the old route a `moved` note. |
-| `POST /v1/names/code {name, next}` | The owner replaces the recovery code. |
+| `POST /v1/names/code {name, next}` | The owner replaces the recovery code (and cancels a pending recovery). |
 | `POST /v1/names/release {name}` | Gives the name up. A name that was ever pointed becomes a tombstone forever. |
-| `GET /v1/names/mine` | This route's name, state, notices, and its own-domain zone. |
+| `GET /v1/names/mine` | This route's name, state, pending recovery, notices, and its own-domain zone. |
 | `GET /v1/names/check?name=` | `ok`, `taken`, `reserved`, `invalid`, or `mine` (when signed). |
 
 Every call but `check` carries `x-vyre-route`, `x-vyre-pub`, `x-vyre-ts`, `x-vyre-nonce` and
@@ -39,11 +41,14 @@ within 60 seconds, and a nonce is good once.
   lookalikes (rn to m, 0 to o, 1 to l, and i to l so `login` and `log1n` meet), with dashes removed,
   and a brand as a dash-separated part (`my-paypal`) is refused too.
 - **Limits:** one name per route, 5 claims per address a day, a global daily ceiling
-  (`GLOBAL_CLAIMS_PER_DAY`, a warning is logged when it is hit), 10 ACME writes per route a day.
-- **Never reassigned:** a name that was ever pointed is a tombstone forever after release. Only support's
-  admin rebind moves it. A name claimed and never pointed lapses after 7 days (checked on access
+  (`GLOBAL_CLAIMS_PER_DAY`, a warning is logged when it is hit), 10 ACME writes per route a day,
+  5 recover attempts per name and 20 per address a day, right or wrong.
+- **Never reassigned:** a name that was ever pointed is a tombstone forever after release. Only a
+  recovery code moves it. A name claimed and never pointed lapses after 7 days (checked on access
   and by the hourly sweep).
-- **Recovery:** instant recovery (the identity's own chain, `core/spaces`) is the only path; the old 72-hour name rebind by recovery code is gone. A name support moves with the admin rebind leaves a `moved` note for the old route, which the box tells its person once.
+- **Recovery:** the rebind waits 72 hours. The old route cancels it with no click if its box is
+  online (`core/names` does this on its hourly look). Each attempt is logged on the name and adds a
+  notice the owner's devices read from `mine`. A wrong code and an unknown name answer the same.
 - **Browsers:** a POST or DELETE with any Origin other than `https://names.vyre.run`, or marked
   cross-site, is refused; a box sends none. Nothing here serves user content, sets or reads a
   cookie, answers CORS, or publishes a wildcard record.

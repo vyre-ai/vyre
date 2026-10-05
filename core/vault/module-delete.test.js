@@ -55,7 +55,7 @@ test("a first-party module deletes its own item without presence, and nothing el
 
 // With the kernel on, an ADDED module runs in the sandbox supervisor with `export const handlers` and no ctx at all (kernel/modules/child.js), so it has no way to call vault.delete: the refusal is structural.
 // Without the kernel it is the legacy in-process module and the registry's not_declared. Both assert that the item stays.
-const KERNEL_ON = process.env.VYRE_KERNEL !== "0"; // the kernel is on by default (a development build)
+const KERNEL_ON = process.env.VYRE_KERNEL === "1";
 const SANDBOXED = `export const handlers = { "bakery.put": async () => ({ ctx: typeof ctx }), "bakery.del": async () => ({ ctx: typeof ctx }) };`;
 test("an added module that lists vault.delete in needs.tools is refused it, and the item stays", { skip: KERNEL_ON && process.platform !== "linux" ? "the added-module sandbox needs bwrap (linux)" : false, timeout: 90_000 }, async t => {
   const root = tempHome(t);

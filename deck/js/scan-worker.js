@@ -15,8 +15,8 @@
 // postMessage({ ticket: number[] | null }) (a plain array, not a Uint8Array - structured clone
 // handles it either way, but a plain array keeps this file's only export boundary simple).
 
-import { decodeCore2 } from "../../lib/wink-code/decode-core2.js";
-import * as payload from "../../lib/wink-code/payload.js";
+import { decodeCore2 } from "../vyrecode/decode-core2.js";
+import * as payload from "../vyrecode/payload.js";
 
 /** Mirrors vyrecode2.js's levelsToBits (2 bits per mark) without importing the renderer. */
 function levelsToBits(/** @type {number[]} */ levels) {

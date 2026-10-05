@@ -26,7 +26,7 @@ import * as system from "../../names/system.js";
 import { wallSteps, wallUninstallSteps } from "../../../lib/sandbox/index.js";
 import { backup, restore, estimate, planRestore, isStream, inspect as inspectSealed } from "../../names/backup.js";
 import { hiddenPrompt } from "../../vault/cli-io.js";
-import * as tailnet from "../tailnet.js";
+import { probe as probeBox } from "../probe.js";
 import { printEnding } from "../ending.js";
 import { hello } from "../brand.js";
 import { findAssistant } from "./assistant.js";
@@ -224,7 +224,7 @@ async function run(args, deps) {
   const fail = (code, message) => { if (json) one({ error: { code, message } }); else out(beacon("  " + message)); return 1; };
 
   if (flags.connect !== undefined && (flags.connect === true || !String(flags.connect).trim())) {
-    return fail("no_address", "--connect needs your box's address: vyre up --connect https://vyre.<tailnet>.ts.net");
+    return fail("no_address", "--connect needs your box's address: vyre up --connect https://<name>.vyre.run");
   }
   // The first `vyre up` on this machine: no store yet. It gets the welcome, not a status line.
   const first = !fs.existsSync(config.paths().db);
@@ -303,7 +303,7 @@ async function run(args, deps) {
     // After onboarding: the same ending the Mac prints, so "is it done?" has one answer. The box
     // cannot ask its own address (its listener refuses itself, ADR 0002), so it asks names.
     const n = await callTool("names.status");
-    const ready = Boolean(d.address && n.data && n.data.phase === "serving");
+    const ready = Boolean(d.address && n.data && (n.data.phase === "serving" || n.data.phase === "named"));
     if (json) return done({ address: d.address || null, ready, passkeyUrl: d.passkeyUrl || null });
     if (d.address) {
       const f = await findAssistant(callTool).catch(() => ({}));
@@ -311,7 +311,7 @@ async function run(args, deps) {
     }
     else say("  set up is done; there is no address yet (vyre name)");
     // No passkey yet: on a box it is the only way to prove it is you, so offer a fresh link to make one.
-    if (d.passkeyUrl) say(`\n  Make your passkey ${dim("(from a device on your tailnet; the link works once, for 10 minutes)")}:\n    ${signal(d.passkeyUrl)}`);
+    if (d.passkeyUrl) say(`\n  Make your passkey ${dim("(the link works once, for 10 minutes)")}:\n    ${signal(d.passkeyUrl)}`);
     return 0;
   }
   if (json) return done({ url: d.url, port: d.port ?? null, ssh, address: d.address || null });
@@ -324,7 +324,7 @@ async function run(args, deps) {
     say(`  This box is headless. On your own computer, run this first, then open the link there:`);
     say(`    ${ssh}`);
   }
-  if (d.address) say(dim(`\n  or, once your devices are on the tailnet: ${d.address}`));
+  if (d.address) say(dim(`\n  or, at its address: ${d.address}`));
   say("");
   // `vyre up --box` on a Mac: the browser is right here, so open the link too.
   if (platform === "darwin" && !ssh && (deps.openUrl || dialogsAllowed())) {
@@ -348,8 +348,7 @@ function upView(d) {
 }
 
 /**
- * `vyre up` on a Mac (ADR 0008 sections 1, 3 and 7). With no box known it looks on the tailnet
- * (link.find); one answer is taken, several are offered, none asks where Vyre should run. Then:
+ * `vyre up` on a Mac (ADR 0008 sections 1, 3 and 7). With no box known it asks where Vyre should run. Then:
  * the box answers, this Mac is paired with it (link.pair, approved on the box), the Capsule is
  * opened, and the ending is printed. Every step says what to do when it cannot finish.
  * `deps` is for tests; `say`, `done` and `fail` come from up() so --json stays one object.
@@ -357,7 +356,7 @@ function upView(d) {
  */
 export async function mac(box, { capsule = true, pair: asked = false } = {}, deps = {}) {
   const {
-    health = b => tailnet.probe(b),
+    health = b => probeBox(b),
     tool = call,
     platform = process.platform,
     save = config.save,
@@ -381,48 +380,22 @@ export async function mac(box, { capsule = true, pair: asked = false } = {}, dep
   const asking = io.tty && !json;
 
   if (!box) {
-    // No address known: look for the box on the tailnet. Exactly one is taken.
-    const f = await tool("link.find");
-    if (f.error && f.error.code === "not_real_home") say(dim(`  ${f.error.message}`));
-    const found = (f.data && f.data.boxes) || [];
-    if (found.length === 1) {
-      box = found[0].address;
-      save({ network: { box } });
-      say(`  found your box on the tailnet: ${signal(box)}`);
-    } else if (found.length > 1) {
-      const list = found.map(x => x.address);
-      if (json) return fail("several_boxes", `more than one Vyre box answers on your tailnet: ${list.join(", ")}. Pick one: vyre up --connect <address>`);
-      say("  More than one Vyre box answers on your tailnet:");
-      list.forEach((a, i) => say(`    ${i + 1}  ${a} ${dim(found[i].node || "")}`));
-      if (!asking) { say(`  Pick one: ${dim("vyre up --connect <address>")}`); return 0; }
-      const n = Number(await io.ask(`  Which one? (1-${list.length}) `));
-      if (!Number.isInteger(n) || n < 1 || n > list.length) return fail("no_choice", "no box chosen; run vyre up again, or vyre up --connect <address>");
-      box = list[n - 1];
-      save({ network: { box } });
-    } else {
-      const t = await tailnet.status();
-      if (!t.running) {
-        // A box on a server is reached over the tailnet at the end, so this Mac needs it either way.
-        say(beacon(`  ${t.why || "Tailscale is not running"}`) + (t.installed ? "" : dim(` · ${tailnet.DOWNLOAD}`)));
-      }
-      if (!asking) {
-        say("  No Vyre box yet. Pick where it runs:");
-        say(`    on a server you can SSH to   ${dim("vyre box add user@host")}`);
-        say(`    on this Mac                  ${dim("vyre up --box")}`);
-        say(`    you already set one up       ${dim("vyre up --connect <address>")}`);
-        return done({});
-      }
-      return where(io, deps);
+    // No address known: ask where Vyre should run.
+    if (!asking) {
+      say("  No Vyre box yet. Pick where it runs:");
+      say(`    on a server you can SSH to   ${dim("vyre box add user@host")}`);
+      say(`    on this Mac                  ${dim("vyre up --box")}`);
+      say(`    you already set one up       ${dim("vyre up --connect <address>")}`);
+      return done({});
     }
+    return where(io, deps);
   }
 
   const h = await health(box);
   if (!h) {
-    const t = await tailnet.status();
-    const why = !t.running ? `this Mac is not on the tailnet (${t.why || "Tailscale is not running"})` : "the box is offline or unreachable";
+    const why = "the box is offline or unreachable";
     if (json) return fail("box_unreachable", `your box ${box} did not answer from here: ${why}`);
     say(beacon(`  your box ${box} did not answer from here`) + dim(` · ${why}`));
-    if (!t.running && !t.installed) say(dim(`  ${tailnet.DOWNLOAD}`));
     return 1;
   }
 
@@ -516,7 +489,7 @@ async function where(io, deps) {
   }
   if (choice === "2") return up(["--box"], deps);
   if (choice === "3") {
-    out(dim("  Its address is on the box's last screen, and in the Deck: https://<name>.<tailnet>.ts.net"));
+    out(dim("  Its address is on the box's last screen, and in the Deck: https://<name>.vyre.run"));
     const a = (await io.ask("  Your box's address: ")).trim();
     if (!a) { out(beacon("  no address given") + dim(" · vyre up --connect <address> when you have it")); return 1; }
     out(dim(`  Asking ${normalize(a)} to pair with this Mac.`));
@@ -558,7 +531,7 @@ async function upSystem(flags) {
   try { acct = account(user); } catch (e) { out(beacon(`  no such account: ${user}`)); return 1; }
   const seen = system.detect();
   const steps = system.installPlan({ user, group: acct.group, home: acct.home, node: process.execPath, pkg: REPO,
-    hasUnit: seen.units, tailscale: seen.tailscale, systemd: seen.systemd, wall: wallSteps() });
+    hasUnit: seen.units, systemd: seen.systemd, wall: wallSteps() });
   if (dryRun) out(dim("  dry run: nothing will change"));
   try { await system.apply(steps, { dryRun, out: l => out("  " + l) }); }
   catch (e) { out(beacon("  stopped: ") + /** @type {Error} */ (e).message); return 1; }
@@ -670,19 +643,18 @@ export default [
     },
   },
   {
-    name: "name", order: 30, usage: "vyre name [status|check <n>|claim <n>|ts.net|release] [--json]", summary: "this box's address: <you>.vyre.run",
+    name: "name", order: 30, usage: "vyre name [status|check <n>|claim <n>|release] [--json]", summary: "this box's address: <you>.vyre.run",
     verbs: [
       { verb: "status", summary: "this box's address and where it stands", usage: "", read: true },
       { verb: "check", summary: "whether a name is free", usage: "<n>", read: true },
       { verb: "claim", summary: "take <n>.vyre.run for this box", usage: "<n>" },
-      { verb: "ts.net", summary: "use the tailnet's own ts.net address instead", usage: "" },
       { verb: "release", summary: "give the name back", usage: "", person: true },
     ],
     async run(args) {
       const [action0, name] = args.filter(a => a !== "--json");
       const action = action0 === "status" ? undefined : action0;
-      const TOOLS = { check: "names.check", claim: "names.claim", "ts.net": "names.fallback", release: "names.release" };
-      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [status|check <n>|claim <n>|ts.net|release]");
+      const TOOLS = { check: "names.check", claim: "names.claim", release: "names.release" };
+      if (action && !(action in TOOLS)) return usage(`vyre name ${action}: not a subcommand`, "vyre name [status|check <n>|claim <n>|release]");
       if ((action === "check" || action === "claim") && !name) return usage(`vyre name ${action} needs a name`, `vyre name ${action} alex`);
       const tool = TOOLS[/** @type {keyof typeof TOOLS} */ (action || "")] || "names.status";
       const r = await call(tool, name ? { name } : {});
@@ -690,30 +662,17 @@ export default [
       const d = r.data;
       if (json()) {
         if (tool === "names.check") return emit(d, { kind: "card", title: String(d.name), state: d.valid && d.available ? "ok" : "failed", fields: [{ label: d.valid && d.available ? "Free" : "Not free", value: d.valid && d.available ? String(d.address) : String(d.why || "") }] });
-        return emit(d, { kind: "card", title: "Address", state: d.phase === "serving" ? "ok" : "wait", fields: [{ label: "Address", value: d.address || "no address" }, { label: "Phase", value: String(d.phase || "") },
-          ...(d.owner ? [{ label: "Owner", value: String(d.owner) }] : []), ...(d.why ? [{ label: "Why", value: String(d.why) }] : [])] });
+        return emit(d, { kind: "card", title: "Address", state: d.phase === "serving" || d.phase === "named" ? "ok" : "wait", fields: [{ label: "Name", value: d.name ? `${d.name}.vyre.run` : "none yet" }, { label: "Address", value: d.address || "not published yet" }, { label: "Phase", value: String(d.phase || "") },
+          ...(d.why ? [{ label: "Why", value: String(d.why) }] : [])] });
       }
       if (tool === "names.check") out(d.valid && d.available ? `  ${signal(d.address)} is free` : beacon(`  ${d.name}: ${d.why}`));
-      else out(`  ${d.address ? signal(d.address) : dim("no address")} ${dim(`· ${d.phase}${d.owner ? " · owner " + d.owner : ""}${d.why ? " · " + d.why : ""}`)}`);
-      return 0;
-    },
-  },
-  {
-    name: "owner", order: 31, hidden: true, usage: "vyre owner [<tailscale-login>]", summary: "the one Tailscale login this box serves",
-    async run(args) {
-      // --json is a flag, never a login: `vyre owner --json` once made "--json" the owner.
-      const [login] = args.filter(a => a !== "--json");
-      if (!login) {
-        const s = await call("names.status");
-        if (s.error) return failTool(s.error);
-        if (json()) return emit({ owner: s.data.owner || null });
-        out(`  ${s.data.owner || "no owner yet"}`);
-        return 0;
+      else out(`  ${d.address ? signal(d.address) : d.name ? signal(`${d.name}.vyre.run`) : dim("no name")} ${dim(`· ${d.phase}${d.why ? " · " + d.why : ""}`)}`);
+      // The recovery code is the answer to this one call, never in a status or a log: print it here or it is lost.
+      if (tool === "names.claim" && d.recoveryCode) {
+        out("");
+        out(`  Recovery code: ${bold(String(d.recoveryCode))}`);
+        out("  Store it somewhere safe now (a password manager). It is shown once and cannot be shown again; with it you can take this name back after a reinstall.");
       }
-      const r = await call("names.owner", { login });
-      if (r.error) return failTool(r.error);
-      if (json()) return emit(r.data);
-      out(`  owner: ${signal(login)}`);
       return 0;
     },
   },

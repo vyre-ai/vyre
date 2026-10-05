@@ -2,7 +2,7 @@
 // ground is the first palette colour; each cell holds one of eight shapes in one of four rotations; the cell is filled with the tile's second colour or with
 // the ink. About a million looks that read at 24 px, never initials or a face. A draft is the same emblem dashed and unfilled. The shapes are drawn in
 // 60-unit cells of a 120-unit canvas, as in team/0.2.2/ux-prototype.html.
-import { PROJECT_COLORS } from "../../../lib/wink-code/identity.js";
+import { PROJECT_COLORS } from "./identity.js";
 
 /** @param {number} t shape 0 to 7 @param {number} r rotation 0 to 3 @param {number} x @param {number} y cell origin @param {string} f fill */
 function shape(t, r, x, y, f) {

@@ -385,30 +385,6 @@ test("publish: edge writes the compose project and Caddyfile with their modes, i
   assert.equal(fs.existsSync(path.join(b.publishRoot, `secrets/${id}/STRIPE_KEY`)), false);
 });
 
-test("publish: edge.up writes the edge then builds, fills and brings it up through docker; without docker it says not_available", async t => {
-  const b = await boxRegistry(t);
-  const id = (await b.ok("publish.create", DRAFT)).deployment.id;
-  await b.ok("publish.preview", { deployment: id });
-  await goLive(b, id);
-  const real = seams.docker;
-  t.after(() => { seams.docker = real; });
-  seams.docker = null;
-  const none = await b.call("publish.edge.up", {});
-  assert.equal(none.error?.code, "not_available");
-  assert.ok(fs.existsSync(path.join(b.publishRoot, "compose.yaml")), "the files are written even so");
-  /** @type {string[][]} */ const calls = [];
-  seams.docker = async argv => { calls.push(argv); return { code: 0 }; };
-  const up = await b.ok("publish.edge.up", {});
-  assert.match(up.project, /^vyre-publish-spc_/);
-  assert.deepEqual(calls.map(c => c[0]), ["build", "run", "compose"]);
-  assert.ok(calls[0].includes(path.join(b.publishRoot, "caddy.Dockerfile")));
-  seams.docker = async argv => { calls.push(argv); return { code: 1 }; };
-  assert.equal((await b.call("publish.edge.up", {})).error?.code, "edge_failed");
-  seams.docker = async argv => { calls.push(argv); return { code: 0 }; };
-  assert.deepEqual((await b.ok("publish.edge.down", {})).stopped, up.project);
-  assert.deepEqual(calls.at(-1).slice(0, 4), ["compose", "-p", up.project, "stop"]);
-});
-
 test("publish: nothing sensitive leaves in events or returned objects", async t => {
   const b = await boxRegistry(t);
   const id = (await b.ok("publish.create", DRAFT)).deployment.id;
