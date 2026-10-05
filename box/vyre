@@ -1475,9 +1475,33 @@ sp_up() {
   sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
   # Joined and firewalled BEFORE the store starts, so it never runs unfirewalled; proved after, and stopped again if the proof fails.
   sp_attach "$n" || return 1
+  sp_repair "$n" || return 1
   sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
   if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
+  # The first start is over and the database has its schema: the Space gets its mark, and sp_repair never touches it again.
+  if t=$(sp_schema "$n") && [ -n "$t" ]; then : >"$SP_PRIV/spaces/$n/ready"; fi
   MSG="the store is up and the agents are firewalled from it"
+}
+# sp_schema NAME: the name of the Space's core user table, or nothing when the database has none. Run after the Space's database is up.
+# It fails (nothing printed) when the database cannot be asked, which is not the same as an empty answer.
+sp_schema() { o=$(sp_dc "$1" exec -T db psql -U postgres -d default -tAc 'select to_regclass($$core."user"$$)' 2>/dev/null) || return 1; printf '%s' "$o" | tr -d ' \r\n'; }
+# sp_repair NAME: a first start cut off by a restart leaves a database with an empty `core` schema: Twenty's own start finds the schema, skips its migrations and reports healthy, and nothing repaired it
+# (issue 90). A Space with no `ready` mark whose database already exists is looked at once, here, before the store starts: a database with no core user table holds nothing, so its volumes are removed and
+# it starts again from the beginning (from the saved database when there is one). A Space with the mark, or whose database has the table, is never touched, and a Space that cannot be looked at is left as it is.
+sp_repair() {
+  n=$1; d=$SP_PRIV/spaces/$n
+  [ ! -f "$d/ready" ] || return 0
+  hdock volume inspect "vyre-$n-twenty_db-data" >/dev/null 2>&1 || return 0
+  sp_dc "$n" up -d --wait db >/dev/null 2>&1 || return 0
+  t=$(sp_schema "$n") || return 0
+  [ -z "$t" ] || return 0
+  sp_log "repair: empty core schema from a cut off first start, removed and made again"
+  hdock network disconnect -f "vyre-$n-twenty_store" "$CTR_NAME" >/dev/null 2>&1 || true
+  sp_dc "$n" down -v >/dev/null 2>&1 || { MSG="the Space's empty database could not be removed"; return 1; }
+  if type sp_golden >/dev/null 2>&1; then sp_golden "$n" || true; fi
+  sp_gen "$n" || return 1
+  sp_dc "$n" create >/dev/null 2>&1 || { MSG="the Space's containers could not be created"; return 1; }
+  sp_attach "$n" || return 1
 }
 sp_stop() { sp_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }; MSG=stopped; }
 sp_down() {
