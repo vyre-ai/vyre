@@ -31,7 +31,7 @@ test("held page: read in full, edit, save, send exactly the edit; discard sends 
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   const as = (caller) => (tool, input = {}) => call(tool, input, { root, caller });
-  const cli = as("cli"), device = as("device");
+  const cli = as("cli"), device = as("local");
   assert.ok((await cli("vault.put", { name: "work-mail-token", kind: "api-key", fields: { value: "fixture-token" } })).data);
   assert.equal((await cli("vault.grant", { name: "work-mail-token", module: "gate" })).data.grant.status, "active");
   const juno = (tool, input = {}) => d.registry.call(tool, input, "mcp:agent:juno", { thread: "t-1", agent: "juno" });
