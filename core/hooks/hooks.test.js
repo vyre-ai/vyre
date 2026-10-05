@@ -114,8 +114,8 @@ async function registry(t, { hooks = {}, vault = { "northwind-orders-hook": SECR
     assert.equal(r.error.code, code, r.error.message);
     return r.error;
   };
-  const evts = type => db.prepare("SELECT * FROM events WHERE type = ? ORDER BY id").all(type).map(e => ({ ...e, payload: JSON.parse(String(e.payload)) }));
-  return { reg, db, root, p, clock, logs, released, results, ok, no, evts, cfg };
+  const evts = type => events.since(0, { type, limit: 100000 });
+  return { reg, db, events, root, p, clock, logs, released, results, ok, no, evts, cfg };
 }
 
 /** POST (or anything else) to the listener; resolves to { status, body, headers }. */
@@ -449,7 +449,7 @@ test("hooks: the secret appears in no log line, event, error, tool result, respo
   await r.no("hooks.open", { name: "northwind-orders", verify: NW.verify }, "cli", "conflict");
   await r.no("hooks.open", NW, "mcp:agent:kit", "held_unavailable");
 
-  const events = r.db.prepare("SELECT * FROM events").all().map(e => JSON.stringify(e)).join("\n");
+  const events = r.events.since(0, { limit: 100000 }).map(e => JSON.stringify(e)).join("\n");
   const cfgFile = fs.readFileSync(r.p.config, "utf8");
   const everything = [r.logs.join("\n"), events, JSON.stringify(r.results), bodies.join("\n"), cfgFile, JSON.stringify(r.cfg)].join("\n");
   assert.ok(r.logs.some(l => /internet:northwind-orders: refused, the signature does not match/.test(l)), "the refusals were not logged");
