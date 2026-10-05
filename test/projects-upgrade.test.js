@@ -30,7 +30,7 @@ test("a 0.2.x home upgrades: its access rows are kept, nothing is granted, one N
   db.prepare("INSERT INTO projects_access (id, project, agent, status, by, at) VALUES ('r2','northwind','other','revoked','cli',1)").run();
   db.close();
   // 2. the upgrade
-  const d = await start({ root, presence: present, log: (/** @type {string} */ m) => { if (/access-restore/.test(m)) console.log(m); }, kernel: true });
+  const d = await start({ root, presence: present, log: (/** @type {string} */ m) => { if (/access-restore|restore/.test(m)) console.log(m); }, kernel: true });
   t.after(() => d.stop());
   const call = kernelCaller(d, root);
   assert.equal((await call("projects.access.pending", {})).data.pending, 2, "the rows came through the migration");
