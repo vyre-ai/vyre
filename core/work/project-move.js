@@ -113,6 +113,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
     const p = urnParts(r.urn), np = urnParts(state.map[r.urn] || "");
     if (!np.id) continue;
     const src = await from.records.get(from.chain, p.type, p.id);
+    if (!src) continue; // already removed by an earlier attempt: its links were set then
     /** @type {Record<string, any>} */ const patch = {};
     for (const [k, v] of Object.entries(src.data || {})) {
       if (v && typeof v === "object" && !Array.isArray(v) && typeof /** @type {any} */ (v).urn === "string") { const m = state.map[/** @type {any} */ (v).urn]; if (m) patch[k] = { urn: m }; }
@@ -121,7 +122,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
     if (Object.keys(patch).length) { const cur = await to.records.get(to.chain, np.type, np.id); await to.records.update(to.chain, np.type, np.id, patch, cur.version); }
   }
   // sealed fields: only through the sealing process, as references, never as values
-  if (plan.counts.sealed_fields > 0) {
+  if (plan.counts.sealed_fields > 0 && !removing) {
     step("sealed");
     for (const r of [{ urn: root.urn, type: PROJECT }, ...wanted]) {
       const p = urnParts(r.urn);
