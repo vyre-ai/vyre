@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(security): every container image Vyre runs as root on a box or builds the edge from is pinned by digest (reviewer-3 SC-1, SC-2): the backup and restore helper (`alpine tar` over the data volumes, now alpine:3.20@sha256 as `HELPER_IMAGE`), the edge's Caddy base and its derived Dockerfile's alpine, and BuildKit. The publish image check accepts `name:tag@sha256:...`. test/image-pins.test.js fails on any unpinned image reference in core/cli/commands/box.js and lib/publish/edge.js. The manual restore example in docs/using/box-care.md is pinned too. The digests are the multi-arch index digests of 5 Oct 2026; bump them on purpose.
+
 - feat(stores/twenty,spaces): every image of a Space's Twenty and of the home unit is pinned by tag and digest (twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine, headscale v0.23.0); the Space compose and an upgrade take a full `name:tag@sha256:...` reference (`TWENTY_IMAGE_REF`), never a bare tag. Only vyred's own image stays on its release tag.
 
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
