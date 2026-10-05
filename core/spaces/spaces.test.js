@@ -20,6 +20,7 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import spacesModule, { hooks } from "./index.js";
 import { newKeyPair, personIdOf, fileIdentityStore, privateKeyOf } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
+import * as C_ from "../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
