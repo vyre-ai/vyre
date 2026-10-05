@@ -959,6 +959,7 @@ test("space helper: a lock left by a run that is gone does not leave its Space u
   assert.ok(!/was stopped/.test((await again()).out), "a fresh lock with no pid is respected");
   const old = new Date(Date.now() - 3 * 3600 * 1000); fs.utimesSync(lock, old, old);
   assert.match((await again()).out, /the Space harlow was stopped/, "a lock older than two hours does not count");
+});
 
 test("space helper #90: a first start cut off midway leaves a database with an empty core schema; the next up removes that empty database and starts again, with no manual step", opts, async t => {
   const r = rig(t);
