@@ -19,8 +19,8 @@ export default { async start(ctx) {
       (globalThis.__fakeThreadsCalls ||= []).push({ thread: i.thread, caller: meta.caller });
       const e = (code) => Object.assign(new Error(code), { code });
       const known = globalThis.__fakeThreadsKnown && globalThis.__fakeThreadsKnown.get(i.thread);
-      if (known) { if (known.deny && new RegExp(known.deny).test(String(meta.caller))) throw e("denied"); return { thread: { id: i.thread, cwd: known.cwd }, events: [] }; }
-      if (/^locked_/.test(i.thread)) { if (/bob/.test(String(meta.caller))) throw e("denied"); return { thread: { id: i.thread, cwd: "/tmp" }, events: [] }; }
+      if (known) { if (known.deny && new RegExp(known.deny).test(String(meta.caller) + JSON.stringify(meta.kernelFacts || {}))) throw e("denied"); return { thread: { id: i.thread, cwd: known.cwd }, events: [] }; }
+      if (/^locked_/.test(i.thread)) { if (/bob/.test(String(meta.caller) + JSON.stringify(meta.kernelFacts || {}))) throw e("denied"); return { thread: { id: i.thread, cwd: "/tmp" }, events: [] }; }
       if (/^thr_/.test(i.thread)) return { thread: { id: i.thread, cwd: "/tmp" }, events: [] };
       throw e("not_found");
     },
