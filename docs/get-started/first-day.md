@@ -134,6 +134,6 @@ You can also ask for it in words. In Lumen, ask your assistant ("what did we dec
 
 ## Where to go next
 
-- [Lumen](../using/capsule.md), [The Deck](../using/deck.md), [Chat](../using/chat.md)
+- [Lumen](../using/capsule.md), [Chat](../using/chat.md)
 - [Watchers](../using/watchers.md), for work that should happen while you are away
 - [Troubleshooting](troubleshooting.md)

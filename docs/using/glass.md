@@ -9,7 +9,7 @@ status: draft
 # Glass and agent computers
 
 An agent can have its own computer on your box: a desktop with Chrome and a terminal, in its own
-container. Glass lets you watch that screen live in the [Deck](deck.md), take over the keyboard,
+container. Glass lets you watch that screen live in the Vyre app, take over the keyboard,
 and browse the computer's files. It also browses the box's own folders. Glass works only from your
 own tailnet, and only you, the tailnet owner, can open it; a guest from another tailnet cannot.
 The design is in [ADR 0005](../adr/0005-glass.md), and
@@ -125,8 +125,6 @@ date. On `/glass/box` it shows the box's folders you chose for Glass.
 
 Every change says what happened. Downloads and uploads use a one-time ticket, so a link cannot be
 reused. Trash goes to a `.vyre-trash` folder, not away, so you can take a file back out.
-
-![Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash](shots/glass-files.png)
 
 Secret places are hidden and refused at any depth, whatever their case. Among them: `.vyre`,
 `.claude`, `.ssh`, `.gnupg`, `.aws`, `.docker`, `.kube`, `.netrc`, `.npmrc`, `.env` and `.env.*`,

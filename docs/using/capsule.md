@@ -217,7 +217,7 @@ and starts it hidden in the menu bar.
   `vyre capsule`, use its menu, or a tool calls `capsule.show`.
 - It does not send anywhere other than the destination the "Sends to" row showed.
 - It does not paste for you: a clipboard item waits for your Command-V.
-- It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the [Deck](deck.md).
+- It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the Vyre app.
 - It never reads a password field, a password manager, a sign-in dialog, security settings or
   Vyre's own windows: those show only the app and the window title.
 
@@ -236,7 +236,6 @@ silently ignored by a stale app: when the source changes, it rebuilds before it 
 
 ## Next
 
-- [Deck](deck.md), the same work in a browser and on your phone.
 - [Projects and threads](projects-and-threads.md), what `@` completes.
 - [Agents](agents.md), who you can talk to.
 - [CLI reference](../reference/cli.md#vyre-capsule) for every `vyre capsule` form.

@@ -121,8 +121,6 @@ the Deck. For example, a different accent in the dark theme:
 { "theme": { "colors": { "dark": { "signal": "#7FD1B9" } } } }
 ```
 
-A value that is not a plain colour is dropped, so a typo never breaks the Deck.
-[Change the colours](deck.md#change-the-colours) lists the names you can set.
 
 ## When you are done
 

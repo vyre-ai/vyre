@@ -215,8 +215,6 @@ There is nothing to install and nothing to sign in to first.
    Android, use Chrome's **Install app**. Open Vyre from the Home Screen: it runs full screen,
    like an app.
 
-![Now in the Deck on a phone: what needs you, with the tab bar at the bottom](../using/shots/phone-now.png)
-
 Now shows a **Set up this phone** card for notifications and a passkey. More in
 [On your phone](../using/mobile.md).
 

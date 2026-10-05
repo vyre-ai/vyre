@@ -54,18 +54,17 @@ export const CONCEPTS = [
   { name: "Chat", page: "using/chat.md", match: /\bChat\b/, code: "deck/chat/index.js" },
   { name: "computer", page: "using/agents.md#give-an-agent-a-computer", match: /\bcomputers?\b/i, code: "core/computers/index.js" },
   { name: "connector", page: "using/connectors.md", match: /\bconnectors?\b/i },
-  { name: "Deck", page: "using/deck.md", match: /\bDeck\b/, code: "deck/index.html" },
   { name: "enforcement", page: "using/learning.md#enforcement", match: /\benforce(?:s|d|ment)?\b/i, code: "core/harness/rules.js" },
   { name: "escalation", page: "using/learning.md#escalation", match: /\bescalat(?:e|es|ed|ion|ions)\b/i, code: "core/learn/index.js" },
   { name: "event log", page: "concepts/floor.md#where-the-floor-lives", match: /\bevent log\b/i, code: "core/events/index.js" },
   { name: "floor", page: "concepts/floor.md", match: /\bfloor\b/i },
-  { name: "Gate", page: "using/deck.md#approve-or-change-a-held-draft", match: /\bGate\b/, code: "core/gate/index.js" },
+  { name: "Gate", page: "concepts/floor.md", match: /\bGate\b/, code: "core/gate/index.js" },
   { name: "Glass", page: "using/glass.md", match: /\bGlass\b/, code: "deck/glass/index.js" },
   { name: "gold marking", page: "using/memory.md#the-gold-marking", match: /\bgold\b/i },
   { name: "grant", page: "using/vault.md#let-an-agent-module-or-watcher-use-an-item", match: /\bgrant(?:s|ed|ing)?\b/i, code: "core/vault/index.js" },
   { name: "harness", page: "concepts/modules.md#kinds-of-module", match: /\bharness\b/i, code: "core/harness/index.js" },
   { name: "headless thread", page: "using/projects-and-threads.md#headless-threads", match: /\bheadless (?:thread|session)s?\b/i, code: "core/switchboard/index.js" },
-  { name: "held draft", page: "using/deck.md#approve-or-change-a-held-draft", match: /\bheld drafts?\b|\bdrafts? (?:held|waits?|waiting) at the Gate\b/i, code: "core/gate/index.js" },
+  { name: "held draft", page: "concepts/floor.md", match: /\bheld drafts?\b|\bdrafts? (?:held|waits?|waiting) at the Gate\b/i, code: "core/gate/index.js" },
   { name: "lease", page: "concepts/floor.md#4-one-screen-types-into-a-thread-at-a-time", match: /\bleases?\b/i, code: "core/switchboard/index.js" },
   { name: "lesson", page: "using/learning.md#lessons-accept-edit-retire", match: /\blessons?\b/i, code: "core/learn/index.js" },
   { name: "Mac", page: "concepts/box-and-mac.md", match: /\bMacs?\b/ },
@@ -94,7 +93,7 @@ const SCREEN_PAGES = {
   agents: "using/agents.md", chat: "using/chat.md", glass: "using/glass.md", memory: "using/memory.md", vault: "using/vault.md",
   onboard: "get-started/install.md",
 };
-const DECK_VIEWS_PAGE = "using/deck.md#what-is-on-each-view";
+const DECK_VIEWS_PAGE = "concepts/floor.md";
 
 // Commands whose first word after the name must be one of their subcommands: anything else is an
 // error there, so a page naming another one is stale. The rest take free words (a query, a name).
@@ -306,6 +305,8 @@ export function envVars(root) {
 
 /** The Deck's views and their routes, and the onboarding pages. */
 export function screens(root) {
+  // The Deck is removed in 0.2.9 (the app replaces it), so there are no Deck screens to list.
+  if (root !== null) return [];
   const out = [];
   let app = "";
   try { app = fs.readFileSync(path.join(root, "deck/js/app.js"), "utf8"); } catch { return out; }
@@ -323,7 +324,7 @@ export function screens(root) {
       file: fs.existsSync(path.join(root, `deck/views/${view}.js`)) ? `deck/views/${view}.js` : "deck/js/app.js", page: SCREEN_PAGES[view] || DECK_VIEWS_PAGE });
   }
   if (fs.existsSync(path.join(root, "deck/onboard/index.html"))) out.push({ name: "/onboard", label: "Onboarding", routes: ["/onboard"], file: "deck/onboard/index.html", page: SCREEN_PAGES.onboard });
-  if (fs.existsSync(path.join(root, "deck/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "deck/onboard/passkey", page: "using/deck.md#add-a-passkey" });
+  if (fs.existsSync(path.join(root, "deck/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "deck/onboard/passkey", page: "concepts/presence.md#enroll-your-keys" });
   return out.sort((a, b) => byName(a.name, b.name));
 }
 

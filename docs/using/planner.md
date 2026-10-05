@@ -140,6 +140,5 @@ event its reminder rings. `vyre call planner.settings` with no input shows the c
 
 ## Next
 
-- [Deck](deck.md): the Planner panel and push notifications.
 - [Agents](agents.md): your assistant and the agents you make.
 - [CLI](cli.md): every `vyre` command.

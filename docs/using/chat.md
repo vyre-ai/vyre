@@ -14,7 +14,7 @@ sessions you ran in a terminal, and the ones Vyre runs for you on Claude, Codex,
 OpenRouter (an agent's thread, the assistant, a thread you started). A session shows its text
 as it is written, its tool calls, file edits as diffs, and anything it needs from you, inline. You
 type into it like a message box, and the words go to the session as you. Chat lives at `/chat`
-in the [Deck](deck.md). On a server with a paired Mac, Chat also lists the Mac's sessions, and
+in the Vyre app. On a server with a paired Mac, Chat also lists the Mac's sessions, and
 a message you type into one goes to the Mac (see [Sessions from your Mac](#sessions-from-your-mac)).
 
 ## Find a session
@@ -26,8 +26,6 @@ a message you type into one goes to the Mac (see [Sessions from your Mac](#sessi
 
 A session in two projects is listed under both. A new session, a rename or a new turn shows up
 on its own, without a reload.
-
-![Chat in the Deck: recent sessions with their turn counts and projects, and every session by project in the rail](shots/deck-chat.png)
 
 | Path | Opens |
 | --- | --- |
@@ -109,7 +107,7 @@ in the conversation.
 2. Press **Send** (Command-Enter) to approve exactly what the card shows, or **Discard** to reject
    it.
 
-The first Send may ask for your passkey (see [Deck](deck.md#add-a-passkey)); one proof covers
+The first Send may ask for your passkey; one proof covers
 30 minutes on this device. Editing and Discard ask for nothing. If the send fails,
 the card says "failed:" with the reason, and Send tries again.
 

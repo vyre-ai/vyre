@@ -1,6 +1,6 @@
 ---
 title: Mobile
-summary: Use Vyre on your phone by installing the Deck from the browser, turning on notifications for the moments you are needed, and approving work from the lock screen tap.
+summary: Use Vyre on your phone by installing the Vyre app from the browser, turning on notifications for the moments you are needed, and approving work from the lock screen tap.
 audience: users
 owner: mobile
 status: draft
@@ -8,7 +8,7 @@ status: draft
 
 # Mobile
 
-On a phone, Vyre is the [Deck](deck.md) installed as a web app. You add it to your home screen
+On a phone, Vyre is the Vyre app installed as a web app. You add it to your home screen
 from the browser, it opens full screen like an app, and it can notify you when a session asks
 permission, a draft waits at the Gate, a thread you watch finishes, or Vyre proposes a lesson.
 The phone reaches your box through Vyre's own network, like every other device, and through
@@ -45,8 +45,6 @@ the top right opens the Places sheet: Projects, Planner, Memory, Vault, Devices 
 Hold a tile for a moment to keep that place as a fourth page after Agents. A Lumen bar floats at
 the bottom of the three pages; tap it, or pull down from the top of a screen, to open Find.
 
-![Find on a phone with harlow typed: ask juno first, then the Harlow sessions, and the projects that match.](shots/phone-find.png)
-
 - **Now**: what needs you and what is running.
 - **Approve or edit a held draft**: tap it in Now. It opens full screen; tap a field to edit it,
   then Send or Discard. Swiping a draft right opens it; swiping left discards it.
@@ -71,8 +69,6 @@ the bottom of the three pages; tap it, or pull down from the top of a screen, to
 Memory, Vault, Planner and Settings open from the Places sheet or their paths (`/memory`,
 `/vault`, `/planner`, `/settings`), laid out for a narrow screen.
 
-![Now on a phone: two drafts held at the Gate, what is running and recent sessions, with the tab bar at the bottom](shots/phone-now.png)
-
 ## Turn on notifications
 
 1. In the installed app, open **Settings**, then **Notifications**.
@@ -90,7 +86,7 @@ Other devices you turned on are listed with when a notification last reached the
 > Settings shows the steps instead of the button: add Vyre to your Home Screen, open it from
 > there, and come back to Settings.
 
-Tapping a notification opens the Deck at the right place: the held item, the thread, or the
+Tapping a notification opens the app at the right place: the held item, the thread, or the
 lessons in Settings.
 
 ## What a notification shows
@@ -103,16 +99,14 @@ end. The details load after you tap, over your own connection to the box. The de
 [ADR 0011](../adr/0011-web-push.md).
 
 During quiet hours nothing is sent and nothing is queued; the moment stays in Now. A box that
-cannot reach the internet cannot notify, but the Deck still shows everything when you open it.
+cannot reach the internet cannot notify, but the app still shows everything when you open it.
 
 ## Approving from the phone
 
 Send, Discard, Allow, Deny and taking over an agent's screen need proof that a person is at the
 device. On the phone that is a passkey, with Face ID or Touch ID. If you made your first passkey
 in Safari on your Mac, iCloud Keychain brings it to your iPhone, and the phone offers it when you
-approve. To make one on the phone itself, see [Deck](deck.md#add-a-passkey).
-
-![A held email on a phone, full screen, with Send and Discard in reach of your thumb](shots/phone-held.png)
+approve.
 
 ## Offline
 
@@ -135,7 +129,7 @@ approved until the box answers.
 The phone app is one app, in `apps/app`. It runs as the web app your box serves, and the same code
 builds an Android APK and an iPhone app. The native builds keep the phone's signing key in the
 phone's hardware (Secure Enclave on an iPhone, Keystore on Android), and approvals ask for Face ID
-or a fingerprint. You type your box's name, and the Deck's passkey approves the phone once.
+or a fingerprint. You type your box's name, and a passkey approves the phone once.
 
 In 0.2.0 you build these yourself: [`apps/RELEASE.md`](https://github.com/vyre-ai/vyre/blob/main/apps/RELEASE.md)
 has the steps for a cable install, TestFlight and an Android APK, and they need your own Apple or
@@ -144,5 +138,4 @@ notifies you.
 
 ## Next
 
-- [Deck](deck.md), every view in detail.
 - [Security](../security/index.md), passkeys and what a phone may approve.
