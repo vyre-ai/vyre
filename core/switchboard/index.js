@@ -4170,10 +4170,12 @@ export default {
     });
     // A chat's runs and their events, to leave this device with the chat (Personal to My Cloud: core/work/chat-upgrade.js) and to be put back on the other. Modules only; the caller (the work module) has
     // already checked that the person is in the chat. What is not carried: the provider's own session file (a resumed run starts from the brief, not from native context).
+    const workOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:work" || m.firstParty === false) throw Object.assign(new Error(`${what} is the work module's alone`), { code: "denied" }); };
     ctx.tool("threads.export-chat", {
       description: "A chat's run rows and their events, for the chat upgrade. First-party modules only.", internal: true, callers: ["module"],
       input: { type: "object", required: ["chat"], properties: { chat: str } },
-      run: async i => {
+      run: async (i, m) => {
+        workOnly(m, "reading a chat's runs");
         const runs = /** @type {any[]} */ (sb.db.prepare("SELECT * FROM threads_runs WHERE chat = ?").all(String(i.chat)));
         const events = runs.flatMap(r => /** @type {any[]} */ (sb.db.prepare("SELECT at, type, source, project, thread, payload FROM events WHERE thread = ? ORDER BY id LIMIT 50000").all(String(r.id))));
         return { runs, events };
@@ -4182,7 +4184,8 @@ export default {
     ctx.tool("threads.import-chat", {
       description: "Put a chat's runs and events back (the other end of the chat upgrade). The runs come back stopped; one already here is left as it is. First-party modules only.", internal: true, callers: ["module"],
       input: { type: "object", required: ["chat", "runs", "events"], properties: { chat: str, runs: { type: "array" }, events: { type: "array" } } },
-      run: async i => {
+      run: async (i, m) => {
+        workOnly(m, "putting a chat's runs back");
         let runs = 0, events = 0;
         for (const r of /** @type {any[]} */ (i.runs)) {
           if (!r || typeof r.id !== "string" || String(r.chat) !== String(i.chat)) continue;

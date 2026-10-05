@@ -504,7 +504,14 @@ test("a chat's history leaves one device and comes back on another: its logged f
   assert.ok((await A.d.registry.call("stream.export-chat", { chat }, "cli")).error, "module only");
   // the other device
   const B = await boot();
-  const into = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work");
+  // the history is the work module's door alone: another first-party module and an added one are refused, and nothing is written
+  for (const who of ["module:flows", "module:added-thing"]) {
+    for (const [tool, input] of /** @type {[string, any][]} */ ([["stream.export-chat", { chat }], ["threads.export-chat", { chat }], ["stream.import-chat", { chat, frames: st.frames, members: st.members, fresh: true }], ["threads.import-chat", { chat, runs: th.runs, events: th.events }]])) {
+      assert.match(String((await B.d.registry.call(tool, input, who)).error && (await B.d.registry.call(tool, input, who)).error.message), /work module's alone|not|denied/i, `${who} ${tool}`);
+    }
+  }
+  assert.ok((await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work")).error, "frames are not written into a chat whose history was not started by its first chunk");
+  const into = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members, fresh: true }, "module:work");
   assert.ok(into.data && into.data.frames === st.frames.length, JSON.stringify(into));
   const back = await B.d.registry.call("threads.import-chat", { chat, runs: th.runs, events: th.events }, "module:work");
   assert.deepEqual([back.data.runs, back.data.events], [1, th.events.length]);
