@@ -178,7 +178,7 @@ finish() {
       elif [ -n "$CODE" ]; then
         say "  Done. Back to your browser."
       else
-        say "  Next: finish pairing from your device (the long code above), or open the link above."
+        say "  Next: finish pairing from your device (the long code above)."
       fi
     fi
   fi
@@ -467,7 +467,7 @@ docker_gid() {
 }
 
 # /srv/vyre/.env names the project and its compose files. Written once, never overwritten:
-# it is where the person adds TS_AUTHKEY, COMPOSE_PROFILES and anything else of theirs. The one
+# it is where the person adds COMPOSE_PROFILES and anything else of theirs. The one
 # exception is DOCKER_GID: added to an existing .env that lacks it, and nothing else touched.
 write_env() {
   gid=$(docker_gid)

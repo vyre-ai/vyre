@@ -27,7 +27,6 @@
   "apps/ios/VyreTests/RouteTests.swift",
   "apps/test/world.js",
   "box/Dockerfile",
-  "box/compose.egress.yml",
   "box/vyre",
   "core/artifacts/artifacts.test.js",
   "core/cli/commands/box.test.js",

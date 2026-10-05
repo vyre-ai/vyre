@@ -212,18 +212,16 @@ jobs:
 
       # The compose files must not add Docker's own init (init: true) to a service on this image:
       # then docker-init is PID 1 and tini runs as a child, warning "not running as PID 1". vyre
-      # boots for real; docker-api and egress, under
+      # boots for real; docker-api, under
       # the computers profile, are created and inspected (no Init, the image's tini entrypoint).
       - name: Compose runs the image's tini as PID 1
         if: hashFiles('core/daemon/loop.sh') != ''
         env:
           VYRE_IMAGE: vyre-box:ci
-          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
-          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
           COMPOSE_PROJECT_NAME: vyreci
         run: |
           export DOCKER_GID=$(stat -c %g /var/run/docker.sock)
-          F="-f box/compose.yml -f box/compose.egress.yml"
+          F="-f box/compose.yml"
           docker compose $F up -d vyre
           i=0; until [ "$(docker compose $F ps -q vyre)" ] && docker exec "$(docker compose $F ps -q vyre)" cat /proc/1/comm >/dev/null 2>&1; do i=$((i + 1)); [ $i -lt 30 ] || { docker compose $F logs; exit 1; }; sleep 1; done
           sleep 3
@@ -233,8 +231,8 @@ jobs:
           docker logs "$id" 2>&1 | tail -20
           [ "$comm" = tini ]
           ! docker logs "$id" 2>&1 | grep -q "not running as PID 1"
-          docker compose $F --profile computers create docker-api egress
-          for svc in vyre docker-api egress; do
+          docker compose $F --profile computers create docker-api
+          for svc in vyre docker-api; do
             id=$(docker compose $F --profile computers ps -aq "$svc")
             init=$(docker inspect -f '{{.HostConfig.Init}}' "$id")
             ep=$(docker inspect -f '{{join .Config.Entrypoint " "}}' "$id")
@@ -245,7 +243,5 @@ jobs:
         if: always() && hashFiles('core/daemon/loop.sh') != ''
         env:
           VYRE_IMAGE: vyre-box:ci
-          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
-          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
           COMPOSE_PROJECT_NAME: vyreci
-        run: docker compose -f box/compose.yml -f box/compose.egress.yml --profile computers down -v || true
+        run: docker compose -f box/compose.yml --profile computers down -v || true
