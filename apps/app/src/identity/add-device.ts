@@ -10,7 +10,7 @@
 import * as C from "../../../../kernel/identity/chain.js";
 import { addThisDevice as pair } from "@vyre/relay-client/phonepair.js";
 import { about, presenceKey, relayCrypto, relayKeyStore } from "../api/relay";
-import { savePairing } from "../api/relay";
+import { afterPaired } from "../real/pairing";
 import { relayUrl } from "../api/relay-url";
 import { addDeviceCore } from "./add-device-core.js";
 import { generateDeviceKey } from "./keys.js";
@@ -58,7 +58,7 @@ export async function addDeviceToName(o: AddOpts): Promise<{ name: string; id: s
     },
     save: (i) => saveIdentity({ ...i, key: key as NonNullable<typeof key> }),
     // The pairing also reaches that computer, so Now has something to show.
-    keepPairing: (p) => savePairing({ ...p, presence: null }),
+    keepPairing: (p) => afterPaired(p),
   }, { deviceLabel: o.deviceLabel, onWords: o.onWords, onAck: o.onAck, signal: o.signal });
 }
 

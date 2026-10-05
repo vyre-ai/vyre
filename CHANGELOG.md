@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(app): a device paired by a typed code now keeps the pairing, marks the server as the way it reaches its box, opens its paired person session and reconnects over the relay (src/real/pairing.ts afterPaired; used by the browser's Type the code, the Mac's boxless server and add-this-device). A browser the owner has not trusted yet cannot start the session: the pairing stays and the session starts once it is trusted. test: scripts/app-walk-records-ui.mjs, app-walk-records-shots.mjs, app-walk-paired-records.mjs, and the paired-device walk now also defines a case type (text, choice, link, sealed) and adds two records.
+
 - fix(app): the browser's start screen no longer shows "Failed to fetch" under the paste field when the page has no box of its own (the first-run box check says nothing there). test: scripts/app-walk-typed.mjs walks the typed-code browser screens on awbox's relay: the browser start screen pairs by a typed code (ack typed back as the owner) and a device with no name adds itself to a name by typed code, both PASS.
 
 - feat(app): the app reports the P-256 presence key when it pairs a device by typed code (add this device to a name, the browser's Type the code, the Mac's boxless server): platform-3's paired session signs with it. test: scripts/app-walk-paired-device.mjs pairs a device by typed code on awbox and walks the whole approval (6 of 6): person session, ask, stand-in phone approves, spend once, second spend refused, no.
