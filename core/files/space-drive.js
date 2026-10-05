@@ -1,6 +1,6 @@
 // @ts-check
 // core/files/space-drive.js: the Space's own Drive (kernel/storage/drive.js, behind kernel/gateway/drive.js) for the app: upload a new version of a file, list a file's versions, restore one.
-// The box's shared folders (VyreDrive over Taildrive) are gone until the mounted Drive returns in 0.3.0. Every call is the CALLER'S own chain in the Space it names (lib/gateway-door.js): a call that proved
+// The box's shared folders (the mounted VyreDrive) are gone until the mounted Drive returns in 0.3.0. Every call is the CALLER'S own chain in the Space it names (lib/gateway-door.js): a call that proved
 // no person is refused, the kernel's `drive.write`, `drive.read` and `drive.restore` grants decide, a path is checked in one form (kernel/seal/uses.js safePath) and an upload is size-capped.
 // A Space with no Drive wired answers `unavailable`.
 import { createDoor } from "../../lib/gateway-door.js";

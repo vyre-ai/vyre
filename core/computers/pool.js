@@ -25,9 +25,9 @@ export const MIGRATIONS = [
      vnc_password TEXT NOT NULL, helper_token TEXT NOT NULL, paused INTEGER NOT NULL DEFAULT 0,
      created INTEGER NOT NULL, updated INTEGER NOT NULL
    );`,
-  // Unused since the Mac egress went (Tailscale-based); a released step is never edited.
+  // Unused since the Mac egress went; a released step is never edited.
   `ALTER TABLE computers_computers ADD COLUMN egress TEXT NOT NULL DEFAULT '';`,
-  // Unused since agent tailnet nodes went (they return later as Headscale tags); a released step is never edited.
+  // Unused since agent network nodes went (they return later as Headscale tags); a released step is never edited.
   `ALTER TABLE computers_computers ADD COLUMN stable_id TEXT;
    ALTER TABLE computers_computers ADD COLUMN node TEXT;`,
   // Per-agent limits, set from the Deck. Null means the box's computers.cpus / computers.memoryMb.

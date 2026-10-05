@@ -1,4 +1,4 @@
-// Drive from the real vyred: the Space's own Drive (versioned, permissioned files). The box's shared folders (VyreDrive over Taildrive) are gone until the mounted Drive returns in 0.3.0.
+// Drive from the real vyred: the Space's own Drive (versioned, permissioned files). The box's shared folders (the mounted VyreDrive) are gone until the mounted Drive returns in 0.3.0.
 import { Frame } from "../places/Frame";
 import { SpaceDrive } from "./SpaceDrive";
 
