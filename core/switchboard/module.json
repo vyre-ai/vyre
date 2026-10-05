@@ -135,7 +135,8 @@
       {
         "name": "threads.roll-session",
         "reach": "person",
-        "effect": "write"
+        "effect": "write",
+        "cwdArg": "cwd"
       },
       {
         "name": "threads.origin",
