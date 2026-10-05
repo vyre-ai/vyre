@@ -143,6 +143,7 @@
   "docs/using/tailscale.md",
   "docs/using/vault.md",
   "docs/using/windows.md",
+  "kernel/golden/golden.json",
   "kernel/golden/matrix.js",
   "kernel/seal/uses.test.js",
   "lib/publish/edge.js",
