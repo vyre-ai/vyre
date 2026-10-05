@@ -12,7 +12,7 @@ import crypto from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { SCRATCH } from "./scratch.mjs";
-import { TWENTY_TESTED_REF } from "../stores/twenty/provision.js";
+import { TWENTY_TESTED_REF, composeFile } from "../stores/twenty/provision.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WRAPPER_SRC = fs.readFileSync(path.join(REPO, "box/vyre"), "utf8");
@@ -435,7 +435,8 @@ test("space helper: install writes a path unit on the spool with the start limit
   assert.match(s, /StartLimitIntervalSec=0/); assert.match(s, /ExecStart=.*space-helper-run/);
   assert.equal(fs.readFileSync(path.join(r.SP, "private", "image"), "utf8").trim(), "sha256:" + "a".repeat(64));
   const images = fs.readFileSync(path.join(r.SP, "private", "images"), "utf8").trim().split("\n").map(l => l.split(" "));
-  assert.deepEqual(images.map(i => i[0]).sort(), ["postgres:16", "redis:7", "twentycrm/twenty:${TWENTY_TAG:-" + images.find(i => i[0].startsWith("twentycrm"))[0].match(/-(v[0-9.]+)\}/)[1] + "}"].sort());
+  const named = [...composeFile({ space: "x" }).matchAll(/^    image: (.*)$/gm)].map(m => m[1]);
+  assert.deepEqual(images.map(i => i[0]).sort(), [...new Set(named)].sort(), "the images recorded are the ones the generated compose file names, expanded or not");
   for (const [, dg] of images) assert.match(dg, /^[a-z0-9\/]+@sha256:[0-9a-f]{64}$/, "every image is recorded by digest");
   assert.equal(fs.statSync(path.join(r.SP, "private")).mode & 0o777, 0o700);
   assert.match(r.calls(), /systemctl enable --now vyre-spaces\.path/);
@@ -863,7 +864,7 @@ test("space helper golden: an image with no saved database, or a copy that fails
   assert.ok(!/DISABLE_DB_MIGRATIONS/.test(fs.readFileSync(path.join(d, "compose.yml"), "utf8").split("\n  worker:")[0]), "the server migrates as before");
   goldenIn(r); r.flag("cp-fails");
   const b = r.ask("up northwind\n"); await r.helper();
-  assert.equal(r.status(b).state, "ok", "a failed copy does not stop the Space coming up");
+  assert.equal(r.status(b).state, "ok", "a failed copy does not stop the Space coming up: " + JSON.stringify(r.status(b)));
   assert.ok(!fs.existsSync(path.join(r.SP, "status", "admin-northwind")) && !fs.existsSync(path.join(r.SP, "private", "spaces", "northwind", "golden")));
 });
 
