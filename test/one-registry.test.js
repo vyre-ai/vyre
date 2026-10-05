@@ -140,13 +140,13 @@ test("the claimed identity is the home kernel's owner at once (no spaces call af
   const casey = await call("spaces.identity.create", { name: "casey" }, { root: a, caller: "cli" });
   assert.ok(!casey.error, JSON.stringify(casey.error));
   await agree(a, da, "fresh home");
-  // existing home: claimed with the kernel off, then started with it on
+  // existing home: claimed, then the daemon restarted
   const b = tempHome(t); cfg(b, "existing-box");
-  const off = await start({ root: b, kernel: false, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const off = await start({ root: b, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   const made = await call("spaces.identity.create", { name: "drew" }, { root: b, caller: "cli" });
   assert.ok(!made.error, JSON.stringify(made.error));
   await off.stop();
-  const on = await start({ root: b, kernel: true, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const on = await start({ root: b, log: (m, x) => lines.push(m + (x ? " " + JSON.stringify(x) : "")) });
   t.after(() => on.stop());
   await agree(b, on, "existing home");
   assert.equal((await call("spaces.identity.status", {}, { root: b, caller: "cli" })).data.id, made.data.id, "the id did not change");

@@ -24,13 +24,6 @@ test("home identity: a Space id and a first owner are made once and kept; no ker
   assert.equal(fs.existsSync(path.join(root, "kernel", "kernel.key")), false);
 });
 
-test("daemon: with the kernel off (the default) nothing changes and no kernel exists", { timeout: 30_000 }, async t => {
-  const d = await start({ root: tempHome(t), log: () => {}, kernel: false });
-  t.after(() => d.stop());
-  assert.equal(d.kernel, null);
-  assert.equal(d.registry.deps.moduleHost, undefined);
-});
-
 test("daemon: with the kernel on, the home has a Space, a first owner and a module host, and a restart keeps them", { timeout: 60_000 }, async t => {
   const root = tempHome(t);
   let d = await start({ root, log: () => {}, kernel: true });
@@ -175,7 +168,7 @@ test("the daemon's edge carries x-vyre-kernel-proof to the tool as meta.kernel_p
   const root = tempHome(t);
   writeModule(path.join(root, "modules"), "zz-edge", { does: { tools: [{ name: "zz-edge.peek", reach: "anyone" }] } }, `
     export default { async start(ctx) { ctx.tool("zz-edge.peek", { effect: "read", run: async (i, meta) => ({ kernel_proof: meta.kernel_proof ?? null, proof: meta.proof ?? null }) }); return {}; } };`);
-  const d = await start({ root, log: () => {}, kernel: false });
+  const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const proof = { op: "grant.create", signer: "secure_enclave", key_id: "k1", payload_hash: "ph", signature: "sig" };
   const enc = Buffer.from(JSON.stringify(proof)).toString("base64url");

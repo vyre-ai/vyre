@@ -25,19 +25,3 @@ export function isPackaged(root) {
 /** Is an environment developer switch honoured here? Only in a development build, and only when it is exactly "1". @param {string | undefined} value @param {string} [root] */
 export function devSwitch(value, root) { return value === "1" && !isPackaged(root); }
 
-/** The one line a packaged daemon prints when it is asked to start with the kernel off. */
-/** What a release-kind build says when VYRE_KERNEL=0 is set: it is ignored, and the kernel stays on. */
-export const KERNEL_FLAG_IGNORED = "VYRE_KERNEL=0 is ignored: this build always runs with the kernel on";
-export const KERNEL_OFF_REFUSAL = "This Vyre release does not run with its security layer off.";
-
-/**
- * Is the kernel on for this start? On by default. `opts.kernel` decides when it is given; else VYRE_KERNEL=0 turns it off in a development build only (the one-release flag, so a
- * regression needs no rollback), and a packaged build ignores the variable, so something that can set an environment cannot weaken it. @param {{ kernel?: boolean }} opts @param {Record<string, string | undefined>} [env] @param {string} [root]
- */
-export const kernelWanted = (opts, env = process.env, root) => (typeof opts.kernel === "boolean" ? opts.kernel : !(env.VYRE_KERNEL === "0" && !isPackaged(root)));
-
-/**
- * MA-5: every protection the kernel gates applies only with the kernel on, so a packaged build refuses to start without it. Returns the refusal line, or null when the start may go ahead
- * (the kernel is on, or this is a development checkout). @param {boolean} kernelOn @param {string} [root]
- */
-export const kernelOffRefusal = (kernelOn, root) => (kernelOn || !isPackaged(root) ? null : KERNEL_OFF_REFUSAL);
