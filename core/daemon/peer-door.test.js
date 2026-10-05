@@ -450,3 +450,18 @@ test("member stream: a device under 24 hours old on the identity's list is refus
   const founder = inviteeWorld({ age: { founder: true, since: 1_000_000 - 60_000 } });
   assert.equal(await stillOpen(founder, await founder.open(founder.hello({ invite: "member" }))), "answered", "the founding device gets in at once");
 });
+
+test("the direct door: a paired SERVER (no relay app row) may read the network's status as the daemon on its behalf, and nothing else", async () => {
+  const seen = [];
+  const registry = { call: async (tool, input, caller, meta) => { if (tool === "relay.device.info") return { data: null }; seen.push({ tool, caller, meta }); return { data: { ok: true } }; } };
+  const kernel = { id: { space: "spc_aaaaaaaaaaaa", owner: "per_x" }, spaces: { for: () => null } };
+  const live = new Set(["srv_live123"]);
+  const d = createPeerDoor({ kernel, registry, people: { list: () => [] }, now: () => 1000, callerFacts: () => null, isServer: id => live.has(id) });
+  assert.deepEqual(await d.serve("device:srv_live123", "network.wink.status", {}), { ok: true });
+  assert.equal(seen[0].caller, "module:vyred");
+  assert.equal(seen[0].meta.onBehalfOf, "device:srv_live123");
+  await assert.rejects(() => d.serve("device:srv_live123", "wink.access", {}), /may only read the network's status/);
+  await assert.rejects(() => d.serve("device:srv_gone456", "network.wink.status", {}), /not paired here any more/);
+  await assert.rejects(() => d.serve("device:srv_live123/../x", "network.wink.status", {}), /not paired here any more/);
+  assert.equal(seen.length, 1, "only the allowed read reached the registry");
+});

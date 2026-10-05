@@ -30,6 +30,8 @@ import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
+import { createNetd } from "./netd.js";
+import { createNetJoin } from "./netjoin.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
 import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -315,6 +317,8 @@ export function createWink(inject = {}) {
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : !(process.env.VYRE_WINK_TYPED_CODE === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.typedCode === false));
     const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
+    /** @type {ReturnType<typeof createNetd> | null} */ let netdRef = null;
+    /** @type {ReturnType<typeof createNetJoin> | null} */ let liveJoin = null;
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
@@ -332,7 +336,8 @@ export function createWink(inject = {}) {
       directory,
       ports: inject.ports,
       offers: inject.offers || (ctx.kernel && typeof ctx.kernel.offersPort === "function" ? ctx.kernel.offersPort() : undefined),
-      handover: inject.handover,
+      // what a server being paired needs to reach this home: the built-in network's control address and a one-time join key when it has an address another machine can reach (netd.handover), else nothing
+      handover: inject.handover || (async (/** @type {any} */ q) => (netdRef ? netdRef.handover(q) : null)),
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
@@ -560,6 +565,13 @@ export function createWink(inject = {}) {
         const dev = /** @type {any} */ (await ctx.call("relay.device.info", { id: String(input.device) }));
         const info = dev && dev.data;
         if (!info || info.removed || info.kind !== "app") throw fail("not_found", "that computer is not paired with this server");
+        // A relay "app" row is a phone as well as a computer: the Wink device row says which. Only the person's own computer lends its compute.
+        const wd = pairing.devices.get(String(input.device));
+        const me = await owner1();
+        if (wd && !wd.removed) {
+          if (wd.kind !== "computer") throw fail("bad_input", "only a computer can be shared; a phone, a server or a storage device cannot lend its compute");
+          if (wd.identity !== me) throw fail("denied", "that computer belongs to someone else");
+        }
         const g = await grants();
         const space = await spaceId();
         const cpu = Math.min(Math.max(Number(input.cpu) || 0.5, 0.05), 1);
@@ -570,8 +582,16 @@ export function createWink(inject = {}) {
           conditions: { budget: { meter: "node.cpu-hours-day", limit: hours * cpu }, where: { nodes: [String(input.device)] } },
           source: "wink:W4", reason: `shared with limits: cpu ${cpu}, ${hours} hours a day, awake ${input.awake !== false}, on power ${input.on_power === true}`,
         }, await owner0());
+        // The grant records the limits; what the runner reads is the two sides of the compute offer (W-5). Sharing your own computer with your own space switches
+        // the computer's compute offer on and records the member's side, so computeAllowed answers yes for the personal space and the runner may lease it.
+        let allowed = null;
+        if (wd && !wd.removed) {
+          db.prepare("UPDATE wink_devices SET offers = ? WHERE id = ?").run(JSON.stringify({ ...wd.offers, compute: true }), wd.id);
+          await pairing.compute.set(wd.identity, wd.id, "member", true, { member: wd.identity, device_key: wd.nodeKey || undefined });
+          allowed = await pairing.computeAllowed({ device: wd.id, space: wd.identity });
+        }
         ctx.events.emit("wink.shared", { grant: grant.id, device: String(input.device) });
-        return { grant: grant.id };
+        return { grant: grant.id, ...(allowed ? { allowed } : {}) };
       },
     });
 
@@ -673,7 +693,49 @@ export function createWink(inject = {}) {
     registerStorageTools(ctx, storage, "wink.storage");
     // `vyre doctor`'s Wink checks read the identity list through this port (a device on the list, by its entry id, in this home's space) and this device's own entry. The node host and the
     // relay clock stay absent here (they say "unknown", never a guess) until the daemon composes the node host (composeWinkHome).
-    registerNetwork(ctx, { identity: ports.network, ...(inject.network || {}), storage });
+    // The built-in network (core/wink/netd.js): Headscale, the gate and the Wink node, started in the background on a server home. It hands its node host to the
+    // network status above; a box with no programs installed says "no-binary" there and the relay carries everything. `inject.netd === false` is a test seam that leaves it off.
+    const dirCall = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      const r = /** @type {any} */ (await ctx.call(tool, input));
+      if (r && r.error) throw Object.assign(new Error(r.error.message || String(r.error)), { code: r.error.code });
+      return r && "data" in r ? r.data : r;
+    };
+    const netd = inject.netd === false ? null : createNetd({
+      root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"),
+      space: spaceId,
+      box: async () => { const r = /** @type {any} */ (await ctx.call("relay.route.id", {})); return String((r && r.data && (r.data.box || r.data.route)) || ""); },
+      // a device on the identity list, else a live paired server of this home (its key is derived from the peer secret this home holds for it, core/wink/directkey.js)
+      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); const e = r && !r.error ? (r.data !== undefined ? r.data : r) : null; return e || pairing.peers.directEntry(eid); },
+      serve: ctx.peerDoor && ctx.peerDoor() && typeof ctx.peerDoor().serve === "function" ? ctx.peerDoor().serve : null,
+      onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { try { holds.onSession(caller, session); } catch { /* the hold is optional */ } },
+      devices: () => { try { return /** @type {any[]} */ (db.prepare("SELECT id FROM wink_devices WHERE removed_at IS NULL").all()).map(r => String(r.id)); } catch { return []; } },
+      log: m => ctx.log(m),
+      relayUrl: ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "",
+      enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
+      // the public gate: this box's name and the name directory's DNS calls, which the names module signs for (names.directory.*, this module only)
+      name: () => (ctx.config && typeof ctx.config.name === "string" && ctx.config.name && ctx.config.network && ctx.config.network.via === "vyre.run" ? ctx.config.name : null),
+      directory: {
+        acme: async (/** @type {string} */ token) => dirCall("names.directory.acme", { token }),
+        acmeClear: async () => dirCall("names.directory.acme-clear", {}),
+        publish: async () => dirCall("names.directory.publish", {}),
+      },
+      ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.publicPort) ? { publicPort: ctx.config.wink.publicPort } : {}),
+      ...(ctx.config && ctx.config.wink && ctx.config.wink.publish === true ? { publish: true } : {}),
+      ...(process.env.VYRE_ACME_DIRECTORY || (ctx.config && ctx.config.wink && ctx.config.wink.acme) ? { acme: String(process.env.VYRE_ACME_DIRECTORY || ctx.config.wink.acme) } : {}),
+      ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
+      ...(ctx.config && ctx.config.wink && Number.isInteger(ctx.config.wink.gatePort) ? { gatePort: ctx.config.wink.gatePort } : {}),
+      ...(inject.netd || {}),
+    });
+    const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged()),
+      ctx.events.on("name.claimed", () => netd.nameChanged()), ctx.events.on("name.released", () => netd.nameChanged())] : [];
+    registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => (liveJoin && liveJoin.host()) || netd.host() } : {}), ...(inject.network || {}), storage });
+    netdRef = netd;
+    if (netd) netd.start();
+    // A paired server's side: what the home handed over at adopt time (controlUrl, join key, node name, the home's door) joins the home's network, direct with the relay as fallback.
+    const join = inject.netjoin === false ? null : createNetJoin({ root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), ownHandover: () => pairing.ownHandover(), log: m => ctx.log(m), ...(inject.netjoin || {}) });
+    const offJoin = join ? [ctx.events.on("wink.server-adopted", () => { void join.refresh(); }), ctx.events.on("wink.server-released", () => { void join.refresh(); })] : [];
+    liveJoin = join;
+    if (join) void join.start();
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
@@ -730,6 +792,8 @@ export function createWink(inject = {}) {
       bridgeServe: serveBridge,
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),
       ownHandover: () => pairing.ownHandover(),
+      join: () => liveJoin,
+      netd: () => netdRef,
       async stop() {
         live = null;
         liveLinks = null;
@@ -737,9 +801,12 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
+        for (const off of offNetd) { try { off(); } catch {} }
         for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
+        try { if (netd) await netd.stop(); } catch {}
+        try { if (join) { for (const off of offJoin) { try { off(); } catch {} } await join.stop(); } } catch {}
       },
     };
   },
@@ -755,6 +822,8 @@ export function createWink(inject = {}) {
   Object.defineProperty(mod, "sessionFor", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().sessionFor(sid); } });
   Object.defineProperty(mod, "remoteKernel", { enumerable: false, value: (/** @type {string} */ sid, /** @type {string} */ space) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().remoteKernel(sid, space); } });
   Object.defineProperty(mod, "startPaired", { enumerable: false, value: (/** @type {string} */ sid) => { if (!liveLinks) throw fail("unavailable", "the wink module has not started"); return liveLinks().startPaired(sid); } });
+  Object.defineProperty(mod, "netd", { enumerable: false, get: () => (live && live.netd ? live.netd() : null) });
+  Object.defineProperty(mod, "join", { enumerable: false, get: () => (live && live.join ? live.join() : null) });
   Object.defineProperty(mod, "ownHandover", { enumerable: false, value: () => { if (!live) throw fail("unavailable", "the wink module has not started"); return live.ownHandover(); } });
   Object.defineProperty(mod, "homeServe", { enumerable: false, value: (/** @type {any} */ inner) => { if (!live) throw fail("unavailable", "the wink module has not started"); return homeServe(live, inner); } });
   return mod;

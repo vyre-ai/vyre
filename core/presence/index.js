@@ -46,7 +46,6 @@ export const HUMAN_ONLY = new Set([
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
   // and the sites that leave through the owner's Mac. Switching a share the owner already made
   // between read-only and read-write is the owner's own (PERSON_ONLY below).
-  "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
   // weight a vault grant to an agent carries. Taking it away (projects.access.revoke) is

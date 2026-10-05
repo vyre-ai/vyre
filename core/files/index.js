@@ -403,7 +403,7 @@ export default {
       },
     });
 
-    // Taildrop: files.send on the Mac, the inbox receiver on the box (drop.js).
+    // Sending whole files between devices: VyreDrop, not built yet (drop.js keeps the tool names).
     const dropped = drop(ctx, { role, g, cfg });
     ctx.store.migrate(MENTION_MIGRATIONS);
     // The Space's own Drive for the app: upload, versions, restore (core/files/space-drive.js).

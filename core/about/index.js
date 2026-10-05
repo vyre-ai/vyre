@@ -78,7 +78,7 @@ export default {
     const compute = async () => {
       const [agents, projects, me] = await Promise.all([ask("agents.list"), ask("projects.list"), ask("memory.profile", { limit: 12 })]);
       const profile = workFacts(me && me.facts);
-      // The names from onboarding's step 1, straight from config: onboard.status would probe Tailscale.
+      // The names from onboarding's step 1, straight from config: onboard.status would read the network.
       const you = (ctx.config && ctx.config.onboard) || null;
       return compose({ you, agents: Array.isArray(agents) ? agents : null,
         projects: projects && Array.isArray(projects.projects) ? projects.projects : Array.isArray(projects) ? projects : null,

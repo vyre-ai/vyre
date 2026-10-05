@@ -477,10 +477,6 @@
    "module": "onboard",
    "default": "open to any caller"
   },
-  "onboard.tailscale": {
-   "module": "onboard",
-   "default": "limited by callers in code"
-  },
   "onboard.you": {
    "module": "onboard",
    "default": "limited by callers in code"

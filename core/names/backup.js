@@ -12,9 +12,8 @@
 // Provider sign-ins (Claude, Codex, Gemini... whatever core/sessions/config.js's CREDENTIALS
 // names) are left OUT of the vault items carried by default, since they are re-made on restore
 // by signing in again, not carried; `includeProviderLogins: true` opts back in for a person who
-// wants a truly identical copy. The Tailscale node key is never in here at all: it lives in the
-// tailscale container's own volume, outside `config.home()` entirely (box/compose.yml), so this
-// module never has a chance to include it.
+// wants a truly identical copy. The network's node keys are never in here: they live outside
+// `config.home()` entirely, so this module never has a chance to include them.
 
 import crypto from "node:crypto";
 import fs from "node:fs";

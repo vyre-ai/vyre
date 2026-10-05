@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import * as config from "../../config/index.js";
 import { dialogsAllowed } from "../../config/dialogs.js";
 import { openInBrowser } from "../kit.js";
-import * as tailnet from "../tailnet.js";
+import { probe as probeBox } from "../probe.js";
 import { remote, quote, line, validTarget } from "../ssh.js";
 import { ensureUp } from "../daemonctl.js";
 import { call } from "../../daemon/client.js";
@@ -30,8 +30,8 @@ import { json, emit, usage as usageError, viewing, EXIT } from "../kit.js";
 import { prompt } from "../view.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
-const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
-const LABELS = { you: "You", claude: "Claude Code", tailscale: "Tailscale", name: "Your address", history: "Your history", devices: "Your devices" };
+const VOLUMES = ["vyre-home", "vyre-work"];
+const LABELS = { you: "You", claude: "Claude Code", pair: "Pair this server", name: "Your address", history: "Your history", devices: "Your devices" };
 
 // A remote script's first lines: the stack folder, and whether this account reaches Docker itself
 // or through sudo (a fresh Docker install leaves the account out of the docker group).
@@ -109,7 +109,6 @@ export function plan(p, env = process.env) {
 /** Why this server cannot take a box, or null when it can. */
 export function unfit(p) {
   if (p.os !== "Linux") return `${p.os || "this server"} is not Linux; a Vyre box runs on Linux with Docker`;
-  if (!p.tun) return "this server has no /dev/net/tun, which Tailscale needs. Try: sudo modprobe tun. On a VPS, turn on TUN in the provider's panel";
   return null;
 }
 
@@ -232,15 +231,6 @@ const resume = target => `run vyre box add ${target} again to carry on.`;
 
 // ---- add ----
 
-/** Step 1: this Mac is on its tailnet. Returns the tailnet, or null after saying why not. */
-async function macFirst(env) {
-  const t = await tailnet.status(env);
-  if (t.running) return t;
-  out(beacon(`  ${t.why || "Tailscale is not running"}`));
-  if (!t.installed) out(`  Vyre reaches your box over Tailscale. Get it here, sign in, then run this again: ${signal(tailnet.DOWNLOAD)}`);
-  return null;
-}
-
 /** Step 2: reach the server, asking for a password once if there is no key. */
 async function reach(r) {
   out(dim(`  reaching ${r.target}`));
@@ -250,49 +240,13 @@ async function reach(r) {
 }
 
 /**
- * The target to try first when the host half of user@host is a peer on this Mac's tailnet that
- * runs Tailscale SSH: user@<its MagicDNS name>, which lets the tailnet's own identity sign in
- * instead of a key or password. The host may be written as the peer's MagicDNS name, that name's
- * first label, its HostName, or one of its tailnet IPs. Null for a host not on the tailnet, a peer
- * without Tailscale SSH or offline, and a name two peers share (which of them was meant?).
- * @param {string} target user@host
- * @param {{ peers?: import("../tailnet.js").Peer[] } | null} t
- */
-export function viaTailnet(target, t) {
-  const at = target.lastIndexOf("@");
-  const user = target.slice(0, at), host = target.slice(at + 1).toLowerCase().replace(/\.$/, "");
-  const peers = (t && t.peers) || [];
-  const dns = p => p.dnsName.toLowerCase();
-  const exact = peers.filter(p => dns(p) === host || p.ips.includes(host));
-  const label = peers.filter(p => dns(p).split(".")[0] === host);
-  const named = peers.filter(p => p.hostName.toLowerCase() === host);
-  const pick = exact.length ? exact : label.length ? label : named;
-  if (pick.length !== 1) return null;
-  const p = pick[0];
-  return p.ssh && p.online && p.dnsName ? `${user}@${p.dnsName}` : null;
-}
-
-/**
- * Reach user@host, over Tailscale SSH first when viaTailnet names a way, and as typed when that
- * fails or there is none. hold(r) is told each remote as it is made, so a Ctrl-C closes it.
- * Resolves with the open remote, whose target is the one that worked, or null after saying why.
+ * Reach user@host over SSH. hold(r) is told each remote as it is made, so a Ctrl-C closes it.
+ * Resolves with the open remote, or null after saying why.
  * @param {string} target
- * @param {any} t this Mac's tailnet
  * @param {NodeJS.ProcessEnv} env
  * @param {(r: import("../ssh.js").Remote) => void} hold
  */
-async function connect(target, t, env, hold) {
-  const via = viaTailnet(target, t);
-  if (via) {
-    const r = remote(via, { env });
-    hold(r);
-    out(dim(`  reaching ${via} over Tailscale SSH`));
-    const o = await r.open();
-    if (o.ok) return r;
-    await r.close();
-    if (via === target) { out(beacon(`  could not reach ${target}: `) + o.why); return null; }
-    out(dim(`  Tailscale SSH did not let this Mac in (${o.why}); trying ${target} as typed`));
-  }
+async function connect(target, env, hold) {
   const r = remote(target, { env });
   hold(r);
   return (await reach(r)) ? r : null;
@@ -345,10 +299,10 @@ async function link(r, env) {
  * code on the Mac for the box's owner to approve with the passkey onboarding enrolled (ADR 0008
  * section 7). SSH cannot approve it: anything run in the box's container could do the same.
  */
-async function finish(r, target, s, t, env, tool = call) {
+async function finish(r, target, s, env, tool = call) {
   config.save({ box: { ssh: target }, network: { box: s.address || undefined } });
   if (!s.address) {
-    // Onboarding finished with the address step skipped: nothing on the tailnet to pair with yet.
+    // Onboarding finished with the address step skipped: nothing to pair with yet.
     out(beacon("  your box has no address yet.") + ` Run ${signal(`vyre box add ${target}`)} again to finish ${signal("Your address")} in the browser.`);
     printEnding({ address: null, assistant: s.assistant });
     return 0;
@@ -359,7 +313,6 @@ async function finish(r, target, s, t, env, tool = call) {
   const up = await ensureUp();
   if (!up.ok) out(beacon("  this Mac's vyred did not start: ") + dim(String(up.log)));
   else if (await passkeyMade(r, s.address, env)) await pairOver(s.address, tool, env);
-  if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the box serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Sign this Mac in to Tailscale as the box's owner, then run vyre up.");
   printEnding({ address: s.address, assistant: s.assistant });
   return 0;
 }
@@ -434,13 +387,11 @@ async function pairOver(address, tool, env = process.env) {
 export async function add(target, opts = {}) {
   const env = opts.env || process.env;
   if (!validTarget(target)) { out("  vyre box add <user@host>"); return 1; }
-  const t = await macFirst(env);
-  if (!t) return 1;
   /** @type {import("../ssh.js").Remote|null} */
   let r = null;
   const off = onInterrupt(async () => { await r?.close(); out(`\n  Stopped. Your box is as you left it; ${resume(target)}`); });
   try {
-    r = await connect(target, t, env, x => { r = x; });
+    r = await connect(target, env, x => { r = x; });
     if (!r) return 1;
     const p = await look(r, env);
     const why = unfit(p);
@@ -454,7 +405,7 @@ export async function add(target, opts = {}) {
       if (code !== 0) { out(beacon(`  the installer stopped (exit ${code}). Fix what it said, then run this again.`)); return 1; }
     }
     // The target that worked is the one saved, so update, backup and move reuse it.
-    return await onboard(r, r.target, t, env, opts.call || call);
+    return await onboard(r, r.target, env, opts.call || call);
   } catch (e) {
     out(beacon("  stopped: ") + /** @type {Error} */ (e).message);
     return 1;
@@ -462,13 +413,13 @@ export async function add(target, opts = {}) {
 }
 
 /** Steps 5 to 7: link, tunnel, browser, wait, finish. */
-async function onboard(r, target, t, env, tool) {
+async function onboard(r, target, env, tool) {
   // A finished box needs no browser: go straight to the end (resuming, or a box set up by curl).
   const before = await r.json(vyre(["call", "onboard.status"], env)).catch(() => ({}));
   // An address still to set up is finished in the browser, so only a box with one skips it.
-  if (before.finished && before.address) return finish(r, target, before, t, env, tool);
+  if (before.finished && before.address) return finish(r, target, before, env, tool);
   const l = await link(r, env);
-  if (!l.url) return finish(r, target, await r.json(vyre(["call", "onboard.status"], env)), t, env, tool);
+  if (!l.url) return finish(r, target, await r.json(vyre(["call", "onboard.status"], env)), env, tool);
   const tunnel = await r.tunnel(/** @type {number} */ (l.port), /** @type {number} */ (l.port));
   let s;
   try {
@@ -480,7 +431,7 @@ async function onboard(r, target, t, env, tool) {
     out(beacon("\n  The setup link has expired.") + ` Your box is as you left it; ${resume(target)}`);
     return 1;
   }
-  return finish(r, target, s, t, env, tool);
+  return finish(r, target, s, env, tool);
 }
 
 // ---- the saved box (section 8) ----
@@ -507,19 +458,19 @@ async function status() {
     const c = /** @type {any} */ (config.load());
     const target = (c.box && c.box.ssh) || null;
     const address = target ? c.network.box || null : null;
-    const h = address ? await tailnet.probe(address) : null;
+    const h = address ? await probeBox(address) : null;
     emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null }, { kind: "card", title: "Your box", state: !target ? "wait" : h ? "ok" : "failed",
       fields: target ? [{ label: "Address", value: address || "no address yet" }, { label: "Server", value: String(target) },
-        { label: "Answering", value: h ? `yes${h.version ? " · " + h.version : ""}` : "not from here: is this Mac on your tailnet?" }]
+        { label: "Answering", value: h ? `yes${h.version ? " · " + h.version : ""}` : "not from here: is this Mac connected to your server?" }]
         : [{ label: "No box yet", value: "vyre box add <user@host>" }] });
     return target && !h ? 1 : 0;
   }
   const target = saved();
   if (!target) return 0;
   const address = config.load().network.box;
-  const h = address ? await tailnet.probe(address) : null;
+  const h = address ? await probeBox(address) : null;
   out(`  your box  ${signal(address || "no address yet")} ${dim(`· ${target}`)}`);
-  out(h ? `  ${signal("answering")} ${dim(`· ${h.version || ""}`)}` : beacon("  not answering from here") + dim(" · is this Mac on your tailnet?"));
+  out(h ? `  ${signal("answering")} ${dim(`· ${h.version || ""}`)}` : beacon("  not answering from here") + dim(" · is this Mac connected to your server?"));
   return h ? 0 : 1;
 }
 
@@ -625,17 +576,15 @@ async function answers(address, probe, env = process.env) {
  * either finishes the move or starts the old stack again, and says which.
  * @param {string} newTarget
  * @param {{ yes?: boolean }} [flags]
- * @param {{ probe?: (address: string) => Promise<any> }} [deps] probe stands in for tailnet.probe in tests
+ * @param {{ probe?: (address: string) => Promise<any> }} [deps] probe stands in for the health probe in tests
  */
 export async function move(newTarget, flags = {}, deps = {}) {
-  const probe = deps.probe || tailnet.probe;
+  const probe = deps.probe || probeBox;
   const oldTarget = saved();
   if (!oldTarget) return 1;
   if (!validTarget(newTarget)) { out("  vyre box move <user@newhost>"); return 1; }
   const env = { ...process.env, VYRE_NO_UP: "1" };
-  // The new server gets the same Tailscale SSH preference as vyre box add; the old one is reached
-  // as saved, which is already the target that worked.
-  const t = await tailnet.status(env);
+  // The old server is reached as saved, which is already the target that worked.
   const from = remote(oldTarget);
   /** @type {import("../ssh.js").Remote|null} */
   let to = null;
@@ -656,7 +605,7 @@ export async function move(newTarget, flags = {}, deps = {}) {
 
   try {
     if (!(await reach(from))) return 1;
-    to = await connect(newTarget, t, env, x => { to = x; });
+    to = await connect(newTarget, env, x => { to = x; });
     if (!to) return 1;
     const p = await look(to, env);
     const why = unfit(p);

@@ -5,6 +5,7 @@
 //
 //   POST   /v1/names/claim           {name}                bind a name to the caller's route for good
 //   POST   /v1/names/point           {name, ip}            A record, tailnet IPv4 (100.64.0.0/10) only
+//   POST   /v1/names/publish         {name}                A record, the public IPv4 this request came from (a box that serves its own network gate)
 //   POST   /v1/names/acme            {name, token}         _acme-challenge.<name> TXT, or {own:true, token}
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
 //   POST   /v1/names/code            {name, next}          the owner replaces the recovery code
@@ -98,6 +99,27 @@ export function verdict(raw) {
     for (const part of f.split("-")) if (BRAND_FOLDED.has(fold(part))) return taken;
   }
   return { name, status: "ok", why: null };
+}
+
+
+/**
+ * A public IPv4 a box may publish for itself: the address the request came from, never private, loopback, link-local, CGNAT (100.64.0.0/10 is the tailnet's), documentation, multicast or reserved.
+ * @param {unknown} raw @returns {string|null}
+ */
+export function publicIpv4(raw) {
+  const s = String(raw ?? "");
+  const p = s.split(".");
+  if (p.length !== 4 || !p.every(x => /^(0|[1-9]\d{0,2})$/.test(x) && Number(x) <= 255)) return null;
+  const [a, b, c] = p.map(Number);
+  if (a === 0 || a === 10 || a === 127 || a >= 224) return null;
+  if (a === 100 && b >= 64 && b <= 127) return null;
+  if (a === 169 && b === 254) return null;
+  if (a === 172 && b >= 16 && b <= 31) return null;
+  if (a === 192 && b === 168) return null;
+  if (a === 192 && b === 0 && (c === 0 || c === 2)) return null;
+  if (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) return null;
+  if (a === 203 && b === 0 && c === 113) return null;
+  return s;
 }
 
 /**
@@ -207,7 +229,7 @@ function corsHeaders(request, env, op) {
 import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 
 const ROUTES = {
-  "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
+  "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/publish": "publish", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
   "POST /v1/names/code": "code", "POST /v1/names/release": "release",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
   "POST /v1/names/admin/rebind": "adminRebind",
@@ -534,6 +556,21 @@ export class Directory {
     rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { [t.type]: t.ip };
     await this.save(rec);
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, type: t.type, ip: t.ip };
+  }
+
+  /** The box serves its own network gate on a public address: the name's A record becomes the public IPv4 this request came from. It is the caller's own observed address, never one it names. */
+  async op_publish(b, a, ip) {
+    const rec = await this.owned(b, a);
+    const addr = publicIpv4(ip);
+    if (!addr) throw err(400, "not_public", "this request did not come from a public IPv4 address, so there is nothing to publish");
+    await this.count("point", a.route, LIMITS.pointPerRoute);
+    const dns = dnsFor(this.env);
+    const fq = `${rec.name}.${dns.zone}`;
+    await dns.point(fq, "A", addr);
+    await dns.clear(fq, "AAAA").catch(() => {});
+    rec.everPointed = true; rec.state = "live"; rec.pointedAt = this.now(); rec.ips = { A: addr };
+    await this.save(rec);
+    return { name: rec.name, fqdn: fq, type: "A", ip: addr };
   }
 
   /** Where a challenge goes: under the name for a name, under <routehash>.acme for the person's own domain. */

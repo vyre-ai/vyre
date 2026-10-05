@@ -1,7 +1,7 @@
 // @ts-check
 // The hooks module inside a real Registry, with a stand-in vault module and a presence verifier
 // that finds a person only when the call carries a proof. Real HTTP to the loopback listener,
-// the clock moved by hand, a fake tailscale for hooks.status, and the watcher runtime reading a
+// the clock moved by hand, and the watcher runtime reading a
 // delivery off hook.received. The secret is a distinctive string, and every log line, event,
 // config file, tool result and HTTP response is searched for it at the end.
 
@@ -204,7 +204,7 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   const opened = await ok("hooks.open", NW, "tailnet:alex@example.com", { ...HERE, person: { id: "s1", kind: "cookie" } });
   assert.equal(opened.ready, true);
   assert.equal(opened.path, "/hooks/northwind-orders");
-  assert.equal(opened.funnel.open, "tailscale funnel --bg --https=8443 --set-path=/hooks/northwind-orders http://127.0.0.1:0/hooks/northwind-orders");
+  assert.equal(opened.funnel, undefined, "no command for another product is handed out");
   assert.ok(opened.next.some(s => /hooks.enable/.test(s)), "the listener is off and the result does not say so");
   await no("hooks.open", NW, "cli", "conflict");
   // A secret the hooks module has no grant for: the route opens, and says what to run.
@@ -217,9 +217,9 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   await no("hooks.close", { name: "northwind-orders" }, "mcp:agent:kit", "held_unavailable");
   await no("hooks.close", { name: "northwind-orders" }, "tailnet-guest:sam@example.com", "denied");
   const closed = await ok("hooks.close", { name: "northwind-orders" });
-  assert.equal(closed.funnel.close, "tailscale funnel --https=8443 --set-path=/hooks/northwind-orders off");
-  assert.equal(closed.funnel.off, undefined, "harlow-forms is still open");
-  assert.equal((await ok("hooks.close", { name: "harlow-forms" })).funnel.off, "tailscale funnel --https=8443 off");
+  assert.equal(closed.closed, true);
+  assert.equal(closed.last, false, "harlow-forms is still open");
+  assert.equal((await ok("hooks.close", { name: "harlow-forms" })).last, true);
   await no("hooks.close", { name: "harlow-forms" }, "cli", "not_found");
   assert.deepEqual(evts("hook.closed").map(e => e.payload.route), ["northwind-orders", "harlow-forms"]);
   // The routes live in config.json, by vault item name.
@@ -341,52 +341,16 @@ test("hooks: deliveries keep the newest 500 and nothing older than 7 days", t =>
   assert.equal(store.add("northwind-orders", {}, Buffer.from(JSON.stringify({ n: KEEP + 20 }))).duplicate, true);
 });
 
-test("hooks.status: what Funnel publishes, read with a fake tailscale, and every mismatch", async t => {
+test("hooks.status: the listener and the routes, and it says plainly that the internet cannot reach them yet", async t => {
   const r = await live(t);
   await r.ok("hooks.open", { name: "northwind-stripe", verify: { scheme: "stripe", secret: "northwind-stripe" } });
-  const dir = tmp(t, "vyre-ts-");
-  const bin = path.join(dir, "tailscale");
-  const host = "vyre.tail0000.ts.net";
-  const funnel = {
-    TCP: { 8443: { HTTPS: true } },
-    Web: { [`${host}:8443`]: { Handlers: {
-      "/hooks/northwind-orders": { Proxy: `http://127.0.0.1:${r.port}/hooks/northwind-orders` },
-      "/hooks/harlow-forms": { Proxy: `http://127.0.0.1:${r.port}/hooks/harlow-forms` },
-    } } },
-    AllowFunnel: { [`${host}:8443`]: true },
-  };
-  const status = { BackendState: "Running", Self: { DNSName: `${host}.`, CapMap: { funnel: null, https: null } } };
-  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ funnel, status }));
-  fs.writeFileSync(bin, `#!/usr/bin/env node
-const fs = require("fs"), path = require("path");
-const args = process.argv.slice(2), st = JSON.parse(fs.readFileSync(path.join(__dirname, "state.json"), "utf8"));
-fs.appendFileSync(path.join(__dirname, "calls.log"), JSON.stringify(args) + "\\n");
-if (args.join(" ") === "funnel status --json") { process.stdout.write(JSON.stringify(st.funnel)); process.exit(0); }
-if (args.join(" ") === "status --json") { process.stdout.write(JSON.stringify(st.status)); process.exit(0); }
-process.stderr.write("unexpected"); process.exit(2);
-`, { mode: 0o755 });
-  const prev = process.env.VYRE_TAILSCALE_BIN;
-  process.env.VYRE_TAILSCALE_BIN = bin;
-  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
-
   const s = await r.ok("hooks.status", {}, "cli", {});
-  assert.equal(s.funnel.read, true);
-  assert.deepEqual(s.node, { dnsName: host, funnel: true, https: true, ports: null });
-  assert.equal(s.urls["northwind-orders"], `https://${host}:8443/hooks/northwind-orders`);
-  assert.deepEqual(s.mismatches.map(m => [m.kind, m.route]).sort(), [["funnel-without-route", "harlow-forms"], ["route-not-served", "northwind-stripe"]]);
-  assert.equal(s.mismatches.find(m => m.kind === "funnel-without-route").harmless, true);
-  assert.equal(s.mismatches.find(m => m.kind === "route-not-served").fix, `tailscale funnel --bg --https=8443 --set-path=/hooks/northwind-stripe http://127.0.0.1:${r.port}/hooks/northwind-stripe`);
-  // Read-only: status and funnel status, nothing else.
-  const calls = fs.readFileSync(path.join(dir, "calls.log"), "utf8").trim().split("\n").map(l => JSON.parse(l).join(" "));
-  assert.deepEqual([...new Set(calls)].sort(), ["funnel status --json", "status --json"]);
-
-  // A node the policy does not let Funnel publish, and no tailscale at all.
-  fs.writeFileSync(path.join(dir, "state.json"), JSON.stringify({ funnel: {}, status: { Self: { DNSName: `${host}.`, CapMap: {} } } }));
-  const kinds = (await r.ok("hooks.status", {}, "cli", {})).mismatches.map(m => m.kind);
-  assert.ok(kinds.includes("no-funnel-attr") && kinds.includes("no-https"), kinds.join());
-  process.env.VYRE_TAILSCALE_BIN = path.join(dir, "missing");
-  const gone = await r.ok("hooks.status", {}, "cli", {});
-  assert.deepEqual([gone.funnel.read, gone.funnel.why], [false, "Tailscale is not installed"]);
+  assert.ok(s.routes.includes("northwind-stripe"));
+  assert.equal(s.public.available, false);
+  assert.match(s.public.why, /not available yet/);
+  assert.ok(Object.values(s.urls).every(u => u === null), "no route has a public address");
+  assert.equal(s.listening, true);
+  assert.ok(!/tailscale|funnel/i.test(JSON.stringify(s)), "nothing in the answer names another product");
   await r.no("hooks.status", {}, "tailnet-guest:sam@example.com", "denied", {});
 });
 

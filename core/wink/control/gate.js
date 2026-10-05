@@ -312,10 +312,18 @@ export function createGate(o) {
   }
 
   /** @type {string|null} */
-  const pin = o.tls ? certPin(o.tls.cert) : null;
+  let pin = o.tls ? certPin(o.tls.cert) : null;
 
   return {
-    pin, stats: () => ({ ...stats, open: open.size, blockedAddrs: blocked.size }),
+    get pin() { return pin; },
+    /** A renewed certificate takes effect for the next handshake; open connections keep theirs. Only a TLS gate has one. @param {{ cert: string, key: string }} t */
+    setTls(t) {
+      if (!o.tls) throw new Error("this gate does not serve TLS");
+      const next = certPin(t.cert);
+      /** @type {import("node:https").Server} */ (server).setSecureContext({ cert: t.cert, key: t.key });
+      pin = next;
+    },
+    stats: () => ({ ...stats, open: open.size, blockedAddrs: blocked.size }),
     block, isBlocked, reportLog,
     unblock(/** @type {string} */ addr) { blocked.delete(addrKey(addr)); },
     listen() {

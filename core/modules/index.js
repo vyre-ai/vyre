@@ -197,8 +197,6 @@ export const RESERVED_EVENTS = {
   sync: ["sync"], gate: ["gate"], push: ["push", "assistant"], presence: ["presence"],
   said: ["assistant"], memory: ["memory"], "artifact-links": ["artifacts"],
   // thread.deleted wipes a chat history: only the session modules that own threads emit thread.*.
-  // tailscale.changed tells the setup page the tailnet is connected: only the network module says so.
-  tailscale: ["network"],
   thread: ["threads", "harness", "link", "projects", "sessions", "artifacts"],
 };
 
@@ -1114,7 +1112,7 @@ export class Registry {
         ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
-      ...(m.name === "relay" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
+      ...(m.name === "relay" || m.name === "wink" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
       // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
       // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.
       provide: (/** @type {string} */ name, /** @type {any} */ value) => provideOnce(this.deps, m.name, name, value),

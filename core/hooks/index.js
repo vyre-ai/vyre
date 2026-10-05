@@ -1,5 +1,5 @@
 // @ts-check
-// hooks: inbound webhooks from the public internet, through Tailscale Funnel (ADR 0014 part 10).
+// hooks: inbound webhooks from the public internet (ADR 0014 part 10; the way in is the relay, team/BACKLOG.md "public ingress").
 //
 // This is the only part of Vyre the internet reaches, so it is built to do almost nothing:
 //   - Off by default (config hooks.enabled). Off means no listener at all.
@@ -12,17 +12,13 @@
 //   - A watcher that listens for hook.received on its route gets the delivery handed to it by
 //     the watcher runtime, which reads it with hooks.delivery.
 //
-// Funnel terminates at tailscaled's serve proxy, which ADR 0002 rejects for identity. That does
-// not matter here: a webhook has no identity to forge, only a signature to check. Vyre never runs
-// `tailscale funnel` to change anything; hooks.status reads `funnel status --json` and shows the
-// person the exact commands (funnel.js).
+// A webhook has no identity to forge, only a signature to check, so whatever carries it to the loopback listener needs no trust of its own. Until the relay carries public
+// requests down to the home (BACKLOG, "public ingress"), nothing publishes a route: hooks.status says so, and a route that is open still stores what reaches the listener.
 
 import * as config from "../config/index.js";
-import { run as tailscale } from "../names/tailscale.js";
 import { listen, HOST, BODY_LIMIT, PER_MINUTE } from "./listener.js";
 import { SCHEMES, verify } from "./verify.js";
 import { Deliveries, MIGRATIONS } from "./deliveries.js";
-import { parseFunnel, funnelNode, mismatches, openCommand, closeCommand, offCommand, dockerPrefix, FUNNEL_PORT } from "./funnel.js";
 
 /**
  * Test seams, keyed by the VYRE_HOME a registry runs with: { now }. Production never sets them.
@@ -36,7 +32,7 @@ const NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const VAULT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
 const HEADER = /^[a-z0-9][a-z0-9-]{0,63}$/;
 /** Headers that carry something else, or that a proxy on the way may set. */
-const NOT_A_SIGNATURE = /^(?:content-type|content-length|transfer-encoding|host|user-agent|connection|cookie|x-forwarded-.*|tailscale-.*|forwarded)$/;
+const NOT_A_SIGNATURE = /^(?:content-type|content-length|transfer-encoding|host|user-agent|connection|cookie|x-forwarded-.*|forwarded)$/;
 
 const isAgent = caller => /(?:^|[\s:])agent:/.test(String(caller || ""));
 const isPublic = caller => /^(?:internet|tailnet-guest):/.test(String(caller || ""));
@@ -135,7 +131,6 @@ export default {
     const routeOut = (name, r) => ({
       name, path: `/hooks/${name}`, verify: { scheme: r.scheme, header: r.header, secret: r.secret }, opened: r.opened || null,
       deliveries: store.count(name), recent: store.recent(name),
-      funnel: { open: openCommand(name, port()), close: closeCommand(name) },
     });
 
     ctx.tool("hooks.enable", {
@@ -161,7 +156,7 @@ export default {
     });
 
     ctx.tool("hooks.open", {
-      description: "Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme hmac-sha256 (hex HMAC of the body in the header you name), github (X-Hub-Signature-256) or stripe (Stripe-Signature, 5 minute tolerance). secret is the vault item holding the signing secret, granted to the hooks module. A route with no scheme is refused. The owner's, never an agent's. Vyre does not publish it: the result has the tailscale funnel command for the person to run.",
+      description: "Open one webhook route, /hooks/<name>, checked by the sender's signature: scheme hmac-sha256 (hex HMAC of the body in the header you name), github (X-Hub-Signature-256) or stripe (Stripe-Signature, 5 minute tolerance). secret is the vault item holding the signing secret, granted to the hooks module. A route with no scheme is refused. The owner's, never an agent's. It is stored and verified here; it is reachable from the internet once public links are available.",
       input: obj({ name: str, verify: obj({ scheme: { type: "string", enum: Object.keys(SCHEMES) }, header: str, secret: str }, ["scheme", "secret"]) }, ["name", "verify"]),
       presence: { summary: i => `Open /hooks/${i && i.name} to the internet, accepting only deliveries with a valid ${i && i.verify && i.verify.scheme} signature` },
       run: async ({ name, verify: v }, { caller }) => {
@@ -188,15 +183,14 @@ export default {
           next: [
             ...(cfg().enabled ? [] : ["turn the listener on with hooks.enable { on: true }"]),
             ...(ready ? [] : [`let the hooks module use the secret: vyre vault grant ${v.secret} hooks`]),
-            `publish the path with Funnel (on a Docker box, prefix: ${dockerPrefix.trim()}): ${openCommand(name, port())}`,
-            `give the sender the address from hooks.status, https://<box>.<tailnet>.ts.net:${FUNNEL_PORT}/hooks/${name}`,
+            "the route is stored and verified here; it is not reachable from the internet until public links are available (hooks.status says when)",
           ],
         };
       },
     });
 
     ctx.tool("hooks.close", {
-      description: "Close one webhook route. vyred answers 404 on its path at once; the result has the tailscale funnel command that stops publishing it, and when it was the last route, the one that turns the Funnel port off. The owner's, never an agent's.",
+      description: "Close one webhook route. vyred answers 404 on its path at once; The owner's, never an agent's.",
       input: obj({ name: str }, ["name"]),
       presence: { summary: i => `Close /hooks/${i && i.name}` },
       run: async ({ name }, { caller }) => {
@@ -211,41 +205,22 @@ export default {
         ctx.log(`route ${name} closed by ${caller}`);
         const last = Object.keys(routes).length === 0;
         return {
-          route: name, closed: true, funnel: { close: closeCommand(name), ...(last ? { off: offCommand() } : {}) },
-          note: "Until the Funnel command runs, Funnel still forwards the path; vyred answers 404 there, so nothing gets in",
+          route: name, closed: true, last,
+          note: "vyred answers 404 on the path at once, so nothing gets in",
         };
       },
     });
 
     ctx.tool("hooks.status", {
-      description: "The listener, the open routes, and what Tailscale Funnel is publishing from this node (read with tailscale funnel status --json, never changed): each route's public address, whether the policy grants the funnel attribute, and every mismatch (a route Funnel does not publish, a Funnel path with no route, anything on 443), with the command that fixes it.",
+      description: "The listener and the open routes: each route's path, scheme and deliveries, and whether the internet can reach it (not yet: public links come through the relay).",
       input: obj({}),
       run: async (_i, { caller }) => {
         reader(caller);
-        const c = cfg();
-        const names = Object.keys(c.routes);
-        const [fs, st] = await Promise.all([tailscale(["funnel", "status", "--json"]), tailscale(["status", "--json"])]);
-        /** @type {any} */
-        let funnel;
-        if (fs.code === 127) funnel = { read: false, why: "Tailscale is not installed", serving: [] };
-        else if (fs.code !== 0) funnel = { read: false, why: (fs.err || fs.out).trim().split("\n")[0] || `tailscale funnel status exited ${fs.code}`, serving: [] };
-        else {
-          try { funnel = { read: true, serving: parseFunnel(fs.out.trim() ? JSON.parse(fs.out) : {}) }; }
-          catch { funnel = { read: false, why: "tailscale funnel status --json did not print JSON", serving: [] }; }
-        }
-        let node = { dnsName: null, funnel: false, https: false, ports: null };
-        try { if (st.code === 0) node = funnelNode(JSON.parse(st.out)); } catch {}
-        const host = node.dnsName || (funnel.serving.find(s => s.funnel && s.host) || {}).host || null;
-        const problems = funnel.read ? mismatches(names, funnel.serving, { port: port(), enabled: c.enabled }) : [];
-        if (st.code === 0 && !node.funnel && names.length) problems.push({ kind: "no-funnel-attr", harmless: false, message: "the tailnet policy does not give this node the funnel attribute, so Funnel cannot publish anything", fix: null });
-        if (st.code === 0 && !node.https && names.length) problems.push({ kind: "no-https", harmless: false, message: "HTTPS certificates are off for this tailnet; Funnel needs them (admin console, DNS, Enable HTTPS)", fix: null });
-        if (node.ports && !node.ports.includes(FUNNEL_PORT)) problems.push({ kind: "port-not-allowed", harmless: false, message: `the policy limits Funnel to ports ${node.ports.join(", ")}, which leaves out ${FUNNEL_PORT}`, fix: null });
+        const names = Object.keys(cfg().routes);
         return {
-          ...state(), routes: names, node, funnel,
-          urls: Object.fromEntries(names.map(n => [n, host ? `https://${host}:${FUNNEL_PORT}/hooks/${n}` : null])),
-          mismatches: problems,
-          commands: Object.fromEntries(names.map(n => [n, { open: openCommand(n, port()), close: closeCommand(n) }])),
-          docker: `On a Docker box, run each command as: ${dockerPrefix}<command>`,
+          ...state(), routes: names,
+          public: { available: false, why: "public links are not available yet; a route is stored and verified here, and reachable from this machine only" },
+          urls: Object.fromEntries(names.map(n => [n, null])),
         };
       },
     });

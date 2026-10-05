@@ -17,14 +17,14 @@ export function h(doc, tag, attrs, ...kids) {
 }
 
 /** @typedef {{ begin: (machine?: "linux"|"mac") => void, copy: (text: string, button: HTMLElement) => Promise<boolean>|boolean, setName: (text: string) => void, claim: () => void, confirmWords: () => void, denyWords: () => void, markSaved: () => void, openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void,
- *   continueToAi: () => void, continueToTailscale: () => void, skipAi?: () => void, connectTailscale: () => void, startAi: (provider: string) => void, openAiKey: (kind: string) => void, submitAiKey: (f: { kind: string, key: string, base_url?: string, model?: string }) => void, submitAiCode: (id: string, code: string) => void,
+ *   continueToAi: () => void, continueToNetwork: () => void, skipAi?: () => void, readNetwork: () => void, startAi: (provider: string) => void, openAiKey: (kind: string) => void, submitAiKey: (f: { kind: string, key: string, base_url?: string, model?: string }) => void, submitAiCode: (id: string, code: string) => void,
  *   continueToDevices: () => void, addPhone: () => void, drawRing: (slot: HTMLElement) => void,
  *   continueToClaim: () => void, mintClaim: () => void, drawQr: (slot: HTMLElement, text: string) => void,
  *   openDomain: (open: boolean) => void, setDomain: (text: string) => void, checkDomain: () => void }} Actions */
 
 /** Per root: the region elements and the key each was last built for. @type {WeakMap<object, { regions: Record<string, any>, keys: Record<string, string>, stage: string|null }>} */
 const memory = new WeakMap();
-const REGIONS = ["timeline", "head", "words", "naming", "domain", "ai", "tailscale", "devices", "claim", "log"];
+const REGIONS = ["timeline", "head", "words", "naming", "domain", "ai", "network", "devices", "claim", "log"];
 
 /**
  * @param {import("./flow.js").FlowState} s
@@ -131,10 +131,10 @@ export function render(s, ctx) {
       el("h1", { tabindex: "-1" }, "Add your phone"),
       el("p", { class: "lead" }, "Your phone pairs by scanning a ring with the Vyre app's camera. The ring works once, for five minutes, and this page can make only one."),
     ];
-    if (s.stage === "tailscale") return [
+    if (s.stage === "network") return [
       el("p", { class: "lbl" }, stepLabel()),
-      el("h1", { tabindex: "-1" }, "Connect your server to Tailscale"),
-      el("p", { class: "lead" }, "Tailscale is the private network your devices and this server share. You sign in on Tailscale's own page."),
+      el("h1", { tabindex: "-1" }, "Your server's network"),
+      el("p", { class: "lead" }, "Vyre's private network is built in. Your devices and this server find each other with nothing to install and nothing to sign in to."),
     ];
     return [
       el("p", { class: "lbl" }, "Stopped"),
@@ -175,7 +175,7 @@ export function render(s, ctx) {
       const code = saved ? null : s.named.recoveryCode;
       const copy = el("button", { type: "button", class: "btn secondary" }, "Copy");
       if (code) copy.addEventListener("click", ev => actions.copy(code, /** @type {HTMLElement} */ (ev.currentTarget)));
-      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToTailscale()));
+      const go = el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToNetwork()));
       return code ? [
         el("h2", { class: "sub" }, "Your recovery code"),
         el("p", { class: "lead" }, "Save this somewhere safe. It is shown once. If you ever reinstall, it takes this address back."),
@@ -274,28 +274,20 @@ export function render(s, ctx) {
     s.ai.accounts.some(a => a.step === "done") ? null : el("p", { class: "note" }, "Skipping is fine. Add one later in Settings, under Your AI. Until you do, your assistant cannot answer."),
   ]);
 
-  // ---- tailscale: the box joins the tailnet, then its address is published ----
-  const t = s.tailscale, ts = t.status;
-  const tsKey = s.stage === "tailscale" ? `t:${ts ? ts.state : "?"}|${ts ? ts.tailnetKind : ""}|${t.loginUrl}|${t.busy}|${t.error}|${t.address ? t.address.phase + t.address.why : ""}` : "none";
-  region("tailscale", tsKey, () => {
-    if (s.stage !== "tailscale") return [];
+  // ---- network: built in, so the page only shows how the server is reachable ----
+  const nt = s.network, ns = nt.status;
+  const ntKey = s.stage === "network" ? `n:${ns ? ns.state + "|" + ns.path : "?"}|${nt.busy}|${nt.error}` : "none";
+  region("network", ntKey, () => {
+    if (s.stage !== "network") return [];
     const kids = [];
-    const named = s.named && (s.named.address || s.named.name);
-    if (ts && ts.state === "connected") {
-      kids.push(el("p", { class: "hint" }, `Your server is on ${ts.tailnet || "your tailnet"}${ts.login ? ` as ${ts.login}` : ""}.`));
-      if (ts.tailnetKind === "organization") kids.push(el("p", { class: "warn", role: "alert" }, "This is a work network. Your company's admins can see and reach this server. A personal Tailscale account is usually what you want."));
-      const ph = t.address ? t.address.phase : null;
-      if (ph === "serving") kids.push(el("p", { class: "hint" }, `Your address is live: ${named}.`));
-      else if (ph === "failed") kids.push(el("p", { class: "warn", role: "alert" }, t.address && t.address.why ? t.address.why : "The address could not be published."));
-      else kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Publishing your address"));
-    } else if (ts && ts.state === "needs-approval") {
-      kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Waiting for approval in your Tailscale admin"));
-    } else {
-      kids.push(el("div", { class: "actions" }, button(t.busy ? "Getting the link" : "Connect my server", "primary", () => actions.connectTailscale())));
-      if (t.loginUrl) kids.push(el("p", { class: "hint" }, "Open ", el("a", { href: t.loginUrl, target: "_blank", rel: "noopener noreferrer" }, "Tailscale's sign-in page"), " and sign in. This page notices when your server joins."));
+    if (ns) {
+      const line = ns.state === "connected" ? "Your server is reachable directly." : ns.state === "relayed" ? "Your server is reachable through Vyre's relay, which carries the connection end-to-end encrypted. This is normal." : ns.state === "joining" ? "Your server's network is coming up." : ns.state === "offline" ? "Your server's link is down for now. Setup can carry on." : "Your server's network is ready.";
+      kids.push(el("p", { class: "hint" }, line));
+    } else if (nt.busy || !nt.error) {
+      kids.push(el("p", { class: "status", role: "status" }, el("span", { class: "ring", "aria-hidden": "true" }), "Looking at your server's network"));
     }
-    if (ts && ts.state === "connected" && t.address && t.address.phase === "serving") kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi())));
-    if (t.error) kids.push(el("p", { class: "warn", role: "alert" }, t.error));
+    if (nt.error) { kids.push(el("p", { class: "warn", role: "alert" }, nt.error)); kids.push(el("div", { class: "actions" }, button("Look again", "quiet", () => actions.readNetwork()))); }
+    if (ns || nt.error) kids.push(el("div", { class: "actions" }, button("Continue", "primary", () => actions.continueToAi())));
     return kids;
   });
 

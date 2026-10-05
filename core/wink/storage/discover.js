@@ -148,9 +148,27 @@ export function nfsScanner({ run: sh = run, hosts = () => [], extra = () => [] }
   };
 }
 
+/** Real block-device mounts from /proc/self/mountinfo text: an attached cloud volume (/mnt/volume_nyc1_01) or a disk mounted anywhere, never the system's own partitions. @param {string} text @returns {{ path: string, source: string, fstype: string }[]} */
+export function parseMountinfo(text) {
+  const SYSTEM = /^\/(boot(\/.*)?|efi|usr|etc|var\/lib\/(docker|containerd|kubelet|snapd)(\/.*)?|snap(\/.*)?|run(\/.*)?|proc|sys|dev)$/;
+  const out = [];
+  let rootSource = "";
+  for (const line of String(text).split("\n")) {
+    const dash = line.indexOf(" - ");
+    if (dash < 0) continue;
+    const a = line.slice(0, dash).split(" "), b = line.slice(dash + 3).split(" ");
+    const mount = (a[4] || "").replace(/\\040/g, " "), fstype = b[0] || "", source = b[1] || "";
+    if (mount === "/") rootSource = source;
+    if (!source.startsWith("/dev/") || /^(squashfs|iso9660|overlay|tmpfs)$/.test(fstype)) continue;
+    if (SYSTEM.test(mount) || mount === "/") continue;
+    out.push({ path: mount, source, fstype });
+  }
+  return out.filter(m => m.source !== rootSource && !/^\/dev\/loop/.test(m.source));
+}
+
 /**
- * Disks plugged into this device: the mount points under the usual places, with their size when the system says it.
- * @param {{ roots?: string[], fs?: Pick<typeof fs, "readdirSync" | "statfsSync" | "statSync"> }} [o]
+ * Disks attached to this device: real block-device mounts (a cloud volume on a server, a USB disk on a computer) and the mount points under the usual places, with their size when the system says it.
+ * @param {{ roots?: string[], fs?: Pick<typeof fs, "readdirSync" | "statfsSync" | "statSync" | "readFileSync"> }} [o]
  */
 export function localDiskScanner({ roots = ["/Volumes", "/media", "/mnt"], fs: f = fs } = {}) {
   return {
@@ -158,19 +176,23 @@ export function localDiskScanner({ roots = ["/Volumes", "/media", "/mnt"], fs: f
     /** @returns {Promise<{ found: Found[], note?: string }>} */
     async scan() {
       /** @type {Found[]} */ const found = [];
+      const seenPath = new Set();
+      const add = (/** @type {string} */ name, /** @type {string} */ p) => {
+        if (seenPath.has(p)) return;
+        try {
+          if (!f.statSync(p).isDirectory()) return;
+          const s = f.statfsSync(p);
+          // A mount point of the system's own drive is not a drive someone plugged in.
+          if (!s.blocks) return;
+          seenPath.add(p);
+          found.push({ name, kind: "usb-disk", path: p, size: Number(s.blocks) * Number(s.bsize), via: "local" });
+        } catch { /* not a mount */ }
+      };
+      try { for (const m of parseMountinfo(String(f.readFileSync("/proc/self/mountinfo", "utf8")))) add(m.path.split("/").filter(Boolean).pop() || m.path, m.path); } catch { /* no mountinfo here (macOS, Windows) */ }
       for (const root of roots) {
         let names = [];
         try { names = /** @type {string[]} */ (/** @type {any} */ (f.readdirSync(root))); } catch { continue; }
-        for (const n of names.slice(0, 64)) {
-          const p = `${root}/${n}`;
-          try {
-            if (!f.statSync(p).isDirectory()) continue;
-            const s = f.statfsSync(p);
-            // A mount point of the system's own drive is not a drive someone plugged in.
-            if (!s.blocks) continue;
-            found.push({ name: n, kind: "usb-disk", path: p, size: Number(s.blocks) * Number(s.bsize), via: "local" });
-          } catch { /* not a mount */ }
-        }
+        for (const n of names.slice(0, 64)) add(n, `${root}/${n}`);
       }
       return { found };
     },

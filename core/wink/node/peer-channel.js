@@ -165,8 +165,11 @@ export async function listenPeers(opts) {
     c.destroy();
     try { opts.onRefuse?.(why); } catch { /* the reporter must not break the listener */ }
   };
+  /** Every open connection, so close() can end the ones a dead path left half-open (a peer whose node was removed never sends a FIN). @type {Set<net.Socket>} */
+  const open = new Set();
   /** @type {net.Server} */
   const server = net.createServer(c => {
+    open.add(c); c.once("close", () => open.delete(c));
     const problem = pathProblem(dir, sock, uid);
     if (problem) { refuse(c, problem); server.close(); return; }
     let buf = Buffer.alloc(0);
@@ -192,6 +195,11 @@ export async function listenPeers(opts) {
   if (process.platform !== "win32") fs.chmodSync(sock, 0o600);
   return {
     path: sock, stats,
-    close: () => new Promise(resolve => { server.close(() => { try { fs.unlinkSync(sock); } catch { /* gone */ } resolve(); }); }),
+    close: () => new Promise(resolve => {
+      server.close(() => { try { fs.unlinkSync(sock); } catch { /* gone */ } resolve(); });
+      // server.close waits for every connection to end; give a live one a moment to finish, then end it
+      const t = setTimeout(() => { for (const c of open) c.destroy(); }, 1000);
+      t.unref && t.unref();
+    }),
   };
 }
