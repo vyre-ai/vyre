@@ -30,7 +30,10 @@ let authed = false;
 const MODES = { availableModes: [{ id: "default", name: "Default" }, { id: "plan", name: "Plan" }, { id: "bypassPermissions", name: "Bypass permissions" }, { id: "agent-full-access", name: "Full access" }, ...(process.env.FAKE_ACP_EXTRA_MODE ? [{ id: process.env.FAKE_ACP_EXTRA_MODE, name: process.env.FAKE_ACP_EXTRA_MODE }] : [])] };
 
 async function prompt(id, blocks) {
-  const t = blocks.map(b => b.text || "").join("");
+  // FAKE_ACP_LOG gets every prompt as the blocks it arrived in, so a test can see what rode ahead of the person's words.
+  log({ prompt: blocks.map(b => b.text || "") });
+  // The environment brief and the role ride in a block of their own at the head of a process's first prompt (core/sessions/environment.js): the commands below are read from the blocks after it, and "echo" says it all.
+  const t = (blocks.length > 1 && String(blocks[0].text || "").startsWith("[Vyre environment]") ? blocks.slice(1) : blocks).map(b => b.text || "").join("");
   cancelled = false;
   let m;
   if ((m = /^bash (.+)$/.exec(t))) {

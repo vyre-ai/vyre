@@ -90,7 +90,7 @@ test("acp: memory goes ahead of the person's words on every prompt, the brief on
   const w = world(t);
   const asked = [];
   const s = open(w, { system: { text: "VYRE-PROMPT" }, memory: async q => { asked.push(q); return [{ type: "text", text: q.first ? "BRIEF" : "LINES" }]; } });
-  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPTBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
+  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPT\n\nBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
   assert.equal(await s.say("and the domain"), "echo: LINESand the domain");
   assert.deepEqual(asked, [{ prompt: "where is the site hosted", first: true }, { prompt: "and the domain", first: false }], "memory searches on the person's words only");
   await s.proc.stop(1000);
