@@ -29,7 +29,7 @@ export function cbor(b) {
     if (n === 26) { const v = ((b[i] << 24) >>> 0) + (b[i + 1] << 16) + (b[i + 2] << 8) + b[i + 3]; i += 4; return v; }
     throw refuse("That passkey answer is not in a shape Vyre reads.", "bad_attestation");
   };
-  /** @type {(depth: number) => any} */
+  /** @param {number} depth @returns {any} */
   const item = (depth) => {
     if (depth > 8 || i >= b.length) throw refuse("That passkey answer is not in a shape Vyre reads.", "bad_attestation");
     const head = b[i++], major = head >> 5, n = u(head & 31);
