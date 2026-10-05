@@ -27,7 +27,7 @@ export const TEMPLATE_KINDS = ["email", "letter", "document", "message"];
 export const VIEW_TYPES = ["list", "board", "calendar", "page", "dashboard"];
 const COMMON = ["label", "description", "required", "unique", "visible_if", "required_if"];
 /** Options each field kind takes besides the common ones. Exactly what the kernel's FieldDefinition can say. */
-const FIELD_OPTS = { choice: [], multi_choice: [], link: ["to"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
+const FIELD_OPTS = { choice: [], multi_choice: [], link: ["to", "many", "inverse"], sealed: ["class", "level", "reveal_roles", "hint_allowed"] };
 
 /** @param {string} path @param {string} msg */
 const bad = (path, msg) => { throw new LanguageError("invalid_definition", msg, { path }); };
@@ -53,7 +53,7 @@ const strList = (v, path, max = 100) => { if (!Array.isArray(v) || v.length > ma
 const expr = (v, path) => { const s = str(v, path, { max: 2000 }); try { parseExpr(/** @type {string} */ (s)); } catch (e) { bad(path, /** @type {Error} */ (e).message); } return s; };
 /** Copy defined keys in the given order. @param {Record<string, any>} o @param {string[]} order */
 /** the order a stored field is written in */
-export const FIELD_ORDER = ["kind", "label", "description", "required", "required_if", "visible_if", "unique", "options", "to", "seal"];
+export const FIELD_ORDER = ["kind", "label", "description", "required", "required_if", "visible_if", "unique", "options", "to", "many", "inverse", "seal"];
 const ordered = (o, order) => { /** @type {Record<string, any>} */ const out = {}; for (const k of order) if (o[k] !== undefined) out[k] = o[k]; return out; };
 /** "full_name" -> "Full name" */
 export const labelOf = (/** @type {string} */ n) => { const w = n.replace(/_/g, " "); return w[0].toUpperCase() + w.slice(1); };
@@ -69,7 +69,14 @@ function fieldBuilder(kind) {
     if (f.required_if !== undefined && f.required) bad(`defineField.${kind}`, "A field is required, or required_if something, not both");
     if (f.visible_if !== undefined && f.required) bad(`defineField.${kind}`, "A field that is only sometimes shown cannot be required always: use required_if");
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
-    if (kind === "link") f.to = name(opts.to, "defineField.link.to");
+    if (kind === "link") {
+      f.to = name(opts.to, "defineField.link.to");
+      if (opts.many !== undefined) { if (bool(opts.many, "defineField.link.many")) f.many = true; }
+      if (opts.inverse !== undefined) {
+        onlyKeys(opts.inverse, ["name", "label"], "defineField.link.inverse");
+        f.inverse = { name: name(opts.inverse.name, "defineField.link.inverse.name"), label: str(opts.inverse.label, "defineField.link.inverse.label", { max: 120 }) };
+      }
+    }
     if (kind === "sealed") {
       if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`);
       const level = opts.level ?? "ai"; if (!SEAL_LEVELS.includes(level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`);

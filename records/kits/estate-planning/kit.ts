@@ -23,7 +23,7 @@ export const Matter = defineType({
   icon: "IconBriefcase",
   fields: {
     title: defineField.text({ label: "Title", required: true }),
-    client: defineField.link({ to: "contact", label: "Client" }),
+    client: defineField.link({ to: "contact", label: "Client", inverse: { name: "matters", label: "Matters" } }),
     plan: defineField.choice(["Will", "Trust", "Both"], { label: "Plan" }),
     fee: defineField.money({ label: "Fee" }),
     engagement_signed: defineField.boolean({ label: "Engagement letter signed" }),

@@ -27,8 +27,10 @@ test("records.*: a signed-in device creates and queries records in its Space und
   await d.kernel.gateway.records.define(ownerChain, { add_types: [CONTACT] }).catch(() => {});
   const types = await ok("records.types", {});
   assert.ok(JSON.stringify(types).includes("contact"));
-  assert.ok(types.types.every(t => !t.system && !/^(def-|flow-)/.test(t.name) && t.name !== "goal"), "the kernel's own types are left out by default: " + types.types.map(t => t.name));
+  assert.ok(types.types.every(t => !t.system && !/^(def-|flow-|kit-)/.test(t.name) && t.name !== "goal"), "the kernel's own types are left out by default: " + types.types.map(t => t.name));
   assert.ok((await ok("records.types", { system: true })).types.some(t => t.system === true), "and flagged when asked for");
+  const all = (await ok("records.types", { system: true })).types;
+  for (const n of ["kit-install", "kit-proposal", "def-role", "def-view"]) { const t = all.find(x => x.name === n); if (t) assert.equal(t.system, true, `${n} is a system type`); }
   // a type may say it is a project (the app lists Projects by that, no names hard-coded); the store keeps it and records.types returns it
   await d.kernel.gateway.records.define(ownerChain, { add_types: [{ name: "matter", label: "Matter", kind: "project", fields: [{ name: "title", kind: "text", label: "Title" }] }] });
   assert.equal((await ok("records.types", {})).types.find(t => t.name === "matter").kind, "project");

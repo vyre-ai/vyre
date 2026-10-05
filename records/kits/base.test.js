@@ -89,3 +89,16 @@ test("re-seeding a core type that carries a person-added field is not refused, a
   // a person's own second type with that label is refused
   await assert.rejects(() => host.defineTypes([{ name: `${note.name}_mine`, label: note.label, fields: note.fields }]), { code: "type_exists" });
 });
+
+test("a Contact shows Leads, Clients, Appointments and Projects: every link to it in the base Kit and the core types has a named inverse", () => {
+  const types = [...CORE_TYPES, ...BASE.types.filter((t) => !CORE_TYPES.some((c) => c.name === t.name))];
+  const toContact = types.flatMap((t) => t.fields.filter((f) => f.kind === "link" && f.to === "contact").map((f) => ({ at: `${t.name}.${f.name}`, inverse: f.inverse })));
+  for (const l of toContact) assert.ok(l.inverse && l.inverse.name && l.inverse.label, `${l.at} has a named inverse`);
+  const labels = toContact.map((l) => l.inverse.label);
+  for (const want of ["Leads", "Clients", "Appointments", "Projects"]) assert.ok(labels.includes(want), `a Contact shows ${want}`);
+  // every link in core and base has an inverse, bar the ones that point at any record
+  for (const t of types) for (const f of t.fields) if (f.kind === "link" && f.to) assert.ok(f.inverse, `${t.name}.${f.name} has a named inverse`);
+  // no two links to one type share an inverse name
+  const seen = new Map();
+  for (const t of types) for (const f of t.fields) if (f.kind === "link" && f.inverse) { const key = `${f.to}.${f.inverse.name}`; assert.ok(!seen.has(key) || seen.get(key) === `${t.name}.${f.name}`, `${key} is used twice`); seen.set(key, `${t.name}.${f.name}`); }
+});
