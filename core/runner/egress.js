@@ -9,7 +9,7 @@
 //   - nothing is cached or written: the vault is asked once per request and the value lives in one header;
 //   - only the routes the space granted exist; any other path, host or method gets a plain refusal.
 //
-// A route is { prefix: "/provider", upstream: "https://models.example", credential?: { header, prefix? }, allow: [{ method, path }] }.
+// A route is { prefix: "/provider", upstream: "https://models.example", credential?: { header, prefix? }, headers?: { name: value }, allow: [{ method, path }] }.
 // A route with a credential MUST list what the session may do with it: each entry names a method and a path ("/v1/messages",
 // or "/v1/files/*" for a prefix). Anything else is refused here, before the vault is asked (reviewer-2 R4: a read-only grant must
 // never become a refund or a delete). The vault is then asked per request with the method and path, and it classifies them the
@@ -31,7 +31,7 @@ const MAX_BODY = 64 * 1024 * 1024;
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 /**
- * @param {{ routes: { prefix: string, upstream: string, credential?: { header: string, prefix?: string }, allow?: { method: string, path: string }[] }[],
+ * @param {{ routes: { prefix: string, upstream: string, credential?: { header: string, prefix?: string }, headers?: Record<string, string>, allow?: { method: string, path: string }[] }[],
  *   vault: { credential(o: { session: string, route: string, lease?: string, method: string, path: string }): Promise<string> },
  *   session: string, token: string, connect?: string[], internet?: boolean, lookup?: any, dial?: (ip: string, port: number) => any, lease?: () => string, onEvent?: (e: { route: string, status: number, ms: number, error?: string }) => void,
  *   request?: typeof http.request }} o
@@ -42,6 +42,8 @@ export function createEgress(o) {
     if (!/^\/[a-z0-9-]+$/.test(r.prefix)) throw new Error("a route prefix is one lowercase segment");
     if (r.credential && !(Array.isArray(r.allow) && r.allow.length && r.allow.every(a => /^[A-Z]+$/.test(a.method) && /^\/[^\s]*$/.test(a.path)))) throw new Error("a route with a credential must list its allowed methods and paths");
     if (r.url.protocol !== "https:" && !isLoopback(r.url.hostname)) throw new Error("an upstream must be https");
+    // static headers the Space adds to every request on this route (for a provider's sign-in token: the beta flag that makes it valid); names and values are plain, never a credential
+    if (r.headers !== undefined && !(r.headers && typeof r.headers === "object" && Object.entries(r.headers).every(([k, v]) => /^[a-z][a-z0-9-]{0,40}$/.test(k) && !["authorization", "x-api-key", "host", "content-length"].includes(k) && typeof v === "string" && /^[\x20-\x7e]{1,200}$/.test(v)))) throw new Error("a route's own headers are lowercase names with plain values");
   }
   const server = http.createServer(async (req, res) => {
     const t0 = Date.now();
@@ -78,6 +80,12 @@ export function createEgress(o) {
         const key = k.toLowerCase();
         if (STRIP_IN.has(key) || key === "x-api-key" || key === "authorization" || (route.credential && key === route.credential.header.toLowerCase())) continue;
         headers[k] = v;
+      }
+      // The Space's static headers win over the session's, except a comma list the session also sends (anthropic-beta): the Space's flags are added to the program's own, never in place of them.
+      if (route.headers) for (const [k, v] of Object.entries(route.headers)) {
+        const had = Object.keys(headers).find(h => h.toLowerCase() === k);
+        if (had && k === "anthropic-beta") { const set = new Set(String(headers[had]).split(",").map(x => x.trim()).filter(Boolean)); for (const f of v.split(",")) set.add(f.trim()); headers[had] = [...set].join(","); }
+        else { if (had) delete headers[had]; headers[k] = v; }
       }
       if (route.credential) {
         let secret;
