@@ -70,3 +70,12 @@ test("a sign-in token account becomes a bearer route with its beta flag; an API 
   assert.deepEqual(key.routes[0].credential, { header: "x-api-key" });
   assert.equal(key.routes[0].headers, undefined);
 });
+
+test("nothing that touches a credential on its way to a lent session writes any part of it to a log: the resolver and the lender's credential call hold no log line, and the debug switch is gone", () => {
+  const read = f => fs.readFileSync(new URL(f, import.meta.url), "utf8");
+  const d = read("./index.js"), a = d.indexOf("resolveCredential: async"), b = d.indexOf("forwardCredential: async");
+  assert.ok(a > 0 && b > a);
+  assert.doesNotMatch(d.slice(a, b), /\blog\(|console\.|slice\(|substring|ctx\.log/, "the resolver returns the value and logs nothing");
+  assert.doesNotMatch(read("../runner/lent-client.js"), /stderr|console\.|log\(/, "the lender's credential call logs nothing");
+  for (const f of ["./index.js", "../runner/egress.js", "../runner/index.js", "../runner/lent-client.js", "./lent-service.js"]) assert.doesNotMatch(read(f), /VYRE_DEBUG_LENT/, `${f} has no debug switch`);
+});

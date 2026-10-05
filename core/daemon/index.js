@@ -328,7 +328,6 @@ async function startLocked(opts, root, p, release) {
         const port = /** @type {any} */ (registry.deps).credentialsPort;
         // a subscription sign-in token (the claude setup-token item) or an API-key account's key: nothing else is resolved here
         const v = q && typeof q.ref === "string" && port ? (q.ref === "claude-setup-token" ? await port.credentials("claude") : typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null) : null;
-        if (process.env.VYRE_DEBUG_LENT) log(`lent: credential ${String(q && q.ref).slice(0, 40)} resolved: ${typeof v === "string" ? `${v.length} chars, starts ${v.slice(0, 11)}` : "nothing"}`);
         if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session"), { code: "not_found" });
         return v;
       },

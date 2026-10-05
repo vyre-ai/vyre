@@ -105,9 +105,7 @@ export function createEgress(o) {
         for (const [k, v] of Object.entries(ur.headers)) if (!STRIP_IN.has(k)) out[k] = v;
         res.writeHead(ur.statusCode || 502, out);
         ur.pipe(res);
-        // a development build says why the upstream refused (its own error text, never a credential): the first 160 bytes of a 4xx body
-        let why = ""; if (process.env.VYRE_DEBUG_LENT && (ur.statusCode || 0) >= 400) ur.on("data", c => { if (why.length < 160) why += String(c).slice(0, 160 - why.length).replace(/\s+/g, " "); });
-        ur.on("end", () => o.onEvent?.({ route: route.prefix, method: req.method, path: rest0, status: ur.statusCode || 0, ms: Date.now() - t0, ...(why ? { error: why } : {}) }));
+        ur.on("end", () => o.onEvent?.({ route: route.prefix, method: req.method, path: rest0, status: ur.statusCode || 0, ms: Date.now() - t0 }));
       });
       up.on("error", () => refuse(502, "the upstream did not answer", route.prefix));
       res.on("close", () => up.destroy());

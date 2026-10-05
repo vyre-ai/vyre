@@ -2,20 +2,21 @@
 // The home's end of a lent computer, for each Space this home serves (core/runner/lent-home.js): a member's computer runs one of the Space's sessions and checkpoints it here.
 // The peer door registers the result as the remote server's `lent` service. A lent session is the member's OWN session for the Space, run on their computer instead of the server: the Space's definition of it
 // is the agent the member runs (the same program a session on the server would start, named, not a path: the lender finds it on its own computer), with the provider as its only network. `lentSpec` (the daemon's
-// option) replaces the definition; `VYRE_LENT_AGENT` names another agent program on a development build.
+// option) replaces the definition; `VYRE_LENT_AGENT` names another agent program, only on a development build with `VYRE_LENT_AGENT_DEV=1`.
 import path from "node:path";
 import { createLentHome } from "../runner/lent-home.js";
+import { devSwitch } from "../../kernel/devbuild.js";
 
 /** The Space's definition of a member's own session: the agent by name, the provider as the only network, no credential route until the Space maps one (the vault answers per request, never the lender). */
-/** Arguments for the agent, from `VYRE_LENT_AGENT_ARGS` (a JSON list of strings) on a development build: how a test starts a one-shot turn. None otherwise. */
-const agentArgs = () => { try { const a = JSON.parse(process.env.VYRE_LENT_AGENT_ARGS || "[]"); return Array.isArray(a) && a.every(x => typeof x === "string") ? a.slice(0, 20) : []; } catch { return []; } };
+/** Arguments for the agent, from `VYRE_LENT_AGENT_ARGS` (a JSON list of strings), only on a development build with `VYRE_LENT_AGENT_DEV=1`: how a test starts a one-shot turn. None on any other build. */
+const agentArgs = () => { if (!devSwitch(process.env.VYRE_LENT_AGENT_DEV, undefined)) return []; try { const a = JSON.parse(process.env.VYRE_LENT_AGENT_ARGS || "[]"); return Array.isArray(a) && a.every(x => typeof x === "string") ? a.slice(0, 20) : []; } catch { return []; } };
 const PROVIDER_ALLOW = Object.freeze([{ method: "POST", path: "/v1/messages" }, { method: "POST", path: "/v1/messages/count_tokens" }, { method: "GET", path: "/v1/models" }]);
 /**
  * @param {{ item: string, base_url?: string | null, oauth?: boolean } | null} account the member's provider account: the vault item that holds its credential (a name, never a value), its own endpoint when it has one, and whether the credential is a
  *   subscription sign-in token (sent as a bearer token with the beta flag that makes it valid) rather than an API key (sent as x-api-key)
  */
 const defaultSpec = account => ({
-  command: process.env.VYRE_LENT_AGENT || "claude", args: agentArgs(), env: {},
+  command: (devSwitch(process.env.VYRE_LENT_AGENT_DEV, undefined) && process.env.VYRE_LENT_AGENT) || "claude", args: agentArgs(), env: {},
   // the provider is the session's only network: the lender's proxy forwards /provider to it and the home's vault answers the credential per request, for this lease only. The session itself holds
   // nothing but its own per-session token: the credential is put on the request at the proxy.
   routes: account ? [{ prefix: "/provider", upstream: account.base_url || "https://api.anthropic.com",
