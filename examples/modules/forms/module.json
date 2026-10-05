@@ -4,15 +4,36 @@
   "version": "0.1.0",
   "vyre": "1",
   "description": "A public form that files each answer as a lead in your Space.",
-  "roles": ["box"],
+  "roles": [
+    "box"
+  ],
   "does": {
     "tools": [
-      { "name": "forms.submit", "summary": "file one answer from the public form as a lead", "reach": "hook" },
-      { "name": "forms.leads", "summary": "the leads the form has filed", "reach": "anyone" }
+      {
+        "name": "forms.submit",
+        "summary": "file one answer from the public form as a lead",
+        "reach": "hook"
+      },
+      {
+        "name": "forms.leads",
+        "summary": "the leads the form has filed",
+        "reach": "anyone"
+      }
+    ],
+    "kits": [
+      "kits/forms.json"
     ]
   },
-  "watches": { "emits": ["forms.answer-received"] },
+  "watches": {
+    "emits": [
+      "forms.answer-received"
+    ]
+  },
   "needs": {
-    "kernel": { "records": ["lead"] }
+    "kernel": {
+      "records": [
+        "lead"
+      ]
+    }
   }
 }

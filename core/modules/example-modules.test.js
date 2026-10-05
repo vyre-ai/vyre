@@ -22,6 +22,14 @@ test("forms and docgen: installed from the examples, a webhook answer becomes a 
   for (const name of ["forms", "docgen"]) assert.equal(d.registry.status().find(m => m.name === name)?.state, "running", JSON.stringify(d.registry.status().find(m => m.name === name)));
 
   const owner = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: d.kernel.id.owner, path: "direct", session: "s" });
+  // forms ships a Kit (does.kits): `vyre module add` proposes it, and its card waits for the person's yes. Here it is proposed the same way and approved by the owner (the dev stand-in), and the
+  // type it defines is what lets forms file leads.
+  const { call } = await import("../daemon/client.js");
+  fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
+  const kit = JSON.parse(fs.readFileSync(path.join(root, "modules", "forms", "kits", "forms.json"), "utf8"));
+  const proposed = await call("flows.kit.propose", { kit }, { root, caller: "cli" });
+  assert.ok(proposed.data && proposed.data.ok !== false, "the module's Kit proposes: " + JSON.stringify(proposed));
+  assert.ok(JSON.stringify(proposed.data.card).includes("lead"), "its card says what it adds");
   const f = (/** @type {string} */ name) => ({ name, kind: "text", label: name });
   await d.kernel.gateway.records.define(owner, { add_types: [
     { name: "lead", label: "Lead", fields: [f("name"), f("email"), f("message")] },
