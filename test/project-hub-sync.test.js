@@ -108,10 +108,13 @@ test("a project's name syncs both ways between Records and the project list, ids
   await d.kernel.gateway.drive.get(admin, `${root}/retainer.txt`);
 });
 
-test("PH-3: a rename moves nothing, whoever makes it; a member cannot point a Project at another folder, and a member's rename reaches no other store", { timeout: 180_000 }, async t => {
+test("PH-3: a rename moves nothing, whoever makes it, and is only a title that reaches the project list; a member cannot point a Project at another folder", { timeout: 180_000 }, async t => {
   const { d, admin, meta, rows, memberChain } = await boot(t);
   const made = await d.registry.call("work.project.create", { name: "Rivera" }, "cli", await meta());
   const urn = made.data.project, id = urn.split("/").pop(), root = made.data.drive_path;
+  const home = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-proj-")));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  await d.registry.call("projects.create", { name: "Rivera", home }, "cli");
   await d.kernel.gateway.drive.put(admin, `${root}/retainer.txt`, new TextEncoder().encode("signed"));
   await d.kernel.gateway.drive.put(admin, "Legal/Contracts/secret.txt", new TextEncoder().encode("do not move"));
   const member = await memberChain("per_" + "m".repeat(26));
@@ -121,6 +124,7 @@ test("PH-3: a rename moves nothing, whoever makes it; a member cannot point a Pr
   await new Promise(r => setTimeout(r, 800));
   assert.equal((await rec()).data.name, "Rivera Renamed");
   assert.equal((await rec()).data.drive_path, root, "the folder stayed");
+  await until(async () => (await d.registry.call("projects.list", {}, "cli")).data.projects.some((/** @type {any} */ p) => p.name === "Rivera Renamed") || null, "the project list to take a member's title");
   await d.kernel.gateway.drive.get(admin, `${root}/retainer.txt`);
   // a member points drive_path at another folder: the field is put back, and Legal/Contracts is untouched
   cur = await d.kernel.gateway.records.get(member, "project", id);

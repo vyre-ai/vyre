@@ -224,29 +224,8 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     try { const rec = await find(SUMMARY, "thread", p.thread); return rec ? await renameSession(rec, p.name, "thread") : null; } catch (e) { log(`project hub: rename of ${p.thread} did not reach Records: ${/** @type {Error} */ (e).message}`); return null; }
   }
   /**
-   * Whether the person behind a change ("person:per_x@space") holds Drive access to the folders a move touches. The kernel asks for them as a chain that is the person plus this service, and a
-   * viewer chain can only be asked READ questions, so the question is `drive.read` on each folder: it is held by role by owners and admins only (a member has `drive.write` on no folder and
-   * `drive.read` on none), and the service holds it too, so the answer is the intersection. The move itself still runs under the service chain, with the actor's read as the check. Fails closed.
-   * @param {string} actor @param {string[]} folders
-   */
-  async function actorMayMove(actor, folders) {
-    const m = /^person:([^@]+)@/.exec(String(actor || ""));
-    if (!m || typeof kernel.chainForPerson !== "function" || typeof kernel.authorize !== "function") return false;
-    try {
-      const who = kernel.chainForPerson(m[1]);
-      for (const f of folders) {
-        const d = await kernel.authorize({ chain: who, action: "drive.read", resource: `vyre://${kernel.space}/file/${f}/*` });
-        if (d.effect !== "allow") return false;
-      }
-      return true;
-    } catch { return false; }
-  }
-  /** Whether the person behind a change is an owner or an admin: they alone reach other stores (the project list, a thread's name) on a record edit. */
-  const actorIsAdmin = (/** @type {string} */ actor) => actorMayMove(actor, ["Projects"]);
-
-  /**
-   * A record changed in Records itself. A person's edit of a system field is put back and nothing else happens. A name change reaches the project list or the thread only when the person who made it is
-   * an owner or an admin; anyone else's rename stands in the record and reaches nothing else. Nothing here touches Drive: folders are named by id, so a rename moves nothing.
+   * A record changed in Records itself. A person's edit of a system field is put back and nothing else happens. A name change is only a title: anyone allowed to update the record may rename, and it reaches the project
+   * list and the thread for them. Nothing here touches Drive: folders are named by id, so a rename moves nothing.
    * @param {any} ev a kernel event ({ type, subject, actor, data: { changed, before, after } })
    */
   async function onRecordChanged(ev) {
@@ -264,7 +243,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
         log(`project hub: put back ${bad.join(", ")} on ${ev.subject}, which only the system writes`);
         return await kernel.records.update(chain(), m[1], m[2], patch, rec.version);
       }
-      if (mine || !(await actorIsAdmin(ev.actor))) return null;
+      if (mine) return null;
       if (m[1] === PROJECT && changed.includes("name")) return await renameProject(rec, rec.data.name, "record");
       if (m[1] === SUMMARY && changed.includes("title")) return await renameSession(rec, rec.data.title, "record");
     } catch (e) { log(`project hub: a change in Records did not reach its other places: ${/** @type {Error} */ (e).message}`); }
