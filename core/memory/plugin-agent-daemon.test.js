@@ -11,7 +11,7 @@ import path from "node:path";
 import { start, callerFacts } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, writeTranscripts } from "../../test/fixtures/corpus.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 
 process.env.VYRE_KERNEL ??= "1"; process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 
@@ -26,8 +26,9 @@ test("a personal agent reads personal memory and every project's sessions; an un
   const opts = { root };
   await call("recall.index", {}, opts);
   for (const [name, home, ws] of [["Northwind", "northwind", []], ["Harlow", "harlow-site", [path.join(work, "harlow-intake")]]]) assert.ok(!(await call("projects.create", { name, home: path.join(work, home), workspaces: ws }, opts)).error);
-  assert.ok(!(await call("agents.create", { name: "claude-code-box", projects: "*", personal: true }, opts)).error, "the grant is the person's own act");
-  assert.ok(!(await call("agents.create", { name: "other-agent", projects: "*" }, opts)).error);
+  const own = kernelCaller(d, root);
+  assert.ok(!(await own("agents.create", { name: "claude-code-box", projects: "*", personal: true })).error, "the grant is the person's own act");
+  assert.ok(!(await own("agents.create", { name: "other-agent", projects: "*" })).error);
   assert.ok(!(await call("memory.remember", { text: "my wife is Jordan" }, opts)).error);
   await call("memory.curate", {}, opts);
 

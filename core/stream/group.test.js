@@ -200,7 +200,7 @@ test("presence reaches a connected client without touching its cursor", async ()
   log.emit("presence", { who: "person:alex", state: "typing" }, { author: "person:alex" });
   log.emit("presence", { who: "person:alex", state: "typing" });
   await sched.run(() => got.length >= 3);
-  assert.deepEqual(got.map(f => f.type), ["session.text-delta", "session.presence", "session.presence"]);
+  assert.deepEqual(got.map(f => f.type), ["chat.text-delta", "chat.presence", "chat.presence"]);
   assert.equal(client.last, 1, "presence has no cursor");
   client.close();
 });
@@ -242,7 +242,7 @@ test("two or three assistants streaming at once, random interleavings and kills 
       open: makeLink({ log, sched, rnd, relay: it % 2 === 1, stats }), timers: sched, random: rnd,
       snapshot: () => { snaps++; for (const w of who) got[w.msg] = w.text; return { cur: log.head }; },
       onFrame: f => {
-        if (f.type !== "session.text-delta") return;
+        if (f.type !== "chat.text-delta") return;
         got[f.message] = (got[f.message] || "") + f.data.text;
         assert.equal(f.data.message, f.message);
         authors[f.message] = authors[f.message] ?? f.author;

@@ -20,7 +20,7 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { call } from "../daemon/client.js";
-import { tempHome } from "../../test/helpers.js";
+import { tempHome, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
@@ -390,7 +390,7 @@ for (const driver of ["cli", "sdk"]) {
   test(`${driver}: threads.start takes agent, agent_kind and account from the person, and refuses them from a model as bad_input`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, vault: { "work-token": "fake-work-value" } });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null);
-    assert.equal((await w.tool("agents.create", { name: "kit", projects: "*" })).error, undefined);
+    assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: "*" })).error, undefined);
     assert.equal((await w.tool("agents.create", { name: "juno", kind: "assistant" })).error, undefined);
     const acct = (await w.tool("sessions.accounts.add", { provider: "claude", label: "Work", kind: "setup-token", vault_item: "work-token" })).data;
     // the person's own call passes the input check with each of them
@@ -1968,7 +1968,7 @@ for (const driver of ["cli", "sdk"]) {
     const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
     await w.tool("projects.create", { name: "work", home: w.work }).catch(() => null); // an agent's session starts only inside a mapped project folder (SW-1)
     assert.equal((await w.tool("projects.create", { name: "Harlow Legal", home: path.join(w.work, "harlow") })).error, undefined);
-    assert.equal((await w.tool("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
+    assert.equal((await kernelCaller(w.d, w.root)("agents.create", { name: "kit", projects: ["harlow-legal"] })).error, undefined);
     // (an agent's session is started by the agents module, as it is in the product; the person's own threads.start names no agent)
     const thr = await w.d.registry.call("threads.launch", { cwd: w.work, agent: "kit", agent_kind: "agent", purpose: "agent", prompt: 'vyre-sock whoami.me {"projects":"*"}', surface: "deck" }, "module:agents");
     if (thr.error) throw new Error(JSON.stringify(thr.error));

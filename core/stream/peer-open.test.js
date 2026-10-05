@@ -113,7 +113,7 @@ function peerOf() {
 }
 const openPeer = async (/** @type {any} */ w, /** @type {string} */ who, /** @type {string} */ session, /** @type {any} */ extra = {}) => {
   const p = peerOf();
-  const r = await w.reg.call("stream.open-peer", { session, ...extra }, "deck", { token: w.tokens[who], peerStream: p.ps });
+  const r = await w.reg.call("stream.open-peer", { chat: session, ...extra }, "deck", { token: w.tokens[who], peerStream: p.ps });
   ok(r);
   return { ...p, reply: r.data };
 };
@@ -123,11 +123,11 @@ test("PS-A: a person taken out of the chat mid-stream gets no further frame and 
   const w = await world(t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA] });
   const carol = await openPeer(w, "carol", chat.id), ada = await openPeer(w, "ada", chat.id);
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "hello all", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "hello all", to: [] }));
   await settle(w);
   assert.ok(carol.text().includes("hello all") && ada.text().includes("hello all"), "both see the first message");
   await w.C.change(w.chains.bob, chat.id, { remove_people: [CAROL] });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "after carol left", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "after carol left", to: [] }));
   await settle(w);
   assert.ok(!carol.text().includes("after carol left"), "the next frame never reached the one who left");
   assert.deepEqual(carol.ended, ["access_ended"]);
@@ -139,11 +139,11 @@ test("PS-A: a person whose membership of the space is revoked mid-stream gets no
   const w = await world(t);
   const chat = await w.C.create(w.chains.bob, { people: [CAROL] });
   const carol = await openPeer(w, "carol", chat.id);
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "one", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "one", to: [] }));
   await settle(w);
   assert.ok(carol.text().includes('one'));
   await w.k.gateway.grants.removeMember(w.chains.owner, { person: CAROL }, { presence: proof("grants.role", { remove: CAROL }, `vyre://${SPACE}/member/${CAROL}`) });
-  ok(await w.as("bob")("stream.send", { session: chat.id, text: "two after revoke", to: [] }));
+  ok(await w.as("bob")("stream.send", { chat: chat.id, text: "two after revoke", to: [] }));
   await settle(w);
   assert.ok(!carol.text().includes("two after revoke"), "no frame after the grant was revoked");
   assert.deepEqual(carol.ended, ["access_ended"]);
@@ -164,12 +164,12 @@ test("PS-A: two viewers in one chat each get their own stream: a frame for one n
   for (const v of [bob, carol]) {
     const wire = v.text();
     assert.ok(!wire.includes("sv_SECRET") && !wire.includes("6789"), "a sealed value or its ref reaches no stream");
-    const done = v.got.find(d => d && d.type === "session.text-done");
+    const done = v.got.find(d => d && d.type === "chat.text-done");
     assert.ok(done, "the viewer got the reply");
     assert.equal(done.data.blocks.find((/** @type {any} */ b) => b.name === "ssn").placeholder, true, "the sealed field is a placeholder");
   }
   // a message from carol is in bob's stream and not drawn as bob's own: each stream carries only its own viewer's reads
-  ok(await w.as("carol")("stream.send", { session: chat.id, text: "from carol", to: [] }));
+  ok(await w.as("carol")("stream.send", { chat: chat.id, text: "from carol", to: [] }));
   await settle(w);
   assert.ok(bob.text().includes("from carol") && carol.text().includes("from carol"));
   assert.ok(!bob.text().includes(`person:${CAROL}:read`) || true);
@@ -180,12 +180,12 @@ test("PS-A: a `from` below the log floor gets a reset frame, and an open of anot
   const chat = await w.C.create(w.chains.bob, { people: [CAROL] });
   const log = w.stream().logs.get(chat.id);
   log.maxFrames = 3; log.maxStored = 3;
-  for (let n = 0; n < 12; n++) ok(await w.as("bob")("stream.send", { session: chat.id, text: `m${n}`, to: [] }));
+  for (let n = 0; n < 12; n++) ok(await w.as("bob")("stream.send", { chat: chat.id, text: `m${n}`, to: [] }));
   await settle(w); log.flush();
   assert.ok(log.floor > 1, `the log's floor moved (${log.floor})`);
   const p = await openPeer(w, "carol", chat.id, { from: 1 });
   await settle(w);
-  assert.ok(p.got.some(d => d && d.type === "session.reset" || (d && /reset/.test(String(d.type || d.t)))), `a reset frame came: ${p.text().slice(0, 300)}`);
-  const r = await w.reg.call("stream.open-peer", { session: chat.id }, "deck", { token: w.tokens.ada, peerStream: peerOf().ps });
+  assert.ok(p.got.some(d => d && d.type === "chat.reset" || (d && /reset/.test(String(d.type || d.t)))), `a reset frame came: ${p.text().slice(0, 300)}`);
+  const r = await w.reg.call("stream.open-peer", { chat: chat.id }, "deck", { token: w.tokens.ada, peerStream: peerOf().ps });
   assert.ok(r.error, "ada is not in the chat");
 });

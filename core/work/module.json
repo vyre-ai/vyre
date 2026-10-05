@@ -31,20 +31,62 @@
         "effect": "write"
       },
       {
+        "name": "work.project.move-plan",
+        "summary": "what moving a Project to another Space would carry, and the hash the person approves",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.project.move",
+        "summary": "move a Project to another Space as a new project there, with one yes",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.ensure",
+        "summary": "the Project record for a short name, made if missing (the projects module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.project.rename",
         "summary": "rename a Project from Records: its record, Drive folder and project list follow",
         "reach": "anyone",
         "effect": "write"
       },
       {
-        "name": "work.session.rename",
-        "summary": "rename a session from Records: its record and thread agree",
+        "name": "work.chat.list",
+        "summary": "the chats you may see: title, project, who, when, status, where it lives; open on the ones you are in",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.get",
+        "summary": "one chat you are in: its record, its slots (assistants and models running in it) and its transcript address",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.create",
+        "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",
         "effect": "write"
       },
       {
-        "name": "work.session.move",
-        "summary": "move a session to another Project",
+        "name": "work.chat.change",
+        "summary": "add or remove people and agents in a chat you are in",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.rename",
+        "summary": "rename a chat you are in: its record and every run agree",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.move",
+        "summary": "move a chat you are in to another Project",
         "reach": "anyone",
         "effect": "write"
       },
@@ -169,13 +211,25 @@
               "label": "Status",
               "options": [
                 "active",
-                "archived"
+                "archived",
+                "moved"
               ]
             },
             {
               "name": "client",
               "kind": "link",
-              "label": "Client"
+              "label": "Client",
+              "to": "contact"
+            },
+            {
+              "name": "owner",
+              "kind": "actor",
+              "label": "Owner"
+            },
+            {
+              "name": "due",
+              "kind": "date",
+              "label": "Due"
             },
             {
               "name": "drive_path",
@@ -196,102 +250,34 @@
               "name": "archived_at",
               "kind": "datetime",
               "label": "Archived"
+            },
+            {
+              "name": "moved_to",
+              "kind": "text",
+              "label": "Moved to (Space and project) when it left this Space"
+            },
+            {
+              "name": "moved_from",
+              "kind": "text",
+              "label": "Moved from (Space and project) when it came from another"
             }
           ]
         },
         {
-          "name": "session-summary",
-          "label": "Session",
+          "name": "chat-record",
+          "label": "Chat",
           "icon": "IconMessage",
           "fields": [
-            {
-              "name": "title",
-              "kind": "text",
-              "label": "Title"
-            },
-            {
-              "name": "project",
-              "kind": "link",
-              "label": "Project",
-              "to": "project"
-            },
-            {
-              "name": "people",
-              "kind": "text",
-              "label": "People"
-            },
-            {
-              "name": "agents",
-              "kind": "text",
-              "label": "Agents"
-            },
-            {
-              "name": "provider",
-              "kind": "text",
-              "label": "Provider"
-            },
-            {
-              "name": "model",
-              "kind": "text",
-              "label": "Model"
-            },
-            {
-              "name": "account",
-              "kind": "text",
-              "label": "Account"
-            },
-            {
-              "name": "started",
-              "kind": "datetime",
-              "label": "Started"
-            },
-            {
-              "name": "ended",
-              "kind": "datetime",
-              "label": "Ended"
-            },
-            {
-              "name": "status",
-              "kind": "choice",
-              "label": "Status",
-              "options": [
-                "working",
-                "done",
-                "stopped",
-                "failed"
-              ]
-            },
-            {
-              "name": "summary",
-              "kind": "rich_text",
-              "label": "Summary"
-            },
-            {
-              "name": "thread",
-              "kind": "text",
-              "label": "Session id",
-              "unique": true
-            },
-            {
-              "name": "transcript",
-              "kind": "text",
-              "label": "Transcript (kernel address)"
-            },
-            {
-              "name": "transcript_file",
-              "kind": "text",
-              "label": "Transcript file on its machine"
-            },
-            {
-              "name": "machine",
-              "kind": "text",
-              "label": "Machine the transcript file is on"
-            },
-            {
-              "name": "drive",
-              "kind": "text",
-              "label": "Drive folder"
-            }
+            { "name": "title", "kind": "text", "label": "Title" },
+            { "name": "project", "kind": "link", "label": "Project", "to": "project" },
+            { "name": "chat", "kind": "text", "label": "Chat id", "unique": true },
+            { "name": "people", "kind": "text", "label": "People" },
+            { "name": "agents", "kind": "text", "label": "Agents" },
+            { "name": "started", "kind": "datetime", "label": "Started" },
+            { "name": "last_active", "kind": "datetime", "label": "Last active" },
+            { "name": "status", "kind": "choice", "label": "Status", "options": ["working", "idle", "stopped", "failed"] },
+            { "name": "drive", "kind": "text", "label": "Project Drive folder" },
+            { "name": "location", "kind": "text", "label": "This chat's Drive folder" }
           ]
         }
       ]
