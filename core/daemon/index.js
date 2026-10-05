@@ -20,7 +20,7 @@ import { assertDaemonHost } from "./host-guard.js";
 import { open, setRepairLog } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover, ownerDevice, currentCall } from "../modules/index.js";
-import { devSwitch, isPackaged, PKG_ROOT, kernelWanted, kernelOffRefusal, KERNEL_FLAG_IGNORED } from "../../kernel/devbuild.js";
+import { devSwitch, isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 import { build, swWithBuild, htmlWithBuild } from "./build.js";
 import { serveApp, associationFile, appBase, APP_DIST } from "./app.js";
 import { watchForList } from "./release-watch.js";
@@ -146,10 +146,6 @@ export function moduleRoots(root) {
  *   kernel?: boolean, coreKeys?: any, deviceIdentity?: () => Promise<{ deviceId: string, deviceKey: string }>, person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
-  // A packaged build starts only with the kernel on (MA-5): refused before the home, the lock or the store is touched. A development checkout starts as it always has.
-  const kernelOn = kernelWanted(opts, process.env, opts.packageRoot);
-  const refused = kernelOffRefusal(kernelOn, opts.packageRoot);
-  if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
@@ -244,8 +240,7 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => Promise<void>) | null} */ let closeKernelSessions = null;
   /** @type {(() => void) | null} */ let reopenLater = null;
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
-  if (opts.kernel === undefined && process.env.VYRE_KERNEL === "0" && isPackaged(opts.packageRoot)) log(KERNEL_FLAG_IGNORED);
-  if (kernelWanted(opts, process.env, opts.packageRoot)) {
+  {   // the kernel is always on: there is no other mode
     const { bootHomeKernel } = await import("../../kernel/home.js");
     // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
@@ -1120,7 +1115,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // log, and a guessed cursor past the end drops every live event.
     const last = { id: events.latestId() };
     const b = build();
-    return send(res, 200, { data: { ...(process.env.VYRE_KERNEL === "0" && isPackaged() ? { kernel_note: KERNEL_FLAG_IGNORED } : {}), version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
+    return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
       // its box by argv, never through a shell, and must run the same version.
       cli: [process.execPath, path.join(REPO, "bin", "vyre")],
