@@ -176,6 +176,12 @@ export const DECLARED = Object.freeze({
   "pluginagent.ask": "2bbe50159",
   "pluginagent.status": "2bbe50159",
   "link.pending": "235da322d",
+  "harness.end": "c5e244c97",
+  "threads.rename": "f990f0d36",
+  "work.project.create": "09f1c663a",
+  "work.project.rename": "f990f0d36",
+  "work.session.move": "f990f0d36",
+  "work.session.rename": "f990f0d36",
   "presence.remove": "235da322d",
 });
 
