@@ -51,7 +51,7 @@ export const ALLOW = {
     why: "a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start (ruling 4 Oct, b); it asks the root spawner, which is not a module" },
   "core/daemon -> core/switchboard": { files: ["core/switchboard/sessions.js"], next: "ctx.call",
     why: "the router resolves which Claude Code session a call comes from" },
-  "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js"], next: "lib",
+  "core/daemon -> core/wink": { files: ["core/wink/node/peer-wire.js", "core/wink/homemove.js"], next: "lib",
     why: "the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js): the peer wire's session framing is the one remote path" },
   "core/onboard -> core/names": { files: ["core/names/service.js"], next: "ctx.call",
     why: "onboarding checks a name with the same rule the claim uses" },
