@@ -143,3 +143,6 @@ Run from a fresh archive, kernel on, one file at a time. All were stale test ass
 - core/settings/hub: three of four fixed the same way (the oven module trusted by path, the phone's person session with device facts). Test 8 ("a key's check is asked before anything is stored", `oven.check is not available to module callers` on the hub.json hand edit) is OLDER: red with VYRE_KERNEL=0 too. Owner settings.
 - federation answer and send: see the section above (send fixed, answer test 6 older, owner link/tailnet).
 KO-2 done: core/mcp/module.test.js names no agent and the module's outward call must be held.
+
+### deps.gates (5 Oct, 0.2.9)
+The daemon now sets `registry.deps.gates = createLegacyGates({ registry })` when the kernel is on, so the static gates, presence and asked requirements of every tool are decided by authorize over the compiled rules. 66 files (the kernel-on set, memory, settings, federation, golden) show no new red; kernel/golden/golden.test.js tests 1, 5, 6 are red with and without this change (a known-red file since run 11, owner platform: the stored golden set needs re-recording after the role and kernel-default changes; it takes 10 minutes a run).
