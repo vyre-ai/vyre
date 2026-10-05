@@ -27,7 +27,7 @@ export function createDropStore(o) {
   return {
     /** A device that takes drops in: the entry id of its own key-agreement key on the person's identity list. The sender reads that key from the list, never from here. @param {string} device @param {string} eid */
     register(device, eid) {
-      if (!DEV.test(device) || typeof eid !== "string" || !/^[A-Za-z0-9_-]{4,80}$/.test(eid)) throw fail("bad_input", "a computer's entry on your identity list");
+      if (!DEV.test(device) || typeof eid !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(eid)) throw fail("bad_input", "a computer's entry on your identity list");
       const m = keyMap(); m[device] = { eid }; fs.writeFileSync(`${keys}.tmp`, JSON.stringify(m), { mode: 0o600 }); fs.renameSync(`${keys}.tmp`, keys);
     },
     /** The device stops receiving: its key is forgotten, and what waits for it is thrown away. @param {string} device */
