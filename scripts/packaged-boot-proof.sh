@@ -109,7 +109,7 @@ sudo -n vyre up >"$WORK/rootrun.log" 2>&1 || { tail -20 "$WORK/rootrun.log"; ech
 ready || { docker logs vyre-vyre-1 2>&1 | tail -30; echo "vyred did not come back after a root-run update"; exit 1; }
 sleep 5
 docker exec vyre-vyre-1 env | grep -qx 'VYRE_KERNEL=1' || { echo "after a root-run update the daemon lost VYRE_KERNEL=1"; exit 1; }
-docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=auto' || { echo "after a root-run update the daemon lost VYRE_STORE=auto"; exit 1; }
+docker exec vyre-vyre-1 env | grep -qx 'VYRE_STORE=twenty' || { echo "after a root-run update the daemon lost VYRE_STORE=twenty"; exit 1; }
 check_modules
 
 # A box is a server: the daemon reports machine server, so no server module is switched off by a wrong config.

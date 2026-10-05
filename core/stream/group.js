@@ -308,7 +308,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     const g = group(grp);
     if (g.people.size > 0 && !g.people.has(who)) throw fail("not_found", "no such session");
   };
-  const sessionOf = (/** @type {any} */ i) => { const s = String(i.session || ""); if (!ID.test(s)) throw fail("bad_input", "session must be a group id"); return s; };
+  const sessionOf = (/** @type {any} */ i) => { const s = String(i.chat || ""); if (!ID.test(s)) throw fail("bad_input", "chat must be a chat id"); return s; };
 
   // ---- projection: a thread's events into the group's log ---------------------------------------
 
@@ -773,6 +773,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     person: personOf,
     /** Does a group by this id exist here (in memory or stored)? Creates nothing. @param {string} grp */
     known: grp => groups.has(grp) || logs.known(grp),
+    /** Does any assistant of this chat's group answer on a thread of its own yet? (A chat whose one run was started outside the stream has none: its transcript is that run's own log.) @param {string} grp */
+    bound: grp => (groups.has(grp) || logs.known(grp)) && [...group(grp).bots.values()].some(m => Boolean(m.thread)),
     /** The people in a group, from its log. Call only for a known group. @param {string} grp */
     people: grp => new Set(group(grp).people),
 

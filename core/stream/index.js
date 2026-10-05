@@ -132,25 +132,32 @@ export default {
      * @param {any} i @param {any} meta
      */
     const prepare = async (i, meta) => {
-      const session = String(i.session || "");
-      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) { const e = /** @type {any} */ (new Error("session must be a thread id")); e.code = "bad_input"; throw e; }
-      const { viewer: who0, chain, chat: kchat } = await access.read(session, meta, i);
+      const asked = String(i.chat || "");
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(asked)) { const e = /** @type {any} */ (new Error("chat must be a chat id")); e.code = "bad_input"; throw e; }
+      const { viewer: who0, chain, chat: kchat } = await access.read(asked, meta, i);
       // A person who opens a chat after a restart gives the assistants answering them a session again; the group's list follows the kernel's.
-      if (kchat && groups) await groups.mirror(session, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
+      if (kchat && groups) await groups.mirror(asked, { people: [...kchat.people], assistants: [...(kchat.assistants || [])] }, meta, who0.id, chain);
+      // One Chat: a chat nobody has spoken in through the stream (a run the CLI, a terminal or a Flow started, which is the only run in it) is that run's own log, so the one chat id opens it. The person was
+      // already checked against the chat above; the run's log is then served as the chat's.
+      let session = asked;
+      if (kchat && !(groups && groups.bound(asked))) {
+        const runs = await ctx.call("threads.of-chat", { chat: asked }).then((/** @type {any} */ r) => (r && r.data && r.data.runs) || []).catch(() => []);
+        if (runs.length === 1) session = String(runs[0].thread);
+      }
       // A chat of the kernel's: the viewer receives a reply only if they were in the chat at its membership version (asked of the reply port, never decided here), and sees the chat from their own join.
-      const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(session) ? groups.viewerFor(session, who0.id, chain) : {}) };
+      const who = { ...who0, resolve: resolverFor(who0, chain), ...(kchat && groups && groups.known(asked) ? groups.viewerFor(asked, who0.id, chain) : {}) };
       if (!seen.has(session)) { seen.add(session); if (logs.get(session).head === 0) await seed(session); }
       else if (seeding.has(session)) await seeding.get(session);
       const from = Number.isInteger(i.from) && i.from >= 0 ? i.from : null;
-      return { session, who, from };
+      return { chat: asked, session, who, from };
     };
 
     ctx.tool("stream.open", {
-      description: "A one-use ticket (15 s) for the session stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
-      input: obj({ session: str, from: int, as: str }, ["session"]),
+      description: "A one-use ticket (15 s) for a chat's stream at path, resuming after cursor from (0 for everything the log holds). Also the log's head and floor: a from below floor will be sent a reset.",
+      input: obj({ chat: str, from: int, as: str }, ["chat"]),
       callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
-        const { session, who, from } = await prepare(i, meta);
+        const { chat, session, who, from } = await prepare(i, meta);
         for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
         const ticket = crypto.randomBytes(24).toString("base64url");
         const viewer = who.id;
@@ -158,7 +165,7 @@ export default {
         const device = peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : "";
         tickets.set(ticket, { session, expires: now() + ticketMs, from, person: viewer, caller: String((meta && meta.caller) || ""), device, viewer: who });
         const log = logs.get(session);
-        return { session, ticket, viewer, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
+        return { chat, session, ticket, viewer, path: `/v1/streams/stream/session?ticket=${encodeURIComponent(ticket)}${from === null ? "" : `&from=${from}`}`, head: log.head, floor: log.floor };
       },
     });
 
@@ -166,18 +173,18 @@ export default {
     // door's stream as messages tagged with the stream's id. Authorised by the person in the call's own chain (prepare), the door ends it when the device's paired session ends, and `from` resumes.
     ctx.tool("stream.open-peer", {
       description: "Open the session's stream over the Wink peer wire (for a paired device): answers { stream, session, viewer, head, floor }; the frames then arrive as peer stream messages for `stream`, resuming after cursor from. Only over the peer wire.",
-      input: obj({ session: str, from: int, as: str }, ["session"]),
+      input: obj({ chat: str, from: int, as: str }, ["chat"]),
       callers: PEOPLE,
       run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
         if (!meta || !meta.peerStream || typeof meta.peerStream.open !== "function") throw Object.assign(new Error("this stream opens only over a paired device's peer wire"), { code: "bad_input" });
-        const { session, who, from } = await prepare(i, meta);
+        const { chat, session, who, from } = await prepare(i, meta);
         const log = logs.get(session);
         const id = `st_${crypto.randomBytes(18).toString("base64url")}`;
         // PS-A: the viewer and chain were decided at open, but access can end while the stream runs (a grant revoked, the person out of the chat, the role changed). So no frame leaves until
         // access has been asked again, AFTER the frame was appended: frames wait in a queue, one re-check serves every frame queued while it ran (so a burst costs one ask, never one each),
         // a refusal ends the stream with `access_ended` and sends nothing more, and the roles the viewer is drawn with are the ones the re-check just read.
         const recheck = async () => {
-          const r = await access.read(session, meta, i);
+          const r = await access.read(chat, meta, i);
           if (r.viewer.id !== who.id) throw new Error("the viewer changed");
           who.roles.splice(0, who.roles.length, ...r.viewer.roles);
         };
@@ -202,7 +209,7 @@ export default {
           const h = serve(log, conn, { viewer: who, ...(from === null ? {} : { from }), ...(groups ? { also: (/** @type {any} */ send) => groups.hear(who.id, (/** @type {any} */ f) => { if (f.session === session) send(f); }) } : {}) });
           return () => { gone = true; queue = []; try { h.close(); } catch { /* closed */ } for (const c of closers.splice(0)) { try { c(); } catch { /* closed */ } } };
         });
-        return { stream: id, session, viewer: who.id, head: log.head, floor: log.floor };
+        return { stream: id, chat, session, viewer: who.id, head: log.head, floor: log.floor };
       },
     });
 
@@ -230,7 +237,7 @@ export default {
      * @param {any} i @param {any} meta
      */
     const kernelGate = async (i, meta) => {
-      const session = String((i && i.session) || "");
+      const session = String((i && i.chat) || "");
       if (!groups || !/^[A-Za-z0-9_.:-]{1,128}$/.test(session)) return;
       const kernelOn = Boolean(ctx.kernel && ctx.kernel.chats);
       const kc = await access.chat(session, meta);
@@ -252,11 +259,11 @@ export default {
     });
     const bool = { type: "boolean" };
     tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.",
-      obj({ session: str, text: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, as: str, name: str }, ["session"]), "send");
-    tool("stream.react", "React to a message in a group chat with an emoji (on: false takes it back).", obj({ session: str, message: str, emoji: str, on: bool, as: str }, ["session", "message", "emoji"]), "react");
-    tool("stream.pin", "Pin a message in a group chat (on: false unpins it).", obj({ session: str, message: str, on: bool, as: str }, ["session", "message"]), "pin");
-    tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ session: str, group: str, keep: str, as: str }, ["session", "group", "keep"]), "keep");
-    tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ session: str, upto: int, as: str }, ["session", "upto"]), "markRead");
+      obj({ chat: str, text: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, as: str, name: str }, ["chat"]), "send");
+    tool("stream.react", "React to a message in a group chat with an emoji (on: false takes it back).", obj({ chat: str, message: str, emoji: str, on: bool, as: str }, ["chat", "message", "emoji"]), "react");
+    tool("stream.pin", "Pin a message in a group chat (on: false unpins it).", obj({ chat: str, message: str, on: bool, as: str }, ["chat", "message"]), "pin");
+    tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ chat: str, group: str, keep: str, as: str }, ["chat", "group", "keep"]), "keep");
+    tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ chat: str, upto: int, as: str }, ["chat", "upto"]), "markRead");
 
     if (groups) await groups.start();
 

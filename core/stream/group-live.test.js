@@ -41,7 +41,7 @@ function client(t, w, port, session, person) {
   const c = connect({
     open: async ({ from }) => {
       // open as a person in the chat: the stream is read by its participants only
-      const o = (await w.tool("stream.open", { session, from, ...(person ? { as: person } : {}) }, "deck")).data;
+      const o = (await w.tool("stream.open", { chat: session, from, ...(person ? { as: person } : {}) }, "deck")).data;
       return wsDuplex(`ws://127.0.0.1:${port}${o.path}`);
     },
     onFrame: f => frames.push(f),
@@ -89,7 +89,7 @@ const done = frames => new Set(frames.filter(f => f.type === "session.text-done"
 async function world(t) {
   const w = await own(t);
   const { port, kill } = await serve(t, w);
-  const as = (person) => (tool, input) => w.tool(tool, { session: GROUP, ...input, as: person }, "deck");
+  const as = (person) => (tool, input) => w.tool(tool, { chat: GROUP, ...input, as: person }, "deck");
   const view = client(t, w, port, GROUP, ALEX);
   const say = (person, text, extra = {}) => as(person)("stream.send", { text, ...extra });
   return { w, port, view, as, say, kill };
@@ -180,9 +180,9 @@ test("group: a stop and start in the middle of a fan-out loses nothing and repea
   let next = 1;
   for (const f of again.frames) { assert.equal(f.cur - (f.span || 1) + 1, next, "gapless"); next = f.cur + 1; }
   // saying it again with the same message id changes nothing
-  const dup = (await w.tool("stream.send", { session: GROUP, text: "list the pastries", message: r.message, as: ALEX }, "deck")).data;
+  const dup = (await w.tool("stream.send", { chat: GROUP, text: "list the pastries", message: r.message, as: ALEX }, "deck")).data;
   assert.equal(dup.duplicate, true);
-  await w.tool("stream.send", { session: GROUP, text: "ping", as: CHRIS, to: [KIT] }, "deck");
+  await w.tool("stream.send", { chat: GROUP, text: "ping", as: CHRIS, to: [KIT] }, "deck");
   assert.equal(answers(again.frames).size >= 2, true);
   void port;
 });
@@ -193,7 +193,7 @@ test("group: a read marker reaches the same person's other connection and nobody
   await as(ALEX)("stream.send", { text: "hi chris", people: [CHRIS] });
   const open = async person => {
     const frames = []; let live = false;
-    const c = connect({ onState: st => { if (st === "live") live = true; }, open: async ({ from }) => { const o = (await w.tool("stream.open", { session: GROUP, from, as: person }, "deck")).data; return wsDuplex(`ws://127.0.0.1:${port}${o.path}`); }, onFrame: f => frames.push(f), backoff: { base: 5, cap: 40 } });
+    const c = connect({ onState: st => { if (st === "live") live = true; }, open: async ({ from }) => { const o = (await w.tool("stream.open", { chat: GROUP, from, as: person }, "deck")).data; return wsDuplex(`ws://127.0.0.1:${port}${o.path}`); }, onFrame: f => frames.push(f), backoff: { base: 5, cap: 40 } });
     t.after(() => c.close());
     await until(() => live, "connected");
     return frames;

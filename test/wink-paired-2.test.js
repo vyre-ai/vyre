@@ -416,20 +416,17 @@ test("a box-less client makes its first space on a paired server: the server hos
   assert.equal((await dir.check("nopeproof")).status, "ok");
 });
 
-test("host-here on a server too small for the larger store asks for the owner's word, in the kernel's words, and hosts only when asked again with it", async t => {
+test("host-here on a server that cannot run Twenty refuses in the kernel's words and hosts nothing", async t => {
   const f = await pairFreshServer(t);
   const links = linksFor(t, f);
   await links.startPaired("srv");
   const session = links.sessionFor("srv");
   const sp = f.w.d.kernel.spaces;
-  spacesHooks.storePlan = async () => ({ store: "sqlite", confirm: { text: "This server is small: the space will use the built-in store.", choices: ["create", "cancel"] } });
+  spacesHooks.storePlan = async () => ({ store: "none", confirm: { text: "This server cannot run the record store (Twenty), so the space was not made here.", choices: ["server", "cancel"] } });
   t.after(() => { spacesHooks.storePlan = null; });
   const before = sp.list().length;
-  await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "needs_store_confirmation" && /built-in store/.test(e.message));
+  await assert.rejects(() => session.call("spaces.host-here", { name: "smallroom", proof: { key: "k1" } }), e => e.code === "store_unavailable" && /cannot run the record store/.test(e.message));
   assert.equal(sp.list().length, before, "nothing was hosted before the owner agreed");
-  const made = await session.call("spaces.host-here", { name: "smallroom", acceptBuiltinStore: true, proof: { key: "k2" } });
-  assert.match(made.space, /^spc_[a-z2-7]{12}$/);
-  assert.ok(sp.hosts(made.space));
 });
 
 test("the invitee door, real daemon and relay: a stranger's channel with the invitee hello makes no device and has one door; everything else is refused, and a bad hello gets a stream that refuses every call", async t => {
@@ -505,15 +502,15 @@ test("a paired device opens a chat's stream over the peer wire: frames for its p
   const mkPeer = async () => openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
   let peer = await mkPeer();
   const frames = [], ended = [];
-  const open = async from => peer.openStream("stream.open-peer", { session: chat.id, ...(from ? { from } : {}) }, { onframe: d => frames.push(d), onend: w => ended.push(w) });
+  const open = async from => peer.openStream("stream.open-peer", { chat: chat.id, ...(from ? { from } : {}) }, { onframe: d => frames.push(d), onend: w => ended.push(w) });
   const s = await open();
   assert.match(s.id, /^st_/);
   // a message by call on the same wire (the person is this device's own, from the server's chain)
-  await peer.call("stream.send", { session: chat.id, text: "hello from the phone" });
+  await peer.call("stream.send", { chat: chat.id, text: "hello from the phone" });
   await until(async () => frames.some(d => JSON.stringify(d).includes("hello from the phone")), 8000);
   const seen = frames.length;
   // another viewer's session id is refused: a thread this person is not in gives no stream
-  await assert.rejects(() => peer.call("stream.open-peer", { session: "t_not_mine_at_all" }), e => /not_found|no such session/i.test(`${e.code} ${e.message}`));
+  await assert.rejects(() => peer.call("stream.open-peer", { chat: "t_not_mine_at_all" }), e => /not_found|no such session/i.test(`${e.code} ${e.message}`));
   // the peer stream drops: the app is told, reopens and resumes from the last cursor it saw
   const cursor = Math.max(0, ...frames.map(d => Number(d && (d.cursor ?? d.seq ?? d.n)) || 0));
   peer.close();
@@ -521,15 +518,15 @@ test("a paired device opens a chat's stream over the peer wire: frames for its p
   assert.ok(ended.includes("closed"), "the dropped peer stream ended the stream on the device");
   peer = await mkPeer();
   const again = [];
-  await peer.openStream("stream.open-peer", { session: chat.id, from: cursor }, { onframe: d => again.push(d), onend: () => {} });
-  await peer.call("stream.send", { session: chat.id, text: "after the resume" });
+  await peer.openStream("stream.open-peer", { chat: chat.id, from: cursor }, { onframe: d => again.push(d), onend: () => {} });
+  await peer.call("stream.send", { chat: chat.id, text: "after the resume" });
   await until(async () => again.some(d => JSON.stringify(d).includes("after the resume")), 8000);
   assert.ok(seen > 0);
   // the paired session ends: nothing more is sent
   const before = again.length;
   await f.w.d.registry.call("presence.person.end-paired", { device: f.done.device }, "module:wink");
   await new Promise(r => setTimeout(r, 800));
-  await peer.call("stream.send", { session: chat.id, text: "too late" }).catch(() => null);
+  await peer.call("stream.send", { chat: chat.id, text: "too late" }).catch(() => null);
   await new Promise(r => setTimeout(r, 400));
   assert.ok(!again.slice(before).some(d => JSON.stringify(d).includes("too late")), "no frame after the session ended");
   peer.close();
@@ -546,9 +543,9 @@ test("PS-A, real daemon: a web device with a software session may open a chat's 
   const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's browser", crypto: nodeCrypto(), keyStore: f.ks }));
   t.after(() => peer.close());
   const frames = [];
-  const s = await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: d => frames.push(d), onend: () => {} });
+  const s = await peer.openStream("stream.open-peer", { chat: chat.id }, { onframe: d => frames.push(d), onend: () => {} });
   assert.match(s.id, /^st_/, "a software-strength session opens a chat's stream");
-  await peer.call("stream.send", { session: chat.id, text: "from the browser" });
+  await peer.call("stream.send", { chat: chat.id, text: "from the browser" });
   await until(async () => frames.some(d => JSON.stringify(d).includes("from the browser")), 8000);
   // a call that needs the person's presence: no proof, and a made-up one, are both refused (the session alone never counts)
   const code = e => String(e && e.code);
@@ -566,11 +563,11 @@ test("PS-A, real daemon: the ninth stream.open-peer on one device is refused, an
   const peer = await openServerPeer(connect({ relay: f.w.status.url, route: f.done.route, box: f.done.box, name: "Alex's iPhone", crypto: nodeCrypto(), keyStore: f.ks }));
   t.after(() => peer.close());
   const opened = [];
-  for (let i = 0; i < 8; i++) opened.push(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }));
-  await assert.rejects(() => peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), e => /rate_limited|too many/.test(`${e.code} ${e.message}`), "the ninth is refused");
+  for (let i = 0; i < 8; i++) opened.push(await peer.openStream("stream.open-peer", { chat: chat.id }, { onframe: () => {}, onend: () => {} }));
+  await assert.rejects(() => peer.openStream("stream.open-peer", { chat: chat.id }, { onframe: () => {}, onend: () => {} }), e => /rate_limited|too many/.test(`${e.code} ${e.message}`), "the ninth is refused");
   opened[0].close();
   await new Promise(r => setTimeout(r, 200));
-  assert.ok(await peer.openStream("stream.open-peer", { session: chat.id }, { onframe: () => {}, onend: () => {} }), "closing one makes room");
+  assert.ok(await peer.openStream("stream.open-peer", { chat: chat.id }, { onframe: () => {}, onend: () => {} }), "closing one makes room");
 });
 
 test("renewal lock survives a restart: three wrong answers, the daemon restarts on the same home, and the device is still locked: no fresh tries, until the owner lifts it", async t => {

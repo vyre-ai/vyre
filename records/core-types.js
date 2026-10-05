@@ -168,36 +168,39 @@ export const PROJECT = {
     text("name", "Name", { required: true }),
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
-    choice("status", "Status", ["active", "archived"]),
-    f("link", "client", "Client"),
+    choice("status", "Status", ["active", "archived", "moved"]),
+    // the client is the Contact (one Contact per person; Client is a role type linked to it). No practice area here: that is a field of a Kit's own type (R2).
+    f("link", "client", "Client", { to: "contact" }),
+    f("actor", "owner", "Owner"),
+    f("date", "due", "Due"),
     text("drive_path", "Drive folder"),
     text("repo", "Repository"),
     text("memory_scope", "Memory scope"),
     f("datetime", "archived_at", "Archived"),
+    text("moved_to", "Moved to (Space and project) when it left this Space"),
+    text("moved_from", "Moved from (Space and project) when it came from another"),
   ],
 };
 
-/** One session's summary, kept with its Project (DESIGN-project-hub.md). Never transcript text: the transcript and checkpoints stay sealed in the kernel, `transcript` points at them. */
-export const SESSION_SUMMARY = {
-  name: "session-summary", label: "Session", icon: "IconMessage",
+/**
+ * A Chat: one record per chat (its type is `chat-record`, because the kernel's own chat events are `chat.created` and `chat.changed` and a Records type named `chat` would write events of the same names) (team/0.3/DESIGN-one-chat.md, CONTRACT-one-chat.md), linked to its Project. Anyone with Records read on the project can query this type, so it holds only what an admin may
+ * see: that a chat exists, its name, who is in it, when, and where it lives. Never messages, transcripts, models, providers or a summary: those are the engine's, returned to participants by `work.chat.get`.
+ * `chat` is the kernel's chat id (unique, never changes); `people` and `agents` mirror the kernel's list and are put back if edited (kernel membership never changes because of a put-back).
+ */
+export const CHAT = {
+  name: "chat-record", label: "Chat", icon: "IconMessage",
   fields: [
     text("title", "Title"),
     f("link", "project", "Project", { to: "project" }),
+    text("chat", "Chat id", { unique: true }),
     text("people", "People"),
     text("agents", "Agents"),
-    text("provider", "Provider"),
-    text("model", "Model"),
-    text("account", "Account"),
     f("datetime", "started", "Started"),
-    f("datetime", "ended", "Ended"),
-    choice("status", "Status", ["working", "done", "stopped", "failed"]),
-    f("rich_text", "summary", "Summary"),
-    text("thread", "Session id", { unique: true }),
-    text("transcript", "Transcript (kernel address)"),
-    text("transcript_file", "Transcript file on its machine"),
-    text("machine", "Machine the transcript file is on"),
-    text("drive", "Drive folder"),
+    f("datetime", "last_active", "Last active"),
+    choice("status", "Status", ["working", "idle", "stopped", "failed"]),
+    text("drive", "Project Drive folder"),
+    text("location", "This chat's Drive folder"),
   ],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, SESSION_SUMMARY].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT].map((t) => Object.freeze(t)));
