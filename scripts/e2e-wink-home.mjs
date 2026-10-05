@@ -115,8 +115,8 @@ async function main() {
     check("the per-move rate limit refuses after its minute's requests (rate_limited)", r.refusedAt !== null && r.codes.every(c => c === "rate_limited"), r);
 
     // 6. close revokes: at once, and on a stream that is already open
+    await sleep(61_000);   // the per-move and box-wide minutes pass (the rate test above used them up), so only the close can refuse
     const held = ctl(HOSTS.target, P.ctlTarget, { cmd: "hold", ...dial, space: "spc_a", name: "h1" });
-    await sleep(61_000);   // the per-move minute passes, so only the close can refuse
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "holdcall", name: "h1", request: { t: "hello" } });
     check("an open stream can pull while the move is open", Boolean(r.data) && held.held === true, r);
     ctl(HOSTS.source, P.ctlSource, { cmd: "close", move_id: "mv_a" });
