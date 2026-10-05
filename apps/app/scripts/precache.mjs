@@ -3,7 +3,7 @@
 // Only index.html and the files whose names carry a content hash are listed, so a cached file
 // never goes stale under the same name. The build id changes whenever any listed file does.
 //
-//   node scripts/precache.mjs [dist] [prefix]     defaults: dist, /app/
+//   node scripts/precache.mjs [dist] [prefix]     defaults: dist, /app/  (prefix / for the root export)
 
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -59,7 +59,8 @@ export function writePrecache(dist, prefix = "/app/") {
     const rel = decodeURI(p.slice(pre.length));
     return { path: p, sha256: createHash("sha256").update(readFileSync(path.join(dist, rel))).digest("hex") };
   });
-  const out = { build: buildId(entries), files: list };
+  // base: where this export is served, "/app" or "" (the root); the daemon reads it (core/daemon/app.js appBase).
+  const out = { build: buildId(entries), base: pre === "/" ? "" : pre.slice(0, -1), files: list };
   writeFileSync(path.join(dist, "precache.json"), JSON.stringify(out, null, 2) + "\n");
   return out;
 }
