@@ -97,8 +97,11 @@ async function main() {
     const prompt = String(h.prompt || "");
     // Only a plain yes or no can answer a lesson, so only then is ps worth running (about 10 ms).
     const interactive = reply(prompt) ? await typedByPerson(h.session_id) : false;
-    const r = await call("harness.enrich", { ...base, ...scope, prompt, interactive }, opts);
-    if (r.data && r.data.text) answer(EVENT.enrich, { additionalContext: r.data.text });
+    const r = await call("harness.enrich", { ...base, ...scope, prompt, interactive, ...(typeof h.transcript_path === "string" ? { transcript: h.transcript_path } : {}) }, opts);
+    // The window warning (core/harness/meter.js) is the person's to read, once: a systemMessage beside the context Claude gets.
+    const notice = r.data && typeof r.data.notice === "string" ? r.data.notice : "";
+    const text = r.data && r.data.text ? r.data.text : "";
+    if (text || notice) process.stdout.write(JSON.stringify({ ...(notice ? { systemMessage: notice } : {}), ...(text ? { hookSpecificOutput: { hookEventName: EVENT.enrich, additionalContext: text } } : {}) }));
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}), plugin_root };
     const r = await call("harness.rules", input, opts);
