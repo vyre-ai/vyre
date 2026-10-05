@@ -71,6 +71,9 @@ const INSTALL = ["apps/app/screens/install/InstallScreen.tsx", "apps/app/screens
 const PAIRING = ["apps/app/screens/devices/PairParts.tsx", "apps/app/src/api/pairing-session.ts"];
 const PAIR_SCRIPT = `${APP_TAP}
   await tap("Continue"); await tap("On a server you have"); await tap("I ran it");`;
+// "Use the sample code" exists only in the sample world (the real app has no such button), so a picture of the screen hides it.
+const HIDE_SAMPLE = `for (const el of [...document.querySelectorAll("*")].filter(e => e.children.length === 0 && (e.textContent || "").trim() === "Use the sample code")) { let b = el; while (b.parentElement && b.getAttribute("role") !== "button" && b.tagName !== "BUTTON") b = b.parentElement; (b.getAttribute("role") === "button" || b.tagName === "BUTTON" ? b : el).style.display = "none"; }
+  await wait(300);`;
 
 /** @type {any[]} */
 export const SHOTS = [
@@ -79,7 +82,7 @@ export const SHOTS = [
   { name: "first-run-space", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 780, phone: true, themes: BOTH,
     script: `await wait(600);`, shows: [...INSTALL] },
   { name: "first-run-pair-code", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 900, phone: true, themes: BOTH,
-    script: PAIR_SCRIPT, shows: [...INSTALL, ...PAIRING] },
+    script: `${PAIR_SCRIPT}\n  ${HIDE_SAMPLE}`, shows: [...INSTALL, ...PAIRING] },
   { name: "first-run-pair-words", dir: "get-started", world: "app", url: "/u/install/create", width: 390, height: 1100, phone: true, themes: BOTH,
     script: `${PAIR_SCRIPT}\n  await tap("Use the sample code");`, shows: [...INSTALL, ...PAIRING] },
   { name: "first-run-chat", dir: "get-started", world: "app", url: "/chat-demo?at=4200&hold=1", width: 390, height: 1000, phone: true, themes: BOTH,
