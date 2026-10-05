@@ -112,7 +112,6 @@ export const PERSON_ONLY = new Map([
   ["link.signout", "needs the person's Face ID or presence: pairing and devices"],
   ["link.unpair", "needs the person's Face ID or presence: pairing and devices"],
   ["names.domain.serve", "needs the person's Face ID or presence: the person's name and domain"],
-  ["names.recover", "needs the person's Face ID or presence: the person's name and domain"],
   ["names.release", "needs the person's Face ID or presence: the person's name and domain"],
   ["network.guests.add", "needs the person's Face ID or presence: who may reach the home"],
   ["network.guests.enable", "needs the person's Face ID or presence: who may reach the home"],

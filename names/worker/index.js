@@ -1,15 +1,13 @@
 // @ts-check
 // The Vyre name directory on Cloudflare (docs/work/tailnet.md, plan sections 3.1 and 3.6c): a Worker
 // at names.vyre.run that holds the only vyre.run DNS credential. A box never sees it. One Durable
-// Object holds every name, so a claim, a limit and a recovery can never race.
+// Object holds every name, so a claim and a limit can never race.
 //
 //   POST   /v1/names/claim           {name}                bind a name to the caller's route for good
 //   POST   /v1/names/point           {name, ip}            A record, tailnet IPv4 (100.64.0.0/10) only
 //   POST   /v1/names/acme            {name, token}         _acme-challenge.<name> TXT, or {own:true, token}
 //   DELETE /v1/names/acme            {name} or {own:true}  clear it
-//   POST   /v1/names/recover         {name, code, next}    a 72-hour pending rebind to the caller's route
-//   POST   /v1/names/recover/cancel  {name}                the current owner's route cancels it
-//   POST   /v1/names/code            {name, next}          the owner replaces the recovery code (and cancels a pending one)
+//   POST   /v1/names/code            {name, next}          the owner replaces the recovery code
 //   POST   /v1/names/release         {name}                give the name up (a tombstone if it was ever pointed)
 //   GET    /v1/names/mine                                  this route's name, its state, notices
 //   GET    /v1/names/check?name=                           ok, taken, reserved, invalid, mine
@@ -44,14 +42,8 @@ export const LIMITS = Object.freeze({
   acmePerRoute: 10,
   /** point calls per route a day */
   pointPerRoute: 30,
-  /** recover attempts per name a day, right or wrong */
-  recoverPerName: 5,
-  /** recover attempts per address a day */
-  recoverPerIp: 20,
   /** a claimed name that is never pointed lapses */
   lapseMs: 7 * DAY,
-  /** how long a recovery waits, so a live owner can cancel it */
-  recoverMs: 72 * HOUR,
   /** TXT records held at one challenge label */
   txtPerLabel: 4,
   skewMs: 60_000,
@@ -216,7 +208,7 @@ import { idOps, ID_ROUTES, SELF_PROVEN } from "./ids.js";
 
 const ROUTES = {
   "POST /v1/names/claim": "claim", "POST /v1/names/point": "point", "POST /v1/names/acme": "acme", "DELETE /v1/names/acme": "acmeClear",
-  "POST /v1/names/recover": "recover", "POST /v1/names/recover/cancel": "cancel", "POST /v1/names/code": "code", "POST /v1/names/release": "release",
+  "POST /v1/names/code": "code", "POST /v1/names/release": "release",
   "GET /v1/names/mine": "mine", "GET /v1/names/check": "check",
   "POST /v1/names/admin/rebind": "adminRebind",
   ...ID_ROUTES,
@@ -241,7 +233,7 @@ export default {
     for (const [k, v] of Object.entries(cors)) if (k === "vary" || k === "access-control-allow-origin" || k === "access-control-allow-methods" || k === "access-control-allow-headers" || k === "access-control-max-age") out.headers.set(k, v);
     return out;
   },
-  /** The hourly sweep: finish recoveries that came due, lapse unpointed names, drop old counters. @param {any} _event @param {any} env */
+  /** The hourly sweep: lapse unpointed names, drop old counters. @param {any} _event @param {any} env */
   async scheduled(_event, env) {
     await env.DIRECTORY.get(env.DIRECTORY.idFromName("v1")).fetch("https://directory/op", { method: "POST", body: JSON.stringify({ op: "sweep" }) });
   },
@@ -370,9 +362,8 @@ const NOTICES = 20;
 
 /**
  * Every name, in one object. Keys:
- *   n/<name>          { name, route|null, state: claimed|live|tombstone, claimedAt, everPointed, pointedAt, ips, codeHash, pending, notices, log }
+ *   n/<name>          { name, route|null, state: claimed|live|tombstone, claimedAt, everPointed, pointedAt, ips, codeHash, notices, log }
  *   r/<route>         the one name a route holds
- *   p/<route>         the name a route has a pending recovery for
  *   c/<kind>/<day>/<key>   a day's counter
  *   nc/<route>/<nonce>     a used signature nonce
  * Requests run one at a time, so a check followed by a write cannot interleave with another call.
@@ -434,11 +425,10 @@ export class Directory {
 
   // -- records --
 
-  /** The record for a name after the lazy rules: a recovery that came due lands, an unpointed claim past its week lapses. @param {string} name */
+  /** The record for a name after the lazy rule: an unpointed claim past its week lapses. @param {string} name */
   async load(name) {
     let rec = await this.store.get(`n/${name}`);
     if (!rec) return null;
-    if (rec.pending && rec.pending.eta <= this.now()) rec = await this.land(rec);
     if (rec.state === "claimed" && !rec.everPointed && this.now() - rec.claimedAt > LIMITS.lapseMs) { await this.drop(rec); return null; }
     return rec;
   }
@@ -461,39 +451,16 @@ export class Directory {
       if (await this.store.get(`n/${rec.name}`)) { rec.dirty = true; await this.save(rec); } else await this.store.put(`d/${rec.name}`, this.now());
     }
   }
-  /** The 72 hours are up and nobody cancelled: the name moves to the new route. @param {any} rec */
-  async land(rec) {
-    const p = rec.pending;
-    await this.unpend(rec);
-    if (await this.store.get(`r/${p.route}`)) { this.note(rec, "recovery-void", { reason: "route already holds a name" }); await this.save(rec); return rec; }
-    if (rec.route && await this.store.get(`r/${rec.route}`) === rec.name) await this.store.delete(`r/${rec.route}`);
-    await this.store.put(`r/${p.route}`, rec.name);
-    await this.store.delete(`m/${p.route}`); // the route holds a name again: the old "moved" note no longer applies
-    rec.route = p.route;
-    rec.codeHash = p.next;
-    rec.state = rec.everPointed ? "live" : "claimed";
-    rec.claimedAt = this.now();
-    rec.ips = {};
-    this.note(rec, "recovered", {});
-    await this.save(rec);
-    await this.wipeDns(rec);
-    return rec;
-  }
   /** @param {any} rec @param {string} kind @param {object} extra */
   note(rec, kind, extra) {
     rec.notices = [...(rec.notices || []), { id: crypto.randomUUID(), kind, at: this.now(), ...extra }].slice(-NOTICES);
   }
   /** The name this route holds, if it does. @param {string} route */
   async held(route) {
-    let name = await this.store.get(`r/${route}`);
-    if (!name) {
-      // A recovery may have come due for this route: loading its name lands it.
-      const pending = await this.store.get(`p/${route}`);
-      if (pending) { await this.load(pending); name = await this.store.get(`r/${route}`); }
-    }
+    const name = await this.store.get(`r/${route}`);
     return name ? this.load(name) : null;
   }
-  /** Take a pending rebind off a record and its index entry. @param {any} rec */
+  /** Clear a pending 72-hour rebind a record may still carry from before that recovery was removed (instant recovery replaced it), with its index entry. @param {any} rec */
   async unpend(rec) {
     if (rec.pending) await this.store.delete(`p/${rec.pending.route}`);
     rec.pending = null;
@@ -543,7 +510,7 @@ export class Directory {
     const raw = new Uint8Array(16);
     crypto.getRandomValues(raw);
     const code = base32(raw).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
-    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, codeHash: await codeHash(v.name, code), pending: null, notices: [], log: [] };
+    const rec = { name: v.name, route: a.route, state: "claimed", claimedAt: this.now(), everPointed: false, pointedAt: null, ips: {}, codeHash: await codeHash(v.name, code), notices: [], log: [] };
     await this.save(rec);
     await this.store.put(`r/${a.route}`, v.name);
     await this.store.delete(`m/${a.route}`); // the route holds a name again: the old "moved" note no longer applies
@@ -596,7 +563,7 @@ export class Directory {
     const rec = await this.owned(b, a);
     await this.store.delete(`r/${a.route}`);
     if (!rec.everPointed) { await this.drop(rec); return { name: rec.name, tombstone: false }; }
-    // Ever live: it can never be anyone else's. Only the recovery code moves it.
+    // Ever live: it can never be anyone else's (support's admin rebind moves it).
     await this.unpend(rec);
     Object.assign(rec, { state: "tombstone", route: null, ips: {} });
     this.note(rec, "released", {});
@@ -605,37 +572,6 @@ export class Directory {
     return { name: rec.name, tombstone: true };
   }
 
-  /** The new route asks to take a name over. The answer never says whether the name exists. */
-  async op_recover(b, a, ip) {
-    const v = verdict(b.name);
-    await this.count("rip", ip, LIMITS.recoverPerIp, "too many recovery attempts from this address today");
-    await this.count("rname", v.name, LIMITS.recoverPerName, "too many recovery attempts for that name today");
-    const refused = () => err(403, "refused", "that name and code do not match");
-    if (v.status === "invalid" || !/^[0-9a-f]{64}$/.test(String(b.next || ""))) throw refused();
-    const rec = await this.load(v.name);
-    const ok = rec && same(rec.codeHash, await codeHash(v.name, String(b.code || "")));
-    if (rec) { rec.log = [...(rec.log || []), { at: this.now(), ok: Boolean(ok), route: a.route.slice(0, 8) }].slice(-50); await this.save(rec); }
-    if (!ok) throw refused();
-    if (rec.route === a.route) throw err(409, "already_yours", "this server already holds that name");
-    if (await this.store.get(`r/${a.route}`)) throw err(409, "one_per_route", "this server already holds a name");
-    if (rec.pending) {
-      if (rec.pending.route === a.route) return { name: rec.name, pendingUntil: rec.pending.eta };
-      throw err(409, "pending", "another recovery of that name is already waiting");
-    }
-    rec.pending = { route: a.route, at: this.now(), eta: this.now() + LIMITS.recoverMs, next: b.next };
-    await this.store.put(`p/${a.route}`, rec.name);
-    this.note(rec, "recovery-pending", { eta: rec.pending.eta, by: a.route.slice(0, 8) });
-    await this.save(rec);
-    return { name: rec.name, pendingUntil: rec.pending.eta };
-  }
-  async op_cancel(b, a) {
-    const rec = await this.owned(b, a);
-    if (!rec.pending) return { name: rec.name, cancelled: false };
-    await this.unpend(rec);
-    this.note(rec, "recovery-cancelled", {});
-    await this.save(rec);
-    return { name: rec.name, cancelled: true };
-  }
   async op_code(b, a) {
     const rec = await this.owned(b, a);
     if (!/^[0-9a-f]{64}$/.test(String(b.next || ""))) throw err(400, "bad_code", "send the hash of the new code");
@@ -654,12 +590,11 @@ export class Directory {
     }
     const dns = dnsFor(this.env);
     return { name: rec.name, fqdn: `${rec.name}.${dns.zone}`, state: rec.state, pointed: rec.everPointed, ips: rec.ips,
-      pending: rec.pending ? { at: rec.pending.at, eta: rec.pending.eta } : null, notices: rec.notices || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
+      notices: rec.notices || [], acmeZone: `${await routeHash(a.route)}.acme.${dns.zone}` };
   }
 
   /**
-   * Support only (the ADMIN_SECRET header, checked by the Worker): move a name to another route at once, with no
-   * 72-hour wait, for a person whose old server is gone. It writes an admin-rebind notice to the name's log, keeps
+   * Support only (the ADMIN_SECRET header, checked by the Worker): move a name to another route at once, for a person whose old server is gone. It writes an admin-rebind notice to the name's log, keeps
    * the recovery code as it is, leaves a note for the old route (so its devices are told if the server is still
    * reachable), and wipes the old DNS records so the new box publishes its own address.
    * @param {any} b @param {{admin?: boolean}} a
@@ -687,7 +622,7 @@ export class Directory {
     return { name: rec.name, route: route.slice(0, 8), state: rec.state };
   }
 
-  /** Land what came due, lapse what expired, retry DNS cleanups, drop yesterday's counters. */
+  /** Lapse what expired, retry DNS cleanups, drop yesterday's counters. */
   async sweep() {
     for (const [, rec] of await this.store.list({ prefix: "n/" })) {
       const now = await this.load(rec.name);

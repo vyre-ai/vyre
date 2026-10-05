@@ -52,7 +52,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 46 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
-| [`names`](#names) | `core/names` | `box` | 12 | 12 | cli |
+| [`names`](#names) | `core/names` | `box` | 10 | 9 | cli |
 | [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
@@ -498,8 +498,8 @@ The owner's reset of the accepted first-party module list, for a deliberate down
 - Folder: `core/names`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [12](tools.md#names), 2 of them only for other modules
-- Emits: [12 events](events.md#names)
+- Tools: [10](tools.md#names), 1 of them only for other modules
+- Emits: [9 events](events.md#names)
 - Shows on: cli
 - Needs vault: `cloudflare-vyre-token`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
