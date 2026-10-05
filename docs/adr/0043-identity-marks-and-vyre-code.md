@@ -12,7 +12,7 @@ status: draft
 
 avatar.md already drew one line: agents and teammates get tiles, only the person gets a circle,
 no photos, no colour per agent or person. Five rounds of generated-avatar work (round 1 through
-round 5, `docs/work/app-design.md`) grew that into four families with distinct silhouettes, and
+round 5, `team/archive/work-journals/app-design.md`) grew that into four families with distinct silhouettes, and
 the user asked for a scannable form of the person's own mark to pair a phone: not a standard QR
 (any camera reads a QR; this should be ours, read only by phone.vyre.run's own decoder, with no
 normal-camera fallback path), seeded from a stable public identity such as a public-key

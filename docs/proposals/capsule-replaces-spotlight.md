@@ -1,6 +1,6 @@
 # Proposal: the Capsule replaces Spotlight
 
-Status: research, not started. Written against `local/capsule/` on main and `docs/work/capsule.md`
+Status: research, not started. Written against `local/capsule/` on main and `team/archive/work-journals/capsule.md`
 as of this Mac's current build (M7, Wave 1, done through the offline state and Beacon list).
 
 ## Recommendation
@@ -106,7 +106,7 @@ tearing windows down more aggressively regressed cold-open latency.
 new process. The double-Control path (`hotkey.swift` → stdout JSON line → `toggle()` in
 `main.js`) is a listen-only kernel tap piping into an already-warm window, which is the same
 shape recommended above for `⌘Space` via `RegisterEventHotKey`. Nothing in the code or
-`docs/work/capsule.md` currently *measures* this path: the "9 ms" in `Capsule.dc.html`'s Recall
+`team/archive/work-journals/capsule.md` currently *measures* this path: the "9 ms" in `Capsule.dc.html`'s Recall
 board is a mock value for the design, not a captured number, and `capsule.md`'s Done log verifies
 correctness (the box gets the caret, `@` completes, a reply streams) but not latency.
 
@@ -170,7 +170,7 @@ in `docs/SPEC.md` section 11 cover this if applied here specifically:
   app launching, file search, calculator, settings and contacts all still work with `vyred` down,
   because none of them touch it. Only Vyre's own results (projects, threads, agents, memory,
   Beacon) degrade, and the Capsule already has an offline state and recovery path per
-  `docs/work/capsule.md`'s Done log.
+  `team/archive/work-journals/capsule.md`'s Done log.
 - **Nothing is logged off-device.** `mdfind` queries, contact lookups and app launches are exactly
   the kind of thing that must never appear in a Vyre event, log, or memory write: they are
   transient UI state, not part of any thread.
@@ -194,7 +194,7 @@ in `docs/SPEC.md` section 11 cover this if applied here specifically:
   and non-sandboxed apps, is App-Store-safe without being App-Store-required, and: critically for
   `vyre-launcher`'s reasoning about one stable process identity for Accessibility grants: a
   `SMAppService.agent` (launchd agent) plist pointing at `vyre-launcher` keeps that identity
-  stable across restarts, which is exactly the gap `docs/work/capsule.md`'s Next list already
+  stable across restarts, which is exactly the gap `team/archive/work-journals/capsule.md`'s Next list already
   names as item 4. Default off, opt-in during first-run, matching `capsule.autostart`'s existing
   default in `local/capsule/index.js`.
 - **First-run flow.** Sequence, each step skippable and re-offerable from the tray menu later:

@@ -36,7 +36,7 @@ colour per agent or person.
 
 ## Five identity families (ADR 0043)
 
-Generated-avatar work (`docs/work/app-design.md` rounds 1-5) grew the tile/circle split above
+Generated-avatar work (`team/archive/work-journals/app-design.md` rounds 1-5) grew the tile/circle split above
 into five families, each with its own silhouette so identity reads before the name or initial
 does:
 
@@ -137,7 +137,7 @@ setup, "unique by design" - never a hash of a device or box key, which is a diff
 identity. A **stored pick is optional and overrides the default**; only the person themself can
 set their own, and only ever their own. Not yet built: see Gaps.
 
-**Teammates specifically** (ADR 0031, `docs/work/teammates.md` section 3, decided with teammates
+**Teammates specifically** (ADR 0031, `team/archive/work-journals/teammates.md` section 3, decided with teammates
 and chat 2026-09-28): a teammate's tile is the same neutral agent tile as any other agent, initial
 lower case, `--hover` fill, no per-teammate hue. Considered and turned down: a role-hashed accent
 colour (a coloured disc, a 3 px left border on bubbles, a coloured dot in rows). `docs/design/

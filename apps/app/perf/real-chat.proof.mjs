@@ -1,7 +1,7 @@
 // The chat screen on the real stream, end to end: a real vyred (fake claude), the exported web app
 // served beside it, and headless Chromium. Not part of `npm test` (the name is .proof.mjs).
 //   node --test apps/app/perf/real-chat.proof.mjs        (run from the repo root, after `npm run export:web` in apps/app)
-// Needs `playwright` resolvable (PW_FROM, default $HOME/shots/). Shots go to SHOTS (docs/work/shots/chat).
+// Needs `playwright` resolvable (PW_FROM, default $HOME/shots/). Shots go to SHOTS (perf/shots/chat).
 //
 // The page's tool calls reach vyred through a small proxy here that does what the daemon's HTTP door does
 // for a signed-in person (the call is the deck's, `as` is the viewer); the stream's WebSocket is the
@@ -22,7 +22,7 @@ import { connect, wsDuplex } from "../../../core/stream/client.js";
 
 const require = createRequire(process.env.PW_FROM || path.join(process.env.HOME, "shots/"));
 const { chromium } = require("playwright");
-const SHOTS = path.resolve(process.env.SHOTS || "docs/work/shots/chat");
+const SHOTS = path.resolve(process.env.SHOTS || "perf/shots/chat");
 const ALEX = "person:alex", KIT = "assistant:kit", JUNO = "assistant:juno", GROUP = "grp-harlow";
 const REPLY_WORDS = Number(process.env.REPLY_WORDS || 700);
 

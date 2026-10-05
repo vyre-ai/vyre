@@ -1,5 +1,5 @@
 // @ts-check
-// spend: one ledger, and a daily cap per provider (docs/work/iq.md, plan 3.9).
+// spend: one ledger, and a daily cap per provider (team/archive/work-journals/iq.md, plan 3.9).
 //
 // What it keeps: a row per UTC day, provider, account, purpose and agent, with dollars, tokens and
 // calls; `estimated` when the figure is tokens times a price, not a cost the provider reported.
