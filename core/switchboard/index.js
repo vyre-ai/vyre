@@ -619,6 +619,11 @@ export class Switchboard {
     });
   }
 
+  /** The terminal sessions (`claude` or `vyre start` outside vyred) that are runs in one chat, by session id, oldest first. @param {string} chat @returns {string[]} */
+  terminalsOf(chat) {
+    return /** @type {any[]} */ (this.db.prepare("SELECT session FROM threads_terminal_chats WHERE chat = ? ORDER BY rowid").all(String(chat))).map(r => String(r.session));
+  }
+
   /** The chat a run (or a terminal session, by its session id) is in, or null. @param {string} id */
   chatOf(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(String(id)));
@@ -4078,7 +4083,7 @@ export default {
       async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
     tool("threads.of-chat", "The runs inside one chat (its slots): thread, agent, provider, model, account, status. A first-party module's, which has already checked that the person is in the chat (work.chat.get).",
       { type: "object", required: ["chat"], properties: { chat: str } },
-      async (i, meta) => { guard(meta.caller, "read a chat's runs"); return { runs: sb.ofChat(i.chat) }; }, ["module"]);
+      async (i, meta) => { guard(meta.caller, "read a chat's runs"); return { runs: sb.ofChat(i.chat), terminals: sb.terminalsOf(i.chat) }; }, ["module"]);
     // The runs of a chat are reached by their slot: `agent:<id>` or `model:<provider>/<model>#<thread prefix>`, as work.chat.get names them. The person must be in the chat (the gate above, on the run).
     const slotRun = async (/** @type {string} */ chat, /** @type {string} */ slot, /** @type {any} */ meta) => {
       const runs = sb.ofChat(String(chat));

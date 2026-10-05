@@ -26,11 +26,11 @@ async function world(t) {
     records: { value: new Proxy({ query: async () => ({ rows: [] }) }, { get: (o, k) => (k in o ? o[k] : async () => ({ id: "rec_x", urn: `vyre://${rig.space}/x/rec_x`, data: {} })) }) },
   });
   const tools = new Map();
-  const runs = [];
+  const runs = [], terminals = new Map();
   await mod.start({ tool: (name, def) => tools.set(name, def), store: { db }, kernel, config: {}, events: { on: () => () => {}, emit: () => {} },
-    call: async (tool, input) => { if (tool === "threads.of-chat") return { data: { runs: runs.filter(r => r.chat === input.chat).map(({ chat, ...r }) => r) } }; throw new Error(`unexpected ${tool}`); } });
+    call: async (tool, input) => { if (tool === "threads.of-chat") return { data: { runs: runs.filter(r => r.chat === input.chat).map(({ chat, ...r }) => r), terminals: terminals.get(input.chat) || [] } }; throw new Error(`unexpected ${tool}`); } });
   const run = (name, input, who) => { asker = who; return tools.get(name).run(input, { caller: "deck" }); };
-  return { rig, db, tools, run, runs, as: { alex: rig.person("per_alex"), bob: rig.person("per_bob"), carol: rig.person("per_carol"), juno: rig.assistant("per_alex", "juno") } };
+  return { rig, db, tools, run, runs, terminals, as: { alex: rig.person("per_alex"), bob: rig.person("per_bob"), carol: rig.person("per_carol"), juno: rig.assistant("per_alex", "juno") } };
 }
 
 test("a span of a chat is read word for word by a person in it and by an assistant it lists; a person outside it gets 'no such chat' and no word", async t => {
@@ -70,4 +70,22 @@ test("a span of a chat is read word for word by a person in it and by an assista
   w.db.prepare("INSERT OR REPLACE INTO memory_engine_lines VALUES (?,?,?,?,?,?,?,?,?)").run("thr_two", 1, "user", "another chat's words", 1, "trusted", "none", "[]", "r");
   const again = await ask(alex, { from: 1, to: 1 });
   assert.equal(JSON.stringify(again).includes("another chat's words"), false);
+});
+
+test("a terminal session in a chat is read the same way: under the asker's chain, members only, from the lines the Space's memory keeps", async t => {
+  const w = await world(t);
+  const chat = await w.rig.k.gateway.grants.chats.create(w.as.alex, { people: ["per_bob"] });
+  const session = "6f1d2c3a-1111-4222-8333-444455556666";
+  w.terminals.set(chat.id, [session]);
+  await w.tools.get("work.know.search").run({ query: "x" }, { caller: "deck" }).catch(() => null);
+  const put = (seq, role, text) => w.db.prepare("INSERT OR REPLACE INTO memory_engine_lines VALUES (?,?,?,?,?,?,?,?,?)").run(session, seq, role, text, seq, "trusted", "none", "[]", `vyre://${w.rig.space}/session/${session}`);
+  put(1, "user", "Draft the demand letter to Northwind.");
+  put(2, "assistant", "Drafted. The amount is {{field:vyre://spc/record/r2#amount}}.");
+  const ask = (who, input) => w.run("work.chat.span", { chat: chat.id, ...input }, who);
+  const r = await ask(w.as.alex, { from: 1, to: 2 });
+  assert.equal(r.runs[0].slot, "terminal:6f1d2c3a");
+  assert.deepEqual(r.runs[0].lines.map(l => l.text), ["Draft the demand letter to Northwind.", "Drafted. The amount is {{field:vyre://spc/record/r2#amount}}."]);
+  assert.equal(r.runs[0].lines[0].address, `line:${session}#1`);
+  assert.equal((await ask(w.as.bob, { from: 2, to: 2, slot: "terminal:6f1d2c3a" })).runs[0].lines[0].seq, 2);
+  await assert.rejects(() => ask(w.as.carol, { from: 1, to: 2 }), { code: "not_found", message: "no such chat" });
 });
