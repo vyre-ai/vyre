@@ -13,6 +13,7 @@
 //
 // Every step is idempotent behind `ports.state`, so a crash or a dropped connection resumes. The memory room goes sealed to a key the target made (ports.memory); the Work engine's lines ride in the
 // pull (`pulled.know`). Whatever a build cannot carry is reported in the answer, never silently dropped, and the source keeps it.
+import crypto from "node:crypto";
 import { planMove } from "./project-move.js";
 
 const urnParts = (/** @type {string} */ u) => { const [, , space, type, id] = String(u).split("/"); return { space, type, id }; };
@@ -140,3 +141,10 @@ export async function upgradePersonal({ projects, stateOf, planOne, runOne, appr
   }
   return { moved, skipped, failed, approved: approveAll ? need.length : 0 };
 }
+
+/**
+ * The one hash a batch approval is bound to (windows' `moves.outMany`: the target, this plan hash and the sorted list of projects): the hash of the sorted per-project plan hashes, base64url, 43
+ * characters. The person approves the set once; a project changing after that changes its plan hash and the set no longer matches.
+ * @param {{ project: string, hash: string }[]} plans @returns {string}
+ */
+export const batchPlanHash = plans => crypto.createHash("sha256").update(JSON.stringify([...plans].map(p => [p.project, p.hash]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)))).digest("base64url");

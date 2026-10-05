@@ -3,7 +3,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { planRemoteMove, runRemoteMove, upgradePersonal } from "./project-move-remote.js";
+import { planRemoteMove, runRemoteMove, upgradePersonal, batchPlanHash } from "./project-move-remote.js";
 
 function source() {
   /** @type {Map<string, any>} */ const rows = new Map(); let n = 0;
@@ -137,4 +137,13 @@ test("the whole upgrade is ONE approval: every project is planned, the person ap
   const again = await upgradePersonal({ projects, stateOf: (/** @type {string} */ u) => states[u], planOne: async (/** @type {string} */ u) => ({ project: u, hash: "x" }), approveAll: async () => { asked++; return {}; }, runOne: async () => {} });
   assert.equal(asked, 1, "no new prompt: they already hold their move ids");
   assert.equal(again.approved, 0);
+});
+
+test("the batch hash is one 43-character value over every project's plan, order-free, and any one project changing changes it", () => {
+  const a = { project: "vyre://A/project/p1", hash: "h1" }, b = { project: "vyre://A/project/p2", hash: "h2" };
+  const h = batchPlanHash([a, b]);
+  assert.match(h, /^[A-Za-z0-9_-]{43}$/);
+  assert.equal(batchPlanHash([b, a]), h, "the order is not part of it");
+  assert.notEqual(batchPlanHash([a, { ...b, hash: "h2-changed" }]), h);
+  assert.notEqual(batchPlanHash([a]), h);
 });
