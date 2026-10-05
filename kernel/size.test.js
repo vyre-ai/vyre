@@ -21,6 +21,7 @@ const BASE_FILES = [
 ];
 /** Not base, single files. */
 const NOT_BASE_FILES = {
+  "modules/child.js": "runs INSIDE the module's sandbox, as the module's own host: the supervisor does not trust it (it is the confined side of the bridge, and everything it does is a message the host-side door checks)",
   "bus.js": "the event bus: an adapter that reads and writes modules' activity events as marked entries of the kernel log; the log's own rules (append-only, chained) are in core and store",
 };
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */
@@ -55,9 +56,10 @@ test("the trusted base stays under its cap, and every part of kernel/ is named a
   for (const f of files(ROOT)) {
     const rel = path.relative(ROOT, f).split(path.sep).join("/");
     const top = rel.split("/")[0];
+    if (rel in NOT_BASE_FILES) continue;
     if (BASE_FILES.includes(rel) || BASE_DIRS.includes(top)) { base += lines(f); continue; }
     if (rel.includes("/") && top in NOT_BASE_DIRS) continue;
-    if (!rel.includes("/") && (rel === "size.test.js" || rel in NOT_BASE_FILES)) continue;
+    if (!rel.includes("/") && rel === "size.test.js") continue;
     unnamed.push(rel);
   }
   assert.deepEqual(unnamed, [], `name these in kernel/size.test.js (base, or not-base with where it goes) and in KERNEL-size.md: ${unnamed.join(", ")}`);
