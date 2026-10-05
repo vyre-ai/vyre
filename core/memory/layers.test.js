@@ -49,7 +49,9 @@ test("layers: a project agent cannot retrieve another project's memory, sees tha
   assert.ok(!JSON.stringify(across.data.passages).includes("Dana Reyes"), "nor its words");
 
   // 2. The markers: kit follows its own, and is only told the other exists.
-  const km = (await ask("memory.markers", {}, "mcp:agent:kit")).data.markers;
+  const kmr = (await ask("memory.markers", {}, "mcp:agent:kit")).data;
+  assert.equal(kmr.layer, "project", "an agent holds its own layer");
+  const km = kmr.markers;
   const nw = km.find(m => m.name === "Northwind"), hl = km.find(m => m.name === "Harlow");
   assert.equal(nw.access, "follow");
   assert.match(nw.summary, /\d+ facts?, \d+ decisions?, \d+ sessions?/);
@@ -71,7 +73,9 @@ test("layers: a project agent cannot retrieve another project's memory, sees tha
 
   // 4. The identity-level assistant follows every marker for its person; so does the person.
   for (const caller of ["mcp:agent:juno", "cli"]) {
-    const m = (await ask("memory.markers", {}, caller)).data.markers;
+    const mr = (await ask("memory.markers", {}, caller)).data;
+    assert.equal(mr.layer, "identity", caller);
+    const m = mr.markers;
     assert.ok(m.filter(x => x.kind === "project").every(x => x.access === "follow" && x.summary), caller);
     const harlow = await ask("memory.follow", { marker: "Harlow", question: "intake form above the fold" }, caller);
     assert.equal(harlow.error, undefined, `${caller}: ${JSON.stringify(harlow)}`);

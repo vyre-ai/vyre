@@ -1100,7 +1100,9 @@ export default {
       input: { type: "object", properties: { ...agentField } },
       run: async (input, extra = {}) => {
         const { markers } = await layerMarkers();
-        return { markers: visibleMarkers(markers, await layerReach(input, extra)) };
+        const r = await layerReach(input, extra);
+        // The identity assistant and the person hold the markers of every Space and project: their layer is identity. An agent holds only its own layer.
+        return { layer: r.all || r.assistant ? "identity" : "project", markers: visibleMarkers(markers, r) };
       },
     });
     ctx.tool("memory.follow", {
@@ -1259,11 +1261,11 @@ export default {
     ctx.tool("memory.profile", {
       effect: "read",
       description: "The user's durable facts as short lines for a system prompt (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\"): only what still holds at confidence 0.5 or more, and nothing sensitive (no dates, account-like numbers, addresses or health). Returns { facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }, strongest first.",
-      input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, ...agentField } },
+      input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, class: { type: "string", enum: ["life", "working_style", "writing_style", "pm_style", "stack"], description: "only this class of the person's identity memory: how they work, write and run projects, what they build with, or their life" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         await personalOnly(input, caller, "memory.profile");
         if (running) await running.catch(() => {});
-        return profile(personal, { limit: input.limit ?? 12 });
+        return profile(personal, { limit: input.limit ?? 12, ...(input.class ? { class: String(input.class) } : {}) });
       },
     });
     // Told outright, by the person or their assistant: kept at once, no prompt (the no-nag rule).
