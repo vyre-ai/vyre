@@ -1131,6 +1131,20 @@ export class Vault {
     return v;
   }
 
+  /**
+   * The key of an API-key account (kind "api-key": what `sessions.accounts.key` stores), for the Space's lent-computer credential route and nothing else (the credentials port in index.js is the one caller;
+   * no tool returns it). One request at a time, never cached by the caller. A sign-in token, a password or any other kind of item is not an API key and answers null. @param {string} name @returns {Promise<string | null>}
+   */
+  async apiKeyValue(name) {
+    await this.key();
+    const row = this.row(String(name)); if (!row || row.kind !== "api-key") return null;
+    const f = await this.fields(row);
+    const v = ["value", "api-key", "token"].map(k => f[k]).find(x => typeof x === "string" && x);
+    if (!v) return null;
+    this.audit("api-key-use", row.name, "lent", true, "handed to the lent-computer credential route");
+    return v;
+  }
+
   /** Which launcher sign-in tokens are stored and when each was added or last changed: names and times, never a value. */
   providerTokens() {
     return Object.entries(LAUNCHER_ITEMS).flatMap(([provider, spec]) => { const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_items WHERE name = ?").get(spec.item)); return r && this.rowOk("vault_items", r) ? [{ provider, item: spec.item, stored: true, added: r.updated }] : []; });
