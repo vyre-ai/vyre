@@ -60,3 +60,31 @@ test("every DECLARED tool has its own entry naming the commit, none is person on
   for (const t of Object.keys(DECLARED_NOTES)) assert.ok(t in DECLARED, `${t} has a note but is not declared`);
   for (const t of ["threads.delete", "threads.rewind"]) assert.ok(ASK_FIRST.has(t) && have.has(t), `${t} is ask first and has an entry`);
 });
+
+// A ruled presence removal on a tool a person does (kernel/golden/presence.json, generated from PRESENCE_RULINGS): narrow, and never a way to open a tool to a model.
+import { generatePresence, PRESENCE_FILE, PRESENCE_RULINGS } from "../../scripts/gen-allow.mjs";
+import { weakened, presenceAllow, risky } from "./index.js";
+
+test("the committed presence file is exactly the generator's output, and every entry names a CHAT.md ruling, one refusal (presence_required) and person callers only", () => {
+  assert.equal(fs.readFileSync(PRESENCE_FILE, "utf8"), render(generatePresence()), "run: npm run golden:allow");
+  for (const e of JSON.parse(fs.readFileSync(PRESENCE_FILE, "utf8"))) {
+    assert.match(e.ruling, /CHAT\.md/);
+    assert.equal(e.was, "presence_required");
+    assert.ok(e.callers.length > 0 && !e.callers.some(risky), `${e.tool}: no model, guest, MCP or harness caller`);
+  }
+});
+
+test("the gate lets a ruled presence removal through only for its tool, its person callers and the refusal it replaced", () => {
+  const mk = (tool, caller, was, now = "would run") => ({ a: { roles: { box: { rows: { [tool]: "A" }, emptyBad: {} } }, callers: [caller], worlds: ["w"], legend: { A: was } }, b: { roles: { box: { rows: { [tool]: "B" }, emptyBad: {} } }, callers: [caller], worlds: ["w"], legend: { B: now } } });
+  const allow = presenceAllow();
+  const { a, b } = mk("spaces.host-here", "deck", "presence_required");
+  assert.deepEqual(weakened(a, b, allow), [], "the ruled cell passes");
+  assert.equal(weakened(a, b, []).length, 1, "and without the ruling it is refused");
+  const other = mk("spaces.host-here", "deck", "not_a_member");
+  assert.equal(weakened(other.a, other.b, allow).length, 1, "another refusal of the same tool is not excused");
+  const agent = mk("spaces.host-here", "cli:agent:kit", "presence_required");
+  assert.equal(weakened(agent.a, agent.b, allow).length, 1, "a model caller is not excused");
+  const tool2 = mk("spaces.members.add", "deck", "presence_required");
+  assert.equal(weakened(tool2.a, tool2.b, allow).length, 1, "another tool is not excused");
+  assert.ok(Object.keys(PRESENCE_RULINGS).every(t => PERSON_ONLY.has(t)), "today only person-only tools are named here");
+});

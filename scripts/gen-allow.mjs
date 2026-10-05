@@ -12,6 +12,7 @@ import { toolEntries } from "../packages/module-sdk/manifest.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const ALLOW_FILE = path.join(REPO, "kernel", "golden", "allow.json");
+export const PRESENCE_FILE = path.join(REPO, "kernel", "golden", "presence.json");
 
 const RULING = "user ruling 4 Oct 2026: an assistant can do what its person can";
 const SAFE = "open to the person's assistant, safe only for a daemon-stamped session claim (L-1)";
@@ -262,16 +263,45 @@ export function generate() {
   return out.sort((a, b) => (a.tool < b.tool ? -1 : 1));
 }
 
-export const render = (/** @type {{ tool: string, reason: string }[]} */ entries) => JSON.stringify(entries, null, 1) + "\n";
+export const render = (/** @type {any[]} */ entries) => JSON.stringify(entries, null, 1) + "\n";
+
+/**
+ * A PRESENCE the user ruled away from a tool (never a way to open a tool to a model: that is OPEN, ASK_FIRST and DECLARED above). The golden refresh refuses a cell that moves from refused to run; when the move is a ruled
+ * removal of a fresh-proof requirement from a tool a PERSON does (a person-only tool, which allow.json never lists), it is named here: the tool, the one refusal it was (`was`, always presence_required), the person
+ * callers it applies to (never a model, guest, MCP or harness caller), and the ruling that did it. kernel/golden/presence.json is generated from this list and read by the refresh beside allow.json.
+ */
+export const PRESENCE_RULINGS = Object.freeze({
+  "spaces.host-here": Object.freeze({
+    ruling: "team/0.2/CHAT.md 2026-10-05T04:15Z, the user: Touch ID stays only for making someone an owner and transferring ownership",
+    commit: "11391dc9d",
+    was: "presence_required",
+    callers: Object.freeze(["cli", "local", "deck", "capsule", "mobile", "tailnet:owner", "device"]),
+    note: "hosting a space on this server is the owner's own act as a person and no longer asks for a fresh proof",
+  }),
+});
+
+/** @returns {{ tool: string, was: string, callers: string[], ruling: string, reason: string }[]} */
+export function generatePresence() {
+  const RISKY = /agent|^tailnet-guest|^mcp|^harness/;
+  return Object.entries(PRESENCE_RULINGS).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([tool, r]) => {
+    if (r.was !== "presence_required") throw new Error(`gen-allow: ${tool}: a ruled presence removal is for a presence_required cell`);
+    if (!/CHAT\.md/.test(r.ruling)) throw new Error(`gen-allow: ${tool}: a presence removal names its CHAT.md ruling`);
+    if (!r.callers.length || r.callers.some(c => RISKY.test(c))) throw new Error(`gen-allow: ${tool}: a presence removal names person callers only, never a model, guest, MCP or harness caller`);
+    return { tool, was: r.was, callers: [...r.callers], ruling: r.ruling, reason: `${r.ruling}; ${tool} changed in ${r.commit}: ${r.note}` };
+  });
+}
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const text = render(generate());
+  const text = render(generate()), presence = render(generatePresence());
   if (process.argv.includes("--check")) {
-    let have = "";
+    let have = "", havePresence = "";
     try { have = fs.readFileSync(ALLOW_FILE, "utf8"); } catch { /* none */ }
+    try { havePresence = fs.readFileSync(PRESENCE_FILE, "utf8"); } catch { /* none */ }
     if (have !== text) { console.error("kernel/golden/allow.json differs from the generator's output: run npm run golden:allow"); process.exit(1); }
+    if (havePresence !== presence) { console.error("kernel/golden/presence.json differs from the generator's output: run npm run golden:allow"); process.exit(1); }
   } else {
     fs.writeFileSync(ALLOW_FILE, text);
-    console.log(`wrote ${ALLOW_FILE} (${generate().length} entries)`);
+    fs.writeFileSync(PRESENCE_FILE, presence);
+    console.log(`wrote ${ALLOW_FILE} (${generate().length} entries) and ${PRESENCE_FILE} (${generatePresence().length} entries)`);
   }
 }
