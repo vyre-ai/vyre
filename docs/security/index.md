@@ -41,7 +41,7 @@ Details: [ADR 0001](../adr/0001-vault-crypto.md), the key hierarchy in [ADR 0006
 - **No root.** `vyred` runs as uid 1000 in the container, or as your own login account without Docker, never root.
 - **A Mac pairs only with your passkey.** Approving a pairing needs presence, and the box refuses the approval from the Mac that asks, since a model on that Mac can read the code it shows.
 - **The box reads six things from the Mac, and nothing else.** The paired Mac holds one request open to the box, so the Mac opens no port. Six read tools cross (projects, recall and thread lists), checked against the same list on both ends, only for you and never for an agent, MCP or a guest. Nothing the Mac answers is stored on the box ([ADR 0021](../adr/0021-box-reads-the-mac.md)).
-- **Vyre keeps nothing about you on its own servers.** The one public trace is the DNS record of a `vyre.run` name, if you claim one: the name and your box's address on the private network, which nothing off your network can reach. (Claude Code talks to its own services as it always does.)
+- **Vyre keeps nothing about you on its own servers.** The one public trace is the DNS record of a `vyre.run` name, if you claim one: the name and your server's public address. (Claude Code talks to its own services as it always does.)
 
 Details: [ADR 0002](../adr/0002-network-and-identity.md), [Your private network](../concepts/network.md).
 

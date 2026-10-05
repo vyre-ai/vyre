@@ -20,7 +20,7 @@ The relay is always the first working path and the fallback. Your server is reac
 
 Nothing is exposed that your router did not agree to, and no rule is made on the machine. A path is called direct only after it was reached from outside: the relay dials the address back. Without that proof the state stays "relay", and Vyre says why. A router that reports a private or carrier-grade external address is not directly reachable, and Vyre says so.
 
-When a device opens a connection to a space's home, the direct dial starts first. If it is not up within three seconds, the relay stream starts too. The first answer carries the calls, direct is preferred as soon as it is up, and the relay stream closes when it is no longer the way in. A dead direct path is retried at most once a minute while the relay carries the work. The relay carries end-to-end encrypted traffic and cannot read it (see [the relay](../adr/0026-relay.md)).
+A paired server or device joins the home's own network at its control address with a one-time key, and uses the direct path when it is up and the relay otherwise. When a device opens a connection to a space's home, the direct dial starts first. If it is not up within three seconds, the relay stream starts too. The first answer carries the calls, direct is preferred as soon as it is up, and the relay stream closes when it is no longer the way in. A dead direct path is retried at most once a minute while the relay carries the work. The relay carries end-to-end encrypted traffic and cannot read it (see [the relay](../adr/0026-relay.md)).
 
 `vyre doctor` shows **Path to your server**, **Relay**, **Server door** and **Clock**, and each says what failed and the one thing to do next.
 
@@ -29,7 +29,7 @@ When a device opens a connection to a space's home, the direct dial starts first
 Every way into a space is a Wink: a code or a scan on one device, a card on the other, and then exactly one grant. There is no hidden way in.
 
 - **A phone.** Your server or a computer you are signed in on shows a QR code and a long code. The phone scans or pastes it, both screens show the same three words, and you say yes on the computer. No yes pairs nothing.
-- **A Mac.** `vyre up` asks for your server's pairing code, shows three words, and pairs once you confirm they match on both screens and approve with your passkey.
+- **A Mac.** The server shows its pairing code and the Mac runs `vyre link pair <code>`. The person at the server picks the three words: the server shows a decoy set too, and a wrong pick pairs nothing. `vyre up` pairs nothing and asks nothing; it only says how.
 - **A person.** An invite is a Wink ticket with the offer sealed into it. The invited person's redemption becomes a membership in your space, and a sensitive role waits for an admin's approval.
 - **A computer you lend.** You lend one of your computers to a space with limits, and one removal undoes all of it.
 
@@ -44,7 +44,7 @@ Your server is served at one HTTPS address:
 | `https://alex.vyre.run` | the default after setup at vyre.run/setup: a name you claim there | Let's Encrypt, by DNS challenge |
 | your own domain, such as `https://vyre.harlowlegal.example` | when you bring a domain at the end of setup | Let's Encrypt, by DNS challenge through a record you add |
 
-A `vyre.run` name is an A record pointing at your server's address on the private network (a `100.64.x.x` address). It resolves on the public internet, but nothing off your network can reach it. The name is claimed through Vyre's hosted name directory. For your own domain, you add two records, an A record to the server's address on the private network and an `_acme-challenge` CNAME, and Vyre checks the CNAME before it serves the domain.
+A `vyre.run` name is an A record pointing at your server's public IPv4 address. The name directory publishes it only after an outside check proves your server's public port (7443 by default) answers; until then the name is not published and the server is reachable through the relay only. The certificate is Let's Encrypt, by DNS challenge through the directory. For your own domain, you add two records, an A record to the server's public address and an `_acme-challenge` CNAME, and Vyre checks the CNAME before it serves the domain.
 
 ```
 vyre name                 # this box's address and its phase
@@ -70,7 +70,7 @@ A space has owners, and a role decides what each person may do: owner, admin, ma
 ## What it will not do
 
 - No passwords, no login screen, no sessions on the network address.
-- vyred itself opens no listener on the network. Connections arrive through the relay and through the built-in network's own gate.
+- vyred itself opens no listener on the network. Connections arrive through the relay and through the built-in network's own gate. The public gate on the server's port carries exactly two request shapes from the internet and answers 404 to everything else: `POST /hooks/<route>` (its signature is checked at the home) and `GET` or `HEAD /s/<token>` (shared links).
 - If you run another VPN of your own on a machine, Vyre does not use it and does not ask for it. Vyre's connection to a space then stays on the relay.
 - Root on the server, and anyone who can reach its Docker socket, are out of scope.
 

@@ -47,8 +47,8 @@ vyre up --connect https://alex.vyre.run   # a box you already set up
 ```
 
 A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, asks where Vyre should run
-(or uses the address you gave with `--connect`), asks the box to pair this Mac (you approve it in the
-Vyre app on your phone), offers once to add Vyre's line to Claude Code's status line, and builds and
+(or saves the address you gave with `--connect`; it pairs nothing and asks nothing, and pairing is
+`vyre link pair <code>` with the code the box shows), offers once to add Vyre's line to Claude Code's status line, and builds and
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
 [Install, step 10](install.md#10-put-the-lumen-on-your-mac).
 
@@ -94,9 +94,15 @@ account that ran sudo. Add `--dry-run` to see every change without making one.
 4. Runs `systemctl daemon-reload`, `systemctl enable vyre.service` and
    `systemctl restart vyre.service`.
 
-Then pair it from your Vyre app: `vyre call wink.server.code` on the server prints the pairing
-code, and the app shows the same three words to confirm. Pairing is described in
+Then pair it from your Vyre app: `vyre call wink.server.code '{"qr":true}'` on the server shows the
+QR code and the long code, and you pick the three words the app shows. Pairing is described in
 [Your private network](../concepts/network.md#pairing-a-device).
+
+Without Docker there is no Headscale or node program in the package, so the network reports
+"no binary" and the relay carries every connection. That still works. To get the direct path, put
+headscale 0.29.4 and wink-forwarder on the server and set `VYRE_HEADSCALE_BIN` and
+`VYRE_WINK_FORWARDER_BIN` (the network looks for those two). The Mac server installer carries both;
+a plain npm install does not.
 
 > [!SNAG] vyre up --system says systemd is required
 > Without systemd there is no system install. Run `vyre daemon` (Vyre in the foreground) as the
