@@ -92,7 +92,7 @@ function rig(t, o = {}) {
   void ids;
   return { fk, groups, logs, call, send, kit, say, watch, calls, streamOpens, held, reopen, ctx };
 }
-const texts = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const texts = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 
 test("the stream opens no session of its own for an assistant: the reply opens through the seam, after the turn begins, and a mid-reply joiner never receives it", async t => {
   const r = rig(t);
@@ -179,8 +179,8 @@ test("restart: a turn the seam gives up shows 'couldn't resume, ask again' and i
   await r.groups.idle();
   const seen = JSON.stringify(bob.frames);
   assert.ok(!seen.includes("never shown") && !seen.includes("still not"), "the dropped reply is never shown");
-  assert.ok(bob.frames.some(f => f.type === "session.status" && f.data.state === "failed" && /couldn't resume/.test(String(f.data.note))), "the room is told once, without content");
-  assert.equal(bob.frames.filter(f => f.type === "session.status" && f.data.state === "failed").length, 1);
+  assert.ok(bob.frames.some(f => f.type === "chat.status" && f.data.state === "failed" && /couldn't resume/.test(String(f.data.note))), "the room is told once, without content");
+  assert.equal(bob.frames.filter(f => f.type === "chat.status" && f.data.state === "failed").length, 1);
 });
 
 test("restart: a turn the seam reopened streams as if nothing happened", async t => {

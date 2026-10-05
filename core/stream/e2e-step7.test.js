@@ -24,7 +24,7 @@ import { connect, wsDuplex } from "./client.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 30_000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(20); } throw new Error(`timed out waiting for ${what}`); };
-const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const LONG = (/** @type {string} */ tag) => `${tag} ` + Array(400).fill("word").join(" "); // the fake claude says it back in short deltas a few milliseconds apart
 
 test("step 7 on a real vyred: a chat streams frame by frame, carol joins mid-reply and gets none of it, a kill -9 mid-turn reopens or says it could not resume", { skip: process.env.VYRE_E2E !== "1" && "set VYRE_E2E=1 (test box only)", timeout: 280_000 }, async t => {
@@ -70,14 +70,14 @@ test("step 7 on a real vyred: a chat streams frame by frame, carol joins mid-rep
   const sent = await v.call("alex", "stream.send", { chat: chat, text: "@assistant " + LONG("SECRET1"), to: ["assistant:assistant"], cwd: work });
   assert.ok(!sent.error, JSON.stringify(sent.error));
   await until(() => textOf(alex.frames.all).includes("SECRET1"), "the first delta");
-  assert.ok(!alex.frames.all.some(f => f.type === "session.text-done"), "the reply is still arriving when its first word is on alex's screen");
+  assert.ok(!alex.frames.all.some(f => f.type === "chat.text-done"), "the reply is still arriving when its first word is on alex's screen");
 
   // ---- 2. carol joins mid-reply: she is added to the chat while the reply is still being written, then opens the stream
   assert.ok((await v.add()).ok);
   const carol = v.watch("carol");
-  await until(() => carol.frames.all.some(f => f.type === "session.participant-joined" || f.type === "session.status") || carol.seen.length > 0, "carol's stream to open");
-  await until(() => alex.frames.all.some(f => f.type === "session.text-done"), "the first reply to finish");
-  const deltas = alex.seen.filter(s => s.f.type === "session.text-delta" && !s.f.data.reasoning);
+  await until(() => carol.frames.all.some(f => f.type === "chat.participant-joined" || f.type === "chat.status") || carol.seen.length > 0, "carol's stream to open");
+  await until(() => alex.frames.all.some(f => f.type === "chat.text-done"), "the first reply to finish");
+  const deltas = alex.seen.filter(s => s.f.type === "chat.text-delta" && !s.f.data.reasoning);
   assert.ok(deltas.length >= 5, `the reply came as many frames (got ${deltas.length})`);
   assert.ok(deltas.at(-1).at - deltas[0].at >= 100, "the frames arrived over time, not in one lump");
   const curs = alex.seen.map(s => s.f.cur).filter(c => c > 0);
@@ -86,15 +86,15 @@ test("step 7 on a real vyred: a chat streams frame by frame, carol joins mid-rep
   assert.equal(textOf(alex.frames.all), "echo: " + "@assistant " + LONG("SECRET1"), "alex got every word of the reply");
   await sleep(300);
   assert.ok(!JSON.stringify(carol.frames.all).includes("SECRET1"), "carol, who joined mid-reply, got none of it");
-  assert.ok(!carol.frames.all.some(f => f.type === "session.text-done"), "nor its end");
+  assert.ok(!carol.frames.all.some(f => f.type === "chat.text-done"), "nor its end");
   // the next reply reaches her in full
   const second = await v.call("alex", "stream.send", { chat: chat, text: "@assistant " + LONG("SECOND"), to: ["assistant:assistant"], cwd: work });
   assert.ok(!second.error, JSON.stringify(second.error));
-  await until(() => carol.frames.all.filter(f => f.type === "session.text-done").length >= 1, "carol's copy of the next reply", 40_000);
+  await until(() => carol.frames.all.filter(f => f.type === "chat.text-done").length >= 1, "carol's copy of the next reply", 40_000);
   assert.equal(textOf(carol.frames.all), "echo: " + "@assistant " + LONG("SECOND"), "carol got the next reply in full");
 
   // ---- 3. kill -9 mid-turn, start again on the same home: the pending turn reopens
-  await until(() => alex.frames.all.filter(f => f.type === "session.text-done").length >= 2, "the second reply to finish", 40_000);
+  await until(() => alex.frames.all.filter(f => f.type === "chat.text-done").length >= 2, "the second reply to finish", 40_000);
   const third = await v.call("alex", "stream.send", { chat: chat, text: "@assistant " + LONG("KILLME"), to: ["assistant:assistant"], cwd: work });
   assert.ok(!third.error, JSON.stringify(third.error));
   await until(() => textOf(alex.frames.all).includes("KILLME"), "the third reply to start");
@@ -114,12 +114,12 @@ test("step 7 on a real vyred: a chat streams frame by frame, carol joins mid-rep
   const afterSend = await v.call("alex", "stream.send", { chat: chat, text: "@assistant AFTERKILL", to: ["assistant:assistant"], cwd: work });
   assert.ok(!afterSend.error, JSON.stringify(afterSend.error));
   await until(() => textOf(after.frames.all).includes("echo: @assistant AFTERKILL"), "the reply after the restart", 40_000);
-  assert.ok(!after.frames.all.some(f => f.type === "session.status" && f.data.state === "failed" && /resume/.test(String(f.data.note))), "the turn reopened: nothing says it could not resume");
+  assert.ok(!after.frames.all.some(f => f.type === "chat.status" && f.data.state === "failed" && /resume/.test(String(f.data.note))), "the turn reopened: nothing says it could not resume");
   assert.match(logFile(), /module threads/, "the second process ran the Switchboard");
   assert.ok(!/could not resume/.test(fs.readFileSync(path.join(home, "logs", "e2e-2.log"), "utf8")), "the second process gave nothing up");
 
   // ---- 4. a second kill, and the person can no longer be reopened (the kept turn names someone who is no longer a member): the room is told, and the turn is forgotten
-  await until(() => after.frames.all.filter(f => f.type === "session.text-done").length >= 1, "the reply to finish", 40_000);
+  await until(() => after.frames.all.filter(f => f.type === "chat.text-done").length >= 1, "the reply to finish", 40_000);
   const fourth = await v.call("alex", "stream.send", { chat: chat, text: "@assistant " + LONG("GONE"), to: ["assistant:assistant"], cwd: work });
   assert.ok(!fourth.error, JSON.stringify(fourth.error));
   await until(() => textOf(after.frames.all).includes("GONE"), "the fourth reply to start");
@@ -130,7 +130,7 @@ test("step 7 on a real vyred: a chat streams frame by frame, carol joins mid-rep
   { const db = new DatabaseSync(path.join(home, "vyre.db")); try { for (const r of /** @type {any[]} */ (db.prepare("SELECT thread, body FROM kernel_turns").all())) db.prepare("UPDATE kernel_turns SET body = ? WHERE thread = ?").run(JSON.stringify({ ...JSON.parse(r.body), person: "per_nobody_left_in_the_space" }), r.thread); } finally { db.close(); } }
   v = await boot();
   const late = v.watch("alex");
-  await until(() => late.frames.all.some(f => f.type === "session.status" && f.data.state === "failed" && /couldn't resume, ask again/.test(String(f.data.note))), "the give-up note", 60_000);
+  await until(() => late.frames.all.some(f => f.type === "chat.status" && f.data.state === "failed" && /couldn't resume, ask again/.test(String(f.data.note))), "the give-up note", 60_000);
   assert.equal(turnsOf().length, 0, "the given-up turn is forgotten");
   killGroup(v.child, "SIGTERM");
 });

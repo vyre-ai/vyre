@@ -125,4 +125,8 @@ test("a Basic personal space keeps a project as a plain device folder: no Drive,
   const sess = await kernel.records.create(null, "chat-record", { title: "Intake", chat: "chat_0f0e0d0c-0b0a-4908", project: { urn: proj.urn }, drive: proj.data.drive_path });
   const moved = await hub.moveChat(sess.data.chat, general.urn, { who: "p" });
   assert.equal(moved.data.project.urn, general.urn);
+  // the move is the whole story: the target lists the chat and the source stops, from the one record (the old picked-threads list is not kept in step)
+  const inProject = (/** @type {string} */ urn) => [...rows.values()].filter(r => r.type === "chat-record" && r.data.project && r.data.project.urn === urn).map(r => r.data.chat);
+  assert.deepEqual(inProject(general.urn), [sess.data.chat]);
+  assert.deepEqual(inProject(proj.urn), []);
 });

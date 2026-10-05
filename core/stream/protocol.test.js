@@ -25,6 +25,7 @@ const good = {
   "mention": { message: "m", who: ["assistant:kit"] },
   "fanout": { group: "g", message: "q", members: [{ who: "model:a", message: "a1" }, { who: "model:b", message: "a2" }] },
   "fanout-keep": { group: "g", keep: "a1" },
+  "step-summary": { step: "kit#1", count: 3, kinds: { read: 2, shell: 1 }, summary: "Read 2 files, ran a command", ok: true },
   "text-cut": { message: "m", note: "n" },
 };
 
@@ -32,15 +33,15 @@ test("protocol: every kind validates with its data and is refused without it", (
   for (const k of KINDS) {
     const f = frame(k, good[/** @type {keyof typeof good} */ (k)], ctx);
     assert.deepEqual(validate(f), { ok: true }, k);
-    assert.equal(f.type, `session.${k}`);
+    assert.equal(f.type, `chat.${k}`);
     assert.equal(f.corr, "3");
     assert.equal(validate({ ...f, data: {} }).ok, false, `${k} with empty data`);
   }
-  assert.equal(KINDS.length, 20);
+  assert.equal(KINDS.length, 21);
 });
 
 test("protocol: a hidden stub keeps a cursor and holds nothing", () => {
-  const stub = { v: 1, id: "h", cur: 4, session: "s", turn: null, type: "session.hidden", time: 1, corr: null, data: {} };
+  const stub = { v: 1, id: "h", cur: 4, session: "s", turn: null, type: "chat.hidden", time: 1, corr: null, data: {} };
   assert.deepEqual(validate(stub), { ok: true });
   assert.equal(validate({ ...stub, data: { text: "x" } }).ok, false);
   assert.equal(validate({ ...stub, cur: 0 }).ok, false);
@@ -51,7 +52,7 @@ test("protocol: envelope fields are checked", () => {
   assert.equal(validate({ ...f, v: 2 }).ok, false);
   assert.equal(validate({ ...f, cur: 0 }).ok, false, "a logged frame has a cursor from 1");
   assert.equal(validate({ ...f, type: "thread.status" }).ok, false);
-  assert.equal(validate({ ...f, type: "session.nope" }).ok, false);
+  assert.equal(validate({ ...f, type: "chat.nope" }).ok, false);
   assert.equal(validate({ ...f, id: "" }).ok, false);
   assert.equal(validate({ ...f, data: { state: "dancing" } }).ok, false);
   assert.equal(validate(null).ok, false);
@@ -72,7 +73,7 @@ test("toEnvelope: a frame lifts to the kernel envelope shape, subject is the ses
   const f = frame("tool-finished", good["tool-finished"], ctx);
   const e = toEnvelope(f, { space: "harlow" });
   assert.equal(e.v, 1);
-  assert.equal(e.type, "session.tool-finished");
+  assert.equal(e.type, "chat.tool-finished");
   assert.match(e.type, /^[a-z]+\.[a-z]+(-[a-z]+)*$/, "noun.past-verb, two segments");
   assert.equal(e.subject, "urn:vyre:session:thr_1");
   assert.equal(e.corr, "3");
@@ -159,7 +160,7 @@ test("a cited field is a field-ref block: record and field, never a value; a rep
   assert.equal(validBlock(ref), true);
   assert.equal(validBlock({ ...ref, value: "4200" }), false, "a ref carries no value");
   assert.equal(validBlock({ block: "field-ref", record: "r" }), false);
-  const f = { v: 1, id: "i", cur: 1, time: 1, turn: null, corr: null, session: "s", type: "session.text-done", author: "assistant:kit", data: { message: "m", blocks: [ref] } };
+  const f = { v: 1, id: "i", cur: 1, time: 1, turn: null, corr: null, session: "s", type: "chat.text-done", author: "assistant:kit", data: { message: "m", blocks: [ref] } };
   assert.equal(validate(f).ok, true);
   assert.equal(validate({ ...f, data: { message: "m", blocks: [{ block: "nope" }] } }).ok, false);
 });

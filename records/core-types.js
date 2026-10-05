@@ -242,6 +242,7 @@ export const CHAT = {
     text("chat", "Chat id", { unique: true }),
     text("people", "People"),
     text("agents", "Agents"),
+    text("former", "Former participants (people and agents who could not move with it)"),
     f("datetime", "started", "Started"),
     f("datetime", "last_active", "Last active"),
     choice("status", "Status", ["working", "idle", "stopped", "failed"]),

@@ -144,8 +144,8 @@ test("C-3: over the real socket the ticket's viewer is drawn for: a sealed field
   const c = connect({ open: async ({ from }) => { const o = ok(await w.as(DAVE, "deck")("stream.open", { chat: session, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
   t.after(() => c.close());
   const until = async p => { const end = Date.now() + 5000; while (!p() && Date.now() < end) await new Promise(r => setTimeout(r, 5)); assert.ok(p()); };
-  await until(() => got.some(f => f.type === "session.tool-finished"));
-  const rec = got.find(f => f.type === "session.tool-finished");
+  await until(() => got.some(f => f.type === "chat.tool-finished"));
+  const rec = got.find(f => f.type === "chat.tool-finished");
   assert.equal(rec.data.result.fields[0].placeholder, true);
   assert.ok(!JSON.stringify(got).includes("seal:abc-9f31"));
 });

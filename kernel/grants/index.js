@@ -1026,11 +1026,20 @@ export function createGrantsStore(cfg) {
       const who = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
       const agent = hops.length === 2 && hops[1].actor.kind === "agent" ? hops[1].actor : null;
       const shape = !(chain && chain.viewer === true) && (hops.length === 1 ? Boolean(who) : Boolean(who && agent));
-      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && agent.id !== DEFAULT_ASSISTANT && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
+      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && agent.id !== DEFAULT_ASSISTANT && !String(agent.id).startsWith("model:") && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
       return c;
     },
     /** Does this Space have the default assistant as an actor? A Space made before it existed does not, and gets it only by an owner's approval with presence (`addActor`), never silently. */
     hasDefaultAssistant() { return memberOk({ kind: "agent", id: DEFAULT_ASSISTANT, space: cfg.space }); },
+    /**
+     * The chats this chain may read, by the same rule as chatRead (a person in it; an assistant or a model slot acting for such a person): their ids, newest first. The one place that answers "which chats am I in",
+     * so nothing else keeps a copy of the rule. @param {any} chain @returns {string[]}
+     */
+    chatMine(chain) {
+      const out = [];
+      for (const c of [...chats.values()].reverse()) { try { api.chatRead(chain, c.id); out.push(c.id); } catch (e) { if (!(e instanceof KernelError) || e.code !== "not_found") throw e; } }
+      return out;
+    },
     /** Is this person in this chat (and still a member)? Sync, for the Surfaces door's check when it opens a session for a chat, and for every later room or append decision. @param {string} person @param {string} id */
     chatHas(person, id) {
       const c = chats.get(String(id));
@@ -1054,6 +1063,8 @@ export function createGrantsStore(cfg) {
     },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
+    /** May this assistant act in this chat? The person's default assistant acts as the person it is for and is never listed, so only the person's own membership decides (the caller checks that); any other assistant must be listed. @param {string} id @param {string} agent */
+    chatAssistantOk(id, agent) { const c = chats.get(String(id)); return Boolean(c) && (agent === DEFAULT_ASSISTANT || String(agent).startsWith("model:") || c.assistants.includes(String(agent))); },
     /**
      * Check every stored delegated grant against its parent on every dimension, and cut down any that is wider (made before containment compared every dimension, or by a bug): it keeps
      * what it was inside, the cut is written to the log as a `grant.narrowed` event saying why, and one that cannot be brought inside is revoked. Never trusts what is on disk. Run at

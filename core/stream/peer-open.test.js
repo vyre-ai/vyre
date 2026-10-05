@@ -164,7 +164,7 @@ test("PS-A: two viewers in one chat each get their own stream: a frame for one n
   for (const v of [bob, carol]) {
     const wire = v.text();
     assert.ok(!wire.includes("sv_SECRET") && !wire.includes("6789"), "a sealed value or its ref reaches no stream");
-    const done = v.got.find(d => d && d.type === "session.text-done");
+    const done = v.got.find(d => d && d.type === "chat.text-done");
     assert.ok(done, "the viewer got the reply");
     assert.equal(done.data.blocks.find((/** @type {any} */ b) => b.name === "ssn").placeholder, true, "the sealed field is a placeholder");
   }
@@ -185,7 +185,7 @@ test("PS-A: a `from` below the log floor gets a reset frame, and an open of anot
   assert.ok(log.floor > 1, `the log's floor moved (${log.floor})`);
   const p = await openPeer(w, "carol", chat.id, { from: 1 });
   await settle(w);
-  assert.ok(p.got.some(d => d && d.type === "session.reset" || (d && /reset/.test(String(d.type || d.t)))), `a reset frame came: ${p.text().slice(0, 300)}`);
+  assert.ok(p.got.some(d => d && d.type === "chat.reset" || (d && /reset/.test(String(d.type || d.t)))), `a reset frame came: ${p.text().slice(0, 300)}`);
   const r = await w.reg.call("stream.open-peer", { chat: chat.id }, "deck", { token: w.tokens.ada, peerStream: peerOf().ps });
   assert.ok(r.error, "ada is not in the chat");
 });

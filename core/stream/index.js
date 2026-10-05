@@ -259,11 +259,49 @@ export default {
     });
     const bool = { type: "boolean" };
     tool("stream.send", "Say something in a group chat (a stream session with several people and assistants). The words are the caller's, appended first; then routing decides who answers (an @mention, the default assistant when no person is talking to a person, or the assistants named in to) and each gets the words in its own thread; its replies appear in the group with that assistant as author and the caller as acts_for. Two or more answering assistants make a fan-out set. People and assistants join by being named in people and assistants (an assistant needs a cwd to work in). Retry with the same message id and nothing is said twice. A private message is sent with enc { alg, kid, ct } and no text: an opaque ciphertext made on the person's device, stored and relayed as it is, never parsed, routed to no assistant and kept out of search, memory and export.",
-      obj({ chat: str, text: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, as: str, name: str }, ["chat"]), "send");
+      obj({ chat: str, text: str, enc: obj({ alg: str, kid: str, ct: str }, ["alg", "kid", "ct"]), message: str, mentions: { type: "array", items: str }, to: { type: "array", items: str }, people: { type: "array", items: {} }, assistants: { type: "array", items: {} }, default: str, cwd: str, group: str, surface: str, mode: { type: "string", enum: ["steer", "queue"] }, reply_to: str, tz: str, as: str, name: str }, ["chat"]), "send");
+    tool("stream.catchup", "What happened in a chat since you last read it: the last messages (who said what), the steps taken, questions still open, who joined or left. Plain facts from the chat's own log; nothing is summarised by a model.", obj({ chat: str, as: str }, ["chat"]), "catchup");
+    tool("stream.typing", "Tell the chat you are typing (on: false: you stopped). Others see \"typing\" for a few seconds; nothing is kept.", obj({ chat: str, on: bool, as: str }, ["chat"]), "typing");
     tool("stream.react", "React to a message in a group chat with an emoji (on: false takes it back).", obj({ chat: str, message: str, emoji: str, on: bool, as: str }, ["chat", "message", "emoji"]), "react");
     tool("stream.pin", "Pin a message in a group chat (on: false unpins it).", obj({ chat: str, message: str, on: bool, as: str }, ["chat", "message"]), "pin");
     tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ chat: str, group: str, keep: str, as: str }, ["chat", "group", "keep"]), "keep");
     tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ chat: str, upto: int, as: str }, ["chat", "upto"]), "markRead");
+
+    // The chat's frames and who answers in it, to leave this device with the chat and be put back on the other (core/work/chat-upgrade.js). Modules only: the work module has checked the person is in the chat.
+    const db = ctx.store && ctx.store.db;
+    // the work module's door and no other: any other module, an added one included, could read every chat's frames or forge some
+    const workOnly = (/** @type {any} */ m, /** @type {string} */ what) => { if (!m || m.caller !== "module:work" || m.firstParty === false) throw Object.assign(new Error(`${what} is the work module's alone`), { code: "denied" }); };
+    ctx.tool("stream.export-chat", {
+      description: "A chat's logged frames and member rows, for the chat upgrade. First-party modules only.", internal: true, callers: ["module"],
+      input: obj({ chat: str }, ["chat"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        workOnly(m, "reading a chat's history");
+        if (!db) return { frames: [], members: [] };
+        try { logs.get(String(i.chat)).flush(); } catch { /* nothing logged yet */ }
+        return { frames: db.prepare("SELECT cur, first, json FROM stream_frames WHERE session = ? ORDER BY cur").all(String(i.chat)), members: db.prepare("SELECT * FROM stream_groups_members WHERE grp = ?").all(String(i.chat)) };
+      },
+    });
+    ctx.tool("stream.import-chat", {
+      description: "Put a chat's frames and member rows back (the other end of the chat upgrade); with fresh: true, a chat that already has frames here is left as it is. First-party modules only.", internal: true, callers: ["module"],
+      input: obj({ chat: str, frames: { type: "array" }, members: { type: "array" }, fresh: { type: "boolean" } }, ["chat", "frames", "members"]),
+      run: async (/** @type {any} */ i, /** @type {any} */ m) => {
+        workOnly(m, "putting a chat's history back");
+        if (!db) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
+        const chat = String(i.chat);
+        logs.get(chat); // the log's table is made the first time any log is opened
+        db.exec("CREATE TABLE IF NOT EXISTS stream_imports (chat TEXT PRIMARY KEY)");
+        // the first chunk of a history: a chat that already has frames of its own here is left as it is (a later chunk is the same import carrying on)
+        if (i.fresh === true && db.prepare("SELECT 1 FROM stream_frames WHERE session = ? LIMIT 1").get(chat)) return { frames: 0, members: 0, note: "this chat already has frames here" };
+        // a later chunk only carries on an import this door started: frames are never written into a chat that was not put back from its first chunk
+        if (i.fresh === true) db.prepare("INSERT OR IGNORE INTO stream_imports (chat) VALUES (?)").run(chat);
+        else if (!db.prepare("SELECT 1 FROM stream_imports WHERE chat = ?").get(chat)) throw Object.assign(new Error("that chat's history was not started here"), { code: "denied" });
+        let frames = 0, members = 0;
+        for (const f of /** @type {any[]} */ (i.frames)) { if (f && Number.isInteger(f.cur) && typeof f.json === "string") { db.prepare("INSERT OR IGNORE INTO stream_frames (session, cur, first, json) VALUES (?,?,?,?)").run(chat, f.cur, Number.isInteger(f.first) ? f.first : f.cur, f.json); frames++; } }
+        for (const m of /** @type {any[]} */ (i.members)) { if (m && m.grp === chat && typeof m.who === "string") { db.prepare("INSERT OR IGNORE INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)").run(chat, m.who, m.thread ?? null, m.cwd ?? null, m.name ?? null, m.asker ?? null, m.answer ?? null, Number(m.last_event) || 0, m.kind ?? null); members++; } }
+        logs.drop(chat); // the next reader loads what was put back, not the empty log made above
+        return { frames, members };
+      },
+    });
 
     if (groups) await groups.start();
 

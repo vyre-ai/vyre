@@ -38,7 +38,7 @@ test("serve: replays after `from`, then goes live, in order, with a heartbeat ca
   const c = fakeConn();
   serve(log, c.conn, { from: 2 });
   assert.deepEqual(c.curs(), [3, 4, 5]);
-  assert.equal(c.got[c.got.length - 1].type, "session.heartbeat");
+  assert.equal(c.got[c.got.length - 1].type, "chat.heartbeat");
   assert.equal(c.got[c.got.length - 1].data.head, 5);
   log.append("status", { state: "waiting" });
   assert.deepEqual(c.curs(), [3, 4, 5, 6]);
@@ -105,7 +105,7 @@ test("serve: a cursor older than the log, or ahead of it, is sent reset and the 
   const old = fakeConn();
   serve(log, old.conn, { from: 2 });
   assert.equal(old.got.length, 1);
-  assert.equal(old.got[0].type, "session.reset");
+  assert.equal(old.got[0].type, "chat.reset");
   assert.equal(old.got[0].data.reason, "behind");
   assert.equal(old.closed(), true);
   const ahead = fakeConn();
@@ -139,7 +139,7 @@ test("serve: a slow connection is paused, caught up in order when it drains, and
   buffered = 0;
   c.drain();
   const last = c.got[c.got.length - 1];
-  assert.equal(last.type, "session.reset");
+  assert.equal(last.type, "chat.reset");
   assert.equal(c.closed(), true);
 });
 
@@ -151,12 +151,12 @@ test("serve: heartbeats come at most every 25 s, carry what was sent, and stop o
   fill(log, 2);
   /** @type {number[]} */ const at = [];
   const orig = c.conn.send;
-  c.conn.send = f => { if (f.type === "session.heartbeat") at.push(sched.t); orig(f); };
+  c.conn.send = f => { if (f.type === "chat.heartbeat") at.push(sched.t); orig(f); };
   const done = sched.run(() => sched.t >= 100_000, 100);
   return done.then(() => {
     assert.ok(at.length >= 3 && at.length <= 5, `${at.length} heartbeats in 100 s`);
     for (let i = 1; i < at.length; i++) assert.ok(at[i] - at[i - 1] >= 25_000, "never closer than 25 s");
-    assert.equal(c.got.filter(f => f.type === "session.heartbeat").pop().data.head, 2);
+    assert.equal(c.got.filter(f => f.type === "chat.heartbeat").pop().data.head, 2);
     c.hangup();
     const n = c.got.length;
     log.append("status", { state: "working" });
@@ -224,7 +224,7 @@ test("WebSocket: a client connects over a real socket, replays, goes live, and r
   const client = connect({
     open: ({ from }) => wsDuplex(`ws://127.0.0.1:${port}/?x=1`),
     backoff: { base: 10, cap: 50 },
-    onFrame: f => { curs.push(f.cur); if (f.type === "session.text-delta") text += f.data.text; },
+    onFrame: f => { curs.push(f.cur); if (f.type === "chat.text-delta") text += f.data.text; },
   });
   try {
     const until = async (/** @type {() => boolean} */ p) => { for (let i = 0; i < 400 && !p(); i++) await new Promise(r => setTimeout(r, 10)); assert.ok(p(), "condition met"); };

@@ -441,8 +441,15 @@ async function startLocked(opts, root, p, release) {
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
-      const kernelAgent = await kernelAgentOf(q);
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
+      // A run with no agent is a model slot in its chat (team/0.3/DESIGN-one-chat.md): its token's agent hop is the slot id the switchboard minted, narrowed to the run's Project. It acts on the person's own
+      // chain, holds nothing of its own, and ends with its person's place in the chat. A run in no chat is as before.
+      let kernelAgent = await kernelAgentOf(q);
+      let project;
+      if (!kernelAgent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) {
+        kernelAgent = q.rec.slot;
+        if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project;
+      }
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), ...(project ? { project } : {}), ...(kernelAgent && kernelAgent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the

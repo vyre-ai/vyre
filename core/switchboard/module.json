@@ -48,6 +48,16 @@
         "effect": "write"
       },
       {
+        "name": "threads.export-chat",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.import-chat",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "threads.chat-of",
         "reach": "anyone",
         "effect": "read"

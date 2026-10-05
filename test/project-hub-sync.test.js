@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { asOwner, tempHome, present } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 import { FAKE } from "../core/sessions/testing/boot.js";
 
@@ -26,6 +26,7 @@ async function boot(/** @type {any} */ t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false } }));
   fs.writeFileSync(path.join(root, "dev-presence-stand-in"), "");
   const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));

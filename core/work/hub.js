@@ -19,7 +19,7 @@ import { slugify, SLUG_RE } from "../../lib/project-id.js";
 
 const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
-const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [CHAT]: ["chat", "people", "agents", "started", "last_active", "status", "drive", "location"] };
+const SYSTEM_FIELDS = { [PROJECT]: ["slug", "drive_path", "memory_scope"], [CHAT]: ["chat", "people", "agents", "former", "started", "last_active", "status", "drive", "location"] };
 /** The only part of the Drive the hub ever moves. */
 const underProjects = (/** @type {any} */ p) => typeof p === "string" && /^Projects\/[^/]+(?:\/[^/]+)*$/.test(p) && !p.split("/").some(x => x === ".." || x === ".");
 
@@ -92,6 +92,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** A Project's Drive folder: its own field, or (in the instant between its creation and the hub setting it) the same id-named path. @param {any} proj */
   const rootOf = proj => proj.data.drive_path || (kernel.drive ? `Projects/${proj.id}` : "");
 
+  /** One write at a time per chat: a run's events arrive close together (started, working, waiting), each handler reads the record and writes it back, and two at once would lose one. @type {Map<string, Promise<any>>} */
+  const lanes = new Map();
+  const serial = (/** @type {string} */ chat, /** @type {() => Promise<any>} */ f) => { const p = (lanes.get(chat) || Promise.resolve()).then(f, f); lanes.set(chat, p.catch(() => {})); return p; };
   const ids = (/** @type {any} */ l) => (Array.isArray(l) ? l : []).map(String).join(",");
   const findChat = (/** @type {string} */ chat) => find(CHAT, "chat", chat);
   const rootOf2 = (/** @type {any} */ proj) => rootOf(proj);
@@ -136,6 +139,9 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** A run began in a chat (the switchboard's `thread.started`, which says its chat, name, project and cwd). The chat is working; an untitled one takes the run's name; a chat still in General takes the run's project. @param {any} p */
   async function onStarted(p) {
     if (!p || typeof p.chat !== "string") return null;
+    return serial(p.chat, () => startedNow(p));
+  }
+  async function startedNow(/** @type {any} */ p) {
     try {
       let project = p.project ? String(p.project) : null;
       if (!project && typeof p.cwd === "string") { const hit = await tool("projects.of", { cwd: p.cwd }); if (hit && typeof hit.slug === "string") project = hit.slug; }
@@ -159,21 +165,46 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return kernel.records.update(chain(), CHAT, rec.id, patch, rec.version);
   }
 
-  /** A run ended (`thread.stopped`: { thread, code, reason }): the chat is idle, or stopped or failed when the run's end says so and no other run of the chat is still going. @param {any} p0 */
+  /**
+   * The chat's status from its runs, by what each says now: working while any run is working, asking or starting; else stopped or failed when every run has ended that way (failed if any failed);
+   * else idle (a run that finished its turn and waits for the person). `hint` is used only when the engine cannot be asked. @param {any} rec @param {string} [hint]
+   */
+  async function refresh(rec, hint) {
+    const runs = ((await tool("threads.of-chat", { chat: rec.data.chat })) || {}).runs;
+    let status = hint || "idle";
+    if (Array.isArray(runs) && runs.length) {
+      const st = runs.map((/** @type {any} */ r) => String(r.status));
+      if (st.some((/** @type {string} */ x) => ["starting", "working", "asking"].includes(x))) status = "working";
+      else if (st.every((/** @type {string} */ x) => ["stopped", "failed"].includes(x))) status = st.includes("failed") ? "failed" : "stopped";
+      else status = "idle";
+    }
+    return touch(rec, { status });
+  }
+
+  /** A run's status changed (`thread.status`, which says its chat): the chat's follows. @param {any} p */
+  async function onStatus(p) {
+    if (!p || typeof p.chat !== "string") return null;
+    return serial(p.chat, async () => {
+      try { const rec = await findChat(p.chat); return rec ? await refresh(rec, ["working", "starting", "asking"].includes(String(p.status)) ? "working" : undefined) : null; }
+      catch (e) { log(`chat record: could not follow ${p.chat}: ${/** @type {Error} */ (e).message}`); return null; }
+    });
+  }
+
+  /** A run ended (`thread.stopped`: { thread, chat, code, reason }): the chat's status is worked out again from its runs. @param {any} p0 */
   async function onStopped(p0) {
     const p = p0 && typeof p0.thread !== "string" && typeof p0.session === "string" ? { ...p0, thread: p0.session } : p0;
     if (!p || typeof p.thread !== "string") return null;
     try {
       const chat = typeof p.chat === "string" ? p.chat : await chatOfThread(p.thread);
       if (!chat) return null;
-      const rec = await findChat(chat);
-      if (!rec) return null;
-      const others = ((await tool("threads.of-chat", { chat })) || {}).runs || [];
-      if (others.some((/** @type {any} */ r) => r.thread !== p.thread && r.live)) return await touch(rec, { status: "working" });
       const reason = String(p.reason || "");
-      const status = /^exited \d/.test(reason) || reason === "restart" || /without starting/.test(reason) ? "failed" : reason === "stopped" ? "stopped" : "idle";
-      await syncNameFromTranscript(p.thread);
-      return await touch((await findChat(chat)) || rec, { status });
+      const ended = /^exited \d/.test(reason) || reason === "restart" || /without starting/.test(reason) ? "failed" : reason === "stopped" ? "stopped" : "idle";
+      return await serial(chat, async () => {
+        const rec = await findChat(chat);
+        if (!rec) return null;
+        await syncNameFromTranscript(p.thread);
+        return refresh((await findChat(chat)) || rec, ended);
+      });
     } catch (e) { log(`chat record: could not close the record for ${p.thread}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
@@ -204,10 +235,6 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     // the files first, as the person who moves it: a refused file aborts everything and nothing has changed
     if (rec.data.drive && rec.data.drive !== rootOf(proj)) await moveChatFolders(by, rec.data.drive, chat, rootOf(proj));
     const moved = await kernel.records.update(by, CHAT, rec.id, { project: { urn: proj.urn }, drive: rootOf(proj), location: locationOf(proj, chat) }, rec.version);
-    // the old folder list still counts each run as picked into the project it was in
-    const oldSlug = rec.data.project && rec.data.project.urn ? (await projectOf(rec.data.project.urn).catch(() => null)) : null;
-    const runs = ((await tool("threads.of-chat", { chat })) || {}).runs || [];
-    for (const r of runs) { await tool("projects.remove-threads", { project: oldSlug && oldSlug.data.slug, threads: [r.thread] }); await tool("projects.add-threads", { project: proj.data.slug, threads: [r.thread] }); }
     return moved;
   }
 
@@ -305,5 +332,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ createProject, ensureProject, generalProject, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ createProject, ensureProject, generalProject, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, onStatus, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
 }
