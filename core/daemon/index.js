@@ -326,7 +326,9 @@ async function startLocked(opts, root, p, release) {
       // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
       resolveCredential: async (/** @type {any} */ q) => {
         const port = /** @type {any} */ (registry.deps).credentialsPort;
-        const v = q && typeof q.ref === "string" && port && typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null;
+        // a subscription sign-in token (the claude setup-token item) or an API-key account's key: nothing else is resolved here
+        const v = q && typeof q.ref === "string" && port ? (q.ref === "claude-setup-token" ? await port.credentials("claude") : typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null) : null;
+        if (process.env.VYRE_DEBUG_LENT) log(`lent: credential ${String(q && q.ref).slice(0, 40)} resolved: ${typeof v === "string" ? `${v.length} chars, starts ${v.slice(0, 11)}` : "nothing"}`);
         if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session"), { code: "not_found" });
         return v;
       },
@@ -477,7 +479,17 @@ async function startLocked(opts, root, p, release) {
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
         // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
-        providerAccount: async () => { try { const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data; return a && a.kind === "api-key" && typeof a.vault_item === "string" && a.vault_item ? { item: a.vault_item, base_url: a.base_url || null } : null; } catch { return null; } },
+        providerAccount: async (/** @type {any} */ i) => {
+          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
+          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          try {
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
+            if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
+            if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
+            return null;
+          } catch { return null; }
+        },
         // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) h.onSession(caller, session); } });

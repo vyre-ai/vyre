@@ -7,21 +7,26 @@ import path from "node:path";
 import { createLentHome } from "../runner/lent-home.js";
 
 /** The Space's definition of a member's own session: the agent by name, the provider as the only network, no credential route until the Space maps one (the vault answers per request, never the lender). */
+/** Arguments for the agent, from `VYRE_LENT_AGENT_ARGS` (a JSON list of strings) on a development build: how a test starts a one-shot turn. None otherwise. */
+const agentArgs = () => { try { const a = JSON.parse(process.env.VYRE_LENT_AGENT_ARGS || "[]"); return Array.isArray(a) && a.every(x => typeof x === "string") ? a.slice(0, 20) : []; } catch { return []; } };
 const PROVIDER_ALLOW = Object.freeze([{ method: "POST", path: "/v1/messages" }, { method: "POST", path: "/v1/messages/count_tokens" }, { method: "GET", path: "/v1/models" }]);
 /**
- * @param {{ item: string, base_url?: string | null } | null} account the member's provider account: the vault item that holds its key (a name, never a value) and its own endpoint, when it has one
+ * @param {{ item: string, base_url?: string | null, oauth?: boolean } | null} account the member's provider account: the vault item that holds its credential (a name, never a value), its own endpoint when it has one, and whether the credential is a
+ *   subscription sign-in token (sent as a bearer token with the beta flag that makes it valid) rather than an API key (sent as x-api-key)
  */
 const defaultSpec = account => ({
-  command: process.env.VYRE_LENT_AGENT || "claude", args: [], env: {},
-  // the provider is the session's only network: the lender's proxy forwards /provider to it and the home's vault answers the credential per request, for this lease only
-  routes: account ? [{ prefix: "/provider", upstream: account.base_url || "https://api.anthropic.com", credential: { header: "x-api-key" }, allow: PROVIDER_ALLOW }] : [],
+  command: process.env.VYRE_LENT_AGENT || "claude", args: agentArgs(), env: {},
+  // the provider is the session's only network: the lender's proxy forwards /provider to it and the home's vault answers the credential per request, for this lease only. The session itself holds
+  // nothing but its own per-session token: the credential is put on the request at the proxy.
+  routes: account ? [{ prefix: "/provider", upstream: account.base_url || "https://api.anthropic.com",
+    credential: account.oauth ? { header: "authorization", prefix: "Bearer " } : { header: "x-api-key" }, ...(account.oauth ? { headers: { "anthropic-beta": "oauth-2025-04-20" } } : {}), allow: PROVIDER_ALLOW }] : [],
   readOnly: [], labels: {}, network: "provider",
   credentialRoutes: account ? [{ route: "/provider", ref: account.item, allow: PROVIDER_ALLOW, provider: true }] : [],
 });
 
 /**
  * `onRevoke(space, { device, member, side, reason })` is told when an Offer for a computer of this Space ends (withdrawn, the member removed or left): the daemon tells that computer down the connection it holds.
- * @param {{ root: string, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null } | null> | { item: string, base_url?: string | null } | null }} o
+ * @param {{ root: string, lentSpec?: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any, onRevoke?: (space: string, info: any) => void, providerAccount?: (i: { space: string, person: string }) => Promise<{ item: string, base_url?: string | null, oauth?: boolean } | null> | { item: string, base_url?: string | null, oauth?: boolean } | null }} o
  * @returns {(space: string, kernel: any) => any}
  */
 export function lentServiceFor(o) {

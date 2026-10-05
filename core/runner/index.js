@@ -94,7 +94,7 @@ export default {
     try { await reconcile({ base: ctx.paths.root + "/runner", platform: seam.platform }); } catch {}
     /** @type {Map<string, any>} one runner per space */
     const runners = new Map();
-    const emit = (space, e) => { try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {} };
+    const emit = (space, e) => { if (process.env.VYRE_DEBUG_LENT) { try { ctx.log(`runner ${e.type} ${e.route || ''} ${e.method || ''} ${e.path || ''} ${e.status || ''} ${e.error || e.why || ''}`.slice(0, 200)); } catch {} } try { ctx.events.emit(`runner.${e.type === "checkpoint" ? "checkpoint" : e.type}`, { space, ...e }); } catch {} };
     const forSpace = async space => {
       const p = await portsFor(space);
       if (p && (typeof p.device !== "string" || !p.device)) throw Object.assign(new Error("the runner needs this computer's device key identity"), { code: "unavailable" });

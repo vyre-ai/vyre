@@ -265,3 +265,19 @@ test("leases: a model-provider route (set only by the home's own definition) car
   L.bind("s2", lease.id, { routes: [{ route: "/provider", ref: "k", allow }] });
   await assert.rejects(() => L.use(r.bob, { session: "s2", route: "/provider", method: "POST", path: "/v1/messages" }), e => typeof e.code === "string");
 });
+
+test("leases: an owner's or admin's approval of a lend releases no key of the member's: without the member's own acceptance there is no lease and no key", async () => {
+  const r = await rig();
+  // the Space's side only (an owner's approval): the member has not accepted for this computer
+  await r.mk(r.owner, { side: "space_allows", member: BOB });
+  const allow = [{ method: "POST", path: "/v1/messages" }];
+  const none = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  assert.equal(none.revoked, true, "no lease without the member's own acceptance");
+  r.k.gateway.leases.bind("s1", "lease_none", { routes: [{ route: "/provider", ref: "k", allow, provider: true }] });
+  await assert.rejects(() => r.k.gateway.leases.use(r.bob, { session: "s1", route: "/provider", method: "POST", path: "/v1/messages" }), e => typeof e.code === "string");
+  // the member accepts for their own computer: a lease, and the key
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  r.k.gateway.leases.bind("s2", lease.id, { routes: [{ route: "/provider", ref: "k", allow, provider: true }] });
+  assert.deepEqual(await r.k.gateway.leases.use(r.bob, { session: "s2", route: "/provider", method: "POST", path: "/v1/messages" }), { secret: "v" });
+});

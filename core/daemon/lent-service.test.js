@@ -59,3 +59,14 @@ test("the member's provider account becomes the session's only route and credent
   const none = await lentServiceFor({ root, providerAccount: async () => null })("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s1" });
   assert.deepEqual(none.routes, []);
 });
+
+test("a sign-in token account becomes a bearer route with its beta flag; an API key stays x-api-key", async () => {
+  const root = fs.mkdtempSync(path.join(SCRATCH, "ls-"));
+  const k = kernel({ spaceAllows: true, memberAccepts: true });
+  const oauth = await lentServiceFor({ root, providerAccount: async () => ({ item: "claude-setup-token", oauth: true }) })("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s1" });
+  assert.deepEqual(oauth.routes[0].credential, { header: "authorization", prefix: "Bearer " });
+  assert.deepEqual(oauth.routes[0].headers, { "anthropic-beta": "oauth-2025-04-20" });
+  const key = await lentServiceFor({ root, providerAccount: async () => ({ item: "ai-key-claude-1" }) })("spc_aaaaaaaaaaaa", k).start(chain("per_bob", "dev_laptop"), { session: "s1" });
+  assert.deepEqual(key.routes[0].credential, { header: "x-api-key" });
+  assert.equal(key.routes[0].headers, undefined);
+});

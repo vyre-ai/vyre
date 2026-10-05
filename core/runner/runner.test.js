@@ -451,3 +451,21 @@ test("workspace: a wrong key never opens it and a drive image holds no plaintext
   await drv.destroy(dir);
   assert.equal(fs.existsSync(dir), false);
 });
+
+test("egress: a route's own static headers go with the credential (a sign-in token as a bearer with its beta flag, added to the program's own beta list), and bad ones are refused at the start", async () => {
+  const up = await upstream(); const sp = fakeSpace();
+  const route = { prefix: "/provider", upstream: `http://127.0.0.1:${up.port}`, credential: { header: "authorization", prefix: "Bearer " }, headers: { "anthropic-beta": "oauth-2025-04-20" }, allow: [{ method: "POST", path: "/v1/messages" }] };
+  const eg = createEgress({ routes: [route], vault: sp.vault, session: "s1", token: "tok-abc", lease: () => "lease-1" });
+  const { port } = await eg.listen();
+  try {
+    await get(port, "/provider/v1/messages", { "x-api-key": "tok-abc", "anthropic-beta": "evil-flag" }, "POST");
+    assert.equal(up.seen[0].headers["anthropic-beta"], "evil-flag,oauth-2025-04-20", "the Space's flag is added to the program's own list");
+    await get(port, "/provider/v1/messages", { "x-api-key": "tok-abc" }, "POST");
+    assert.equal(up.seen[1].headers["anthropic-beta"], "oauth-2025-04-20");
+    assert.match(up.seen[0].headers.authorization, /^Bearer tk-REAL/);
+    assert.ok(!JSON.stringify(up.seen).includes("tok-abc"));
+  } finally { await eg.close(); await up.close(); }
+  for (const headers of [{ Authorization: "x" }, { "x-api-key": "x" }, { host: "x" }, { "bad name": "x" }, { "a-b": "line\nbreak" }, "no"]) {
+    assert.throws(() => createEgress({ routes: [{ ...route, headers }], vault: sp.vault, session: "s", token: "t" }), /own headers/, JSON.stringify(headers));
+  }
+});
