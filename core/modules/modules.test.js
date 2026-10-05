@@ -765,6 +765,12 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal(globalThis.__cards.at(-1).tool, "bakery.mailout");
   assert.equal(globalThis.__cards.at(-1).fields.to, "supplier");
   assert.match(globalThis.__cards.at(-1).fields.input_sha256, /^[0-9a-f]{32}$/);
+  // The kernel's legacy gates, wired as the daemon wires them, leave the plain `outward: true` hold to this inline rule: it still holds the agent and still lets you through.
+  const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
+  reg.deps.gates = createLegacyGates({ registry: reg });
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "mcp:agent:kit")).error.code, "held_for_approval", "deps.gates wired: an agent is still held");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "cli")).data.ran, "bakery.mailout", "deps.gates wired: you still run it");
+  delete reg.deps.gates;
   // a retry with an approval id the queue never answered runs nothing
   const bad = await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "mcp:agent:kit", { approval: "ap_cardnever123" });
   assert.equal(bad.error && bad.error.code, "approval_refused");

@@ -19,10 +19,26 @@ const bad = (/** @type {string} */ why) => Object.assign(new Error(why), { code:
  * @param {{ name: string, ctx: any, dataDir: string }} o `ctx` is the module's own host-side ctx; `dataDir` its data folder (`<home>/data/<module>`)
  * @returns {(path: string[], args: any[], io: { push: (id: number, event: any) => void }) => Promise<any>}
  */
+/**
+ * The SQL the exec and query doors run is the host's, so it must stay inside the module's own file: no ATTACH (another database), VACUUM INTO (a write to any path),
+ * PRAGMA or extension loading, and only the verbs a module needs (the migrate door owns the table-name rule for schema changes).
+ * Words inside string literals and comments are ignored when looking, so they neither hide a verb nor trip the check.
+ * @param {string} name @param {any} sql @param {boolean} readOnly
+ */
+export function ownSql(name, sql, readOnly) {
+  const text = String(sql);
+  const bare = text.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, " ").replace(/'(?:[^']|'')*'|"(?:[^"]|"")*"|`[^`]*`|\[[^\]]*\]/g, " ");
+  const first = (bare.trim().match(/^[a-z]+/i) || [""])[0].toUpperCase();
+  const verbs = readOnly ? ["SELECT", "WITH"] : ["SELECT", "WITH", "INSERT", "UPDATE", "DELETE", "REPLACE", "CREATE", "ALTER", "DROP"];
+  if (!verbs.includes(first)) throw bad(`${name}: ctx.store.${readOnly ? "query" : "exec"} runs ${verbs.join(", ")} only`);
+  if (/\b(ATTACH|DETACH|VACUUM|PRAGMA|LOAD_EXTENSION|INTO\s+OUTFILE)\b/i.test(bare)) throw bad(`${name}: ctx.store reaches this module's own database only (no ATTACH, VACUUM, PRAGMA or extensions)`);
+  return text;
+}
+
 export function sandboxDoor({ name, ctx, dataDir }) {
   /** @type {any} */ let own = null;
   const ownDb = () => {
-    if (!own) { fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 }); own = open(path.join(dataDir, "module.db")); }
+    if (!own) { fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 }); own = open(path.join(dataDir, "module.db")); own.exec("PRAGMA trusted_schema=OFF"); }
     return own;
   };
   const offs = /** @type {Array<() => void>} */ ([]);
@@ -33,8 +49,8 @@ export function sandboxDoor({ name, ctx, dataDir }) {
     if (head === "store") {
       const a = Array.isArray(args) ? args : [];
       if (tail === "migrate") { migrate(ownDb(), name, a[0]); return null; }
-      if (tail === "exec") { const r = ownDb().prepare(String(a[0])).run(...(Array.isArray(a[1]) ? a[1] : [])); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; }
-      if (tail === "query") return ownDb().prepare(String(a[0])).all(...(Array.isArray(a[1]) ? a[1] : []));
+      if (tail === "exec") { const r = ownDb().prepare(ownSql(name, a[0], false)).run(...(Array.isArray(a[1]) ? a[1] : [])); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; }
+      if (tail === "query") return ownDb().prepare(ownSql(name, a[0], true)).all(...(Array.isArray(a[1]) ? a[1] : []));
       throw bad(`${name}: ctx.store.${tail} is not a door (exec, query and migrate are)`);
     }
     if (head === "events" && !EVENT_DOORS.has(tail)) throw bad(`${name}: ctx.events.${tail} is not a door`);

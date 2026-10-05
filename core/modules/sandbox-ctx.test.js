@@ -125,3 +125,12 @@ test("a module tool marked flow is an action of the Space the owner may run from
   // A tool that was not marked is no action a Flow may name.
   assert.ok(!d.registry.flowActionTools.has("stamp.peek"));
 });
+
+test("ctx.store: SQL stays in the module's own file (no ATTACH, VACUUM INTO, PRAGMA, extensions), by any spelling", async () => {
+  const { ownSql } = await import("./sandbox-ctx.js");
+  for (const bad of ["ATTACH DATABASE '/x/main.db' AS x", "  /* hi */ attach database '/x' as y", "VACUUM INTO '/tmp/leak.db'", "PRAGMA writable_schema=1", "SELECT load_extension('/x.so')", "select 1; attach database '/x' as z"])
+    assert.throws(() => ownSql("m", bad, false), /own database|runs/, bad);
+  assert.throws(() => ownSql("m", "INSERT INTO m_t VALUES (1)", true), /SELECT, WITH only/, "query is read-only");
+  assert.equal(ownSql("m", "INSERT INTO m_t (v) VALUES ('attach vacuum pragma')", false), "INSERT INTO m_t (v) VALUES ('attach vacuum pragma')", "a word inside a string is only data");
+  assert.ok(ownSql("m", "-- note\nSELECT * FROM m_t", true));
+});
