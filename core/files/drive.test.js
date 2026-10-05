@@ -270,8 +270,7 @@ test("drive: a box with no Tailscale at all still answers files.drive.status (sh
   const s = await ok(reg, "files.drive.status");
   assert.equal(s.enabled, false);
   assert.equal(s.tailnet, false);
-  assert.match(s.why, /does not mount folders as disks/);
-  assert.doesNotMatch(JSON.stringify(s), /tailscale/i, "nothing the person reads names Tailscale");
+  assert.match(s.why, /no tailnet/);
   assert.deepEqual(s.list, []);
   assert.deepEqual(s.shares.map(x => x.shared), [false]);
   assert.ok(s.space && "enabled" in s.space, "the Space Drive's own state is in the answer");

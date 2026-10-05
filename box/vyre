@@ -370,7 +370,10 @@ image() {
   if [ "$BUILD" = 1 ]; then echo vyre:local; return; fi
   # A root run takes the image from root's own copy of the verified compose.yml, never from a .env.
   if [ "$ROOT_RUN" = 1 ]; then sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/vyre@sha256:[0-9a-f]\{64\}\)$/\1/p' "$RUN/compose.yml" | head -n 1; return; fi
-  v=$(sed -n 's/^VYRE_IMAGE=//p' "$DIR/.env" 2>/dev/null | tail -n 1)
+  # A release's compose.yml names the box image by digest: that is the image this box runs, so it comes before any tag (a person's `vyre update` or
+  # `vyre update --rollback` must tag and keep THAT image as vyre:prev, never a stale :latest that happens to be in the local image store).
+  v=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\(ghcr\.io\/vyre-ai\/vyre@sha256:[0-9a-f]\{64\}\)$/\1/p' "$DIR/compose.yml" 2>/dev/null | head -n 1)
+  [ -n "$v" ] || v=$(sed -n 's/^VYRE_IMAGE=//p' "$DIR/.env" 2>/dev/null | tail -n 1)
   echo "${v:-${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}}"
 }
 

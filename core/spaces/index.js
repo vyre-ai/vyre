@@ -320,7 +320,7 @@ export default {
         const r = await dir.resolve(name);
         if (!r.ok || r.kind !== "person" || r.id !== person.id) return false;
         const e = r.state.entries.find((/** @type {any} */ x) => x.eid === person.by && (x.kind === "device" || x.kind === "code"));
-        return Boolean(e) && await C.verifyWith(e.pub, message, proof);
+        return Boolean(e) && await C.verifyWith(e.pub, message, proof, e);
       } catch { return false; }
     };
     const personRef = async (/** @type {any} */ value) => {
@@ -926,15 +926,29 @@ export default {
     const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member) => {
       const h = kernelHandle(spaceId);
       const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
-      if (!offers || typeof offers.lend !== "function") return false;
+      if (!h || !offers || typeof offers.lend !== "function") return false;
       // the person's chain IN that Space (a hosted Space has its own key), and the proof that comes with the call. ONE kernel act: the first lend takes one proof bound to it and makes both
       // sides (an owner or admin's Space side and the member's own); the member's own turning on again, and any turning off, take only the live session (kernel ruling 5 Oct).
       const k = await kctxOf(meta, spaceId);
+      // A Space on a server knows this computer by the id its home gives it (from what the transport proved), not by the identity list's entry id: the Offers are made for that id, which is also the one the
+      // computer presents when it runs a session. Another of the person's computers is named by its entry id as before.
+      let kdev = dev.eid;
+      if (h.hosted === false && dev.eid === ownDeviceEid(meta) && typeof h.call === "function") { try { const me = await h.call("lent.whoami", []); if (me && typeof me.device === "string" && me.device) kdev = me.device; } catch { /* the home did not answer: the entry id stands */ } }
+      const act = (/** @type {any} */ kc) => (on ? offers.lend(kc.chain, { member, device: kdev, device_key: kdev }, kc.proof) : offers.unlend(kc.chain, { member, device: kdev }, kc.proof));
       try {
-        if (on) await offers.lend(k.chain, { member, device: dev.eid, device_key: dev.eid }, k.proof);
-        else await offers.unlend(k.chain, { member, device: dev.eid }, k.proof);
+        try { await act(k); }
+        catch (e) {
+          // A space on a server: its home asks for the person's yes on THIS act with a one-use challenge. This computer answers with the person's own key (the hardware signer, or a software key on a development
+          // build) and the same act goes again with that proof; with no key to answer, the refusal stands and carries the challenge for a surface that can sign.
+          const ch = /** @type {any} */ (e) && /** @type {any} */ (e).challenge;
+          if (!ch || typeof ch.nonce !== "string" || !/^(presence_required|needs_presence)$/.test(String(/** @type {any} */ (e).code))) throw e;
+          const proof = await answerChallenge(ch, spaceId);
+          ctx.log.warn(`lend: the home asked for a yes (${String(/** @type {any} */ (e).code)}); this computer ${proof ? "answered it" : "has no key to answer with"}; challenge ${Object.keys(ch).join(",")}`);
+          if (!proof) throw e;
+          await act(await kctxOf({ ...meta, kernel_proof: proof }, spaceId));
+        }
       } catch (e) { ctx.log.warn(`lend: the kernel refused: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")}`); throw plainKernelError(e); }
-      return true;
+      return kdev;
     };
     /** Delete lend records (LD-1): a removal of the device from the Space, of the person from it, or of the Space ends the consent, so the next first grant asks Face ID again. @param {string} space @param {{ device?: string, person?: string }} [only] */
     const clearLends = (space, only = {}) => {
@@ -966,7 +980,7 @@ export default {
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; return h && h.kind === "person" ? String(h.id) : home; } catch { return home; }
     };
     tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
-      obj({ space: str, device: str, on: { type: "boolean" } }, ["space", "device", "on"]), async (i, meta) => {
+      obj({ space: str, device: str, on: { type: "boolean" }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
         const row = spaceOf(i.space);
         const caller = await callerPerson(meta);
@@ -981,9 +995,16 @@ export default {
             // off: the person whose device it is, or an owner of the space
             const owner = (m && m.role === "owner") || row.createdBy === s.id;
             let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }
+            // An owner or admin stopping a member's computer from the space's own home names it by the id the space knows it by, and the person: nothing local says whose it is.
+            const byHome = !mine && owner && !cur && typeof i.member === "string" && i.member;
+            if (byHome) {
+              const viaHome = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, "owner", String(i.member));
+              emit("space.device-lent", { space: row.id, device: String(i.device), lent: false });
+              return { space: row.id, device: String(i.device), lent: false, first_grant_at: null, allowed_by: null, stopped: viaHome };
+            }
             if (!mine && !(owner && cur)) throw refuse("That is not one of your devices.", "not_found");
             if (!cur || !cur.lent) return { space: row.id, device: String(i.device), lent: false, first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
-            const viaKernel = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, m ? m.role : "owner", cur.device_person || /** @type {string} */ (s.id));
+            const viaKernel = await kernelOffers(row.id, { eid: cur.kdevice || String(i.device) }, false, meta, m ? m.role : "owner", cur.device_person || /** @type {string} */ (s.id));
             // LD-2: the space's owner switching a computer off that is not theirs withdraws the space's consent: turning it on again asks the device's person for Face ID again
             const next = { ...cur, lent: false, ended_at: now(), ended_by: s.id, kernel: viaKernel, ...(mine ? {} : { first_grant_at: null, allowed_by: null }) };
             await kv.put(key, next);
@@ -994,7 +1015,7 @@ export default {
           if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
           const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id));
           const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
-          const next = { lent: true, kernel: viaKernel, device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
+          const next = { lent: true, kernel: Boolean(viaKernel), ...(typeof viaKernel === "string" ? { kdevice: viaKernel } : {}), device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
           await kv.put(key, next);
           emit("space.device-lent", { space: row.id, device: dev.eid, lent: true });
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
@@ -1101,7 +1122,7 @@ export default {
     const kernelSpacesOf = async (/** @type {string} */ person) => {
       const ids = [];
       if (K && typeof K.membership === "function") {
-        if (typeof K.space === "string" && (await K.membership(person, K.space).catch(() => ({ member: false }))).member === true) ids.push(K.space);
+        if (typeof K.space === "string" && ((await K.membership(person, K.space).catch(() => ({ member: false }))).member === true || person === K.owner)) ids.push(K.space); // the home Space is its owner's by definition
         // every space this home's kernel hosts (made here, or hosted for the person by spaces.host-here), plus the module's finished rows that have a kernel
         const all = new Set([...(K.spaces && typeof K.spaces.list === "function" ? K.spaces.list() : []), ...spaces.all().filter(r => r.status === "done").map(r => r.id)]);
         for (const id of all) if (id !== K.space && kernelHandle(id) && (await K.membership(person, id).catch(() => ({ member: false }))).member === true) ids.push(id);
@@ -1215,6 +1236,9 @@ export default {
           const person = who || (typeof K.owner === "string" ? K.owner : null);
           let member = false;
           if (person && typeof K.membership === "function") { try { member = (await K.membership(person, id)).member === true; } catch { member = false; } }
+          // The home's own Space belongs to the home's owner by definition: a kernel whose membership table still names the owner it had before the identity was adopted must not turn the owner's own
+          // confirmed devices away (typed-paired devices got no person chain, so records.* said "not a signed-in person").
+          if (!member && person && id === K.space && person === K.owner) member = true;
           if (!member) return { enrolled: false };
         }
         // Belonging is asked of the kernel NOW (a removed, expired, revoked member is not enrolled anywhere): for a space with a kernel, whoever this home's person is must be an active member.
@@ -1470,7 +1494,7 @@ export default {
       try {
         const r = /** @type {any} */ (await ctx.call("wink.code.carry", { link, space }));
         const d = r && !r.error && r.data ? r.data : null;
-        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer } : { code: null };
+        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer, ...(d.avatar ? { code_avatar: d.avatar } : {}) } : { code: null };
       } catch { return { code: null }; }
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",

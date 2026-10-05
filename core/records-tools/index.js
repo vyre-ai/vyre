@@ -60,7 +60,7 @@ export default {
       return { actors: (Array.isArray(list) ? list : []).map((/** @type {any} */ m) => ({ id: m.person, name: m.name || m.person, family: "person", role: m.role })) };
     });
     // The kernel's own bookkeeping types (Flows' definitions, runs and approvals, goals) are `system: true` and left out of the default list, so Customize and Records show only the person's own.
-    const SYSTEM_TYPES = new Set(["goal", "flow-approval", "flow-state", "flow-schedule", "flow-run"]);
+    const SYSTEM_TYPES = new Set(["goal", "planner_firing", "planner_state", "flow-approval", "flow-state", "flow-schedule", "flow-run"]);
     const isSystem = (/** @type {string} */ n) => SYSTEM_TYPES.has(n) || n.startsWith("def-") || n.startsWith("flow-");
     tool("records.types", "The record types of a Space, as defined (a type may carry kind: project). The kernel's own bookkeeping types are left out unless `system: true` is asked for, and then carry system: true.", obj({ space: str, system: { type: "boolean" } }), async (i, d) => {
       const all = (await d.gateway.definitions(d.chain)) || [];
@@ -77,6 +77,10 @@ export default {
       const u = parseUrn(i.urn);
       return { record: await d.gateway.records.get(d.chain, u.type, u.id) };
     }, byUrn);
+    tool("records.reference", "A record put in front of the AI (the # in the composer): the record as data, with every sealed part (and any part this room may not read) a {{field:urn#name}} placeholder, never a value. Null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {
+      const u = parseUrn(i.urn);
+      return { reference: await d.gateway.records.reference(d.chain, u.type, u.id) };
+    }, byUrn);
     tool("records.create", "Make a record of a type.", obj({ space: str, type: str, data: { type: "object" } }, ["type", "data"]), async (i, d) => ({ record: await d.gateway.records.create(d.chain, String(i.type), i.data) }));
     tool("records.update", "Change a record's fields; a stale base_version is refused (version_conflict).", obj({ urn: str, patch: { type: "object" }, base_version: { type: "integer" } }, ["urn", "patch", "base_version"]), async (i, d) => {
       const u = parseUrn(i.urn);
@@ -88,6 +92,15 @@ export default {
       parseUrn(i.urn);
       return d.gateway.records.linked(d.chain, String(i.urn), { ...(i.type ? { type: String(i.type) } : {}), ...(i.field ? { field: String(i.field) } : {}), ...(Number.isInteger(i.limit) ? { limit: i.limit } : {}) });
     }, byUrn);
+    tool("records.roles", "What a contact or organization is to the Space: every role record that points at it (prospect, client, ambassador, whatever the Space defined), current ones first. Ended roles are included unless `include_ended` is false. Only roles the caller may read.", obj({ urn: str, include_ended: { type: "boolean" } }, ["urn"]), async (i, d) => {
+      parseUrn(i.urn);
+      return { roles: await d.gateway.records.roles(d.chain, String(i.urn), i.include_ended === false ? { include_ended: false } : {}) };
+    }, byUrn);
+    tool("records.holders", "Who holds one role: a page of role records, each naming its holder. `role` is a role type, `stage` narrows to one stage. Ended roles are left out unless `include_ended` is true. Only rows the caller may read.", obj({ space: str, role: str, stage: str, include_ended: { type: "boolean" }, cursor: str, limit: { type: "integer" } }, ["role"]), async (i, d) => {
+      const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
+      const r = await d.gateway.records.holders(d.chain, { role: String(i.role), ...(i.stage !== undefined ? { stage: String(i.stage) } : {}), ...(i.include_ended === true ? { include_ended: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
+      return { rows: r.rows, next_cursor: r.next_cursor || null };
+    });
     tool("records.kits.library", "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds (types, templates, roles, flows, views, sealed fields).", obj({ space: str }), async () => ({ kits: kitLibrary() }));
     tool("records.kits.get", "One Kit from the library in the form the Flows tools take (flows.kit.card to see what it would do, flows.kit.propose to ask for the install).", obj({ space: str, id: str }, ["id"]), async i => {
       try { return { kit: kitFromLibrary(String(i.id)) }; } catch (e) { throw refuse(/** @type {any} */ (e).message, "not_found"); }

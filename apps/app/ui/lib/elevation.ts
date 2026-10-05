@@ -11,7 +11,7 @@ export function elevation(scheme: "dark" | "paper", level: 1 | 2 | 3): ViewStyle
   // On a phone the inset layer (the 1 px top highlight) is dropped: an inset boxShadow beside outer layers on a rounded View drew a faint rectangular band
   // outside the corner on Android and iOS. The card's 1 px edge carries the highlight there; the web keeps every layer.
   // Android still drew the band with boxShadow (the shadow layer is a plain rectangle there), so it uses the platform's own outline shadow, which follows the radius.
-  if (Platform.OS === "android") return { elevation: level === 1 ? 2 : level === 2 ? 5 : 10, shadowColor: "#000" } as ViewStyle;
+  if (Platform.OS === "android") return { elevation: level === 1 ? 2 : level === 2 ? 5 : 10, shadowColor: tokens.color.dark.bg } as ViewStyle;
   const used = Platform.OS === "web" ? layers : layers.filter((l) => !l[5]);
   return {
     boxShadow: used.map(([x, y, b, s, c, inset]) => `${inset ? "inset " : ""}${x}px ${y}px ${b}px ${s}px ${c === "edgeTop" ? edgeTop : c}`).join(", "),

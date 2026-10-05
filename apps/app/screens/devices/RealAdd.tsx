@@ -13,6 +13,7 @@ import { COPY, stepWords, type DeviceKind } from "./wink.js";
 import { useDevices } from "./state";
 import { WinkCode } from "../../src/ui/WinkCode";
 import { AckCode } from "./TypeCode";
+import { leftOf } from "./typed-model.js";
 
 type Opened = { qr: string | null; code?: string | null; code_expires?: number | null; code_offer?: string | null; link?: string; art?: string; expires?: number };
 type Ask = { name: string; line: string; words: [string, string, string] };
@@ -77,9 +78,9 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
       ? <PairWatch session={session} who={`A ${noun}`} onConfirmed={finish} onRejected={(say) => reset(say)} />
       : <Card className="gap-s3">
           <Text strong>Scan it, or paste the long code</Text>
-          <Text tone="muted">Run the installer on the server. It prints a QR code and a long code.</Text>
+          <Text tone="muted">It shows a code when it is ready. Scan it, or paste the long code.</Text>
           {targets.length > 1 ? <View className="flex-row flex-wrap gap-s2">{targets.map((t) => <Button key={t.id} size="sm" kind={target?.id === t.id ? "primary" : "secondary"} label={t.kind === "identity" ? "You" : t.label} onPress={() => setTarget(t)} />)}</View> : null}
-          {busy ? <Text tone="muted">Asking the server.</Text> : <PairEntry onCode={gotServerCode} />}
+          {busy ? <Text tone="muted">Asking your Vyre.</Text> : <PairEntry onCode={gotServerCode} />}
         </Card>;
   } else if (ask) {
     body = <PairWords session={answerer!} who={ask.name} onConfirmed={finish} onRejected={() => reset(COPY.rejected)} />;
@@ -90,7 +91,7 @@ export function RealAdd({ kind, onBack, onDone, first }: { kind: DeviceKind; onB
         {opened.qr ? <WinkCode text={opened.qr} kind="device" typed={opened.code ?? null} expires={opened.code_expires ?? null} /> : null}
         {opened.qr ? <Text mono size="caption" selectable className="w-full text-center" style={{ wordBreak: "break-all" } as never}>{opened.qr}</Text> : <Text tone="warn">The relay could not take the code. Try again.</Text>}
         {opened.code && opened.code_offer ? <AckCode offer={opened.code_offer} onDone={() => setDone(true)} /> : null}
-        <Text tone="muted">Waiting for the new device. Good for 5 minutes.</Text>
+        <Text tone="muted">{(() => { const l = leftOf(opened.code_expires ?? opened.expires ?? null, Date.now()); return l ? `Waiting for the new device. Good for ${l}.` : "Waiting for the new device."; })()}</Text>
       </Card>
     );
   } else {

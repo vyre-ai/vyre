@@ -6,6 +6,7 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { start } from "../daemon/index.js";
+import { call } from "../daemon/client.js";
 import { build } from "../daemon/build.js";
 import { tempHome } from "../../test/helpers.js";
 
@@ -172,7 +173,7 @@ test("update.auto_install is a registry setting: off by default, kept under upda
   assert.ok(def, "declared");
   assert.equal(def.default, false);
   assert.equal(def.label, "Update automatically");
-  const set = await b.call("settings.set", { key: "update.auto_install", value: true });
+  const set = await call("settings.set", { key: "update.auto_install", value: true }, { root: b.root, caller: "cli" });
   assert.ok(!set.error, JSON.stringify(set.error));
   assert.equal(JSON.parse(fs.readFileSync(path.join(b.root, "config.json"), "utf8")).update.install, true);
   assert.equal((await b.call("update.status")).data.install, true);

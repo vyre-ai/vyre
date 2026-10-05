@@ -34,22 +34,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { tailscaleBin } from "../link/transport.js";
-/**
- * Legacy: sharing a folder as a disk still drives another product's drive sharing when its program is on the machine, and answers "not installed" (code 127) when it is not
- * (every test, and every Vyre server: none ships it). Its replacement, VyreDrive's loopback mount, is not built yet (team/BACKLOG.md); this file's callers go with it.
- * @param {string[]} args @param {{ timeout?: number }} [opts] @returns {Promise<{ code: number, out: string, err: string }>}
- */
-const tailscale = (args, { timeout = 15_000 } = {}) => {
-  const b = tailscaleBin();
-  if (!b) return Promise.resolve({ code: 127, out: "", err: "not installed" });
-  return new Promise(resolve => {
-    execFile(b, args, { timeout, maxBuffer: 16 * 1024 * 1024 }, (e, out, err) => {
-      const code = !e ? 0 : /** @type {any} */ (e).code === "ENOENT" ? 127 : Number(/** @type {any} */ (e).code) || 1;
-      resolve({ code, out: String(out), err: String(err) });
-    });
-  });
-};
+import { run as tailscale } from "../names/tailscale.js";
 import * as config from "../config/index.js";
 import { looksLikeKey, secretName, HOME_DENIED } from "./safety.js";
 import { reach, within } from "./access.js";
@@ -244,8 +229,8 @@ export function driveUrl(st, boxNode, share) {
 /** Parse `tailscale status --json`, or throw a readable error. */
 async function status() {
   const r = await tailscale(["status", "--json"]);
-  if (r.code === 127) throw refuse("sharing folders to a computer as a disk is not available on this device yet; the Space's own Drive and VyreDrive transfers do not need it", "unavailable");
-  try { return JSON.parse(r.out); } catch { throw refuse("sharing folders to a computer as a disk could not start here", "unavailable"); }
+  if (r.code === 127) throw refuse("Tailscale is not installed here", "no_tailscale");
+  try { return JSON.parse(r.out); } catch { throw refuse((r.err || r.out).trim().split("\n")[0] || "tailscale status failed", "no_tailscale"); }
 }
 
 const hasCap = (st, cap) => Boolean(st && st.Self && st.Self.CapMap && Object.prototype.hasOwnProperty.call(st.Self.CapMap, cap));
@@ -420,8 +405,8 @@ export function drive(ctx, { role, guard: g, roots }) {
       // Nothing in 0.3 depends on Tailscale: a box with none still answers, with the shared folders off (`tailnet: false`) and no error. The Space's own Drive does not use it.
       let st;
       try { st = await status(); } catch (e) {
-        if (/** @type {any} */ (e).code !== "unavailable") throw e;
-        return { enabled: false, tailnet: false, why: "this box does not mount folders as disks yet, so its folders are not shared over VyreDrive; the Space's own Drive does not need one", access,
+        if (/** @type {any} */ (e).code !== "no_tailscale") throw e;
+        return { enabled: false, tailnet: false, why: "this box has no tailnet, so its folders are not shared over VyreDrive; the Space's own Drive does not need one", access,
           shares: configured.map(s => ({ ...s, shared: false })), list: [] };
       }
       if (!hasCap(st, "drive:share")) {
@@ -514,7 +499,7 @@ export function drive(ctx, { role, guard: g, roots }) {
         known(String(share));
         const st = await status();
         const node = st && st.Self && String(st.Self.DNSName || "").replace(/\.$/, "");
-        if (!node) throw refuse("this box has no address for a mounted share yet; use the Space's Drive in the app", "unavailable");
+        if (!node) throw refuse("Tailscale on this box does not say its own name; is it signed in?", "no_tailscale");
         const a = driveUrl(st, node, String(share));
         const list = hasCap(st, "drive:share") ? await tailscale(["drive", "list"]) : null;
         const shared = Boolean(list && list.code === 0 && parseDriveList(list.out).some(x => x.name === share));

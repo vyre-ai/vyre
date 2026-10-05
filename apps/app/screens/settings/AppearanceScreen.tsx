@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Field, Row, Segmented, Switch, Text, allowsMock, showToast, useAppearance, useUiTheme } from "@vyre/ui";
 import { V3 } from "@vyre/deck-ui/tokens-v3.js";
+import { tokens } from "../../src/theme/tokens";
 import { Group, Page } from "../places/Frame";
 import { useSpaces } from "../shell/state";
 import { useShell } from "../shell/shared";
@@ -17,6 +18,9 @@ const fonts = Object.keys(FONT_NAMES).filter((k) => k !== "sans").map((k) => [k,
 const ACCENTS = ["violet", "amber", "sky", "sage", "rose"].map((k) => [k, k[0].toUpperCase() + k.slice(1)] as [string, string]);
 
 /** Settings, Appearance: the scope control (Me, Mine, Harlow Legal), the controls for that scope, what is showing now, and every base component drawn live. */
+/** The custom-accent field starts on the token the app already treats as its beacon, not a colour of its own. */
+const DEFAULT_HEX: string = tokens.color.dark.beacon;
+
 export function AppearanceScreen() {
   const { person, setPerson } = useAppearance();
   const { resolved } = useUiTheme();
@@ -26,7 +30,7 @@ export function AppearanceScreen() {
   const own = shell.spaces.filter((x) => x.id !== "all");
   const NAMES: Record<string, string> = Object.fromEntries(own.map((x) => [x.id, x.name]));
   const [scope, setScope] = useState<string>("me");
-  const [hex, setHex] = useState("#7AA2F7");
+  const [hex, setHex] = useState(DEFAULT_HEX);
   const [source, setSource] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (!real) return;
@@ -59,7 +63,7 @@ export function AppearanceScreen() {
         <Group title={real ? `${NAMES[scope]} looks like this on this device` : `${NAMES[scope]} looks like this for everyone in it`}>
           <Card className="gap-s3">
             <Segmented label="Brand accent" value={look.accent} onChange={(accent) => set({ accent, hex: undefined })} options={[...ACCENTS, ["custom", "Custom"]]} />
-            {look.accent === "custom" || hex !== "#7AA2F7" ? (
+            {look.accent === "custom" || hex !== DEFAULT_HEX ? (
               <View className="gap-s2">
                 <View className="flex-row flex-wrap items-end gap-s2"><Field className="w-ring" label="Custom accent" value={hex} onChangeText={setHex} mono /><Button size="sm" label="Use this colour" onPress={() => set({ accent: "custom", hex })} /></View>
                 {resolved.note && scope === showing ? <Text size="caption" tone="warn">{resolved.note}</Text> : <Text size="caption" tone="label">Any colour, checked for contrast. A colour that fails is replaced by the nearest one that passes.</Text>}

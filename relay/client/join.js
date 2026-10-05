@@ -7,7 +7,7 @@
 // code between them.
 
 import { enterCode, hmac512, ackCode } from "./code.js";
-import { pairTicket } from "./client.js";
+import { pairTicket, resolveTicket } from "./client.js";
 
 const SEED_LABEL = new TextEncoder().encode("vyre-wink-ticket-seed-v1");
 
@@ -71,4 +71,31 @@ export async function joinWithCode(o) {
   const f = await finishJoin({ relay: o.relay, seed: t.seed, name: o.name, waitMs: o.waitMs, pollMs: o.pollMs, fetch: o.fetch, pairOptions: o.pairOptions, sleep: o.sleep });
   if (f.ok) say({ state: "joining" });
   return f;
+}
+
+/**
+ * Redeem the typed code of an INVITATION from a device with no box of its own (a browser, a fresh phone): the same PAKE as joinWithCode, but the sealed record the ticket holds carries the invitation's
+ * link instead of a pairing. The person types the ack shown here on the inviting device; the link then comes out, and goes to spaces.invites.accept (or the join page) exactly as a pasted link does.
+ * @param {{ relay: string, input: string, onAck?: (ack: string) => void, waitMs?: number, pollMs?: number, fetch?: typeof fetch, rng?: (n: number) => Uint8Array, sleep?: (ms: number) => Promise<void> }} o
+ * @returns {Promise<{ ok: true, link: string, space?: string } | { ok: false, reason: "format" | "busy" | "offline" | "refused" | "expired" | "not_an_invite" }>}
+ */
+export async function redeemInviteCode(o) {
+  const t = await typeWinkCode(o);
+  if (!t.ok) return { ok: false, reason: t.reason };
+  if (o.onAck) o.onAck(t.ack);
+  const sleep = o.sleep || (ms => new Promise(r => setTimeout(r, ms)));
+  const until = Date.now() + (o.waitMs ?? 10 * 60_000);
+  for (;;) {
+    try {
+      const r = await resolveTicket(t.seed, { relay: o.relay, fetch: o.fetch });
+      const inv = r.invite;
+      if (!inv || inv.kind !== "space-invite" || typeof inv.link !== "string" || !/^https:\/\/[^\s]+$/.test(inv.link) || inv.link.length > 1500) return { ok: false, reason: "not_an_invite" };
+      return { ok: true, link: inv.link, ...(typeof inv.space === "string" ? { space: inv.space.slice(0, 64) } : {}) };
+    } catch (e) {
+      const code = /** @type {any} */ (e).code;
+      if (code !== "ticket_gone" && code !== "rate_limited") return { ok: false, reason: code === "bad_record" || code === "contested" ? "refused" : "offline" };
+    }
+    if (Date.now() >= until) return { ok: false, reason: "expired" };
+    await sleep(o.pollMs ?? 1500);
+  }
 }

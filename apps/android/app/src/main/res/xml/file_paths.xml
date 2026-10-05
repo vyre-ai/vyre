@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<paths>
-    <!-- Fetched files, in the app's own cache, handed to a viewer or the share sheet. -->
-    <cache-path name="fetched" path="fetched/" />
-</paths>

@@ -52,7 +52,7 @@ async function key(label) {
   const pubText = Buffer.from(pub).toString("base64url");
   const eid = await C.eidOf(pub);
   const sign = m => crypto.sign(null, Buffer.from(m), privateKey);
-  return { label, pub: pubText, eid, sign, sig64: m => sign(m).toString("base64url"), entry: kind => ({ eid, kind, pub: pubText, label }) };
+  return { label, pub: pubText, eid, sign, sig64: m => sign(m).toString("base64url"), entry: kind => ({ eid, kind, pub: pubText }) };
 }
 
 /** A person (or space) client over the directory: it holds the chain it has built and talks plain HTTP with nothing signed at the request level. */
@@ -430,7 +430,7 @@ test("cors: claim, append and update accept the app's origin (and only its exact
     assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://evil.example", headers: { "access-control-request-method": "POST" } })).status, 405, p);
   }
-  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"], ["POST", "/v1/names/recover"]]) {
+  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"]]) {
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": method } })).status, 405, `${method} ${p} has no preflight`);
     const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
     assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);

@@ -1,6 +1,7 @@
 // @ts-check
-// `vyre phone` against a real vyred in a temp home: a pairing offer from the real relay module (a Node relay on 127.0.0.1, the person's yes typed by a fake
-// terminal through the real presence verifier), a fake push service on 127.0.0.1, and a phone played by the test (push.subscribe and
+// `vyre phone` against a real vyred in a temp home: the box's address, a code minted through the
+// real presence verifier (the code it writes to the login terminal, typed back by a fake
+// terminal), a fake push service on 127.0.0.1, and a phone played by the test (push.subscribe and
 // presence.enroll as the Deck would send them). adb is a fake binary. No network, no dialogs.
 
 import "../../../scripts/mac-test-guard.mjs";
@@ -14,8 +15,6 @@ import { PassThrough } from "node:stream";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
 import { Presence } from "../../presence/index.js";
-import { callAsPerson } from "../presence.js";
-import { createRelay } from "../../../relay/node/server.js";
 import { setJson, setView } from "../kit.js";
 import { strip } from "../style.js";
 import { tempHome } from "../../../test/helpers.js";
@@ -39,14 +38,11 @@ async function fakeService(t) {
 }
 
 /** A box vyred with the real verifier: no Touch ID, codes written to `screen`. */
-async function box(t, { relay: withRelay = true } = {}) {
+async function box(t) {
   const root = tempHome(t);
   const svc = await fakeService(t);
-  const relay = createRelay();
-  const relayUrl = await relay.listen();
-  t.after(() => relay.close());
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" },
-    modules: { enable: [], disable: ["recall", "memory", "learn", ...(withRelay ? [] : ["relay"])] }, relay: { enabled: withRelay, url: relayUrl }, push: { hosts: ["127.0.0.1"], allow_http: true }, network: { address: BOX } }));
+    modules: { enable: [], disable: ["recall", "memory", "learn", "relay"] }, push: { hosts: ["127.0.0.1"], allow_http: true }, network: { tailscale: false, address: BOX } }));
   const screen = [];
   const d = await start({ root, log: () => {}, person: async () => null, presence: deps => new Presence({ ...deps,
     touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) },
@@ -126,11 +122,14 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   // life: a failed assertion still ends the watch, so the file never hangs.
   const run = add({}, { io, input, tty: false, life: 20_000, fetch: noApp });
 
-  await until(() => lines.some(l => /https:\/\/vyre\.run\/pair#/.test(l)), "the pairing offer");
+  const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
   const text = lines.join("\n");
   assert.match(text, /Pairing a phone with the box \(vyre\.tail0000\.ts\.net\)/);
-  assert.match(text, /Pair\s+scan with the phone's camera, or paste the long code/);
-  assert.ok(!/tailscale|tailnet/i.test(text.replace("vyre.tail0000.ts.net", "")), "no step names another product");
+  if (/Confirmed · the QR works once/.test(text)) assert.match(text, /This device can't sign in as you until you confirm it from Devices\./, "a pairing by the offer says it is not confirmed yet");
+  assert.match(text, /Network\s+Tailscale, tailnet tail0000/);
+  assert.match(text, /This box has no relay yet, so the phone pairs over Tailscale/, "the relay is the default; no relay tool on this box");
+  assert.match(text, new RegExp(`Open Vyre\\s+${BOX.replace(/\./g, "\\.")}`));
+  assert.match(text, /Type this address on the phone/, "no QR code into a pipe");
   assert.match(text, /iPhone: Safari: Share, then Add to Home Screen/);
   assert.match(text, /Android: Chrome/);
   assert.match(text, /· Phone reached the box/);
@@ -148,11 +147,10 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   assert.ok(lines.some(l => /✓ Secure address works \(HTTPS\)/.test(l)));
   assert.ok(lines.some(l => /\? Opened as an app, not a browser tab/.test(l)), "the box cannot tell app from tab on this service");
 
-  // The phone adds its passkey with a code the person's terminal gives: presence.enrolled on the stream ends the watch.
-  const code = /** @type {any} */ ((await callAsPerson("presence.code", {}, { io })).data);
+  // The phone adds its passkey with the code: presence.enrolled on the stream ends the watch.
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const key = await deck("presence.enroll", { kind: "passkey", name: "alex's iPhone", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
-    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${typeof code === "string" ? code : code.code}` });
+    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${code}` });
   assert.ok(key.data, JSON.stringify(key));
   assert.equal(await run, 0);
   assert.ok(lines.some(l => /✓ Face ID key saved for approvals · alex's iPhone/.test(l)));
@@ -190,7 +188,7 @@ test("phone add: the watch ends when the code runs out, naming what never arrive
   assert.match(text, /next: vyre phone add again/);
 });
 
-test("phone add --json: the offer and the steps as one value, without watching", async t => {
+test("phone add --json: the address, the code and the steps as one value, without watching", async t => {
   const { io } = await box(t);
   const lines = capture(t);
   setJson(true);
@@ -198,20 +196,29 @@ test("phone add --json: the offer and the steps as one value, without watching",
   assert.equal(await add({}, { io, fetch: noApp }), 0);
   const v = JSON.parse(lines.at(-1));
   assert.equal(v.box, BOX);
-  assert.match(v.url, /^https:\/\/vyre\.run\/pair#/);
-  assert.equal(v.code, null, "there is no typed code: the offer is the long code");
-  assert.ok(v.expires > Date.now() + 4 * 60_000, "the offer lasts minutes");
-  assert.equal(v.network, "relay");
-  assert.ok(!("tailscale" in v));
+  assert.equal(v.url, BOX + "/");
+  assert.match(v.code, /^[A-Z0-9]{8}$/);
+  assert.ok(v.expires > Date.now() + 9 * 60_000, "the code lasts 10 minutes");
+  assert.equal(v.network, "tailscale", "no relay on this box, so Tailscale");
+  assert.deepEqual(v.tailscale, { tailnet: "tail0000", login: null, address: BOX + "/" });
+  assert.equal(v.relay, "this box has no relay yet");
   assert.deepEqual(v.checks.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
 });
 
-test("phone add: a box with no relay says so and pairs nothing", async t => {
-  const { io } = await box(t, { relay: false });
+test("phone add --json: a box with the Deck's /pair screen gets the QR pointed there", async t => {
+  const { io } = await box(t);
   const lines = capture(t);
-  assert.equal(await add({}, { io, fetch: noApp }), 1);
-  assert.match(lines.join("\n"), /no relay yet/);
+  setJson(true);
+  t.after(() => setJson(false));
+  const asked = [];
+  const withPair = /** @type {any} */ (async (url, o) => { asked.push([String(url), o && o.method]); return String(url).endsWith("/pair") ? { ok: true, status: 200 } : { ok: false, status: 404, json: async () => ({}) }; });
+  assert.equal(await add({}, { io, fetch: withPair }), 0);
+  const v = JSON.parse(lines.at(-1));
+  assert.equal(v.url, BOX + "/pair");
+  assert.equal(v.tailscale.address, BOX + "/pair");
+  assert.ok(asked.some(([u, m]) => u === BOX + "/pair" && m === "HEAD"), "one HEAD for the page");
 });
+
 test("phone add: without a person at a terminal the code is refused, exit 3", async t => {
   await box(t);
   capture(t);
@@ -290,7 +297,7 @@ test("phone add: push.subscribed re-reads at once and push.seen from an installe
   const lines = capture(t);
   // No Enter at all: only the events move the checks (and the 60 s re-read, too slow for this test).
   const run = add({ android: true }, { io, input: null, tty: false, life: 20_000, fetch: noApp });
-  await until(() => lines.some(l => /https:\/\/vyre\.run\/pair#/.test(l)), "the pairing offer");
+  const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
   const subscribe = async () => (await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/pixel`), label: "alex's Pixel" })).data.device;
   const arrivals = () => svc.got.filter(p => p === "/push/pixel").length;
   const device = await subscribe();
@@ -314,7 +321,7 @@ test("phone add: push.subscribed re-reads at once and push.seen from an installe
   await keep(() => deck("push.seen", { surface: "now", standalone: true, device }), () => lines.some(l => /✓ Opened as an app, not a browser tab · Vyre said it runs installed/.test(l)), "the app check");
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   await deck("presence.enroll", { kind: "passkey", name: "alex's Pixel", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
-    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${(c => typeof c === "string" ? c : c.code)(/** @type {any} */ ((await callAsPerson("presence.code", {}, { io })).data))}` });
+    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${code}` });
   assert.equal(await run, 0);
   assert.ok(lines.some(l => /alex's Pixel is ready · 5 of 5 checks passed/.test(l)), lines.join("\n"));
 });
@@ -509,7 +516,7 @@ test("phone: vyre commands lists every verb run() handles, with aliases and flag
   const verbs = (await listing({ only: "phone" })).commands[0].verbs;
   assert.deepEqual(verbs.map(v => [v.verb, v.aliases || []]), [["add", ["pair"]], ["list", ["ls"]], ["remove", ["rm"]], ["test", []]]);
   const addVerb = verbs.find(v => v.verb === "add");
-  assert.deepEqual(addVerb.flags.map(f => f.name), ["iphone", "android", "usb", "wireless", "relay"], "every flag run() parses");
+  assert.deepEqual(addVerb.flags.map(f => f.name), ["iphone", "android", "tailscale-only", "usb", "wireless", "relay"], "every flag run() parses");
   assert.deepEqual([addVerb.live, addVerb.person], [true, true]);
   assert.deepEqual(verbs.find(v => v.verb === "remove").args, [{ name: "id", required: true, repeat: true }]);
   assert.equal(verbs.find(v => v.verb === "list").read, true);
@@ -528,10 +535,10 @@ test("phone add --view: a qr frame with the --json data, then a checks frame per
   const first = await until(() => frames()[0], "the qr frame", 20_000);
   assert.equal(first.cmd, "phone add");
   assert.equal(first.view.kind, "qr");
-  assert.match(first.view.text, /^https:\/\/vyre\.run\/pair#/);
+  assert.equal(first.view.text, BOX + "/");
   assert.equal(first.view.text, first.data.url);
-  assert.match(first.view.caption, /Scan this with the phone's camera, or paste the long code/);
-  assert.deepEqual(Object.keys(first.data), ["box", "phone", "network", "url", "code", "expires", "install", "checks"], "the same value --json prints");
+  assert.match(first.view.caption, /When it asks for a code, type [A-Z0-9]{4}-[A-Z0-9]{4}/);
+  assert.deepEqual(Object.keys(first.data), ["box", "phone", "network", "url", "code", "expires", "install", "tailscale", "relay", "checks"], "the same value --json prints");
   const waiting = await until(() => frames().find(f => f.view.kind === "checks"), "the first checks frame", 20_000);
   assert.deepEqual(waiting.view.items.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
   assert.equal(waiting.data, null);
@@ -548,7 +555,7 @@ test("phone add --view: a qr frame with the --json data, then a checks frame per
   await shows(svc, root, "/push/view-phone");
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const key = await deck("presence.enroll", { kind: "passkey", name: "kit's Android", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
-    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${(c => typeof c === "string" ? c : c.code)(/** @type {any} */ ((await callAsPerson("presence.code", {}, { io })).data))}` });
+    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${first.data.code}` });
   assert.ok(key.data, JSON.stringify(key));
   assert.equal(await run, 0);
   const checks = frames().filter(f => f.view.kind === "checks");
