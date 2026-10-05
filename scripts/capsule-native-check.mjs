@@ -8,7 +8,7 @@
 // is offline, and VYRE_CAPSULE_TEST=1, so it asks for nothing and posts nothing. It shows the panel
 // (without taking the keyboard), types a sum, checks the row and the offline line, reads the open
 // and keystroke timings, hides it, and samples its CPU and memory while hidden. Budgets, from
-// docs/work/capsule-pro.md: hidden under 60 MB of memory and under 0.1% CPU, wake under 50 ms.
+// team/archive/work-journals/capsule-pro.md: hidden under 60 MB of memory and under 0.1% CPU, wake under 50 ms.
 // "Memory" is phys_footprint, what Activity Monitor shows as Memory: the pages this process dirtied
 // or had compressed, asked from inside the app (TASK_VM_INFO). Resident (ps RSS) is printed beside
 // it and is larger: it also counts the clean, shared pages of AppKit and SwiftUI mapped into every
@@ -207,7 +207,7 @@ try {
     const get = (look, display) => rows.find(r => r.look === look && r.display === display);
     // GitHub's Mac runner has Reduce Transparency on, which switches macOS's blur off for every app: the glass cannot be measured
     // there (run 36957197608: the same gap with the glass on and with it forced off). Say so, and prove what can be proved: the
-    // reduced ground is opaque in both looks. The blur itself is the user's check on a real Mac (docs/work/capsule-pro.md, step 16).
+    // reduced ground is opaque in both looks. The blur itself is the user's check on a real Mac (team/archive/work-journals/capsule-pro.md, step 16).
     if (rows.some(r => r.sysReduced)) {
       console.log("NOTE this Mac has Reduce Transparency on, so the glass blur cannot be measured here; only the opaque fallback is checked");
       for (const look of ["dark", "light"]) {

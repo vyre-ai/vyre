@@ -1,5 +1,5 @@
 // @ts-check
-// The lender's host (docs/work/runner.md "runnerHost"): the runner's ports for a Space whose HOME is another computer, built on the kernel's remote call. The daemon gives this to
+// The lender's host (team/archive/work-journals/runner.md "runnerHost"): the runner's ports for a Space whose HOME is another computer, built on the kernel's remote call. The daemon gives this to
 // `cfg.runnerHost` of the kernel handle, so `ctx.kernel.runnerHost()` answers `{ ports }` and the runner module goes from "not connected" to ready.
 //   device      THIS computer's device id (core/relay/devicekey.js) and its public key: the lease and the Offer are for this computer, never a name a caller supplied
 //   vault       leases.issue / renew / use over the wire; the key stays in the runner's memory

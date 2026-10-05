@@ -230,7 +230,7 @@ fun FactScreen(id: String, back: String, onBack: () -> Unit) {
     }
 }
 
-// ---- New agent (the "+" on Agents; the Deck's newForm, apps/CONTRACT.md 4.1) ----
+// ---- New agent (the "+" on Agents; the Deck's newForm, team/archive/CONTRACT-native-apps.md 4.1) ----
 
 /**
  * The New agent sheet: name (the lowercase rule checked before sending), the projects it works

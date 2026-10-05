@@ -3,7 +3,7 @@
 // reach. Tool calls are the network's, always, but for the two offline reads below.
 //
 // The one changed invariant (2026-09-27, gate-chat's ask for Chat's offline read, narrowed and
-// approved by the lead, see docs/work/deck.md): threads.get and projects.list, and only those
+// approved by the lead, see team/archive/work-journals/deck.md): threads.get and projects.list, and only those
 // two, may be read back when the network is down. Every other /v1/ call (every write
 // (approve/revise/reject/send/lease/answer among them), every vault.* or gate.* read, anything a
 // model wrote as a secret) is still never cached, exactly as before. threads.get is only ever

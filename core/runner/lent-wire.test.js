@@ -1,5 +1,5 @@
 // The lent-computer wire on the REAL kernel: a member's computer runs one of the Space's sessions through the kernel's remote call (the in-memory stand-in for Wink), with the real Offers,
-// the real leases and the real remote server on the home side, and the lent home service in front of the checkpoint store. Every refusal in docs/work/runner.md is a test here.
+// the real leases and the real remote server on the home side, and the lent home service in front of the checkpoint store. Every refusal in team/archive/work-journals/runner.md is a test here.
 import "../../scripts/mac-test-guard.mjs";
 import "./testing/hosted-guard.js";
 import test from "node:test";

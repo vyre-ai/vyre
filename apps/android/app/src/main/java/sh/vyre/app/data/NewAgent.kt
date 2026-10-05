@@ -4,7 +4,7 @@ import kotlinx.serialization.json.JsonObject
 import sh.vyre.app.api.input
 
 /**
- * The New agent form (the Deck's newForm, deck/views/agents.js; apps/CONTRACT.md 4.1), as data.
+ * The New agent form (the Deck's newForm, deck/views/agents.js; team/archive/CONTRACT-native-apps.md 4.1), as data.
  * Auth is by Vault item name only: nothing secret is typed on the phone. Pure, so its rules are
  * tested on the JVM.
  */

@@ -1,5 +1,5 @@
 // @ts-check
-// The home's end of a lent computer (docs/work/runner.md "The lent-computer wire"): what the Space's home does when a member's computer runs one of its sessions.
+// The home's end of a lent computer (team/archive/work-journals/runner.md "The lent-computer wire"): what the Space's home does when a member's computer runs one of its sessions.
 // It is a SERVICE of the kernel's remote server (kernel/remote/server.js `services.lent`): every method is `(chain, ...args)` with the chain the home's own Surfaces door minted from
 // what the transport proved (the lender's device key and person), never from the request. It holds the lent-session table, decides what a session may reach, and fronts the
 // checkpoint store (core/runner/checkpoint-store.js) with a per-call authorization that comes from the Offers and the table, not from a role.

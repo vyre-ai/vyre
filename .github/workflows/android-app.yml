@@ -1,6 +1,6 @@
 # The Android app built from the Expo app (apps/app): `expo prebuild`, then gradle on JDK 17. It replaces android.yml, which built the
 # old Kotlin app in apps/android (that directory stays in the tree, parked; its signing setup is the sideload key described in
-# docs/work/vault.md and used by native-android.yml).
+# team/archive/work-journals/vault.md and used by native-android.yml).
 #
 #   debug     every run that touches the native side: prebuild, `assembleDebug`, then the checks that need no secret (aapt2 badging says the
 #             package, the merged manifest asks only for what the app uses). The debug APK is the artifact, as soon as the shell builds.

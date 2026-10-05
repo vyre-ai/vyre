@@ -279,7 +279,7 @@ export class Indexer {
    * the fixture/fictional labelled set (0.845 to 0.667): its "blind visitors" case is answered by
    * a USER turn (the audit request itself), and a role-only cut throws that kind of case away
    * along with the short, noisy real-corpus user turns that were actually the problem. See
-   * docs/work/recall.md for the numbers and the dense_weight retune that replaced this.
+   * team/archive/work-journals/recall.md for the numbers and the dense_weight retune that replaced this.
    */
   pending() {
     return /** @type {{ rid: number }[]} */ (this.db.prepare(`

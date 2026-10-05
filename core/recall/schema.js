@@ -1,7 +1,7 @@
 // @ts-check
 // Recall's tables. This file is a CONTRACT: Memory and Projects read these tables directly
 // (reads may join any table; writes go through the owning module). Change a column only with a
-// new migration step and a line under "Changed contracts" in docs/work/recall.md.
+// new migration step and a line under "Changed contracts" in team/archive/work-journals/recall.md.
 //
 // Identity: a turn is (session, seq). seq is the turn's position in its transcript, counting
 // only user and assistant turns with text, from 0. It never changes once written, because a

@@ -544,7 +544,7 @@ export default {
      * "preference"), keyed by the lesson, and retiring the lesson forgets it. Without Memory, nothing.
      * The subject is the user themself: Memory's own node for them is `me:you` (curator ME, kind
      * "me"), so it is named by kind, `{ kind: "me" }`, never by a name, which would make a person
-     * called "the user". Memory's teach() does not map kind "me" yet (docs/work/learning.md, Needs):
+     * called "the user". Memory's teach() does not map kind "me" yet (team/archive/work-journals/learning.md, Needs):
      * until it does, it refuses the fact and the preference is logged as not taught.
      */
     const prefer = async (l, forget) => {

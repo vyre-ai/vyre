@@ -10,7 +10,7 @@ status: draft
 
 Status: draft, 28 Sep 2026 (revised after the reviewer's first pass) · Workstream: federation ·
 Carries out ADR 0039 section 4 (docs/design/anywhere.md, not yet merged here) and the move
-contract already sent to launch and tailnet (docs/work/federation.md, "Move engine: contract
+contract already sent to launch and tailnet (team/archive/work-journals/federation.md, "Move engine: contract
 only")
 
 ## Context

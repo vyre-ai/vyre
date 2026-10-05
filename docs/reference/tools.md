@@ -8594,7 +8594,7 @@ What this device would offer to sync to the box (Vyre Drive's what-to-sync picke
 
 ### `sync.send`
 
-Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: "once" sends this list and stops; "sync" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see docs/work/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.
+Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: "once" sends this list and stops; "sync" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see team/archive/work-journals/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.
 
 - Input:
   - `files` list of object, required
@@ -11791,7 +11791,7 @@ From the phone that scanned the QR, over its own paired connection: where the qu
 
 ### `wink.relay.apply`
 
-Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see docs/work/tailnet.md). Answers { applied, url }.
+Apply a signed instruction from the owner's app to turn the relay on, or point it at another relay, on a box that has no screen. The app asks for presence and signs; this box checks the signature against the owner's registered device key, the box id, the time (two minutes) and a one-time nonce. Input is the instruction (see team/archive/work-journals/tailnet.md). Answers { applied, url }.
 
 - Input:
   - `action` "relay.enable", required

@@ -1,7 +1,7 @@
 // @ts-check
 // Vyre's own tips, as shipped in every module.json under teaches.tips: each one passes the
 // checker the tips module uses, each docs link lands on a real page and heading, and every surface
-// has tips of each kind. Tips waiting on unmerged code sit in docs/work/tips-pending.json.
+// has tips of each kind. Tips waiting on unmerged code sit in team/archive/work-journals/tips-pending.json.
 
 import "../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -81,7 +81,7 @@ test("tips content: examples use only the sample world", () => {
 });
 
 test("tips content: the tips waiting on unmerged code are well formed", () => {
-  const pending = JSON.parse(fs.readFileSync(path.join(ROOT, "docs/work/tips-pending.json"), "utf8"));
+  const pending = JSON.parse(fs.readFileSync(path.join(ROOT, "team/archive/work-journals/tips-pending.json"), "utf8"));
   const problems = pending.flatMap((/** @type {any} */ p) => checkTips(p.module, [p.tip]).problems.map(x => `${p.module}: ${x}`));
   assert.deepEqual(problems, []);
 });

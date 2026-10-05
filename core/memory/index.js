@@ -79,7 +79,7 @@ export default {
     // evaluation (docs/adr/0007-intelligence.md, decision 2). Both are off by default.
     const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log, relations: ctx.config.memory?.relations });
     const graph = new Graph(ctx.store.db, curator);
-    // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
+    // Personal facts (team/archive/work-journals/memory-iq.md): read after each curator pass, in batches that yield.
     // Source trust (personal/trust.js): never the Capsule's own asks, nor folders the user left out
     // in config.memory.personal.skipCwds.
     const askDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null;
@@ -825,7 +825,7 @@ export default {
         return { about: null, facts: personal.facts({ limit: n }) };
       }, "memory.me"),
     });
-    // One line about the user's life from what they have said (docs/work/memory-iq.md). Personal
+    // One line about the user's life from what they have said (team/archive/work-journals/memory-iq.md). Personal
     // facts are the user's, not a project's: the user's own surfaces, their tailnet devices,
     // modules and the assistant ask it. Any named agent is refused, a projects: "*" one
     // included: narrowed by the user's decision, 2026-09-28, from docs/adr/0007-intelligence.md

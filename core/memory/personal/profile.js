@@ -1,6 +1,6 @@
 // @ts-check
 // personal/profile: the user's durable facts as short second-person lines, for about.md and any
-// surface that wants "who this is" at a glance (docs/work/memory-iq.md, memory.profile).
+// surface that wants "who this is" at a glance (team/archive/work-journals/memory-iq.md, memory.profile).
 //
 // Only what still holds at SURE or more, and nothing sensitive: no birthdays or other dates, no
 // numbers that read like an account, a phone or a street address, no health.
