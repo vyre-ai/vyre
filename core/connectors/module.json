@@ -18,7 +18,7 @@
       "connectors.connect.finish",
       "connectors.connect.cancel",
       { "name": "connectors.declared", "reach": "person", "effect": "read" },
-      { "name": "connectors.logging", "reach": "person", "effect": "read" },
+      { "name": "connectors.logging", "reach": "person", "effect": "read", "projectArg": "project" },
       { "name": "connectors.declare", "reach": "person", "effect": "write" },
       "connectors.disconnect", { "name": "connectors.scope", "reach": "person", "effect": "write" },
       "connectors.calendar.today",
