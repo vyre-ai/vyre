@@ -91,12 +91,11 @@ test("records: a to-do is a Task assigned to the person; finishing it in the pla
   const c = await w.ok("planner.add", { kind: "todo", title: "Call the printer" });
   await w.ok("planner.delete", { item: c.id });
   assert.equal((await w.k.tasks.get(w.owner, c.id)).state, "skipped");
-  assert.equal((await w.call("planner.delete", { item: c.id, restore: true })).error.code, "bad_input", "a cancelled to-do does not come back");
+  assert.equal((await w.ok("planner.delete", { item: c.id, restore: true })).state, "open", "a deleted to-do comes back");
+  assert.equal((await w.k.tasks.get(w.owner, c.id)).state, "ready");
 
-  // A to-do repeats nowhere and has no sub-items: those are what a Task is not.
-  assert.equal((await w.call("planner.add", { kind: "todo", title: "Weekly report", wall: "09:00", repeat: { every: "week" } })).error.code, "bad_input");
-  assert.equal((await w.call("planner.add", { kind: "todo", title: "Part", parent: todo.id })).error.code, "bad_input");
 });
+
 
 test("records: a to-do with an hour rings from the working set, and again after a restart", async t => {
   const w = await world(t);
@@ -138,10 +137,78 @@ test("records: the rings and the settings are records too, and a restart keeps w
   assert.equal(w2.fired.length, 1, "the snoozed reminder rang after the restart");
 });
 
-test("records: module.json declares exactly the planner's types and the Event type the connectors write, so a change to either is seen here", async () => {
+test("records: module.json declares exactly the planner's own types; the Event type is the Space's shared one, defined once for every Space", async () => {
   const fs = await import("node:fs");
   const { PLANNER_TYPES } = await import("./types.js");
-  const { CORE_TYPES } = await import("../../records/core-types.js");
   const declared = JSON.parse(fs.readFileSync(new URL("./module.json", import.meta.url), "utf8")).needs.kernel.types;
-  assert.deepEqual(declared, JSON.parse(JSON.stringify([...PLANNER_TYPES, CORE_TYPES.find(t => t.name === "event")])), "regenerate the needs.kernel.types block from types.js and records/core-types.js");
+  assert.deepEqual(declared, JSON.parse(JSON.stringify(PLANNER_TYPES)), "regenerate the needs.kernel.types block from types.js");
+  assert.ok(!declared.some(/** @type {any} */ t => t.name === "event"), "the planner reads the shared Event type, it does not define one");
+});
+
+test("records: a to-do is edited, reopened, restored, made a sub-item and repeats, all as the same Task", async t => {
+  const w = await world(t);
+  const todo = await w.ok("planner.add", { kind: "todo", title: "Send the engagement letter", list: "work", priority: 1, body: "old template" });
+  // Edit: words, list, priority, tags, due time, note.
+  const e = await w.ok("planner.update", { item: todo.id, title: "Send the Harlow Legal engagement letter", list: "clients", priority: 3, tags: ["letters"], body: "new template", at: iso(T0 + 3 * HOUR) });
+  assert.deepEqual([e.title, e.list, e.priority, e.tags, e.body, e.at], ["Send the Harlow Legal engagement letter", "clients", 3, ["letters"], "new template", T0 + 3 * HOUR]);
+  await w.handle.stop();
+  const task = await w.k.tasks.get(w.owner, todo.id);
+  assert.deepEqual([task.title, task.note, task.due, task.form.planner.list, task.form.planner.priority], ["Send the Harlow Legal engagement letter", "new template", T0 + 3 * HOUR, "clients", 3], "the Task has the edit");
+  const w2 = await world(t, { kernel: w.k, start: w.clock.t });
+  assert.equal((await w2.ok("planner.get", { item: todo.id })).item.list, "clients", "and it survives a restart");
+  // Done, then reopened.
+  await w2.ok("planner.done", { item: todo.id });
+  assert.equal((await w2.k.tasks.get(w2.owner, todo.id)).state, "done");
+  const back = await w2.ok("planner.update", { item: todo.id, state: "open" });
+  assert.equal(back.state, "open");
+  assert.equal((await w2.k.tasks.get(w2.owner, todo.id)).state, "ready", "reopened");
+  // Deleted, then restored.
+  await w2.ok("planner.delete", { item: todo.id });
+  assert.equal((await w2.k.tasks.get(w2.owner, todo.id)).state, "skipped");
+  assert.equal((await w2.ok("planner.delete", { item: todo.id, restore: true })).state, "open");
+  assert.equal((await w2.k.tasks.get(w2.owner, todo.id)).state, "ready");
+  // Sub-items.
+  const sub = await w2.ok("planner.add", { kind: "todo", title: "Get the client's address", parent: todo.id });
+  assert.equal(sub.parent, todo.id);
+  assert.deepEqual((await w2.k.tasks.list(w2.owner, { parent: todo.id })).map(x => x.id), [sub.id]);
+  assert.equal((await w2.call("planner.add", { kind: "reminder", title: "x", wall: "09:00", parent: todo.id })).error.code, "not_found");
+  assert.equal((await w2.call("planner.add", { kind: "todo", title: "x", parent: "nope" })).error.code, "not_found");
+});
+
+test("records: a repeating to-do makes the next Task when this one is done", async t => {
+  const w = await world(t);
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const weekly = await w.ok("planner.add", { kind: "todo", title: "Weekly report", wall: "09:00", date: "2026-09-25", repeat: { every: "week" }, list: "work" });
+  assert.ok(weekly.repeat);
+  const done = await w.ok("planner.done", { item: weekly.id });
+  assert.equal(done.item.state, "done");
+  const open = (await w.ok("planner.list", { kind: "todo" }));
+  assert.equal(open.length, 1, "one open to-do again");
+  assert.notEqual(open[0].id, weekly.id);
+  assert.deepEqual([open[0].title, open[0].list, open[0].wall], ["Weekly report", "work", "09:00"]);
+  assert.ok(open[0].at > weekly.at, "a week on");
+  assert.equal((await w.k.tasks.get(w.owner, open[0].id)).state, "ready");
+});
+
+test("records: the person gives a to-do to an assistant and it finishes it; one an assistant made for the person it cannot", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  const given = await w.ok("planner.add", { kind: "todo", title: "Check the docket", assignee: "kit" });
+  assert.equal(given.assignee, "kit");
+  const task = await w.k.tasks.get(w.owner, given.id);
+  assert.deepEqual([task.doer.kind, task.doer.id], ["agent", "kit"]);
+  assert.equal((await w.call("planner.add", { kind: "todo", title: "x", assignee: "kit" }, kit)).error.code, "denied", "only the person gives one");
+  assert.equal((await w.call("planner.add", { kind: "todo", title: "x", assignee: "ghost" })).error.code, "not_found");
+  assert.equal((await w.call("planner.add", { kind: "reminder", title: "x", wall: "09:00", assignee: "kit" })).error.code, "bad_input");
+  // The assistant it was given to finishes it; another assistant does not.
+  assert.equal((await w.call("planner.done", { item: given.id }, "mcp:agent:juno")).error.code, "denied");
+  const finished = await w.ok("planner.done", { item: given.id }, kit);
+  assert.equal(finished.item.state, "done");
+  assert.equal((await w.k.tasks.get(w.owner, given.id)).state, "done");
+  // One the assistant added for the person is not the assistant's to finish.
+  const mine = await w.ok("planner.add", { kind: "todo", title: "Call the printer" }, kit);
+  const refused = await w.call("planner.done", { item: mine.id }, kit);
+  assert.equal(refused.error.code, "not_allowed");
+  assert.equal((await w.ok("planner.get", { item: mine.id })).item.state, "open");
+  assert.equal((await w.k.tasks.get(w.owner, mine.id)).state, "ready");
 });

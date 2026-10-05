@@ -34,7 +34,7 @@ const G = (a, actions) => ({ id: `gr_${String(++gid).padStart(4, "0")}`, space: 
 function rig(over = {}) {
   const people = [OWNER, ALICE, BOB];
   const agents = ["research", "intake", "rogue"];
-  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read"]), ...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
+  const grants = [G(actor("service", "tasks"), ["tasks.request", "tasks.read", "tasks.work"]), ...people.map(p => G(actor("person", p), ["tasks.*", "seal.put", "seal.use", "seal.deliver"])), ...agents.map(a => G(actor("agent", a), ["tasks.work", "tasks.read", "seal.use", "email.send"]))];
   const members = new Set([...people.map(p => `person:${p}`), ...agents.map(a => `agent:${a}`), "service:tasks"]);
   const keys = {};
   // The one verifier is vault's Presence class (what the sealing process runs); the rig wraps it the way the process's presence.check does.
@@ -669,4 +669,68 @@ test("PR-2: the form a Flow sent with a task is bound into what the checker's pr
   assert.equal((await r.tasks.get(owner(), two.id)).state, "needs_check", "nothing was approved");
   const good = r.proof(A, ALICE, two);
   assert.equal((await r.tasks.decide(A, two.id, { outcome: "approved", proof: good })).state, "done");
+});
+
+// ---- edit, reopen and sub-items (the planner's to-dos are Tasks) ----
+const todoSpec = (over = {}) => ({ title: "Send the engagement letter", doer: actor("person", OWNER), output: { kind: "note" }, due: 1_800_000_100_000, note: "use the new template", ...over });
+
+test("tasks: the doer, a person or the assigner edit a task's words, note, due time and form; anyone else and a task waiting for its check do not", async () => {
+  const r = rig();
+  const t = await r.tasks.request(kernelSvc(), todoSpec());
+  const e = await r.tasks.edit(owner(), t.id, { title: "Send the Harlow Legal engagement letter", due: null, note: null, form: { planner: { list: "work" } } });
+  assert.equal(e.title, "Send the Harlow Legal engagement letter");
+  assert.ok(!("due" in e) && !("note" in e), "null clears");
+  assert.deepEqual(e.form, { planner: { list: "work" } });
+  assert.equal((await r.tasks.get(owner(), t.id)).title, e.title);
+  assert.equal((await r.tasks.edit(kernelSvc(), t.id, { title: "By the assigner" })).title, "By the assigner");
+  await assert.rejects(() => r.tasks.edit(asIntake(), t.id, { title: "x" }), { code: "not_allowed" }, "an assistant that was not given it");
+  await assert.rejects(() => r.tasks.edit(owner(), t.id, { state: "done" }), { code: "bad_input" }, "only words, note, due, form and parent");
+  await assert.rejects(() => r.tasks.edit(owner(), t.id, { title: " " }), { code: "bad_input" });
+  const ev = r.log.read({ type: "task.edited" });
+  assert.equal(ev.length, 2);
+  assert.ok(!JSON.stringify(ev).includes("engagement letter"), "the text is never in the log in the clear");
+  const c = await toNeedsCheck(r);
+  await assert.rejects(() => r.tasks.edit(owner(), c.id, { title: "x" }), { code: "bad_state" });
+});
+
+test("tasks: a done or skipped task with no checker reopens; one with a checker does not; the answer is dropped", async () => {
+  const r = rig();
+  const t = await r.tasks.request(kernelSvc(), todoSpec());
+  await r.tasks.start(owner(), t.id);
+  const done = await r.tasks.complete(owner(), t.id, { note: "Done", sources: ["vyre://x/y/z"] });
+  assert.equal(done.state, "done");
+  assert.ok(done.answer);
+  await assert.rejects(() => r.tasks.reopen(asIntake(), t.id), { code: "not_allowed" });
+  const again = await r.tasks.reopen(owner(), t.id);
+  assert.equal(again.state, "ready");
+  assert.ok(!("answer" in again));
+  await r.tasks.skip(owner(), t.id, "no longer needed");
+  assert.equal((await r.tasks.get(owner(), t.id)).state, "skipped");
+  assert.equal((await r.tasks.reopen(kernelSvc(), t.id)).state, "ready", "the assigner may too");
+  await assert.rejects(() => r.tasks.reopen(owner(), t.id), { code: "bad_state" }, "a task that is ready is not reopened");
+  const c = await r.tasks.request(owner(), draftTask({ checker: undefined, output: { kind: "note" }, doer: actor("agent", "research"), required: true }));
+  await r.tasks.start(agentChain("research"), c.id);
+  const d2 = await r.tasks.complete(agentChain("research"), c.id, { note: "ok", sources: ["vyre://x/y/z"] });
+  assert.equal(d2.state, "done");
+});
+
+test("tasks: a sub-item names its parent, lists under it, and a task cannot sit under its own sub-task", async () => {
+  const r = rig();
+  const a = await r.tasks.request(kernelSvc(), todoSpec({ title: "Move the office" }));
+  const b = await r.tasks.request(kernelSvc(), todoSpec({ title: "Book the movers", parent: a.id }));
+  await assert.rejects(() => r.tasks.request(kernelSvc(), todoSpec({ parent: "00000000-0000-4000-8000-000000000000" })), { code: "bad_input" });
+  assert.deepEqual((await r.tasks.list(owner(), { parent: a.id })).map(x => x.id), [b.id]);
+  await assert.rejects(() => r.tasks.edit(owner(), a.id, { parent: b.id }), { code: "bad_input" }, "a cycle");
+  await assert.rejects(() => r.tasks.edit(owner(), a.id, { parent: a.id }), { code: "bad_input" });
+  assert.equal((await r.tasks.edit(owner(), b.id, { parent: null })).parent, undefined);
+});
+
+test("tasks: a to-do given to an assistant is finished by that assistant, and one made for the person by an assistant is not", async () => {
+  const r = rig();
+  const given = await r.tasks.request(owner(), todoSpec({ doer: actor("agent", "research") }));
+  await r.tasks.start(agentChain("research"), given.id);
+  assert.equal((await r.tasks.complete(agentChain("research"), given.id, { note: "done", sources: ["vyre://x/y/z"] })).state, "done");
+  const mine = await r.tasks.request(kernelSvc(), todoSpec());
+  await assert.rejects(() => r.tasks.start(agentChain("research"), mine.id), { code: "not_allowed" });
+  await assert.rejects(() => r.tasks.complete(agentChain("research"), mine.id, { note: "done", sources: ["vyre://x/y/z"] }), { code: "not_allowed" });
 });

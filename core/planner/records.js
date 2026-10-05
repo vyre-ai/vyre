@@ -7,6 +7,8 @@
 // The scheduler reads the working set, so ringing stays synchronous and exact on a fake clock; every change is queued to the gateway in order and `flush()` waits for it.
 // A record changed from outside (the app, a Flow, a connector) arrives as a kernel event and is read back in, so the records stay the truth and the planner follows them.
 import { newId } from "./items.js";
+import { occurrences, parseRule } from "./rrule.js";
+import { validZone } from "./time.js";
 
 const DAY = 86_400_000;
 const FIRING_KEEP = 60 * DAY;
@@ -26,7 +28,7 @@ export function toData(/** @type {any} */ r) {
   const d = {
     title: r.title, state: r.state, body: r.body ?? null, list: r.list ?? null, priority: r.priority ?? 0, pinned: Boolean(r.pinned), tags: typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || []),
     project: r.project ?? null, thread: r.thread ?? null, source: r.source ?? null, added_by: r.source_name ?? null, created: r.created, updated: r.updated,
-    deleted_at: iso(r.deleted_at), done_at: iso(r.done_at),
+    removed_at: iso(r.deleted_at), done_at: iso(r.done_at),
   };
   if (r.kind === "note") return d;
   return { ...d, kind: r.kind, at: iso(r.at), tz: r.tz ?? null, floating: Boolean(r.floating), wall: r.wall ?? null, date: r.date ?? null, repeat: r.repeat == null ? null : typeof r.repeat === "string" ? r.repeat : JSON.stringify(r.repeat),
@@ -41,13 +43,13 @@ export function fromRecord(/** @type {any} */ rec, /** @type {"reminder"|"note"}
     id: rec.id, kind: type === "note" ? "note" : d.kind, title: d.title ?? "", body: d.body ?? null, list: d.list ?? null, priority: d.priority ?? 0, parent: null, project: d.project ?? null, thread: d.thread ?? null,
     tags: typeof d.tags === "string" ? d.tags : "[]", pinned: d.pinned ? 1 : 0, state: d.state ?? "open", at: ms(d.at), tz: d.tz ?? null, floating: d.floating ? 1 : 0, wall: d.wall ?? null, date: d.date ?? null,
     repeat: d.repeat ?? null, due: null, duration_ms: d.duration_ms ?? null, snooze_until: ms(d.snooze_until), next_fire: d.next_fire ?? null, created: d.created ?? 0, updated: d.updated ?? 0,
-    done_at: ms(d.done_at), deleted_at: ms(d.deleted_at), source: d.source ?? null, source_name: d.added_by ?? null, where_: null, waits_on: d.waits_on ?? null, run_count: d.run_count ?? 0,
+    done_at: ms(d.done_at), deleted_at: ms(d.removed_at), source: d.source ?? null, source_name: d.added_by ?? null, where_: null, waits_on: d.waits_on ?? null, run_count: d.run_count ?? 0,
     last_result: d.last_result ?? null, paused: d.paused ? 1 : 0, waits_on_fired: d.waits_on_fired ?? null,
   };
 }
 
 /** A to-do's extras (what a Task has no field for) ride in the Task's `form`, which is plain data. */
-const TODO_FORM = ["list", "priority", "pinned", "tags", "project", "thread", "tz", "floating", "wall", "date", "source", "source_name", "created"];
+const TODO_FORM = ["list", "priority", "pinned", "tags", "project", "thread", "tz", "floating", "wall", "date", "repeat", "deleted_at", "source", "source_name", "created"];
 
 /** A Task made by the planner as a planner row, or null for any other Task. */
 export function fromTask(/** @type {any} */ t) {
@@ -55,29 +57,58 @@ export function fromTask(/** @type {any} */ t) {
   if (!p) return null;
   const state = t.state === "done" ? "done" : t.state === "skipped" ? "cancelled" : "open";
   const timed = Boolean(p.wall);
-  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: null, project: p.project ?? null, thread: p.thread ?? null,
+  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, project: p.project ?? null, thread: p.thread ?? null,
     tags: typeof p.tags === "string" ? p.tags : "[]", pinned: p.pinned ? 1 : 0, state, at: timed && t.due != null ? t.due : null, tz: p.tz ?? null, floating: p.floating ? 1 : 0, wall: p.wall ?? null,
-    date: p.date ?? null, repeat: null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
-    deleted_at: null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
+    date: p.date ?? null, repeat: typeof p.repeat === "string" ? p.repeat : null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
+    deleted_at: p.deleted_at ?? null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
 }
 
 /** A to-do row as the Task it is made as. */
 export function toTaskSpec(/** @type {any} */ r, /** @type {{ kind: string, id: string, space: string }} */ doer) {
-  const planner = Object.fromEntries(TODO_FORM.map(k => [k, k === "tags" ? (typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || [])) : r[k] ?? null]));
-  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), form: { planner } };
+  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), ...(r.parent ? { parent: r.parent } : {}), form: { planner: formOf(r) } };
 }
 
-/** An Event record as a calendar row. */
+/** What a Task has no field for, as the Task's form carries it. */
+export const formOf = (/** @type {any} */ r) => Object.fromEntries(TODO_FORM.map(k => [k, k === "tags" ? (typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || [])) : r[k] ?? null]));
+
+/** The Task's `edit` for a to-do row's changed fields: words, note, due and the whole form (it is small and replaced whole). @param {any} r @param {string[]} keys */
+export function taskEdit(r, keys) {
+  /** @type {any} */ const p = {};
+  if (keys.includes("title")) p.title = r.title;
+  if (keys.includes("body")) p.note = r.body ? String(r.body).slice(0, 400) : null;
+  if (keys.includes("at") || keys.includes("wall")) p.due = r.at ?? null;
+  if (keys.includes("parent")) p.parent = r.parent ?? null;
+  if (keys.some(k => TODO_FORM.includes(k) && k !== "created")) p.form = { planner: formOf(r) };
+  return p;
+}
+
+/** An Event record as a calendar row. A repeating event is one record with its `rrule`; `expandRow` makes its occurrences. */
 export function fromEvent(/** @type {any} */ rec, /** @type {number} */ synced) {
   const d = rec.data || {};
   const start = ms(d.starts_at);
   if (start == null) return null;
-  return { id: rec.id, account: d.source === "vyre" ? null : d.calendar ?? null, event_id: d.external_id ?? rec.id, title: d.title ?? "", start, end: ms(d.ends_at), all_day: d.all_day ? 1 : 0, where_: d.place ?? null,
-    url: null, synced_at: synced, next_fire: null, rung_start: null, snooze_until: null, own: d.source === "vyre", project: null, thread: null };
+  return { id: rec.id, rec: rec.id, account: d.source === "vyre" ? null : d.calendar ?? null, event_id: d.external_id ?? rec.id, title: d.title ?? "", start, end: ms(d.ends_at), all_day: d.all_day ? 1 : 0, where_: d.place ?? null,
+    url: d.url ?? null, rrule: d.rrule || null, zone: d.time_zone ?? null, synced_at: synced, next_fire: null, rung_start: null, snooze_until: null, own: d.source === "vyre", project: null, thread: null };
+}
+
+/** The record an event row (or one of a repeating event's occurrences, `<record>~<start>`) belongs to. */
+export const recordOf = (/** @type {any} */ id) => String(id).split("~")[0];
+
+/**
+ * The rows an event row stands for between from and to: itself, or one row per occurrence of its rule (id `<record>~<start>`, so each rings and is answered on its own).
+ * A rule that cannot be read leaves the event as a single one. @param {any} row @param {number} from @param {number} to @param {string} [zone] the planner's zone, for an event with none of its own
+ */
+export function expandRow(row, from, to, zone = "UTC") {
+  if (!row.rrule) return row.start < to && (row.end ?? row.start) >= from ? [row] : [];
+  let rule;
+  try { rule = parseRule(row.rrule); } catch { return row.start < to && (row.end ?? row.start) >= from ? [{ ...row, rrule: null }] : []; }
+  const tz = row.zone && validZone(row.zone) ? row.zone : zone;
+  const span = row.end != null ? row.end - row.start : null;
+  return occurrences({ rule, start: row.start, tz, from: from - (span ?? 0), to }).map(s => ({ ...row, id: `${row.rec}~${s}`, start: s, end: span != null ? s + span : null, occ: true }));
 }
 
 /**
- * @param {{ K: any, now: () => number, log: (m: string) => void, onExternal?: (row: any, how: "added"|"changed"|"removed") => void, onEvents?: () => void }} o
+ * @param {{ K: any, now: () => number, log: (m: string) => void, onExternal?: (row: any, how: "added"|"changed"|"removed") => void, onEvents?: () => void, zone?: () => string }} o
  */
 export async function openRecords(o) {
   const { K, now, log } = o;
@@ -97,9 +128,9 @@ export async function openRecords(o) {
   // ---- Writes, in order -----------------------------------------------------------------------
   let queue = Promise.resolve();
   /** @type {Error | null} */ let failed = null;
-  const enqueue = (/** @type {() => Promise<any>} */ fn) => {
+  const enqueue = (/** @type {() => Promise<any>} */ fn, /** @type {string} */ what = "") => {
     const p = queue.then(fn);
-    queue = p.catch(e => { failed ||= e; log(`planner: a change was not saved (${e && e.message})`); });
+    queue = p.catch(e => { failed ||= e; log(`planner: a change was not saved${what ? ` (${what})` : ""} (${e && e.message})`); });
     return p.catch(() => {});
   };
   /** Wait for every queued write; the first failure since the last flush is thrown once. */
@@ -124,11 +155,11 @@ export async function openRecords(o) {
   }
 
   // ---- Loading ---------------------------------------------------------------------------------
-  async function pages(/** @type {string} */ type, /** @type {any} */ spec = {}) {
+  async function pages(/** @type {string} */ type, /** @type {any} */ spec = {}, /** @type {any} */ as = chain()) {
     const out = [];
     let cursor;
     for (let i = 0; i < 500; i++) {
-      const r = await K.records.query(chain(), type, { ...spec, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
+      const r = await K.records.query(as, type, { ...spec, page: { limit: 200, ...(cursor ? { cursor } : {}) } });
       out.push(...r.rows);
       cursor = r.next_cursor;
       if (!cursor) break;
@@ -151,10 +182,16 @@ export async function openRecords(o) {
 
   // ---- Calendar (Event records) -----------------------------------------------------------------
   const eventSpec = (/** @type {number} */ from, /** @type {number} */ to) => ({ filter: { and: [{ field: "starts_at", op: "lt", value: iso(to) }, { field: "starts_at", op: "gte", value: iso(from - 40 * DAY) }] } });
-  /** Every Event record that starts in [from, to) or began a while before and is still going: read straight from the records, for an agenda. */
+  // The Event type is the Space's shared one (defined once for every Space); a Space that has none yet has no events.
+  const unknownTypeIsEmpty = (/** @type {any} */ e) => { if (e && e.code === "unknown_type") return []; throw e; };
+  /** Every event row that starts in [from, to) or began a while before and is still going, and each occurrence of a repeating event: read straight from the records, for an agenda. */
   async function eventsBetween(/** @type {number} */ from, /** @type {number} */ to) {
-    const recs = await pages("event", eventSpec(from, to));
-    return recs.map(r => fromEvent(r, now())).filter(r => r && r.start < to && (r.end ?? r.start) >= from);
+    /** @type {Map<string, any>} */ const recs = new Map();
+    for (const r of await pages("event", eventSpec(from, to)).catch(unknownTypeIsEmpty)) recs.set(r.id, r);
+    // A repeating event may have begun long ago: it is found by its rule, not by its first start.
+    for (const r of await pages("event", { filter: { and: [{ not: { field: "rrule", op: "is_null" } }, { field: "starts_at", op: "lt", value: iso(to) }] } }).catch(unknownTypeIsEmpty)) recs.set(r.id, r);
+    const zone = o.zone ? o.zone() : "UTC";
+    return [...recs.values()].map(r => fromEvent(r, now())).filter(Boolean).flatMap(r => expandRow(r, from, to, zone));
   }
   /** Refresh the working set of events the planner will ring for: a day back to 14 days ahead. @returns {Promise<{ added: number, changed: number, removed: number, events: number }>} */
   async function loadEvents(/** @type {(row: any, old: any) => any} */ settle) {
@@ -195,24 +232,50 @@ export async function openRecords(o) {
       drop: (/** @type {string} */ id) => { cal.delete(String(id)); },
       patch: (/** @type {string} */ id, /** @type {any} */ f) => { const r = cal.get(String(id)); if (r) Object.assign(r, f); },
       /** An event of the planner's own: the record, and its calendar row. */
-      async create(/** @type {any} */ data) {
-        const rec = await K.records.create(chain(), "event", data);
+      async create(/** @type {any} */ data, /** @type {any} */ onBehalf = undefined) {
+        // The person the event is for (their own chain, when a person added it) is named so the Bin lists it to them; calendar sync has no person and leaves it to the owner.
+        const rec = await K.records.create(chain(), "event", data, onBehalf ? { on_behalf: onBehalf } : {});
         known.set(rec.id, rec.version);
         return fromEvent(rec, now());
       },
       async update(/** @type {string} */ id, /** @type {any} */ patch) { const rec = await updateRecord("event", id, patch, { version: null }); return rec ? fromEvent(rec, now()) : null; },
+      /** Move an event's record to the bin (the records' own remove): it can come back with `restore`, after a restart too. @returns {Promise<boolean>} false when there is no such record */
+      async remove(/** @type {string} */ id) {
+        const cur = await K.records.get(chain(), "event", id).catch(() => null);
+        if (!cur) return false;
+        await K.records.remove(chain(), "event", id, cur.version);
+        known.delete(id);
+        return true;
+      },
+      /** The caller's removed events, newest removal first (the records' Bin, include_deleted), read under the CALLER's chain so the gateway's rules decide what they may see. @param {any} as @returns {Promise<any[]>} */
+      async binned(as) {
+        if (!as) return [];
+        const rows = await pages("event", { include_deleted: true }, as);
+        return rows.filter(r => r.deleted_at).sort((a, b) => b.deleted_at - a.deleted_at).map(r => ({ id: r.id, title: r.data.title ?? "", starts_at: r.data.starts_at ?? null, removed_at: iso(r.deleted_at) }));
+      },
+      /** Bring an event back from the bin. @returns {Promise<any | null>} its calendar row, or null when it is not in the bin */
+      async restore(/** @type {string} */ id) {
+        let rec;
+        try { rec = await K.records.restore(chain(), "event", id); } catch (e) { if (e && ["not_found", "bad_input"].includes(/** @type {any} */ (e).code)) return null; throw e; }
+        known.set(id, rec.version);
+        return fromEvent(rec, now());
+      },
     },
     /** Make an item (a record or a Task) and learn its id: the one write the caller waits for. @param {any} row @param {{ chain?: any }} [w] */
     async create(row0, w = {}) {
       const row = norm(row0);
       if (row.kind === "todo") {
-        const t = await K.tasks.request(chain(), toTaskSpec(row, { kind: "person", id: owner(), space }));
+        // A to-do for the person is the planner's own request (the service made it); one given to an assistant is the person's, so the assistant is its doer under them.
+        const given = row.assignee ? { kind: "agent", id: String(row.assignee), space } : null;
+        if (given && !w.chain) throw Object.assign(new Error("only the person gives a to-do to an assistant"), { code: "denied" });
+        const t = await K.tasks.request(given ? w.chain : chain(), toTaskSpec(row, given || { kind: "person", id: owner(), space }));
         const made = { ...row, id: t.id, _task: true };
         items.set(t.id, made);
         return made;
       }
       const type = typeOf(row);
-      const rec = await K.records.create(chain(), type, toData(row));
+      // A field with nothing in it is left out: a store may keep an empty field as no field (Twenty does), and a create that said null would then read back as something else.
+      const rec = await K.records.create(chain(), type, Object.fromEntries(Object.entries(toData(row)).filter(([, v]) => v !== null && v !== undefined)), w.chain ? { on_behalf: w.chain } : {});
       versions.set(rec.id, rec.version); known.set(rec.id, rec.version);
       const made = { ...row, id: rec.id };
       items.set(rec.id, made);
@@ -224,17 +287,24 @@ export async function openRecords(o) {
       const r = items.get(String(id));
       if (!r) return;
       const was = r.state;
+      const before = { deleted_at: r.deleted_at };
       fields = norm(fields);
       Object.assign(r, fields);
       if (r._task) {
-        if (fields.state && fields.state !== was) {
-          const c = w.chain;
-          const undo = { state: was, done_at: r.done_at ?? null };
+        const keys = Object.keys(fields);
+        const c = w.chain;
+        const undo = { state: was, done_at: r.done_at ?? null, deleted_at: before.deleted_at ?? null };
+        const edit = taskEdit(r, keys);
+        const stateChange = fields.state && fields.state !== was ? fields.state : null;
+        // In order: the words and form first, then the state, each under the chain that may do it. A refusal puts the working set back.
+        if (Object.keys(edit).length || stateChange) {
           void enqueue(async () => {
             try {
-              if (!c) throw Object.assign(new Error("a to-do is finished by the person, not by an assistant"), { code: "denied" });
-              if (fields.state === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
-              else if (fields.state === "cancelled") await K.tasks.skip(c, r.id, "cancelled in the planner");
+              const mine = r.assignee ? c : chain();
+              if (Object.keys(edit).length) await K.tasks.edit(mine || chain(), r.id, edit);
+              if (stateChange === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
+              else if (stateChange === "cancelled") { if (!c) throw Object.assign(new Error("a to-do is cancelled by the person"), { code: "denied" }); await K.tasks.skip(c, r.id, "cancelled in the planner"); }
+              else if (stateChange === "open") { await K.tasks.reopen(c || chain(), r.id); }
             } catch (e) { Object.assign(r, undo); throw e; }
           });
         }
@@ -242,7 +312,7 @@ export async function openRecords(o) {
       }
       const type = typeOf(r);
       // Only the fields that changed: an edit made in the app meanwhile to any other field stays.
-      const full = toData(r), named = Object.keys(fields).map(k => (k === "source_name" ? "added_by" : k));
+      const full = toData(r), named = Object.keys(fields).map(k => (k === "source_name" ? "added_by" : k === "deleted_at" ? "removed_at" : k));
       const patch = Object.fromEntries(Object.entries(full).filter(([k]) => named.includes(k)));
       if (!Object.keys(patch).length) return;
       busy(r.id, 1);
@@ -252,7 +322,7 @@ export async function openRecords(o) {
           const rec = await updateRecord(type, r.id, patch, ref);
           if (rec) versions.set(r.id, rec.version);
         } finally { busy(r.id, -1); }
-      });
+      }, `${type} ${Object.keys(patch).join(",")}`);
     },
     /** @returns {any[]} */
     list({ kind, state: st = "open", list, project, pinned, tag, limit = 100, deleted = false } = /** @type {any} */ ({})) {
@@ -286,8 +356,8 @@ export async function openRecords(o) {
       const ref = { rid: /** @type {string | null} */ (null), version: /** @type {number | null} */ (null) };
       refs.set(row.id, ref);
       void enqueue(async () => {
-        const rec = await K.records.create(chain(), "planner_firing", { fid: row.id, item: row.item, kind: row.kind, due: row.due, ring: row.ring, missed: Boolean(row.missed), state: row.state, fired_at: row.fired_at,
-          next_ring: row.next_ring, acked_at: row.acked_at, action: row.action, by: row.by, until: row.until });
+        const rec = await K.records.create(chain(), "planner_firing", Object.fromEntries(Object.entries({ fid: row.id, item: row.item, kind: row.kind, due: row.due, ring: row.ring, missed: Boolean(row.missed), state: row.state, fired_at: row.fired_at,
+          next_ring: row.next_ring, acked_at: row.acked_at, action: row.action, by: row.by, until: row.until }).filter(([, v]) => v !== null && v !== undefined)));
         ref.rid = rec.id; ref.version = rec.version;
       });
     },
@@ -304,7 +374,7 @@ export async function openRecords(o) {
           const cur = await K.records.get(chain(), "planner_firing", ref.rid); return K.records.update(chain(), "planner_firing", ref.rid, data, cur.version);
         });
         ref.version = rec.version;
-      });
+      }, `planner_firing ${Object.keys(fields).join(",")}`);
     },
     /** @returns {any} */ ringing: (/** @type {string} */ item) => [...firings.values()].filter(f => f.item === String(item) && f.state === "ringing").sort((a, b) => b.fired_at - a.fired_at)[0],
     allRinging: () => [...firings.values()].filter(f => f.state === "ringing").sort((a, b) => a.fired_at - b.fired_at),

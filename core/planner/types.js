@@ -4,7 +4,7 @@
 
 // the Space's Event records, so neither has a type here.
 //
-// Times a person reads (`at`, `snooze_until`, `done_at`) are datetimes. The engine's own moments (`next_fire`, `created`, `updated`) are numbers in ms.
+// Times a person reads (`at`, `snooze_until`, `done_at`, `removed_at`) are datetimes. The engine's own moments (`next_fire`, `created`, `updated`) are numbers in ms.
 
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
 const num = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "number", label, ...more });
@@ -17,7 +17,9 @@ export const ITEM_STATES = ["open", "done", "cancelled"];
 /** What a Reminder and a Note share: how a person files and finds them. */
 const FILING = [text("list", "List"), num("priority", "Priority (0 to 3)"), bool("pinned", "Pinned"), text("tags", "Tags (a JSON list)"), text("project", "Project"), text("thread", "Thread")];
 /** Who added it, as the planner keeps it: `source` is the caller, `added_by` an agent's name (empty for the person and their assistant). */
-const MADE = [text("source", "Added by (caller)"), text("added_by", "Added by (agent)"), num("created", "Created (ms)"), num("updated", "Updated (ms)"), when("deleted_at", "Deleted"), when("done_at", "Done")];
+const MADE = [text("source", "Added by (caller)"), text("added_by", "Added by (agent)"), num("created", "Created (ms)"), num("updated", "Updated (ms)"), when("removed_at", "Deleted"), when("done_at", "Done"),
+  // Set on a record the one-time import (legacy.js) made from the planner's old tables: the old id, so a re-run after a crash finds what it already carried.
+  text("legacy_id", "Carried from the old planner (its id)")];
 
 /** An alarm, a timer, a reminder, or a /later task that runs an instruction at a time. */
 export const REMINDER = {

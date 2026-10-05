@@ -15,6 +15,7 @@
     {"name": "planner.dismiss", "effect": "write", "reach": "anyone"},
     {"name": "planner.delete", "effect": "write", "reach": "anyone"},
     {"name": "planner.agenda", "effect": "read", "reach": "anyone"},
+    {"name": "planner.bin", "effect": "read", "reach": "anyone"},
     {"name": "planner.upcoming", "effect": "read", "reach": "anyone"},
     {"name": "planner.parse", "effect": "read", "reach": "anyone"},
     {"name": "planner.settings", "effect": "write", "reach": "person"},
@@ -30,6 +31,7 @@
         "records.create",
         "records.update",
         "records.remove",
+        "records.restore",
         "events.read",
         "tasks.request",
         "tasks.read",
@@ -179,7 +181,7 @@
               "label": "Updated (ms)"
             },
             {
-              "name": "deleted_at",
+              "name": "removed_at",
               "kind": "datetime",
               "label": "Deleted"
             },
@@ -187,6 +189,11 @@
               "name": "done_at",
               "kind": "datetime",
               "label": "Done"
+            },
+            {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
             },
             {
               "name": "waits_on",
@@ -293,7 +300,7 @@
               "label": "Updated (ms)"
             },
             {
-              "name": "deleted_at",
+              "name": "removed_at",
               "kind": "datetime",
               "label": "Deleted"
             },
@@ -301,6 +308,11 @@
               "name": "done_at",
               "kind": "datetime",
               "label": "Done"
+            },
+            {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
             }
           ]
         },
@@ -399,79 +411,6 @@
               "kind": "text",
               "label": "Value (JSON)",
               "required": true
-            }
-          ]
-        },
-        {
-          "name": "event",
-          "label": "Event",
-          "icon": "IconCalendarEvent",
-          "fields": [
-            {
-              "name": "title",
-              "kind": "text",
-              "label": "Title",
-              "required": true
-            },
-            {
-              "name": "starts_at",
-              "kind": "datetime",
-              "label": "Starts",
-              "required": true
-            },
-            {
-              "name": "ends_at",
-              "kind": "datetime",
-              "label": "Ends"
-            },
-            {
-              "name": "all_day",
-              "kind": "boolean",
-              "label": "All day"
-            },
-            {
-              "name": "time_zone",
-              "kind": "text",
-              "label": "Time zone"
-            },
-            {
-              "name": "place",
-              "kind": "text",
-              "label": "Place"
-            },
-            {
-              "name": "people",
-              "kind": "emails",
-              "label": "People (email addresses)"
-            },
-            {
-              "name": "record",
-              "kind": "link",
-              "label": "Belongs to"
-            },
-            {
-              "name": "source",
-              "kind": "choice",
-              "label": "Came from",
-              "options": [
-                "vyre",
-                "google"
-              ]
-            },
-            {
-              "name": "calendar",
-              "kind": "text",
-              "label": "Outside calendar (route)"
-            },
-            {
-              "name": "external_id",
-              "kind": "text",
-              "label": "Outside id"
-            },
-            {
-              "name": "notes",
-              "kind": "rich_text",
-              "label": "Notes"
             }
           ]
         }
