@@ -9,12 +9,11 @@
 // It goes away at K6, when surfaces hand the kernel SurfaceFacts and nothing parses strings.
 import { createAuthorizer } from "../core/authorize.js";
 import { createLegacyChainBuilder, LEGACY_SPACE } from "../core/chain.js";
-import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst } from "../../core/modules/index.js";
+import { callerKind, agentClaim, callerAllowed, ownerDevice, personRefusesAgent, agentOpensPerson, agentAskFirst, PERSON_FREE } from "../../core/modules/index.js";
 import { PERSON_ONLY, machineSelf } from "../../core/presence/index.js";
 import { isPerson } from "../../lib/caller.js";
 
 const SPACE = LEGACY_SPACE;
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
 const GATES = ["declared", "outward", "visible", "callers", "guest", "session", "presence", "asked"];
 const urn = (/** @type {string} */ tool) => `vyre://${SPACE}/tool/${tool}`;
 const actor = (/** @type {string} */ kind, /** @type {string} */ id) => ({ kind, id, space: SPACE });
