@@ -21,6 +21,8 @@ export const OPEN_NOTES = Object.freeze({
   "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
   "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
   "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",
+  "records.roles": "lists the role records that point at one contact, under the caller's own chain; the kernel checks each row",
+  "records.holders": "lists the holders of one role, under the caller's own chain; the kernel checks each row",
   "records.kits.library": "lists the Kits the library offers: public text, no data",
   "records.kits.get": "reads one Kit's description from the library: public text, no data",
   "system.build": "reads the build this box runs: version and commit, no data",

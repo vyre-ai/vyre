@@ -88,6 +88,15 @@ export default {
       parseUrn(i.urn);
       return d.gateway.records.linked(d.chain, String(i.urn), { ...(i.type ? { type: String(i.type) } : {}), ...(i.field ? { field: String(i.field) } : {}), ...(Number.isInteger(i.limit) ? { limit: i.limit } : {}) });
     }, byUrn);
+    tool("records.roles", "What a contact or organization is to the Space: every role record that points at it (prospect, client, ambassador, whatever the Space defined), current ones first. Ended roles are included unless `include_ended` is false. Only roles the caller may read.", obj({ urn: str, include_ended: { type: "boolean" } }, ["urn"]), async (i, d) => {
+      parseUrn(i.urn);
+      return { roles: await d.gateway.records.roles(d.chain, String(i.urn), i.include_ended === false ? { include_ended: false } : {}) };
+    }, byUrn);
+    tool("records.holders", "Who holds one role: a page of role records, each naming its holder. `role` is a role type, `stage` narrows to one stage. Ended roles are left out unless `include_ended` is true. Only rows the caller may read.", obj({ space: str, role: str, stage: str, include_ended: { type: "boolean" }, cursor: str, limit: { type: "integer" } }, ["role"]), async (i, d) => {
+      const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
+      const r = await d.gateway.records.holders(d.chain, { role: String(i.role), ...(i.stage !== undefined ? { stage: String(i.stage) } : {}), ...(i.include_ended === true ? { include_ended: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
+      return { rows: r.rows, next_cursor: r.next_cursor || null };
+    });
     tool("records.kits.library", "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds (types, templates, roles, flows, views, sealed fields).", obj({ space: str }), async () => ({ kits: kitLibrary() }));
     tool("records.kits.get", "One Kit from the library in the form the Flows tools take (flows.kit.card to see what it would do, flows.kit.propose to ask for the install).", obj({ space: str, id: str }, ["id"]), async i => {
       try { return { kit: kitFromLibrary(String(i.id)) }; } catch (e) { throw refuse(/** @type {any} */ (e).message, "not_found"); }

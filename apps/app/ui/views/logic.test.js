@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
+import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -164,4 +164,32 @@ test("where reads field op value; numbers compare as numbers; words say it plain
   assert.equal(numberOf("x"), 0);
   assert.equal(barPct(1, 4), 25);
   assert.equal(barPct(3, 0), 300);
+});
+
+test("a type's stored views decide how it is shown; the table is only the default", () => {
+  const matter = def("matter");
+  const table = viewDefOf(matter);
+  const stored = { ...matter, views: [
+    { name: "all", type: "list", columns: ["stage", "fee", "gone_field"], sort: { field: "fee", dir: "desc" }, filter: "fee >= 0" },
+    { name: "by_owner", type: "board", groupBy: "stage", columns: ["owner"] },
+    { name: "when", type: "calendar", dateField: "closing", filter: "fee >= 0" },
+  ] };
+  const vd = viewDefOf(stored);
+  assert.deepEqual(vd.list.columns, ["stage", "fee"], "a column the type does not have is dropped");
+  assert.equal(vd.list.sort, "fee"); assert.equal(vd.list.sortDir, "desc"); assert.equal(vd.list.filter, "fee >= 0");
+  assert.deepEqual(vd.board, { groupBy: "stage", card: ["owner"] });
+  assert.deepEqual(vd.calendar, { date: "closing", filter: "fee >= 0" });
+  assert.equal(vd.plural, table.plural, "what a view does not say stays as the table has it");
+  assert.deepEqual(viewDefOf(matter), table, "no stored views: the table, unchanged");
+  assert.deepEqual(viewDefOf({ ...matter, views: [{ name: "b", type: "board", groupBy: "nope" }] }).board, table.board, "a view that names a missing field is ignored");
+  // a type the table does not know takes its whole layout from what it stores
+  const own = { name: "lead", label: "Lead", fields: [{ name: "name", kind: "text" }, { name: "area", kind: "choice", options: ["a", "b"] }, { name: "city", kind: "text" }], views: [{ name: "b", type: "board", groupBy: "area", columns: ["city"] }] };
+  assert.deepEqual(viewDefOf(own).board, { groupBy: "area", card: ["city"] });
+});
+
+test("a stored filter keeps only the rows it holds for", () => {
+  const rows = [{ data: { area: "PI", n: 1 } }, { data: { area: "EP", n: 2 } }, { data: {} }];
+  assert.equal(viewRows(rows, undefined), rows, "no filter: the same rows");
+  assert.deepEqual(viewRows(rows, 'area == "PI"').map((r) => r.data.n), [1]);
+  assert.deepEqual(viewRows(rows, "(").length, 0, "a filter that cannot be read shows nothing rather than everything");
 });

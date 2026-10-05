@@ -42,6 +42,7 @@ export const TEAM_MEMBER = {
     f("actor", "actor", "Person or assistant", { required: true }),
     choice("kind", "Kind", ["person", "assistant"], { required: true }),
     text("role", "Role"),
+    text("skills", "Skills (words, comma separated; a Flow that names skills picks among those who have them)"),
     f("link", "project", "Project"),
     f("rich_text", "instructions", "Role instructions (assistants)"),
     text("doing", "Doing right now"),

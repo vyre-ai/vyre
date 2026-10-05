@@ -2,11 +2,12 @@
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
 import { viewDefOf } from "./view-defs.js";
+import { fieldStates, holds } from "./expr/conditions.js";
 import { eventLine } from "../../../../deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();
-export { viewDefOf };
+export { viewDefOf, fieldStates };
 
 /** The field of a type by name. @param {any} def @param {string} name */
 export const fieldOf = (def, name) => (def.fields || []).find((/** @type {any} */ f) => f.name === name);
@@ -22,6 +23,9 @@ export const stageField = (def) => (def.fields || []).find((/** @type {any} */ f
 export const isSealedField = (f) => f.kind === "sealed" || !!f.seal;
 /** The first letters of a title, for a person-like type's tile. @param {string} s */
 export const initialsOf = (s) => String(s).split(/[\s.]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+
+/** Only the rows a view's stored `filter` (an Expression over the record's fields) holds for; every row when it has none. @param {any[]} rows @param {string | undefined} filter */
+export const viewRows = (rows, filter) => (filter ? rows.filter((r) => holds(filter, r?.data || {})) : rows);
 
 /** The columns of the list: the definition's, in order, only those the type has. @param {any} def @param {any} [vd] */
 export function listColumns(def, vd = viewDefOf(def)) {
