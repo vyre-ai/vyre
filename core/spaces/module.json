@@ -81,6 +81,9 @@
     "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
+  {
+    "name": "spaces.brief", "effect": "read", "reach": "modules"
+  },
    {
     "name": "spaces.tier", "effect": "read",
     "reach": "modules"
@@ -398,11 +401,27 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.devices", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.devices.read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.unwrap-drop",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.self",
     "reach": "modules"
    },
    {
     "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.server.of",
     "reach": "modules"
    },
    {

@@ -463,7 +463,7 @@ export function macSide(ctx, seam = {}) {
   // the box's own page; the box sends a code to the loopback, and vyred trades it, with the
   // verifier and the public half of a key it just made, for a 30-day session. The session and the
   // key are kept in link.json (0600): a process of this user can read them, which is the Mac's
-  // accepted residual (docs/work/e2e.md); minting one always takes the person's passkey.
+  // accepted residual (team/archive/work-journals/e2e.md); minting one always takes the person's passkey.
   /** @type {{ server: http.Server, url: string, expires: number } | null} */
   let signing = null;
   ctx.tool("link.signin", {

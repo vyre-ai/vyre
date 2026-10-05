@@ -1,9 +1,8 @@
 // @ts-check
-// work: the 0.3 work layer as module tools (DESIGN-native-assistant, DESIGN-tasks). Four things, one module, all over the kernel contracts:
+// work: the 0.3 work layer as module tools (DESIGN-native-assistant, DESIGN-tasks). Three things, one module, all over the kernel contracts:
 //  - native.*   the tool surface generated from the Space's definitions and the action registry (kernel/tools), the situation and the component for a result
 //  - teammates.* what a teammate starts with, adding one under the adder's ceiling, the doing-now line
 //  - recall.*   the three-layer memory: lines, meaning search, answers with citations, fact proposals
-//  - engineer.* the admin-only Engineer: propose, revise, approve under the admin's own presence proof
 // The module holds no authority. `ctx.kernel` (platform's) hands over the assembled Kernel and `ctx.kernel.chainFor(extra)`, which builds the chain from
 // the call's own facts; a tool never builds or accepts a chain from its input. Until platform wires ctx.kernel every tool answers `unavailable`.
 
@@ -80,12 +79,6 @@ export default {
       if (engines.has(k.space)) return engines.get(k.space);
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
       const made = (createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) })); engines.set(k.space, made); return made;
-    };
-    const engineerOf = () => {
-      if (engineer) return engineer;
-      const k = kernelOf();
-      if (!k.compile) throw unavailable();
-      return (engineer = createEngineer({ kernel: k, compile: k.compile, simulate: k.simulate || null, ...(k.engineerChain ? { engineerChain: k.engineerChain } : {}) }));
     };
 
     // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
@@ -466,6 +459,19 @@ export default {
       },
     });
 
+    // What an agent is told about the Space it starts in (core/sessions/environment.js): the Space's id and the record types with their field names, from the kernel's own definitions read as
+    // this module's service. Definitions only, never a record or a value. Modules only.
+    ctx.tool("work.space-brief", {
+      description: "The Space this install is and its record types with their field names, for an agent's environment brief. Definitions only, never a record. Modules only.",
+      input: obj(),
+      callers: ["module"],
+      run: async () => {
+        const k = kernelOf();
+        const defs = (k.definitions ? await k.definitions(typeof k.serviceChain === "function" ? k.serviceChain("work") : undefined) : []) || [];
+        return { space: k.space, types: (Array.isArray(defs) ? defs : []).filter((/** @type {any} */ t) => t && t.name && !String(t.name).startsWith("_")).map((/** @type {any} */ t) => ({ name: String(t.name), ...(t.kind ? { kind: String(t.kind) } : {}), fields: (Array.isArray(t.fields) ? t.fields : []).map((/** @type {any} */ f) => String((f && f.name) || f)).slice(0, 40) })).slice(0, 60) };
+      },
+    });
+
     ctx.tool("work.team.context", {
       description: "What a teammate starts with on a project: its role instructions, the project and its linked records without sealed fields, and the Kit's templates.",
       input: obj({ project: { type: "string" }, role: { type: "object" }, templates: { type: "array" } }, ["project"]),
@@ -564,25 +570,6 @@ export default {
         if (!extra || extra.firstParty !== true) throw fail("denied", "only first-party modules erase a session's lines");
         return { erased: e.forgetSession(String(input.session)) };
       },
-    });
-
-    ctx.tool("work.engineer.talk", {
-      description: "Talk to the Engineer, which only admins can do: 'explain <type>' reads a definition back in plain words, anything else proposes a change and returns a card and a task. Nothing is applied until an admin approves the card.",
-      input: obj({ text: { type: "string" } }, ["text"]),
-      run: async (input, extra) => {
-        const r = await engineerOf().talk(await chainOf(extra), String(input.text));
-        return { ...r, component: toComponent("work.engineer.talk", r.kind === "proposal" ? { kind: "flow_diff", ...r.card } : r) };
-      },
-    });
-    ctx.tool("work.engineer.revise", {
-      description: "Edit the Engineer's proposed definition yourself. It is checked again, gets its own card and task, and the earlier approval is void.",
-      input: obj({ id: { type: "string" }, source: { type: "string" } }, ["id", "source"]),
-      run: async (input, extra) => engineerOf().revise(await chainOf(extra), String(input.id), String(input.source)),
-    });
-    ctx.tool("work.engineer.approve", {
-      description: "Approve or reject the Engineer's change with your own presence proof over the card's hash. Only your own chain is accepted, and the change applies as you.",
-      input: obj({ id: { type: "string" }, proof: { type: "object" }, outcome: { enum: ["approved", "rejected"] }, reason: { type: "string" } }, ["id", "proof"]),
-      run: async (input, extra) => engineerOf().approve(await chainOf(extra), String(input.id), { proof: input.proof, outcome: input.outcome || "approved", ...(input.reason ? { reason: String(input.reason) } : {}) }),
     });
 
     return { async stop() { for (const d of doing.values()) { try { d.off && d.off(); } catch {} } doing.clear(); } };

@@ -1,5 +1,5 @@
 // @ts-check
-// vyre-core phase 2a (ADR 0040, docs/work/vyre-core-plan.md): the vault's store in core. An item
+// vyre-core phase 2a (ADR 0040, team/archive/work-journals/vyre-core-plan.md): the vault's store in core. An item
 // anyone puts is unverified until the person says so; grants and releases are core's; a plain
 // value leaves only for the Capsule core signed, with a proof or a session bound to that process.
 

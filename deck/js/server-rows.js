@@ -2,7 +2,7 @@
 // Pure helpers for Settings > Server ("Move to a server", docs/design/anywhere.md, ADR 0039),
 // pulled out of deck/views/settings.js the way deck/js/drive-rows.js did for Drive, so the state
 // machine's formatting and gating logic has a testable surface even while federation's real
-// move.* tool is not built yet (their contract is confirmed, docs/work/federation.md; the engine
+// move.* tool is not built yet (their contract is confirmed, team/archive/work-journals/federation.md; the engine
 // itself is next). onboard.machine (anywhere) is real and shipped.
 //
 // The status shape (`pieceState`, `readyToConfirm`) matches federation's contract exactly:

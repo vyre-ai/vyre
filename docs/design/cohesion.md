@@ -9,7 +9,7 @@ status: draft
 # Cohesion: making Vyre one system
 
 Status: approved as ranked by the lead, 27 Sep 2026. Contracts: ADR 0036. Tracker:
-docs/work/cohesion.md. Nothing here moves a feature out of its team. Cohesion writes the shared
+team/archive/work-journals/cohesion.md. Nothing here moves a feature out of its team. Cohesion writes the shared
 contracts, four small glue modules behind them (sight, context, suggest, waiting), and the tests
 that keep surfaces from drifting apart again.
 

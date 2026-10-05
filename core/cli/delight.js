@@ -2,7 +2,7 @@
 // delight: the rare, quiet things. A fortune line the title bar shows once in a long while, and
 // the words `vyre high-five` prints (core/cli/commands/high-five.js, hidden from `vyre help`).
 //
-// Off for --json, CI, NO_COLOR, non-TTY and prefers-reduced-motion (docs/work/launch-surfaces.md,
+// Off for --json, CI, NO_COLOR, non-TTY and prefers-reduced-motion (team/archive/work-journals/launch-surfaces.md,
 // "Easter eggs"). No network, no sound, never on real data: every line below is invented, never
 // pulled from a session, a name or a file. Pure functions only, so a test can pin the odds
 // without sleeping or touching a real screen.

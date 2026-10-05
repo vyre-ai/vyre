@@ -1,7 +1,7 @@
 // @ts-check
 // A watcher for any connector's poll (team/0.3/PLAN-platform-gaps-0.2.9.md, item 7): the connector's declaration (records/connectors) names a read op, where the list is in the answer, how
 // an item is identified and how it is mapped; this fixed code does the rest, so a new service needs no watcher code of its own. The code only ever makes GET requests, to the one host the
-// declaration names, with the credential the watcher was granted; what the declaration says is data in watch.js, so the folder's hash covers it and an edit needs a new dry run and a yes.
+// declaration names, with the credential the watcher was granted (or, for a Google connector, through the connected Google account it names, read only); what the declaration says is data in watch.js, so the folder's hash covers it and an edit needs a new dry run and a yes.
 //
 //   first run   notes where to start (quiet), unless the poll asks for a look-back of N days
 //   each run    list since the last look (a 10 minute overlap, because an item is filed once however often it is seen), read each item's own record when the poll says to expand it,
@@ -9,16 +9,12 @@
 //   items       carry the mapped fields as given (kind, at, subject, people, source_key ...) beside id, title and at, so a Flow armed on this watcher reads them as trigger.item
 
 import { MAPPER_SOURCE } from "../../records/connectors/mapper.js";
-import { buildRequest, checkDeclaration } from "../../records/connectors/format.js";
+import { buildRequest, checkDeclaration, connectorWatcherName } from "../../records/connectors/format.js";
 import { parseWhen } from "./when.js";
 
 export const OVERLAP_MS = 10 * 60_000;
 
 const slug = (/** @type {string} */ s) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-/** The watcher's folder name: the connector and what it watches (the mailbox, the calendar, or the label). @param {{ id: string }} d @param {{ poll: string, vars?: Record<string, string>, label?: string }} o */
-export function connectorWatcherName(d, o) {
-  return `${slug(d.id)}-${slug(o.label || Object.values(o.vars || {})[0] || o.poll)}`.slice(0, 60).replace(/-+$/, "");
-}
 
 /** The generic loop. `PLAN` is prepended as JSON, `M` is the mapper. */
 const LOOP = `
@@ -79,13 +75,17 @@ export default async function watch({ since, emit, log }) {
 `;
 
 /**
- * @param {{ project: string, connector: import("../../records/connectors/format.js").Declaration, poll: string, credential: string, vars?: Record<string, string>, when?: string, label?: string, lookback_days?: number }} o
+ * @param {{ project: string, connector: import("../../records/connectors/format.js").Declaration, poll: string, credential?: string, google?: string, vars?: Record<string, string>, when?: string, label?: string, lookback_days?: number }} o
  */
 export function connectorPreset(o) {
   const d = o.connector, poll = d && d.poll && d.poll[o.poll];
   if (!d || checkDeclaration(d).length) throw new Error("a connector preset needs a valid connector declaration");
   if (!poll) throw new Error(`${d.id} has no poll ${o.poll}; it has ${Object.keys(d.poll || {}).join(", ") || "none"}`);
-  if (typeof o.credential !== "string" || !o.credential) throw new Error("a connector preset needs credential: the name of the vault credential for this connector");
+  const viaGoogle = d.auth.type === "google";
+  if (viaGoogle) {
+    if (typeof o.google !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(o.google)) throw new Error(`${d.id} is read through a connected Google account: name it (google, as vyre connect list shows it)`);
+    if (o.credential) throw new Error(`${d.id} has no vault credential; it is read through a connected Google account (google)`);
+  } else if (typeof o.credential !== "string" || !o.credential) throw new Error("a connector preset needs credential: the name of the vault credential for this connector");
   const listOp = d.ops[poll.op], expandOp = poll.expand ? d.ops[poll.expand.op] : null;
   const vars = o.vars || {};
   // Every name the plan substitutes must be given, so a poll never runs with a hole in its request.
@@ -114,7 +114,7 @@ export function connectorPreset(o) {
   const name = connectorWatcherName(d, o);
   return { name, code, json: {
     name, project: o.project, schedule: t.schedule, emits: `${slug(d.id)}.found`, timeout: 120, memory: false, params: { connector: d.id, poll: o.poll, ...vars },
-    net: { [plan.host]: { credential: o.credential } },
+    net: { [plan.host]: viaGoogle ? { google: o.google } : { credential: o.credential } },
     summary: { when: `${when[0].toUpperCase()}${when.slice(1)}`, check: `${plan.label}: every new item the connector's poll finds, mapped as the declaration says (no model)`,
       do: `Files each as an item that a Flow can read. Nothing in ${d.label} is changed.` } } };
 }

@@ -97,7 +97,7 @@ const fail = (code, message) => Object.assign(new Error(message), { code });
  * MAC key derive from a ticket held only in this box's process, same as relay.pair.start's own
  * secret in relay/keys.json). All of it sits at the person's own login uid today, readable and
  * writable by any process at that uid, the same gap that already keeps relay hosting off by
- * default on local role (core/relay/keys.js, docs/work/tailnet.md "Needs from others"). Refuse
+ * default on local role (core/relay/keys.js, team/archive/work-journals/tailnet.md "Needs from others"). Refuse
  * plainly rather than ship the gap on any of these paths.
  *
  * A pure function of an explicit platform, like installCommand/operator in core/names/tailscale.js,
@@ -1102,6 +1102,15 @@ export default {
       },
     });
 
+    // The paired devices for other modules (VyreDrop asks which of the person's computers exist and which are connected): id, name, kind and whether connected now. Nothing else, and no web browser's row.
+    ctx.tool("relay.devices.all", {
+      description: "The paired computers and phones, for a module: id, name, kind and whether each is connected now.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        if (!String((meta && meta.caller) || "").startsWith("module:")) throw Object.assign(new Error("for modules"), { code: "denied" });
+        return { devices: active().filter((/** @type {any} */ d) => d.kind !== "web").map((/** @type {any} */ d) => { const v = view(d, null, false); return { id: v.id, name: v.name, kind: d.kind, online: Boolean(v.online) }; }) };
+      },
+    });
     ctx.tool("relay.devices.list", {
       callers: ["web"],
       description: "Devices paired through the relay: id, name, when paired and last seen, whether presence is enrolled, and whether it is connected now.",

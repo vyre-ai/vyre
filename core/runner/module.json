@@ -55,6 +55,12 @@
         "effect": "write",
         "summary": "the home says the grant ended: stop the sessions and delete the local work",
         "reach": "modules"
+      },
+      {
+        "name": "runner.places",
+        "effect": "read",
+        "summary": "where each of your chats runs: on the server or on a computer, and whether it is connected",
+        "reach": "person"
       }
     ]
   },

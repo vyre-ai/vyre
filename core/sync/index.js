@@ -552,7 +552,7 @@ async function deviceSide(ctx) {
 
   ctx.tool("sync.send", {
     effect: "write",
-    description: "Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: \"once\" sends this list and stops; \"sync\" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see docs/work/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.",
+    description: "Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: \"once\" sends this list and stops; \"sync\" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see team/archive/work-journals/federation.md). Only a file inside this device's own Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR), no symlink escape, under the size cap, is ever read.",
     input: { type: "object", required: ["files", "mode"], properties: {
       files: { type: "array", items: { type: "object", required: ["path", "rel", "bytes", "hash"], properties: { path: { type: "string" }, rel: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } },
       mode: { type: "string", enum: ["once", "sync"] },

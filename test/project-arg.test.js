@@ -18,6 +18,7 @@ const EXEMPT = {
   "github.project.detect": "github checks the grant itself (inGrant, core/github)",
   "github.project.of": "github checks the grant itself (inGrant, core/github)",
   "wink.invite": "the owner's own act: the tool refuses any agent caller (owner(meta)) and its `projects` are slugs written into an offer",
+  "spaces.moves.receive": "`project` names the project in the SOURCE space on another home (the move's own record address), not a project of this home: nothing here can resolve it, and the move engine checks the signed evidence and the person's chain (person-only)",
   "work.situation": "`project` is a record reference (a kernel URN), not a project slug: the tool reads it under the caller's own kernel chain, which decides what is visible",
   "work.team.context": "`project` is a record reference (a kernel URN): read under the caller's own kernel chain",
   "work.team.add": "`project` is a record reference (a kernel URN); a person's act (ask-first for an agent), grants no wider than the adder's",

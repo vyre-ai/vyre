@@ -71,7 +71,7 @@ jobs:
     # that can differ on Windows (config, CLI kit and commands, voice, boundaries, docs, the relay
     # client), each bounded, and must finish inside 10 minutes. It lists only files that pass on
     # Windows, so a red result means something; the files left out, each with its reason, are in
-    # docs/work/windows.md ("Known Windows gaps").
+    # team/archive/work-journals/windows.md ("Known Windows gaps").
     timeout-minutes: 10
     env:
       VYRE_NO_DIALOGS: "1"

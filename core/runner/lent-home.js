@@ -1,5 +1,5 @@
 // @ts-check
-// The home's end of a lent computer (docs/work/runner.md "The lent-computer wire"): what the Space's home does when a member's computer runs one of its sessions.
+// The home's end of a lent computer (team/archive/work-journals/runner.md "The lent-computer wire"): what the Space's home does when a member's computer runs one of its sessions.
 // It is a SERVICE of the kernel's remote server (kernel/remote/server.js `services.lent`): every method is `(chain, ...args)` with the chain the home's own Surfaces door minted from
 // what the transport proved (the lender's device key and person), never from the request. It holds the lent-session table, decides what a session may reach, and fronts the
 // checkpoint store (core/runner/checkpoint-store.js) with a per-call authorization that comes from the Offers and the table, not from a role.
@@ -28,7 +28,7 @@ const MAX_UPLOADS = 8;
  *   specFor: (i: { space: string, session: string, person: string, device: string }) => Promise<any> | any,
  *   lenderCap?: (i: { person: string, device: string }) => "provider" | "internet" | undefined,
  *   leases?: { renew(chain: any, i: { id: string }): Promise<any>, bind(session: string, id: string, def: any): void, unbind(session: string): void },
- *   caps?: any, fs?: any }} o
+ *   caps?: any, fs?: any, key?: Buffer }} o
  */
 export function createLentHome(o) {
   const lent = new Map();
@@ -50,7 +50,7 @@ export function createLentHome(o) {
     return w;
   };
   // The store is asked per call; its authorizer is the lent table and the Offers, so no role and no grant is needed and a withdrawn Offer ends the next call.
-  const store = createCheckpointStore({ space: o.space, root: o.root, caps: o.caps, fs: o.fs, authorize: async ({ chain, resource }) => {
+  const store = createCheckpointStore({ space: o.space, root: o.root, caps: o.caps, fs: o.fs, ...(o.key ? { key: o.key } : {}), authorize: async ({ chain, resource }) => {
     const session = String(resource).split("/checkpoint/")[1] || "";
     try { mine(chain, session); return { effect: "allow" }; } catch { return { effect: "deny" }; }
   } });
@@ -58,6 +58,8 @@ export function createLentHome(o) {
 
   return {
     store,
+    /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
+    rows() { return [...lent].map(([session, v]) => ({ session, device: v.device, ...(v.chat ? { chat: v.chat } : {}) })); },
     /** The id this home gives the computer that is calling, and the person: read from what the transport proved, never from the request. A lender lends under this id (the Offers are made for it) and presents it when it runs a session. @param {any} chain */
     async whoami(chain) { const w = who(chain); return { device: w.device, person: w.person }; },
     /** Whether this person's computer may run the Space's work now (both Offers), and the lender's own cap: the lender's runner polls it (never faster than once a minute). @param {any} chain @param {{ device_key?: string }} [i] */
@@ -80,7 +82,10 @@ export function createLentHome(o) {
       // A session lent to someone else's computer is never taken: only the same person may continue it from another of their computers (the resume path).
       const had = lent.get(String(i.session));
       if (had && had.person !== w.person) throw err("not_found", "not found");
-      lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key });
+      if (i.chat !== undefined && !(typeof i.chat === "string" && /^chat_[0-9a-f-]{36}$/.test(i.chat))) throw err("bad_input", "a chat is named by its id");
+      // The lender names the chat, so the home believes it only when that person is in that chat (the kernel's own read decision): otherwise the session runs and the chat is dropped, never shown as running here.
+      const chat = i.chat && o.chatHas && (await Promise.resolve(o.chatHas(chain, i.chat)).catch(() => false)) === true ? i.chat : null;
+      lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(chat ? { chat } : {}) });
       const { credentialRoutes, ...visible } = spec;
       return { ...visible, network, lenderCap: cap || null };
     },
