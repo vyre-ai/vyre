@@ -334,6 +334,7 @@
   "needs": {
     "daemon": [
       "kernelSession",
+      "chatFor",
       "sandbox",
       "credentials"
     ],

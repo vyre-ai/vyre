@@ -142,6 +142,8 @@ export const MIGRATIONS = [
    ALTER TABLE threads_turns ADD COLUMN model TEXT;`,
   // A chat message queued behind another person's running turn keeps who asked and in which chat, so the next turn opens its kernel session for them (never the running turn's).
   `ALTER TABLE threads_inbox ADD COLUMN kturn TEXT;`,
+  // One Chat (team/0.3/DESIGN-one-chat.md): every thread is a run inside a chat. The kernel chat it belongs to; a thread with none (an older one, or a daemon without the kernel) gets one on its next start.
+  `ALTER TABLE threads_runs ADD COLUMN chat TEXT;`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
@@ -540,13 +542,30 @@ export class Switchboard {
     }
   }
 
+  /**
+   * Every run lives in a chat (DESIGN-one-chat.md). A run the stream started for a chat already has it; any other start (the CLI, a Flow, the assistant, a resumed older thread) gets a chat of the
+   * person it runs for and the assistant it runs as, made by the daemon under that person's own chain (deps.chatFor). Without the kernel there is no chat to make and the thread is as before.
+   * Never throws: a start does not fail because a chat could not be made.
+   * @param {string} id @param {{ chat?: string } | null} turn the stream's chat for this run, when it has one
+   * @returns {Promise<string | null>}
+   */
+  async ensureChat(id, turn = null) {
+    try {
+      const have = /** @type {any} */ (this.db.prepare("SELECT chat, name, agent, agent_kind, project FROM threads_runs WHERE id = ?").get(id));
+      if (!have) return null;
+      const chat = turn && turn.chat ? turn.chat : have.chat || (this.deps.chatFor ? await this.deps.chatFor({ thread: id, agent: have.agent || null, agent_kind: have.agent_kind || null, name: have.name || null, project: have.project || null }) : null);
+      if (chat && chat !== have.chat) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ?").run(chat, id);
+      return chat || null;
+    } catch (e) { this.deps.log(`threads: no chat for ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+
   record(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_runs WHERE id = ?").get(id));
     if (!r) return null;
     const holder = this.leases.holder(id);
     // status stays the raw internal word (unchanged: existing callers compare it). canonical_status
     // is the one person-facing vocabulary (lib/thread-status.js) every surface should read instead.
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status,
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, chat: r.chat || null, status: r.status,
       canonical_status: threadStatus(r.status, r.stopped_reason), model: r.model, driver: r.driver || null,
       provider: r.provider || "claude", account: r.account || null, purpose: r.purpose || null, branch: optsOf(r).branch || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null, caps: optsOf(r).caps || null, parent: optsOf(r).parent || null, continued_from: optsOf(r).continued_from || null, starter: optsOf(r).starter || null, taint: { outside: Boolean(optsOf(r).taint && optsOf(r).taint.outside), private: Boolean(optsOf(r).taint && optsOf(r).taint.private) }, archived: r.archived_at || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
@@ -768,6 +787,7 @@ export class Switchboard {
       }
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
+      if (!rec.chat) { at("chat"); await this.ensureChat(id, o.kernelTurn || null); rec = this.must(id); }
     } else {
       // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its
       // folder and project, a new id, and never the other session's process or transcript.
@@ -800,6 +820,8 @@ export class Switchboard {
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ?, account = ? WHERE id = ?").run(o.provider, o.purpose, o.account || null, id);
+      at("chat");
+      await this.ensureChat(id, o.kernelTurn || null);
       // A project's default mode (sessions.mode.set), for a new session a person starts there.
       if (w.project && !o.agent && !o.lean) {
         const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
@@ -874,7 +896,7 @@ export class Switchboard {
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) && !o.rebind });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
-    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
+    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, chat: fresh.chat, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
       provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, effort: fresh.effort, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
@@ -3298,6 +3320,8 @@ export default {
       // Each session's own socket (option A): always with "on", with the spawner under "auto".
       // Through the spawner it goes in the box's shared folder; else a private one of this user's.
       kernelSession: ctx.kernelSession || null,
+      // One Chat: makes the chat a run with none of its own lives in (the daemon, under the home owner's chain).
+      chatFor: ctx.chatFor || null,
       // The kernel's own map from a replaced owner id to the identity (adoption); every person id this module stores is compared through it, so sessions and queued words survive adoption.
       canonicalPerson: ctx.kernel && typeof ctx.kernel.canonicalPerson === "function" ? ctx.kernel.canonicalPerson : null,
       sandbox: ctx.sandbox || null,
