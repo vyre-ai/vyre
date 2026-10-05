@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 6;
+export const SUITE_REVISION = 7;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -402,6 +402,18 @@ export function conformance(make, { test, assert }, label = "store") {
     assert.deepEqual(back.contact, link(a.id));
     assert.deepEqual(urns(back.referrers), urns([link(a.id), link(b.id)]));
     assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "eq", value: link(a.id) }, page: { limit: 10 } })).rows), [l.id]);
+  });
+
+  T("kernel attributes given at create are there on the first read, with no later write", async s => {
+    // a store that offers attr_filter takes the record's attributes with its create (`opts.attrs`, `opts.urn`): the very first query by attribute finds it. A store without the feature has nothing to check.
+    if (!s.features().attr_filter) return;
+    const id = mintUuid();
+    const u = `${SPACE_URN}/contact/${id}`;
+    await s.create("contact", id, { name: "Attr" }, { attrs: { space: SUITE_SPACE, created_by: "person:per_a", owner: "per_o" }, urn: u });
+    const mine = await s.query("contact", { attr_filter: { urn_prefix: `${SPACE_URN}/contact/`, any: [{ created_by: "person:per_a" }] }, page: { limit: 10 } });
+    assert.deepEqual(ids(mine.rows), [id], "the record is found by its created_by on the first read");
+    const other = await s.query("contact", { attr_filter: { urn_prefix: `${SPACE_URN}/contact/`, any: [{ created_by: "person:per_b" }] }, page: { limit: 10 } });
+    assert.deepEqual(ids(other.rows), [], "and by nobody else's");
   });
 
   T("links: the definition keeps many and the named inverse as given", async s => {

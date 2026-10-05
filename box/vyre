@@ -1450,6 +1450,8 @@ sp_swap() {
     ( umask 077; fallocate -l 2G "$SP_SWAPFILE" 2>/dev/null || dd if=/dev/zero of="$SP_SWAPFILE" bs=1M count=2048 2>/dev/null ) || { sp_log "swap: could not make $SP_SWAPFILE"; rm -f "$SP_SWAPFILE"; return 0; }
     chmod 600 "$SP_SWAPFILE" && mkswap "$SP_SWAPFILE" >/dev/null 2>&1 || { sp_log "swap: mkswap failed"; rm -f "$SP_SWAPFILE"; return 0; }
   fi
+  # an existing file is used only if it is what this function makes: a regular file, owned by root, mode 600 (never one another user could have left or can read)
+  [ "$(stat -c '%F|%U|%a' "$SP_SWAPFILE" 2>/dev/null)" = "regular file|root|600" ] || { sp_log "swap: $SP_SWAPFILE is not a root-owned 0600 file; left alone"; return 0; }
   swapon "$SP_SWAPFILE" 2>/dev/null || { sp_log "swap: swapon failed"; return 0; }
   grep -qF "$SP_SWAPFILE" /etc/fstab 2>/dev/null || printf '%s none swap sw 0 0\n' "$SP_SWAPFILE" >>/etc/fstab 2>/dev/null || true
   sp_log "swap: turned on 2 GB at $SP_SWAPFILE (this server has ${mt} MB of memory and had no swap)"
