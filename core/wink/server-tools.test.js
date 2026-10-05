@@ -10,15 +10,15 @@ const owner = (/** @type {any} */ meta) => { const c = String((meta && meta.call
 function rig(o = {}) {
   /** @type {Map<string, any>} */ const tools = new Map(); /** @type {Map<string, any>} */ const routes = new Map();
   /** @type {any[]} */ const calls = [];
-  const log = /** @type {any[]} */ ([]);
+  const log = /** @type {any[]} */ ([]); const sinceCalls = /** @type {number[]} */ ([]);
   let clock = 1000;
   const answers = /** @type {any} */ ({ "system.info": () => ({ ok: true }), "names.status": () => ({ name: "alex", via: "vyre.run", address: "100.64.0.9" }), ...(o.answers || {}) });
   const session = { call: async (/** @type {string} */ tool, /** @type {any} */ input) => { calls.push([tool, input]); if (o.down) throw Object.assign(new Error("the server could not be reached"), { code: "unreachable" }); const f = answers[tool]; if (!f) throw Object.assign(new Error("no such tool"), { code: "no_such_tool" }); return f(input); } };
-  const ctx = { tool: (n, d) => tools.set(n, d), route: (n, f) => routes.set(n, f), events: { since: (since, x) => log.filter(e => e.id > since && (!x.type || e.type === x.type)).slice(0, x.limit), latestId: () => (log.length ? log[log.length - 1].id : 0) } };
+  const ctx = { tool: (n, d) => tools.set(n, d), route: (n, f) => routes.set(n, f), events: { since: (since, x) => (sinceCalls.push(since), log).filter(e => e.id > since && (!x.type || e.type === x.type)).slice(0, x.limit), latestId: () => (log.length ? log[log.length - 1].id : 0) } };
   const devices = { list: () => (o.noServer ? [] : [{ id: "srv1", kind: "server", name: "Alex's server" }, { id: "ph1", kind: "phone", name: "phone" }]) };
   const h = serverTools({ ctx, owner, identity: async () => "ident", serverLinks: () => ({ sessionFor: (/** @type {string} */ sid) => { assert.equal(sid, "srv1"); return session; } }), homeServerId: () => (o.noServer ? null : "srv1"), devices, now: () => (clock += 1) });
   const run = (/** @type {string} */ n, /** @type {any} */ i = {}, /** @type {any} */ meta = { caller: "cli" }) => tools.get(n).run(i, meta);
-  return { run, tools, routes, calls, log, h };
+  return { run, tools, routes, calls, log, h, sinceCalls };
 }
 
 test("wink.server.home: the paired server, whether it answers, and its https name; nothing paired is { linked: false }", async () => {
@@ -68,6 +68,12 @@ test("wink.events.read: events after a cursor with the new cursor; waits for the
   assert.equal((await g.run("wink.events.read", { since: 0, type: "thread.*" })).cursor, 4, "the cursor passes what was scanned");
   assert.deepEqual((await g.run("wink.events.read", { since: 3, type: "thread.*" })), { events: [], cursor: 4 });
   assert.equal((await g.run("wink.events.read", { since: 0, type: "*" })).events.length, 4);
+  // a waiting prefix read does not rescan the same stretch of the log on every poll
+  const q = rig(); q.log.push({ id: 1, type: "memory.a" }, { id: 2, type: "memory.b" });
+  setTimeout(() => q.log.push({ id: 3, type: "thread.z" }), 900);
+  const got = await q.run("wink.events.read", { since: 0, type: "thread.*", wait_ms: 5000 });
+  assert.deepEqual(got.events.map(e => e.id), [3]);
+  assert.ok(q.sinceCalls.filter(n => n === 0).length === 1 && q.sinceCalls.length >= 3, `later polls start after what was scanned: ${q.sinceCalls.join(",")}`);
   assert.deepEqual((await g.run("wink.events.read", { since: 0, types: ["thread.*", "ask.q"] })).events.map(e => e.id), [1, 3, 4], "several types are an OR");
   assert.deepEqual((await g.run("wink.events.read", { since: 0, types: ["memory.x"] })).events.map(e => e.id), [2], "an exact type");
   for (const bad of ["th*ead", "thread*", "*.x", "a b", "thread.**"]) await assert.rejects(g.run("wink.events.read", { type: bad }), e => e.code === "bad_input", bad);

@@ -130,7 +130,8 @@ export function serverTools(d) {
       const read = () => {
         if (exact || !given.length) { const e = ctx.events.since(since, { ...(exact ? { type: exact } : {}), limit }); scanned = e.length ? e[e.length - 1].id : scanned; return e; }
         /** @type {any[]} */ const out = [];
-        for (let from = since; out.length < limit;) {
+        // each poll of a wait starts from what the last one already scanned, never from `since` again
+        for (let from = scanned; out.length < limit;) {
           const page = ctx.events.since(from, { limit: MAX_LIMIT });
           if (!page.length) break;
           for (const e of page) { from = e.id; scanned = e.id; if (matches(e.type)) { out.push(e); if (out.length >= limit) break; } }
