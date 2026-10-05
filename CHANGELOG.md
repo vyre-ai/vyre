@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the dashboard view (sum, count by, funnel, recent) on a record type's page, from the type's view definition; `apps/app/ui/views/view-defs.js` is now the app's own copy of the view definitions.
+- feat(app): Vault has a Held fields tab (the sealed fields of records, Reveal with presence, grouped by record, never a value in the list) and Share (vault.grant: a module or assistant by name, optional project, use only).
+- feat(flows): flows.kit.diff (what updating an installed Kit changes, widenings and risks, read only), and flows.kit.library and flows.kit.library.get registered in the flows module. The Kits page offers "Update to vN" and the update page shows the box's own diff, then asks (flows.kit.propose) for a yes in Now.
+- feat(files): shared links to a Drive file: files.drive.link.create (outward, the person's presence; takes a copy of one version under the caller's grants, 1 to 30 days), files.drive.link.list, files.drive.link.revoke (deletes the copy) and a read route at /v1/files/s?c=<code> that answers every bad code the same. Drive has a Shared links tab and a Share a link Ask card. Reaching the link from the open internet needs the Publish edge.
+
 - feat(app): Planner at /u/planner (the Deck's planner view, ported): type to add (alarm 7am, todo ..., note ...) with a line showing what the box read before it goes in, today's agenda, the next alarms, open todos and notes, Done and Delete, and a banner with Done and Snooze for anything ringing (planner.fired and planner.acked). Listed under Settings, More places (screens/planner; 7 tests).
 
 - feat(app): Settings, Connections at /u/settings/connections (the Deck's connections.js, ported): MCP servers (Test with per-tool Read, Held or Off, Restart, Remove), Google accounts (Test shows each scope granted or refused, Remove) and GitHub accounts (device-code sign-in followed by github.connected and github.connect-failed, a pasted token that is never echoed back, Disconnect). Not yet: adding an MCP server or a Google account, and the connectors catalog (7 tests).
