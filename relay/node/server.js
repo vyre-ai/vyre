@@ -250,7 +250,7 @@ export function createRelay(o = {}) {
       const q = crypto.randomBytes(9).toString("base64url");
       const timer = setTimeout(() => { codePending.delete(q); refused(res); }, codeCfg.waitMs);
       timer.unref?.();
-      codePending.set(q, { route: slot.route, timer, done: out => { if (out) reply(res, 200, { m: out, route: slot.route }); else refused(res); } });
+      codePending.set(q, { route: slot.route, timer, done: out => { if (out) reply(res, 200, { m: out, route: slot.route, exp: slot.exp }); else refused(res); } });
       control.json({ t: "code.msg", q, rv, s, n, m: msg });
     });
     req.on("error", () => {});

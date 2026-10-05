@@ -297,19 +297,19 @@ export function showingStart(o) {
 /**
  * The typing device's whole exchange over the relay's `POST /v1/wink/code`: parse what was typed,
  * send message 1, answer with the confirmation, check the showing device's. Resolves
- * `{ ok: true, number, key, route }` (the number to show; the key opens the sealed record), or
+ * `{ ok: true, number, key, route, exp? }` (the number to show; the key opens the sealed record; `exp` is the code's end in epoch ms when the relay says it), or
  * `{ ok: false, reason }` with one of: `format` (not a code), `busy` (this address is over its
  * limit), `offline` (no answer from the relay) and `refused`, which is the single answer for every
  * other failure (an unknown, closed or expired code, a wrong code, a refusal): it never says which.
  * @param {{ base: string, input: string, fetch?: typeof fetch, rng?: (n: number) => Uint8Array }} o
- * @returns {Promise<{ ok: true, number: string, key: Uint8Array, route: string } | { ok: false, reason: "format" | "busy" | "offline" | "refused" }>}
+ * @returns {Promise<{ ok: true, number: string, key: Uint8Array, route: string, exp?: number } | { ok: false, reason: "format" | "busy" | "offline" | "refused" }>}
  */
 export async function enterCode(o) {
   const parsed = parseCode(o.input);
   if (!parsed) return { ok: false, reason: "format" };
   const f = o.fetch || globalThis.fetch;
   const url = `${o.base.replace(/\/+$/, "")}/v1/wink/code`;
-  /** @param {object} body @returns {Promise<{ m: Uint8Array, route: string } | "busy" | "offline" | "refused">} */
+  /** @param {object} body @returns {Promise<{ m: Uint8Array, route: string, exp?: number } | "busy" | "offline" | "refused">} */
   const post = async body => {
     let res;
     try { res = await f(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); } catch { return "offline"; }
@@ -318,7 +318,7 @@ export async function enterCode(o) {
     try {
       const j = await res.json();
       const m = unb64url(String(j.m));
-      return m && m.length === 32 && typeof j.route === "string" ? { m, route: j.route } : "refused";
+      return m && m.length === 32 && typeof j.route === "string" ? { m, route: j.route, ...(Number.isFinite(j.exp) && j.exp > 0 ? { exp: Number(j.exp) } : {}) } : "refused";
     } catch { return "refused"; }
   };
   const t = typistStart({ pw: parsed.pw, rv: parsed.rv, rng: o.rng });
@@ -329,7 +329,7 @@ export async function enterCode(o) {
   const three = await post({ rv: parsed.rv, s: t.s, n: 3, m: b64url(confirmation) });
   if (typeof three === "string") return { ok: false, reason: three };
   const fin = t.finish(three.m);
-  return fin.ok ? { ok: true, number: fin.number, key: fin.key, route: one.route } : { ok: false, reason: "refused" };
+  return fin.ok ? { ok: true, number: fin.number, key: fin.key, route: one.route, ...(one.exp || three.exp ? { exp: one.exp || three.exp } : {}) } : { ok: false, reason: "refused" };
 }
 
 // ---- the code typed back (DESIGN-wink.md, section 4: pairing is two-sided) ----

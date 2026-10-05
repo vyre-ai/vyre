@@ -3,5 +3,5 @@ export type AddedDevice = { paired: true; enrolled: boolean; reason?: string; re
 export function addThisDevice(o: {
   payload?: string; code?: string; relay?: string;
   key: { publicKey: string; label?: string; agree?: string; held?: "web" | boolean; enclave?: string; attest?: string }; presenceKey?: { public_key: string; alg?: number; storage?: "hardware" | "software" }; name?: string; crypto?: unknown; keyStore?: unknown; about?: unknown;
-  onWords?: (words: string) => void; onAck?: (ack: string) => void; signal?: AbortSignal; pollMs?: number; timeoutMs?: number;
+  onWords?: (words: string) => void; onAck?: (ack: string, expires?: number) => void; signal?: AbortSignal; pollMs?: number; timeoutMs?: number;
 }): Promise<AddedDevice>;

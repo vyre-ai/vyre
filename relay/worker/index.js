@@ -255,7 +255,9 @@ async function onCodeStep(request, env) {
   const limiter = n === 1 ? env.CODE_LIMITER : env.CODE_STEP_LIMITER;
   if (limiter && !(await limiter.limit({ key: who })).success) return busy();
   const slot = await env.CODES.get(env.CODES.idFromName(`rv:${rv}`)).fetch("https://code/lookup", { method: "POST" });
-  const route = slot.status === 200 ? String(/** @type {any} */ (await slot.json()).route || "") : "";
+  const slotInfo = slot.status === 200 ? /** @type {any} */ (await slot.json()) : null;
+  const route = slotInfo ? String(slotInfo.route || "") : "";
+  const slotExp = slotInfo && Number.isFinite(Number(slotInfo.exp)) ? Number(slotInfo.exp) : null;
   if (!ROUTE_RE.test(route)) {
     // A miss: charged again, to this address only. Nothing was created for it.
     if (env.CODE_MISS_LIMITER && !(await env.CODE_MISS_LIMITER.limit({ key: who })).success) return busy();
@@ -269,7 +271,7 @@ async function onCodeStep(request, env) {
   for (;;) {
     const res = await relay.fetch("https://route/code/take", { method: "POST", body: JSON.stringify({ q }) });
     const out = res.status === 200 ? /** @type {any} */ (await res.json()) : { state: "gone" };
-    if (out.state === "answer") return out.m ? json(200, { m: out.m, route }) : refused();
+    if (out.state === "answer") return out.m ? json(200, { m: out.m, route, ...(slotExp ? { exp: slotExp } : {}) }) : refused();
     if (out.state === "gone") return refused();
     if (Date.now() + tick > deadline) { await relay.fetch("https://route/code/drop", { method: "POST", body: JSON.stringify({ q }) }); return refused(); }
     await new Promise(r => setTimeout(r, tick));
@@ -480,7 +482,7 @@ export class CodeSlot {
     }
     if (request.method === "POST" && url.pathname === "/lookup") {
       if (!live) { if (cur) { await this.ctx.storage.deleteAll(); await this.ctx.storage.deleteAlarm(); } return new Response(null, { status: 404 }); }
-      return json(200, { route: live.route });
+      return json(200, { route: live.route, exp: live.exp });
     }
     return new Response(null, { status: 404 });
   }

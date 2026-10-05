@@ -12,7 +12,7 @@ import { keyPair } from "../../core/relay/noise.js";
 import { createWinkCode } from "../../core/wink/code.js";
 import { enterCode, toHex, ackCode } from "./code.js";
 
-async function world(t, relayOpts = {}) {
+async function world(t, relayOpts = {}, ttlMs) {
   const relay = createRelay({ clientAddress: req => String(req.headers["x-test-ip"] || "127.0.0.1"), ...relayOpts });
   const base = await relay.listen();
   t.after(() => relay.close());
@@ -27,9 +27,9 @@ async function world(t, relayOpts = {}) {
   t.after(() => link.stop());
   assert.equal(await link.ready(3000), true);
   assert.equal(link.codes(), true, "the relay says it has the typed-code rendezvous");
-  wink = createWinkCode({ route, allocate: () => link.codeAlloc(), release: () => link.codeRelease(), emit: (n, d) => events.push([n, d]) });
+  wink = createWinkCode({ route, allocate: () => link.codeAlloc(), release: () => link.codeRelease(), emit: (n, d) => events.push([n, d]), ...(ttlMs ? { ttlMs } : {}) });
   const shown = /** @type {any} */ (await wink.open());
-  return { relay, base: base.replace(/^ws/, "http"), route, wink, events, shown, link };
+  return { relay, ws: base, base: base.replace(/^ws/, "http"), route, wink, events, shown, link };
 }
 
 test("typed code end to end: the typist enters the code, the person types back the typist's code, the keys match", async t => {
@@ -71,4 +71,25 @@ test("typed code end to end: ten sessions from many addresses close the code and
   const now = w.wink.status();
   assert.ok(now && now.code !== first, "a fresh code with no tap");
   assert.notEqual(now.rv, w.shown.rv);
+});
+
+test("the relay says the code's end: enterCode keeps `exp`, joinWithCode puts it in the ack state as `expires`, and the wait for the ack runs to it, not to five minutes", async t => {
+  const { joinWithCode } = await import("./join.js");
+  const { nodeCrypto, fileKeyStore } = await import("./nodecrypto.js");
+  const { tempHome } = await import("../../test/helpers.js");
+  const path = await import("node:path");
+  const w = await world(t);
+  const r = /** @type {any} */ (await enterCode({ base: w.base, input: w.shown.code }));
+  assert.equal(r.ok, true);
+  assert.equal(r.exp, w.shown.expires, "the relay's slot end is the code's end");
+  assert.ok(r.exp - Date.now() > 9 * 60_000, "ten minutes");
+  // a short-lived code: the join gives up at the code's end, well before the old five-minute window
+  const short = await world(t, {}, 2500);
+  /** @type {any[]} */ const states = [];
+  const t0 = Date.now();
+  const res = await joinWithCode({ relay: short.ws, input: short.shown.code, name: "Kit's laptop", pollMs: 100, onState: s => states.push(s), pairOptions: { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) } });
+  const ack = states.find(s => s.state === "ack");
+  assert.ok(ack && Number.isFinite(ack.expires) && ack.expires > t0, "the ack state carries `expires`");
+  assert.equal(res.ok, false);
+  assert.ok(Date.now() - t0 < 8000, `it waited about the code's life (${Date.now() - t0} ms), not five minutes`);
 });

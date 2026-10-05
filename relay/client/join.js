@@ -25,7 +25,7 @@ export async function typeWinkCode(o) {
   const base = String(o.relay).replace(/^ws/, "http");
   const r = await enterCode({ base, input: o.input, fetch: o.fetch, rng: o.rng });
   if (!r.ok) return { ok: false, reason: r.reason };
-  return { ok: true, ack: ackCode(r.key), seed: seedFromKey(r.key), route: r.route };
+  return { ok: true, ack: ackCode(r.key), seed: seedFromKey(r.key), route: r.route, ...(r.exp ? { expires: r.exp } : {}) };
 }
 
 /**
@@ -56,9 +56,10 @@ export async function finishJoin(o) {
 
 /**
  * Type a code, show the ack, wait for it to be typed back, then pair.
- * @param {{ relay: string, input: string, name?: string, onState?: (s: { state: string, code?: string }) => void,
+ * @param {{ relay: string, input: string, name?: string, onState?: (s: { state: string, code?: string, expires?: number }) => void,
  *   waitMs?: number, pollMs?: number, fetch?: typeof fetch, rng?: (n: number) => Uint8Array, pairOptions?: object, sleep?: (ms: number) => Promise<void> }} o
- *   relay: the relay's ws(s) address. States: `checking`, `ack` (show `code`: "type this on your other device"), `waiting`, `joining`.
+ *   relay: the relay's ws(s) address. States: `checking`, `ack` (show `code`: "type this on your other device"; `expires` is the typed code's end in epoch ms when the relay said it, and the wait for the ack
+ *   runs to it unless `waitMs` is given), `waiting`, `joining`.
  * @returns {Promise<{ ok: true, paired: any } | { ok: false, reason: "format" | "busy" | "offline" | "refused" | "closed" | "expired" }>}
  */
 export async function joinWithCode(o) {
@@ -66,9 +67,9 @@ export async function joinWithCode(o) {
   say({ state: "checking" });
   const t = await typeWinkCode(o);
   if (!t.ok) return { ok: false, reason: t.reason };
-  say({ state: "ack", code: t.ack });
+  say({ state: "ack", code: t.ack, ...(t.expires ? { expires: t.expires } : {}) });
   say({ state: "waiting" });
-  const f = await finishJoin({ relay: o.relay, seed: t.seed, name: o.name, waitMs: o.waitMs, pollMs: o.pollMs, fetch: o.fetch, pairOptions: o.pairOptions, sleep: o.sleep });
+  const f = await finishJoin({ relay: o.relay, seed: t.seed, name: o.name, waitMs: o.waitMs ?? (t.expires ? Math.max(1000, t.expires - Date.now()) : undefined), pollMs: o.pollMs, fetch: o.fetch, pairOptions: o.pairOptions, sleep: o.sleep });
   if (f.ok) say({ state: "joining" });
   return f;
 }
@@ -76,15 +77,15 @@ export async function joinWithCode(o) {
 /**
  * Redeem the typed code of an INVITATION from a device with no box of its own (a browser, a fresh phone): the same PAKE as joinWithCode, but the sealed record the ticket holds carries the invitation's
  * link instead of a pairing. The person types the ack shown here on the inviting device; the link then comes out, and goes to spaces.invites.accept (or the join page) exactly as a pasted link does.
- * @param {{ relay: string, input: string, onAck?: (ack: string) => void, waitMs?: number, pollMs?: number, fetch?: typeof fetch, rng?: (n: number) => Uint8Array, sleep?: (ms: number) => Promise<void> }} o
+ * @param {{ relay: string, input: string, onAck?: (ack: string, expires?: number) => void, waitMs?: number, pollMs?: number, fetch?: typeof fetch, rng?: (n: number) => Uint8Array, sleep?: (ms: number) => Promise<void> }} o
  * @returns {Promise<{ ok: true, link: string, space?: string } | { ok: false, reason: "format" | "busy" | "offline" | "refused" | "expired" | "not_an_invite" }>}
  */
 export async function redeemInviteCode(o) {
   const t = await typeWinkCode(o);
   if (!t.ok) return { ok: false, reason: t.reason };
-  if (o.onAck) o.onAck(t.ack);
+  if (o.onAck) o.onAck(t.ack, t.expires);
   const sleep = o.sleep || (ms => new Promise(r => setTimeout(r, ms)));
-  const until = Date.now() + (o.waitMs ?? 10 * 60_000);
+  const until = Date.now() + (o.waitMs ?? (t.expires ? Math.max(1000, t.expires - Date.now()) : 10 * 60_000));
   for (;;) {
     try {
       const r = await resolveTicket(t.seed, { relay: o.relay, fetch: o.fetch });
