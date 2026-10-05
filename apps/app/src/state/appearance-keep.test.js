@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { pack, unpack } from "./appearance-keep.js";
+import { changedLooks, pack, unpack } from "./appearance-keep.js";
 
 test("what the person and each space chose comes back the way it went in", () => {
   const raw = pack({ person: { theme: "paper", density: "compact", font: "serif", reducedMotion: true, largerText: true }, looks: { spc_a: { accent: "sky", tint: "rose", density: "comfortable", font: "system", corners: "round" }, mine: { accent: "custom", hex: "#7AA2F7" } } });
@@ -23,4 +23,10 @@ test("anything unknown, from another version or not JSON is nothing", () => {
   assert.deepEqual(unpack(JSON.stringify({ v: 2, person: { density: "compact" } })), { person: {}, looks: {} });
   const bad = unpack(JSON.stringify({ v: 1, person: { density: "huge", font: "comic", x: 1 }, looks: { "bad id!": { accent: "sky" }, ok: { accent: "neon", hex: "red", corners: "round" } } }));
   assert.deepEqual(bad, { person: {}, looks: { ok: { corners: "round" } } });
+});
+
+test("only a look the person changed is kept: the default one and the sample space are not", () => {
+  const looks = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, harlow: { accent: "amber", density: "compact" }, spc_a: { accent: "sky" } };
+  assert.deepEqual(Object.keys(changedLooks(looks)), ["spc_a"]);
+  assert.deepEqual(Object.keys(changedLooks({ mine: { accent: "rose", tint: "accent", density: "default", font: "system", corners: "default" } })), ["mine"]);
 });

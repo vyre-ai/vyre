@@ -72,5 +72,21 @@ await pg.goto(`${BASE}/u/now`, { waitUntil: "domcontentloaded" });
 await pg.waitForTimeout(3000);
 const more = pg.getByText("More", { exact: true }).last();
 if (await more.count()) { await more.click(); await shot("7-more-menu", /Flows|Calendar|Memory/); }
+// The look survives a restart: choose Compact density in Appearance, see it kept, reload the page, see it still chosen.
+await pg.goto(`${BASE}/u/appearance`, { waitUntil: "domcontentloaded" });
+await pg.waitForTimeout(3500);
+await pg.getByText("Compact", { exact: true }).first().click().catch(() => {});
+await pg.getByText("Reduce motion", { exact: false }).first().waitFor({ timeout: 5000 }).catch(() => {});
+await pg.waitForTimeout(1200);
+const kept = await pg.evaluate(() => localStorage.getItem("vyre.appearance"));
+console.log(`${/"density":"compact"/.test(kept ?? "") ? "PASS" : "FAIL"} 8-appearance-kept: ${kept}`);
+if (!/"density":"compact"/.test(kept ?? "")) failed++;
+await pg.reload({ waitUntil: "domcontentloaded" });
+await pg.waitForTimeout(4000);
+await pg.screenshot({ path: path.join(OUT, "8-appearance-after-reload.png") });
+const after = await text();
+const still = /compact density/.test(after);
+console.log(`${still ? "PASS" : "FAIL"} 9-compact-still-chosen-after-reload: ${after.match(/with accent[^.]*/)?.[0] ?? ""}`);
+if (!still) failed++;
 console.log("page errors:", errors.slice(0, 3).join(" | "));
 await browser.close(); server.close(); process.exit(failed ? 1 : 0);

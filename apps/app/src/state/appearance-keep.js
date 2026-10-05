@@ -33,6 +33,21 @@ export function cleanLook(l) {
   return out;
 }
 
+/** Only the looks a person changed: the sample space's and any look still at its default are not kept. @param {Record<string, any>} looks @param {Record<string, any>} [defaults] */
+export function changedLooks(looks, defaults = DEFAULTS) {
+  /** @type {Record<string, any>} */ const out = {};
+  for (const [id, l] of Object.entries(looks ?? {})) {
+    const d = defaults[id];
+    if (d === null) continue;
+    if (d && JSON.stringify(cleanLook(l)) === JSON.stringify(cleanLook(d))) continue;
+    out[id] = l;
+  }
+  return out;
+}
+
+/** The looks a space starts with (screens/shell/spaces.js DEFAULT_LOOKS): "mine" as it is, the sample space not at all. */
+export const DEFAULTS = { mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" }, harlow: null };
+
 /** The text to keep. @param {{ person: any, looks: Record<string, any> }} s */
 export function pack(s) {
   /** @type {Record<string, any>} */ const looks = {};

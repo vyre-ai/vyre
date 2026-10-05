@@ -2,6 +2,7 @@ import { useAppearance } from "@vyre/ui";
 import { readScheme } from "../../screens/settings/appearance";
 import { themeFrom } from "../../screens/settings/appearance-model";
 import { useSpaces } from "../../screens/shell/state";
+import { changedLooks } from "./appearance-keep.js";
 import { allowsMock } from "@vyre/ui";
 import { KEY, pack, unpack } from "./appearance-keep.js";
 import { kvGet, kvSet } from "./kv";
@@ -23,7 +24,7 @@ export function startKeepingAppearance(): void {
     let t: ReturnType<typeof setTimeout> | null = null;
     const keep = () => {
       if (t) clearTimeout(t);
-      t = setTimeout(() => { void kvSet(KEY, pack({ person: useAppearance.getState().person, looks: useSpaces.getState().looks })); }, 300);
+      t = setTimeout(() => { void kvSet(KEY, pack({ person: useAppearance.getState().person, looks: changedLooks(useSpaces.getState().looks) })); }, 300);
     };
     useAppearance.subscribe(keep);
     useSpaces.subscribe(keep);
