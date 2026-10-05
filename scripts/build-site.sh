@@ -92,7 +92,7 @@ cp "$src/web/css/tokens.css" "$here/site/setup/tokens.css"
 # The phone's ring (the same drawing the Deck uses for Wink) and the renderer it needs, kept in the folder shape
 # its own imports expect.
 rm -rf "$here/site/setup/deck"
-mkdir -p "$here/site/setup/deck/js" "$here/site/setup/lib/wink-code"
+mkdir -p "$here/site/setup/deck/js" "$here/site/setup/deck/vendor" "$here/site/setup/lib/wink-code"
 cp "$src/web/js/phone-code.js" "$here/site/setup/deck/js/"
 for f in vyrecode2 geometry identity payload rs; do cp "$src/lib/wink-code/$f.js" "$here/site/setup/lib/wink-code/"; done
 cp "$src/web/vendor/qrcode.js" "$here/site/setup/deck/vendor/"
