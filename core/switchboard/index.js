@@ -1110,8 +1110,8 @@ export class Switchboard {
     if (turn && turn.chat) this.turnAsker.set(id, turn.asker || null); else this.turnAsker.delete(id);
     const old = this.ksCur.get(id);
     if (ks) this.ksCur.set(id, { ...ks, turn: Boolean(turn && turn.chat), asker: turn && turn.asker ? turn.asker : null }); else this.ksCur.delete(id);
-    // the turn before may still be closing its reply under its session: it ends after the grace, not now (a plain session's goes at once)
-    if (old) { if (old.turn && !this.closing) { const t = setTimeout(() => { void old.end().catch(() => {}); }, 30_000); t.unref?.(); } else await old.end().catch(() => {}); }
+    // the turn before may still be streaming its reply under its session: the session itself is released, not cut (lib/kernel-session ends it when that reply closes)
+    if (old) await old.end().catch(() => {});
   }
 
   /** @param {string} id */
