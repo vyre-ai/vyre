@@ -1,6 +1,6 @@
 // @ts-check
 // A chat started on the server (CLI, a Flow) with a person in it is never in the clear on disk: with no ring from a device, work.chat.create makes it, wrapped to each participant device's public agree point
-// (spaces.identity.devices), and keeps the key only as the session lease. A participant with no agree point stops the start, by name.
+// (spaces.identity.devices.read), and keeps the key only as the session lease. A participant with no agree point stops the start, by name.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -40,7 +40,7 @@ async function rig(t, agree) {
   const bob = k.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct" });
   const tools = {};
   const kernel = { space: SPACE, chainFor: () => bob, chats: gs.chats, records: new Proxy({ query: async () => ({ rows: [] }) }, { get: (o, k) => (k in o ? o[k] : async () => ({ id: "rec_x", urn: `vyre://${SPACE}/x/rec_x`, data: {} })) }), events: { read: async () => [] }, serviceChain: () => bob };
-  await mod.start({ tool: (name, def) => { tools[name] = def; }, store: {}, kernel, call: async (tool, input) => { if (tool !== "spaces.identity.devices") throw new Error(`unexpected ${tool}`); return { data: { devices: agree[input.person] || [] } }; } });
+  await mod.start({ tool: (name, def) => { tools[name] = def; }, store: {}, kernel, call: async (tool, input) => { if (tool !== "spaces.identity.devices.read") throw new Error(`unexpected ${tool}`); return { data: { devices: agree[input.person] || [] } }; } });
   return { k, gs, bob, dir, tools, kernel };
 }
 const disk = dir => { const all = []; const walk = d => { for (const n of fs.readdirSync(d)) { const p = path.join(d, n); if (fs.statSync(p).isDirectory()) { all.push(n); walk(p); } else all.push(n, fs.readFileSync(p, "latin1")); } }; walk(dir); return all.join("\n"); };

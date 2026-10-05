@@ -520,7 +520,7 @@ export default {
           /** @type {Record<string, any>} */ let holders = {};
           const missing = [];
           for (const p of people) {
-            const r = await ctx.call("spaces.identity.devices", { person: p }).then((/** @type {any} */ x) => (x && x.data) || x).catch(() => null);
+            const r = await ctx.call("spaces.identity.devices.read", { person: p }).then((/** @type {any} */ x) => (x && x.data) || x).catch(() => null);
             const devs = r && Array.isArray(r.devices) ? r.devices : [];
             if (!devs.length) missing.push(p); else holders = { ...holders, ...holdersOf(devs) };
           }
