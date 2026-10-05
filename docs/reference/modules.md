@@ -77,14 +77,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 86 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
-| [`stream`](#stream) | `core/stream` | `box`, `local` | 9 | 0 | none |
+| [`stream`](#stream) | `core/stream` | `box`, `local` | 11 | 0 | none |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`sync`](#sync) | `core/sync` | `box`, `local` | 10 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 4 | 2 | cli |
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 62 | 39 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 64 | 39 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
@@ -94,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box` | 59 | 34 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 31 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 32 | 0 | cli |
 
 ## about
 
@@ -788,7 +788,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/stream`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [9](tools.md#stream)
+- Tools: [11](tools.md#stream), 2 of them only for other modules
 - Emits: no events
 - Shows on: no surface
 - Streams: `session`
@@ -867,7 +867,7 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [62](tools.md#threads), 20 of them only for other modules
+- Tools: [64](tools.md#threads), 22 of them only for other modules
 - Emits: [39 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `chatFor`, `sandbox`, `credentials`
@@ -989,7 +989,7 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [31](tools.md#work)
+- Tools: [32](tools.md#work)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`
