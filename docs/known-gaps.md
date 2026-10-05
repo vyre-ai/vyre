@@ -50,7 +50,7 @@ What to do today: stop sessions you are done with, or lower `idle_minutes` or `m
 
 ## True today, with no date
 
-- **Windows is a device, not a server.** The Windows app and the Vyre app on a Windows PC work against a server. A server on Windows runs inside WSL2, as in [Windows](using/windows.md). The Windows app is not code-signed yet, so Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
+- **Windows is a device, not a home.** The Windows app and the Vyre app on a Windows PC work against a server. A home runs on a Mac, Linux or a server in 0.2.9, and a Windows PC runs no sessions of its own; the Windows home comes in 0.3.0. See [Windows](using/windows.md). The Windows app is not code-signed yet, so Windows asks you to choose **More info**, then **Run anyway**. Computer use on Windows is not built.
 - **Windows Hello is untested on a real PC.** Passkey sign-in with Windows Hello has passed its tests with generated keys, not a captured real one.
 - **Grok video and privacy.** With a Grok account's privacy switch on, xAI does not keep your sessions and Grok cannot make video. With it off, xAI keeps sessions and may train on them, and Grok can make video. Vyre shows the choice on the account and records it, but xAI holds the setting itself.
 - **Vyre for Chrome cannot see everything.** It does not read cross-origin iframes. A script can get around the guard on WebRTC and on DNS hints in some forms, and by writing with `innerHTML` or building an iframe. See [Connectors](using/connectors.md).

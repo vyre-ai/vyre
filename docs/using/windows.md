@@ -1,6 +1,6 @@
 ---
 title: Windows
-summary: Use a Windows PC as a device on Vyre with the Windows app, the Vyre app in a browser, the CLI and the Claude Code plugin, pointed at your Linux server, or run that server itself inside WSL2.
+summary: Use a Windows PC as a device on Vyre with the Windows app, the Vyre app in a browser, the CLI and the Claude Code plugin, pointed at your server.
 audience: users
 owner: windows
 status: draft
@@ -10,9 +10,9 @@ status: draft
 
 A Windows PC is a device, the same as a Mac or a phone. Vyre has a Windows app for it (a tray icon,
 a hotkey panel, notifications, start at logon and self-update), and the Vyre app, the web app, the CLI
-and the Claude Code plugin all work there too. The server your devices connect to is a Linux
-machine (including one inside WSL2 on a Windows PC, below) or a Mac that stays on. There is no
-native Windows server (see [ADR 0037](../adr/0037-windows.md)).
+and the Claude Code plugin all work there too. In 0.2.9 a home runs on a Mac, a Linux machine or a server; a Windows PC
+is never the home, and it runs no sessions of its own. A Windows home comes in 0.3.0 (see
+[ADR 0037](../adr/0037-windows.md)).
 
 ## As a device, against a server
 
@@ -23,8 +23,7 @@ Everything that is plain web or plain Node already works on Windows with no spec
   browser's Add to Home Screen equivalent) for a windowed, app-like Vyre.
 - **The CLI**: `npm i -g vyre`, then `vyre up` to find or be told your server, exactly as on a Mac
   or Linux. `vyre` on Windows is a client only, it never sets itself up as a server (`vyre up`
-  will not offer to make this PC one; see [Tier B](#as-a-server-inside-wsl2) if that's what you
-  want).
+  will not offer to make this PC one).
 - **Claude Code with the Vyre plugin** (`harness/`): install Claude Code for Windows and the
   plugin the same way as on a Mac.
 
@@ -37,26 +36,6 @@ device yet," not a bug to chase.
 
 If the CLI cannot open a browser for you (signing in, a one-time link, a recovery kit), copy the
 address it prints instead, which always works.
-
-## As a server, inside WSL2
-
-Recommended path for someone who wants their own Windows PC to be the server, not just a device
-against one elsewhere: run the Linux server **inside WSL2**, not as native Windows. The server is
-a Docker Compose stack (`box/compose.yml`, the `vyre` container); Docker Desktop
-targets WSL2 as its backend already, so this is the same server image every Linux install uses,
-completely unchanged.
-
-1. Install WSL2 (`wsl --install` in an admin PowerShell) and a Linux distribution (Ubuntu is
-   fine).
-2. Install Docker Desktop for Windows with the WSL2 backend enabled, or Docker Engine directly
-   inside the WSL2 distribution.
-3. Inside the WSL2 shell, follow the ordinary Linux server setup at <https://vyre.run/setup>
-   ([Install](../get-started/install.md)), then [Box care](box-care.md), unchanged.
-4. Everything past that point, the Vyre app and other devices connecting in, behaves like any other
-   Linux server; WSL2 is invisible to them.
-
-This path has not been run on a real Windows PC with WSL2. Its parts are tested on GitHub's
-`windows-latest` runners, which do not have WSL2.
 
 ## Multiple Windows PCs, one person
 

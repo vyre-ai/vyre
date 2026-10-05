@@ -589,9 +589,9 @@ devicePage({
     `<b>Press Alt+Space.</b> Ask from anywhere, or open the tray icon.`,
   ] },
   needs: [['PC', 'Windows 11'], ['Server', 'A Linux server, or a Mac that stays on'], ['AI', 'One of Claude, Codex, Grok or OpenRouter']],
-  gapList: ['The app is not code-signed (Authenticode) yet, so Windows warns on first run. Signing comes next.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.', 'The server does not run natively on Windows yet. Your PC is a client of a Linux server or a Mac; a server inside WSL2 works.'],
+  gapList: ['The app is not code-signed (Authenticode) yet, so Windows warns on first run. Signing comes next.', 'Mapping the drive for files over 50 MB needs a registry change by an administrator.', 'A Windows PC is not a home in 0.2.9 and runs no sessions of its own: your PC is a client of a server, a Linux machine or a Mac. The Windows home comes in 0.3.0.'],
   faq: [
-    ['Can my Windows PC be the server?', 'Not yet. The server runs on Linux, or on a Mac that stays on. Your Windows PC connects to it as a client. Running your own work on spare PC compute is part of the direction.'],
+    ['Can my Windows PC be the server?', 'Not in 0.2.9. A home runs on a Mac, Linux or a server, and your Windows PC connects to it as a client. The Windows home comes in 0.3.0.'],
     ['Why does Windows warn me?', 'The app is not code-signed yet. The installer script checks its SHA-256, and updates install only when the Vyre release key signed them.'],
     ['How do I pair a PC?', 'In Settings on a device you already use, add a Windows PC. Type the 13 words or scan the QR code on the PC, then confirm the server’s address and fingerprint.'],
     ['Is there an Alt+Space conflict?', 'The panel opens with Alt+Space. If another app uses that key, change one of them in its settings.'],
