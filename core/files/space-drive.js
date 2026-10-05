@@ -13,14 +13,34 @@ const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
 /** The most one upload call carries, decoded. A larger file goes through the Flow or the VyreDrive mount, not a tool call. */
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 
+/**
+ * The chats the caller is in, as { project, chat } (work.chat.list: only chats the caller is in, `open` not false). A box without the tool, or one that does not answer, has none to add: search then covers the Drive root only.
+ * At most 50. @param {any} ctx @param {any} meta @returns {Promise<{ project: string, chat: string }[]>}
+ */
+async function chatsOf(ctx, meta) {
+  let r;
+  try { r = await ctx.call("work.chat.list", {}, { as: meta && meta.caller }); } catch { return []; }
+  const data = r && r.data !== undefined ? r.data : r;
+  const rows = Array.isArray(data) ? data : data && Array.isArray(data.chats) ? data.chats : data && Array.isArray(data.rows) ? data.rows : [];
+  const out = [];
+  for (const row of rows) {
+    const x = row && typeof row === "object" ? (row.data && typeof row.data === "object" ? { ...row.data, ...row } : row) : null;
+    if (!x || x.open === false) continue;
+    const chat = String(x.chat ?? x.id ?? "").replace(/^.*\//, ""), project = String(x.project ?? "");
+    if (/^chat_[A-Za-z0-9_-]{4,64}$/.test(chat) && /^[A-Za-z0-9._-]{1,128}$/.test(project)) out.push({ project, chat });
+    if (out.length >= 50) break;
+  }
+  return out;
+}
+
 /** @param {any} ctx */
 export function registerSpaceDrive(ctx) {
   const door = createDoor(ctx);
-  /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any) => Promise<any>} fn */
+  /** @param {string} name @param {string} description @param {any} input @param {(i: any, d: any, drive: any, meta: any) => Promise<any>} fn */
   const tool = (name, description, input, fn) => ctx.tool(name, { description, input, callers: CALLERS, run: async (/** @type {any} */ i, /** @type {any} */ meta) => {
     const d = await door.open(i || {}, meta);
     if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
-    return fn(i || {}, d, d.gateway.drive);
+    return fn(i || {}, d, d.gateway.drive, meta || {});
   } });
   const pathOf = (/** @type {any} */ p) => { try { return safePath(String(p ?? "")); } catch { throw refuse("that is not a path in the Drive: no leading slash, dot segments, backslash, encoded slash or control characters", "bad_input"); } };
 
@@ -63,28 +83,41 @@ export function registerSpaceDrive(ctx) {
       return { prefix, entries: r.entries, next: r.next };
     });
 
-  tool("files.drive.space.search", "Find files in the Space's Drive by name, under the caller's own grants: { space?, q, limit? }. Names and paths only, never a word from inside a file. What the caller may not read is the same as not there: a chat's files are its participants' only (kernel/core/folders.js), so a file, a folder name or a path in a chat the caller is not in never comes back, even for the exact words of its name. Answers { q, results: [{ path, name, size?, mtime? }], more } (at most `limit`, default 30, at most 100).",
-    obj({ space: str, q: str, limit: { type: "integer" } }, ["q"]), async (i, d, drive) => {
+  tool("files.drive.space.search", "Find files in the Space's Drive by name, under the caller's own grants: { space?, q, limit? }. Names and paths only, never a word from inside a file. What the caller may not read is the same as not there: a chat's files are its participants' only (kernel/core/folders.js), so a file, a folder name or a path in a chat the caller is not in never comes back, even for its exact name. The chats the caller is in (work.chat.list) are searched too, each folder read under the caller's own chain, and those results name their chat. Answers { q, results: [{ path, name, size?, mtime?, chat? }], more } (at most `limit`, default 30, at most 100).",
+    obj({ space: str, q: str, limit: { type: "integer" } }, ["q"]), async (i, d, drive, meta) => {
       const q = String(i.q ?? "").trim().toLowerCase();
       if (q.length < 2 || q.length > 200) throw refuse("type two letters or more to search the Drive", "bad_input");
       if (i.limit !== undefined && (!Number.isInteger(i.limit) || i.limit < 1)) throw refuse("limit is a positive number", "bad_input");
       const limit = Math.min(i.limit ?? 30, 100), words = q.split(/\s+/);
       const results = /** @type {any[]} */ ([]);
-      let after = null, more = false;
-      // The listing is the kernel's: each entry is asked about under THIS caller's chain, so what is not theirs to read is never in a page. Nothing here decides who may see a path.
-      for (let page = 0; page < 20 && !more; page++) {
-        let r;
-        try { r = await drive.listPage(d.chain, "", { limit: 1000, after }); }
-        catch (e) { if (page === 0 && /** @type {any} */ (e)?.code && ["not_found", "denied"].includes(/** @type {any} */ (e).code)) return { q, results: [], more: false }; throw e; }
-        for (const e of r.entries) {
-          const path = String(e && (e.path ?? e.name ?? e)), hay = path.toLowerCase();
-          if (!words.every((/** @type {string} */ w) => hay.includes(w))) continue;
-          if (results.length >= limit) { more = true; break; }
-          results.push({ path, name: path.split("/").pop() || path, ...(Number.isFinite(e && e.size) ? { size: e.size } : {}), ...(Number.isFinite(e && e.mtime) ? { mtime: e.mtime } : {}) });
+      const seen = new Set();
+      let more = false;
+      const take = (/** @type {any} */ e, /** @type {string | null} */ chat) => {
+        const path = String(e && (e.path ?? e.name ?? e)), hay = path.toLowerCase();
+        if (seen.has(path) || !words.every((/** @type {string} */ w) => hay.includes(w))) return;
+        if (results.length >= limit) { more = true; return; }
+        seen.add(path);
+        results.push({ path, name: path.split("/").pop() || path, ...(Number.isFinite(e && e.size) ? { size: e.size } : {}), ...(Number.isFinite(e && e.mtime) ? { mtime: e.mtime } : {}), ...(chat ? { chat } : {}) });
+      };
+      /** One folder's pages, every entry asked about under THIS caller's chain by the kernel: what is not theirs to read is never in a page. A refusal is absence. */
+      const walk = async (/** @type {string} */ prefix, /** @type {string | null} */ chat, /** @type {number} */ pages) => {
+        let after = null;
+        for (let page = 0; page < pages; page++) {
+          let r;
+          try { r = await drive.listPage(d.chain, prefix, { limit: 1000, after }); }
+          catch (e) { if (/** @type {any} */ (e)?.code && ["not_found", "denied"].includes(/** @type {any} */ (e).code)) return; throw e; }
+          for (const e of r.entries) take(e, chat);
+          if (!r.next) return;
+          after = r.next;
+          if (page === pages - 1) more = true;
         }
-        if (!r.next) break;
-        after = r.next;
-        if (page === 19) more = true;
+      };
+      await walk("", null, 20);
+      // The chats the caller is in. The list only says where to look: each folder is read under the caller's own chain, so a chat named wrongly (or one the caller left) gives nothing.
+      for (const c of await chatsOf(ctx, meta)) {
+        if (more && results.length >= limit) break;
+        await walk(`Projects/${c.project}/chat/${c.chat}/`, c.chat, 3);
+        await walk(`Projects/${c.project}/made/${c.chat}/`, c.chat, 3);
       }
       return { q, results, more };
     });

@@ -52,11 +52,13 @@ async function rig() {
   await D.put(owner, "Clients/A/retainer-plan.txt", enc("plan"));
 
   const db = open(path.join(fs.mkdtempSync(path.join(os.tmpdir(), "privacy-")), "vyre.db"));
-  /** @type {{ chain: any }} */ const cur = { chain: owner };
+  /** @type {{ chain: any, list: any }} */ const cur = { chain: owner, list: [{ chat: chat.id, project: "p1", open: true }] };
   const tools = /** @type {Map<string, any>} */ (new Map()), routes = /** @type {Map<string, any>} */ (new Map());
   const ctx = {
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), route: (/** @type {string} */ n, /** @type {any} */ f) => routes.set(n, f),
-    store: { db, migrate: (/** @type {string[]} */ steps) => migrate(db, "files", steps) }, call: async () => ({}),
+    store: { db, migrate: (/** @type {string[]} */ steps) => migrate(db, "files", steps) },
+    // work.chat.list as the chat module answers it for the caller; a test can make it name a chat the caller is NOT in, or make the tool vanish, to prove the kernel is what decides
+    call: async (/** @type {string} */ tool) => { if (tool !== "work.chat.list") return {}; if (cur.list === null) throw Object.assign(new Error("no_such_tool"), { code: "no_such_tool" }); return { data: { chats: cur.list } }; },
     kernel: { space: SPACE, owner: OWNER, for: async () => ({ gateway: k.gateway, surfaces: {} }), chainIn: async () => cur.chain, proofFrom: () => undefined },
   };
   registerSpaceDrive(ctx);
@@ -69,7 +71,8 @@ async function rig() {
     const res = { status: 0, body: /** @type {any} */ (undefined), writeHead(/** @type {number} */ s) { this.status = s; }, end(/** @type {any} */ b) { this.body = b; resolve({ status: this.status, body: b }); } };
     routes.get("s")({ method: "GET" }, res, { url: new URL(`http://vyred${LINK_PATH}?c=${c}`) });
   });
-  return { k, g, D, drive, db, owner, bob, carol, ada, dan, dir, made, chat, as, run, code, open: open_ };
+  const listing = (/** @type {any} */ l) => { cur.list = l; };
+  return { k, g, D, drive, db, owner, bob, carol, ada, dan, dir, made, chat, as, run, code, open: open_, listing };
 }
 
 const paths = (/** @type {any} */ r) => r.results.map((/** @type {any} */ x) => x.path);
@@ -146,4 +149,41 @@ test("shared links are checked on every open: a link that points into a chat's f
   assert.equal(r.db.prepare("SELECT opens FROM files_links WHERE code = ?").get(ok.code).opens, 1, "the refused open was not counted");
   r.as(r.owner);
   assert.equal((await r.run("files.drive.link.list", {})).links.length, 1, "the owner still sees it in the list, to stop it");
+});
+
+test("participant search: a person finds file names in the chats they are in, each folder read under their own chain, and the chat is named", async () => {
+  const r = await rig();
+  for (const who of [r.bob, r.carol]) {
+    r.as(who);
+    const res = await r.run("files.drive.space.search", { q: "retainer" });
+    assert.deepEqual(paths(res).sort(), [`${r.made}/retainer-draft.txt`, `${r.dir}/retainer-notes.txt`].sort(), "both of the chat's folders");
+    assert.ok(res.results.every((/** @type {any} */ x) => x.chat === r.chat.id), "each hit names its chat");
+    assert.equal(JSON.stringify(res).includes("SSN"), false, "names only, never a word from inside");
+    assert.deepEqual(paths(await r.run("files.drive.space.search", { q: "nothing-like-this" })), []);
+  }
+});
+
+test("participant search: a list that names a chat the caller is not in adds nothing, since the read is the caller's own; a person who left finds nothing the next call", async () => {
+  const r = await rig();
+  for (const [who, name] of [[r.owner, "the owner"], [r.ada, "an admin"], [r.dan, "a project member"]]) {
+    r.as(who);
+    r.listing([{ chat: r.chat.id, project: "p1", open: true }]); // a bogus list: the chat module would never say this, the kernel must not care
+    const res = await r.run("files.drive.space.search", { q: "retainer" });
+    assert.deepEqual(paths(res).filter((/** @type {string} */ p) => p.includes(r.chat.id)), [], `${name} is told no file of the chat even when the list names it`);
+    assert.equal(res.results.some((/** @type {any} */ x) => x.chat), false);
+  }
+  r.listing([{ chat: r.chat.id, project: "p1", open: true }]);
+  r.as(r.bob);
+  assert.equal((await r.run("files.drive.space.search", { q: "retainer-notes" })).results.length, 1, "in the chat: found");
+  await r.g.chats.change(r.carol, r.chat.id, { remove_people: [BOB] });
+  assert.deepEqual((await r.run("files.drive.space.search", { q: "retainer-notes" })).results, [], "left the chat: gone on the next call, whatever the list says");
+});
+
+test("participant search: a box without work.chat.list, or one that lists a malformed row, searches the Drive root only and never fails", async () => {
+  const r = await rig();
+  r.as(r.owner);
+  r.listing(null);
+  assert.ok(paths(await r.run("files.drive.space.search", { q: "retainer" })).includes("Clients/A/retainer-plan.txt"), "no chat tool: the root is still searched");
+  r.listing([{ chat: "../../etc", project: "p1" }, { chat: r.chat.id, project: "../x" }, null, "x", { chat: r.chat.id, project: "p1", open: false }]);
+  assert.deepEqual(paths(await r.run("files.drive.space.search", { q: "retainer" })).filter((/** @type {string} */ p) => p.startsWith("Projects/")), [], "malformed rows and a chat marked not open are skipped");
 });
