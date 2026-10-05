@@ -26,6 +26,7 @@ import { createOffersPort } from "./remote/offers-port.js";
 import { createKernelSeal } from "./core/seal.js";
 import { runnerPorts } from "./gateway/runner-ports.js";
 import { createKitApply } from "./tasks/kit-apply.js";
+import { holdKernelDrive } from "./storage/keys.js";
 import { backendFor } from "./storage/devices.js";
 import { createBridge } from "./storage/bridge.js";
 import { TASK } from "../records/core-types.js";
@@ -404,5 +405,5 @@ export async function createKernel(cfg) {
   /** An invitee's first presence key on this server (RC1), through the sealing process; only the remote door's accept calls it, with the identity chain it read from the directory itself. */
   const joinKey = cfg.sealer && typeof cfg.sealer.join === "function" ? (/** @type {any} */ i) => cfg.sealer.join(i) : undefined;
   const unjoinKey = cfg.sealer && typeof cfg.sealer.unjoin === "function" ? (/** @type {any} */ i) => cfg.sealer.unjoin(i) : undefined;
-  return Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated });
+  return holdKernelDrive(Object.freeze({ boot, checkpoints, presence, adoptOwner: adoptNow, ...(joinKey ? { joinKey, ...(unjoinKey ? { unjoinKey } : {}) } : {}), setLabel: (/** @type {() => { name?: string, words?: string }} */ f) => { label = f; }, bindCalls: (/** @type {() => any} */ fn) => { if (room) room.bindCalls(fn); }, recordStorageIndex, storageIndexHead, gateway, log, store, chains, grants: grantsStore, limits, tasks, surfaces, kernelFor, bindSpaces, fresh, migrated }), cfg.drive);
 }

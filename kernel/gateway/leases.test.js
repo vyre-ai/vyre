@@ -243,3 +243,41 @@ test("LF-3: leases.bind keeps the route record whole (deny wins, size cap, conte
   await f.files.write("inbox/out.json", (async function* () { yield Buffer.from("xy"); })(), { maxBytes: 10 });
   assert.equal(drive.wrote[0][0], "inbox/out.json");
 });
+
+test("leases: a model-provider route (set only by the home's own definition) carries inference without a per-call yes, and nothing else on it", async () => {
+  const r = await rig();
+  await r.mk(r.owner, { side: "space_allows", member: BOB });
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  // no grant for the credential at all: only the definition's provider route and the live lease
+  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const L = r.k.gateway.leases;
+  const allow = [{ method: "POST", path: "/v1/messages" }, { method: "POST", path: "/v1/messages/count_tokens" }, { method: "GET", path: "/v1/models" }, { method: "POST", path: "/v1/files" }, { method: "DELETE", path: "/v1/messages" }];
+  L.bind("s1", lease.id, { routes: [{ route: "/provider", ref: "k", allow, provider: true }] });
+  const call = (method, path) => L.use(r.bob, { session: "s1", route: "/provider", method, path });
+  assert.deepEqual(await call("POST", "/v1/messages"), { secret: "v" });
+  assert.deepEqual(await call("POST", "/v1/messages/count_tokens"), { secret: "v" });
+  assert.deepEqual(await call("GET", "/v1/models"), { secret: "v" });
+  r.released.length = 0;
+  await assert.rejects(() => call("POST", "/v1/files"), e => typeof e.code === "string", "another write on the provider route asks like any other");
+  await assert.rejects(() => call("DELETE", "/v1/messages"), e => typeof e.code === "string");
+  assert.equal(r.released.length, 0);
+  // a route that is not marked as the provider's gets no such allowance, however it is named
+  L.bind("s2", lease.id, { routes: [{ route: "/provider", ref: "k", allow }] });
+  await assert.rejects(() => L.use(r.bob, { session: "s2", route: "/provider", method: "POST", path: "/v1/messages" }), e => typeof e.code === "string");
+});
+
+test("leases: an owner's or admin's approval of a lend releases no key of the member's: without the member's own acceptance there is no lease and no key", async () => {
+  const r = await rig();
+  // the Space's side only (an owner's approval): the member has not accepted for this computer
+  await r.mk(r.owner, { side: "space_allows", member: BOB });
+  const allow = [{ method: "POST", path: "/v1/messages" }];
+  const none = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  assert.equal(none.revoked, true, "no lease without the member's own acceptance");
+  r.k.gateway.leases.bind("s1", "lease_none", { routes: [{ route: "/provider", ref: "k", allow, provider: true }] });
+  await assert.rejects(() => r.k.gateway.leases.use(r.bob, { session: "s1", route: "/provider", method: "POST", path: "/v1/messages" }), e => typeof e.code === "string");
+  // the member accepts for their own computer: a lease, and the key
+  await r.mk(r.bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  const lease = await r.k.gateway.leases.issue(r.bob, { device: "dev_laptop", device_key: "KEY_LAPTOP" });
+  r.k.gateway.leases.bind("s2", lease.id, { routes: [{ route: "/provider", ref: "k", allow, provider: true }] });
+  assert.deepEqual(await r.k.gateway.leases.use(r.bob, { session: "s2", route: "/provider", method: "POST", path: "/v1/messages" }), { secret: "v" });
+});
