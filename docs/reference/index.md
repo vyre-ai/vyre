@@ -2443,7 +2443,7 @@ generated: scripts/gen-docs-reference
 - `VYRE_SEAL_SOFTWARE` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SEAL_UNATTESTED` environment variable, not explained on any page yet. No mentions.
 - `VYRE_SERVER_DIR` environment variable, not explained on any page yet. No mentions.
-- `VYRE_SESSION_SANDBOX_OFF` environment variable, [explained](config.md#environment-variables). No mentions.
+- `VYRE_SESSION_SANDBOX_OFF` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_SESSIONS_DRIVER` environment variable, [explained](config.md#set-by-vyre). No mentions.
 - `VYRE_SESSIONS_SDK_DIR` environment variable, [explained](config.md#environment-variables). No mentions.
 - `VYRE_SESSIONS_SDK_INSTALL` environment variable, [explained](config.md#environment-variables). No mentions.
