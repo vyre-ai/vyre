@@ -67,11 +67,12 @@ async function pull(d, head, tool, input) {
 const head = space => ({ peer: "wink", space: "home", pull: { space } });
 /** One stream, several calls: returns { call, close }. */
 function stream(d, hd) {
-  const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() {}, reset() {} };
+  let serverClosed = false;
+  const s = { ondata() {}, onend() {}, onreset() {}, respond() {}, ch: { transport: {} }, write: b => queueMicrotask(() => c.ondata(Buffer.from(b))), end() { serverClosed = true; }, reset() { serverClosed = true; } };
   const c = { ondata() {}, onclose() {}, buffered: () => 0, write: b => queueMicrotask(() => s.ondata(new Uint8Array(b))), end() {}, destroy() {} };
   d.acceptHome(s, { homeId: "hhhhhhhhhhhhhhhh" }, hd);
   const client = peerSession(c, { first: 1 });
-  return { call: (input, tool = "spaces.moves.pull") => client.call(tool, input, { timeoutMs: 3000 }), close: () => client.close("done"), get closed() { return client.closed; } };
+  return { call: (input, tool = "spaces.moves.pull") => client.call(tool, input, { timeoutMs: 3000 }), close: () => client.close("done"), get closed() { return serverClosed; } };
 }
 /** A stream whose hello and auth passed (the stand-in answers { nonce } then { session }). */
 async function authed(d, space) {
