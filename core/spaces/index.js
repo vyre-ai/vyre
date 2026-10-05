@@ -953,7 +953,13 @@ export default {
         await withYes(act);
         // Granting a computer again after its access ended is the reinstate (the sealing process refuses a lease for a removed computer until an owner or admin says yes): it goes with the new lend, under the
         // kernel's own role check, and a person who may not reinstate gets that refusal in words.
-        if (on && again && h.gateway.leases && typeof h.gateway.leases.reinstate === "function") {
+        // Whether it is needed is the home's own answer: a lease that comes back revoked means this member's computer was removed before (an Offer withdrawn, the member taken out and back in). A first lend, or one whose
+        // computer was never removed, gets its lease and nothing more is asked of the person.
+        let removedBefore = again;
+        if (on && h.gateway.leases && typeof h.gateway.leases.issue === "function") {
+          try { const t = h.hosted === false ? await h.gateway.leases.issue(null, { device: kdev, device_key: kdev }) : await h.gateway.leases.issue(k.chain, { device: kdev, device_key: kdev }); removedBefore = Boolean(t && t.revoked); } catch { /* the probe could not be asked: the lender's own record decides */ }
+        }
+        if (on && removedBefore && h.gateway.leases && typeof h.gateway.leases.reinstate === "function") {
           await withYes(kc => (h.hosted === false ? (kc.proof && kc.proof.presence !== undefined ? h.gateway.leases.reinstate(null, { member, device: kdev }, kc.proof) : h.gateway.leases.reinstate(null, { member, device: kdev })) : h.gateway.leases.reinstate(kc.chain, { member, device: kdev, proof: kc.proof && kc.proof.presence })));
         }
       } catch (e) { ctx.log.warn(`lend: the kernel refused: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")}`); throw plainKernelError(e); }
@@ -1787,6 +1793,8 @@ export default {
       return st.exists && st.id ? { id: st.id, name: st.name || null, label: st.name || null, ...(pin && pin.head ? { pin: { id: String(pin.id), seq: Number(pin.seq), head: String(pin.head) } } : {}) } : null;
     }, { internal: true });
     // This computer's own entry on its identity's list, for the daemon's runner ({ deviceId, deviceKey }: the id the Offers name it by and its public key); null until an identity is claimed.
+    // The paired server that hosts a Space this computer made there (the id this computer knows that server by), or null: the Wink module asks it to check that a message about a Space's grant comes from that Space's own home.
+    tool("spaces.server.of", "The paired server that hosts this space: { device }, or null when this computer does not know one. For the Wink module.", obj({ space: str }, ["space"]), async (i) => ({ device: await serverOf(String(i.space)) }), { internal: true });
     tool("spaces.identity.device", "This device's entry on its identity list: { deviceId, deviceKey }, or null when none is claimed. The public half only. For the daemon.", obj(), async () => {
       const st = identity.status();
       return st.exists && st.eid && st.publicKey ? { deviceId: st.eid, deviceKey: st.publicKey } : null;
