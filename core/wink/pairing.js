@@ -62,6 +62,16 @@ export const KIND_OFFERS = Object.freeze({ web: ["access"], phone: ["access"], c
 export const FLOW_KIND = Object.freeze({ W1: "phone", W2: "computer", W3: "server" });
 /** Roles that may add a server or storage device to a space. */
 export const ADMIN_ROLES = Object.freeze(["owner", "admin"]);
+/**
+ * What an offered device entry may carry beyond its key and label, copied into the entry the identity list takes: `agree` (its key-agreement point), `enclave` (its chip key) and `held: "web"` (a key a
+ * page script can reach, so the entry cannot change who speaks for the identity). The chain validates each one's shape; nothing else is copied, and a `held` that is not "web" or true is dropped.
+ * @param {any} e @returns {{ agree?: string, enclave?: string, held?: "web" }}
+ */
+export const entryExtras = e => ({
+  ...(e && typeof e.agree === "string" && e.agree ? { agree: e.agree.slice(0, 200) } : {}),
+  ...(e && typeof e.enclave === "string" && e.enclave ? { enclave: e.enclave.slice(0, 200) } : {}),
+  ...(e && (e.held === "web" || e.held === true) ? { held: /** @type {"web"} */ ("web") } : {}),
+});
 if (!ADMIN_ROLES.every(r => ROLE_IDS.includes(r))) throw new Error("wink: ADMIN_ROLES must be roles of the contract");
 
 export const MIGRATIONS = [
@@ -1445,7 +1455,7 @@ export function createPairing(o) {
       // the identity's own list takes the device's identity key, signed by THIS device's entry (the new entry is a newcomer for 24 hours); a refusal leaves the pairing made and says so
       if (a.entry) {
         try {
-          const r = /** @type {any} */ (await ctx.call("spaces.identity.enrol", { publicKey: a.entry.publicKey, label: a.entry.label }));
+          const r = /** @type {any} */ (await ctx.call("spaces.identity.enrol", { publicKey: a.entry.publicKey, label: a.entry.label, ...entryExtras(a.entry) }));
           a.enrolled = Boolean(r && !r.error && r.data);
           if (!a.enrolled) a.enrolReason = String((r && r.error && r.error.message) || "the identity list did not take this device").slice(0, 200);
         } catch (e) { a.enrolled = false; a.enrolReason = String(/** @type {Error} */ (e).message || "the identity list did not take this device").slice(0, 200); }
@@ -1483,7 +1493,7 @@ export function createPairing(o) {
     ctx.tool("wink.phone.wait", {
       callers: ["web"],
       description: "From the phone that scanned the QR, over its own paired connection: where the question stands, and the way the three words are made. The phone sends `commit` (the hash of its fresh nonce) and its own `name`, hears this computer's nonce `nb`, then sends `reveal` (its nonce); the words appear only then. Answers { state: waiting | yes | no | expired, nb, words?, until }. Only that phone gets an answer.",
-      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str }) }),
+      input: obj({ commit: str, reveal: str, tag: str, name: str, entry: obj({ publicKey: str, label: str, agree: str, enclave: str, held: { anyOf: [{ type: "string" }, { type: "boolean" }] } }) }),
       run: async (input, meta = {}) => {
         owner(meta, "the phone's wait");
         const a = phoneLive();
@@ -1491,7 +1501,7 @@ export function createPairing(o) {
         const i = input || {};
         if (!a.named && i.name) { const n = cleanPhoneName(i.name); if (n) a.name = n; a.named = true; }
         // A box-less device joining the person's identity (relay/client/phonepair.js) says which identity key it holds, once: the yes at the three words covers it, because it came over this device's own channel
-        if (!a.entry && i.entry && typeof i.entry === "object" && typeof i.entry.publicKey === "string" && Buffer.from(i.entry.publicKey, "base64url").length === 32) a.entry = { publicKey: i.entry.publicKey, label: cleanPhoneName(i.entry.label) || a.name };
+        if (!a.entry && i.entry && typeof i.entry === "object" && typeof i.entry.publicKey === "string" && Buffer.from(i.entry.publicKey, "base64url").length === 32) a.entry = { publicKey: i.entry.publicKey, label: cleanPhoneName(i.entry.label) || a.name, ...entryExtras(i.entry) };
         if (a.state === "waiting" && !a.words) {
           if (!a.commit && /^[0-9a-f]{64}$/.test(String(i.commit || ""))) a.commit = String(i.commit);
           if (a.commit && typeof i.reveal === "string" && i.reveal) {

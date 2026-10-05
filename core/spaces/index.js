@@ -1836,9 +1836,9 @@ export default {
       return found;
     }, { internal: true });
     // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
-    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str }, ["publicKey"]), async i => {
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str, enclave: str, held: str }, ["publicKey"]), async i => {
       me();
-      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label }); } catch (e) { throw idFail(e); }
+      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label, ...(typeof i.agree === "string" ? { agree: i.agree } : {}), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(i.held === "web" ? { held: "web" } : {}) }); } catch (e) { throw idFail(e); }
     }, { internal: true });
     // The device's own signer for the transport's proof: only the transport's own message, never anything else.
     tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {
