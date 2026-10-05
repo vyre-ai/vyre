@@ -1,0 +1,146 @@
+// @ts-check
+import "../../scripts/mac-test-guard.mjs";
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { SCRATCH } from "../../test/scratch.mjs";
+import { createNetd, findBinaries, PEER_PORT } from "./netd.js";
+
+const home = () => fs.mkdtempSync(path.join(SCRATCH, "netd-"));
+
+/** Fake engines that record what they were asked, in order. */
+function fakes({ failHsOnce = false, failNode = false } = {}) {
+  const calls = /** @type {string[]} */ ([]);
+  let hsFailed = false;
+  const policies = /** @type {any[]} */ ([]);
+  const createHeadscale = (/** @type {any} */ o) => ({
+    listen: { host: "127.0.0.1", port: o.listenPort },
+    async start() { calls.push(`hs.start ${o.serverUrl}`); if (failHsOnce && !hsFailed) { hsFailed = true; throw new Error("headscale did not become healthy in time"); } return {}; },
+    async stop() { calls.push("hs.stop"); },
+    async createPreauthKey() { calls.push("hs.key"); return { key: "hskey-fake0123456789" }; },
+    prefix: "100.99.1.0/24",
+    async listNodes() { return [{ id: 1, ips: ["100.99.1.1"] }, { id: 2, ips: ["100.99.1.2"] }]; },
+    setPolicy(/** @type {string} */ t) { calls.push("hs.policy"); policies.push(JSON.parse(t)); return { changed: true }; },
+  });
+  const createGate = (/** @type {any} */ o) => ({
+    async listen() { calls.push(`gate.listen ${o.listen.host} up:${o.upstream.port}`); return o.listen; },
+    async close() { calls.push("gate.close"); },
+  });
+  const createHost = (/** @type {any} */ o) => {
+    const spaces = /** @type {any[]} */ ([]);
+    return {
+      addSpace(/** @type {any} */ s) { calls.push(`host.addSpace ${s.id} peerPort:${s.peerPort} key:${s.authKey ? "yes" : "no"}`); spaces.push(s); },
+      async start() { calls.push(`host.start fwd:${o.forwarderBin || "none"}`); if (failNode) throw new Error("the node did not come up"); return { nodeKey: "n", ips: ["100.99.1.1"] }; },
+      async serveHome(/** @type {string} */ id, /** @type {any} */ x) { calls.push(`host.serveHome ${id} entry:${typeof x.identity.entry} serve:${typeof x.serve}`); },
+      async stopAll() { calls.push("host.stopAll"); },
+      status: () => spaces.map(s => ({ id: s.id, node: "up", links: [], peers: [], door: "listening" })),
+    };
+  };
+  return { calls, policies, deps: { createHeadscale, createGate, createHost, freePort: (() => { let p = 41000; return async () => p++; })() } };
+}
+const base = (/** @type {any} */ f, /** @type {any} */ extra = {}) => ({
+  root: home(), space: async () => "spc_home1", box: async () => "boxid", entry: async () => ({ eid: "x", kind: "device", pub: "p" }),
+  serve: async () => ({}), binaries: { headscale: "/x/headscale", forwarder: "/x/wink-forwarder" }, deps: f.deps, retryMs: 0, reach: null, ...extra,
+});
+
+test("up: headscale, then the gate in front of it, then the node, then the door; the status says up", async () => {
+  const f = fakes();
+  const n = createNetd(base(f));
+  await n.start();
+  assert.deepEqual(f.calls.map(c => c.split(" ")[0]), ["hs.start", "gate.listen", "hs.key", "host.addSpace", "host.start", "host.serveHome", "hs.policy"]);
+  const acl = f.policies[0].acls;
+  assert.equal(acl.length, 1, "one rule: devices reach the hub's door port");
+  assert.deepEqual(acl[0].dst, [`n-home:${PEER_PORT}`]);
+  assert.deepEqual(acl[0].src, ["n-d-2"], "the home's own node (100.99.1.1) is not a device; the other node is");
+  assert.match(f.calls[1], /^gate\.listen 127\.0\.0\.1 up:41001$/, "the gate binds loopback and fronts the headscale's own port");
+  assert.equal(f.calls[3], `host.addSpace spc_home1 peerPort:${PEER_PORT} key:yes`);
+  const s = n.status();
+  assert.equal(s.state, "up");
+  assert.deepEqual(s.ips, ["100.99.1.1"]);
+  assert.equal(s.public, false);
+  assert.ok(n.host() && n.host().status()[0].door === "listening");
+  await n.stop();
+  assert.deepEqual(f.calls.slice(-3), ["host.stopAll", "gate.close", "hs.stop"]);
+});
+
+test("no-binary: a box without the programs says so, starts nothing, and still has a host for the status", async () => {
+  const f = fakes();
+  const n = createNetd(base(f, { binaries: { headscale: null, forwarder: "/x/f" } }));
+  await n.start();
+  assert.equal(n.status().state, "no-binary");
+  assert.match(String(n.status().why), /headscale/);
+  assert.deepEqual(f.calls, []);
+  assert.ok(n.host(), "the status port always has a host");
+});
+
+test("off: switched off starts nothing", async () => {
+  const f = fakes();
+  const n = createNetd(base(f, { enabled: false }));
+  await n.start();
+  assert.equal(n.status().state, "off");
+  assert.deepEqual(f.calls, []);
+});
+
+test("a failed piece is reported, torn down and retried; the retry comes up", async () => {
+  const f = fakes({ failHsOnce: true });
+  const n = createNetd(base(f, { retryMs: 5 }));
+  await n.start();
+  assert.equal(n.status().state, "up");
+  assert.ok(f.calls.includes("hs.stop"), "the first attempt was torn down");
+  assert.equal(f.calls.filter(c => c.startsWith("hs.start")).length, 2);
+});
+
+test("failed with no retry: the node did not come up, the state names it, everything is stopped", async () => {
+  const f = fakes({ failNode: true });
+  const n = createNetd(base(f));
+  await n.start();
+  assert.equal(n.status().state, "failed");
+  assert.match(String(n.status().why), /did not come up/);
+  assert.ok(f.calls.includes("gate.close") && f.calls.includes("hs.stop"));
+  assert.ok(n.host(), "a host remains for the status");
+});
+
+test("no door dispatcher: the node comes up and answers no peers yet", async () => {
+  const f = fakes();
+  const logs = /** @type {string[]} */ ([]);
+  const n = createNetd(base(f, { serve: null, log: (/** @type {string} */ m) => logs.push(m) }));
+  await n.start();
+  assert.equal(n.status().state, "up");
+  assert.ok(!f.calls.some(c => c.startsWith("host.serveHome")));
+  assert.ok(logs.some(l => /no door dispatcher/.test(l)));
+});
+
+test("a public control address: the gate listens on every interface and a pairing is handed a one-time key; without one it is handed nothing", async () => {
+  const f = fakes();
+  const n = createNetd(base(f, { controlUrl: "https://hs.example.vyre.run" }));
+  await n.start();
+  assert.match(f.calls.find(c => c.startsWith("gate.listen")) || "", /0\.0\.0\.0/);
+  const h = await n.handover({});
+  assert.equal(h.controlUrl, "https://hs.example.vyre.run");
+  assert.equal(h.space, "spc_home1");
+  assert.ok(h.authKey);
+  const g = fakes();
+  const m = createNetd(base(g));
+  await m.start();
+  assert.equal(await m.handover({}), null, "a loopback-only network gives another machine nothing to dial");
+});
+
+test("reach: its status is carried, and it never blocks the network", async () => {
+  const f = fakes();
+  const started = [];
+  const reach = { start: () => { started.push(1); return new Promise(() => {}); }, status: () => ({ state: "relay", public: { v4: null, v6: null, via: null } }), stop: () => {} };
+  const n = createNetd(base(f, { reach }));
+  await n.start();
+  assert.equal(n.status().state, "up");
+  assert.equal(started.length, 1);
+  assert.equal(n.status().reach.state, "relay");
+});
+
+test("findBinaries: under node --test nothing is found unless both programs are named", () => {
+  assert.deepEqual(findBinaries({ NODE_TEST_CONTEXT: "child" }), { headscale: null, forwarder: null });
+  assert.deepEqual(findBinaries({ VYRE_HEADSCALE_BIN: "/nope/hs", VYRE_WINK_FORWARDER_BIN: "/nope/f", NODE_TEST_CONTEXT: "child" }), { headscale: null, forwarder: null }, "a named path must exist and run");
+  const t = home(), hs = path.join(t, "hs"), fw = path.join(t, "fw");
+  fs.writeFileSync(hs, "#!/bin/sh\n", { mode: 0o755 }); fs.writeFileSync(fw, "#!/bin/sh\n", { mode: 0o755 });
+  assert.deepEqual(findBinaries({ VYRE_HEADSCALE_BIN: hs, VYRE_WINK_FORWARDER_BIN: fw, NODE_TEST_CONTEXT: "child" }), { headscale: hs, forwarder: fw });
+});
