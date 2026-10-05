@@ -70,7 +70,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "run") {
     const shard = /^(\d+)\/(\d+)$/.exec(process.env.VYRE_TEST_SHARD || "");
     const full = rest.length === 0 && !shard;
-    const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter((f, i, a) => a.indexOf(f) === i).sort();
+    const all = (rest.length === 0 ? GLOBS : rest).flatMap(g => fs.globSync(g, { cwd: REPO })).map(f => f.split(path.sep).join("/")).filter(f => !f.split("/").includes("node_modules")).filter((f, i, a) => a.indexOf(f) === i).sort();
     // The boot tests run first, and always in shard 1, so a broken boot fails in minutes; the other files are sharded as before.
     const boot = BOOT_FIRST.filter(f => all.includes(f)), others = all.filter(f => !boot.includes(f));
     const files = [...(!shard || Number(shard[1]) === 1 ? boot : []), ...others.filter((_, i) => !shard || i % Number(shard[2]) === Number(shard[1]) - 1)];
