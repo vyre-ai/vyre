@@ -198,7 +198,9 @@ export default {
       // run by the move (this module's own tool, through ctx.call or the Space handle), never by a person's surface or another module: the authority is the move's own event in this Space's log
       if (String((extra && extra.caller) || "") !== "module:work") throw fail("denied", "the Work engine's lines move only inside a project move");
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(i.move_id)) || !/^[A-Za-z0-9_-]{43}$/.test(String(i.plan_hash)) || !urnOk(i.project)) throw fail("bad_input", "a move names its move id, plan hash and project");
-      const evs = await kernelOf().events.read(kernelOf().serviceChain("work"), { type });
+      // a call that crossed into a hosted Space says so (`in_space`, set only by the registry): that Space's own log is the one to read, under the chain the caller holds there
+      const inSpace = extra && typeof extra.in_space === "string" && extra.in_space !== kernelOf().space ? extra.in_space : null;
+      const evs = inSpace ? await (await kernelOf().for(inSpace)).gateway.events.read(extra.in_space_chain, { type }) : await kernelOf().events.read(kernelOf().serviceChain("work"), { type });
       const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
       if (!ev || ev.data.plan_hash !== i.plan_hash || (type === "project.move_started" ? ev.subject !== i.project : ev.data.project !== i.project)) throw fail("not_found", "no such move");
     };
