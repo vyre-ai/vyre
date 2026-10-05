@@ -41,7 +41,8 @@ test("the Kit's types and the core types are defined through the gateway, and th
   assert.equal(r.flows.length, 1);
   const defined = host.log.read({ type: "types.defined" });
   assert.equal(defined.length, 2);
-  assert.equal(CORE_TYPES.some((t) => t.name === "task"), false, "tasks live in the kernel, not in Twenty");
+  assert.equal(CORE_TYPES.some((t) => t.name === "task"), true, "a task is a record (DESIGN-tasks-records.md); its approvals stay kernel state");
+  assert.equal(CORE_TYPES.find((t) => t.name === "task").fields.find((f) => f.name === "status").owned_by, "kernel");
   for (const t of CORE_TYPES) assert.ok(host.catalog().types[t.name], `${t.name} is in the catalog`);
   assert.equal((await host.kernel.health()).ok, true);
 });

@@ -3,7 +3,8 @@
 // (team/0.3/DESIGN-tasks.md and DESIGN-native-assistant.md). They are plain kernel TypeDefinitions, stored in the
 // Space's Twenty like any other type, so a Kit can link to them and a view can list them.
 //
-// Tasks are not here: tasks, goals, Flows, runs, grants and the log live in the kernel store (one `task.created`, the kernel's), and Twenty holds business records.
+// Tasks are here as a record type (team/0.3/DESIGN-tasks-records.md): what a person reads, edits, links or reports on is a field of the task record; who may act and what the approvals
+// depend on stay kernel state keyed by the same id. Goals, Flows, runs, grants and the log live in the kernel store.
 
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
 const choice = (/** @type {string} */ name, /** @type {string} */ label, /** @type {string[]} */ options, /** @type {object} */ more = {}) => ({ name, kind: "choice", label, options, ...more });
@@ -158,4 +159,45 @@ export const PARTICIPANT = {
   ],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER].map((t) => Object.freeze(t)));
+
+export const TASK_STATUS = ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"];
+export const TASK_SOURCES = ["gate_hold", "grant_request", "pairing", "kit_install", "reveal_request", "continue_in_space", "flow_step", "assistant_request", "memory_proposal", "manual"];
+
+/**
+ * A task: a to-do, a step a person or an agent does, a thing waiting on a check. The record id is the task id. `status` is owned by the kernel (`owned_by: "kernel"`: written only
+ * by the tasks service, which keeps it in step with the task's state); `stage` is the Space's own pipeline, separate from status, so a Kit or a person can add stages without touching it.
+ * `tags` is one text of comma-separated tags. The default views are a board by status, a list and a calendar by due; like any type it takes custom fields, stages and views.
+ */
+export const TASK = {
+  name: "task", label: "Task", icon: "IconChecklist",
+  fields: [
+    text("title", "Title", { required: true }),
+    f("rich_text", "note", "Note"),
+    f("datetime", "due", "Due"),
+    choice("status", "Status", TASK_STATUS, { owned_by: "kernel" }),
+    { name: "stage", kind: "stage", label: "Stage", options: ["Backlog", "Doing", "Done"] },
+    f("link", "parent", "Part of", { to: "task" }),
+    f("link", "project", "Project", { to: "project" }),
+    f("link", "record", "About"),
+    f("link", "contact", "Contact", { to: "contact" }),
+    text("repeat", "Repeats"),
+    f("datetime", "repeat_until", "Repeats until"),
+    f("number", "priority", "Priority"),
+    text("list", "List"),
+    text("tags", "Tags"),
+    f("boolean", "pinned", "Pinned"),
+    text("tz", "Time zone"),
+    f("boolean", "floating", "Same wall time in every zone"),
+    text("wall", "Wall time"),
+    f("date", "date", "Date"),
+    choice("source", "Source", TASK_SOURCES),
+  ],
+  stages: [{ name: "Backlog" }, { name: "Doing" }, { name: "Done" }],
+  views: [
+    { name: "tasks_board", type: "board", label: "Tasks by status", groupBy: "status", columns: ["title", "due", "priority"] },
+    { name: "tasks_list", type: "list", label: "All tasks", columns: ["title", "status", "due", "project"], sort: { field: "due", dir: "asc" } },
+    { name: "tasks_calendar", type: "calendar", label: "Due dates", dateField: "due" },
+  ],
+};
+
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, TASK].map((t) => Object.freeze(t)));

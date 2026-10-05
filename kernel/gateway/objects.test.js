@@ -126,3 +126,13 @@ test("a type needs its own name and label: a second type with the same label is 
   assert.equal((await R.define(o, { add_types: [{ ...MATTER }] })).applied, false, "the same definition again changes nothing");
   assert.equal((await R.define(o, { add_types: [dup("alpha", "Alpha", [MATTER.fields[0]])] })).applied, true, "another label is a new type");
 });
+
+test("a field owned by the kernel is written only by the kernel's own service", async () => {
+  const k = await boot(), o = ownerChain(k), R = k.gateway.records;
+  await R.define(o, { add_types: [{ name: "job", label: "Job", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "status", kind: "choice", label: "Status", options: ["ready", "done"], owned_by: "kernel" }] }] });
+  const j = await R.create(o, "job", { title: "Call Sam" });
+  await assert.rejects(() => R.update(o, "job", j.id, { status: "done" }, j.version), { code: "field_not_allowed" });
+  await assert.rejects(() => R.create(o, "job", { title: "x", status: "ready" }), { code: "field_not_allowed" });
+  assert.equal((await R.update(o, "job", j.id, { title: "Call Sam back" }, j.version)).data.title, "Call Sam back", "the rest of the record is the person's");
+  await assert.rejects(() => R.define(o, { add_types: [{ name: "bad", label: "Bad", fields: [{ name: "x", kind: "text", label: "X", owned_by: "me" }] }] }), { code: "bad_input" });
+});

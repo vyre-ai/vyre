@@ -318,6 +318,7 @@ export function createRecords(cfg) {
         }
       };
       for (const f of fields) {
+        if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
         if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
         if (f.visible_if !== undefined && f.required === true) throw bad(`${f.name} is only sometimes shown, so it cannot be always required: use required_if`);
@@ -560,6 +561,8 @@ export function createRecords(cfg) {
       const fields = ((defs.find((/** @type {any} */ t) => t.name === type) || {}).fields || []);
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
+      // a field owned by the kernel (a task's status) is written only by the kernel's own service: the type says so, this is where it is kept to
+      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name) && !chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && h.actor.id === "kernel")) throw new KernelError("field_not_allowed", `${f.name} is kept by Vyre itself: it changes when the work does, not by hand`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
       const role = roleOfChain(chain);
