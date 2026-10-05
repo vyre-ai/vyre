@@ -605,6 +605,7 @@ function summary(m) {
     { label: "Network", value: list(needs.network) },
     { label: "Credentials", value: list(creds) },
     { label: "Records", value: needs.kernel && Array.isArray(needs.kernel.records) && needs.kernel.records.length ? `makes, reads and changes ${needs.kernel.records.join(", ")} records, as you` : "none" },
+    { label: "Files", value: needs.kernel && Array.isArray(needs.kernel.files) && needs.kernel.files.length ? `writes files in ${needs.kernel.files.join(", ")} in your Drive` : "none" },
     ...(m.replaces ? [{ label: "Replaces", value: `Vyre's own ${m.replaces}` }] : []),
   ];
 }

@@ -366,21 +366,38 @@ async function startLocked(opts, root, p, release) {
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
     // The event bus becomes an adapter over the kernel's log: from here every event is a log entry and its id a log position (what was emitted before the boot moves in).
     events.attach(kernel.log, (/** @type {string} */ name) => kernel.gateway.serviceChain(name), kernel.id.space);
-    // The narrow record verbs an added module declared under needs.kernel.records: the module becomes a service of the Space with exactly create, read and update over the declared types (the
-    // kernel's own install grants, the same machinery a built-in module's needs.kernel uses), acts as itself with an EXTERNAL label (what it brings in is never trusted as the person's own), and
-    // has no `define`, no removal and no handle.
+    // The narrow verbs an added module declared under needs.kernel (`records`: types it may make, read and change; `files`: folders of the Space's Drive it may write into): the module becomes a service
+    // of the Space with exactly those grants (the kernel's own install grants, the machinery a built-in module's needs.kernel uses), acts as itself with an EXTERNAL label (what it brings in is never
+    // trusted as the person's own), and has no `define`, no removal and no handle.
     registry.deps.moduleKernel = {
-      records: (/** @type {string} */ name, /** @type {string[]} */ types) => {
-        const allowed = new Set(types);
-        const h = kernel.kernelFor({ name, needs: { kernel: { actions: ["records.read", "records.create", "records.update"], prefixes: types.map(t => `${t}/*`) } } });
+      doors: (/** @type {string} */ name, /** @type {{ records?: string[], files?: string[] }} */ want) => {
+        const types = want.records || [], folders = (want.files || []).map(f => String(f).replace(/^\/+|\/+$/g, ""));
+        const grants = [
+          ...(types.length ? types.map(t => ({ prefix: `${t}/*`, actions: ["records.read", "records.create", "records.update"] })) : []),
+          ...folders.map(f => ({ prefix: `file/${f}/*`, actions: ["drive.write"] })),
+        ];
+        const h = kernel.kernelFor({ name, needs: { kernel: { actions: [], grants } } });
         const chain = () => kernel.chains.appendService(undefined, name, false);
         const typeOf = (/** @type {string} */ urn) => String(urn).replace(/^vyre:\/\/[^/]+\//, "").split("/")[0];
+        const allowed = new Set(types);
         const only = (/** @type {string} */ t) => { if (!allowed.has(String(t))) throw Object.assign(new Error(`${name}: ${t} is not a record type its needs.kernel.records lists`), { code: "undeclared" }); return String(t); };
+        const within = (/** @type {string} */ p) => { const q = String(p).replace(/^\/+/, ""); if (!folders.some(f => q === f || q.startsWith(f + "/"))) throw Object.assign(new Error(`${name}: ${q} is not in a folder its needs.kernel.files lists`), { code: "undeclared" }); return q; };
         return {
-          create: async (/** @type {string} */ type, /** @type {any} */ data) => h.records.create(chain(), only(type), data),
-          get: async (/** @type {string} */ urn) => h.records.get(chain(), only(typeOf(urn)), String(urn).split("/").pop()),
-          list: async (/** @type {string} */ type, /** @type {any} */ o = {}) => { const r = await h.records.query(chain(), only(type), { ...(o.filter ? { filter: o.filter } : {}), page: { limit: Math.min(Math.max(Number(o.limit) || 50, 1), 200) } }); return { rows: r.rows, next_cursor: r.next_cursor || null }; },
-          update: async (/** @type {string} */ urn, /** @type {any} */ patch, /** @type {number} */ base) => h.records.update(chain(), only(typeOf(urn)), String(urn).split("/").pop(), patch, base),
+          ...(types.length ? { records: {
+            create: async (/** @type {string} */ type, /** @type {any} */ data) => h.records.create(chain(), only(type), data),
+            get: async (/** @type {string} */ urn) => h.records.get(chain(), only(typeOf(urn)), String(urn).split("/").pop()),
+            list: async (/** @type {string} */ type, /** @type {any} */ o = {}) => { const r = await h.records.query(chain(), only(type), { ...(o.filter ? { filter: o.filter } : {}), page: { limit: Math.min(Math.max(Number(o.limit) || 50, 1), 200) } }); return { rows: r.rows, next_cursor: r.next_cursor || null }; },
+            update: async (/** @type {string} */ urn, /** @type {any} */ patch, /** @type {number} */ base) => h.records.update(chain(), only(typeOf(urn)), String(urn).split("/").pop(), patch, base),
+          } } : {}),
+          ...(folders.length ? { files: {
+            /** Write a text or base64 file as a new version: `{ path, text }` or `{ path, base64 }`, at most 8 MB. */
+            write: async (/** @type {{ path: string, text?: string, base64?: string }} */ f) => {
+              const bytes = f.base64 !== undefined ? new Uint8Array(Buffer.from(String(f.base64), "base64")) : new Uint8Array(Buffer.from(String(f.text ?? ""), "utf8"));
+              if (bytes.length > 8 * 1024 * 1024) throw Object.assign(new Error("a file here is at most 8 MB"), { code: "too_large" });
+              const r = await h.drive.put(chain(), within(f.path), bytes);
+              return { path: within(f.path), version: r.version, size: bytes.length };
+            },
+          } } : {}),
         };
       },
     };

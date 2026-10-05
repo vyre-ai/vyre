@@ -253,6 +253,7 @@ export function validate(m, { firstParty = false } = {}) {
     const k = m.needs.kernel;
     if (!k || typeof k !== "object" || Array.isArray(k)) out.push("needs.kernel must be an object like { records: [type, ...] }");
     else if (k.records !== undefined && (!Array.isArray(k.records) || k.records.some((/** @type {any} */ t) => typeof t !== "string" || !/^[a-z][a-z0-9_]{0,40}$/.test(t)))) out.push("needs.kernel.records must be a list of record type names (lowercase, letters, digits, underscores)");
+    else if (k.files !== undefined && (!Array.isArray(k.files) || k.files.some((/** @type {any} */ f) => typeof f !== "string" || !/^[A-Za-z0-9][A-Za-z0-9 _.\/-]{0,120}$/.test(f) || f.includes("..")))) out.push("needs.kernel.files must be a list of Drive folders like Clients/Contracts");
   }
   // setupTools: this module's own tools the setup channel may call (built in only, see addedCheck).
   if (m.setupTools !== undefined) {
@@ -800,9 +801,11 @@ export class Registry {
     // An added module that declared `needs.kernel.records` (the record types it may make, read and change) gets narrow verbs, never the handle: they run under the person who installed it, with the module
     // beside them as an external hop, and only on the declared types (the daemon's `moduleKernel` builds them). The rest of the kernel is not a door.
     const addedKernel = (() => {
-      const r = this.modules.get(m.name);
-      const types = m.needs && m.needs.kernel && Array.isArray(m.needs.kernel.records) ? m.needs.kernel.records.filter((/** @type {any} */ t) => typeof t === "string") : [];
-      return types.length && r && !this.isFirstParty(r.dir) && this.deps.moduleKernel ? { records: this.deps.moduleKernel.records(m.name, types) } : undefined;
+      const r = this.modules.get(m.name), nk = m.needs && m.needs.kernel;
+      if (!nk || !r || this.isFirstParty(r.dir) || !this.deps.moduleKernel) return undefined;
+      const strs = (/** @type {any} */ v) => (Array.isArray(v) ? v.filter((/** @type {any} */ t) => typeof t === "string") : []);
+      const want = { records: strs(nk.records), files: strs(nk.files) };
+      return want.records.length || want.files.length ? this.deps.moduleKernel.doors(m.name, want) : undefined;
     })();
     const kernelHandle = (() => { const r = this.modules.get(m.name); return this.deps.kernelFor && r && this.isFirstParty(r.dir) ? this.deps.kernelFor(m) : undefined; })();
     // Tool names from either form of does.tools, with the reach and outward an object entry declares.
@@ -935,7 +938,10 @@ export class Registry {
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.
-      store: { db, migrate: steps => migrate(db, m.name, steps) },
+      store: { db, migrate: steps => migrate(db, m.name, steps),
+        // Async, the same shape an added module reaches its own file with (core/modules/sandbox-ctx.js), so one module source runs in either place.
+        exec: async (sql, params = []) => { const r = db.prepare(String(sql)).run(...params); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; },
+        query: async (sql, params = []) => db.prepare(String(sql)).all(...params).map(r => ({ ...r })) },
       // A function for built in callers, with the levels module API 1 names (ADR 0047 section 3).
       log: Object.assign((msg, extra) => log(`[${m.name}] ${msg}`, extra), {
         info: (msg, extra) => log(`[${m.name}] ${msg}`, extra),
