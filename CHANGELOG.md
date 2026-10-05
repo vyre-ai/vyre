@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Find also lists file names from the Space Drive and from the chats the person is in (`files.drive.space.search`): a chat's file opens its chat, any other opens the Drive. Names and paths only, and what the person may not read is not there; the box asks the kernel per folder as the caller (work/web2-privacy). A box without the tool just shows no Drive section.
 - chore(app): Glass, renamed Screen Share, moves to 0.3.1 (user ruling), so for 0.2.9 nothing reaches it: `RC.glass` is false, /u/glass/<agent> goes back to Now, the Glass mini card opens the step's thread again, and `export:web` no longer copies the noVNC page (scripts/glass-assets.mjs stays). screens/glass, src/glass, apps/app/vendor/glass and the `glass.release` `noted` answer stay for 0.3.1.
 - refactor(app): Drive is one screen. The mock build feeds the same tabs (Space, Shared, Box folders, On your computer) from the sample world through a fake box (screens/drive/mock-box.ts), so the second sample screen and its own "Shared links" tab are gone (4 tests).
 - feat(app): Drive has one Shared tab: links to files, then the pages an assistant made (versions, public link); the artifact page /a/[id] backs to Drive, and the separate /u/shared page is gone.
