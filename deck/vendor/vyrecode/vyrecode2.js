@@ -12,7 +12,7 @@ import { userAvatar, USER_GRADIENTS } from "./identity.js";
 // Geometry constants (RING_R, tick/marker reach formulas, the outer-margin invariant) now live
 // in geometry.js, the single shared source pwa's decoder also imports (ADR 0033 2a: the two
 // files drifted out of sync by hand once already, which is what this consolidation fixes).
-import * as geo from "./geometry.js";
+import * as geo from "../../../lib/wink-code/geometry.js";
 const { CENTER, FACE_D, FACE_R, RINGS, PER_RING, ANGLE_STEP, RING_R, LEVELS, tickLength } = geo;
 geo.validateGeometry(); // throws loudly if a future edit here breaks the margin/gap invariant
 

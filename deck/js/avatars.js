@@ -38,7 +38,7 @@ import { character } from "../vendor/vyrecode/characters.js";
 import { emblem } from "../vendor/vyrecode/emblem.js";
 import { agentV2 } from "../vendor/vyrecode/agent2.js";
 import { renderCode2, bitsToLevels } from "../vendor/vyrecode/vyrecode2.js";
-import { buildCodeword, bytesToBits } from "../vyrecode/payload.js";
+import { buildCodeword, bytesToBits } from "../../lib/wink-code/payload.js";
 // A project tile's 8 bytes: the one shared rule (Node and the Deck load this same file; the
 // Lumen ports it against its vectors). core/daemon serves it at /lib/avatar-seed/index.js.
 import { projectBytes, entityBytes, fnv1a32, BASIS_A } from "../../lib/avatar-seed/index.js";

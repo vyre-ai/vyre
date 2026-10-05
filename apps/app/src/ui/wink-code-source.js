@@ -3,7 +3,7 @@
 // The ring holds 8 bytes. Here they are the first 8 bytes of a hash of the code's text, so one code always draws the same picture and two codes never do. Pure: no DOM, no React.
 import { sha256 } from "@noble/hashes/sha256";
 import { renderCode2, bitsToLevels } from "../../../../deck/vendor/vyrecode/vyrecode2.js";
-import { buildCodeword, bytesToBits } from "../../../../deck/vyrecode/payload.js";
+import { buildCodeword, bytesToBits } from "../../../../lib/wink-code/payload.js";
 import { USER_GRADIENTS } from "../../../../deck/vendor/vyrecode/identity.js";
 
 /** The kinds of Wink a screen shows, each with its own words, colour and glyph around the drawing (team/0.3/PRODUCT-connections.md section 2). */

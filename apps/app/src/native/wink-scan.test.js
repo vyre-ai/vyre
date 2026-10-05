@@ -6,7 +6,7 @@ import vm from "node:vm";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { generated, workerSource } from "../../scripts/build-wink-scan.mjs";
-import * as payload from "../../../../deck/vyrecode/payload.js";
+import * as payload from "../../../../lib/wink-code/payload.js";
 
 const sandbox = () => {
   const posted = [];
