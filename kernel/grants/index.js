@@ -1023,7 +1023,7 @@ export function createGrantsStore(cfg) {
       const who = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
       const agent = hops.length === 2 && hops[1].actor.kind === "agent" ? hops[1].actor : null;
       const shape = !(chain && chain.viewer === true) && (hops.length === 1 ? Boolean(who) : Boolean(who && agent));
-      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
+      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && agent.id !== DEFAULT_ASSISTANT && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
       return c;
     },
     /** Does this Space have the default assistant as an actor? A Space made before it existed does not, and gets it only by an owner's approval with presence (`addActor`), never silently. */
