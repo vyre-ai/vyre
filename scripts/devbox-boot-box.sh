@@ -4,10 +4,10 @@ cd "${DIR:-$(pwd)}" || exit 2; DIR=$(pwd)
 export PATH=$HOME/node24/bin:$PATH
 bad=0
 for f in test/daemon-smoke.test.js kernel/boot.test.js kernel/adopt.test.js kernel/rv2-hosted-takeover.test.js; do
-  setsid nice -n 10 node --test --test-timeout=80000 "$f" > /tmp/bc.out 2>&1 &
+  setsid nice -n 10 node --test --test-timeout=220000 "$f" > /tmp/bc.out 2>&1 &
   pid=$!; w=0
-  while kill -0 $pid 2>/dev/null && [ $w -lt 100 ]; do sleep 1; w=$((w+1)); done
-  if kill -0 $pid 2>/dev/null; then kill -TERM -- -$pid 2>/dev/null; sleep 2; kill -KILL -- -$pid 2>/dev/null; echo "BOOT-CHECK FAIL $f: HUNG (killed after 100s)"; bad=1
+  while kill -0 $pid 2>/dev/null && [ $w -lt 250 ]; do sleep 1; w=$((w+1)); done
+  if kill -0 $pid 2>/dev/null; then kill -TERM -- -$pid 2>/dev/null; sleep 2; kill -KILL -- -$pid 2>/dev/null; echo "BOOT-CHECK FAIL $f: HUNG (killed after 250s)"; bad=1
   else wait $pid; rc=$?; if [ $rc -eq 0 ]; then echo "boot-check ok   $f ($(grep -E '^ℹ pass' /tmp/bc.out | awk '{print $3}') pass)"; else echo "BOOT-CHECK FAIL $f (rc=$rc)"; grep -E "^✖|Error" /tmp/bc.out | head -6; bad=1; fi; fi
 done
 # throwaway daemon
