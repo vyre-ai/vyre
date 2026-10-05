@@ -10,9 +10,9 @@ function withVersion(config) {
 }
 
 module.exports = ({ config: base }) => {
+  const versioned = withVersion(base);
   // VYRE_APP_BASE=root builds the web export for serving at / (config app.root, core/daemon/app.js); otherwise it is /app (app.json).
-  const withBase = process.env.VYRE_APP_BASE === "root" ? { ...base, experiments: { ...base.experiments, baseUrl: "" } } : base;
-  const config = withVersion(withBase);
+  const config = process.env.VYRE_APP_BASE === "root" ? { ...versioned, experiments: { ...versioned.experiments, baseUrl: "" } } : versioned;
   if (process.env.VYRE_SIDELOAD !== "1") return config;
   const id = process.env.VYRE_IOS_BUNDLE_ID;
   if (!id || !/^[A-Za-z0-9.-]+$/.test(id)) throw new Error("VYRE_IOS_BUNDLE_ID must be set to a bundle id of your own (letters, digits, dots, hyphens)");
