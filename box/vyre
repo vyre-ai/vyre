@@ -1503,7 +1503,11 @@ sp_up() {
   sp_dc "$n" up -d --wait >/dev/null 2>&1 || { MSG="the Space's store did not become healthy"; return 1; }
   if ! sp_probe "$n"; then sp_dc "$n" stop >/dev/null 2>&1 || true; return 1; fi
   # the saved database has been restored: from here the compose file has no restore step, and the server skips its migration steps
-  if [ -f "$SP_PRIV/spaces/$n/golden" ]; then mv -f "$SP_PRIV/spaces/$n/golden" "$SP_PRIV/spaces/$n/migrated"; sp_gen "$n" || true; fi
+  if [ -f "$SP_PRIV/spaces/$n/golden" ]; then
+    mv -f "$SP_PRIV/spaces/$n/golden" "$SP_PRIV/spaces/$n/migrated"; sp_gen "$n" || true
+    # the restore step is over: the admin password and the dump path leave root's copy of the Space's secrets (the daemon has the password; the compose file no longer names either)
+    t=$(mktemp "$SP_PRIV/spaces/$n/secrets.XXXXXX") && grep -v -e '^ADMIN_PASSWORD=' -e '^GOLDEN_DUMP=' "$SP_PRIV/spaces/$n/secrets.env" >"$t"; chmod 600 "$t" && mv -f "$t" "$SP_PRIV/spaces/$n/secrets.env" || rm -f "$t"
+  fi
   MSG="the store is up and the agents are firewalled from it"
 }
 sp_stop() { sp_dc "$1" stop >/dev/null 2>&1 || { MSG="stop failed"; return 1; }; MSG=stopped; }
@@ -1722,6 +1726,8 @@ space_helper_reattach() {
     d=${r%/record}; n=${d##*/}
     printf '%s\n' "$n" | grep -Eqx "$SP_NAME_RE" || continue
     sp_running "$n" || continue
+    # a Space that a request is bringing up right now joins, is firewalled and is proved by that request: its server may not be running yet (a restore comes first), and stopping it here would end the request
+    [ ! -d "$SP_PRIV/lock-$n" ] || continue
     MSG=""
     if ! { sp_attach "$n" && sp_probe "$n"; }; then
       sp_dc "$n" stop >/dev/null 2>&1 || true

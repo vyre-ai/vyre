@@ -11,7 +11,7 @@ runs:
       run: |
         k=$( { cat stores/twenty/provision.js records/core-types.js stores/twenty/live/build-golden.mjs stores/twenty/space-store.js; find records/kits -type f | sort | xargs cat; } | sha256sum | cut -c1-24)
         echo "k=$k" >> "$GITHUB_OUTPUT"
-    - uses: actions/cache@v4
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       id: cache
       with:
         path: stores/twenty/golden
@@ -23,3 +23,4 @@ runs:
       run: |
         ls -l stores/twenty/golden
         test -s stores/twenty/golden/*.dump
+        sha256sum stores/twenty/golden/*.dump  # which saved database this release carries
