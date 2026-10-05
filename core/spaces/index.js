@@ -1353,13 +1353,13 @@ export default {
       const r = wrapStorage(() => storage.get(i.space, person, i.name));
       return r ? { data: r.data.toString("base64"), sha256: r.sha256 } : null;
     });
-    tool("spaces.storage.list", "The names of your objects under a prefix, one level.", obj({ space: str, prefix: str }, ["space"]), async (i, meta) => {
+    tool("spaces.storage.list", "Your objects under a prefix, one level: `names`, and `entries` ({ name, sha, size }) to compare against.", obj({ space: str, prefix: str }, ["space"]), async (i, meta) => {
       const { person } = await storageCaller(i.space, meta);
-      return { names: wrapStorage(() => storage.list(i.space, person, i.prefix || "")) };
+      return wrapStorage(() => ({ names: storage.list(i.space, person, i.prefix || ""), entries: storage.entries(i.space, person, i.prefix || "") }));
     });
-    tool("spaces.storage.delete", "Delete one of your objects.", obj({ space: str, name: str }, ["space", "name"]), async (i, meta) => {
+    tool("spaces.storage.delete", "Delete one of your objects. With `expected` (its sha256, or null for \"must not exist\") it deletes only if it is still what you last saw, else answers { ok: false, sha256 } and deletes nothing. Never refused for the cap.", obj({ space: str, name: str, expected: { type: ["string", "null"] } }, ["space", "name"]), async (i, meta) => {
       const { person } = await storageCaller(i.space, meta);
-      return wrapStorage(() => storage.delete(i.space, person, i.name));
+      return wrapStorage(() => storage.delete(i.space, person, i.name, i.expected));
     });
     tool("spaces.storage.usage", "How much of your storage on this space you have used, and the cap.", obj({ space: str }, ["space"]), async (i, meta) => {
       const { person } = await storageCaller(i.space, meta);
