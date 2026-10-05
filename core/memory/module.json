@@ -104,6 +104,30 @@
         "effect": "read"
       },
       "memory.retrieve",
+      "memory.markers",
+      { "name": "memory.space.file", "reach": "anyone", "effect": "write" },
+      { "name": "memory.space.recall", "reach": "anyone", "effect": "read" },
+      { "name": "memory.space.retire", "reach": "anyone", "effect": "write" },
+      { "name": "memory.upgrade.plan", "reach": "modules", "effect": "read" },
+      { "name": "memory.upgrade.move", "reach": "modules", "effect": "write" },
+      { "name": "memory.personal.status", "reach": "person", "effect": "read" },
+      { "name": "memory.personal.set-cap", "reach": "person", "effect": "write" },
+      { "name": "memory.backup.status", "reach": "person", "effect": "read" },
+      { "name": "memory.backup.restore", "reach": "person", "effect": "write" },
+      { "name": "memory.backup.run", "reach": "person", "effect": "write" },
+      { "name": "memory.room.offer", "reach": "modules", "effect": "write", "crossSpace": "project.move_in" },
+      { "name": "memory.room.export", "reach": "modules", "effect": "write" },
+      { "name": "memory.room.import", "reach": "modules", "effect": "write", "crossSpace": "project.move_in" },
+      { "name": "memory.room.forget", "reach": "modules", "effect": "write" },
+      { "name": "memory.identity.status", "reach": "anyone", "effect": "read" },
+      { "name": "memory.identity.enroll", "reach": "person", "effect": "write" },
+      { "name": "memory.identity.grant", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.revoke", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.unlock.begin", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.unlock.finish", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.lock", "reach": "anyone", "effect": "write" },
+      { "name": "memory.identity.move", "reach": "person", "effect": "write" },
+      "memory.follow",
       "memory.ask",
       "memory.suggest",
       {
@@ -195,7 +219,7 @@
       "memory.forgot",
       "memory.written",
       "memory.site-learned",
-      "memory.graph-grew"
+      "memory.graph-grew", "memory.unlock-asked", "memory.sealed"
     ]
   },
   "shows": {

@@ -99,7 +99,15 @@ export function createFacts({ kernel, db, clock, space, chainFor, redactors = []
     const p = parseUrn(f.record);
     if (!p || p.space !== space) return { outcome: "unreadable", fact: f };
     if (f.note) {
-      try { await writeNote(wc, f); return { outcome: "note", fact: f }; }
+      try {
+        await writeNote(wc, f);
+        // A note is a statement about a record that fits no field: it is also filed into the Space's own memory (the kernel's memory.file, under the PERSON's chain alone, so it is filed only where
+        // the person holds the grant), with the record as its source and the extraction's own trust. Best effort: the note on the record stands either way. A kernel with no Space memory skips it.
+        if (kernel.memory && typeof kernel.memory.file === "function" && !isSealedValue(f.value)) {
+          try { await kernel.memory.file(personChain ? personChain(f.person) : wc, { text: f.value, source: f.record, kind: "note" }); } catch { /* not filed */ }
+        }
+        return { outcome: "note", fact: f };
+      }
       catch { return { outcome: "private_suggestion", fact: f, suggestion: keepSuggestion(f, true) }; }
     }
     if (!f.field) return { outcome: "unreadable", fact: f };

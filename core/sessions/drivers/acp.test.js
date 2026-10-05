@@ -90,7 +90,7 @@ test("acp: memory goes ahead of the person's words on every prompt, the brief on
   const w = world(t);
   const asked = [];
   const s = open(w, { system: { text: "VYRE-PROMPT" }, memory: async q => { asked.push(q); return [{ type: "text", text: q.first ? "BRIEF" : "LINES" }]; } });
-  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPTBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
+  assert.equal(await s.say("where is the site hosted"), "echo: VYRE-PROMPT\n\nBRIEFwhere is the site hosted", "the system prompt, then memory, then the person's words");
   assert.equal(await s.say("and the domain"), "echo: LINESand the domain");
   assert.deepEqual(asked, [{ prompt: "where is the site hosted", first: true }, { prompt: "and the domain", first: false }], "memory searches on the person's words only");
   await s.proc.stop(1000);
@@ -265,7 +265,8 @@ test("acp: a turn's tokens come from the prompt response (Codex's usage, Grok's 
     const s = open(w, { env: { ...w.env, FAKE_ACP_USAGE: mode } });
     s.proc.write({ type: "user", message: { role: "user", content: "hello" } });
     const r = await s.until(m => m.type === "result", "the result");
-    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, ...extra }, mode);
+    // context_used: what the context holds after the turn (the last request's whole input and its output), which a rollover reads as the window's use.
+    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, context_used: 120, ...extra }, mode);
     assert.equal(r.model, mode === "grok" ? "grok-x" : undefined, "Grok's model rides on the result, Codex's none in this fake");
     await s.proc.stop(500);
   }

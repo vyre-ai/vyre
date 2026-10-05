@@ -76,6 +76,23 @@ test("extract: the text goes to the model as data; an unknown record and a value
   assert.equal(w.rig.modelCalls.length, 1);
 });
 
+test("outcome 1b: a note is also filed into the Space's memory under the person's chain, with the record as its source; a refusal leaves the note standing", async t => {
+  const filed = [];
+  const w = await world(t, { engine: {} });
+  const k = w.rig.kernel;
+  const engine = createMemoryEngine({ kernel: { ...k, records: k.records, authorize: k.authorize, model: k.model, tasks: k.tasks, memory: { file: async (chain, f) => { filed.push({ chain, f }); } } }, db: w.db, space: w.rig.space, serviceChain: w.mem.serviceChain(),
+    chainFor: p => w.rig.withService(w.rig.person(p.id), "memory"), personChain: p => w.rig.person(p.id), clock: () => 1_000_000, fieldDef: () => null, ownerOf: () => w.alex });
+  const rec = await matter(w);
+  const [r] = await engine.facts.propose([fact(w, rec, null, "Prefers email")]);
+  assert.equal(r.outcome, "note");
+  assert.equal(filed.length, 1);
+  assert.deepEqual(filed[0].f, { text: "Prefers email", source: rec.urn, kind: "note" });
+  assert.deepEqual(filed[0].chain.hops.map(h => `${h.actor.kind}:${h.actor.id}`), ["person:per_alex"], "the person alone, not the service");
+  const refused = createMemoryEngine({ kernel: { ...k, records: k.records, authorize: k.authorize, model: k.model, tasks: k.tasks, memory: { file: async () => { throw new Error("no grant"); } } }, db: w.db, space: w.rig.space, serviceChain: w.mem.serviceChain(),
+    chainFor: p => w.rig.withService(w.rig.person(p.id), "memory"), personChain: p => w.rig.person(p.id), clock: () => 1_000_001, fieldDef: () => null, ownerOf: () => w.alex });
+  assert.equal((await refused.facts.propose([fact(w, rec, null, "Likes Tuesdays")]))[0].outcome, "note");
+});
+
 test("outcome 1: a new note with a source is written directly, under the person and the service", async t => {
   const w = await world(t);
   const rec = await matter(w);

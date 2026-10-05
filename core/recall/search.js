@@ -17,6 +17,8 @@
 // pinned into the result before anything else is consulted: a guarantee by construction.
 
 
+import { keysFor } from "./turns.js";
+
 /** The text spelled so FTS5 reads it as one literal phrase rather than as grammar. */
 export const phrase = (/** @type {string} */ q) => '"' + String(q).replace(/"/g, '""') + '"';
 
@@ -49,7 +51,9 @@ export function prefixOf(/** @type {string} */ q) {
 
 /**
  * @typedef {{ q: string, limit?: number, project_cwds?: string[], sessions?: string[], role?: "user"|"assistant", hybrid?: boolean,
- *             per_session?: number, candidates?: number, floor?: number, dense_weight?: number, prefix?: boolean }} Query
+ *             per_session?: number, candidates?: number, floor?: number, dense_weight?: number, prefix?: boolean,
+ *             links?: { kind?: string, ref: string }[] }} Query
+ * links: keep only turns that touched these (core/recall/turns.js linkFilter), or sit next to one: a file named in an assistant turn often has its words in the turn before or after.
  * @typedef {{ session: string, seq: number, role: string, ts: number, text: string, snippet: string,
  *             score: number, name: string|null, title: string|null, cwd: string|null }} Hit
  */
@@ -170,6 +174,18 @@ export const USER_WEIGHT = 1;
  * @returns {Promise<{ hits: Hit[], hybrid: boolean }>}
  */
 export async function search(db, query, embedder = null, dense = null) {
+  if (query.links && query.links.length) {
+    const keys = keysFor(db, query.links);
+    if (keys) {
+      if (!keys.size) return { hits: [], hybrid: false };
+      const near = new Set();
+      for (const k of keys) { const [session, seq] = k.split("\0"); for (const d of [-1, 0, 1]) near.add(session + "\0" + (Number(seq) + d)); }
+      const limit = Math.max(1, Math.min(100, query.limit || 10));
+      const { links: _, ...rest } = query;
+      const r = await search(db, { ...rest, limit: 100, per_session: 0, candidates: Math.max(query.candidates || 300, 1000) }, embedder, dense);
+      return { hits: r.hits.filter(h => near.has(h.session + "\0" + h.seq)).slice(0, limit), hybrid: r.hybrid };
+    }
+  }
   const q = String(query.q || "").trim();
   const limit = Math.max(1, Math.min(100, query.limit || 10));
   const cap = query.per_session === undefined ? 3 : query.per_session;
