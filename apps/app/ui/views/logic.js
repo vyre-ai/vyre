@@ -3,7 +3,7 @@
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
 import { viewDefOf } from "./view-defs.js";
 import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
-import { eventLine } from "../../../../deck/ui/kernel-view.js";
+import { eventLine } from "../../src/vendor/deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();

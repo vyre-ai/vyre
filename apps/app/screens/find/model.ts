@@ -1,7 +1,9 @@
 // The pure half of Find on every device: what the box has (sessions, projects, assistants, records, places), how a typed line narrows it (the p, t and u prefixes), what each search tool answers
 // (recall.search, files.search, memory.relevant), and the one command the Enter key runs (@agent, tell, watch, or ask the assistant). The grammar and the session merge are the Deck's, kept in commands.ts, so a line means the same
 // thing on every surface.
-import { mergeSessions, parseCommand, parsePrefix, plan, title as sessionTitle, type Command } from "./commands.ts";
+import { parseCommand, plan, type Command } from "../../src/vendor/deck/js/commands.js";
+import { parsePrefix } from "../../src/vendor/deck/js/find-prefix.js";
+import { mergeSessions, title as sessionTitle } from "../../src/vendor/deck/chat/lib/sessions.js";
 
 export { parseCommand, plan, parsePrefix, mergeSessions, sessionTitle };
 export type { Command };
@@ -172,7 +174,7 @@ export const addRecent = (list: string[], q: string): string[] => (q.length < MI
 
 /** The command for a line, and the session a drive or watch goes to (the first candidate unless one was chosen). */
 export function readCommand(line: string, base: Base, chosen: string | null): { cmd: Command; chosen: any | null } {
-  const cmd = parseCommand(line, { agents: base.agents as any, sessions: base.sessions, titleOf: sessionTitle }) as Command;
+  const cmd = parseCommand(line, { agents: base.agents as any, sessions: base.sessions, titleOf: sessionTitle as (r: any) => string }) as Command;
   const cands: any[] = "candidates" in cmd ? cmd.candidates : [];
   return { cmd, chosen: cands.find((c) => c.id === chosen) ?? cands[0] ?? null };
 }
