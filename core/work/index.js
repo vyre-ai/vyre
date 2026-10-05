@@ -131,7 +131,8 @@ export default {
     // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when the source's gateway has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
     // The record types a target lacks are installed from the source's own definitions, under the same approval (a plan that needs them says so in its hash).
     const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => {
-      const mv = from.gw && from.gw.moves;
+      // the kernel gives the work module `moves.carryFiles` on its own handle (network-2, kernel/moves/carry.js: bytes go pool to pool inside the kernel, never to a module)
+      const mv = kernelOf().moves || (from.gw && from.gw.moves);
       if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id });
       if (to.gw && to.gw.records && typeof to.gw.records.define === "function") to.install = async (/** @type {any} */ c, /** @type {string[]} */ names) => {
         const defs = (await from.types(from.chain)).filter((/** @type {any} */ t) => names.includes(t.name));
