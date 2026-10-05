@@ -539,7 +539,7 @@ export class FlowRunner {
     // as the doer, and this check only looks at it (peek): the act's own gate below it spends the one use.
     const doerChain = approvedTask && this.chains.forDoer ? this.chains.forDoer({ flow: run.flow, space: run.space, approver: run.approver, run: run.id }) : null;
     // A registered tool a Flow may run (the module's `flowAction`, in the catalog with `tool: true`) is not a kernel action: a read runs, an outward one is held for the person's yes and then runs
-    // with that approval, which the host spends once at the call (kernel `spendApproval`). Anything else asks the kernel.
+    // with that approval, which the host spends once at the call (the task store's `useApproval`). Anything else asks the kernel.
     const isTool = Boolean((ctx.cat.actions[need.action] || {}).tool);
     const d = isTool ? { effect: risk === "read" ? "allow" : approvedTask ? "allow" : "ask", obligations: [], decision: null, reason: "ok" } : await this.k.authorize({ chain: doerChain || chain, action: need.action, resource: need.resource, ...(info.input_class ? { input_class: info.input_class } : {}), ...(approvedTask ? { approval: approvedTask, peek: true, ...(info.bind ? { bind: info.bind } : {}) } : {}) });
     let effect = d.effect;

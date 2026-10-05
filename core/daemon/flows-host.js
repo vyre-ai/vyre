@@ -76,7 +76,7 @@ export function createFlowsHost(o) {
         const person = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person");
         if (!person) throw Object.assign(new Error("a Flow step runs as a person"), { code: "denied" });
         if (tool.risk === "outward") {
-          if (!opts.approval || !opts.bind || !k.spendApproval || !k.spendApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true })) {
+          if (!opts.approval || !opts.bind || !k.tasks || typeof k.tasks.useApproval !== "function" || !k.tasks.useApproval({ id: opts.approval, chain, action, resource, bind: opts.bind, outward: true })) {
             throw Object.assign(new Error(`${action} acts outside, and needs the person's approval for exactly this call`), { code: "denied" });
           }
         }

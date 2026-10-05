@@ -139,8 +139,6 @@ export async function createKernel(cfg) {
       /** A person id as the Space knows them now (the owner an adoption replaced is the identity that replaced them): a module that keyed anything by person id reads it through this. */
       canonicalPerson: (/** @type {string} */ id) => (grantsStore ? grantsStore.canonicalPerson(id) : id),
       records, events: gateway.events, grants: gateway.grants, tasks: gateway.ask, audit: gateway.audit, authorize: gateway.authorize, limits: gateway.limits,
-      /** Spend the one use of an approved held act (the task approval, bound to the act, for the task's doer): true once, false for a second use, another act, another doer or another body. The Flows host spends one before it runs an outward tool a Flow called. */
-      spendApproval: (/** @type {any} */ q) => tasks.useApproval(q),
       model: surfaces.model,
       /** The `{ presence }` option from what a surface sent beside the request (`meta.kernel_proof`), and what that surface must sign for a grants call. The kernel's verifier checks it. */
       /** Any Space by id: this one, another this home hosts, or a remote client with the same gateway API (the chain argument carries no authority across). */
