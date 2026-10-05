@@ -22,7 +22,8 @@
     "export:web:mock": "EXPO_PUBLIC_VYRE_MOCK=1 npm run export:web",
     "lint:ui": "node scripts/check-ui-imports.mjs",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "render:check": "node scripts/render-check.mjs --dist dist-mock"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

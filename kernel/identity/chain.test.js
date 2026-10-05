@@ -14,7 +14,7 @@ async function key(label) {
   const pub = publicKey.export({ format: "der", type: "spki" }).subarray(-32);
   const pubText = Buffer.from(pub).toString("base64url");
   const eid = await C.eidOf(pub);
-  return { label, pub: pubText, eid, sign: m => crypto.sign(null, Buffer.from(m), privateKey), entry: kind => ({ eid, kind, pub: pubText, label }) };
+  return { label, pub: pubText, eid, sign: m => crypto.sign(null, Buffer.from(m), privateKey), entry: kind => ({ eid, kind, pub: pubText }) };
 }
 
 async function person(first, ts = T0) {
@@ -45,7 +45,6 @@ test("chain: any entry adds and removes others, each change signed by something 
   const phone = await key("phone"), laptop = await key("laptop"), tablet = await key("tablet");
   let w = await person(phone);
   w = await step(w, { type: "add", entry: laptop.entry("device") }, phone, T0 + H);
-  assert.deepEqual(w.state.entries.map(e => e.label), ["phone", "laptop"]);
   // the new laptop signs in at once and adds a device
   w = await step(w, { type: "add", entry: tablet.entry("device") }, laptop, T0 + 2 * H);
   // a stranger cannot sign
@@ -318,7 +317,7 @@ async function passkey(label, rp = "app.vyre.run") {
     return Buffer.from(JSON.stringify({ ad: ad.toString("base64url"), cd: cd.toString("base64url"), s: s.toString("base64url") }));
   };
   const sign = (m, o) => assert1(m, o);
-  return { label, pub: pubText, eid, sign, with: o => m => assert1(m, o), entry: () => ({ eid, kind: "device", pub: pubText, alg: "webauthn-es256", rp, label }) };
+  return { label, pub: pubText, eid, sign, with: o => m => assert1(m, o), entry: () => ({ eid, kind: "device", pub: pubText, alg: "webauthn-es256", rp }) };
 }
 
 test("KP-1: a founder key held on the web signs nothing about the list (the probe: add, replace-code, remove), and the paper code still gets a way back", async () => {
@@ -456,4 +455,16 @@ test("NE-1 cares: a long garbage sig on an Ed25519 entry is refused (it can neve
   // the signature still binds the content: another op's body under a's signature is refused
   const swapped = { ...a, entry: other.entry("device") };
   await refused(C.applyOp(w.state, swapped, { now: T0 + 25 * H }), "bad_signature");
+});
+
+test("chain: a label on a device entry is refused where ops are accepted now, and an older chain that holds labels still verifies", async () => {
+  const phone = await key("phone"), laptop = await key("laptop");
+  const labelled = k => ({ ...k.entry("device"), label: k.label });
+  const g = await C.makeGenesis({ kind: "person", entry: labelled(phone), nonce: "label-nonce-1", ts: T0, sign: m => phone.sign(m) });
+  await assert.rejects(C.verifyChain([g], { now: T0 + 1, live: true }), e => e.code === "bad_entry" && /label/.test(e.message), "refused when accepted live");
+  const old = await C.verifyChain([g], { now: T0 + 1 });
+  assert.deepEqual(old.entries.map(e => e.label), ["phone"], "history that holds labels still reads");
+  const clean = await person(phone);
+  const op = await C.makeOp(clean.state, { type: "add", entry: labelled(laptop) }, { by: phone.eid, ts: T0 + H, sign: m => phone.sign(m) });
+  await assert.rejects(C.applyOp(clean.state, op, { now: T0 + H, live: true }), e => e.code === "bad_entry");
 });
