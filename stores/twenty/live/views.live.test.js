@@ -23,7 +23,7 @@ else test("the base Kit's views are the Records' views", { timeout: 300000 }, as
   const isCore = (t) => CORE_TYPES.some((c) => c.name === t.name);
   await store.define({ add_types: [...CORE_TYPES] });
   const r = await store.define({ add_types: base.filter((t) => !isCore(t)), change_types: base.filter(isCore) });
-  assert.ok(r.changes.some((c) => c === "added view project.projects_board"), r.changes.join("; "));
+  assert.ok(r.changes.some((c) => /^(added|changed) view project\.projects_board$/.test(c)), r.changes.join("; "));
   // the board: a kanban view grouped by the stage field with one group per stage, the fields as view fields
   const board = await readView(client, viewId(SPACE, "project", "projects_board"));
   assert.equal(board.type, "KANBAN");

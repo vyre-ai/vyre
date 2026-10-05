@@ -44,7 +44,7 @@ export const TEAM_MEMBER = {
     choice("kind", "Kind", ["person", "assistant"], { required: true }),
     text("role", "Role"),
     text("skills", "Skills (words, comma separated; a Flow that names skills picks among those who have them)"),
-    f("link", "project", "Project"),
+    f("link", "project", "Project"), // any record that holds work (a Kit's matter or trip too), so no target type and no inverse
     f("rich_text", "instructions", "Role instructions (assistants)"),
     text("doing", "Doing right now"),
     f("datetime", "doing_since", "Doing since"),
@@ -90,7 +90,7 @@ export const CONTACT = {
     text("job_title", "Job title"),
     // IANA, e.g. America/Los_Angeles: what their local time is (the assistant's brief and the contact card read it)
     text("time_zone", "Time zone", { format: "time_zone" }),
-    f("link", "organization", "Organization", { to: "organization" }),
+    f("link", "organization", "Organization", { to: "organization", inverse: { name: "contacts", label: "Contacts" } }),
     f("address", "address", "Address"),
     f("rich_text", "notes", "Notes"),
   ],
@@ -119,7 +119,7 @@ export const POINT_KINDS = ["email", "phone"];
 export const CONTACT_POINT = {
   name: "contact_point", label: "Contact point", icon: "IconAt",
   fields: [
-    f("link", "contact", "Contact", { to: "contact", required: true }),
+    f("link", "contact", "Contact", { to: "contact", required: true, inverse: { name: "contact_points", label: "Contact points" } }),
     choice("kind", "Kind", POINT_KINDS, { required: true }),
     text("address", "Address or number", { required: true, unique: true }),
     text("label", "Label"),
@@ -156,8 +156,8 @@ export const COMMUNICATION = {
 export const PARTICIPANT = {
   name: "participant", label: "Participant", icon: "IconUsers",
   fields: [
-    f("link", "communication", "Communication", { to: "communication", required: true }),
-    f("link", "contact", "Contact", { to: "contact" }),
+    f("link", "communication", "Communication", { to: "communication", required: true, inverse: { name: "participants", label: "Participants" } }),
+    f("link", "contact", "Contact", { to: "contact", inverse: { name: "participations", label: "Participations" } }),
     text("address", "Address as written"),
     choice("how", "How", PARTICIPANT_AS, { required: true }),
   ],
@@ -180,10 +180,10 @@ export const TASK = {
     f("datetime", "due", "Due"),
     choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),
     { name: "stage", kind: "text", label: "Stage", owned_by: "kernel" },
-    f("link", "parent", "Part of", { to: "task" }),
-    f("link", "project", "Project", { to: "project" }),
+    f("link", "parent", "Part of", { to: "task", inverse: { name: "subtasks", label: "Subtasks" } }),
+    f("link", "project", "Project", { to: "project", inverse: { name: "tasks", label: "Tasks" } }),
     f("link", "record", "About", { owned_by: "kernel" }),
-    f("link", "contact", "Contact", { to: "contact" }),
+    f("link", "contact", "Contact", { to: "contact", inverse: { name: "tasks", label: "Tasks" } }),
     text("repeat", "Repeats"),
     f("datetime", "repeat_until", "Repeats until"),
     f("number", "priority", "Priority"),
@@ -217,7 +217,7 @@ export const PROJECT = {
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived", "moved"]),
     // the client is the Contact (one Contact per person; Client is a role type linked to it). No practice area here: that is a field of a Kit's own type (R2).
-    f("link", "client", "Client", { to: "contact" }),
+    f("link", "client", "Client", { to: "contact", inverse: { name: "projects", label: "Projects" } }),
     f("actor", "owner", "Owner"),
     f("date", "due", "Due"),
     text("drive_path", "Drive folder"),
@@ -232,7 +232,7 @@ export const SESSION_SUMMARY = {
   name: "session-summary", label: "Session", icon: "IconMessage",
   fields: [
     text("title", "Title"),
-    f("link", "project", "Project", { to: "project" }),
+    f("link", "project", "Project", { to: "project", inverse: { name: "sessions", label: "Sessions" } }),
     text("people", "People"),
     text("agents", "Agents"),
     text("provider", "Provider"),
