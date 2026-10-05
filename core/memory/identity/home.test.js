@@ -40,14 +40,14 @@ test("crypto: a box opens only under its key and its binding; a wrap opens only 
   assert.deepEqual(await unwrapWithDevice(w, dev.privateJwk, "wrap"), key);
   await assert.rejects(() => unwrapWithDevice(w, other.privateJwk, "wrap"), { code: "cannot_open" });
   await assert.rejects(() => unwrapWithDevice(w, dev.privateJwk, "other"), { code: "cannot_open" });
-  const c = wrapWithCode(key, "four words and more", "code");
-  assert.deepEqual(unwrapWithCode(c, "four words and more", "code"), key);
-  assert.throws(() => unwrapWithCode(c, "four words", "code"), { code: "cannot_open" });
+  const c = wrapWithCode(key, "abcd-efgh-ijkl-mnop-qrst-uvwx-23", "code");
+  assert.deepEqual(unwrapWithCode(c, "abcd-efgh-ijkl-mnop-qrst-uvwx-23", "code"), key);
+  assert.throws(() => unwrapWithCode(c, "abcd-efgh-ijkl-mnop-qrst-uvwx-24", "code"), { code: "cannot_open" });
 });
 
 test("an admin or root on the space server cannot read the identity memory: only ciphertext and wrapped keys are there, and nothing they can do with them opens it", async t => {
   const w = world(t);
-  const lease = w.home.create({ devices: [{ label: "phone", publicJwk: w.phone.publicJwk }], recoveryCode: "four words and more", snapshot: SNAP });
+  const lease = w.home.create({ devices: [{ label: "phone", publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23", snapshot: SNAP });
   assert.equal(w.home.save(lease, SNAP), 2);
   // Everything the server holds, read raw as the admin and as root would: no fact, no relation, no table name.
   const raw = everything(w.server.dir);
@@ -146,9 +146,9 @@ test("on a shared server the person says yes once: the phone then answers that s
 
 test("the recovery code unlocks it on the person's own device, and only the right code", async t => {
   const w = world(t);
-  w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "four words and more", snapshot: SNAP }).lock();
-  assert.deepEqual(w.home.load(w.home.unlockWithCode("four words and more")).tables, SNAP.tables);
-  assert.throws(() => w.home.unlockWithCode("four words"), { code: "cannot_open" });
+  w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23", snapshot: SNAP }).lock();
+  assert.deepEqual(w.home.load(w.home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-23")).tables, SNAP.tables);
+  assert.throws(() => w.home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-24"), { code: "cannot_open" });
   const none = world(t);
   none.home.create({ devices: [{ publicJwk: none.phone.publicJwk }], snapshot: SNAP }).lock();
   assert.throws(() => none.home.unlockWithCode("anything"), { code: "not_found" });
@@ -156,7 +156,7 @@ test("the recovery code unlocks it on the person's own device, and only the righ
 
 test("moving the home to the person's own server keeps it: the same ciphertext arrives, still unlocks with the same phone, and the old server keeps only a marker", async t => {
   const w = world(t);
-  const lease = w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "four words and more", snapshot: SNAP });
+  const lease = w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23", snapshot: SNAP });
   w.home.save(lease, SNAP);
   const own = new FileBackend(path.join(w.root, "my-own-tiny-server"), "my server");
   const before = JSON.parse(fs.readFileSync(path.join(w.server.dir, "identity", "ident_alex", "snap-2.json"), "utf8"));
@@ -174,7 +174,7 @@ test("moving the home to the person's own server keeps it: the same ciphertext a
   const { ask, secret } = there.beginUnlock();
   const l = await there.finishUnlock(ask, secret, await approveUnlock(w.phone, ask));
   assert.deepEqual(there.load(l).tables, SNAP.tables);
-  assert.deepEqual(there.load(there.unlockWithCode("four words and more")).state, SNAP.state, "and the recovery code too");
+  assert.deepEqual(there.load(there.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-23")).state, SNAP.state, "and the recovery code too");
   assert.equal(there.save(l, SNAP), 3, "it carries on there");
   // It does not move onto a server that already holds one, and a damaged object stops a move before anything changes.
   assert.throws(() => there.move(own), { code: "exists" });
@@ -195,4 +195,28 @@ test("names are checked: a backend never reaches outside its folder", async t =>
   const w = world(t);
   for (const bad of ["../x", "a/../../x", "/etc/passwd", "a//b", "a b"]) assert.throws(() => w.server.get(bad), { code: "bad_input" }, bad);
   assert.throws(() => new IdentityHome({ id: "../x", backend: w.server }), { code: "bad_input" });
+});
+
+import cryptoNode from "node:crypto";
+import { newCode, codeKey, normalizeCode } from "../../spaces/recovery.js";
+import { argon2id, STRETCH, STRETCH_SALT } from "../../../kernel/identity/stretch.js";
+import { codeLooksRight } from "./home.js";
+
+test("the home's recovery wrap is the identity's own code and stretch, not a second code: the same input makes the identity's recovery key, and the code opens the home in any spelling, with the password when one is set", () => {
+  const code = newCode();
+  assert.ok(codeLooksRight(code));
+  // the identity's recovery key is the Ed25519 key of argon2id(code \n password, STRETCH_SALT, STRETCH): reproduce its public half from the same input the home stretches
+  const seedOf = (c, pw = "") => argon2id(Buffer.from(`${normalizeCode(c)}\n${pw}`), STRETCH_SALT, STRETCH);
+  const PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
+  const pubOf = seed => cryptoNode.createPublicKey(cryptoNode.createPrivateKey({ key: Buffer.concat([PKCS8, seed]), format: "der", type: "pkcs8" })).export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  assert.equal(pubOf(seedOf(code)), codeKey(code).publicKey, "the identity's key is made from the same stretch of the same input");
+  assert.equal(pubOf(seedOf(code, "four plain words")), codeKey(code, "four plain words").publicKey);
+  const key = newKey();
+  const w = wrapWithCode(key, code, "aad");
+  assert.deepEqual(unwrapWithCode(w, code.toUpperCase().replace(/-/g, " "), "aad"), key, "forgiving about case, spaces and dashes, like the identity's");
+  assert.throws(() => unwrapWithCode(w, newCode(), "aad"), { code: "cannot_open" });
+  assert.throws(() => wrapWithCode(key, "four words and more", "aad"), { code: "bad_code" }, "only a code of the identity's shape");
+  const wp = wrapWithCode(key, code, "aad", "four plain words");
+  assert.deepEqual(unwrapWithCode(wp, code, "aad", "four plain words"), key);
+  assert.throws(() => unwrapWithCode(wp, code, "aad"), { code: "cannot_open" }, "with a password the paper alone is not enough");
 });

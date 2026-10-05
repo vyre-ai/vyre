@@ -51,7 +51,7 @@ test("backup: every device in the identity's list opens it, a device added later
   const server = new FileBackend(tmp(t));
   const phone = newDeviceKey(), laptop = newDeviceKey(), fresh = newDeviceKey();
   const home = new IdentityHome({ id: "me", backend: server });
-  const lease = home.create({ devices: [{ label: "phone", publicJwk: phone.publicJwk }], recoveryCode: "correct horse battery" });
+  const lease = home.create({ devices: [{ label: "phone", publicJwk: phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23" });
   const imkOf = l => Buffer.from(l.key());
   const onPhone = await Backup.create({ backend: server, identity: "me", imk: imkOf(await home.unlockWithDevice(phone)) });
   await onPhone.run([file("a.txt", "from the phone")]);
@@ -63,10 +63,10 @@ test("backup: every device in the identity's list opens it, a device added later
   await assert.rejects(() => home.unlockWithDevice(fresh), { code: "unknown_key" });
   // everything is lost but the code: a new device restores from it
   const got = new Map();
-  const restored = await (await Backup.open({ backend: server, identity: "me", imk: imkOf(home.unlockWithCode("correct horse battery")) })).restore((e, bytes) => got.set(e.name, bytes.toString()));
+  const restored = await (await Backup.open({ backend: server, identity: "me", imk: imkOf(home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-23")) })).restore((e, bytes) => got.set(e.name, bytes.toString()));
   assert.deepEqual([...got.keys()].sort(), ["a.txt", "b.txt"]);
   assert.equal(restored.missing.length, 0);
-  assert.throws(() => home.unlockWithCode("wrong words"), /cannot open/);
+  assert.throws(() => home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-24"), /cannot open/);
 });
 
 test("backup: two runs at once do not lose data (one run at a time, here and across devices), and the manifest is written only when every chunk is on the server", async t => {

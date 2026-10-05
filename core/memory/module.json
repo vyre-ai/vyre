@@ -108,6 +108,8 @@
       { "name": "memory.space.file", "reach": "anyone", "effect": "write" },
       { "name": "memory.space.recall", "reach": "anyone", "effect": "read" },
       { "name": "memory.space.retire", "reach": "anyone", "effect": "write" },
+      { "name": "memory.upgrade.plan", "reach": "modules", "effect": "read" },
+      { "name": "memory.upgrade.move", "reach": "modules", "effect": "write" },
       { "name": "memory.personal.status", "reach": "person", "effect": "read" },
       { "name": "memory.personal.set-cap", "reach": "person", "effect": "write" },
       { "name": "memory.backup.status", "reach": "person", "effect": "read" },

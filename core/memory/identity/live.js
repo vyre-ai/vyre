@@ -122,10 +122,10 @@ export class IdentityLive {
 
   /**
    * Seal what the database holds now: a home made for these devices, the rows moved into it and off the disk. The person's own act.
-   * @param {{ devices: { label?: string, publicJwk: any }[], recoveryCode?: string, state?: any }} o
+   * @param {{ devices: { label?: string, publicJwk: any }[], recoveryCode?: string, recoveryPassword?: string, state?: any }} o
    */
-  enroll({ devices, recoveryCode, state = {} }) {
-    const lease = this.home.create({ devices, ...(recoveryCode ? { recoveryCode } : {}), snapshot: { v: 1, tables: exportTables(this.db), state } });
+  enroll({ devices, recoveryCode, recoveryPassword = "", state = {} }) {
+    const lease = this.home.create({ devices, ...(recoveryCode ? { recoveryCode, recoveryPassword } : {}), snapshot: { v: 1, tables: exportTables(this.db), state } });
     relocate(this.db);
     lease.lock();
     this.lease = null;
@@ -186,6 +186,9 @@ export class IdentityLive {
     this.#open(await this.home.unlockWithDevice(device));
     return this.status();
   }
+
+  /** Whether facts changed since the last seal (the upgrade seals first). */
+  unsaved() { return Boolean(this.lease && this.lease.open && this.saved !== digest(exportTables(this.db))); }
 
   /** Seal what changed since the last time, as ciphertext. */
   save() {

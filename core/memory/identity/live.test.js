@@ -67,7 +67,7 @@ test("the identity memory is sealed on the server: root finds only ciphertext (a
   assert.match(JSON.stringify((await ask("memory.profile", {})).data), /Lisbon/);
   assert.ok(rootSees(w.root).includes("Lisbon"), "before sealing the disk holds it in the clear (that is what sealing is for)");
 
-  const sealed = await ask("memory.identity.enroll", { devices: [{ label: "phone", publicJwk: device.publicJwk }], recovery_code: "four words and more" });
+  const sealed = await ask("memory.identity.enroll", { devices: [{ label: "phone", publicJwk: device.publicJwk }], recovery_code: "abcd-efgh-ijkl-mnop-qrst-uvwx-23" });
   assert.equal(sealed.error, undefined, JSON.stringify(sealed));
   assert.deepEqual([sealed.data.kept, sealed.data.unlocked, sealed.data.devices, sealed.data.recovery_code], ["here", false, 1, true]);
   for (const s of CLEAR) assert.ok(!rootSees(w.root).includes(s), `${s} is readable on the server`);

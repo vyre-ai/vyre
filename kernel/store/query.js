@@ -1,6 +1,7 @@
 // kernel/store/query.js: filter, sort, keyset paging and aggregation over plain rows. Shared by the in-memory reference
 // store and by the gateway (which aggregates only rows it has authorized, because a store is never trusted to hide rows).
 import { canonical } from "../core/canonical.js";
+import { toB64u, fromB64u, utf8, text } from "../../lib/databox.js";
 
 const eq = (/** @type {any} */ a, /** @type {any} */ b) => (a === b || (typeof a === "object" && a !== null && canonical(a) === canonical(b)));
 const cmp = (/** @type {any} */ a, /** @type {any} */ b) => {
@@ -50,7 +51,7 @@ export function sorted(/** @type {any[]} */ rows, /** @type {any[] | undefined} 
 }
 
 const keyOf = (/** @type {any} */ r, /** @type {any[] | undefined} */ sort) => [...(sort || []).map(k => fieldOf(r, k.field)), r.id];
-export const encodeCursor = (/** @type {any} */ r, /** @type {any} */ sort) => Buffer.from(JSON.stringify(keyOf(r, sort))).toString("base64url");
+export const encodeCursor = (/** @type {any} */ r, /** @type {any} */ sort) => toB64u(utf8(JSON.stringify(keyOf(r, sort))));
 
 /**
  * Keyset page: rows strictly after the cursor's position in the total order. Inserts and removals between pages never repeat or skip a row. It takes any iterable of rows and
@@ -61,7 +62,7 @@ export function page(/** @type {Iterable<any>} */ all, /** @type {any} */ spec) 
   const keys = [...(sort || []), { field: "id", dir: "asc" }];
   /** @type {any[] | null} */ let key = null;
   if (spec.page.cursor) {
-    try { key = JSON.parse(Buffer.from(spec.page.cursor, "base64url").toString()); } catch { key = null; }
+    try { key = JSON.parse(text(fromB64u(spec.page.cursor))); } catch { key = null; }
     if (!Array.isArray(key) || key.length !== keys.length) return { error: "invalid cursor" };
   }
   const order = (/** @type {any} */ a, /** @type {any} */ b) => { for (const k of keys) { const c = cmp(fieldOf(a, k.field), fieldOf(b, k.field)); if (c) return k.dir === "desc" ? -c : c; } return 0; };

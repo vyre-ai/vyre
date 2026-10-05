@@ -34,6 +34,8 @@ import { register as registerSite } from "./site.js";
 import { createKernelGate } from "./kernel-gate.js";
 import { createMoves, slugOf } from "./move.js";
 import { Backup, noBackup } from "./backup/index.js";
+import { planOf, carry } from "./upgrade.js";
+import { spacesTransport } from "./identity/spaces-transport.js";
 import { usageOf } from "../../kernel/store/sealed.js";
 import { whoStore, current as whoNow } from "./who.js";
 import { mergeSpace, spaceHits, spaceOnlyAnswer } from "./iq/space.js";
@@ -1259,13 +1261,13 @@ export default {
     ctx.tool("memory.backup.restore", {
       effect: "write",
       description: "Bring the encrypted backup back onto this device: every file and row file in the newest backup is rebuilt from its chunks, checked by hash, and written under `to` (default: a new folder in this home's restore folder), each at its own relative path. This device's key opens it; on a new device with no key yet, pass the recovery code. Returns { rev, restored, missing: [{ name, why }], to }. A missing or damaged chunk is named, never skipped.",
-      input: { type: "object", properties: { to: { type: "string" }, recovery_code: { type: "string" } } },
+      input: { type: "object", properties: { to: { type: "string" }, recovery_code: { type: "string" }, recovery_password: { type: "string" } } },
       run: async (input, extra = {}) => {
         if (!reader(extra.caller)) throw denied("restoring the backup is the person's own act");
         if (!bkCfg || !identity) throw Object.assign(new Error("there is no team server to restore from"), { code: "not_found" });
         const be = new FileBackend(String(bkCfg.home), String(bkCfg.name || "the team server"));
         let imk;
-        if (input.recovery_code) imk = Buffer.from(identity.home.unlockWithCode(String(input.recovery_code)).key());
+        if (input.recovery_code) imk = Buffer.from(identity.home.unlockWithCode(String(input.recovery_code), String(input.recovery_password || "")).key());
         else { const dev = JSON.parse(fs.readFileSync(String(bkCfg.deviceKey), "utf8")); const l = await identity.home.unlockWithDevice(dev); imk = Buffer.from(l.key()); l.lock(); }
         try {
           const b = await Backup.open({ backend: be, identity: String(bkCfg.id), imk });
@@ -1281,6 +1283,28 @@ export default {
     });
     const bkTimer = bkCfg ? setInterval(() => { bkRun().catch(() => {}); }, Math.max(60_000, Number(bkCfg.every_ms) || 60 * 60 * 1000)) : null;
     if (bkTimer && typeof bkTimer.unref === "function") bkTimer.unref();
+    // ---- the Personal to My Cloud upgrade (upgrade.js): the spaces module asks for a plan (read only, counts and blockers) and then for the move; module callers only
+    const upgradeBackend = () => (idCfg && idCfg.home ? new FileBackend(String(idCfg.home)) : null);
+    ctx.tool("memory.upgrade.plan", {
+      effect: "read", callers: ["module"],
+      description: "What the person's sealed memory would carry to their My Cloud server: { counts: { objects, bytes }, blockers }. Read only; the counts go into the hash the person approves.",
+      input: { type: "object", properties: {} },
+      run: async () => planOf(upgradeBackend(), String(idCfg && idCfg.id || ""), { unsaved: () => Boolean(identity && identity.unsaved()) }),
+    });
+    ctx.tool("memory.upgrade.move", {
+      effect: "write", callers: ["module"],
+      description: "Carry the person's sealed memory (the identity home, the Personal backup, the encrypted personal records: ciphertext, keys unchanged) to their per-member storage on the My Cloud space `to`, each object checked by hash after it lands. Answers { objects, bytes, skipped, failed }; a failed object is named and does not stop the others.",
+      input: { type: "object", required: ["to"], properties: { to: { type: "string" } } },
+      run: async (input) => {
+        const backend = upgradeBackend();
+        if (!backend) return { objects: 0, bytes: 0, skipped: 0, failed: [] };
+        if (identity && identity.unlocked) { try { identity.save(); } catch { /* the autosave seals it too */ } }
+        // literal tool names (the reach scan reads a computed one as an unreviewed call)
+        const storage = { "spaces.storage.put-if": (/** @type {any} */ i) => ctx.call("spaces.storage.put-if", i), "spaces.storage.get": (/** @type {any} */ i) => ctx.call("spaces.storage.get", i),
+          "spaces.storage.list": (/** @type {any} */ i) => ctx.call("spaces.storage.list", i), "spaces.storage.delete": (/** @type {any} */ i) => ctx.call("spaces.storage.delete", i) };
+        return carry(backend, spacesTransport((tool, i) => /** @type {any} */ (storage)[tool](i), String(input.to)), String(idCfg.id));
+      },
+    });
     // ---- the encrypted personal records (kernel/store/sealed.js, team/0.3/DESIGN-personal-records.md): a Personal person's Planner, reminders, notes and to-dos, ciphertext on this team server beside the identity
     // home. The status is readable while it is locked (the storage is only counted); the per-member cap is the space owner's to change and lives with this module.
     const capKey = ctx.store.db.prepare("SELECT v FROM memory_meta WHERE k = 'personal_cap_bytes'");
@@ -1321,7 +1345,7 @@ export default {
       run: async (input, extra = {}) => {
         if (!identity) throw noIdentity();
         if (!reader(extra.caller)) throw denied("sealing the identity memory is the person's own act");
-        const r = identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code) } : {}) });
+        const r = identity.enroll({ devices: input.devices, ...(input.recovery_code ? { recoveryCode: String(input.recovery_code), recoveryPassword: String(input.recovery_password || "") } : {}) });
         ctx.events.emit("memory.sealed", { kept: r.kept });   // about.md must stop carrying the person's facts in the clear
         return r;
       },
