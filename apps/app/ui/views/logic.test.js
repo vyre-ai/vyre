@@ -217,6 +217,8 @@ test("a record's reveal and fill go to the box held for the owner's yes: the pag
   assert.match(page, /Hidden from AI; your assistant sees a placeholder/);
   const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
   assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal"\]\)/);
+});
+
 test("a type with several stored views of one kind: the first is the default, a name picks another", () => {
   const matter = def("matter");
   const t = { ...matter, views: [
