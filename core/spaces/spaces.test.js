@@ -1448,15 +1448,16 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
     spaces: { hosts: () => false },
   });
   const d = await device(t, { kernelFor });
+  const person = { kernelFacts: { kind: "device", device_key_id: "d1", person: ME, path: "direct" } };
   await pk.gateway.records.define(chainOf(pk), { add_types: [CONTACT] });
   for (const n of ["Ada", "Bo", "Cy"]) await pk.gateway.records.create(chainOf(pk), "contact", { name: n });
-  const plan = await d.ok("spaces.upgrade.plan", { to: CLOUD });
+  const plan = await d.ok("spaces.upgrade.plan", { to: CLOUD }, "cli", person);
   assert.deepEqual([plan.counts.total, plan.blockers, plan.hash.length], [3, [], 43]);
-  assert.equal((await d.call("spaces.upgrade.run", { to: CLOUD, plan_hash: "x".repeat(43) })).error?.code, "plan_changed", "an approval for another plan is refused before anything");
-  const ask = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash });
+  assert.equal((await d.call("spaces.upgrade.run", { to: CLOUD, plan_hash: "x".repeat(43) }, "cli", person)).error?.code, "plan_changed", "an approval for another plan is refused before anything");
+  const ask = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", person);
   assert.equal(ask.needs_proof, true, "no proof: the device is asked for the person's approval of exactly this plan");
   const proof = { payload_hash: ask.request.payload_hash, nonce: "n1" };
-  const done = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { kernel_proof: proof });
+  const done = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { ...person, kernel_proof: proof });
   assert.deepEqual([done.upgraded, done.to, done.moved.records, done.notMoved, done.frozen], [true, CLOUD, { contact: 3 }, [], true]);
   assert.equal((await ck.gateway.records.query(chainOf(ck), "contact", { page: { limit: 10 } })).rows.length, 3, "the records are in My Cloud's Twenty");
   await d.ok("spaces.identity.create", { name: "upgrader" });
