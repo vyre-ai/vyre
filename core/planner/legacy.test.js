@@ -53,7 +53,7 @@ async function counts(/** @type {any} */ w, /** @type {any} */ K) {
   const R = w.k.gateway.records;
   const n = async (/** @type {string} */ type) => (await R.query(w.owner, type, { page: { limit: 200 } })).rows.length;
   return { reminder: await n("reminder"), note: await n("note"), event: (await R.query(w.owner, "event", { page: { limit: 200 } })).rows.filter((/** @type {any} */ r) => r.data.source === "vyre").length,
-    task: (await R.query(w.owner, "task", { page: { limit: 200 } })).rows.filter((/** @type {any} */ t) => { try { return Boolean(JSON.parse(t.data.planner || "null")?.legacy_id); } catch { return false; } }).length, planner_firing: await n("planner_firing"), planner_state: await n("planner_state") };
+    task: (await K.records.query(K.serviceChain(), "task", { page: { limit: 200 } })).rows.filter((/** @type {any} */ t) => { try { return Boolean(JSON.parse(t.data.planner || "null")?.legacy_id); } catch { return false; } }).length, planner_firing: await n("planner_firing"), planner_state: await n("planner_state") };
 }
 
 test("legacy: a planner with its own tables starts, carries what it held into records, and the tables stay", async t => {
