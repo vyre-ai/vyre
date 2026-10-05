@@ -21,10 +21,10 @@ const urn = (/** @type {string} */ space, /** @type {string} */ type, id = "new"
  * @type {Record<string, (space: string, a: any, b?: any) => { action: string, resource: string, input: any }>}
  */
 const CALLS = {
-  create: (s, i) => ({ action: "grants.create", resource: urn(s, "grant"), input: i }),
+  create: (s, i) => ({ action: i && !i.parent && i.subject && i.subject.kind === "actor" && i.subject.actor && ["agent", "service", "automation"].includes(i.subject.actor.kind) ? "grants.member" : "grants.create", resource: urn(s, "grant"), input: i }),
   revoke: (s, id, reason) => ({ action: "grants.revoke", resource: urn(s, "grant", id), input: { id, reason } }),
   narrow: (s, id, patch) => ({ action: "grants.narrow", resource: urn(s, "grant", id), input: { id, patch } }),
-  setRole: (s, m) => ({ action: "grants.role", resource: urn(s, "member", m.person), input: m }),
+  setRole: (s, m) => ({ action: m && m.role === "owner" ? "grants.role" : "grants.member", resource: urn(s, "member", m.person), input: m }),
   ruleSet: (s, r) => ({ action: "rules.set", resource: urn(s, "rule"), input: r }),
   ruleRemove: (s, id) => ({ action: "rules.remove", resource: urn(s, "rule", id), input: { id } }),
   ruleEnable: (s, id) => ({ action: "rules.enable", resource: urn(s, "rule", id), input: { id } }),
@@ -34,7 +34,7 @@ const CALLS = {
   transferOwner: (s, t) => ({ action: "grants.role", resource: urn(s, "member", t.to), input: { transfer: { to: t.to, demote_to: t.demote_to || "admin" } } }),
   removeMember: (s, m) => ({ action: "grants.role", resource: urn(s, "member", m.person), input: { remove: m.person } }),
   removeActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { remove_actor: actor } }),
-  addActor: (s, actor) => ({ action: "grants.role", resource: urn(s, "member", actor.id), input: { actor } }),
+  addActor: (s, actor) => ({ action: "grants.member", resource: urn(s, "member", actor.id), input: { actor } }),
   offer: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer"), input: o }),
   unoffer: (s, id) => ({ action: "grants.unoffer", resource: urn(s, "offer", id), input: { revoke: id } }),
   lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null } } }),

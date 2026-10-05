@@ -21,14 +21,14 @@ async function rig({ signer } = {}) {
   const device = createRemoteKernel({ space: SPACE, transport, clock, ...(signer ? { signer } : {}) });
   return { k, server, transport, device };
 }
-const role = { person: BOB, role: "member" };
+const role = { person: BOB, role: "owner" }; // a role below owner needs no proof; making an owner is the presence act these tests drive
 
 test("presence over the wire: with no proof the home answers needs_presence with its challenge; the device signs it and the same call goes through", async () => {
   /** the device's presence key: signs the challenge's payload hash with a fresh nonce */
   const signer = async ch => ({ presence: { payload_hash: ch.payload_hash, nonce: "n_" + Math.random(), home: ch.home, challenge: ch.nonce } });
   const { device, k } = await rig({ signer });
   await device.gateway.grants.setRole({}, role);
-  assert.equal(await k.gateway.members.roleOf({ kind: "person", id: BOB, space: SPACE }), "member");
+  assert.equal(await k.gateway.members.roleOf({ kind: "person", id: BOB, space: SPACE }), "owner");
 });
 
 test("the challenge names the call, the space, this home and a one-use nonce, and the peer session alone is not presence", async () => {
@@ -46,7 +46,7 @@ test("a proof is refused with no nonce, another call's nonce, a used nonce and a
   const ask = async (...args) => (await device.gateway.grants.setRole({}, ...args).then(() => null, x => x)).challenge;
   const good = (hash, nonce) => ({ payload_hash: hash, nonce: "p" + Math.random(), home: "home_x", challenge: nonce });
   const ch = await ask(role);
-  const other = await ask({ person: "per_carol", role: "member" });
+  const other = await ask({ person: "per_carol", role: "owner" });
   assert.equal((await device.call("grants.setRole", [role, { presence: good(ch.payload_hash, other.nonce), challenge: other.nonce }]).then(() => null, e => e)).code, "bad_challenge", "another call's nonce");
   assert.equal((await device.call("grants.setRole", [role, { presence: good(ch.payload_hash, "nope"), challenge: "nope" }]).then(() => null, e => e)).code, "bad_challenge", "a nonce this home never issued");
   const fresh = await ask(role);

@@ -22,7 +22,7 @@ async function rig({ signer } = {}) {
   return { k, server, transport, device };
 }
 
-const role = { person: BOB, role: "member" };
+const role = { person: BOB, role: "owner" }; // a role below owner needs no proof; making an owner is the presence act these tests drive
 // ---- reviewer-2 probe on b67e0a20f: does the home's kernel refuse a proof whose signed home or challenge is not this home's or this challenge's? (drop into kernel/remote/) ----
 test("RV2-RP1: a proof naming another home, another challenge, or neither is refused by the home, not only by the device's own signer", async () => {
   const out = {};
