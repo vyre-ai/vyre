@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(spaces): the home Space is its owner's by definition. `spaces.devices.enrolled` and the list a device is first enrolled with (`kernelSpacesOf`) no longer depend on the kernel's membership table naming the owner: a home whose table did not (awbox: the kernel owner was an identity the Space's grants never adopted) wrote an empty enrolment list for every new device, so the kernel gave a confirmed paired device no person chain and records.* answered "not from a signed-in person". Found by running app-wire's walk against a copy of awbox's home.
+
 - test(wink): a typed-paired, acked device defines a record type (a real DefineDiff) over its own paired session and through the daemon's device facts (callerFacts), on the kernel; records.me answers the owner. Guards the one rule (a confirmed paired device is the person; a change of types needs no extra proof from it).
 
 - feat(cli): `vyre phone` and `vyre relay pair` say, after a pairing by the relay's offer, "This device can't sign in as you until you confirm it from Devices." (that way of pairing has no owner confirmation; the typed code confirms the device itself). 0.3.1 moves them to the typed code and removes the offer path (team/BACKLOG.md).
