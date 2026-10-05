@@ -164,7 +164,8 @@ test("runner: a run started by outside content is tainted, and its outward step 
   const w = await world();
   const sends = [];
   w.cat.actions["email.send"] = { risk: "outward.send", label: "Send an email" };
-  const w2 = await world({ ports: { call: async (c, a, r, input) => { sends.push(input); return { sent: true }; } } });
+  /** @type {any[]} */ const opts = [];
+  const w2 = await world({ ports: { call: async (c, a, r, input, o) => { sends.push(input); opts.push(o); return { sent: true }; } } });
   w2.kernel.rules.push({ match: i => i.action === "email.send" && !i.approval, effect: "allow", reason: "a standing yes" }); // authorize allows (the real kernel asks for every outward act otherwise)
   const { id } = await install(w2, flowOf([{ id: "m", kind: "call", action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com", body: "hi" } }]));
   w2.kernel.inbound("payment.received", { n: 1 }, "member");
@@ -178,6 +179,12 @@ test("runner: a run started by outside content is tainted, and its outward step 
   w2.kernel.completeTask(card.id, { outcome: "approved" });
   await settle(w2);
   assert.equal(sends.length, 2);
+  // G-2: the approved send is handed its approval and the bind of exactly what was approved, so the act's own gate spends the one use; the member's unheld send carried none
+  assert.equal(opts[0].approval, undefined);
+  assert.equal(opts[1].approval, card.id, "the approval rides with the act");
+  const { actBind } = await import("../seal/uses.js");
+  assert.equal(opts[1].bind, actBind({ action: "email.send", resource: `vyre://${SPACE}/mail/*`, input: { to: "a@example.com", body: "hi" } }));
+  assert.equal(card.form.bind, opts[1].bind, "and it is the bind the card recorded");
   const runs = await w2.runner.listRuns({ flow: id });
   assert.equal(runs.filter(r => r.tainted).length, 1);
 });

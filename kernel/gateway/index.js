@@ -207,7 +207,9 @@ export function createGateway(cfg) {
   const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
 
   return Object.freeze({
-    authorize: authorizer.authorize,
+    // AT-2: `peek` (decide an approved act's check without spending its one use) is the Flows runner's alone, through authorizePeek on the home's own gateway; a module's handle gets this one, which drops it.
+    authorize: (/** @type {any} */ i) => { if (i && typeof i === "object" && "peek" in i) { const { peek: _p, ...rest } = i; return authorizer.authorize(rest); } return authorizer.authorize(i); },
+    authorizePeek: (/** @type {any} */ i) => authorizer.authorize({ ...i, peek: true }),
     /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
     moves,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */

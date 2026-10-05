@@ -47,9 +47,14 @@ test("another body, another doer, an unapproved task and a peek that spends noth
   assert.notEqual((await az(doer, { approval: id, bind: "bind-OTHER" })).effect, "allow", "another body (another request) is another act");
   assert.notEqual((await az(other, { approval: id, bind: "bind-B" })).effect, "allow", "another doer cannot spend it");
   assert.notEqual((await az(owner, { approval: id, bind: "bind-B" })).effect, "allow", "nor can the person who approved it: it is the doer's");
-  assert.equal((await az(doer, { approval: id, bind: "bind-B", peek: true })).effect, "allow", "a peek decides and spends nothing");
-  assert.equal((await az(doer, { approval: id, bind: "bind-B", peek: true })).effect, "allow", "so it can be asked again");
-  assert.equal((await az(doer, { approval: id, bind: "bind-B" })).effect, "allow", "the one real use");
+  const peek = (/** @type {any} */ chain, /** @type {any} */ extra) => gw.authorizePeek({ chain, action: "service.call", resource: RES, ...extra });
+  assert.equal((await peek(doer, { approval: id, bind: "bind-B" })).effect, "allow", "a peek decides and spends nothing");
+  assert.equal((await peek(doer, { approval: id, bind: "bind-B" })).effect, "allow", "so it can be asked again");
+  // AT-2: peek is the Flows runner's alone: the gateway a module is handed drops it, so `peek: true` there spends like any other call
+  assert.equal((await az(doer, { approval: id, bind: "bind-B", peek: true })).effect, "allow", "the one real use, though it said peek");
+  assert.notEqual((await az(doer, { approval: id, bind: "bind-B", peek: true })).effect, "allow", "spent: a module cannot peek its way to a second act");
+  const id3 = await approved("bind-P");
+  assert.equal((await az(doer, { approval: id3, bind: "bind-P" })).effect, "allow");
   assert.notEqual((await az(doer, { approval: id, bind: "bind-B" })).effect, "allow", "and no second");
   assert.notEqual((await az(doer, { approval: "task_nobody", bind: "bind-B" })).effect, "allow", "no such approval");
   // another resource under the same approval is another act
