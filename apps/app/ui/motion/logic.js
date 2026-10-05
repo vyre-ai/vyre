@@ -48,6 +48,17 @@ export function pressScale(reduced, depth = 0.97) {
 }
 
 /**
+ * How a press feels on this platform. Android gets the system ripple (a Material row has no scale and no pressed fill: the ripple is the feedback), every other platform keeps the
+ * spring and the pressed colour. `color` is the ripple's colour; none given keeps the spring on Android too.
+ * @param {string} os Platform.OS @param {string | undefined} color
+ * @returns {{ ripple: { color: string, foreground: boolean } | null, scale: boolean, pressedFill: boolean }}
+ */
+export function pressFeel(os, color) {
+  if (os === "android" && color) return { ripple: { color, foreground: true }, scale: false, pressedFill: false };
+  return { ripple: null, scale: true, pressedFill: true };
+}
+
+/**
  * A loading skeleton: a steady block that shimmers. Reduced motion stops the shine and leaves the block still.
  * @returns {{ shimmer: boolean, period: number }}
  */

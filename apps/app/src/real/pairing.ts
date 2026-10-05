@@ -165,6 +165,21 @@ export const plainName = (n: string): string => String(n).replace(/[\u0000-\u001
 
 const toB64u = (b: Uint8Array): string => { let s = ""; for (const x of b) s += String.fromCharCode(x); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
 
+/**
+ * A device with no box of its own was just paired by a typed code: keep the pairing, mark the server as the way it reaches its box, open its paired person session (presence.person.start-paired, signed with
+ * the presence key it reported at pairing) and reconnect over the relay, so the next call carries the session.
+ */
+export async function afterPaired(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
+  const { savePairing } = await import("../api/relay");
+  await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
+  (await import("./peer")).usePeer(true);
+  // A browser the owner has not trusted yet cannot start its session: the pairing stays, the session starts (renewSession) once the owner trusts it, and Devices says so.
+  await openPairedSession(r).catch(() => {});
+  const { disconnect, connect } = await import("../api/box");
+  await disconnect().catch(() => {});
+  await connect().catch(() => {});
+}
+
 /** After the yes: this device's person session (presence.person.pair-challenge, then start-paired), kept for the box so every request carries it. */
 async function openPairedSession(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
   const { startPaired, channelCall } = await import("../auth/paired");
