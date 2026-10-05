@@ -30,7 +30,7 @@ export function sealerPresence(sealer) {
  */
 export function grantProofVerifier(presence) {
   return async (proof, ctx) => {
-    const m = /^(grants|rules|project)\.([a-z_]+)$/.exec(String(ctx && ctx.action));
+    const m = /^(grants|rules|project|space)\.([a-z_]+)$/.exec(String(ctx && ctx.action));
     if (!m || !ctx.input_hash) return { ok: false, reason: "no_proof" };
     // A standing-rule act is signed as a grant act named `grant.rule_<verb>`: the sealing process accepts only task and grant acts, and a rule is one (it changes what is allowed). Moving a project out
     // (`project.move_out`) is a grant-class act too: it is signed as `grant.move_out`.

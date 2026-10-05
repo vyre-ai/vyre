@@ -81,6 +81,9 @@
     "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
+  {
+    "name": "spaces.brief", "effect": "read", "reach": "modules"
+  },
    {
     "name": "spaces.tier", "effect": "read",
     "reach": "modules"
@@ -91,6 +94,46 @@
    },
    {
     "name": "spaces.personal-host.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.receipt", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.plan", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.run", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.pull", "effect": "write",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.pull-check-source", "effect": "read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.pull-sign", "effect": "write",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.evidence", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.receive", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.receipt", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.finish", "effect": "write",
     "reach": "person"
    },
    {

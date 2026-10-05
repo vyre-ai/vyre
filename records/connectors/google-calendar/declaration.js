@@ -13,7 +13,7 @@ const eventBody = {
 export default defineConnector({
   id: "google-calendar", label: "Google Calendar", version: 1,
   base_url: "https://www.googleapis.com",
-  auth: { type: "oauth", authorize_uri: "https://accounts.google.com/o/oauth2/v2/auth", token_uri: "https://oauth2.googleapis.com/token", scopes: [READ, EVENTS], also: ["service-account"] },
+  auth: { type: "google", scopes: [READ, EVENTS] },
   rate: { per_minute: 600, retry_after: true },
   // Google Calendar takes no idempotency header: a repeated insert is stopped by the ledger and the read-back, not by the service.
   ops: {
