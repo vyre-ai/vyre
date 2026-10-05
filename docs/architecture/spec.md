@@ -329,7 +329,7 @@ Declared by `<home>/.vyre/project.json`:
   "org": "Rivera Studio",
   "workspaces": ["../juniper-site"],
   "threads": ["<claude session id>"],
-  "people": [{ "name": "Dana Reyes", "email": "dana@juniperstudio.com" }],
+  "people": [{ "name": "Dana Reyes", "email": "dana@juniperstudio.example" }],
   "watchers": ["juniper-invoices"]
 }
 ```

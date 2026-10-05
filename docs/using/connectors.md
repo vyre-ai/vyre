@@ -170,7 +170,7 @@ through domain-wide delegation. Store its JSON key as a `note` or `secret` vault
 address it acts as:
 
 ```
-vyre connect add google work --email alex@juniperstudio.com --item juniper-google-sa --dwd
+vyre connect add google work --email alex@juniperstudio.example --item juniper-google-sa --dwd
 ```
 
 **Test** asks Google for each scope and lists which were refused. For a service account, the

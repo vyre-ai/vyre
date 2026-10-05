@@ -114,12 +114,12 @@ function fakes(dir, start) {
   fs.writeFileSync(state, start);
   const node = ip => JSON.stringify({ BackendState: "Running", TUN: true, CertDomains: [HOST],
     Self: { ID: "nAlexBox1CNTRL", HostName: "alex-box", DNSName: HOST + ".", TailscaleIPs: ip === "127.0.0.1" ? [ip] : [ip, "fd7a:115c:a1e0::1"], UserID: 1 },
-    User: { 1: { LoginName: "alex@juniperstudio.com" } },
+    User: { 1: { LoginName: "alex@juniperstudio.example" } },
     Peer: {
       mac: { ID: "n2", HostName: "alex-mbp", DNSName: "alex-mbp.tail0000.ts.net.", OS: "macOS", Online: true, UserID: 1, TailscaleIPs: ["100.64.0.2"] },
       phone: { ID: "n3", HostName: "alex-iphone", DNSName: "alex-iphone.tail0000.ts.net.", OS: "iOS", Online: true, UserID: 1, TailscaleIPs: ["100.64.0.3"] },
     } });
-  const whois = JSON.stringify({ Node: { Name: "alex-mbp.tail0000.ts.net.", StableID: "n2", Tags: [] }, UserProfile: { LoginName: "alex@juniperstudio.com" } });
+  const whois = JSON.stringify({ Node: { Name: "alex-mbp.tail0000.ts.net.", StableID: "n2", Tags: [] }, UserProfile: { LoginName: "alex@juniperstudio.example" } });
   const ts = path.join(dir, "tailscale");
   fs.writeFileSync(ts, `#!/bin/sh
 S=$(cat '${state}' 2>/dev/null)
@@ -217,7 +217,7 @@ async function deck() {
   fs.writeFileSync(path.join(mcpDir, "juniper-docs.mjs"), FAKE_MCP);
   for (const [tool, input] of /** @type {[string, any][]} */ ([
     ["mcp.add", { name: "juniper-docs", transport: "stdio", command: "node", args: [path.join(mcpDir, "juniper-docs.mjs")], scope: { projects: ["juniper-legal"], agents: "*" } }],
-    ["google.add", { name: "juniper", email: "alex@juniperstudio.com", auth: { type: "oauth", item: "juniper-google" } }],
+    ["google.add", { name: "juniper", email: "alex@juniperstudio.example", auth: { type: "oauth", item: "juniper-google" } }],
   ])) {
     const x = await call(tool, input, { root: deckWorld.home, caller: "cli" });
     if (x.error) log(`docs-shots: ${tool}: ${x.error.message}`);
@@ -275,7 +275,7 @@ async function glassWorld() {
   const bins = fakes(path.join(home, "bin"), "up");
   const work = path.join(home, "alex", "Work");
   const files = {
-    "juniper-site/README.md": "# Juniper Studio site\n\nThe intake form sits above the fold on juniperstudio.com.\n",
+    "juniper-site/README.md": "# Juniper Studio site\n\nThe intake form sits above the fold on juniperstudio.example.\n",
     "juniper-site/src/intake.tsx": "export function Intake() { return null; }\n",
     "juniper-intake/routes.json": "{ \"leads\": \"crm\", \"summary\": \"07:00\" }\n",
     "northwind/invoices-week-35.csv": "date,amount\n2026-08-28,412.50\n2026-08-29,188.00\n",

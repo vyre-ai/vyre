@@ -318,7 +318,7 @@ npx wrangler pages deploy docs-site --project-name vyre-docs --branch main
 ## Style
 
 - No em dash and no section-sign character, anywhere. Use a colon, a comma, or two sentences. Write "Section 5.1" for spec references. The check enforces this.
-- Examples use the sample world only: the user alex, the firms Juniper Studio and Northwind Bakery, the assistant and agents juno and kit, the domains `example.com`, `juniperstudio.com` and `*.example`, names like `alex.vyre.run`, and addresses from `192.0.2.x` or `100.64.x.x`. The check enforces names, emails and addresses.
+- Examples use the sample world only: the user alex, the firms Juniper Studio and Northwind Bakery, the assistant and agents juno and kit, the domains `example.com`, `juniperstudio.example` and `*.example`, names like `alex.vyre.run`, and addresses from `192.0.2.x` or `100.64.x.x`. The check enforces names, emails and addresses.
 - Plain, direct English, in the second person. Short paragraphs. Concrete commands in fenced blocks. No marketing adjectives, no "simply", no "seamless".
 - Write only what is true on main. Copy commands, flags, config keys, tool names and paths from the code. When something is designed but not built, say "Not built yet." or mark the page `draft` or `planned`.
 - A reader who is an agent should be able to act from the page alone.

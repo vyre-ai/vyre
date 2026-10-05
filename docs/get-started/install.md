@@ -177,7 +177,7 @@ it, so clear that afterwards or write it down.
 If you ever give the name up with `vyre name release`, it stays reserved: a name that was pointed at a server cannot be claimed again, by you or anyone else.
 
 Below that is **Use a domain of your own too**, which you can skip. To use a domain you own as
-well, type it (for example `juniperstudio.com`) and the page shows one DNS record to add, a CNAME,
+well, type it (for example `juniperstudio.example`) and the page shows one DNS record to add, a CNAME,
 then looks it up when you press **Check**. DNS can take a few minutes to show it. The address
 `alex.vyre.run` keeps working either way.
 

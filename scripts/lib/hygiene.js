@@ -16,7 +16,7 @@ export const SECRET = /((?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30
 // domains reserved for documentation. Anything else could be a real person's inbox. A git remote
 // (git@github.com) is an address in form only.
 const EMAIL = /[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})/g;
-const EMAIL_DOMAINS = [/^example\.(com|org|net)$/i, /\.example(\.(com|org|net))?$/i, /^(juniperstudio|juniper-studio|harlowlegal|harlow-legal|northwindbakery|northwind-bakery|northwind)\.(com|org|net|co|test)$/i,
+const EMAIL_DOMAINS = [/^example\.(com|org|net)$/i, /\.example(\.(com|org|net))?$/i, /^(harlowlegal|harlow-legal|northwindbakery|northwind-bakery|northwind)\.(com|org|net|co|test)$/i,
   /\.(test|example|invalid|localhost)$/i, /^vyre\.run$/i, /\.vyre\.run$/i];
 
 /** @param {string} domain */

@@ -35,7 +35,7 @@ project's own repository.
   "org": "Juniper Studio",
   "workspaces": ["../juniper-site"],
   "threads": ["<claude session id>"],
-  "people": [{ "name": "Dana Reyes", "email": "dana@juniperstudio.com" }],
+  "people": [{ "name": "Dana Reyes", "email": "dana@juniperstudio.example" }],
   "watchers": ["juniper-invoices"]
 }
 ```
@@ -72,7 +72,7 @@ Every step has a flag, so a script or an agent can do the same without prompts. 
 
 ```sh
 vyre new "Juniper Studio" --home ~/work/juniper --workspace ~/work/juniper-site \
-  --person "Dana Reyes <dana@juniperstudio.com>" --org "Juniper Studio" --no-pick
+  --person "Dana Reyes <dana@juniperstudio.example>" --org "Juniper Studio" --no-pick
 ```
 
 > [!SNAG] "... is already a project home"
