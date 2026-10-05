@@ -275,8 +275,8 @@ export function createRecords(cfg) {
     }
   }
   /**
-   * A new type needs its own name and label: a second type with the label of one the Space already has (another name, same words) is refused, and so is an
-   * "add" of an existing name that would drop its fields (that is a change, made from the type itself). The same definition added again is no change at all.
+   * A new type needs its own label: a second type with the label of one the Space already has (another name, same words) is refused. An add of an existing name is
+   * not a new type (it is how a module or a Kit says what it needs again), and the store refuses anything that would take fields away.
    */
   async function checkNames(/** @type {any} */ diff) {
     const adding = diff.add_types || [];
@@ -287,10 +287,7 @@ export function createRecords(cfg) {
     for (const t of adding) {
       const label = words(t.label || t.name);
       const same = defs.find((/** @type {any} */ d) => d.name === t.name);
-      if (same) {
-        const dropped = (same.fields || []).filter((/** @type {any} */ f) => !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name));
-        if (dropped.length) throw new KernelError("type_exists", `There is already a type called ${same.label || same.name}. Open it to change it.`);
-      } else {
+      if (!same) {
         const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
         if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
       }
