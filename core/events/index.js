@@ -63,6 +63,44 @@ export class Events {
     this.log = () => {};
     this.delivering = false;
     this.insert = db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)");
+    /** The kernel log this bus is an adapter over, once the daemon has booted the kernel: from then on there is one mechanism and the table above is unused. @type {null | { log: any, chainFor: (name: string) => any, space: string }} */
+    this.k = null;
+  }
+
+  /**
+   * Make the kernel's log the store: every event from now on is appended to it (its id is the log's sequence number, so a surface's cursor is a log position), `since` reads it, and what was emitted
+   * before the kernel booted is moved in, in order. Listeners are the same in-process bus as ever. Without a kernel (the development flag off) nothing is attached and the table is the store.
+   * @param {any} log the kernel's event log @param {(name: string) => any} chainFor the kernel chain of a service by name @param {string} space
+   */
+  attach(log, chainFor, space) {
+    this.k = { log, chainFor, space };
+    /** The newest bus event's position (the log also holds the kernel's own entries, which are not bus events): a surface that follows from here hears everything emitted after it. */
+    this.lastId = log.latestSeq();
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT * FROM events ORDER BY id").all())) {
+      try { this.#append(String(r.source), String(r.type), JSON.parse(String(r.payload)), { project: r.project || undefined, thread: r.thread || undefined, at: Number(r.at) }); } catch { /* an event the log refuses is not carried over */ }
+    }
+    this.db.exec("DELETE FROM events");
+  }
+
+  /** The subject an event is filed under in the log: its thread when it has one (an indexed read of one thread's history), else its source. @param {string} source @param {string | undefined} thread */
+  #subject(source, thread) {
+    const seg = (/** @type {string} */ x) => String(x).toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 120) || "x";
+    return thread ? `vyre://${this.k?.space}/thread/${seg(thread)}` : `vyre://${this.k?.space}/event/${seg(source)}`;
+  }
+
+  /** @returns {{ id: number, at: number, type: string, source: string, project: string | null, thread: string | null, payload: any }} */
+  #append(/** @type {string} */ source, /** @type {string} */ type, /** @type {any} */ payload, /** @type {{ project?: string, thread?: string, at?: number }} */ where) {
+    const k = /** @type {any} */ (this.k), at = where.at || Date.now();
+    const e = k.log.append(k.chainFor(source), { type, sv: 1, subject: this.#subject(source, where.thread), data: { legacy: 1, source, at, project: where.project || null, thread: where.thread || null, payload }, vis: "owner", red: "internal" });
+    this.lastId = Math.max(this.lastId || 0, e.seq);
+    return { id: e.seq, at, type, source, project: where.project || null, thread: where.thread || null, payload };
+  }
+
+  /** One log entry as the bus's event, or null for an entry that is not a bus event (the kernel's own) or whose data was erased. @param {any} e */
+  static #fromLog(e) {
+    const d = e && e.data;
+    if (!d || d.legacy !== 1) return null;
+    return { id: e.seq, at: d.at, type: e.type, source: d.source, project: d.project, thread: d.thread, payload: d.payload };
   }
 
   /**
@@ -77,8 +115,12 @@ export class Events {
     const json = JSON.stringify(payload);
     if (LOOKS_SECRET.test(json)) throw new Error(`event ${type} from ${source} carries something that looks like a secret; events are readable by every module`);
     const at = where.at || Date.now();
-    const r = this.insert.run(at, type, source, where.project || null, where.thread || null, json);
-    const event = { id: Number(r.lastInsertRowid), at, type, source, project: where.project || null, thread: where.thread || null, payload };
+    let event;
+    if (this.k) event = this.#append(source, type, payload, { ...where, at });
+    else {
+      const r = this.insert.run(at, type, source, where.project || null, where.thread || null, json);
+      event = { id: Number(r.lastInsertRowid), at, type, source, project: where.project || null, thread: where.thread || null, payload };
+    }
     // An event a listener emits while another is being delivered waits its turn: every listener hears events in id order, so a stream that
     // follows an id cursor (the SSE one) never meets 13 before 12 and drops the 12 (a model.switched the settings hub answered with its own
     // event was lost to every live Deck this way, #41).
@@ -125,6 +167,16 @@ export class Events {
     if (!NAME.test(String(type))) throw new Error(`event type "${type}" must look like noun.past-verb`);
     if (!Number.isInteger(before)) throw new Error("prune needs an event id to stop at");
     if (has !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(has)) throw new Error(`"${has}" is not a payload key`);
+    if (this.k) {
+      let n = 0;
+      for (const e of [...this.k.log.iterate({ type })]) {
+        if (e.seq > before) break;
+        const ev = Events.#fromLog(e);
+        if (!ev || (source !== undefined && ev.source !== source) || (thread !== undefined && ev.thread !== thread) || (has !== undefined && !(ev.payload && ev.payload[has] !== undefined && ev.payload[has] !== null))) continue;
+        this.k.log.erase(e.seq); n++;
+      }
+      return n;
+    }
     const where = ["type = ?", "id <= ?"], args = [type, before];
     if (source !== undefined) { where.push("source = ?"); args.push(source); }
     if (thread !== undefined) { where.push("thread = ?"); args.push(thread); }
@@ -134,6 +186,7 @@ export class Events {
 
   /** The newest id handed out, or 0 on a fresh log. Counts pruned ids too: a cursor never goes back. */
   latestId() {
+    if (this.k) return this.lastId || 0;
     const seq = /** @type {any} */ (this.db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'events'").get());
     return Math.max(Number(seq?.seq || 0), Number(this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id));
   }
@@ -151,9 +204,38 @@ export class Events {
 
   /** Events after a cursor, oldest first. How a surface catches up after being away. */
   since(id = 0, { type = null, project = null, limit = 200 } = {}) {
+    if (this.k) {
+      const out = [];
+      for (const e of this.k.log.iterate({ since: id, ...(type ? { type } : {}) })) {
+        const ev = Events.#fromLog(e);
+        if (!ev || (project && ev.project !== project)) continue;
+        out.push(ev);
+        if (out.length >= limit) break;
+      }
+      return out;
+    }
     const rows = this.db.prepare(`SELECT * FROM events WHERE id > ?
       ${type ? "AND type = ?" : ""} ${project ? "AND project = ?" : ""} ORDER BY id LIMIT ?`)
       .all(...[id, ...(type ? [type] : []), ...(project ? [project] : []), limit]);
     return rows.map(r => ({ ...r, payload: JSON.parse(String(r.payload)) }));
+  }
+
+  /**
+   * One thread's events, oldest first (an indexed read of the log by its subject, or the table without a kernel): `types` keeps those types, `after` those with an id past it, `before` those below one,
+   * `limit` the first that many, or with `tail` the last that many.
+   * @param {string} thread @param {{ types?: string[], after?: number, before?: number, limit?: number, tail?: boolean }} [o]
+   */
+  ofThread(thread, { types, after = 0, before = Infinity, limit = Infinity, tail = false } = {}) {
+    /** @type {any[]} */ let out = [];
+    if (this.k) {
+      for (const e of this.k.log.iterate({ subject_prefix: this.#subject("x", thread), since: after })) {
+        const ev = Events.#fromLog(e);
+        if (ev && ev.thread === thread && ev.id < before && (!types || types.includes(ev.type))) out.push(ev);
+      }
+    } else {
+      out = /** @type {any[]} */ (this.db.prepare("SELECT * FROM events WHERE thread = ? AND id > ? AND id < ? ORDER BY id").all(thread, after, Number.isFinite(before) ? before : Number.MAX_SAFE_INTEGER))
+        .map(r => ({ ...r, payload: JSON.parse(String(r.payload)) })).filter(ev => !types || types.includes(ev.type));
+    }
+    return Number.isFinite(limit) ? (tail ? out.slice(-limit) : out.slice(0, limit)) : out;
   }
 }

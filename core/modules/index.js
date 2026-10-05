@@ -938,6 +938,8 @@ export class Registry {
         origin: () => captureOrigin(),
         withOrigin: (/** @type {string | undefined} */ o, /** @type {() => any} */ f) => withOrigin(o, f),
         since: (id, opts) => events.since(id, opts),
+        // One thread's own events, oldest first (an indexed read of the log).
+        ofThread: (thread, opts) => events.ofThread(thread, opts),
         // The cursor a read is current to (ADR 0029 R1): a view that loads through a tool, then
         // follows the stream from this id, has no gap.
         latestId: () => events.latestId(),

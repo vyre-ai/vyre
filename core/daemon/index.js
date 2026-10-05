@@ -365,6 +365,8 @@ async function startLocked(opts, root, p, release) {
     // The session credential of a session vyred starts (lib/kernel-session.js): the kernel opens a token for the owner this home runs as, with the thread's chat written
     // in by the kernel after it checks the owner is in it; vyred holds it and the thread's own socket stamps it on every call, so the session never sees it. An unnamed thread
     // runs as the default assistant. A thread with no chat of its own gets a session of no chat. Only the Switchboard is handed this (core/modules/index.js context).
+    // The event bus becomes an adapter over the kernel's log: from here every event is a log entry and its id a log position (what was emitted before the boot moves in).
+    events.attach(kernel.log, (/** @type {string} */ name) => kernel.gateway.serviceChain(name), kernel.id.space);
     const { createKernelSessions } = await import("../../lib/kernel-session.js");
     // The open turns survive a restart as { person, chat, agent } (never a token) in the home's own database; on start each is reopened for its person, or given up and forgotten.
     db.exec("CREATE TABLE IF NOT EXISTS kernel_turns (thread TEXT PRIMARY KEY, body TEXT NOT NULL)");
@@ -1110,7 +1112,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const mods = registry.status();
     // last_event lets a surface follow the stream from now: `since=0` would replay the whole
     // log, and a guessed cursor past the end drops every live event.
-    const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
+    const last = { id: events.latestId() };
     const b = build();
     return send(res, 200, { data: { ...(process.env.VYRE_KERNEL === "0" && isPackaged() ? { kernel_note: KERNEL_FLAG_IGNORED } : {}), version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, machine: cfg.machine, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, finishing: finishing(), last_event: Number(last && last.id) || 0,
       // How to run this vyred's own CLI (node and bin/vyre): the Capsule runs `vyre ...` typed in
