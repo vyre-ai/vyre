@@ -963,6 +963,7 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 - Tools: [20](tools.md#watchers)
 - Emits: [7 events](events.md#watchers)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove"],"types":[{"name":"def-watcher","label":"Watcher","icon":"IconEye","fields":[{"name":"name","kind":"text","label":"Name","required":true,"unique":true},{"name":"project","kind":"text","label":"Project"},{"name":"schedule","kind":"text","label":"Runs"},{"name":"hash","kind":"text","label":"Hash"},{"name":"spec","kind":"text","label":"Settings (watcher.json)"},{"name":"code","kind":"text","label":"Code (watch.js)"}]}]}`
 - Needs vault: `per-watcher`
 - Teaches memory: `watcher.item`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
