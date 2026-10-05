@@ -64,3 +64,20 @@ test("delete: an agent may not delete an event", async t => {
   assert.ok(r.error, "an agent's call is refused");
   assert.ok(await w.k.gateway.records.get(w.owner, "event", mine.id), "and the event is still there");
 });
+
+test("bin: a deleted event is listed by planner.bin (the gateway's include_deleted), also after a restart, and leaves the list once restored", async t => {
+  const w = await world(t);
+  const start = T0 + 2 * HOUR;
+  const mine = await w.ok("planner.calendar.create", { title: "Retro", start: iso(start), end: iso(start + HOUR) });
+  const kept = await w.ok("planner.calendar.create", { title: "Standup", start: iso(start + DAY), end: iso(start + DAY + HOUR) });
+  assert.deepEqual((await w.ok("planner.bin", {})).events, [], "nothing is in the bin yet");
+  await w.ok("planner.delete", { item: mine.id });
+  const bin = (await w.ok("planner.bin", {})).events;
+  assert.deepEqual(bin.map((/** @type {any} */ x) => [x.id, x.title]), [[mine.id, "Retro"]], "only the deleted event, not the one kept");
+  assert.ok(bin[0].removed_at && bin[0].starts_at, "it says when it was removed and when it was due");
+  const again = await world(t, { kernel: w.k });
+  assert.deepEqual((await again.ok("planner.bin", {})).events.map((/** @type {any} */ x) => x.id), [mine.id], "a planner that never saw it lists it too");
+  await again.ok("planner.delete", { item: bin[0].id, restore: true });
+  assert.deepEqual((await again.ok("planner.bin", {})).events, [], "restored, so no longer binned");
+  assert.ok(kept.id);
+});

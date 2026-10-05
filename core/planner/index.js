@@ -999,7 +999,7 @@ export default {
      * owner; an agent's call carries `as` so the box applies the agent's rules. A `local` tool
      * (the parser: pure, no state) answers where it is asked.
      */
-    const READS = new Set(["planner.list", "planner.get", "planner.ringing", "planner.agenda", "planner.upcoming", "planner.parse"]);
+    const READS = new Set(["planner.list", "planner.get", "planner.ringing", "planner.agenda", "planner.bin", "planner.upcoming", "planner.parse"]);
     const tool = (name, description, input, run, { agents = false, local = false } = {}) => ctx.tool(name, {
       // `as` is the Mac's forward of an agent's call to the box (who() honours it only from a person's label).
       description, input: { ...input, properties: { ...(input.properties || {}), as: { type: "object" } } }, effect: READS.has(name) ? "read" : "write", callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
@@ -1075,6 +1075,9 @@ export default {
         if (!st.item(i.item) && (cal.row(i.item) || (i.restore && i.item))) return removeEvent(i, w);
         return remove(i, w);
       }, { agents: true });
+
+    tool("planner.bin", "The events you deleted that can still be restored (planner.delete with restore: true and the id), newest first.",
+      { type: "object", properties: {} }, async () => ({ events: await st.cal.binned() }), { agents: true });
 
     tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. Also returns last_event, the event cursor it is current to. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
       { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });

@@ -154,6 +154,15 @@ export function createRecords(cfg) {
     if (role !== "owner" && role !== "admin") return false;
     return chain.hops.length === 1 || chain.hops[chain.hops.length - 1].actor.kind === "service";
   };
+  /**
+   * A removed row is listed (include_deleted) only to an owner or admin, or to whoever made it: the person themselves, or an assistant acting for them (any hop of the chain).
+   * @param {any} chain @param {any} r
+   */
+  const ownsBinned = (chain, r) => {
+    if (adminish(chain)) return true;
+    const made = String((kattrs.get(urn(r.type, r.id)) || {}).created_by || "");
+    return chain.hops.some((/** @type {any} */ h) => made === `${h.actor.kind}:${h.actor.id}`);
+  };
   /** Was this row of a protected type made by a service or by a person who is an owner or admin? A row anyone else made (before a rule, or by a path that skipped it) is not shown. @param {string} u */
   const madeByTrusted = (u) => {
     const made = String((kattrs.get(u) || {}).created_by || "");
@@ -716,20 +725,23 @@ export function createRecords(cfg) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       spec = checkPage(spec);
+      if (spec.include_deleted !== undefined && typeof spec.include_deleted !== "boolean") throw new KernelError("bad_input", "include_deleted is true or false");
+      // The Bin: removed rows listed under the same read rules, and only the caller's own (an owner or admin sees all): every row is asked about, so the store's own page is never the answer.
+      const bin = spec.include_deleted === true;
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
       const readDec = await countRead(chain, type);
       // When every row of the type gets this chain's answer (rowUniform: the grants cover the whole type, no rule or room or privileged record can tell two rows apart) every row the store
       // returns is allowed, so the store's own page and cursor are the answer: no row is asked about, and no second page is read to look ahead.
-      if (readDec && !vs && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+      if (readDec && !vs && !bin && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
         let p;
         try { p = await store.query(type, { ...spec, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
         return { rows: await withComputed(chain, type, p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => ({ rec: shape(chain, r, lim), lim }))), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
       }
       // A restricted caller whose access is attribute equalities: the store lists under the same predicate, so its page and cursor are the answer; every row is still asked about (cheap: one page).
-      if (readDec && !vs) {
+      if (readDec && !vs && !bin) {
         const af = await attrFilterFor(chain, type);
         if (af) {
           let p;
@@ -756,6 +768,7 @@ export function createRecords(cfg) {
         const hiddenSet = await hiddenFields(chain, type);
         for (const r of p.rows) {
           if (r.type !== type) continue;
+          if (bin && r.deleted_at && !ownsBinned(chain, r)) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
           if (!dec) continue;
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
@@ -772,7 +785,7 @@ export function createRecords(cfg) {
       for (let ahead = 0; next && !more && ahead < 10; ahead++) {
         let p;
         try { p = await store.query(type, { ...spec, build_index: Boolean(readDec), page: { limit: spec.page.limit, cursor: next } }); } catch (e) { throw mapError(e); }
-        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
+        for (const r of p.rows) if (r.type === type && !(bin && r.deleted_at && !ownsBinned(chain, r)) && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
         if (!more) next = p.next_cursor;
       }
       return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };

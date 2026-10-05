@@ -246,6 +246,11 @@ export async function openRecords(o) {
         known.delete(id);
         return true;
       },
+      /** The caller's removed events, newest removal first (the records' Bin, include_deleted). @returns {Promise<any[]>} */
+      async binned() {
+        const rows = await pages("event", { include_deleted: true });
+        return rows.filter(r => r.deleted_at).sort((a, b) => b.deleted_at - a.deleted_at).map(r => ({ id: r.id, title: r.data.title ?? "", starts_at: r.data.starts_at ?? null, removed_at: iso(r.deleted_at) }));
+      },
       /** Bring an event back from the bin. @returns {Promise<any | null>} its calendar row, or null when it is not in the bin */
       async restore(/** @type {string} */ id) {
         let rec;

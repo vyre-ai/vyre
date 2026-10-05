@@ -84,4 +84,31 @@ if (!URL_ || !KEY_FILE) {
     assert.equal(list.find(x => x.id === todo.id).state, "done");
     await k.gateway.records.remove(w.owner, "event", ev.id, (await k.gateway.records.get(w.owner, "event", ev.id)).version).catch(() => {});
   });
+  test("live: an event's rrule and url round-trip through a real Twenty: create, list, update, clear with null, remove into the bin, list the bin, restore, and the planner expands the repeat", { timeout: 300_000 }, async t => {
+    const k = await kernel();
+    const w = await world(t, { kernel: k });
+    const R = k.gateway.records, run = `r${Date.now()}`;
+    const rule = "FREQ=WEEKLY;BYDAY=MO;COUNT=4", link = "https://calendar.example.com/e/abc?x=1&y=2";
+    const ev = await R.create(w.owner, "event", { title: `${run} Retro`, starts_at: noon(T0 + 2 * HOUR), ends_at: noon(T0 + 3 * HOUR), all_day: false, source: "vyre", rrule: rule, url: link });
+    const listed = async (/** @type {any} */ extra = {}) => (await R.query(w.owner, "event", { filter: { field: "title", op: "eq", value: `${run} Retro` }, page: { limit: 10 }, ...extra })).rows;
+    let [row] = await listed();
+    assert.deepEqual([row.id, row.data.rrule, row.data.url], [ev.id, rule, link], "rrule and url come back exactly as written");
+    row = await R.update(w.owner, "event", ev.id, { rrule: "FREQ=DAILY;COUNT=2" }, row.version);
+    assert.equal((await listed())[0].data.rrule, "FREQ=DAILY;COUNT=2", "an update changes the rule");
+    row = await R.update(w.owner, "event", ev.id, { rrule: null, url: null }, row.version);
+    const cleared = (await listed())[0].data;
+    assert.ok(cleared.rrule == null && cleared.url == null, "null clears both");
+    row = await R.update(w.owner, "event", ev.id, { rrule: rule, url: link }, row.version);
+    await R.remove(w.owner, "event", ev.id, row.version);
+    assert.equal((await listed()).length, 0, "a removed event is not in the list");
+    const bin = await listed({ include_deleted: true });
+    assert.deepEqual(bin.map((/** @type {any} */ x) => [x.id, x.deleted_at > 0, x.data.rrule, x.data.url]), [[ev.id, true, rule, link]], "the bin lists it with its fields");
+    await R.restore(w.owner, "event", ev.id);
+    const back = (await listed())[0];
+    assert.deepEqual([back.id, back.data.rrule, back.data.url, back.deleted_at ?? null], [ev.id, rule, link, null], "restored with both fields");
+    await w.read();
+    const upcoming = await w.ok("planner.agenda", { from: noon(T0), to: noon(T0 + 30 * DAY) });
+    assert.equal(JSON.stringify(upcoming).split(`${run} Retro`).length - 1 >= 2, true, "the planner expands the repeat into more than one occurrence");
+    await R.remove(w.owner, "event", ev.id, back.version).catch(() => {});
+  });
 }
