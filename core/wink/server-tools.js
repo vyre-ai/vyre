@@ -114,16 +114,31 @@ export function serverTools(d) {
   // The events the server keeps for its owner's devices, after a cursor. Runs on the server (the peer door calls it as the paired device). Long-polls up to 25 seconds.
   ctx.tool("wink.events.read", {
     effect: "read",
-    description: "On a server: its event log after a cursor, for its owner's paired devices: { since, type?, limit?, wait_ms? } -> { events, cursor }. Waits up to wait_ms (at most 25000) for the first new event.",
+    description: "On a server: its event log after a cursor, for its owner's paired devices: { since, type?, limit?, wait_ms? } -> { events, cursor }. `type` is an exact name or a prefix ending in * (thread.*). Waits up to wait_ms (at most 25000) for the first new event.",
     input: obj({ since: { type: "number" }, type: str, limit: { type: "number" }, wait_ms: { type: "number" } }),
     run: async (i = {}, meta = {}) => {
       person(meta, "reading the server's events");
       const since = Math.max(0, Number(i.since) || 0), limit = Math.min(MAX_LIMIT, Math.max(1, Number(i.limit) || 200));
       const wait = Math.min(MAX_WAIT_MS, Math.max(0, Number(i.wait_ms) || 0));
-      const read = () => ctx.events.since(since, { ...(i.type ? { type: String(i.type) } : {}), limit });
+      const type = i.type === undefined || i.type === "" ? "" : String(i.type);
+      if (type && !/^(\*|[A-Za-z0-9_.:-]{1,80}\*?)$/.test(type)) throw err("bad_input", "a type is an exact name or a prefix ending in *");
+      const glob = type.endsWith("*"), prefix = glob ? type.slice(0, -1) : "";
+      let scanned = since;
+      // an exact type is the log's own filter; a prefix reads the log in pages and keeps what matches, and the cursor passes what it read so a quiet pattern is not scanned again
+      const read = () => {
+        if (!glob) { const e = ctx.events.since(since, { ...(type ? { type } : {}), limit }); scanned = e.length ? e[e.length - 1].id : scanned; return e; }
+        /** @type {any[]} */ const out = [];
+        for (let from = since; out.length < limit;) {
+          const page = ctx.events.since(from, { limit: MAX_LIMIT });
+          if (!page.length) break;
+          for (const e of page) { from = e.id; scanned = e.id; if (e.type.startsWith(prefix)) { out.push(e); if (out.length >= limit) break; } }
+          if (page.length < MAX_LIMIT) break;
+        }
+        return out;
+      };
       let events = read();
       for (const t0 = now(); !events.length && now() - t0 < wait; events = read()) await new Promise(r => setTimeout(r, POLL_MS));
-      return { events, cursor: events.length ? events[events.length - 1].id : Math.max(since, Number(ctx.events.latestId()) || 0) };
+      return { events, cursor: glob ? Math.max(since, scanned) : events.length ? events[events.length - 1].id : Math.max(since, Number(ctx.events.latestId()) || 0) };
     },
   });
 

@@ -63,6 +63,12 @@ test("wink.events.read: events after a cursor with the new cursor; waits for the
   assert.deepEqual(await r.run("wink.events.read", { since: 1 }), { events: [{ id: 2, type: "b" }, { id: 3, type: "a" }], cursor: 3 });
   assert.deepEqual((await r.run("wink.events.read", { since: 0, type: "a", limit: 1 })).events, [{ id: 1, type: "a" }]);
   assert.deepEqual(await r.run("wink.events.read", { since: 3 }), { events: [], cursor: 3 }, "nothing new: the cursor stands");
+  const g = rig(); g.log.push({ id: 1, type: "thread.msg" }, { id: 2, type: "memory.x" }, { id: 3, type: "thread.done" }, { id: 4, type: "ask.q" });
+  assert.deepEqual((await g.run("wink.events.read", { since: 0, type: "thread.*" })).events.map(e => e.id), [1, 3], "a prefix matches by type start");
+  assert.equal((await g.run("wink.events.read", { since: 0, type: "thread.*" })).cursor, 4, "the cursor passes what was scanned");
+  assert.deepEqual((await g.run("wink.events.read", { since: 3, type: "thread.*" })), { events: [], cursor: 4 });
+  assert.equal((await g.run("wink.events.read", { since: 0, type: "*" })).events.length, 4);
+  await assert.rejects(g.run("wink.events.read", { type: "th*ead" }), e => e.code === "bad_input");
   setTimeout(() => r.log.push({ id: 4, type: "c" }), 100);
   const t0 = Date.now(); const w = await r.run("wink.events.read", { since: 3, wait_ms: 5000 });
   assert.deepEqual(w.events.map((/** @type {any} */ e) => e.id), [4]); assert.ok(Date.now() - t0 < 3000, "it returned when the event came, not at the end of the wait");
