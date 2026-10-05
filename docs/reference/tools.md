@@ -12286,7 +12286,7 @@ Does this server have an owner yet (a device paired and was confirmed)? Answers 
 
 ### `wink.server.owner`
 
-For the spaces module: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.
+For the spaces and files modules: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
