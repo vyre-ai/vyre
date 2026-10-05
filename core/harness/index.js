@@ -319,6 +319,16 @@ export default {
       run: async ({ session, limit }, meta) => { await own(meta, session); return db.prepare("SELECT path, tool, at FROM harness_files WHERE session = ? ORDER BY at DESC LIMIT ?").all(session, limit || 100); },
     });
 
+    ctx.tool("harness.end", {
+      description: "SessionEnd: this session is over (clear, logout or exit). Says thread.stopped once, so the Project hub closes the session's summary. Never blocks.",
+      callers: HOOK_CALLERS,
+      input: { type: "object", properties: { session: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, prompt_id: { type: "string" }, reason: { type: "string" } } },
+      run: async ({ session, reason }, meta = {}) => {
+        await own(meta, session);
+        if (session) ctx.events.emit("thread.stopped", { session, reason: reason === "clear" || reason === "logout" || reason === "prompt_input_exit" ? "done" : String(reason || "done"), source: "terminal" });
+        return { ok: true };
+      },
+    });
     ctx.tool("harness.stop", {
       description: "Stop: the lessons' output checks, then words queued for this session from another surface, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
       callers: HOOK_CALLERS,

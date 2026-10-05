@@ -544,7 +544,7 @@ export class Presence {
    *           role?: string, network?: () => { owner?: string, address?: string }, who?: () => Promise<string[]>, writeTty?: (file: string, text: string) => void, statTty?: (file: string) => any,
    *           touchid?: any, webauthn?: any, now?: () => number, env?: NodeJS.ProcessEnv, core?: CoreLink|null }} opts
    */
-  constructor({ db, events = null, standIn = () => false, softwareOk = () => false, log = () => {}, platform = process.platform, role = "local", network = () => ({}), who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
+  constructor({ db, events = null, standIn = () => false, softwareOk = () => false, log = () => {}, platform = process.platform, role = "local", network = () => ({}), ownerDevice = async () => false, who: whoFn, writeTty: write, statTty, touchid, webauthn, now, env = process.env, core: coreOpt }) {
     this.db = db;
     /** DEVELOPMENT ONLY: is the walk's presence stand-in on for this home? The daemon answers true only for a development build whose home holds a file the owner made by hand. */
     this.standIn = standIn;
@@ -556,6 +556,8 @@ export class Presence {
     this.coreOpt = coreOpt;
     this.role = role;
     this.network = network;
+    /** Is this caller one of the OWNER's paired Wink devices (the owner confirmed it; not removed)? Given by the presence module from wink.device.record; false with none. @type {(caller: string) => Promise<boolean>} */
+    this.ownerDevice = ownerDevice;
     this.events = events;
     this.log = log;
     this.platform = platform;
@@ -929,10 +931,9 @@ export class Presence {
     if (method === "code") {
       if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
-      // So the code counts only from the owner's own device over the tailnet, where they cannot be.
+      // So the code counts only from the owner's own paired device (its confirmed Wink record), where they cannot be.
       if (isServer(this.role)) {
-        const owner = String((this.network() || {}).owner || "").toLowerCase();
-        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+        if (!(await this.ownerDevice(String(caller || "")))) return refuse("on the box, a passkey is enrolled from the owner's own paired device");
       }
       if (!this.useCode(proof.code)) return refuse("that code is wrong, used or expired");
       return proved();
@@ -941,11 +942,10 @@ export class Presence {
     if (method === "grant") {
       // The first owner passkey's grant (relay.setup.claim checked a signed claim token to mint it):
       // presence.enroll only, once, within five minutes, from the browser it was made for, and on the
-      // box from the owner's own device over the tailnet as a code is.
+      // box from the owner's own paired device as a code is.
       if (tool !== "presence.enroll") return refuse("a grant only enrolls the first passkey");
       if (isServer(this.role)) {
-        const owner = String((this.network() || {}).owner || "").toLowerCase();
-        if (!owner || String(caller || "").toLowerCase() !== `tailnet:${owner}`) return refuse("on the box, a passkey is enrolled from the owner's own device, over the tailnet");
+        if (!(await this.ownerDevice(String(caller || "")))) return refuse("on the box, a passkey is enrolled from the owner's own paired device");
       }
       const h = sha(String(proof.grant || "")).toString("hex");
       const row = /** @type {any} */ (this.db.prepare("SELECT peer, host FROM presence_grants WHERE hash = ? AND used IS NULL AND expires > ?").get(h, this.now()));
