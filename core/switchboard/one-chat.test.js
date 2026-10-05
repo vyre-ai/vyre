@@ -475,3 +475,48 @@ test("a person outside a chat sees nothing of its runs through ANY threads tool:
   }
   assert.ok(walked.length >= 20, `walked ${walked.length} tools: ${walked.join(", ")}`);
 });
+
+test("a chat's history leaves one device and comes back on another: its logged frames, its runs (stopped) and their events; a chat that already has its frames there is left as it is", { timeout: 150_000 }, async t => {
+  async function boot() {
+    const root = tempHome(t);
+    const transcripts = path.join(root, "transcripts");
+    Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+    fs.mkdirSync(transcripts);
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+    const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+    asOwner(d, root);
+    t.after(() => d.stop());
+    return { d, root };
+  }
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  const A = await boot();
+  const owner = kernelCaller(A.d, A.root);
+  const chat = (await owner("work.chat.create", { title: "Moving" })).data.chat;
+  assert.ok((await owner("stream.send", { chat, text: "hello there" })).data);
+  const logsA = A.d.registry.modules.get("stream").handle.logs;
+  await until(async () => logsA.get(chat).read(0).some(f => f.type === "chat.text-done"), "the reply", 60_000);
+  await until(async () => (await A.d.registry.call("threads.export-chat", { chat }, "module:work")).data.events.some(e => e.type === "thread.finished"), "the turn to finish");
+  const st = (await A.d.registry.call("stream.export-chat", { chat }, "module:work")).data;
+  const th = (await A.d.registry.call("threads.export-chat", { chat }, "module:work")).data;
+  assert.ok(st.frames.length >= 3 && st.members.length >= 1 && th.runs.length === 1 && th.events.length >= 5, JSON.stringify([st.frames.length, st.members.length, th.runs.length, th.events.length]));
+  // not callable by a person's surface
+  assert.ok((await A.d.registry.call("stream.export-chat", { chat }, "cli")).error, "module only");
+  // the other device
+  const B = await boot();
+  const into = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work");
+  assert.ok(into.data && into.data.frames === st.frames.length, JSON.stringify(into));
+  const back = await B.d.registry.call("threads.import-chat", { chat, runs: th.runs, events: th.events }, "module:work");
+  assert.deepEqual([back.data.runs, back.data.events], [1, th.events.length]);
+  const logsB = B.d.registry.modules.get("stream").handle.logs;
+  const framesB = logsB.get(chat).read(0);
+  assert.ok(framesB.some(f => f.type === "chat.user-message" && f.data.text === "hello there") && framesB.some(f => f.type === "chat.text-done"), "the conversation is there");
+  const runB = (await B.d.registry.call("threads.get", { thread: th.runs[0].id, limit: 200 }, "module:work")).data;
+  assert.equal(runB.thread.status, "stopped");
+  assert.equal(runB.thread.chat, chat);
+  assert.ok(runB.events.some(e => e.type === "thread.text"), "the run's events came with it");
+  // again: left as it is
+  const twice = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work");
+  assert.equal(twice.data.frames, 0);
+  assert.equal((await B.d.registry.call("threads.import-chat", { chat, runs: th.runs, events: th.events }, "module:work")).data.runs, 0);
+});

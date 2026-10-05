@@ -1297,6 +1297,14 @@
    "module": "spaces",
    "reason": "the signed invite token, the person's own signature checked against the directory's current list for their name, and the use count are the authority; a forged, used or revoked invite is refused"
   },
+  "stream.export-chat": {
+   "module": "stream",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
+  "stream.import-chat": {
+   "module": "stream",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
   "sync.consent": {
    "module": "sync",
    "reason": "callers limited in code to capsule, cli, deck, local"
@@ -1445,6 +1453,10 @@
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
+  "threads.export-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
   "threads.fork": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
@@ -1452,6 +1464,10 @@
   "threads.get": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.import-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
   },
   "threads.interrupt": {
    "module": "threads",
@@ -1936,6 +1952,10 @@
   "work.chat.get": {
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; read-only"
+  },
+  "work.chat.history-import": {
+   "module": "work",
+   "reason": "guarded: the caller must be in the chat (the kernel's chat read on their own chain), the file is read under their own chain (drive.read), and the writes go to the stream's and the switchboard's module-only import tools"
   },
   "work.chat.list": {
    "module": "work",

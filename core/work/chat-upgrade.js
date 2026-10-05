@@ -6,6 +6,9 @@
 import { carryChat } from "./chat-carry.js";
 
 const CHAT = "chat-record", PROJECT = "project";
+/** Where a chat's history travels, in its own folder, and the most of it one chat carries. */
+export const HISTORY_FILE = ".history.json";
+const HISTORY_MAX = 30 * 1048576;
 
 /** The folders a chat's files live in under its project's folder. @param {any} data */
 const foldersOf = data => (data.drive && data.chat ? [`${data.drive}/chat/${data.chat}`, `${data.drive}/made/${data.chat}`] : []);
@@ -38,7 +41,7 @@ async function generalIn(to) {
 
 /**
  * Move the chats. A throw for one chat is named in `left` and does not stop the others.
- * @param {{ from: any, to: any, rows: any[], ports?: { move_id?: string } }} o
+ * @param {{ from: any, to: any, rows: any[], ports?: { move_id?: string, history?: (chat: string) => Promise<any> } }} o
  * @returns {Promise<{ moved: number, files: number, left: { chat: string, why: string }[] }>}
  */
 export async function runUpgrade({ from, to, rows, ports = {} }) {
@@ -53,6 +56,13 @@ export async function runUpgrade({ from, to, rows, ports = {} }) {
       if (!(there.rows && there.rows[0])) {
         const c = await carryChat({ to, src: r.data, newRoot: root, id });
         await to.records.create(to.chain, CHAT, { title: r.data.title, project: { urn: general.urn }, chat: c.chat, people: c.people.join(","), agents: c.agents.join(","), ...(c.former.length ? { former: c.former.join(",") } : {}), started: r.data.started, last_active: r.data.last_active, status: r.data.status === "working" ? "idle" : r.data.status, drive: root, location: `${root}/chat/${c.chat}/` });
+      }
+      // the chat's history (its logged frames, its runs and their events) is written beside its files, in the chat's own folder, so it travels sealed with them; the other end puts it back (work.chat.history-import)
+      if (ports.history && from.drive && typeof from.drive.put === "function" && r.data.drive) {
+        const bundle = await ports.history(id);
+        const bytes = new TextEncoder().encode(JSON.stringify({ v: 1, chat: id, ...bundle }));
+        if (bytes.length > HISTORY_MAX) throw new Error(`this chat's history is too large to carry (${Math.round(bytes.length / 1048576)} MB)`);
+        if (bundle && ((bundle.frames && bundle.frames.length) || (bundle.runs && bundle.runs.length))) await from.drive.put(from.chain, `${r.data.drive}/chat/${id}/${HISTORY_FILE}`, bytes);
       }
       if (from.drive && typeof from.drive.inventory === "function" && typeof from.carry === "function") {
         const inv = (await from.drive.inventory(from.chain, r.data.drive, { move_id: ports.move_id })).filter((/** @type {any} */ e) => e.chat && foldersOf(r.data).some(f => String(e.path).startsWith(`${f}/`)));

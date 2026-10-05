@@ -99,6 +99,12 @@
         "effect": "write"
       },
       {
+        "name": "work.chat.history-import",
+        "summary": "put back the history of a chat that came with the chat upgrade",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",

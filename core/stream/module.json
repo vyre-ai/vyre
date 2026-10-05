@@ -8,6 +8,8 @@
     { "name": "stream.open-peer", "reach": "person", "effect": "write" },
     { "name": "stream.typing", "reach": "person", "effect": "write" },
     { "name": "stream.catchup", "reach": "person", "effect": "read" },
+    { "name": "stream.export-chat", "reach": "anyone", "effect": "read" },
+    { "name": "stream.import-chat", "reach": "anyone", "effect": "write" },
     { "name": "stream.send", "reach": "person", "effect": "write" },
     { "name": "stream.react", "reach": "person", "effect": "write" },
     { "name": "stream.pin", "reach": "person", "effect": "write" },

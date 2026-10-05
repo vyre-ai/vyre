@@ -10,7 +10,7 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
-import { planUpgrade, runUpgrade } from "./chat-upgrade.js";
+import { planUpgrade, runUpgrade, HISTORY_FILE } from "./chat-upgrade.js";
 import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
@@ -353,7 +353,30 @@ export default {
         const k = kernelOf();
         const to = await sideOf(String(input.to), extra);
         const from = withCarry(await sideOf(k.space, extra), to);
-        return runUpgrade({ from, to, rows: await upgradeRows(from), ports: { ...(input.move_id ? { move_id: String(input.move_id) } : {}) } });
+        const history = async (/** @type {string} */ chat) => {
+          const st = await ctx.call("stream.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { frames: [], members: [] });
+          const th = await ctx.call("threads.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { runs: [], events: [] });
+          return { frames: st.frames, members: st.members, runs: th.runs, events: th.events };
+        };
+        return runUpgrade({ from, to, rows: await upgradeRows(from), ports: { history, ...(input.move_id ? { move_id: String(input.move_id) } : {}) } });
+      },
+    });
+    ctx.tool("work.chat.history-import", {
+      description: "Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read from the file the move carried in the chat's own folder. You must be in the chat. A chat that already has its history here is left as it is.",
+      input: obj({ chat: { type: "string" } }, ["chat"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        const chat = String(input.chat);
+        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        const rec = await hubOf().chatRecord(chat);
+        if (!rec || !rec.data.drive) throw Object.assign(new Error("this chat has no folder here"), { code: "not_found" });
+        let bytes;
+        try { const got = await kernelOf().drive.get(chain, `${rec.data.drive}/chat/${chat}/${HISTORY_FILE}`); bytes = got && (got.bytes || got.data || got); } catch { throw Object.assign(new Error("this chat carried no history"), { code: "not_found" }); }
+        const bundle = JSON.parse(Buffer.from(bytes).toString("utf8"));
+        if (!bundle || bundle.chat !== chat || bundle.v !== 1) throw Object.assign(new Error("that history is not this chat's"), { code: "bad_input" });
+        const st = await ctx.call("stream.import-chat", { chat, frames: bundle.frames || [], members: bundle.members || [] }).then((/** @type {any} */ r) => (r && r.data) || {});
+        const th = await ctx.call("threads.import-chat", { chat, runs: bundle.runs || [], events: bundle.events || [] }).then((/** @type {any} */ r) => (r && r.data) || {});
+        return { chat, frames: st.frames || 0, members: st.members || 0, runs: th.runs || 0, events: th.events || 0 };
       },
     });
     ctx.tool("work.chat.create", {

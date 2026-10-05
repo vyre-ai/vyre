@@ -267,6 +267,31 @@ export default {
     tool("stream.keep", "Keep one answer of a fan-out set; the others stay, quieter.", obj({ chat: str, group: str, keep: str, as: str }, ["chat", "group", "keep"]), "keep");
     tool("stream.mark-read", "Move the caller's read marker in a session forward to a cursor. The caller's other open connections hear it; nobody else does.", obj({ chat: str, upto: int, as: str }, ["chat", "upto"]), "markRead");
 
+    // The chat's frames and who answers in it, to leave this device with the chat and be put back on the other (core/work/chat-upgrade.js). Modules only: the work module has checked the person is in the chat.
+    const db = ctx.store && ctx.store.db;
+    ctx.tool("stream.export-chat", {
+      description: "A chat's logged frames and member rows, for the chat upgrade. First-party modules only.", internal: true, callers: ["module"],
+      input: obj({ chat: str }, ["chat"]),
+      run: async (/** @type {any} */ i) => {
+        if (!db) return { frames: [], members: [] };
+        try { logs.get(String(i.chat)).flush(); } catch { /* nothing logged yet */ }
+        return { frames: db.prepare("SELECT cur, first, json FROM stream_frames WHERE session = ? ORDER BY cur").all(String(i.chat)), members: db.prepare("SELECT * FROM stream_groups_members WHERE grp = ?").all(String(i.chat)) };
+      },
+    });
+    ctx.tool("stream.import-chat", {
+      description: "Put a chat's frames and member rows back (the other end of the chat upgrade); a chat that already has frames here is left as it is. First-party modules only.", internal: true, callers: ["module"],
+      input: obj({ chat: str, frames: { type: "array" }, members: { type: "array" } }, ["chat", "frames", "members"]),
+      run: async (/** @type {any} */ i) => {
+        if (!db) throw Object.assign(new Error("the stream has no store here"), { code: "unavailable" });
+        const chat = String(i.chat);
+        if (db.prepare("SELECT 1 FROM stream_frames WHERE session = ? LIMIT 1").get(chat)) return { frames: 0, members: 0, note: "this chat already has frames here" };
+        let frames = 0, members = 0;
+        for (const f of /** @type {any[]} */ (i.frames)) { if (f && Number.isInteger(f.cur) && typeof f.json === "string") { db.prepare("INSERT OR IGNORE INTO stream_frames (session, cur, first, json) VALUES (?,?,?,?)").run(chat, f.cur, Number.isInteger(f.first) ? f.first : f.cur, f.json); frames++; } }
+        for (const m of /** @type {any[]} */ (i.members)) { if (m && m.grp === chat && typeof m.who === "string") { db.prepare("INSERT OR IGNORE INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)").run(chat, m.who, m.thread ?? null, m.cwd ?? null, m.name ?? null, m.asker ?? null, m.answer ?? null, Number(m.last_event) || 0, m.kind ?? null); members++; } }
+        return { frames, members };
+      },
+    });
+
     if (groups) await groups.start();
 
     return {

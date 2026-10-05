@@ -4168,6 +4168,34 @@ export default {
       input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str } },
       run: async i => sb.notice(i.thread, i.text),
     });
+    // A chat's runs and their events, to leave this device with the chat (Personal to My Cloud: core/work/chat-upgrade.js) and to be put back on the other. Modules only; the caller (the work module) has
+    // already checked that the person is in the chat. What is not carried: the provider's own session file (a resumed run starts from the brief, not from native context).
+    ctx.tool("threads.export-chat", {
+      description: "A chat's run rows and their events, for the chat upgrade. First-party modules only.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["chat"], properties: { chat: str } },
+      run: async i => {
+        const runs = /** @type {any[]} */ (sb.db.prepare("SELECT * FROM threads_runs WHERE chat = ?").all(String(i.chat)));
+        const events = runs.flatMap(r => /** @type {any[]} */ (sb.db.prepare("SELECT at, type, source, project, thread, payload FROM events WHERE thread = ? ORDER BY id LIMIT 50000").all(String(r.id))));
+        return { runs, events };
+      },
+    });
+    ctx.tool("threads.import-chat", {
+      description: "Put a chat's runs and events back (the other end of the chat upgrade). The runs come back stopped; one already here is left as it is. First-party modules only.", internal: true, callers: ["module"],
+      input: { type: "object", required: ["chat", "runs", "events"], properties: { chat: str, runs: { type: "array" }, events: { type: "array" } } },
+      run: async i => {
+        let runs = 0, events = 0;
+        for (const r of /** @type {any[]} */ (i.runs)) {
+          if (!r || typeof r.id !== "string" || String(r.chat) !== String(i.chat)) continue;
+          if (sb.db.prepare("SELECT 1 FROM threads_runs WHERE id = ?").get(r.id)) continue;
+          const row = { ...r, status: "stopped", pid: null, stopped_reason: "carried" };
+          const cols = Object.keys(row).filter(k => /^[a-z_]+$/.test(k));
+          sb.db.prepare(`INSERT INTO threads_runs (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(...cols.map(k => /** @type {any} */ (row)[k]));
+          runs++;
+          for (const e of /** @type {any[]} */ (i.events)) if (e && e.thread === r.id) { sb.db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)").run(e.at, e.type, e.source, e.project ?? null, e.thread, e.payload); events++; }
+        }
+        return { runs, events };
+      },
+    });
     ctx.tool("threads.halt", {
       description: "Stop a thread with a reason, saying why in the thread first.", internal: true,
       input: { type: "object", required: ["thread", "reason"], properties: { thread: str, reason: str, text: str } },
