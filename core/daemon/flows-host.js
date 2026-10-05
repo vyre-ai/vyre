@@ -12,6 +12,7 @@
 // and no more, and the runner's declared caps narrow it further.
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
+import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 
 const MIN_TICK_MS = 60_000;
 
@@ -23,6 +24,7 @@ export function createFlowsHost(o) {
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
   /** @type {Map<string, any>} */ const spaces = new Map();
+  const sandbox = o.sandbox || createCodeSandbox();
 
   /** @param {string} space @param {any} k the Space's kernel (kernel/index.js) @param {string} ownerId the Space's first owner */
   async function attach(space, k, ownerArg) {
@@ -42,7 +44,9 @@ export function createFlowsHost(o) {
     const kernel = {
       records: gw.records, ask: gw.ask, ...(gw.kits ? { kits: gw.kits } : {}), authorize: (/** @type {any} */ i) => gw.authorize(i), grants: gw.grants,
       events: { read: (/** @type {any} */ c, /** @type {any} */ f) => gw.events.read(c, f), subscribe: (/** @type {any} */ c, /** @type {string} */ n, /** @type {any} */ f, /** @type {any} */ cb) => gw.events.subscribe(c, n, f, cb), latestSeq: async () => k.log.latestSeq() },
-      model: { call: async () => { throw Object.assign(new Error("no model door is wired to Flows yet"), { code: "unavailable" }); } },
+      // The model door is the kernel's own (gateway.model, present when the home was booted with the inference door): every classify step goes through its scan, so a sealed field reaches the
+      // model only as a placeholder, and the step passes no tools. Without a door the step fails plainly and the owner is told.
+      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run"), { code: "unavailable" }); } },
     };
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
@@ -60,7 +64,30 @@ export function createFlowsHost(o) {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
     };
     const ports = {
+      // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
+      sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
+      // A pool is the team members (people and assistants) whose `role` is the pool's name, on any project: the same records the team screen shows. A member's skills are the words in its
+      // `skills` field (comma separated) and its role.
+      pool: async (/** @type {string} */ _space, /** @type {string} */ name) => {
+        try {
+          const rows = (await gw.records.query(owner(), "team-member", { filter: { field: "role", op: "eq", value: name }, page: { limit: 200 } })).rows;
+          const seen = new Set(), out = [];
+          for (const r of rows) {
+            const a = r.data && r.data.actor && r.data.actor.actor;
+            if (!a || seen.has(a.id)) continue; seen.add(a.id);
+            out.push({ actor: a, name: r.data.name || a.id, skills: [String(r.data.role || ""), ...String(r.data.skills || "").split(",")].map(x => x.trim()).filter(Boolean) });
+          }
+          return out;
+        } catch { return []; }
+      },
+      // What the choice leans on: how many tasks each actor has had on this record, and how many open tasks each has now.
+      signals: async (/** @type {string} */ _space, /** @type {string | undefined} */ record) => {
+        const involvement = /** @type {Record<string, number>} */ ({}), load = /** @type {Record<string, number>} */ ({});
+        for (const t of await gw.ask.list(owner(), { state: ["waiting", "ready", "working", "needs_check", "stuck"] })) load[t.doer.id] = (load[t.doer.id] || 0) + 1;
+        if (record) for (const t of await gw.ask.list(owner(), { record })) involvement[t.doer.id] = (involvement[t.doer.id] || 0) + 1;
+        return { involvement, load };
+      },
       // "Call a service": the gateway authorizes it for the run's chain against the route (service.read, or service.call held as outward) BEFORE the vault is asked, then the vault's
       // forward does it with the Space's own credential (kernel/gateway/leases.js forward).
       service: async (/** @type {{ chain: any, connector: string, request: any, idem?: string, approval?: string }} */ q) => {
