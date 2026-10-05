@@ -29,7 +29,7 @@ export function RecordsScreen({ type }: { type: string }) {
     try { await store.update(rec.urn, { [g]: to || null } as any, rec.version); } catch (e) { showToast(e instanceof Error ? e.message : String(e)); }
   };
   // One scope-style control, with icons only on a phone.
-  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "grid" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
+  const switcher = views.length > 1 ? <Segmented<ViewKind> label="View" value={shown} onChange={setView} iconsOnly={phone} icons={{ list: "list", board: "board", calendar: "cal", dashboard: "chart" }} options={views.map((v) => [v, LABEL[v]] as [ViewKind, string])} /> : null;
   const openRec = (rec: any) => router.push(`/u/record/${rec.id}` as never);
   return (
     <LargeTitleScreen title={vd.plural} own onRefresh={reload}>

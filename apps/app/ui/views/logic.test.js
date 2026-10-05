@@ -5,7 +5,7 @@ import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMockStore } from "../../../../deck/ui/mock-store.js";
-import { MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
+import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
 const types = await store.types();
@@ -24,9 +24,10 @@ test("the five types are data a view can draw: every list column and board field
 });
 
 test("which views a type has: Matter list, board and calendar; Contact list and board; Template no calendar", () => {
-  assert.deepEqual(viewsOf(def("matter")), ["list", "board", "calendar"]);
+  assert.deepEqual(viewsOf(def("matter")), ["list", "board", "calendar", "dashboard"]);
   assert.deepEqual(viewsOf(def("contact")), ["list", "board"]);
   assert.deepEqual(viewsOf(def("template")), ["list", "board"]);
+  assert.deepEqual(viewsOf(def("project")), ["list", "board", "calendar", "dashboard"]);
   assert.deepEqual(listColumns(def("matter")).map((f) => f.name), ["client", "stage", "fee", "owner"]);
 });
 
@@ -127,4 +128,40 @@ test("a sealed field's edit goes through the store's putSealed, never update, an
   const seen = await store.seesAs(jane.urn, "assistant");
   assert.equal(seen.ssn.ref, undefined);
   assert.equal(seen.ssn.sealed, "us-ssn");
+});
+
+test("dashboard: sum keeps rows that pass where, count by has a bar per stage, funnel counts reached-or-later, recent is newest first", () => {
+  const d = def("matter"), rows = byType.matter;
+  const cards = dashboardCards(d, rows);
+  assert.deepEqual(cards.map((c) => c.kind), ["sum", "countBy", "funnel", "recent"]);
+  const open = rows.filter((r) => r.data.stage !== "Closed");
+  assert.equal(cards[0].total, open.reduce((a, r) => a + numberOf(r.data.fee), 0));
+  assert.equal(cards[0].title, "Fee total");
+  assert.match(cards[0].hint, /, stage is not Closed$/);
+  assert.deepEqual(cards[1].bars.map((b) => b[0]), ["Intake", "Engagement", "Drafting", "Signing", "Funding", "Closed"]);
+  assert.equal(cards[1].bars.reduce((a, b) => a + b[1], 0), rows.length);
+  assert.deepEqual(cards[2].bars.map((b) => b[0]), ["Intake", "Engagement", "Drafting", "Signing"]);
+  assert.equal(cards[2].bars[0][1], rows.length);
+  for (let i = 1; i < cards[2].bars.length; i++) assert.ok(cards[2].bars[i][1] <= cards[2].bars[i - 1][1], "a funnel never grows");
+  assert.ok(cards[3].rows.length <= 5);
+  for (let i = 1; i < cards[3].rows.length; i++) assert.ok(cards[3].rows[i - 1].updated_at >= cards[3].rows[i].updated_at);
+});
+
+test("dashboard: a widget whose field the type lacks is skipped, a type with no widgets has none", () => {
+  const d = def("matter"), vd = { plural: "Matters", titleField: "title", dashboard: { widgets: [{ kind: "sum", field: "nope" }, { kind: "recent" }] } };
+  assert.deepEqual(dashboardCards(d, byType.matter, vd).map((c) => c.kind), ["recent"]);
+  assert.deepEqual(dashboardCards(def("contact"), byType.contact), []);
+});
+
+test("where reads field op value; numbers compare as numbers; words say it plainly", () => {
+  const rec = (data) => ({ data });
+  assert.equal(whereFn("fee > 100")(rec({ fee: 250 })), true);
+  assert.equal(whereFn("fee > 100")(rec({ fee: { amount: 50 } })), false);
+  assert.equal(whereFn("stage = Closed")(rec({ stage: "Closed" })), true);
+  assert.equal(whereFn("not a clause"), null);
+  assert.equal(saysWhere("stage != Closed"), "stage is not Closed");
+  assert.equal(numberOf({ amount: 12, currency: "USD" }), 12);
+  assert.equal(numberOf("x"), 0);
+  assert.equal(barPct(1, 4), 25);
+  assert.equal(barPct(3, 0), 300);
 });
