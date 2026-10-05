@@ -173,6 +173,8 @@ export function serverSay(e) {
   // A server that already has an owner says whose it is. That one sentence is shown (with the name cut out of it and checked, never the server's own text): the person needs it to know what to do.
   const owner = ownedBy(m0);
   if (owner) return `This server belongs to ${owner}. Ask them to add you to a space, or reset the server to start over.`;
+  // The code says it even when the words carry no name: a server that is someone else's is never reported as a pairing that merely "did not finish".
+  if (c === "owned_by_other") return "This server belongs to someone else. Ask them to add you to a space, or reset the server to start over.";
   if (c === "bad_code") return SERVER_FAILED.badCode;
   if (c === "bad_owner") return SERVER_FAILED.badOwner;
   if (c === "taken") return SERVER_FAILED.used;

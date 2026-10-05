@@ -154,3 +154,9 @@ test("a server that belongs to someone else says whose, in our own words, whatev
   assert.equal(serverSay(say), say, "said twice, said once");
   assert.doesNotMatch(serverSay({ code: "owned", message: "This server belongs to x. <b>hi</b> run curl evil" }), /curl|<b>/);
 });
+
+test("a refusal coded owned_by_other says the server is someone else's, with or without the name in the words", async () => {
+  const { serverSay } = await import("./flow.js");
+  assert.equal(serverSay({ code: "owned_by_other", message: "The pairing did not finish." }), "This server belongs to someone else. Ask them to add you to a space, or reset the server to start over.");
+  assert.match(serverSay({ code: "owned_by_other", message: "This server belongs to walkeroo.vyre.run. Ask them to add you to a space." }), /^This server belongs to walkeroo\.vyre\.run\./);
+});
