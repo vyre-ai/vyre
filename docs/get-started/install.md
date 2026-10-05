@@ -99,9 +99,10 @@ app shows:
 ```
 
 A wrong pick prints `Those were not the words the app shows, so nothing was paired.` and offers to
-try again. When it works, the install finishes with `Your server is ready.`, a line about your keys
+try again. If five minutes pass before a device asks, it prints `The code ran out before a device
+asked. Nothing was paired.` and asks `Make a new code? [y/N]`. When it works, the install finishes with `Your server is ready.`, a line about your keys
 (the sealing key is a file owned by the sealing process's own user, so root on this server, or a
-stolen disk, can read it), and `Connected to <name>. Finish setting up on your <device>.` Run with
+stolen disk, can read it), and `Connected to <name> (<name>.vyre.run). Finish setting up on your device.` Run with
 `--yes`, or with no terminal, it prints the QR and the long code and then `Finish setting up on
 your device once it has paired.` To show the code again later, run `vyre call wink.server.code
 '{"qr":true}'` on the server. A server has no first-run page: there is no browser link and no tunnel.
