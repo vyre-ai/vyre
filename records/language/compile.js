@@ -6,6 +6,7 @@ import { parse, parseSafely } from "./parse.js";
 import { SDK, SDK_VERSION } from "./sdk.js";
 import { LanguageError } from "./errors.js";
 import { parseExpr, exprNames } from "./expr.js";
+import { stageNamesOf } from "../../lib/expr/conditions.js";
 import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
 import { CORE_TYPES as CORE_DEFS } from "../core-types.js";
@@ -13,7 +14,7 @@ import { FIELD_ORDER } from "./sdk.js";
 const CORE_BY_NAME = new Map(CORE_DEFS.map((t) => [t.name, t]));
 
 /** Types a Kit may link to without defining them: the core record types every Space has. */
-export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event"]);
+export const CORE_TYPES = Object.freeze(["person", "note", "file", "template", "playbook", "team-member", "contact", "contact_point", "organization", "communication", "participant", "event", "project", "session-summary"]);
 
 /**
  * A Kit may add fields to a core type (a Kit's `contact` carries the fields its practice needs). The stored type is the whole thing: the core fields first, then
@@ -29,7 +30,7 @@ function mergeCoreType(t) {
   for (const f of t.fields) { const c = core.fields.find((/** @type {any} */ x) => x.name === f.name); if (c && c.kind !== f.kind) throw new LanguageError("invalid_definition", `${t.name}.${f.name} is already a core ${c.kind} field; a Kit adds new fields to a core type, it does not change core ones`, { path: `type ${t.name}.${f.name}` }); }
   const have = new Set(core.fields.map((/** @type {any} */ f) => f.name));
   const merged = { ...t, label: core.label, ...(core.icon ? { icon: core.icon } : {}), fields: [...core.fields.map(inOrder), ...t.fields.filter((/** @type {any} */ f) => !have.has(f.name))] };
-  return Object.fromEntries(["name", "label", "icon", "kind", "fields", "stages", "rules", "role"].filter((k) => /** @type {any} */ (merged)[k] !== undefined).map((k) => [k, /** @type {any} */ (merged)[k]]));
+  return Object.fromEntries(["name", "label", "icon", "kind", "fields", "stages", "stage_sets", "rules", "role"].filter((k) => /** @type {any} */ (merged)[k] !== undefined).map((k) => [k, /** @type {any} */ (merged)[k]]));
 }
 /** Roles every Space has. */
 export const CORE_ROLES = Object.freeze(["owner", "admin", "member"]);
@@ -111,8 +112,20 @@ export function checkKit(kit) {
     }
     for (const [i, r] of (t.rules ?? []).entries()) checkExpr(`type ${t.name}.rules[${i}]`, r.require, t);
     const stageField = t.fields.find((/** @type {any} */ f) => f.kind === "stage");
-    if (stageField && JSON.stringify((t.stages ?? []).map((/** @type {any} */ s) => s.name)) !== JSON.stringify(stageField.options)) err(`type ${t.name}`, "The stage field's options and the stages must be the same list");
-    for (const s of t.stages ?? []) {
+    for (const f of t.fields) for (const k of ["visible_if", "required_if"]) {
+      if (f[k] === undefined) continue;
+      checkExpr(`type ${t.name}.${f.name}.${k}`, f[k], t);
+      if (exprNames(parseExpr(f[k])).has(f.name)) err(`type ${t.name}.${f.name}.${k}`, `${k} cannot name the field it is on`);
+      if (f.required && k === "required_if") err(`type ${t.name}.${f.name}`, "A field is required, or required_if something, not both");
+    }
+    if (stageField && JSON.stringify(stageNamesOf(t)) !== JSON.stringify(stageField.options)) err(`type ${t.name}`, "The stage field's options must be the stages of the type and of its stage sets, each name once");
+    for (const [i, set] of (t.stage_sets ?? []).entries()) {
+      if (!stageField) err(`type ${t.name}.stage_sets[${i}]`, "stage_sets need a stage field");
+      checkExpr(`type ${t.name}.stage_sets[${i}].when`, set.when, t);
+      if (exprNames(parseExpr(set.when)).has(stageField.name)) err(`type ${t.name}.stage_sets[${i}].when`, "A stage set is picked by the record's other fields, not by its stage");
+    }
+    for (const s of [...(t.stages ?? []), ...(t.stage_sets ?? []).flatMap((/** @type {any} */ x) => x.stages)]) {
+      if (s.enter_if !== undefined) { checkExpr(`type ${t.name} stage ${s.name}.enter_if`, s.enter_if, t); if (exprNames(parseExpr(s.enter_if)).has(stageField?.name)) err(`type ${t.name} stage ${s.name}.enter_if`, "A stage's entry condition reads the record's other fields, not its stage"); }
       for (const task of s.tasks ?? []) {
         const at = `type ${t.name} stage ${s.name} task "${task.title}"`;
         for (const who of [task.doer, task.checker].filter(Boolean)) {

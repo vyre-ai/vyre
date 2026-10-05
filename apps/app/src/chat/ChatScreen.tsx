@@ -27,6 +27,7 @@ import { AboutSheet, type AboutInfo } from "./AboutSheet";
 import { StatusLine } from "./StatusLine";
 import { addHighlight, chipLabel, makeHighlight, removeHighlight, withQuotes, type Highlight } from "./highlight.js";
 import { markSealedNoteSeen, sealedNoteSeen, sealedNoteText } from "./group.js";
+import { useRealComposer } from "./useRealComposer";
 
 export type ChatScreenProps = {
   sessionId: string;
@@ -114,7 +115,7 @@ export function ChatScreen(p: ChatScreenProps) {
     [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
   );
   const onSend = useCallback(
-    async (text: string, o?: { to: string[]; fanout: boolean }) => {
+    async (text: string, o?: { to: string[]; fanout: boolean; mentions?: { kind: string; id: string; name: string }[] }) => {
       setNote(null);
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
@@ -128,7 +129,7 @@ export function ChatScreen(p: ChatScreenProps) {
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
-      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(body, { to: o.to, fanout: o.fanout, parent }) : await store.send(body);
+      const why = o && (o.to.length || o.fanout || parent) ? await store.sendTo(body, { to: o.to, fanout: o.fanout, parent, ...(o.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, o?.mentions?.length ? { mentions: o.mentions } : undefined);
       if (why) setNote(why);
     },
     [store, editing, actions, replyTo, highlights],
@@ -143,6 +144,7 @@ export function ChatScreen(p: ChatScreenProps) {
   const info: AboutInfo = { record: null, sealed: 0, ...p.about, runsOn };
   const line = [info.record?.title, info.space].filter(Boolean).join(" · ") + (muted ? (info.record || info.space ? " · muted" : "muted") : "");
   const assistantsHere = faces.filter((f) => f.family === "assistant").length;
+  const realComposer = useRealComposer(p.sessionId, found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined, viewer, setNote);
   const people = found.length ? found.filter((f) => f.id !== viewer).map((f) => ({ name: f.name, family: f.family === "assistant" ? ("assistant" as const) : ("person" as const) })) : undefined;
   return (
     <View style={{ flex: 1, backgroundColor: color["surface-1"], paddingTop: insets.top }}>
@@ -242,10 +244,11 @@ export function ChatScreen(p: ChatScreenProps) {
           onSend={onSend}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
-          people={people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
-          records={allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
-          models={allowsMock() ? [{ id: "fast", label: "Fast model", fit: 92 }, { id: "deep", label: "Deep model", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
-          model="fast"
+          people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}
+          records={realComposer ? realComposer.records : allowsMock() ? [{ name: "Northwind Bakery", type: "Matter", sealed: 1 }, { name: "Harlow Legal intake", type: "Project", sealed: 0 }, { name: "Okafor estate", type: "Matter", sealed: 2 }] : []}
+          models={realComposer ? realComposer.models : allowsMock() ? [{ id: "fast", label: "Fast model", fit: 92 }, { id: "deep", label: "Deep model", fit: 97 }, { id: "local", label: "Local model", fit: 61 }] : []}
+          model={realComposer ? realComposer.model : "fast"}
+          onModel={realComposer?.onModel}
           runsOn={runsOn}
           onRunsOn={() => setRunsOn((w) => (w === "mac" ? "server" : "mac"))}
           {...p.composer}

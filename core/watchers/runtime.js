@@ -502,7 +502,7 @@ export class Runtime {
     }
     // Taught only with the project's folders. Without them a fact would belong everywhere,
     // and one client's items must never reach another project.
-    if (project) {
+    if (project && spec.memory !== false) {
       for (const item of fresh) {
         await this.d.teach("watcher.item", {
           subject: { name: typeof item.about === "string" && item.about.trim() ? item.about.trim().slice(0, 120) : name },
@@ -510,7 +510,7 @@ export class Runtime {
           at: item.at || undefined, key: `${name}/${item.id}`, project_cwds: project.folders,
         }).catch(() => false);
       }
-    } else if (fresh.length) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
+    } else if (fresh.length && spec.memory !== false) this.d.log(`${name}: project ${r.project} is gone, so ${fresh.length} items were filed but not taught to Memory`);
 
     const cursor = res.cursor ?? started;
     const next = PUSHED.has(r.schedule) ? null : cron.next(cron.parse(r.schedule), this.now());

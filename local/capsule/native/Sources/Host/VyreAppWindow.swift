@@ -25,17 +25,26 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var socket = ""
     var presence: CapsulePresence?
 
+    /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
+    private(set) var boxless = false
+
     private(set) var window: NSWindow?
     private var web: WKWebView?
     private let proxy = BoxSchemeHandler()
+    /// The page's open streams (BoxSocket.swift), by the id the page's WebSocket shim gave them.
+    private var sockets: [Int: BoxSocket] = [:]
     private var priorMenu: NSMenu?
 
     var isOpen: Bool { window?.isVisible ?? false }
 
-    /// Open the window, or bring it forward. Never starts anything else.
-    func show() {
+    /// Open the window, or bring it forward. Never starts anything else. `boxless` is a server Mac's window (the web build carried in this app, no vyred socket);
+    /// a window already open in the other mode is closed and made again.
+    func show(boxless: Bool = false) {
+        if window != nil, self.boxless != boxless { window?.close() }
+        self.boxless = boxless
         if window == nil { build() }
         proxy.socket = socket
+        proxy.bundleDir = boxless ? BundledApp.locate() : nil
         if NSApp.activationPolicy() != .regular { NSApp.setActivationPolicy(.regular) }
         if priorMenu == nil { priorMenu = NSApp.mainMenu }
         NSApp.mainMenu = VyreMenu.make(self)
@@ -47,6 +56,12 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         let cfg = WKWebViewConfiguration()
         cfg.setURLSchemeHandler(proxy, forURLScheme: Self.scheme)
         cfg.userContentController.add(WeakScriptHandler(self), name: "vyre")
+        // A boxless window says so before the bridge is made, so the page can start as a browser with no box of its own.
+        if boxless { cfg.userContentController.addUserScript(WKUserScript(source: "window.__vyreBoxless = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
+        // The app's version, for the page to show the line that matches it (a release candidate's install line differs from a stable one's).
+        cfg.userContentController.addUserScript(WKUserScript(source: Self.versionScript(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // A WebSocket cannot ride a custom scheme: the page's WebSocket is replaced by one the app opens on vyred's socket (a server Mac has no vyred socket to open).
+        if !boxless { cfg.userContentController.addUserScript(WKUserScript(source: Self.wsShimSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: cfg)
         view.navigationDelegate = self
@@ -71,6 +86,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func windowWillClose(_ notification: Notification) {
         web?.stopLoading()
         proxy.stopAll()
+        for s in sockets.values { s.stop() }
+        sockets.removeAll()
         web = nil
         window = nil
         NSApp.mainMenu = priorMenu
@@ -99,6 +116,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let id = body["id"] as? Int, let op = body["op"] as? String else { return }
         let args = body["args"] as? [String: Any] ?? [:]
+        if op.hasPrefix("ws.") { return wsCall(op, args) } // fire and forget: the page's events come back through _ws
         let box = UncheckedBox(args)
         Task { @MainActor in await self.handle(id: id, op: op, args: box) }
     }
@@ -124,6 +142,45 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         }
     }
 
+    // MARK: The page's WebSockets
+
+    /// Only vyred's own stream routes are opened for the page: /v1/streams/<module>/<name>, with its query (the ticket).
+    static func isStreamPath(_ p: String) -> Bool {
+        p.range(of: "^/v1/streams/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*(\\?[A-Za-z0-9._~%=&+-]*)?$", options: .regularExpression) != nil
+    }
+
+    private func wsCall(_ op: String, _ args: [String: Any]) {
+        guard let sid = args["sid"] as? Int else { return }
+        switch op {
+        case "ws.open":
+            guard let path = args["path"] as? String, Self.isStreamPath(path), !socket.isEmpty, sockets[sid] == nil else { return wsEvent(sid, "close", ["code": 1006, "reason": ""]) }
+            let ws = BoxSocket(socket: socket, path: path,
+                onOpen: { [weak self] in DispatchQueue.main.async { self?.wsEvent(sid, "open", NSNull()) } },
+                onMessage: { [weak self] m in
+                    DispatchQueue.main.async {
+                        switch m {
+                        case .text(let t): self?.wsEvent(sid, "text", t)
+                        case .binary(let d): self?.wsEvent(sid, "binary", d.base64EncodedString())
+                        default: break
+                        }
+                    }
+                },
+                onClose: { [weak self] code, reason in DispatchQueue.main.async { self?.sockets[sid] = nil; self?.wsEvent(sid, "close", ["code": code, "reason": reason]) } })
+            sockets[sid] = ws
+            ws.start()
+        case "ws.send":
+            if let t = args["text"] as? String { sockets[sid]?.send(.text(t)) }
+            else if let b = args["b64"] as? String, let d = Data(base64Encoded: b) { sockets[sid]?.send(.binary(d)) }
+        case "ws.close":
+            sockets[sid]?.close(code: args["code"] as? Int ?? 1000, reason: args["reason"] as? String ?? "")
+        default: break
+        }
+    }
+
+    private func wsEvent(_ sid: Int, _ kind: String, _ data: Any) {
+        run("window.__vyreWS && window.__vyreWS._event(\(sid), \(Self.js(kind)), \(Self.json(["v": data])).v)")
+    }
+
     private func reply(_ id: Int, _ value: [String: Any]) { run("window.__vyreShell && window.__vyreShell._reply(\(id), \(Self.json(value)))") }
     private func run(_ script: String) { web?.evaluateJavaScript(script, completionHandler: nil) }
 
@@ -131,6 +188,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         guard JSONSerialization.isValidJSONObject(v), let d = try? JSONSerialization.data(withJSONObject: v), let s = String(data: d, encoding: .utf8) else { return "null" }
         return s
     }
+    /// Sets window.__vyreVersion before the bridge is made.
+    static func versionScript(_ version: String) -> String { "window.__vyreVersion = \(js(version));" }
     static func js(_ s: String) -> String { json([s]).dropFirst().dropLast().description }
 
     // MARK: Navigation and files
@@ -151,6 +210,54 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         panel.begin { completionHandler($0 == .OK ? panel.urls : nil) }
     }
 
+    /// Replaces the page's WebSocket for the app's own address (vyreapp://box/...): the stream is opened by the app on vyred's socket (BoxSocket.swift). Any other address
+    /// gets the real WebSocket. Binary messages cross as base64.
+    static let wsShimSource = """
+    (function () {
+      if (window.__vyreWS) return;
+      var Native = window.WebSocket, socks = {}, next = 1;
+      function post(op, args) { window.webkit.messageHandlers.vyre.postMessage({ id: 0, op: op, args: args }); }
+      function b64(buf) { var b = new Uint8Array(buf), s = ""; for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
+      function unb64(s) { var r = atob(s), b = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) b[i] = r.charCodeAt(i); return b.buffer; }
+      function VyreWS(url, protocols) {
+        var m = /^(?:vyreapp|ws):\\/\\/box(\\/[^#]*)$/.exec(String(url));
+        if (!m) return new Native(url, protocols);
+        if (!(this instanceof VyreWS)) throw new TypeError("Failed to construct 'WebSocket': Please use the 'new' operator");
+        var sid = next++, self = this, L = {}, queue = Promise.resolve();
+        this.url = String(url); this.readyState = 0; this.bufferedAmount = 0; this.extensions = ""; this.protocol = ""; this.binaryType = "blob";
+        this.onopen = this.onmessage = this.onerror = this.onclose = null;
+        function fire(type, ev) {
+          ev.type = type; ev.target = self;
+          var h = self["on" + type]; if (h) { try { h.call(self, ev); } catch (e) {} }
+          (L[type] || []).slice().forEach(function (f) { try { f.call(self, ev); } catch (e) {} });
+        }
+        this.addEventListener = function (t, f) { (L[t] = L[t] || []).push(f); };
+        this.removeEventListener = function (t, f) { L[t] = (L[t] || []).filter(function (x) { return x !== f; }); };
+        this.dispatchEvent = function (e) { fire(e.type, e); return true; };
+        this.send = function (d) {
+          if (self.readyState !== 1) throw new DOMException("The socket is not open.", "InvalidStateError");
+          queue = queue.then(function () {
+            if (typeof d === "string") return post("ws.send", { sid: sid, text: d });
+            var buf = d instanceof Blob ? d.arrayBuffer() : Promise.resolve(ArrayBuffer.isView(d) ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d);
+            return buf.then(function (b) { post("ws.send", { sid: sid, b64: b64(b) }); });
+          });
+        };
+        this.close = function (code, reason) { if (self.readyState >= 2) return; self.readyState = 2; post("ws.close", { sid: sid, code: code || 1000, reason: reason || "" }); };
+        socks[sid] = function (kind, v) {
+          if (kind === "open") { self.readyState = 1; fire("open", {}); }
+          else if (kind === "text") fire("message", { data: v });
+          else if (kind === "binary") { var ab = unb64(v); fire("message", { data: self.binaryType === "arraybuffer" ? ab : new Blob([ab]) }); }
+          else if (kind === "close") { self.readyState = 3; delete socks[sid]; if (v.code !== 1000 && v.code !== 1001) fire("error", {}); fire("close", { code: v.code, reason: v.reason, wasClean: v.code === 1000 }); }
+        };
+        post("ws.open", { sid: sid, path: m[1] });
+      }
+      VyreWS.CONNECTING = 0; VyreWS.OPEN = 1; VyreWS.CLOSING = 2; VyreWS.CLOSED = 3;
+      VyreWS.prototype.CONNECTING = 0; VyreWS.prototype.OPEN = 1; VyreWS.prototype.CLOSING = 2; VyreWS.prototype.CLOSED = 3;
+      window.__vyreWS = { _event: function (sid, kind, v) { var f = socks[sid]; if (f) f(kind, v); } };
+      window.WebSocket = VyreWS;
+    })();
+    """
+
     /// The page the bridge makes: window.__vyreShell.
     static let bridgeSource = """
     (function () {
@@ -165,6 +272,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
       }
       window.__vyreShell = {
         kind: "mac",
+        boxless: !!window.__vyreBoxless,
+        version: window.__vyreVersion || "",
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
@@ -189,6 +298,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
 /// queue, as the Capsule's own VyredClient does; a long stream stays open until the page stops it.
 final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable {
     var socket = ""
+    /// Set for a server Mac: the web build's folder inside the app. Requests are answered from it, and nothing goes to a socket.
+    var bundleDir: String?
     private let lock = NSLock()
     private var stopped = Set<ObjectIdentifier>()
 
@@ -198,6 +309,7 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
     func webView(_ webView: WKWebView, stop task: WKURLSchemeTask) { lock.lock(); stopped.insert(ObjectIdentifier(task)); lock.unlock() }
 
     func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
+        if let dir = bundleDir { return serveBundled(task, dir: dir) }
         guard let url = task.request.url, !socket.isEmpty else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
         var path = url.path.isEmpty ? "/" : url.path
         if let q = url.query { path += "?" + q }
@@ -236,6 +348,19 @@ final class BoxSchemeHandler: NSObject, WKURLSchemeHandler, @unchecked Sendable 
                 }
             }
         }
+    }
+
+    /// A server Mac's window: the app's own files from the folder carried inside this app (BundledApp.swift). A call to a box has no vyred here and fails.
+    private func serveBundled(_ task: WKURLSchemeTask, dir: String) {
+        guard let url = task.request.url, (task.request.httpMethod ?? "GET") == "GET" else { return task.didFailWithError(URLError(.cannotConnectToHost)) }
+        let path = url.path.isEmpty ? "/" : url.path
+        guard case .file(let file, let mime) = BundledApp.resolve(path: path, in: dir), let data = FileManager.default.contents(atPath: file) else {
+            let gone = HTTPURLResponse(url: url, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "text/plain"])!
+            task.didReceive(gone); task.didReceive(Data()); task.didFinish()
+            return
+        }
+        let ok = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": mime, "Content-Length": String(data.count), "Cache-Control": "no-store"])!
+        task.didReceive(ok); task.didReceive(data); task.didFinish()
     }
 
     /// The request's body, from its data or its stream.

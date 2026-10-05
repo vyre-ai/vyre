@@ -1,32 +1,29 @@
 // @ts-check
-// Two-way sync between a Space's Event records and an outside calendar (Google first), through the vault's route. Nothing here holds a
-// credential or opens a connection: every call goes through `request`, the vault route (vault.request: the credential and its allowed
-// hosts live in the vault, the sync only names the credential). Events are written through the kernel's records door like any other
+// Two-way sync between a Space's Event records and an outside calendar (Google first), on the connector declaration (records/connectors/google-calendar). Nothing here holds a
+// credential or opens a connection: every call is one of the declaration's ops (events.list, events.insert, events.patch) made through `call`, which goes to the vault's route. Events are written through the kernel's records door like any other
 // record, so grants, the log and sealing apply.
 //
 //   pull   outside -> Vyre. Incremental by Google's sync token; a changed event updates its record, a new one makes a record, a
 //          cancelled one removes it. Runs on a schedule trigger (sessions): nothing here polls.
-//   push   Vyre -> outside. A record that came from Vyre (or was edited here) is inserted or patched. This is an OUTWARD act and
-//          follows the Space's approval rule through `policy`: "allow", "hold" (an ask-first task decides, `hold` returns when decided)
-//          or "refuse" (a Never rule, or Draft only). With no policy nothing is written outward.
+//   push   Vyre -> outside. A record that came from Vyre (or was edited here) is inserted or patched. This is an OUTWARD act: it goes through `write(change, perform)`, which
+//          is the Space's approval path. It runs `perform()` when the act is allowed or a person has said yes, and answers "held" (an ask-first task is open) or "refused" (a
+//          Never rule, Draft only, or a no). With no `write` nothing is written outward. A held change is tried again on the next push, so it goes out once approved.
 //   edits  both sides changed: the outside copy is fetched again (If-Match on the etag) and wins, and a `calendar.conflict` is reported.
 
 import { fromGoogle, toGoogle } from "./google.js";
 
-const API = "https://www.googleapis.com/calendar/v3";
-
 /**
  * @param {{
- *   kernel: { records: any }, chain: () => any, request: (r: { method: string, url: string, body?: any, headers?: Record<string, string> }) => Promise<{ status: number, body: any }>,
+ *   kernel: { records: any }, chain: () => any,
+ *   call: (op: string, input: { params?: any, query?: any, body?: any, headers?: any }, extra?: any) => Promise<{ status: number, body: any }>,
  *   calendar?: string, route?: string,
- *   policy?: (change: { op: "insert" | "patch" | "delete", record: string, title: string }) => Promise<"allow" | "hold" | "refuse"> | "allow" | "hold" | "refuse",
- *   hold?: (change: { op: string, record: string, title: string }) => Promise<boolean>,
+ *   write?: (change: { op: "insert" | "patch" | "delete", record: string, title: string, key: string, opName?: string, input?: any, detail?: any }, perform: (extra?: any) => Promise<any>) => Promise<{ done: true, value: any } | { done: false, held?: true, refused?: true }>,
  *   state?: { get: (k: string) => any, set: (k: string, v: any) => void },
  *   report?: (type: string, data: any) => void,
  * }} o
  */
 export function createCalendarSync(o) {
-  const cal = encodeURIComponent(o.calendar ?? "primary"), route = o.route ?? "google-calendar";
+  const cal = o.calendar ?? "primary", route = o.route ?? "google-calendar";
   const R = o.kernel.records, report = o.report ?? (() => {});
   const mem = new Map();
   const state = o.state ?? { get: (/** @type {string} */ k) => mem.get(k), set: (/** @type {string} */ k, /** @type {any} */ v) => { mem.set(k, v); } };
@@ -47,8 +44,7 @@ export function createCalendarSync(o) {
       const out = { created: 0, updated: 0, removed: 0 };
       let token = state.get("syncToken"), pageToken;
       for (;;) {
-        const q = new URLSearchParams({ singleEvents: "true", showDeleted: "true", maxResults: "250", ...(token ? { syncToken: token } : {}), ...(pageToken ? { pageToken } : {}) });
-        const res = await o.request({ method: "GET", url: `${API}/calendars/${cal}/events?${q}` });
+        const res = await o.call("events.list", { params: { calendar: cal }, query: { singleEvents: "true", showDeleted: "true", maxResults: 250, ...(token ? { syncToken: token } : {}), ...(pageToken ? { pageToken } : {}) } });
         if (res.status === 410) { state.set("syncToken", undefined); token = undefined; pageToken = undefined; continue; } // the token expired: start over
         if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status}`), { code: "unavailable" });
         for (const g of res.body.items || []) {
@@ -73,13 +69,6 @@ export function createCalendarSync(o) {
     });
   }
 
-  async function allowed(/** @type {{ op: "insert" | "patch" | "delete", record: string, title: string }} */ change) {
-    const verdict = o.policy ? await o.policy(change) : "refuse";
-    if (verdict === "allow") return true;
-    if (verdict === "hold") return Boolean(o.hold && (await o.hold(change)));
-    return false;
-  }
-
   /** Vyre -> outside. @returns {Promise<{ inserted: number, patched: number, held: number, refused: number, conflicts: number }>} */
   function push() {
     return serial(async () => {
@@ -94,14 +83,30 @@ export function createCalendarSync(o) {
         if (!isNew && !mine) continue; // a record we never synced and did not make: leave it
         if (r.data.source === "google" && !mine) continue;
         const change = { op: /** @type {"insert" | "patch"} */ (isNew ? "insert" : "patch"), record: r.urn ?? `${r.type}/${r.id}`, title: String(r.data.title) };
-        if (!(await allowed(change))) { out.refused++; report("calendar.refused", change); continue; }
+        const key = `${change.op}:${change.record}:${r.version}`;
+        const send = (/** @type {string} */ opName, /** @type {any} */ input) => async (/** @type {any} */ extra) => o.call(opName, input, extra);
+        // The new event carries an id of our own choosing (Google accepts one, lower case hex), derived from the record: a repeat after a crash between the write and the record's update is
+        // answered 409, and the event that is already there is read instead of made twice.
+        const input = isNew ? { params: { calendar: cal }, body: { ...toGoogle(r.data), id: String(r.id).replace(/-/g, "").toLowerCase() } }
+          : { params: { calendar: cal, id: String(r.data.external_id) }, body: toGoogle(r.data), headers: { "if-match": mine.etag } };
+        const insert = async (/** @type {any} */ extra) => {
+          const res = await o.call("events.insert", input, extra);
+          return res.status === 409 ? o.call("events.get", { params: { calendar: cal, id: input.body.id } }) : res;
+        };
+        const perform = isNew ? insert : send("events.patch", input);
+        // What the owner is asked to approve is what is sent: the card shows these, and the daemon binds the approval to the request built from the same input.
+        const d = r.data, detail = { title: d.title, starts_at: d.starts_at, ends_at: d.ends_at ?? null, all_day: Boolean(d.all_day), place: d.place ?? null, people: d.people ?? [], notes: d.notes ? String(d.notes).slice(0, 300) : null };
+        const w = o.write ? await o.write({ ...change, key, opName: isNew ? "events.insert" : "events.patch", input, detail }, perform) : { done: false, refused: true };
+        if (!w.done) {
+          if ("held" in w && w.held) { out.held++; report("calendar.held", change); } else { out.refused++; report("calendar.refused", change); }
+          continue;
+        }
+        const res = /** @type {any} */ (w.value);
         if (isNew) {
-          const res = await o.request({ method: "POST", url: `${API}/calendars/${cal}/events`, body: toGoogle(r.data) });
           if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status}`), { code: "unavailable" });
           const u = await R.update(o.chain(), "event", r.id, { external_id: res.body.id, calendar: route, source: "vyre" }, r.version);
           mark(u.id, { version: u.version, etag: res.body.etag }); out.inserted++;
         } else {
-          const res = await o.request({ method: "PATCH", url: `${API}/calendars/${cal}/events/${encodeURIComponent(r.data.external_id)}`, body: toGoogle(r.data), headers: { "If-Match": mine.etag } });
           if (res.status === 412) { out.conflicts++; report("calendar.conflict", change); mark(r.id, { version: r.version, conflict: true }); continue; }
           if (res.status !== 200) throw Object.assign(new Error(`the calendar answered ${res.status}`), { code: "unavailable" });
           mark(r.id, { version: r.version, etag: res.body.etag }); out.patched++;

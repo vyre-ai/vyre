@@ -84,6 +84,7 @@ export function Row({ lead, title, sub, end, onPress, selected, className, acces
       onPress={onPress}
       style={boxStyle}
       pressedStyle={st.press}
+      rippleColor={ctx.color.press}
       hoverStyle={selected ? undefined : st.hover}
     >
       {body}
