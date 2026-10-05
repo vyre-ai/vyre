@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, kernelCaller } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { until, FAKE } from "../sessions/testing/boot.js";
 
@@ -62,9 +62,8 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   assert.ok(again.data, JSON.stringify(again.error));
   assert.match((await get(plain.data.id)).chat, /^chat_/);
 
-  // an agent that runs in the Space is an actor of it (added with the owner's yes, as everywhere); its run's chat is the owner plus that agent, never an owner-only chat that drops it
-  await grants.addActor(ownerChain, { kind: "agent", id: "kit", space: d.kernel.id.space }, { presence: { op: "x", fields: {}, n: 1 } });
-  const made = await d.registry.call("agents.create", { name: "kit", projects: "*" }, "cli");
+  // an agent that runs in the Space is an actor of it (agents.create registers it, on the person's own call); its run's chat is the owner plus that agent, never an owner-only chat that drops it
+  const made = await kernelCaller(d, root)("agents.create", { name: "kit", projects: "*" });
   assert.ok(made.data, JSON.stringify(made.error));
   const withKit = await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "cli", agent: "kit" }, "cli");
   assert.ok(withKit.data, JSON.stringify(withKit.error));
@@ -180,17 +179,18 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   const BOB = "per_" + "b".repeat(26), CAROL = "per_" + "c".repeat(26);
   for (const [p, n] of [[BOB, 2], [CAROL, 3]]) await grants.setRole(ownerChain, { person: p, role: "member" }, { presence: { op: "x", fields: {}, n } });
   const as = async (person, id) => ({ token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: `d-${id}`, person, path: "direct", session: `s-${id}` }), {})).token });
-  const call = async (who, tool, input) => d.registry.call(tool, input, "cli", who);
-  const O = await as(owner, "o"), B = await as(BOB, "b"), C = await as(CAROL, "c");
+  const ownerCall = kernelCaller(d, root);
+  const call = async (who, tool, input) => (who === "owner" ? ownerCall(tool, input) : d.registry.call(tool, input, "cli", who));
+  const O = "owner", B = await as(BOB, "b"), C = await as(CAROL, "c");
 
-  // making and changing a chat is a person acting directly (a paired device's own chain, as the app's calls arrive); a session token's chain is refused. The happy path of both tools is walked on a real
-  // paired device (a test device would have to be enrolled); here the chat is made through the kernel and the tools that read and file it are exercised.
-  assert.equal((await call(O, "work.chat.create", { people: [BOB] })).error.code, "chain_not_person");
+  // making and changing a chat is a person acting directly (a paired device's own chain, as the app's calls arrive); a session token's chain is refused
+  assert.equal((await call(B, "work.chat.create", { people: [owner] })).error.code, "chain_not_person");
   assert.equal((await call(O, "work.chat.create", { models: [{ provider: "codex", model: "x" }] })).error.code, "bad_input");
-  const made = await grants.chats.create(ownerChain, { people: [BOB] });
-  const chat = made.id;
-  await until(async () => (await call(O, "work.chat.list", {})).data.chats.find(r => r.chat === chat), "the chat's record, made from the kernel's chat.created");
-  await call(O, "work.chat.rename", { chat, title: "Docket check" }).then(x => assert.ok(x.data, JSON.stringify(x.error)));
+  const made = await call(O, "work.chat.create", { title: "Docket check", people: [BOB] });
+  assert.ok(made.data, JSON.stringify(made.error));
+  const chat = made.data.chat;
+  assert.deepEqual([...made.data.people].sort(), [owner, BOB].sort());
+  assert.equal((await call(O, "work.chat.list", {})).data.chats.find(r => r.chat === chat).title, "Docket check");
   const listed = async who => (await call(who, "work.chat.list", {})).data.chats.find(r => r.chat === chat);
   const mineRow = await listed(B);
   assert.deepEqual([mineRow.title, mineRow.open, mineRow.project_name], ["Docket check", true, "General"]);
@@ -217,7 +217,9 @@ test("work.chat.*: create, change, list and get follow the kernel's chat read; a
   const stopped = await call(B, "threads.chat-stop", { chat });
   assert.ok(stopped.data, JSON.stringify(stopped.error));
   // add carol: she reads it now
-  await grants.chats.change(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s-b" }), chat, { add_people: [CAROL] });
+  assert.equal((await call(C, "work.chat.change", { chat, add_people: [CAROL] })).error.code, "chain_not_person");
+  const added = await call(O, "work.chat.change", { chat, add_people: [CAROL] });
+  assert.deepEqual([...added.data.people].sort(), [owner, BOB, CAROL].sort());
   assert.equal((await call(C, "work.chat.get", { chat })).data.open, true);
   assert.equal((await listed(C)).open, true);
 });

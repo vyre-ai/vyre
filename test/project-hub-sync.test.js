@@ -78,7 +78,8 @@ test("a chat's name syncs both ways: a rename on a run reaches the record, a ren
   const chat = (await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli")).data.thread.chat;
   const get = async () => (await rows("chat-record")).find((/** @type {any} */ x) => x.data.chat === chat);
   await until(get, "the record");
-  await d.registry.call("threads.rename", { thread: id, name: "Welcome email" }, "cli", await meta());
+  const rn = await d.registry.call("threads.rename", { thread: id, name: "Welcome email" }, "cli", await meta());
+  assert.ok(!rn.error, JSON.stringify(rn.error));
   await until(async () => { const x = await get(); return x && x.data.title === "Welcome email" ? x : null; }, "the thread's new name in Records");
   // from Records' side
   await d.registry.call("work.chat.rename", { chat, title: "Engagement letter" }, "cli", await meta());
