@@ -37,7 +37,7 @@ test("web: the code, styles and fonts the pages load come from web/ too", () => 
 });
 
 test("web: what web/ does not hold is not claimed (the Deck or the app answers), and nothing escapes web/", () => {
-  for (const p of ["/js/app.js", "/views/now.js", "/onboard/nothing.js", "/", "/u/now", "/../deck/index.html", "/%2e%2e/package.json", "/onboard/%2e%2e/%2e%2e/package.json", "/%zz", "/test/fake-dom.js", "/fixtures/onboard.json", "/js/api.test.js"]) assert.equal(get(p).hit, false, p);
+  for (const p of ["/js/app.js", "/views/now.js", "/onboard/nothing.js", "/", "/u/now", "/../deck/index.html", "/%2e%2e/package.json", "/onboard/%2e%2e/%2e%2e/package.json", "/%zz", "/test/fake-dom.js", "/TEST/fake-dom.js", "/fixtures/onboard.json", "/Fixtures/onboard.json", "/js/api.test.js", "/js/API.TEST.js"]) assert.equal(get(p).hit, false, p);
 });
 
 for (const root of [false, true]) {

@@ -1493,7 +1493,9 @@ export function serveWeb(res, pathname, cfg) {
   let file = path.resolve(dir, "." + path.posix.normalize(rel));
   if (!file.startsWith(dir + path.sep)) return false;
   // Tests and sample data live beside the pages in the repo and are never served.
-  if (path.relative(dir, file).split(path.sep).some(seg => seg === "test" || seg === "fixtures") || /\.test\.m?js$/.test(file)) return false;
+  // Compared in lower case: a Mac's file system is case-insensitive, so /TEST/x.js and /Fixtures/x.json reach the same files.
+  const low = path.relative(dir, file).toLowerCase();
+  if (low.split(path.sep).some(seg => seg === "test" || seg === "fixtures") || /\.test\.m?js$/.test(low)) return false;
   let page = false;
   try { if (fs.statSync(file).isDirectory()) { file = path.join(file, "index.html"); page = true; } } catch { return false; }
   let buf;
