@@ -963,7 +963,8 @@ test("Q-1, app side: the app shows the same three words from its own keys and no
       } });
     const r = await w.call("wink.pair.server", { payload: serverQrPayload(seedBytes, "ws://relay.test"), target: { kind: "identity", id: ME } });
     assert.equal(r.ack, null);
-    await new Promise(x => setTimeout(x, 60));
+    // wait for the pairing to settle (bounded), not a fixed 60 ms: the polls take a moment on a busy box
+    for (let k = 0; k < 150; k++) { const st = (await w.call("wink.pair.status", { pairing: r.pairing })).state; if (st !== "waiting") break; await new Promise(x => setTimeout(x, 20)); }
     return { w, r, seen };
   };
   const ok = await run(false);
