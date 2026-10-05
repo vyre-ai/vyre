@@ -348,13 +348,23 @@ export function compareReadback(d, name, done, read) {
  * @param {Declaration[]} ds @param {Parameters<typeof toCredentialConfig>[1]} o
  */
 export function mergedCredentialConfig(ds, o = {}) {
+  const parts = mergedParts(ds);
+  const first = ds[0], scopes = [...new Set(ds.flatMap(d => d.auth.scopes || []))];
+  const base = toCredentialConfig({ ...first, auth: { ...first.auth, ...(scopes.length ? { scopes } : {}) } }, o);
+  return { ...base, ...parts };
+}
+
+/**
+ * What several declarations that sign in the same way share, apart from the sign-in itself: every host, the endpoint classes, the rate and the `service` block (each route naming its host).
+ * A sign-in flow that makes its own credential (the OAuth one) adds these to the auth it made.
+ * @param {Declaration[]} ds
+ */
+export function mergedParts(ds) {
   if (!ds.length) throw Object.assign(new Error("no connector to make a credential for"), { code: "bad_input" });
   const first = ds[0];
   for (const d of ds) {
     if (d.auth.type !== first.auth.type || d.auth.token_uri !== first.auth.token_uri || d.auth.authorize_uri !== first.auth.authorize_uri) throw Object.assign(new Error(`${d.id} does not sign in the way ${first.id} does, so they cannot share a credential`), { code: "bad_input" });
   }
-  const scopes = [...new Set(ds.flatMap(d => d.auth.scopes || []))];
-  const base = toCredentialConfig({ ...first, auth: { ...first.auth, ...(scopes.length ? { scopes } : {}) } }, o);
   const parts = ds.map(d => ({ d, p: declarationParts(d) }));
   const names = new Set();
   for (const { d } of parts) for (const n of Object.keys(d.ops)) { if (names.has(n)) throw Object.assign(new Error(`op ${n} is declared by two connectors sharing a credential`), { code: "bad_input" }); names.add(n); }
@@ -363,7 +373,7 @@ export function mergedCredentialConfig(ds, o = {}) {
   const draft = parts.map(x => x.p.service.draft).filter(Boolean);
   const retry = parts.every(x => !x.p.service.rate || x.p.service.rate.retry_after);
   return {
-    ...base, hosts: [...new Set(parts.flatMap(x => x.p.hosts))],
+    hosts: [...new Set(parts.flatMap(x => x.p.hosts))],
     endpoints: parts.flatMap(x => x.p.endpoints),
     ...(rates.length ? { rate: { per_minute: Math.min(...rates) } } : {}),
     service: {

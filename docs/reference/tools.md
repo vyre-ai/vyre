@@ -1773,14 +1773,14 @@ The person's connections: name, the app, how it signs in, and when it was made.
 
 ### `connectors.logging`
 
-The recipe for logging a mailbox or calendar to contacts: { connector: gmail | google-calendar, address (the mailbox, or the calendar id), project, credential? (default: the connector's id), createUnknown?, skipInternal? (a domain) } -> { watcher: the input for watchers.preset, flow: the stored Flow for flows.define, steps: what to do in order }. Writes nothing; logging reads and files records and never sends.
+The recipe for logging a mailbox or calendar to contacts: { connector: gmail | google-calendar, address (the mailbox, or the calendar id), project, google? (the Google account's name, from google.accounts; default: the one whose address is this one), createUnknown?, skipInternal? (a domain) } -> { watcher: the input for watchers.preset, flow: the stored Flow for flows.define, steps: what to do in order }. Writes nothing; logging reads and files records and never sends.
 
 - Input:
   - `address` string, required
   - `connector` string, required
   - `project` string, required
   - `createUnknown` boolean
-  - `credential` string
+  - `google` string
   - `skipInternal` string
 - Callers: any caller
 
@@ -2995,7 +2995,7 @@ Connect a Google account: `auth` names a vault item, an OAuth env-set (client_id
 
 ### `google.api`
 
-A Calendar events call for one account, for the calendar sync: { account, method, path, query?, body?, headers? } -> { status, body }. Events paths only; the status of a refusal (404, 409, 410, 412) is returned, not thrown. Vyre's own modules only.
+A Calendar events call (any of GET, POST, PATCH, DELETE) or a Gmail read (GET of the profile, the message list, a message or a thread) for one account: { account, method, path, query?, body?, headers? } -> { status, body }. For the calendar sync and the poll watchers. The status of a refusal (404, 409, 410, 412) is returned, not thrown. Vyre's own modules only.
 
 - Input:
   - `account` string, required
@@ -11502,7 +11502,7 @@ Stop a watcher running until it is resumed. The pause says who stopped it.
 
 ### `watchers.preset`
 
-Write a watcher for a common source from a few fields, left off with its card. kind "mail": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind "calendar": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind "repo": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind "slack": project, credential, channel (the channel id), match, when (default every 15 minutes). kind "feed": project, url, match, when (default hourly). kind "connector": project, connector (a declared connector: gmail, google-calendar, stripe), poll (one of its polls), credential (the vault credential for it), vars (what the poll needs: mailbox or calendar), when, lookback_days (optional); polls any declared connector with no code of its own, files each new item once, read only. kind "pr": project, session (the session id), when (default every 10 minutes), maxPerDay (default 5): posts the new comments other people leave on that session's pull requests into the session, as quoted data. None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.
+Write a watcher for a common source from a few fields, left off with its card. kind "mail": project, credential (the Google api-credential in the vault), connection (default gmail), instruction (what counts as important, optional); files short quoted notes for the important mail a Gmail push announces. kind "calendar": project, credential, calendar (default primary), match (words to look for, optional), days (default 14), when (default hourly); files a note for each new or changed matching event. kind "repo": project, repo (owner/name), credential (a GitHub api-credential, optional for a public repo), match, only (issues, pulls or both), when (default every 30 minutes). kind "slack": project, credential, channel (the channel id), match, when (default every 15 minutes). kind "feed": project, url, match, when (default hourly). kind "connector": project, connector (a declared connector: gmail, google-calendar, stripe), poll (one of its polls), credential (the vault credential for it; for gmail and google-calendar not a credential but google: the name of a connected Google account), vars (what the poll needs: mailbox or calendar), when, lookback_days (optional); polls any declared connector with no code of its own, files each new item once, read only. kind "pr": project, session (the session id), when (default every 10 minutes), maxPerDay (default 5): posts the new comments other people leave on that session's pull requests into the session, as quoted data. None sends or changes anything. The answer carries the grant command the person runs once, then watchers.create {name, hash} turns it on.
 
 - Input:
   - `kind` string, required
@@ -11514,6 +11514,7 @@ Write a watcher for a common source from a few fields, left off with its card. k
   - `credential` string
   - `dailyUsd` number
   - `days` integer
+  - `google` string
   - `instruction` string
   - `label` string
   - `lookback_days` integer

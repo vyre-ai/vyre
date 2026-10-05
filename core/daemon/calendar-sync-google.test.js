@@ -63,12 +63,14 @@ test("an event made in Vyre is pushed to the Google account only through the app
   assert.ok(!(await events()).some((/** @type {any} */ r) => r.data.title === "Closing call" && r.data.external_id));
 });
 
-test("google.api is for Vyre's own modules and Calendar events only: a model or a person's surface is refused, and so is any other Google path", { timeout: 60_000 }, async t => {
+test("google.api is for Vyre's own modules, Calendar events and Gmail reads only: a model or a person's surface is refused, and so is any other Google path or a write to Gmail", { timeout: 60_000 }, async t => {
   const { d, cli } = await world(t);
   const as = (/** @type {string} */ caller, input = {}) => d.registry.call("google.api", { account: "work", method: "GET", path: "/calendar/v3/calendars/primary/events", ...input }, caller);
   assert.ok((await as("mcp")).error, "a model is refused");
   assert.ok((await cli("google.api", { account: "work", method: "GET", path: "/calendar/v3/calendars/primary/events" })).error, "so is a person's surface: the tool is not theirs");
   assert.equal((await as("module:leases")).data.status, 200);
-  for (const path of ["/calendar/v3/users/me/calendarList", "/gmail/v1/users/me/messages", "/calendar/v3/calendars/primary/acl", "/calendar/v3/calendars/primary/events/a/b"]) assert.equal((await as("module:leases", { path })).error?.code, "bad_input", path);
+  for (const path of ["/calendar/v3/users/me/calendarList", "/gmail/v1/users/me/drafts", "/gmail/v1/users/me/messages/a/b", "/calendar/v3/calendars/primary/acl", "/calendar/v3/calendars/primary/events/a/b"]) assert.equal((await as("module:leases", { path })).error?.code, "bad_input", path);
+  for (const path of ["/gmail/v1/users/me/messages", "/gmail/v1/users/me/messages/send", "/gmail/v1/users/me/drafts/send"]) for (const method of ["POST", "PATCH", "DELETE"]) assert.equal((await as("module:leases", { path, method })).error?.code, "bad_input", `${method} ${path}: Gmail through here is a read, never a write`);
+  assert.equal((await as("module:leases", { path: "/gmail/v1/users/me/messages" })).data.status, 200, "a Gmail read is let through");
   assert.equal((await as("module:leases", { account: "nope" })).error?.code, "not_found");
 });
