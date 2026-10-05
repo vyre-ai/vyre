@@ -216,6 +216,8 @@ export function validate(m, { firstParty = false } = {}) {
   // (string tool entries, a missing description) warns through addedWarnings(), never fails.
   if (!firstParty) out.push(...addedCheck(m).problems);
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
+  // the kernel's own service hop is the one that may write a kernel-owned field (a task's status): no module takes that name
+  if (String(m.name) === "kernel") out.push('name "kernel" is reserved for the kernel itself');
   if (!/^\d+\.\d+\.\d+/.test(String(m.version || ""))) out.push(`version "${m.version}" must be semver`);
   if (m.roles && (!Array.isArray(m.roles) || m.roles.some(r => !["box", "local", "mac", "windows"].includes(r)))) out.push("roles must be a list of box, local, mac and windows");
   if (m.requires && !Array.isArray(m.requires)) {
@@ -314,7 +316,7 @@ function checkCredentials(list) {
  * @param {Record<string, any>} deps the registry's dependencies @param {string} module @param {string} name @param {any} value
  */
 export function provideOnce(deps, module, name, value) {
-  if (!((name === "credentialsPort" && module === "vault") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
+  if (!((name === "credentialsPort" && module === "vault") || (module === "spaces" && name === "memberRemote") || (module === "wink" && (name === "winkSessionFor" || name === "remoteKernel" || name === "winkInviteeSessionFor" || name === "winkHolds")))) throw new Error(`${module} may not provide ${String(name).slice(0, 40)}`);
   deps[name] = value;
 }
 
@@ -803,7 +805,8 @@ export class Registry {
       if (!base || base.hosted !== true || !base.gateway) return base; // a remote Space is reached by its own client, not by a module tool here
       return Object.freeze({ ...base, call: (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ chain) => reg.callInSpace(m, id, base, tool, input, chain) });
     };
-    return Object.freeze(Object.create(h, { for: { value: forSpace, enumerable: true } }));
+    // an own-key copy, getters kept live (`owner` follows an adoption), so the handle shows exactly the keys the kernel gave it (kernel/home.test.js)
+    return Object.freeze(Object.defineProperties({}, { ...Object.getOwnPropertyDescriptors(h), for: { value: forSpace, enumerable: true } }));
   }
 
   /**
@@ -1233,7 +1236,7 @@ export class Registry {
         ...(m.name === "spaces" ? { inviteeSessionFor: (/** @type {any} */ channel, /** @type {any} */ hello, /** @type {any} */ about) => { const f = (/** @type {any} */ (this.deps)).winkInviteeSessionFor; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach that space yet"), { code: "unavailable" }); return f(channel, hello, about); } } : {}),
         remoteKernel: (/** @type {string} */ id, /** @type {string} */ space) => { const f = (/** @type {any} */ (this.deps)).remoteKernel; if (typeof f !== "function") throw Object.assign(new Error("this device has no way to reach a paired server yet"), { code: "unavailable" }); return f(id, space); },
       } : {}),
-      ...(m.name === "relay" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
+      ...(m.name === "relay" || m.name === "wink" ? { peerDoor: () => (/** @type {any} */ (this.deps)).peerDoor ? (/** @type {any} */ (this.deps)).peerDoor() : undefined } : {}),
       // What a module hands UP to the daemon and the other launcher modules, by a fixed name and once: the vault provides `credentialsPort` (the session launcher's way to a provider sign-in
       // token) at its own start. Anyone else, or a second time, is refused, so the port cannot be taken by whatever starts later.
       provide: (/** @type {string} */ name, /** @type {any} */ value) => provideOnce(this.deps, m.name, name, value),

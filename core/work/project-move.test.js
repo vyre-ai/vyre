@@ -297,3 +297,16 @@ test("the Work lines: a crash between import and forget resumes and completes, a
   assert.deepEqual(order, ["export", "import", "forget:old", "export", "import", "forget:new"]);
   assert.equal(done.moved.know, 1);
 });
+
+test("the plan lists every sealed reference it moves (never a value), and they are part of what is approved", async () => {
+  const c = space("C"), d = space("D");
+  const p2 = await c.records.create(null, "project", { name: "S", slug: "s" });
+  await c.records.create(null, "chat", { title: "x", project: { urn: p2.urn }, ssn: { sealed: "us-ssn", ref: "ref-b", present: true }, dob: { sealed: "date", ref: "ref-a", present: true } });
+  const plan = await planMove({ from: c, to: d, project: p2.urn });
+  assert.deepEqual(plan.sealed, ["ref-a", "ref-b"], "sorted, by reference");
+  assert.equal(plan.counts.sealed_fields, 2);
+  assert.equal(JSON.stringify(plan).includes("us-ssn-value"), false);
+  // another sealed value is another plan
+  await c.records.create(null, "chat", { title: "y", project: { urn: p2.urn }, tin: { sealed: "tin", ref: "ref-c", present: true } });
+  assert.notEqual((await planMove({ from: c, to: d, project: p2.urn })).hash, plan.hash);
+});

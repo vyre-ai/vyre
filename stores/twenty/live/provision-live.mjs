@@ -10,7 +10,7 @@ import { createTwentyStore } from "../store.js";
 import { mintUuid } from "../../../kernel/core/ids.js";
 import { TwentyClient } from "../client.js";
 import { compile } from "../../../records/language/compile.js";
-import { CORE_TYPES } from "../../../records/core-types.js";
+import { defineCore } from "../space-store.js";
 
 const space = process.argv[2] ?? "livetest";
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-home-"));
@@ -24,8 +24,11 @@ console.log("network internal:", execFileSync("docker", ["network", "inspect", n
 console.log("service.key mode:", (fs.statSync(p.keyFile).mode & 0o777).toString(8));
 const kit = compile(fs.readFileSync(new URL("../../../records/kits/estate-planning/kit.ts", import.meta.url), "utf8"));
 const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), space, dir: path.join(spaceDir(home, space), "state"), webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
-await store.define({ add_types: [...CORE_TYPES] }); // the kit links to core types (organization)
-const d = await store.define({ add_types: kit.types });
+await defineCore(store); // the kit links to core types (organization)
+// a Kit's type that the Space already has (the base Kit made contact) is extended, never redefined: its fields are added to the ones there
+const have = new Map((await store.types()).map((t) => [t.name, t]));
+const merged = (t) => ({ ...have.get(t.name), fields: [...have.get(t.name).fields, ...t.fields.filter((f) => !have.get(t.name).fields.some((x) => x.name === f.name))] });
+const d = await store.define({ add_types: kit.types.filter((t) => !have.has(t.name)), change_types: kit.types.filter((t) => have.has(t.name)).map(merged) });
 lap(`kit types defined: ${d.changes.join(", ")}`);
 const c = await store.create("contact", mintUuid(), { name: "Sam Rivera", email: "sam@example.test", ssn: { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
 const m = await store.create("matter", mintUuid(), { title: "Estate plan for Sam Rivera", client: { urn: `vyre://${space}/contact/${c.id}` }, plan: "Trust", fee: { amount: 3500, currency: "USD" }, stage: "Intake" });

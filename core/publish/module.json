@@ -63,6 +63,14 @@
         "reach": "anyone", "effect": "write"
       },
       {
+        "name": "publish.edge.up", "outward": true,
+        "reach": "anyone", "effect": "write"
+      },
+      {
+        "name": "publish.edge.down", "outward": true,
+        "reach": "anyone", "effect": "write"
+      },
+      {
         "name": "publish.flow",
         "reach": "anyone", "effect": "read"
       },

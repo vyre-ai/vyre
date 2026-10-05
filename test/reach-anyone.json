@@ -425,6 +425,18 @@
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
   },
+  "flows.kit.diff": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.library": {
+   "module": "flows",
+   "reason": "read only: the Kits this build ships are static files in the repository (records/kits), listed or fetched by id with no Space, no chain and no write; nothing installs from here, installing is flows.kit.propose under the caller's chain and a person's yes"
+  },
+  "flows.kit.library.get": {
+   "module": "flows",
+   "reason": "read only: the Kits this build ships are static files in the repository (records/kits), listed or fetched by id with no Space, no chain and no write; nothing installs from here, installing is flows.kit.propose under the caller's chain and a person's yes"
+  },
   "flows.kit.list": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
@@ -913,6 +925,10 @@
    "module": "planner",
    "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
   },
+  "planner.bin": {
+   "module": "planner",
+   "reason": "read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
+  },
   "planner.agenda": {
    "module": "planner",
    "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
@@ -1094,6 +1110,14 @@
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
   "publish.edge": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.down": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.up": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
