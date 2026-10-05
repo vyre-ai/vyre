@@ -1,3 +1,4 @@
+import { dayOf as dayOfTime } from "../../src/time/show.js";
 // The pure half of the Space's own Drive (files.drive.space.list, read, upload, versions, restore): the versioned, permissioned files of the space, not the box's shared folders.
 // The box lists files under a folder as paths; a folder is the first step of a path below the one you are in.
 
@@ -38,7 +39,7 @@ export function children(entries: SpaceEntry[], prefix: string, extra: Pick<List
   return [...out.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
 }
 
-export const dayOf = (at: number): string => (at ? new Date(at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "");
+export const dayOf = (at: number): string => (at ? dayOfTime(at) : "");
 
 export function sizeOf(n: number): string {
   if (n < 1024) return `${n} B`;

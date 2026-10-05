@@ -21,6 +21,7 @@ import { useStore } from "../store";
 import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
+import { theirTimeOf } from "../../src/time/show.js";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { actorWords, ago, assistantNote, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
@@ -133,8 +134,11 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
     );
   };
 
+  // A contact's local time, from the Contact's time_zone (lib/time reads it).
+  const theirs = def.name === "contact" ? theirTimeOf(Date.now(), rec.data?.time_zone) : null;
   const main = (
     <View className={cn("min-w-0 gap-s4", !phone && "flex-[2]")}>
+      {theirs ? <Text size="caption" tone="label">{`It is ${theirs} where they are`}</Text> : null}
       <Card flush>
         {filled.map((f: any, i: number) => <View key={f.name}>{i > 0 ? <Divider /> : null}{fieldRow(f)}</View>)}
         {empty.length ? (

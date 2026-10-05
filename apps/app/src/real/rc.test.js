@@ -38,3 +38,8 @@ test("a browser on an origin that cannot hold the passkey is blocked from claimi
   assert.match(src, /passkeyRp\(typeof location !== "undefined" \? location\.origin : undefined, \{ dev: process\.env\.NODE_ENV !== "production" \}\) === null/);
   assert.match(src, /Platform\.OS === "web" && !macKeyAvailable\(\)/, "the Mac app's window is never blocked");
 });
+
+test("Glass (Screen Share) is hidden for 0.2.9: the switch is off", () => {
+  const rc = read("../../screens/shell/rc.ts");
+  assert.match(rc, /glass: false/);
+});

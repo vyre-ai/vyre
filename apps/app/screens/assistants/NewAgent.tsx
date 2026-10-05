@@ -1,4 +1,5 @@
 // New assistant: a name, its projects, its job, what it runs on and whether it gets its own computer (the Deck's New agent form, ported).
+import { RC } from "../shell/rc";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
@@ -42,7 +43,7 @@ export default function NewAgent() {
         <Segmented label="Runs on" value={f.runsOn} onChange={(runsOn) => set({ runsOn })} options={[["subscription", "Your Claude plan"], ["key", "An API key with a budget"]]} />
         {f.runsOn === "key" ? <Field label="Monthly budget in dollars" kind="number" value={f.budget} onChangeText={(budget) => set({ budget })} help="It stops when the budget is spent." /> : <Text size="caption" tone="label">Uses your plan. The token stays in the Vault.</Text>}
       </Card>
-      <Card flush><Row title="Its own computer" sub="A desktop from the pool that you can watch, or take over." end={<Switch label="Its own computer" on={f.computer} onChange={(computer) => set({ computer })} />} /></Card>
+      {RC.glass ? <Card flush><Row title="Its own computer" sub="A desktop from the pool that you can watch, or take over." end={<Switch label="Its own computer" on={f.computer} onChange={(computer) => set({ computer })} />} /></Card> : null}
       {problem ? <Text size="caption" tone="warn">{problem}</Text> : null}
       <View className="flex-row"><Button label="Create" disabled={busy} onPress={submit} /></View>
     </Page>

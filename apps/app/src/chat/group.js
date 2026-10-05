@@ -360,7 +360,7 @@ export function createGroup(viewer) {
 }
 
 /**
- * chats.change's input for adding one teammate (CONTRACT-one-chat.md): a person goes in add_people by id, a space or project agent in add_agents by id. The person's own assistant is never added to a chat (it acts as the person). Nothing else about the chat changes.
+ * work.chat.change's input for adding one teammate (CONTRACT-one-chat.md): a person goes in add_people by id, a space or project agent in add_agents by id. The person's own assistant is never added to a chat (it acts as the person). Nothing else about the chat changes.
  * @param {string} chat @param {{ id?: string, name: string, family: string }} who
  */
 export function addTeammateInput(chat, who) {

@@ -113,10 +113,10 @@ test("the new field spec: a link points at its own type", () => {
 
 test("event times read in plain words", () => {
   const now = new Date(2026, 9, 3, 12).getTime();
-  assert.match(ago(new Date(2026, 9, 3, 9, 5).getTime(), now), /^Today, 09:05$/);
+  assert.match(ago(new Date(2026, 9, 3, 9, 5).getTime(), now), /^Today, 9:05 am$/);
   assert.match(ago(new Date(2026, 9, 2, 9, 5).getTime(), now), /^Yesterday/);
   assert.equal(ago(new Date(2026, 9, 1).getTime(), now), "2 days ago");
-  assert.equal(ago(new Date(2026, 8, 1).getTime(), now), "Sep 1");
+  assert.equal(ago(new Date(2026, 8, 1).getTime(), now), "1 Sep");
 });
 
 test("a sealed field's edit goes through the store's putSealed, never update, and the record keeps only the reference", async () => {

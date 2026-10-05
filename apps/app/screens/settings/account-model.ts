@@ -1,3 +1,4 @@
+import { dayOf } from "../../src/time/show.js";
 // The pure half of Account, What my assistants can see and Privacy on the real box: spaces.identity.* answers and the sealed fields of records.types as lines.
 
 export type Identity = { exists: boolean; name?: string; label?: string; id?: string; pending?: boolean };
@@ -5,7 +6,7 @@ export type Entry = { eid: string; kind: "device" | "code" | "contact" | string;
 export type TypeDef = { name: string; label?: string; fields: { name: string; label?: string; kind: string; seal?: unknown }[] };
 
 const WAY: Record<string, string> = { device: "Device", code: "Recovery code", contact: "Recovery contact" };
-const day = (ms: number) => new Date(ms).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" });
+const day = (ms: number) => dayOf(ms);
 
 /** The sign-in methods people use every day: the devices on the list. The newest sign-in says so for 24 hours. */
 export const devices = (es: Entry[]): Entry[] => es.filter((e) => e.kind === "device");

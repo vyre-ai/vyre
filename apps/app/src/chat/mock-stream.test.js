@@ -163,3 +163,14 @@ test("the sample world's three-model chat has one question, three answers each f
   const authors = new Set(peopleScript()[0].steps.map((s) => (s.top?.author ?? "")).filter(Boolean));
   assert.ok([...authors].every((a) => a.startsWith("person:")), "only people speak");
 });
+
+test("a mock reply carries reply_to and the quote of the message it answers, in the same timeline", async () => {
+  const { createMockStream } = await load();
+  const m = createMockStream({ scenario: "people" });
+  m.sendGroup("a first message", { to: [], fanout: false });
+  const first = m.log.find((f) => f.type === "session.user-message" && f.data.state === "sent");
+  m.sendGroup("a reply", { to: [], fanout: false, replyTo: first.data.message });
+  const reply = m.log.filter((f) => f.type === "session.user-message").find((f) => f.data.text === "a reply");
+  assert.equal(reply.data.reply_to, first.data.message);
+  assert.equal(reply.data.quote.text, first.data.text);
+});

@@ -15,6 +15,7 @@
  */
 
 import { kindOf } from "./frame-type.js";
+import { quoteFromData } from "./reply.js";
 
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
@@ -138,7 +139,7 @@ export function createFolder() {
         } else {
           if (queued.delete(key)) { queueSnap = [...queued.values()]; bump("@queue"); }
           // A private message (enc) holds no words the home can read: the row says so, and a device that holds the key draws it (not built yet).
-          const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...who(f), ...(d.parent ? { parent: d.parent } : {}) };
+          const it = { key, kind: "user", text: d.enc !== undefined ? "Private message" : String(d.text ?? items.get(key)?.text ?? ""), ...(d.enc !== undefined ? { private: true } : {}), queued: false, pickedUp: d.state === "picked-up", ...who(f), ...(d.parent ? { parent: d.parent } : {}), ...quoteFromData(d) };
           if (put(key, "user", it)) out.layout = true;
           else { items.set(key, it); }
           touch(key);

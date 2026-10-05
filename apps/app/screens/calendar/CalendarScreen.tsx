@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
-import { Card, Divider, EmptyState, ErrorState, IconButton, LoadingState, Row, Segmented, Text, Button, useRecordsWorld, useUiTheme } from "@vyre/ui";
+import { Banner, Card, Divider, EmptyState, ErrorState, IconButton, LoadingState, Row, Segmented, Text, Button, useRecordsWorld, useUiTheme } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { byDay, collect, dayHeading, heading, monthGrid, occurrencesFrom, rangeOf, step, subLine, VIEWS, withOccurrences, type Item } from "./logic.js";
 import { tool } from "../../src/real/box";
@@ -23,12 +23,13 @@ export default function CalendarScreen() {
   const [picked, setPicked] = useState<string | null>(null);
 
   const { from, to } = rangeOf(view, anchor);
-  // A repeating Event's occurrences in the window come from the box (planner.agenda); a box without it shows the event once, at its first date.
+  // A repeating Event's occurrences in the window come from the box (planner.agenda). There is no other path: a refusal is shown as it is.
   const [occ, setOcc] = useState<Item[]>([]);
+  const [occErr, setOccErr] = useState("");
   useEffect(() => {
     if (allowsMock()) return;
     let live = true;
-    tool("planner.agenda", { from: from.toISOString(), to: to.toISOString() }).then((a) => { if (live) setOcc(occurrencesFrom(a)); }).catch(() => { if (live) setOcc([]); });
+    tool("planner.agenda", { from: from.toISOString(), to: to.toISOString() }).then((a) => { if (live) { setOcc(occurrencesFrom(a)); setOccErr(""); } }).catch((e: Error) => { if (live) { setOcc([]); setOccErr(e.message || "The calendar could not read repeating events."); } });
     return () => { live = false; };
   }, [from.getTime(), to.getTime()]);
   const items: Item[] = useMemo(() => withOccurrences(world ? collect(world.types, world.byType) : [], occ), [world, occ]);
@@ -57,6 +58,7 @@ export default function CalendarScreen() {
 
   return (
     <Frame title="Calendar" sub="Every date in this space, in one place.">
+      {occErr ? <Banner tone="warn"><Text>{occErr}</Text></Banner> : null}
       <View className="flex-row flex-wrap items-center gap-s2">
         <IconButton kind="secondary" icon="chevron-left" label={`Previous ${view}`} onPress={() => go(-1)} />
         <Text strong className="min-w-0 flex-1 text-center">{heading(view, anchor)}</Text>

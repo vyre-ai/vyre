@@ -1,6 +1,7 @@
 // @vyre/ui tasks model: what a task is to a person, as data (pure, no React, no store). Over the kernel's Task shape (deck/ui/tasks.js, kernel/contracts/task.d.ts):
 // doer, checker and assigned_by are Actors, a record is a urn, the Deck's extras (now, say, note, result) sit under task.ext. The React components in this folder
 // only draw what these functions return, so the words and the buttons are tested in node (model.test.js).
+import { hourOf, longDateOf, sameDay, timeOf, weekdayDayOf } from "../../src/time/show.js";
 import { actorOf, cardTitle, howSentence, needsReason, ownerOf, OUTPUT_KINDS, HOW_LABEL, STATE_LABEL, fieldNames, targetText, stageProgress } from "../../src/store-core/tasks.js";
 import { aid, eventLine } from "../../src/store-core/kernel-view.js";
 import { viewDefOf } from "../../src/store-core/view-defs.js";
@@ -149,18 +150,17 @@ export function draftOf(w, task) {
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const p2 = (/** @type {number} */ n) => String(n).padStart(2, "0");
-/** "12:06" the same day, else "Mon 28 Sep". @param {number} at @param {number} now */
+/** "12:06 pm" the same day (the viewer's zone, lib/time), else "Mon 28 Sep". @param {number} at @param {number} now */
 export function whenLabel(at, now) {
-  const d = new Date(at), n = new Date(now);
-  if (d.toDateString() === n.toDateString()) return `${p2(d.getHours())}:${p2(d.getMinutes())}`;
-  return `${DAYS[d.getDay()].slice(0, 3)} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`;
+  if (sameDay(at, now)) return timeOf(at);
+  return weekdayDayOf(at);
 }
 /** "Thursday, 1 October". @param {number} at */
-export const dateLine = (at) => { const d = new Date(at); return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+export const dateLine = (at) => longDateOf(at);
 /** @param {number} at */
 /** The first word of a name for a greeting; an id that has no name behind it (per_...) is empty, so the greeting has no name at all. @param {string | undefined} n */
 export const firstName = (n) => (!n || /^[a-z]{2,4}_[a-z0-9]{8,}$/.test(n) ? "" : n.split(" ")[0]);
-export const greeting = (at) => { const h = new Date(at).getHours(); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
+export const greeting = (at) => { const h = hourOf(at); return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening"; };
 /** @param {number} at */
 const startOfDay = (at) => { const d = new Date(at); d.setHours(0, 0, 0, 0); return d.getTime(); };
 

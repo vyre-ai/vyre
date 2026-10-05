@@ -88,12 +88,22 @@ export async function tool<T = unknown>(name: string, given: Record<string, unkn
   return r.data as T;
 }
 
+/**
+ * A browser whose identity key is a passkey is its own person's device: it says its yes itself, by signing the card it just opened with the passkey (the proof is the kernel's, shaped like a phone's).
+ * Anything else, or any failure, leaves the ask for the owner's phone.
+ */
+async function answerWithPasskey(ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, id: string): Promise<void> {
+  if (Platform.OS !== "web") return;
+  const { passkeySelf } = await import("./passkey-self");
+  await passkeySelf(ask, id);
+}
+
 /** An act that needs the owner's yes: ask the phone, wait with "Approve this in Vyre on your phone" and Stop waiting, then send the act again with the approval id (spent once). */
 async function yesThenRetry<T>(held: { moment: string; request: unknown }, ask: (tool: string, input?: Record<string, unknown>) => Promise<any>, retry: (approval: string) => Promise<T>): Promise<T> {
   const st = useApproval.getState();
   st.show(softwareKeyLine());
   try {
-    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
+    const out = await askYes(ask, { moment: held.moment, request: held.request, signal: st.signal, onAsked: (id) => answerWithPasskey(ask, id), onWaiting: (line) => { if (line) useApproval.getState().show(line); } });
     if ("ended" in out) throw new BoxError("not_approved", endLine(out.ended));
     return await retry(out.approval);
   } catch (e) {

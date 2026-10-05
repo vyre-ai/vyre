@@ -66,7 +66,8 @@ export function ChatComposer(p: ComposerProps) {
   const [askAll, setAskAll] = useState(false);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
-  const assistants = (p.people ?? []).filter((x) => x.family === "assistant").length;
+  // "Ask all" is for the assistants and models IN this chat (its slots), not every agent the space has to @mention.
+  const assistants = p.slots?.length ?? 0;
   const input = useRef<TextInput>(null);
   const trig = useMemo(() => triggerAt(text, caret), [text, caret]);
   const editId = p.editing?.id;
@@ -141,7 +142,7 @@ export function ChatComposer(p: ComposerProps) {
       ) : null}
       {assistants > 1 ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Ask all assistants at once" accessibilityState={{ selected: askAll }} onPress={() => setAskAll((a) => !a)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip tone={askAll ? "accent" : "plain"} icon="agents">{(p.slots?.length ?? assistants) === 2 ? "Ask both" : "Ask all"}</Chip>
+          <Chip tone={askAll ? "accent" : "plain"} icon="agents">{assistants === 2 ? "Ask both" : "Ask all"}</Chip>
         </Pressable>
       ) : null}
       {p.runsOn ? (

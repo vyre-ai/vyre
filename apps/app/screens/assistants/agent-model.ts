@@ -1,3 +1,4 @@
+import { timeOf } from "../../src/time/show.js";
 // The pure half of an assistant's page and the New assistant form (the Deck's views/agents.js and js/agent-create.js, ported): the lines the screens show and the input the box takes.
 
 export type AgentFull = { name: string; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
@@ -35,7 +36,7 @@ const since = (at: number, now: number) => {
   const m = Math.max(0, Math.round((now - at) / 60000));
   return m < 1 ? "just now" : m < 60 ? `${plural(m, "minute")} ago` : m < 1440 ? `${plural(Math.round(m / 60), "hour")} ago` : `${plural(Math.round(m / 1440), "day")} ago`;
 };
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const clock = (ms: number) => timeOf(ms);
 
 /** What this agent has used: money only on an API key, turns otherwise, tokens and a limit warning. */
 export function usageView(u: UsageFull | undefined, name: string, now = Date.now()): { empty: string } | { top: string; sub: string; warn: string } {

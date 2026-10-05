@@ -179,3 +179,23 @@ test("a browser that refuses the passkey for this origin (SecurityError) gets th
   const wa = { create: async () => { throw Object.assign(new Error("The relying party ID is not a registrable domain suffix"), { name: "SecurityError" }); }, get: async () => { throw new Error("no"); } };
   await assert.rejects(createPasskeyKey({ rp: "app.vyre.run", webauthn: wa }), (/** @type {any} */ e) => e.code === "wrong_origin" && e.message === WRONG_ORIGIN_SAY);
 });
+
+import { passkeyPresenceKey } from "./passkey.js";
+test("a kept passkey offers its P-256 SPKI as the presence key, signer webauthn_platform with its site; anything else offers nothing", () => {
+  const real = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" });
+  const pub = new Uint8Array(real.subarray(-65));
+  const kept = { kind: "passkey", rp: "app.vyre.run", credentialId: "AQID", publicKey: C.b64u(pub) };
+  const k = passkeyPresenceKey(kept);
+  assert.equal(k.signer, "webauthn_platform");
+  assert.equal(k.rp, "app.vyre.run");
+  assert.equal(k.alg, -7);
+  const der = Buffer.from(k.key, "base64url");
+  assert.equal(der.length, 91);
+  assert.equal(k.public_key, undefined, "the box reads `key`");
+  assert.equal(der.subarray(0, 26).toString("hex"), "3059301306072a8648ce3d020106082a8648ce3d030107034200");
+  assert.deepEqual([...der.subarray(26)], [...pub]);
+  // node can read it back as a P-256 public key
+  assert.equal(crypto.createPublicKey({ key: der, format: "der", type: "spki" }).asymmetricKeyType, "ec");
+  assert.equal(passkeyPresenceKey({ kind: "seed" }), null);
+  assert.equal(passkeyPresenceKey(null), null);
+});

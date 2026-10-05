@@ -196,3 +196,12 @@ test("client: over a relay base with a route prefix, the proof signs the box's p
   assert.equal(sent[1].path, "/v1/events/stream?type=*&since=latest");
   await verify(sent[1], "GET", "/v1/events/stream?type=*&since=latest");
 });
+
+import fs from "node:fs";
+import { ZONE_HEADER, systemZone, validZone } from "../../../../lib/time/index.js";
+test("every call carries the device's zone in x-vyre-zone (lib/time), set where the client builds a call's headers", () => {
+  const src = fs.readFileSync(new URL("./client.ts", import.meta.url), "utf8");
+  assert.equal(ZONE_HEADER, "x-vyre-zone");
+  assert.match(src, /\[ZONE_HEADER\]: systemZone\(\)/);
+  assert.equal(validZone(systemZone()), true);
+});

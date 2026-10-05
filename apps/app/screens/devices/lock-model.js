@@ -1,4 +1,5 @@
 // @ts-check
+import { timeOf } from "../../src/time/show.js";
 import { softwareKeyLine } from "../../src/real/on-phone.js";
 // A device the server locked after three wrong sign-in answers (wink-2, work/wink-session): the owner's phone shows it and lets it sign in again before the lock lifts by itself.
 // Reads presence.person.locked -> { locked: [{ device, until }] }; the control is presence.person.renew-allow { device } with the owner's presence. Pure.
@@ -11,7 +12,7 @@ export function lockOf(answer, device, now) {
 }
 
 /** The time of day a lock lifts, as the caption shows it. @param {number} until */
-export const lockTime = (until) => new Date(until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+export const lockTime = (until) => timeOf(new Date(until).getTime());
 
 /** "Unlocks by itself at 14:32, in 12 minutes." @param {number} until @param {number} now */
 export function unlockLine(until, now) {

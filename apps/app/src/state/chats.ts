@@ -11,9 +11,14 @@ import { chatsFrom, noSuchTool, sampleChats, withNames, type ChatRow } from "../
 export function useChats(): { rows: ChatRow[]; from: "sample" | "chats" | "unsupported" | "none" } {
   const threads = useThreads();
   const [actors, setActors] = useState<unknown>(null);
+  const [me, setMe] = useState<string | null>(null);
   const [listed, setListed] = useState<ChatRow[] | "unsupported" | undefined>(undefined);
   const mock = allowsMock();
-  useEffect(() => { if (!allowsMock()) tool("records.actors", {}).then(setActors).catch(() => {}); }, []);
+  useEffect(() => {
+    if (allowsMock()) return;
+    tool("records.actors", {}).then(setActors).catch(() => {});
+    tool<{ person?: string; me?: string; id?: string }>("records.me", {}).then((m) => setMe(m?.person ?? m?.me ?? m?.id ?? null)).catch(() => {});
+  }, []);
   // The box's run list changes whenever a chat does, so it is also the cue to ask for the chat list again.
   useEffect(() => {
     if (mock) return;
@@ -24,7 +29,7 @@ export function useChats(): { rows: ChatRow[]; from: "sample" | "chats" | "unsup
   return useMemo(() => {
     if (mock) return { rows: sampleChats(Date.now()), from: "sample" as const };
     if (listed === "unsupported") return { rows: [], from: "unsupported" as const };
-    if (listed) return { rows: withNames(listed, actors), from: "chats" as const };
+    if (listed) return { rows: withNames(listed, actors, me), from: "chats" as const };
     return { rows: [], from: "none" as const };
-  }, [mock, listed, actors]);
+  }, [mock, listed, actors, me]);
 }

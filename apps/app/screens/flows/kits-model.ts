@@ -1,3 +1,4 @@
+import { dayOf } from "../../src/time/show.js";
 // The pure half of Kits on the real box: flows.kit.list rows (kernel/flows/kits.js list) as the lines the screen shows. The box has no catalog of Kits to install
 // from, so there is no "available" list here, and the update diff is the kernel's own (flows.kit.diff), never one made up here.
 
@@ -14,7 +15,7 @@ export const kitName = (id: string): string => { const t = id.replace(/[-_]+/g, 
 
 /** The line under a Kit: its version, who put it in, and when. */
 export function kitLine(k: KitRow): string {
-  const when = k.at ? new Date(k.at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "";
+  const when = k.at ? dayOf(new Date(k.at).getTime()) : "";
   return [`v${k.version}`, k.by ? `by ${k.by}` : "", when].filter(Boolean).join(" · ");
 }
 

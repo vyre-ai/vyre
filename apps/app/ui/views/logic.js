@@ -1,6 +1,7 @@
 // @vyre/ui/views/logic: the pure half of the generated views (ui-primitives.md section 5), ported from deck/ui/views.js onto the kernel's shapes
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
+import { dayOf, timeOf } from "../../src/time/show.js";
 import { viewDefOf } from "./view-defs.js";
 import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
 import { eventLine } from "../../src/store-core/kernel-view.js";
@@ -172,12 +173,11 @@ export function actorWords(actor, world, me) {
 export function ago(at, now) {
   const day = (/** @type {number} */ t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const n = Math.round((day(now) - day(at)) / 86400_000);
-  const time = new Date(at);
-  const hm = `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`;
+  const hm = timeOf(at);
   if (n <= 0) return `Today, ${hm}`;
   if (n === 1) return `Yesterday, ${hm}`;
   if (n < 7) return `${n} days ago`;
-  return `${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][time.getMonth()]} ${time.getDate()}`;
+  return dayOf(at, { year: false });
 }
 
 /** A field spec for the store's addField from the Add a field sheet. @param {{ label: string, kind: string }} draft @param {any} def */

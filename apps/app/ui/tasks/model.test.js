@@ -75,7 +75,7 @@ test("scope narrows Now to a space; calendar and doing-now come from the store",
   assert.equal(all.calendar.length, 3);
   assert.ok(all.working.length >= 5);
   assert.ok(all.doneToday.length >= 1);
-  assert.equal(whenLabel(all.calendar[0].at, NOW), "10:00");
+  assert.equal(whenLabel(all.calendar[0].at, NOW), "10:00 am");
 });
 
 test("the project page: stages made of tasks, the team with its doing-now line, the live line, the created line", async () => {
@@ -93,7 +93,7 @@ test("the project page: stages made of tasks, the team with its doing-now line, 
   assert.deepEqual(team.map((t) => t.doing), ["Owner", "Research wrote 3 fields and a note with 3 sources", "Intake sent the Welcome email", "Drafting is drafting the engagement letter"]);
   assert.equal(liveLine(tasks, w.actors), "Drafting is drafting the engagement letter");
   const events = await s.events({ record: rec.urn });
-  assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Estate planning matter, 09:00. Flow On payment: Jane Doe paid $1,500.");
+  assert.equal(createdLine(events, w.actors, NOW), "Created by Vyre from the Kit Estate planning matter, 9:00 am. Flow On payment: Jane Doe paid $1,500.");
   assert.equal(progressText(tasks), "2 of 4 tasks");
   assert.equal(stateWord(tasks.find((t) => t.state === "ready"), w.me), "Ready");
 });
