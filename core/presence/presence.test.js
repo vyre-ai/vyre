@@ -33,6 +33,8 @@ function setup(t, opts = {}) {
     softwareOk: () => true, // these tests exercise the proofs themselves on a development-kind server; the release rule (PW-1) is tested in test/presence-strength.test.js
     ...opts,
   });
+  // the kernel's answer ("is this call exactly one person?") stands in as a function of the label the test gives: a person's own surface or device, never an agent or a module
+  p.personOf = async (/** @type {any} */ meta) => { const c = String((meta && meta.caller) || ""); return !/(?:^|[\s:])agent:/.test(c) && (c.startsWith("tailnet:") || /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule"); };
   return { p, db, events, written, tick: ms => { clock += ms; }, now: () => clock };
 }
 
