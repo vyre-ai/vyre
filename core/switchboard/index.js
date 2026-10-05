@@ -935,7 +935,13 @@ export class Switchboard {
     if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
     const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);
     try {
-      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append }).filter(([, v]) => v));
+      // A driver with no SessionStart hook (Codex, Grok over ACP) gets the project's own context as the third layer of its first prompt; Claude's hook adds it itself.
+      let context = "";
+      if (rec.provider && rec.provider !== "claude") {
+        const c = await this.deps.call("projects.context", rec.project ? { project: rec.project, session: rec.id } : { cwd: rec.cwd, session: rec.id }).catch(() => null);
+        context = c && !c.error && c.data ? (typeof c.data === "string" ? c.data : typeof c.data.text === "string" ? c.data.text : "") : "";
+      }
+      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append, provider: rec.provider || "claude", context }).filter(([, v]) => v));
       const r = await this.deps.call("sessions.prompt.compose", input);
       if (r && r.error && r.error.code !== "no_such_tool") this.deps.log(`threads: the system prompt could not be composed (${r.error.message}); using Vyre's own`);
       if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text };

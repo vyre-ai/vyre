@@ -65,6 +65,10 @@
         "reach": "modules"
       },
       {
+        "name": "sessions.environment",
+        "reach": "modules"
+      },
+      {
         "name": "sessions.models",
         "reach": "anyone",
         "effect": "read"
