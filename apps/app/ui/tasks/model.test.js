@@ -28,7 +28,7 @@ test("client pays: the Welcome card names what it used and offers Send with Face
   assert.ok(m.tags.some((t) => t.text === "Doe estate plan"));
   const d = draftOf(w, need[0]);
   assert.match(d.body, /trust funded before the house sale/);
-  assert.match(d.subject, /Welcome to Juniper Studio, Jane/);
+  assert.match(d.subject, /Welcome to Harlow Legal, Jane/);
 });
 
 test("approving the Welcome email through the Gate sends it and moves the stage on by itself", async () => {

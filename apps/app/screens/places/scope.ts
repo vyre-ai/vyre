@@ -5,7 +5,7 @@ import { create } from "zustand";
 export type SpaceId = "mine" | "harlow";
 export type Scope = "all" | SpaceId;
 
-export const SPACES: Record<SpaceId, { name: string }> = { mine: { name: "Mine" }, harlow: { name: "Juniper Studio" } };
+export const SPACES: Record<SpaceId, { name: string }> = { mine: { name: "Mine" }, harlow: { name: "Harlow Legal" } };
 
 export const useScope = create<{ scope: Scope; setScope: (s: Scope) => void }>((set) => ({ scope: "all", setScope: (scope) => set({ scope }) }));
 

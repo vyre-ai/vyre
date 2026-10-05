@@ -7,7 +7,7 @@
 /** @type {Record<string, SpaceLook>} */
 export const DEFAULT_LOOKS = {
   mine: { accent: "violet", tint: "accent", density: "default", font: "system", corners: "default" },
-  juniper: { accent: "amber", tint: "accent", density: "compact", font: "system", corners: "default" },
+  harlow: { accent: "amber", tint: "accent", density: "compact", font: "system", corners: "default" },
 };
 
 /** The space whose look applies when `id` is showing. */
@@ -26,7 +26,7 @@ export function themeFor(id, looks) {
   return { accent: l.accent, hex: l.hex, tint: l.tint ?? "accent", thex: l.thex, density: l.density, font: l.font, corners: l.corners };
 }
 
-/** What the Appearance screen says is showing: "Juniper Studio with accent amber, compact density, Instrument Sans, default corners". */
+/** What the Appearance screen says is showing: "Harlow Legal with accent amber, compact density, Instrument Sans, default corners". */
 export function showingLine(/** @type {string} */ name, /** @type {{ accent: string, density: string, font: string, corners: string }} */ r, /** @type {Record<string,string>} */ fontNames, /** @type {boolean} */ own) {
   return `${name} with accent ${r.accent}, ${r.density} density, ${fontNames[r.font] ?? r.font}, ${r.corners} corners${own ? " (some of it is your own override)" : ""}.`;
 }

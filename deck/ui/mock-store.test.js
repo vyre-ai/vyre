@@ -23,7 +23,7 @@ const code = c => (/** @type {any} */ err) => err?.code === c;
 test("the mock store implements the whole Store interface", async () => {
   const s = createMockStore({ now: () => NOON });
   for (const m of METHODS) assert.equal(typeof /** @type {any} */ (s)[m], "function", m);
-  assert.deepEqual((await s.spaces()).map(x => x.name), ["Mine", "Juniper Studio"]);
+  assert.deepEqual((await s.spaces()).map(x => x.name), ["Mine", "Harlow Legal"]);
   assert.deepEqual((await s.actors()).map(a => a.name), ["Alex Rivera", "Chris Park", "juno", "kit", "iris", "rev", "Research", "Intake", "Drafting", "Vyre"]);
   const types = await s.types();
   assert.ok(["contact", "matter", "project", "trip", "template"].every(n => types.some(t => t.name === n)));
