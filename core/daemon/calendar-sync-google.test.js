@@ -67,9 +67,9 @@ test("an event made in Vyre is pushed to the Google account only through the app
   assert.ok(!(await events()).some((/** @type {any} */ r) => r.data.title === "Closing call" && r.data.external_id));
 });
 
-// REPRODUCTION (fails today): on the real kernel an approved held write is never allowed, because approvedAct needs the acting chain to be the task's doer (service:flows), which holds no
-// service.call grant. Expected once approvedAct is fixed: the approved write goes out once, and an approval for one body is refused for another.
-test("on the real kernel the owner's yes lets exactly that write go out, once", { timeout: 120_000 }, async t => {
+// On the real kernel the owner's yes is the task's doer's to spend (the Flows service under the owner), with the bind of exactly the request asked about; it is spent by the one use (kernel/approval-token.test.js
+// has the kernel's own refusals).
+test("on the real kernel the owner's yes lets exactly that write go out, once, and is spent", { timeout: 120_000 }, async t => {
   const { fake, d, admin, sync } = await world(t);
   await sync().runNow();
   const gw = d.kernel.gateway;
@@ -83,6 +83,14 @@ test("on the real kernel the owner's yes lets exactly that write go out, once", 
   for (let i = 0; i < 100 && fake.calendar.events.length < before + 1; i++) await new Promise(r => setTimeout(r, 100));
   await sync().runNow();
   assert.equal(fake.calendar.events.length, before + 1, "the approved write went out once");
+  const sent = fake.calendar.events.at(-1);
+  assert.equal(sent.summary, "Closing call"); assert.deepEqual((sent.attendees || []).map((/** @type {any} */ a) => a.email), ["sam@rivera.test"], "exactly what was asked about");
+  // the yes is spent: presenting it again, as the doer, for the same request or for another body, is not allowed
+  const resource = `vyre://${d.kernel.id.space}/service/google-work`;
+  const doer = d.kernel.chains.forModule({ module: "flows", approver: admin });
+  const { requestBind } = await import("../../kernel/seal/uses.js");
+  const other = requestBind({ connector: "google-work", method: "POST", path: "/calendar/v3/calendars/primary/events", body: { summary: "Another event", attendees: [{ email: "stranger@elsewhere.test" }] } });
+  for (const bind of [task.form.bind, other]) assert.notEqual((await gw.authorize({ chain: doer, action: "service.call", resource, approval: task.id, bind })).effect, "allow", "a spent approval, or one for another body, is refused");
 });
 
 test("google.api is for Vyre's own modules, Calendar events and Gmail reads only: a model or a person's surface is refused, and so is any other Google path or a write to Gmail", { timeout: 60_000 }, async t => {
