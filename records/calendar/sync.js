@@ -17,7 +17,7 @@ import { fromGoogle, toGoogle } from "./google.js";
  *   kernel: { records: any }, chain: () => any,
  *   call: (op: string, input: { params?: any, query?: any, body?: any, headers?: any }, extra?: any) => Promise<{ status: number, body: any }>,
  *   calendar?: string, route?: string,
- *   write?: (change: { op: "insert" | "patch" | "delete", record: string, title: string, key: string }, perform: (extra?: any) => Promise<any>) => Promise<{ done: true, value: any } | { done: false, held?: true, refused?: true }>,
+ *   write?: (change: { op: "insert" | "patch" | "delete", record: string, title: string, key: string, opName?: string, input?: any, detail?: any }, perform: (extra?: any) => Promise<any>) => Promise<{ done: true, value: any } | { done: false, held?: true, refused?: true }>,
  *   state?: { get: (k: string) => any, set: (k: string, v: any) => void },
  *   report?: (type: string, data: any) => void,
  * }} o
@@ -94,7 +94,9 @@ export function createCalendarSync(o) {
           return res.status === 409 ? o.call("events.get", { params: { calendar: cal, id: input.body.id } }) : res;
         };
         const perform = isNew ? insert : send("events.patch", input);
-        const w = o.write ? await o.write({ ...change, key }, perform) : { done: false, refused: true };
+        // What the owner is asked to approve is what is sent: the card shows these, and the daemon binds the approval to the request built from the same input.
+        const d = r.data, detail = { title: d.title, starts_at: d.starts_at, ends_at: d.ends_at ?? null, all_day: Boolean(d.all_day), place: d.place ?? null, people: d.people ?? [], notes: d.notes ? String(d.notes).slice(0, 300) : null };
+        const w = o.write ? await o.write({ ...change, key, opName: isNew ? "events.insert" : "events.patch", input, detail }, perform) : { done: false, refused: true };
         if (!w.done) {
           if ("held" in w && w.held) { out.held++; report("calendar.held", change); } else { out.refused++; report("calendar.refused", change); }
           continue;

@@ -138,7 +138,12 @@ function normalizeService(sv) {
   const list = (/** @type {any} */ l, /** @type {string} */ w) => { if (l === undefined) return []; if (!Array.isArray(l) || l.length > 100) throw bad(`service.${w} is a list of rules`); return l.map(rule); };
   // What a connector declaration (records/connectors/format.js) says beside the rules, kept for the Flow step runner: the draft op, the idempotency header, the provider's rate and
   // retry-after, and each op's outward flag, read flag and read-back pairing. None of it widens what is allowed: the rules above are all that is.
-  const hdr = (/** @type {any} */ h, /** @type {string} */ w) => { if (typeof h !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(h)) throw bad(`service.${w} is a header name`); return h; };
+  const hdr = (/** @type {any} */ h, /** @type {string} */ w) => {
+    if (typeof h !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(h)) throw bad(`service.${w} is a header name`);
+    // the vault's own headers are never a connector's to name (a value derived from a run id must not land in one)
+    if (/^(authorization|proxy-.*|cookie|set-cookie|host|x-api-key|content-length|content-type|transfer-encoding|connection|origin|referer|if-match|if-none-match)$/i.test(h)) throw bad(`service.${w} cannot be ${h}: that header is the vault's or the request's own`);
+    return h;
+  };
   const out = { allow: list(sv.allow, "allow"), deny: list(sv.deny, "deny") };
   if (sv.draft !== undefined) {
     if (!isObj(sv.draft) || typeof sv.draft.path !== "string") throw bad("service.draft is { method, path, wrap? }");

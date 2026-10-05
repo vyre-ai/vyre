@@ -7,12 +7,14 @@
 // Reads run. A write to the outside calendar is outward (service.call): the kernel decides, and when it says ask, a task is put in front of the owner (the same held act a Flow's step makes),
 // the change waits, and it goes out on the next look once the owner has said yes, carrying the approval and the bind of exactly that request. A rule of the Space that refuses (Never, Draft only)
 // refuses it. With no calendar connector in the vault this does nothing but look at the catalog.
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createCalendarSync } from "../../records/calendar/sync.js";
 import { callThrough } from "../../records/calendar/declared-call.js";
 import googleCalendar from "../../records/connectors/google-calendar/declaration.js";
 import { requestBind } from "../../kernel/seal/uses.js";
+import { buildRequest } from "../../records/connectors/format.js";
 
 export const EVERY_MS = 5 * 60_000, FIRST_MS = 15_000;
 const NEEDS = ["events.list", "events.insert", "events.patch"];
@@ -65,20 +67,27 @@ export function createCalendarSyncHost(o) {
         const chain = s.ownerChain();
         const note = pending()[change.key];
         if (note && note.refused) return { done: false, refused: true };
-        const d = await s.gw.authorize({ chain, action: "service.call", resource, ...(note && note.task ? {} : {}) });
+        // The request exactly as it would be sent, and its bind: what the card shows and what the approval is tied to.
+        const req = buildRequest(googleCalendar, change.opName, change.input);
+        const bind = requestBind({ connector, method: req.method, path: req.path, query: req.query, body: req.body, headers: req.headers });
+        const d = await s.gw.authorize({ chain, action: "service.call", resource });
         if (d.effect === "deny") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
         if (d.effect === "allow") return { done: true, value: await perform({ idem: change.key }) };
-        // ask: one task per change, then wait for the person
-        if (!note || !note.task) {
+        // ask: one task per change, then wait for the person. A change whose request is no longer the one asked about (the event was edited) is asked again.
+        if (!note || !note.task || note.bind !== bind) {
           const owner = actor(s.ownerId());
           const doerChain = s.chains.forDoer({ flow: "calendar-sync", space: s.space, approver: owner, run: change.key });
-          const task = await s.gw.ask.request(chain, { title: `Calendar: ${change.op === "insert" ? "add" : "change"} "${String(change.title).slice(0, 120)}" on the outside calendar?`,
+          const det = change.detail || {};
+          const sha = crypto.createHash("sha256").update(JSON.stringify(req.body)).digest("hex").slice(0, 16);
+          const when = `${det.starts_at || "?"}${det.ends_at ? ` to ${det.ends_at}` : ""}`;
+          const task = await s.gw.ask.request(chain, { title: `Calendar: ${change.op === "insert" ? "add" : "change"} "${String(change.title).slice(0, 100)}" (${when}${det.people && det.people.length ? `, with ${det.people.slice(0, 5).join(", ")}${det.people.length > 5 ? ` and ${det.people.length - 5} more` : ""}` : ""}) on the outside calendar?`.slice(0, 200),
             doer: { kind: "service", id: "flows", space: s.space }, checker: owner, output: { kind: "decision" }, source: "flow_step",
-            form: { kind: "held_act", flow: "calendar-sync", run: change.key, step: change.op, action: "service.call", resource, why: "it writes to an outside calendar, which needs a person's yes", input: { op: change.op, title: change.title } } }, { idem: `calendar-sync:${change.key}` });
+            form: { kind: "held_act", flow: "calendar-sync", run: change.key, step: change.op, action: "service.call", resource, why: "it writes to an outside calendar, which needs a person's yes", bind, digest: sha,
+              input: { op: change.op, ...det, invites: Array.isArray(det.people) && det.people.length > 0 } } }, { idem: `calendar-sync:${change.key}:${bind.slice(0, 12)}` });
           for (const [step, arg] of /** @type {any[]} */ ([["start"], ["complete", { answer: "yes", reason: "it writes to an outside calendar" }]])) {
             try { await (step === "start" ? s.gw.ask.start(doerChain, task.id) : s.gw.ask.complete(doerChain, task.id, arg)); } catch (e) { if (!e || !["bad_state", "not_allowed"].includes(/** @type {any} */ (e).code)) throw e; }
           }
-          setPending(change.key, { task: task.id });
+          setPending(change.key, { task: task.id, bind });
           return { done: false, held: true };
         }
         const t = await s.gw.ask.get(chain, note.task);

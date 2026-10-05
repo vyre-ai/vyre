@@ -174,3 +174,12 @@ test("one credential for Gmail and Calendar: a Flow's call reaches the host its 
   assert.equal((await m.run("vault.service.forward", { connector: "google-api", request: buildRequest(gm, "messages.send", { body: { raw: "UkFX" } }), idem: "r:4" })).held, "task_1");
   await assert.rejects(m.run("vault.service.forward", { connector: "google-api", request: { method: "GET", path: "/drive/v3/files" }, idem: "r:5" }), /not open to this caller/);
 });
+
+test("a connector may not name one of the vault's own headers as its idempotency header", async () => {
+  const { normalize } = await import("./api-request.js");
+  const base = toCredentialConfig(stripe, { item: "stripe" });
+  for (const h of ["Authorization", "Cookie", "Host", "X-Api-Key", "Proxy-Authorization", "Content-Type", "If-Match"]) {
+    assert.throws(() => normalize({ ...base, service: { ...base.service, idempotency: { header: h } } }), /cannot be|header name/, h);
+  }
+  assert.deepEqual(normalize(base).service.idempotency, { header: "Idempotency-Key" });
+});

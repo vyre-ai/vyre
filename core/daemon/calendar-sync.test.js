@@ -67,6 +67,10 @@ test("a write to the outside calendar is held for the owner's yes: a task, nothi
   let ts = await tasks();
   assert.equal(ts.length, 1, "a task is in front of the owner");
   assert.equal(ts[0].checker.id, ALEX.id); assert.equal(ts[0].form.action, "service.call"); assert.match(ts[0].title, /Closing call/);
+  // the card says everything that will be sent, not only the title: who is invited, when, and a digest the approval is tied to
+  assert.match(ts[0].title, /2026-10-07T17:00:00.000Z to 2026-10-07T18:00:00.000Z/); assert.match(ts[0].title, /with sam@rivera.test/);
+  assert.deepEqual([ts[0].form.input.people, ts[0].form.input.invites, ts[0].form.input.starts_at], [["sam@rivera.test"], true, "2026-10-07T17:00:00.000Z"]);
+  assert.match(ts[0].form.digest, /^[0-9a-f]{16}$/); assert.match(ts[0].form.bind, /./);
   out = await h.runNow();
   assert.equal(out["google-calendar"].pushed.held, 1, "still waiting");
   assert.equal((await tasks()).length, 1, "and no second task");
@@ -126,4 +130,20 @@ test("the owner's yes sends that change at once, without waiting for the next lo
   assert.equal(google.events.size, 1, "the approved change went out on the approval");
   assert.equal(sent.length, 1); assert.equal(sent[0].approval, yes.id);
   assert.match([...google.events.values()][0].summary, /Closing call/);
+});
+
+test("an event edited while its change waits is a new ask with the new details; the old yes cannot send the new body", async t => {
+  const { google, w, h, sent, tasks, owner } = await rig(t, { ask: true });
+  const e = await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", people: ["sam@rivera.test"], source: "vyre" });
+  await h.runNow();
+  const [first] = await tasks();
+  await w.kernel.records.update(owner(), "event", e.id, { people: ["sam@rivera.test", "stranger@elsewhere.test"] }, e.version);
+  w.kernel.completeTask(first.id, { outcome: "approved" });
+  await w.kernel.idle(); await new Promise(r => setTimeout(r, 50));
+  await h.runNow();
+  assert.equal(google.events.size, 0, "the approval was for the old invitation list; nothing was sent");
+  const ts = await tasks();
+  assert.equal(ts.length, 2, "the new details are asked about again");
+  assert.match(ts[1].title, /stranger@elsewhere.test/);
+  assert.equal(sent.length, 0);
 });
