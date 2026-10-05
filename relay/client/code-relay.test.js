@@ -12,7 +12,7 @@ import { keyPair } from "../../core/relay/noise.js";
 import { createWinkCode } from "../../core/wink/code.js";
 import { enterCode, toHex, ackCode } from "./code.js";
 
-async function world(t, relayOpts = {}, ttlMs) {
+async function world(t, relayOpts = {}) {
   const relay = createRelay({ clientAddress: req => String(req.headers["x-test-ip"] || "127.0.0.1"), ...relayOpts });
   const base = await relay.listen();
   t.after(() => relay.close());
@@ -27,7 +27,7 @@ async function world(t, relayOpts = {}, ttlMs) {
   t.after(() => link.stop());
   assert.equal(await link.ready(3000), true);
   assert.equal(link.codes(), true, "the relay says it has the typed-code rendezvous");
-  wink = createWinkCode({ route, allocate: () => link.codeAlloc(), release: () => link.codeRelease(), emit: (n, d) => events.push([n, d]), ...(ttlMs ? { ttlMs } : {}) });
+  wink = createWinkCode({ route, allocate: () => link.codeAlloc(), release: () => link.codeRelease(), emit: (n, d) => events.push([n, d]) });
   const shown = /** @type {any} */ (await wink.open());
   return { relay, ws: base, base: base.replace(/^ws/, "http"), route, wink, events, shown, link };
 }
@@ -83,8 +83,8 @@ test("the relay says the code's end: enterCode keeps `exp`, joinWithCode puts it
   assert.equal(r.ok, true);
   assert.equal(r.exp, w.shown.expires, "the relay's slot end is the code's end");
   assert.ok(r.exp - Date.now() > 9 * 60_000, "ten minutes");
-  // a short-lived code: the join gives up at the code's end, well before the old five-minute window
-  const short = await world(t, {}, 2500);
+  // a short-lived code (the relay's own ttl): the join gives up at the code's end, well before the old five-minute window
+  const short = await world(t, { code: { ttl: 2500 } });
   /** @type {any[]} */ const states = [];
   const t0 = Date.now();
   const res = await joinWithCode({ relay: short.ws, input: short.shown.code, name: "Kit's laptop", pollMs: 100, onState: s => states.push(s), pairOptions: { crypto: nodeCrypto(), keyStore: fileKeyStore(path.join(tempHome(t), "k.json")) } });
