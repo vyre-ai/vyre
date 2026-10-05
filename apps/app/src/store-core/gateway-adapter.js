@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/gateway-adapter: the Store (contracts.js) over a real vyred. Every Store method is ONE tool call on the person's own vyred, made through the
+// store-core/gateway-adapter (moved from the old Deck's ui/gateway-adapter): the Store (contracts.js) over a real vyred. Every Store method is ONE tool call on the person's own vyred, made through the
 // `rpc` it is given (the app's client: reads now, writes in the outbox, human-only calls with a presence proof in the x-vyre-presence header). The adapter
 // holds no authority and builds no chain: the daemon builds the Chain from the call's own session, never from the body (CHAT.md, "how the app reaches the
 // kernel's gateway from a device"). Names follow that proposal; platform's final list replaces TOOLS below and nothing else.

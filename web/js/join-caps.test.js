@@ -1,7 +1,7 @@
 // @ts-check
 // canRelayJoin: whether "Pair with a code" shows on the live step. Server-decided
 // (onboard.status.can.relayJoin), never guessed from platform. A missing field is false, same
-// as an explicit false — see deck/js/join-caps.js.
+// as an explicit false — see web/js/join-caps.js.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -6,7 +6,7 @@
 /**
  * The phone layout's question, asked in one place. Narrow windows, and short wide touch screens (a
  * phone turned sideways), get the phone shell; a short desktop window does not. The CSS phone
- * blocks use the same query text (deck/test/pwa.test.js checks they match).
+ * blocks use the same query text (a pwa test checks they match).
  */
 export const PHONE_QUERY = "(max-width: 719px), (max-height: 500px) and (pointer: coarse)";
 /** @param {any} [win] */

@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/mock-values: the kernel's FieldValue shapes (kernel/contracts/fields.d.ts) as small constructors, for the made-up world's records. Plain data, no clock.
+// store-core/mock-values (moved from the old Deck's ui/mock-values): the kernel's FieldValue shapes (kernel/contracts/fields.d.ts) as small constructors, for the made-up world's records. Plain data, no clock.
 import { seeded } from "./mock-ids.js";
 
 /** @typedef {import("./contracts.js").Money} Money */

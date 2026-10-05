@@ -1,5 +1,5 @@
 // @ts-check
-// records: the app's Store calls over the kernel's gateway, one tool each (deck/ui/contracts.js maps a Store method to a kernel call; this registers it). Every tool runs under the caller's own
+// records: the app's Store calls over the kernel's gateway, one tool each (apps/app/src/store-core/contracts.js maps a Store method to a kernel call; this registers it). Every tool runs under the caller's own
 // chain in the Space it names (lib/gateway-door.js: a token's or the person's facts, never the body), so the kernel's grants, sealed fields and rooms decide each answer. A refusal is
 // { error: { code, message } } with the kernel's own codes (not_found, version_conflict, sealed_value_refused, bad_input, denied).
 import { createDoor } from "../../lib/gateway-door.js";

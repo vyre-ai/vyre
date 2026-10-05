@@ -1,5 +1,7 @@
 # vyred HTTP client contract (for native iOS / Android)
 
+> The `deck/` paths below name the old Deck, deleted when the one app took over `/` (see git history before commit 3baaf26e0). They are kept as the record of what each call site did; the equivalents live in `apps/app/` and `web/`.
+
 Source: main at `d1f7b75`. All paths are repo-relative. Shapes are what `run()` returns, not what the schemas advertise. `?` = optional/conditional key.
 
 Mobile additions (ADR 0018): the `device` presence method, `surface: "ios"|"android"` on every write, and native push transports. Where a shape here and the code disagree, the code wins and this file is fixed.

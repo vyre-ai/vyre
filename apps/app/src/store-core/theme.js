@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/theme: the one place the Deck's look is configured (ui-primitives.md section 2). Resolution is fixed: the defaults, then the space, then the
+// store-core/theme (moved from the old Deck's ui/theme): the one place the Deck's look is configured (ui-primitives.md section 2). Resolution is fixed: the defaults, then the space, then the
 // person, and the person wins only for what is theirs (theme, density, font, motion, text size). The result is written as custom properties and
 // attributes on the root element, so every component updates with no code of its own. Contrast is computed, never chosen: a custom accent that does
 // not read on the page is replaced by the nearest one that does, and its ink is picked by luminance. Status colours never change.

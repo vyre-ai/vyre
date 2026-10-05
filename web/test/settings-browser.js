@@ -19,7 +19,7 @@ import { SCRATCH } from "../../test/scratch.mjs";
 import { CHROME_SAFE } from "../../lib/chrome-flags/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-// deck/js/api.js's fixture fallback answers relay.pair.ticket's $seq from
+// web/js/api.js's fixture fallback answers relay.pair.ticket's $seq from
 // web/fixtures/relay.json directly, over a SEPARATE fetch (/fixtures/relay.json, cached by
 // module) that never touches /v1/tools/relay.pair.ticket at all (that real call 404s first, is
 // how the fallback triggers). So the tickets actually served are read here, from the same file,
@@ -75,7 +75,7 @@ try {
   // What ticket a drawn ring actually encodes, cheaply: each of ticketRingSvg's 72 ticks sits at
   // a fixed angle (x1,y1, the tick's inner point, same for every ticket) with a LENGTH (x2,y2,
   // its outer point) and opacity that vary with that tick's level (0-3), the part that actually
-  // comes from the ticket's own bytes (deck/js/phone-code.js ticketLevels). x1,y1 alone would
+  // comes from the ticket's own bytes (web/js/phone-code.js ticketLevels). x1,y1 alone would
   // silently pass for two different tickets (caught here the hard way: an earlier version of
   // this signature used x1,y1 only and never once caught the reviewer's MEDIUM, since angles
   // never change). x2,y2 plus opacity is the actual per-ticket signature.
@@ -109,7 +109,7 @@ try {
     say("a security key saves at once, with no prompt", ask === "no ask" && lock?.source === "account", `value ${lock?.value} (${lock?.source})`);
     await shot("lock-after", row(lockKey));
   }
-  // 4. Wink (Settings > Devices, deck/js/wink-card.js, shared with onboarding): the explicit-tap
+  // 4. Wink (Settings > Devices, web/js/wink-card.js, shared with onboarding): the explicit-tap
   // gate, the ring, the countdown, blanking on blur/hidden/expiry, and the relay.paired reaction
   // (dance, name, fingerprint, Remove): reviewer's five pre-review points. Real onboard.status
   // carries no `can` field yet (asked anywhere), so this patches window.fetch, injected before
@@ -158,7 +158,7 @@ try {
   // real reload through about:blank first.
   await tab.go("about:blank", 200);
   // ?fixtures=1: relay.pair.ticket is not a real tool yet (tailnet, ADR 0026/0033), so the mint
-  // answers from web/fixtures/relay.json's fallback (deck/js/api.js's documented, supported
+  // answers from web/fixtures/relay.json's fallback (web/js/api.js's documented, supported
   // stub-tool mechanism, "only when the live tool is missing, live always wins" - every real tool
   // this section also calls, relay.devices.remove/.rename and onboard.status, keeps answering for
   // real). Without this the earlier version of this file's Wink checks silently drew the idle

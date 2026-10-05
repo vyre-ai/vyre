@@ -274,7 +274,7 @@ export function coveredUntil(p) {
 
 // ---- presence (ADR 0004): proving a person is here with a passkey, for a human-only call -----
 // Like upload(), a byte exchange outside the usual JSON-in/JSON-out shape, lifted here from
-// deck/glass/presence.js (which wrote it exactly to be moved) since Gate approvals need the same
+// the old Glass presence module (which wrote it exactly to be moved) since Gate approvals need the same
 // proof. The dance: POST /v1/presence/challenge gets WebAuthn options bound to this tool and
 // input (hashed as canonical JSON), navigator.credentials.get asks the person (Touch ID, Face
 // ID, a security key), then the tool call itself carries the signed proof as x-vyre-presence.
@@ -336,7 +336,7 @@ export async function endPerson() {
 /**
  * Sign in on this device with a passkey (presence.person.start {}): the box sets the person
  * session cookie. Fires window "deck:person". Call it from a tap. js/person.js wraps it in the
- * sheet; deck/person/signin/signin.js calls it directly.
+ * sheet; web/person/signin/signin.js calls it directly.
  * @returns {Promise<{ kind: string, id: string, expires: number }>}
  */
 export async function signIn() {
@@ -348,7 +348,7 @@ export async function signIn() {
 /**
  * A one-time sign-in code for another place (the hosted app's hop, or `vyre link signin`'s
  * loopback return): presence.person.start with that input, proved by a passkey bound to it.
- * Resolves to { code, expires, redirect }. deck/person/signin/signin.js uses it (team e2e).
+ * Resolves to { code, expires, redirect }. web/person/signin/signin.js uses it (team e2e).
  * @param {{ cc?: string, return?: string, label?: string }} opts
  */
 export async function personCode(opts = {}) {
@@ -464,7 +464,7 @@ export async function attempt(name, input = {}, opts = {}) {
 
 /**
  * The one byte transfer the Deck makes outside call(): a body PUT to a same-origin ticketed path
- * (e.g. what glass.files.upload returns), with progress. Moved here from deck/glass/transfer.js
+ * (e.g. what glass.files.upload returns), with progress. Moved here from the old Glass transfer module
  * so js/api.js stays the only place that talks to vyred.
  * @param {string} path a same-origin ticketed put path
  * @param {Blob} body

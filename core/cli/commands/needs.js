@@ -1,6 +1,6 @@
 // @ts-check
 // `vyre needs`: everything waiting on the person, in one list. The same two sources as the Deck's
-// Needs (deck/js/needs.js): drafts held at the Gate (gate.held) and open asks from sessions
+// Needs (the app's Now list): drafts held at the Gate (gate.held) and open asks from sessions
 // (threads.asks), a permission or a question. Newest first here, since a terminal reads from the
 // bottom of what it just printed up; each row ends with the exact command that acts on it.
 //

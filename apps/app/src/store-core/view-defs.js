@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/view-defs: how each type is shown, as UI-side configuration keyed by the type's name. The kernel's TypeDefinition says what a record IS (fields, stages,
+// store-core/view-defs (moved from the old Deck's ui/view-defs): how each type is shown, as UI-side configuration keyed by the type's name. The kernel's TypeDefinition says what a record IS (fields, stages,
 // rules); it has no list columns, no board grouping, no calendar date and no dashboard widgets, no plural, no title field. Those live here until the kernel has a
 // `def.view` the Deck can read (SPEC-core-contract.md 5.1 names the reserved kind). A ViewDefinition only ever names fields by their `name`.
 //

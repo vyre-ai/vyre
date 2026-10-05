@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/tasks: the task model as pure functions over the kernel's Task (team/0.3/DESIGN-tasks.md, kernel/contracts/task.d.ts). Nothing here touches a store, a DOM or
+// store-core/tasks (moved from the old Deck's ui/tasks): the task model as pure functions over the kernel's Task (team/0.3/DESIGN-tasks.md, kernel/contracts/task.d.ts). Nothing here touches a store, a DOM or
 // a clock it was not handed, so the mock store, the real gateway adapter and the tests all use the same rules.
 //
 // A task has one doer and, optionally, one checker. It says what done looks like (its output), and the kernel checks that deterministically: an assistant cannot mark

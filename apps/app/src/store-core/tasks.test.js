@@ -1,5 +1,5 @@
 // @ts-check
-// The task model (deck/ui/tasks.js) over the kernel's Task: who may move a task is the kernel's TASK_TRANSITIONS table, so these tests read the table and the `by` column
+// The task model (store-core/tasks.js) over the kernel's Task: who may move a task is the kernel's TASK_TRANSITIONS table, so these tests read the table and the `by` column
 // through whyNot(), not a table of their own.
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";

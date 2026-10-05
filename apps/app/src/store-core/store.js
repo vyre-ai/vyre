@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/store: the one place the generated screens get their Store (contracts.js). Two adapters: the real one (gateway-adapter.js, over a vyred) and the
+// store-core/store (moved from the old Deck's ui/store): the one place the generated screens get their Store (contracts.js). Two adapters: the real one (gateway-adapter.js, over a vyred) and the
 // in-memory mock (mock-store.js). No screen imports either: they call getStore(), so a swap touches this file only. setStore() is for tests, the lab and the app.
 //
 // The mock is for development only. In the Expo app (which sets globalThis.__VYRE_APP__ before anything asks for a Store, apps/app/src/api/store-link.ts) there is

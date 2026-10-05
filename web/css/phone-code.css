@@ -1,6 +1,6 @@
-/* Wink: the Vyre code ring (ADR 0043, deck/js/phone-code.js), shared between onboarding's
-   devices step and Settings > Devices (deck/views/settings.js) — the one card, two homes, so it
-   needs its own shared stylesheet rather than living in deck/onboard/onboard.css, which the main
+/* Wink: the Vyre code ring (ADR 0043, web/js/phone-code.js), shared between onboarding's
+   devices step and Settings > Devices (the app's Settings) — the one card, two homes, so it
+   needs its own shared stylesheet rather than living in web/onboard/onboard.css, which the main
    Deck bundle never loads. `spin` is duplicated from onboard.css's own busy spinner rather than
    moved out of it under time pressure; if a third place ever wants it, that's the point to
    actually share the keyframe. */
@@ -17,7 +17,7 @@
   background-size: 220% 220%; animation: phone-code-shimmer 3.2s ease-in-out infinite; }
 .phone-code-ring.expired { opacity: 0.4; }
 .phone-code-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-/* Minting (deck/js/wink-card.js's start()/refresh, an async presence-gated call): the same
+/* Minting (web/js/wink-card.js's start()/refresh, an async presence-gated call): the same
    spinner as the ring's own initial one, sized for the meta row instead of the ring's centre. */
 .phone-code-meta .busy { display: block; width: 12px; height: 12px; border-radius: 6px; border: 1.5px solid var(--rule-strong); border-top-color: var(--text); animation: spin 900ms linear infinite; }
 @keyframes phone-code-shimmer { 0% { background-position: 130% 130%; } 100% { background-position: -30% -30%; } }
@@ -31,7 +31,7 @@
    launch's own animation — ui-ux's motion prototype (scratchpad/avatar-motion/avatar-motion.html,
    the "goal done" moment), played on `.vyrecode-face` (the ring's own face group, see
    web/vendor/vyrecode/vyrecode2.js) instead of the prototype's small avatar tile, plus the same
-   confetti burst. `deck/js/phone-code.js`'s `playDance()` adds/removes these classes and the
+   confetti burst. `web/js/phone-code.js`'s `playDance()` adds/removes these classes and the
    confetti elements; nothing here plays on a loop or without that call. transform-box: fill-box
    so the hop scales/translates around the face's own centre regardless of the outer group's
    already-applied position/scale (a CSS transform on the SAME element would override that

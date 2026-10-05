@@ -23,7 +23,7 @@ import { h, put } from "./dom.js";
 import { attempt, endPerson, setPersonHandler, signIn, ApiError } from "./api.js";
 import { openSheet } from "./sheet.js";
 
-// signIn lives in api.js (deck/person/signin/signin.js imports it from there too).
+// signIn lives in api.js (web/person/signin/signin.js imports it from there too).
 export { signIn };
 
 /** The one sheet on screen, shared by every call that is waiting for it. @type {Promise<void> | null} */

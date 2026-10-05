@@ -1,7 +1,7 @@
 // @ts-check
 // Wink's card: the live Vyre code ring, shared between onboarding's devices step and
 // Settings > Devices (one card, two homes; web/css/phone-code.css is the shared stylesheet).
-// The ring draws relay.pair.ticket's raw secret while it's live (deck/js/phone-code.js), so this
+// The ring draws relay.pair.ticket's raw secret while it's live (web/js/phone-code.js), so this
 // module is built around reviewer's pre-review points (relayed by the lead, 28 Sep), not just
 // the visual mechanics:
 //  1. Minted only on an explicit tap ("Add a device"), never on render/page load. After that tap the

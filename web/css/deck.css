@@ -1,7 +1,7 @@
 /* The Deck's one stylesheet. Its colours are the one app's (css/tokens.css, generated); no colour
    here is new. Dark is the default. Paper is the light theme, chosen in Settings (data-theme="paper"). */
 
-/* The two typefaces, from the box (deck/fonts): text draws at once in a fallback and swaps in. */
+/* The two typefaces, from the box (web/fonts): text draws at once in a fallback and swaps in. */
 @font-face { font-family: 'Instrument Sans'; font-style: normal; font-weight: 400 600; font-display: swap;
   src: url(/fonts/instrument-sans-latin.woff2) format('woff2'); }
 @font-face { font-family: 'JetBrains Mono'; font-style: normal; font-weight: 400 500; font-display: swap;
@@ -110,7 +110,7 @@ span.vy-av-ring { border-radius: 9999px; overflow: hidden; }
 .dot { width: 8px; height: 8px; border-radius: 4px; flex-shrink: 0; display: inline-block; }
 .dot.recall { background: var(--text-2); }
 .dot.signal { background: var(--focus); }
-/* .dot.beacon (needs you) and the path dots .dot.health-* (deck/js/health.js) are drawn in css/marks.css. */
+/* .dot.beacon (needs you) and the path dots .dot.health-* (the health dots) are drawn in css/marks.css. */
 .bar { height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--text); transition: width 200ms linear; }
 .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); padding: 2px; gap: 2px; }
