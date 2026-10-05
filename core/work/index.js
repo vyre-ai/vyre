@@ -10,6 +10,7 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
+import { planUpgrade, runUpgrade } from "./chat-upgrade.js";
 import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
@@ -327,6 +328,32 @@ export default {
         const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
         const slots = runs.map((/** @type {any} */ r) => ({ slot: r.slot || (r.agent ? `agent:${r.agent}` : null), thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
         return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}` };
+      },
+    });
+    // Personal to My Cloud (windows' upgrade, one approval for the whole move): the person's chats move to their other Space under their own chain in both, ids kept (core/work/chat-upgrade.js).
+    // The spaces module calls these on the person's behalf (it relays the person to exactly these two tools).
+    const upgradeRows = async (/** @type {any} */ from) => {
+      const k = kernelOf();
+      const mine = new Set((await k.chats.mine(from.chain)).map((/** @type {any} */ m) => m.chat));
+      return ((await from.records.query(from.chain, "chat-record", { page: { limit: 500 } })).rows || []).filter((/** @type {any} */ r) => mine.has(r.data.chat));
+    };
+    ctx.tool("work.chat.upgrade-plan", {
+      description: "What moving your chats from this Space to your other Space (Personal to My Cloud) would carry: how many chats, files and bytes, and anything that blocks it (a chat that is working). Reads only; the counts are what you approve.",
+      input: obj({ to: { type: "string" } }, ["to"]),
+      run: async (input, extra) => {
+        const k = kernelOf();
+        const from = withCarry(await sideOf(k.space, extra), await sideOf(String(input.to), extra));
+        return planUpgrade({ from, rows: await upgradeRows(from) });
+      },
+    });
+    ctx.tool("work.chat.upgrade-move", {
+      description: "Move your chats from this Space to your other Space (Personal to My Cloud): each keeps its id, title and people, is filed under General there, and its files go sealed. A chat that cannot move is named in `left` and the others still do.",
+      input: obj({ to: { type: "string" }, move_id: { type: "string" } }, ["to"]),
+      run: async (input, extra) => {
+        const k = kernelOf();
+        const to = await sideOf(String(input.to), extra);
+        const from = withCarry(await sideOf(k.space, extra), to);
+        return runUpgrade({ from, to, rows: await upgradeRows(from), ports: { ...(input.move_id ? { move_id: String(input.move_id) } : {}) } });
       },
     });
     ctx.tool("work.chat.create", {

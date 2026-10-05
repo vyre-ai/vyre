@@ -87,6 +87,18 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.upgrade-plan",
+        "summary": "what moving your chats to your other Space would carry (counts and blockers)",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.upgrade-move",
+        "summary": "move your chats to your other Space (Personal to My Cloud), ids kept",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",
