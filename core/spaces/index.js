@@ -1558,7 +1558,9 @@ export default {
       const r = i.request;
       const t = r && typeof r.t === "string" ? r.t : "";
       if (!["hello", "auth", "plan", "records", "file", "sealed", "done"].includes(t)) throw refuse("That is not a request this home answers.", "bad_input");
-      try { return await pullSourceOf(space)[/** @type {"hello"} */ (t)](r); }
+      // the door names who is asking (`home:<id>`); a nonce and a session belong to the stream that earned them and nothing else may use them
+      const who = typeof meta.onBehalfOf === "string" && /^home:[A-Za-z0-9_-]{1,80}$/.test(meta.onBehalfOf) ? meta.onBehalfOf : null;
+      try { return await pullSourceOf(space)[/** @type {"hello"} */ (t)](r, who); }
       catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (/^(not_found|denied|bad_input|rate_limited|plan_changed|too_large|unavailable|blocked)$/.test(c)) throw refuse(String(/** @type {Error} */ (e).message), c); throw plainKernelError(e); }
     }, { internal: true });
     // the TARGET side of the pull: the driver (the Flow's copy) checks the source before it signs anything, then asks this home to sign with the target Space's key. Neither tool takes a key or returns one.
