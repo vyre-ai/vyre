@@ -148,7 +148,7 @@ export function createPeerDoor(o) {
   const watchers = new Set();
   if (o.events && typeof o.events.on === "function") for (const type of ["device.removed", "wink.removed", "presence.signed-out", "presence.refused"]) { try { o.events.on(type, () => { for (const w of [...watchers]) w.check(); }); } catch { /* no bus */ } }
 
-  return {
+  const door = {
     space: PEER_HOME,
     allow: (/** @type {string} */ d) => DEVICE.test(String(d)),
     /**
@@ -335,4 +335,17 @@ export function createPeerDoor(o) {
       log(`peer door: ${caller} opened a peer stream`);
     },
   };
+  // The server door over the relay: the same restricted read as the direct door's, for a paired server whose direct path is down. The server's row is asked on every call (isServer), so a
+  // removed server is refused at its next call and its stream closes; what it may ask is exactly SERVER_TOOLS, run as the daemon on its behalf.
+  door.isServer = (/** @type {string} */ id) => typeof o.isServer === "function" && o.isServer(String(id)) === true;
+  door.acceptServer = (/** @type {any} */ stream, /** @type {{ serverId: string }} */ who) => {
+    const id = String(who.serverId);
+    /** @type {any} */ let session = null;
+    session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      if (!door.isServer(id)) { const t = setTimeout(() => { try { session.close("device removed"); } catch { /* closed */ } }, 200); if (t.unref) t.unref(); throw err("denied", "this server is not paired here any more"); }
+      return door.serve(`device:${id}`, tool, input);
+    } });
+    log(`peer door: server ${id} opened a peer stream through the relay`);
+  };
+  return door;
 }

@@ -845,7 +845,7 @@ export function createPairing(o) {
       if (!x || typeof x !== "object") return null;
       /** @type {Record<string, string>} */
       const out = {};
-      for (const k of ["home", "box", "controlUrl", "authKey", "relay", "space", "device", "hostname", "peerAddr", "pin"]) if (typeof x[k] === "string" && x[k] && x[k].length <= 512 && !/[\u0000-\u001f]/.test(x[k])) out[k] = x[k];
+      for (const k of ["home", "box", "controlUrl", "authKey", "relay", "route", "space", "device", "hostname", "peerAddr", "pin"]) if (typeof x[k] === "string" && x[k] && x[k].length <= 512 && !/[\u0000-\u001f]/.test(x[k])) out[k] = x[k];
       return Object.keys(out).length ? out : null;
     };
     /** Who an owner row names, in words. @param {any} cur */
@@ -1125,7 +1125,7 @@ export function createPairing(o) {
       ctx.events.emit("wink.server-adopted", { owner: t });
       return { owner: t };
     };
-    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str, pin: obj({ id: str, seq: { type: "integer" }, head: str }) }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str, esig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, space: str, device: str, hostname: str, peerAddr: str, pin: str }) }, ["owner"]);
+    const adoptInput = obj({ pairing: obj({ commit: str, reveal: str, tag: str, cancel: { type: "boolean" } }), owner: obj({ kind: { type: "string", enum: ["identity", "space"] }, id: str, name: str, vyre: str, pin: obj({ id: str, seq: { type: "integer" }, head: str }) }, ["kind", "id"]), identity: str, peerSecret: str, proof: obj({ eid: str, sig: str, esig: str }), deviceKind: { type: "string", enum: ["phone", "computer", "web"] }, deviceName: str, keyStorage: { type: "string", enum: ["hardware", "software"] }, handover: obj({ home: str, box: str, controlUrl: str, authKey: str, relay: str, route: str, space: str, device: str, hostname: str, peerAddr: str, pin: str }) }, ["owner"]);
     /** The adoption itself (wink.server.adopt's body). @param {any} input @param {any} meta0 */
     const adoptBody = async (input, meta0 = {}) => {
         owner(meta0, "adopting a server");

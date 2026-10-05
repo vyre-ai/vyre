@@ -33,6 +33,7 @@ import { identityPorts } from "./identity-ports.js";
 import { createNetd } from "./netd.js";
 import { createNetJoin } from "./netjoin.js";
 import { relayKeyPair } from "./directkey.js";
+import { relayUrlProblem } from "../../lib/relay-url.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
 import { createHolds } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -354,6 +355,9 @@ export function createWink(inject = {}) {
       const route = rr && rr.data && rr.data.route, box = rr && rr.data && rr.data.box;
       const url = String((st && st.data && st.data.url) || (ctx.config.relay && ctx.config.relay.url) || "");
       if (!route || !box || !url) return null;
+      // a plain ws:// relay is never published to a server in a release build (a browser page cannot open it): no relay way back, and the log says why
+      const bad = relayUrlProblem(url);
+      if (bad) { ctx.log(`wink: no relay way back handed to a server: ${bad}`); return null; }
       const a = /** @type {any} */ (await ctx.call("relay.devices.admit-server", { pub: Buffer.from(relayKeyPair(pairing.peers.secretFor(q.device)).publicKey).toString("base64url"), server: q.device }));
       if (a && a.error) return null;
       return { relay: url, route: String(route), box: String(box) };

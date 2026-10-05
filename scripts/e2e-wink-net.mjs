@@ -8,6 +8,8 @@
 // (wink.server.code, wink.pair.server, wink.server.confirm); the home's hand-over (controlUrl, one-time key, node name, door address) goes to the server inside adopt, and the
 // server's netjoin joins the home's network and dials the door. Checked: the pairing is done; the server's link says "direct"; a call from the server crosses as device:<sid>;
 // the device row is removed on the home and the server's next call cannot cross.
+// Then the RELAY FALLBACK: the home drops the server's UDP and its TCP to the gate (iptables raw table, tagged, removed after), the server's link must fall back to the relay, a call must still cross over it
+// (the home's server door, status read only), and when the block is lifted the link prefers the direct path again. The server's relay row (kind server) is checked to exist and to be hidden from the device list.
 // What it does NOT prove: a NAT between the boxes (both are on public addresses), a name with a TLS gate (controlUrl is plain http to the box's address), IPv6.
 // Firewall: comment-tagged ufw rules for the other box's address only, removed at the end (and on failure). Pids are recorded; nothing is killed by pattern.
 import fs from "node:fs";
@@ -25,8 +27,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const until = async (f, ms = 30_000, what = "condition") => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`); await sleep(250); } };
 
 const HOSTS = { home: process.env.E2E_HOME || "testbox6", server: process.env.E2E_SERVER || "testbox2" };
-const DIR = "net-i/e2e";             // under the login user's home on both boxes: a directory only this test uses
-const BASE = Number(process.env.E2E_PORT_BASE || 43600);
+const DIR = process.env.E2E_DIR || "net-k/e2e";             // under the login user's home on both boxes: a directory only this test uses
+const BASE = Number(process.env.E2E_PORT_BASE || 43800);
 const P = { relay: BASE, gate: BASE + 1, ctlHome: BASE + 2, ctlServer: BASE + 3, dir: BASE + 4 };
 const TAG = "wink-net-e2e";
 
@@ -51,6 +53,15 @@ function firewall(on, ips) {
     }
   }
 }
+/** Kill the direct path between the two boxes without touching the relay: on the HOME, drop (before connection tracking, so an established flow dies too) the server's UDP and its TCP to the gate port. Tagged and removed exactly. */
+function blockDirect(on, ips) {
+  for (const sp of [["-p", "udp"], ["-p", "tcp", "--dport", String(P.gate)]]) {
+    const r = `PREROUTING -s ${ips.server} ${sp.join(" ")} -m comment --comment ${TAG}-block -j DROP`;
+    if (on) sh(HOSTS.home, `sudo -n iptables -t raw -C ${r} 2>/dev/null || sudo -n iptables -t raw -I PREROUTING 1 ${r.slice("PREROUTING ".length)}`);
+    else sh(HOSTS.home, `while sudo -n iptables -t raw -D ${r} 2>/dev/null; do :; done`, { quiet: true });
+  }
+}
+const leftoverBlocks = () => { try { return sh(HOSTS.home, `sudo -n iptables -t raw -S PREROUTING | grep -c ${TAG}-block || true`, { quiet: true }).trim(); } catch { return "unknown (ssh failed)"; } };
 const leftoverRules = host => { try { return sh(host, `sudo -n ufw status | grep -c ${TAG} || true`, { quiet: true }).trim(); } catch { return "unknown (ssh failed)"; } };
 
 function stage(host) {
@@ -127,6 +138,22 @@ async function main() {
 
     let other = "it was answered"; try { ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "about.text", timeoutS: 30 }); } catch (e) { other = String(e.message); }
     check("a paired server may only read the network's status on its home (anything else is refused)", /only read the network's status/i.test(other), other);
+    // THE RELAY FALLBACK: the direct path dies (the home drops the server's UDP and its TCP to the gate, before connection tracking), the relay is untouched. The link must move to the relay and a call must still
+    // cross, run by the home's door as the same server and still limited to the status read; then the direct path comes back and the link prefers it again.
+    blockDirect(true, ips);
+    const viaRelay = await until(() => { const s = ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }); return s.link && s.link.path === "relay" ? s : null; }, 150_000, "the link to fall back to the relay").catch(() => null);
+    check("direct path blocked: the server's link falls back to the RELAY", Boolean(viaRelay), viaRelay || ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }));
+    let relayErr = null;
+    const relayCall = await until(() => { try { const r = ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "network.wink.status", timeoutS: 30 }); relayErr = r.error || null; return r.error ? null : r; } catch (e) { relayErr = String(e.message).slice(0, 300); return null; } }, 90_000, "a call over the relay").catch(() => null);
+    check("with the direct path blocked, a call from the server still crosses (through the relay)", Boolean(relayCall), relayCall ? { ok: true } : relayErr);
+    let relayOther = "it was answered"; try { ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "about.text", timeoutS: 30 }); } catch (e) { relayOther = String(e.message); }
+    check("over the relay a paired server may still only read the network's status", /only read the network's status|denied/i.test(relayOther), relayOther);
+    const relayRow = ctl(HOSTS.home, P.ctlHome, { cmd: "relay-row", sid });
+    check("the server's relay row is of kind server and hidden from the home's device list", relayRow.rowKind === "server" && relayRow.removed === false && !JSON.stringify(relayRow.listed).includes(sid), relayRow);
+    blockDirect(false, ips);
+    const back = await until(() => { const s = ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }); return s.link && s.link.path === "direct" ? s : null; }, 180_000, "the direct path to come back").catch(() => null);
+    check("direct path unblocked: the link prefers the direct path again", Boolean(back), back || ctl(HOSTS.server, P.ctlServer, { cmd: "joinstatus" }));
+
     ctl(HOSTS.home, P.ctlHome, { cmd: "remove", device: sid });
     const refused = await until(() => { try { const r = ctl(HOSTS.server, P.ctlServer, { cmd: "joincall", tool: "network.wink.status", timeoutS: 20 }); return r.error ? r : null; } catch { return { error: "unreachable" }; } }, 90_000, "the removed server to be refused").catch(() => null);
     check("after the device row is removed, the server's next call cannot cross", Boolean(refused), refused);
@@ -134,8 +161,9 @@ async function main() {
     check("the run completed", false, String(e.message).slice(0, 600));
   } finally {
     stopRunners();
+    try { blockDirect(false, ips); } catch { /* reported below */ }
     try { firewall(false, ips); } catch { /* reported below */ }
-    out("cleanup", { ufwRulesLeft: { home: leftoverRules(HOSTS.home), server: leftoverRules(HOSTS.server) } });
+    out("cleanup", { ufwRulesLeft: { home: leftoverRules(HOSTS.home), server: leftoverRules(HOSTS.server) }, rawBlocksLeft: leftoverBlocks() });
   }
   const bad = results.filter(r => !r.ok).length;
   out(bad ? "FAIL" : "PASS", { checks: results.length, failed: bad });
@@ -199,6 +227,14 @@ async function runner(args) {
     joinstatus: async () => { const j = winkHandle().join(); return j ? j.status() : { state: "none" }; },
     joincall: async b => { const j = winkHandle().join(); if (!j) throw Object.assign(new Error("no join"), { code: "unavailable" }); return { data: await j.call(String(b.tool), b.input || {}, { timeoutMs: 15_000 }) }; },
     served: async () => ({ calls: served }),
+    // what the home's own device list shows, and the kind of the row its relay holds for the server (derived the way the server derives its relay key from the peer secret): a server's relay row exists and is not a device the person sees
+    "relay-row": async b => {
+      const l = await data("relay.devices.list", {}, "cli").catch(() => []); const rows = Array.isArray(l) ? l : (l && l.devices) || [];
+      const { relayKeyPair } = await imp("core/wink/directkey.js"); const { deviceId } = await imp("core/relay/index.js");
+      const rid = deviceId(Buffer.from(relayKeyPair(winkHandle().peers.secretFor(String(b.sid))).publicKey));
+      const info = (await d.registry.call("relay.device.info", { id: rid }, "module:wink")).data;
+      return { listed: rows, rowKind: info && info.kind, removed: info && info.removed };
+    },
     remove: async b => data("wink.remove", { device: String(b.device) }),
   };
   const token = crypto.randomBytes(24).toString("hex");

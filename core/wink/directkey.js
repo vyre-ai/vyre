@@ -13,3 +13,15 @@ export function directKey(peerSecret) {
   const pub = crypto.createPublicKey(priv).export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
   return { pub, sign: message => crypto.sign(null, message, priv).toString("base64url") };
 }
+
+/**
+ * The static Noise key a paired SERVER uses on the relay when it reaches its home there (the fallback when the direct path is down): derived from the same peer secret, so the home
+ * knows its public half without being told it, admits it as a server row (never an app device) and nothing else can use that row. X25519, the shape relay/client/nodecrypto.js keeps.
+ * @param {string} peerSecret @returns {{ privateKey: Uint8Array, publicKey: Uint8Array }}
+ */
+export function relayKeyPair(peerSecret) {
+  const seed = crypto.createHmac("sha256", Buffer.from(String(peerSecret), "base64url")).update("vyre-wink-relay-v1").digest();
+  const priv = crypto.createPrivateKey({ key: Buffer.concat([Buffer.from("302e020100300506032b656e04220420", "hex"), seed]), format: "der", type: "pkcs8" });
+  const pub = crypto.createPublicKey(priv).export({ format: "der", type: "spki" }).subarray(-32);
+  return { privateKey: new Uint8Array(seed), publicKey: new Uint8Array(pub) };
+}

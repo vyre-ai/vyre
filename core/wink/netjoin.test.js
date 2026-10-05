@@ -79,3 +79,63 @@ test("no node program: no-binary, the relay carries everything; a failed join sa
   assert.match(String(b.status().why), /did not come up/);
   assert.ok(calls.includes("stopAll"));
 });
+
+// ---- the relay fallback: the home's route and key in the hand-over, this server's own relay key derived from the peer secret ----
+const RELAY = { relay: "wss://relay.example", route: "abcdefghijklmnopqrstuvwxyz".slice(0, 26), box: crypto.randomBytes(32).toString("base64url") };
+/** a stand-in relay client: records how it was dialled and answers a peer stream with 200 */
+const fakeConnect = (/** @type {any[]} */ dials, /** @type {{ status?: number }} */ o = {}) => (/** @type {any} */ opts) => {
+  dials.push(opts);
+  return { ready: async () => ({ open: (/** @type {any} */ head) => { dials.push({ head }); const s = /** @type {any} */ ({ write() {}, end() {}, reset() {} }); setTimeout(() => s.onhead && s.onhead({ status: o.status ?? 200 }), 0); return s; } }), close: () => dials.push("close") };
+};
+
+test("with a relay way back and no node program, the server links through the relay alone (state up, not no-binary)", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  /** @type {any[]} */ const hosts = [];
+  const mk = (/** @type {any} */ deps) => { hosts.push(deps); return fakeHost(calls)(deps); };
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => ({ ...HAND, ...RELAY }), deps: { createHost: mk, findBinaries: () => ({ forwarder: null }) } });
+  await j.start();
+  assert.equal(j.status().state, "up");
+  assert.match(String(j.status().why), /relay carries everything/);
+  assert.equal(hosts[0].forwarderBin, undefined, "no node program is started");
+  assert.equal(typeof hosts[0].relayPeer, "function");
+  assert.ok(!calls.includes("start"), "the node is not started");
+  await j.stop();
+});
+
+test("a hand-over with only the relay (no network address) links through the relay", async () => {
+  const calls = /** @type {string[]} */ ([]);
+  /** @type {any[]} */ const hosts = [];
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => ({ space: "spc_one", device: "dev1", peerSecret: SECRET, ...RELAY }), deps: { createHost: (/** @type {any} */ d) => { hosts.push(d); return fakeHost(calls)(d); }, findBinaries: () => ({ forwarder: "/bin/fwd" }) } });
+  await j.start();
+  assert.equal(j.status().state, "up");
+  assert.deepEqual(calls.filter(c => c.startsWith("add")), ["add relay-only http://127.0.0.1:1 undefined"]);
+  assert.ok(!calls.includes("start"));
+  await j.stop();
+});
+
+test("the relay leg dials the home's route with the key derived from the peer secret and opens a wink peer stream on the home door", async () => {
+  /** @type {any[]} */ const hosts = [];
+  /** @type {any[]} */ const dials = [];
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => ({ ...HAND, ...RELAY }), deps: { createHost: (/** @type {any} */ d) => { hosts.push(d); return fakeHost([])(d); }, findBinaries: () => ({ forwarder: "/bin/fwd" }), relayConnect: fakeConnect(dials) } });
+  await j.start();
+  const pipe = await hosts[0].relayPeer("spc_one");
+  assert.ok(pipe, "a pipe comes back once the home answered 200");
+  const o = dials.find(d => d && d.route);
+  assert.equal(o.relay, RELAY.relay);
+  assert.equal(o.route, RELAY.route);
+  assert.equal(o.box, RELAY.box);
+  const keys = await o.keyStore.get();
+  const { relayKeyPair } = await import("./directkey.js");
+  assert.deepEqual(keys.publicKey, relayKeyPair(SECRET).publicKey, "the home can name this key without being told it");
+  assert.deepEqual(dials.find(d => d && d.head).head, { peer: "wink", space: "home" });
+  await j.stop();
+  assert.ok(dials.includes("close"), "leaving closes the relay connection");
+});
+
+test("a home that refuses the peer stream says so (denied), it is not a hang", async () => {
+  /** @type {any[]} */ const hosts = [];
+  const j = createNetJoin({ settleMs: 0, root: root(), ownHandover: () => ({ ...HAND, ...RELAY }), deps: { createHost: (/** @type {any} */ d) => { hosts.push(d); return fakeHost([])(d); }, findBinaries: () => ({ forwarder: "/bin/fwd" }), relayConnect: fakeConnect([], { status: 403 }) } });
+  await j.start();
+  await assert.rejects(() => hosts[0].relayPeer("spc_one"), /refused the peer stream \(403\)/);
+  await j.stop();
+});

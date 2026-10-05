@@ -30,3 +30,16 @@ export function inviteesFor(ctx) {
   try { d = f(); } catch { return undefined; }
   return d && typeof d.acceptInvitee === "function" ? d : undefined;
 }
+
+/**
+ * The server door: `acceptServer(stream, { serverId })` and `isServer(id)` of the same `ctx.peerDoor()`, or undefined. A paired server of this home reaches it through the relay when the direct path is down
+ * and may read the network's status there, nothing else. @param {any} ctx
+ * @returns {{ space: string, isServer: (id: string) => boolean, acceptServer: (stream: any, who: { serverId: string }) => void } | undefined}
+ */
+export function serversFor(ctx) {
+  const f = ctx && ctx.peerDoor;
+  if (typeof f !== "function") return undefined;
+  let d;
+  try { d = f(); } catch { return undefined; }
+  return d && typeof d.acceptServer === "function" && typeof d.isServer === "function" && typeof d.space === "string" ? d : undefined;
+}
