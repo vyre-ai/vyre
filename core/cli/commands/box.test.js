@@ -10,8 +10,7 @@ import net from "node:net";
 import path from "node:path";
 import { tempHome } from "../../../test/helpers.js";
 import * as config from "../../config/index.js";
-import { ending } from "../ending.js";
-import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup } from "./box.js";
+import box, { add, move, parsePreflight, plan, unfit, newer, needsGroup } from "./box.js";
 import { VERSION } from "../../daemon/index.js";
 
 const FAKE_SSH = `#!/bin/sh
@@ -62,6 +61,7 @@ echo "$*" >> "$FAKE_BOX/vyre.log"
 case "$1" in
   up) cat "$FAKE_BOX/up.out" ;;
   call)
+    [ "$2" = wink.server.status ] && { cat "$FAKE_BOX/server.json" 2>/dev/null || echo '{"owned":false}'; exit 0; }
     [ "$2" = onboard.link ] && [ -f "$FAKE_BOX/link.json" ] && { cat "$FAKE_BOX/link.json"; exit 0; }
     # The box's passkeys: keys.json once (then keys.next.json takes its place), else one passkey.
     if [ "$2" = presence.keys ]; then
@@ -139,20 +139,6 @@ test("box: preflight lines parse, and the plan says what will change", () => {
   assert.equal(parsePreflight("os=Linux\ndocker=2.29.1\nsudo=root\n").docker, "2.29.1");
 });
 
-test("box: the link comes from --json, or from the text before --json exists", () => {
-  const url = "http://127.0.0.1:7300/onboard?t=abc123";
-  assert.deepEqual(parseLink(`note\n${JSON.stringify({ role: "box", url, port: 7300, address: null })}\n`), { url, port: 7300, address: null });
-  assert.deepEqual(parseLink(JSON.stringify({ url: null, address: ADDRESS }, null, 2)), { url: null, port: null, address: ADDRESS });
-  assert.deepEqual(parseLink(`\n  Open this link to set up Vyre (it works once, for an hour):\n\n    ${url}\n`), { url, port: 7300, address: null });
-  assert.deepEqual(parseLink(`  your address: ${ADDRESS}\n`), { url: null, port: null, address: ADDRESS });
-  assert.equal(parseLink("vyre: no box in /srv/vyre"), null);
-  assert.equal(settled(status(3)), false);
-  assert.equal(settled(status(4)), true, "a box too old to say arrived: the address serving is enough");
-  assert.equal(settled(status(4, { arrived: false })), false, "the page still needs the tunnel for Switch to");
-  assert.equal(settled(status(4, { arrived: true })), true, "the owner reached the address");
-  assert.equal(newer("0.2.0", "0.1.9"), 1);
-  assert.equal(newer("0.1.0", "0.1.0"), 0);
-});
 
 test("box add: with no terminal and no --yes it shows the plan and changes nothing", async t => {
   const r = rig(t);
@@ -165,117 +151,11 @@ test("box add: with no terminal and no --yes it shows the plan and changes nothi
   assert.equal(fs.existsSync(r.stack), false);
 });
 
-test("box add --yes: installs, opens the link, waits step by step, saves, and ends ready", async t => {
-  const r = rig(t);
-  const port = await freePort();
-  const url = `http://127.0.0.1:${port}/onboard?t=tok`;
-  r.upOut(JSON.stringify({ role: "box", url, port, ssh: null, address: null, box: true }) + "\n");
-  r.setStatuses([status(0), status(2), status(3, { steps: { ...steps(3), history: "skipped" } }), status(6, { finished: true })]);
-  const { code, text } = await capture(() => add("alex@203.0.113.9", { yes: true }));
-  assert.equal(code, 0, text);
 
-  assert.match(r.read("installer.log"), /^--yes$/m, "the installer was copied over and run with --yes");
-  const ssh = fs.readFileSync(path.join(r.root, "ssh.log"), "utf8");
-  assert.match(ssh, /sh \/\S+ --yes/);
-  assert.match(ssh, new RegExp(`-O forward -L ${port}:127\\.0\\.0\\.1:${port}`));
-  assert.match(ssh, /-O cancel/);
-  for (let i = 0; i < 250 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
-  assert.equal(r.read("opened").trim(), url, "the browser is opened detached, so give it a moment");
-  assert.match(text, /Finish in your browser\. I'll wait here\./);
-  for (const label of ["You", "Claude Code", "Pair this server", "Your address", "Your devices"]) assert.match(text, new RegExp(`${label}\\s+done`));
-  assert.match(text, /Your history\s+skipped/);
-  assert.equal(text.match(/Claude Code\s+done/g)?.length, 1, "each step is said once");
-  assert.ok(text.includes(ending({ address: ADDRESS, assistant: "Juno" }).join("\n")), text);
 
-  const c = /** @type {any} */ (config.load());
-  assert.equal(c.box.ssh, "alex@203.0.113.9");
-  assert.equal(c.network.box, ADDRESS);
-});
 
-test("box add: a box already set up skips install and the browser, and finishes", async t => {
-  const r = rig(t);
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  r.upOut(`  vyred is already running\n  your address: ${ADDRESS}\n`);
-  r.setStatuses([status(6, { finished: true })]);
-  const { code, text } = await capture(() => add("alex@203.0.113.9"));
-  assert.equal(code, 0, text);
-  assert.match(text, /already on alex@203\.0\.113\.9/);
-  assert.equal(r.read("installer.log"), "");
-  assert.equal(r.read("opened"), "");
-  assert.match(text, /Vyre is ready\./);
-  assert.equal(config.load().network.box, ADDRESS);
-});
 
-test("box add: a finished box pairs this Mac and asks for the approval in the Deck, never over SSH", async t => {
-  const r = rig(t);
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  r.setStatuses([status(6, { finished: true })]);
-  const asked = [];
-  const call = async (tool, input) => {
-    asked.push(tool);
-    if (tool === "link.status") return { data: { linked: asked.includes("link.pair"), pending: null } };
-    if (tool === "link.pair") return { data: { code: "123-456", box: input.box } };
-    return { error: { code: "no_such_tool", message: tool } };
-  };
-  const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
-  assert.equal(code, 0, text);
-  assert.deepEqual(asked, ["link.status", "link.pair", "link.status"]);
-  assert.match(text, /this Mac is paired with/);
-  assert.doesNotMatch(r.read("vyre.log"), /link approve/, "anything in the box's container could approve over SSH");
-  assert.doesNotMatch(r.read("vyre.log"), /^up /m, "a finished box needs no link, tunnel or browser");
-  assert.equal(r.read("opened"), "");
-  assert.match(text, /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
-});
 
-test("box add: with no passkey yet, the enrollment link opens before pairing", async t => {
-  const r = rig(t);
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  r.setStatuses([status(6, { finished: true })]);
-  const passkeyUrl = `${ADDRESS}/onboard/passkey#e=abcd1234`;
-  fs.writeFileSync(path.join(r.root, "box", "link.json"), JSON.stringify({ url: null, address: ADDRESS, passkeyUrl }));
-  const call = async (tool, input) => tool === "link.status" ? { data: { linked: false } } : tool === "link.pair" ? { data: { code: "123-456" } } : { error: { code: "no_such_tool", message: tool } };
-  const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
-  assert.equal(code, 0, text);
-  for (let i = 0; i < 250 && !r.read("opened"); i++) await new Promise(res => setTimeout(res, 20));
-  assert.equal(r.read("opened").trim(), passkeyUrl);
-  assert.ok(text.indexOf("Make your passkey") < text.indexOf("Approve this Mac"), "the passkey comes first: it is what approves the Mac");
-});
-
-test("box add: onboarding finished without an address reopens the browser, says what is left, and pairs nothing", async t => {
-  const r = rig(t);
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  // Its address is still to set up, so the browser opens again, and the ending says what is left.
-  const port = await freePort();
-  r.upOut(JSON.stringify({ role: "box", url: `http://127.0.0.1:${port}/onboard?t=again`, port, ssh: null, address: null, box: null }) + "\n");
-  r.setStatuses([status(3, { finished: true, steps: { ...steps(3), name: "skipped" } })]);
-  const asked = [];
-  const { code, text } = await capture(() => add("alex@203.0.113.9", { call: async tool => { asked.push(tool); return { data: {} }; } }));
-  assert.equal(code, 0, text);
-  assert.deepEqual(asked, []);
-  assert.match(text, /your box has no address yet/);
-  assert.match(text, /Almost there/);
-  assert.doesNotMatch(text, /Vyre is ready/);
-  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9");
-});
-
-test("box add: a taken local port stops it and names the port", async t => {
-  const r = rig(t);
-  const srv = net.createServer();
-  await new Promise(res => srv.listen(0, "127.0.0.1", () => res(null)));
-  t.after(() => srv.close());
-  const port = /** @type {net.AddressInfo} */ (srv.address()).port;
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  r.upOut(JSON.stringify({ url: `http://127.0.0.1:${port}/onboard?t=x`, port, address: null }));
-  const { code, text } = await capture(() => add("alex@203.0.113.9"));
-  assert.equal(code, 1);
-  assert.match(text, new RegExp(`port ${port} on this computer is taken`));
-  assert.equal(r.read("opened"), "");
-});
 
 test("box remove --yes: uninstalls on the server and forgets the box", async t => {
   const r = rig(t);
@@ -292,6 +172,31 @@ test("box remove --yes: uninstalls on the server and forgets the box", async t =
 const OLD = "alex@203.0.113.9", NEW = "alex@203.0.113.10";
 const ssh = r => fs.readFileSync(path.join(r.root, "ssh.log"), "utf8");
 
+test("box add --yes: installs, saves the box, and says it is not paired yet and how to pair it (no browser, no link)", async t => {
+  const r = rig(t);
+  const { code, text } = await capture(() => add("alex@203.0.113.9", { yes: true }));
+  assert.equal(code, 0, text);
+  assert.match(r.read("installer.log"), /^--yes$/m, "the installer was copied over and run with --yes");
+  assert.match(text, /installed and not paired yet/);
+  assert.match(text, /vyre call wink\.server\.code/);
+  assert.equal(r.read("opened"), "", "no browser is opened: a server has no first-run page");
+  assert.doesNotMatch(ssh(r), /-O forward/, "no tunnel to a loopback page");
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9");
+});
+
+test("box add: a box already installed and paired skips the installer and says so", async t => {
+  const r = rig(t);
+  fs.mkdirSync(r.stack, { recursive: true });
+  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
+  r.put("server.json", JSON.stringify({ owned: true, space: "Personal", device: "Alex's phone" }));
+  const { code, text } = await capture(() => add("alex@203.0.113.9"));
+  assert.equal(code, 0, text);
+  assert.match(text, /already on alex@203\.0\.113\.9/);
+  assert.match(text, /Your server is paired to Personal/);
+  assert.equal(r.read("installer.log"), "");
+  assert.equal(r.read("opened"), "");
+});
+
 test("box: a target ssh would read as an option never reaches ssh", async t => {
   const r = rig(t);
   const { code } = await capture(() => add("-oProxyCommand=touch /tmp/pwned@203.0.113.9", { yes: true }));
@@ -303,8 +208,7 @@ test("box add: sudo with a password adds the account to the docker group in the 
   const r = rig(t);
   r.put("sudo-password", "");
   const user = (await import("node:os")).userInfo().username;
-  r.setStatuses([status(6, { finished: true })]);
-  const { code, text } = await capture(() => add(OLD, { yes: true, call: async () => ({ error: { code: "no_such_tool", message: "" } }) }));
+  const { code, text } = await capture(() => add(OLD, { yes: true }));
   assert.equal(code, 0, text);
   assert.match(text, new RegExp(`add ${user} to the docker group \\(root-equivalent on this server; lets Vyre manage the stack without your password\\)`));
   assert.match(ssh(r), /sh \/\S+ --yes && sudo usermod -aG docker "\$\(id -un\)"/);
@@ -312,20 +216,6 @@ test("box add: sudo with a password adds the account to the docker group in the 
   assert.equal(ssh(r).match(/ControlMaster=auto/g)?.length, 2, "the master is opened again so the group applies");
 });
 
-test("box add: the wait gives up when the link expires, and says how to carry on", async t => {
-  const r = rig(t);
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  const port = await freePort();
-  r.upOut(JSON.stringify({ url: `http://127.0.0.1:${port}/onboard?t=x`, port, address: null }));
-  r.setStatuses([status(1)]);
-  process.env.VYRE_BOX_WAIT_MS = "100";
-  t.after(() => { delete process.env.VYRE_BOX_WAIT_MS; });
-  const { code, text } = await capture(() => add(OLD));
-  assert.equal(code, 1);
-  assert.match(text, /setup link has expired/);
-  assert.match(text, /run vyre box add alex@203\.0\.113\.9 again to carry on/);
-});
 
 test("box update: runs vyre update on the saved box and compares versions; a failed update and no box are exit 1", async t => {
   const r = rig(t);
@@ -458,39 +348,6 @@ function finishedBox(t) {
 }
 const noPair = { call: async () => ({ error: { code: "no_such_tool", message: "" } }) };
 
-test("box add: after the switch, the code waits for the passkey, and an expired code is replaced", async t => {
-  const r = rig(t);
-  fs.mkdirSync(r.stack, { recursive: true });
-  fs.writeFileSync(path.join(r.stack, "compose.yml"), "");
-  // The owner switched to the address (arrived) and is making the passkey there: none yet.
-  r.setStatuses([status(6, { finished: true, arrived: true })]);
-  fs.writeFileSync(path.join(r.root, "box", "link.json"), JSON.stringify({ url: null, address: ADDRESS, passkeyUrl: `${ADDRESS}/onboard/passkey#e=x` }));
-  r.put("keys.json", "[]");
-  r.put("keys.next.json", '[{"kind":"passkey"}]');
-  const asked = [];
-  const codes = ["123-456", "654-321"];
-  let statuses = 0;
-  const call = async (tool) => {
-    asked.push(tool);
-    if (tool === "link.pair") return { data: { code: codes.shift() } };
-    if (tool === "link.status") {
-      statuses++;
-      // First look: not paired. Then the first code expires unapproved; the second is approved.
-      if (statuses === 1) return { data: { linked: false, pending: null } };
-      if (statuses === 2) return { data: { linked: false, pending: null, error: "the pairing code expired; start again" } };
-      return { data: { linked: true, pending: null } };
-    }
-    return { error: { code: "no_such_tool", message: tool } };
-  };
-  const { code, text } = await capture(() => add("alex@203.0.113.9", { call }));
-  assert.equal(code, 0, text);
-  assert.equal(r.read("opened"), "", "no second passkey tab: the page took the owner there");
-  assert.match(text, /waiting for your passkey at https:\/\/vyre\.tail0000\.ts\.net/);
-  assert.ok(text.indexOf("waiting for your passkey") < text.indexOf("Code: 123-456"), "the code is made only once a passkey exists");
-  assert.match(text, /That code expired\. The new one: 654-321/);
-  assert.match(text, /this Mac is paired with/);
-  assert.deepEqual(asked.filter(x => x === "link.pair").length, 2);
-});
 
 test("box: vyre commands lists every verb run() handles, with its arguments and flags", async () => {
   const { listing } = await import("./commands.js");
