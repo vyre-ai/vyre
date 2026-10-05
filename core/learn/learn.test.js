@@ -1,6 +1,6 @@
 // @ts-check
 import "../../scripts/mac-test-guard.mjs";
-import { fakeKernelFor } from "../../test/fake-chain-kernel.js";
+import { fakeKernelForHooks } from "../../test/fake-chain-kernel.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -112,7 +112,7 @@ test("weakens: retiring lessons, reaching the store and stopping vyred ask first
 async function learning(t, home = tempHome(t), extra = []) {
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")], kernelFor: fakeKernelFor });
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")], kernelFor: fakeKernelForHooks });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   await reg.start([...core, ...extra], { role: "local" });
   personTypes(reg);
@@ -319,7 +319,7 @@ test("learn: a draft the user edited to take out every em dash proposes a remind
   writeModule(path.join(home, "mods"), "gate", { does: { tools: ["gate.get", "gate.fire"] }, watches: { emits: ["gate.released"] } }, gate);
   const db = open(path.join(home, "vyre.db"));
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")], kernelFor: fakeKernelFor });
+  const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")], kernelFor: fakeKernelForHooks });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   await reg.start([...core, ...discover([path.join(home, "mods")], { firstPartyRoots: [path.join(home, "mods")] })], { role: "local" });
   personTypes(reg);
