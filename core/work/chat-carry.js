@@ -15,6 +15,9 @@ export async function carryChat({ to, src, newRoot, id }) {
   const mover = String(to.chain && to.chain.hops && to.chain.hops[0] && to.chain.hops[0].actor && to.chain.hops[0].actor.id || "");
   const was = ids(src.people);
   const isMember = (/** @type {string} */ id) => !to.members || to.members.roleOf({ kind: "person", id, space: to.space }) != null;
+  // A chat the mover was not in does not move: its files cannot be carried by someone who is not in it (the move's carry refuses them), and a record must never move without its files. It stays in the
+  // source Space with its people, and the move names it.
+  if (mover && !was.includes(mover)) return { skipped: true, chat: "", people: [], agents: [], former: [...was, ...ids(src.agents)], moverOnly: false };
   const keep = was.filter(isMember);
   /** @type {string[]} */ const former = was.filter(p => !isMember(p));
   // The mover never gains a chat they were not in (per-chat privacy): if nobody who was in it is a member of the target, the chat does not carry. It stays in the source Space with its people.
@@ -24,8 +27,6 @@ export async function carryChat({ to, src, newRoot, id }) {
   for (const a of ids(src.agents)) {
     try { chat = await to.chats.change(to.chain, chat.id, { add_assistants: [a] }); agents.push(a); } catch { former.push(a); }
   }
-  // the mover made the chat, so they are in it; they stay only if they were in it before (then they are in `keep`). Everyone else was in it, so someone remains to hold it.
-  if (mover && !was.includes(mover)) chat = await to.chats.change(to.chain, chat.id, { remove_people: [mover] });
   return { chat: String(chat.id), people: [...chat.people], agents, former, moverOnly: false };
 }
 

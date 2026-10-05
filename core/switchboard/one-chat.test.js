@@ -548,3 +548,20 @@ test("a chat's history leaves one device and comes back on another: its logged f
   assert.equal((await cCaller("work.chat.history-import", { chat })).data.chunks, 0, "nothing is put back twice");
   assert.equal((await cCaller("work.chat.history-import", { chat: "chat_nonesuch" })).error.code, "not_found");
 });
+
+test("moving chats to another Space and putting a history back are the person's own act: an assistant's or a model's session is refused, the person's own device or session is not", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const owner = d.kernel.id.owner;
+  const chain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const chat = (await d.kernel.gateway.grants.chats.create(chain, {})).id;
+  const asAssistant = { token: (await d.kernel.surfaces.open(chain, { agent: "assistant" })).token };
+  const asPerson = { token: (await d.kernel.surfaces.open(chain, {})).token };
+  for (const [tool, input] of [["work.chat.upgrade-move", { to: "spc_nonesuch0000" }], ["work.chat.history-import", { chat }]]) {
+    const agent = await d.registry.call(tool, input, "cli", asAssistant);
+    assert.equal(agent.error && agent.error.code, "denied", `${tool} by an assistant session: ${JSON.stringify(agent.error || agent.data).slice(0, 120)}`);
+    const person = await d.registry.call(tool, input, "cli", asPerson);
+    assert.notEqual(person.error && person.error.code, "denied", `${tool} by the person's own session is let through to its own checks: ${JSON.stringify(person.error).slice(0, 120)}`);
+  }
+});

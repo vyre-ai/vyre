@@ -103,6 +103,7 @@ export async function runUpgrade({ from, to, rows, ports = {} }) {
       const there = await to.records.query(to.chain, CHAT, { filter: { field: "chat", op: "eq", value: id }, page: { limit: 1 } });
       if (!(there.rows && there.rows[0])) {
         const c = await carryChat({ to, src: r.data, newRoot: root, id });
+        if (c.skipped) throw new Error("nobody who was in this chat is a member of the other Space, or you were not in it");
         await to.records.create(to.chain, CHAT, { title: r.data.title, project: { urn: general.urn }, chat: c.chat, people: c.people.join(","), agents: c.agents.join(","), ...(c.former.length ? { former: c.former.join(",") } : {}), started: r.data.started, last_active: r.data.last_active, status: r.data.status === "working" ? "idle" : r.data.status, drive: root, location: `${root}/chat/${c.chat}/` });
       }
       // the chat's history (its logged frames, its runs and their events) is written in numbered chunks and a manifest beside its files, in the chat's own folder, so it travels sealed with them; the

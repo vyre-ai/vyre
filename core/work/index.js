@@ -280,6 +280,12 @@ export default {
     // A person reads a chat's row through Records (title, who, when, project, where it lives) if they may read the project; the chat itself (its messages, its runs) only if they are in it: the kernel's own
     // chat read decides, never the record's `people`.
     const inChat = (/** @type {any} */ chain, /** @type {string} */ chat) => { try { kernelOf().chats.read(chain, chat); return true; } catch { return false; } };
+    // A person acting for themselves: a chain of exactly one person hop (their own device or their own session), never a model's or an agent's session (an agent hop), a viewer or a delegate chain. A
+    // cross-Space move or a history import is the person's own act; the spaces module relays the person (core/modules RELAY_ALLOWED) after the person's one approval.
+    const mustBeThePerson = (/** @type {any} */ chain, /** @type {string} */ what) => {
+      const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+      if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person" || chain.viewer === true) throw Object.assign(new Error(`${what} is the person's own act: an assistant or a model session cannot do it`), { code: "denied" });
+    };
     const rowOf = (/** @type {any} */ r) => ({ id: r.id, urn: r.urn, ...r.data });
     ctx.tool("work.chat.list", {
       description: "The chats you may see in this Space: title, project (and its name), who, when, status and where it lives. `open: true` on the ones you are in, which also carry the providers of their runs and the last line; the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.",
@@ -354,6 +360,7 @@ export default {
         const k = kernelOf();
         const to = await sideOf(String(input.to), extra);
         const from = withCarry(await sideOf(k.space, extra), to);
+        mustBeThePerson(from.chain, "moving your chats to another Space"); mustBeThePerson(to.chain, "moving your chats to another Space");
         const history = async (/** @type {string} */ chat) => {
           const st = await ctx.call("stream.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { frames: [], members: [] });
           const th = await ctx.call("threads.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { runs: [], events: [] });
@@ -367,6 +374,7 @@ export default {
       input: obj({ chat: { type: "string" } }, ["chat"]),
       run: async (input, extra) => {
         const chain = await chainOf(extra);
+        mustBeThePerson(chain, "putting back a chat's history");
         const chat = String(input.chat);
         if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat"), { code: "not_found" });
         const rec = await hubOf().chatRecord(chat);
