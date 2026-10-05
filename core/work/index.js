@@ -144,7 +144,16 @@ export default {
         await k.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
         // The memory room moves with it: each Space has its own memory instance, reached through that Space's handle under the mover's chain there (the target proves the source with the signed evidence).
         // A kernel that cannot reach a Space's memory this way has no `memory` port, and the move says so instead of leaving the room behind unseen.
-        const mem = (/** @type {any} */ side, /** @type {string} */ tool) => { const h = k.for ? k.for(side.space) : null; return h && typeof h.then !== "function" && typeof h.call === "function" ? (/** @type {any} */ i) => h.call(tool, { move_id: out.move_id, plan_hash: plan.hash, project: plan.project, ...i }, side.chain) : null; };
+        const mem = (/** @type {any} */ side, /** @type {string} */ tool) => {
+          const h = side.space === k.space ? null : (k.for ? k.for(side.space) : null);
+          if (side.space !== k.space && !(h && typeof h.call === "function")) return null;
+          return async (/** @type {any} */ i) => {
+            const input = { move_id: out.move_id, plan_hash: plan.hash, project: plan.project, ...i };
+            const r = h ? await h.call(tool, input, side.chain) : await ctx.call(tool, input);
+            if (r && r.error) throw Object.assign(new Error(String(r.error.message || r.error.code || "the memory move failed")), { code: String(r.error.code || "failed") });
+            return r && r.data !== undefined ? r.data : r;
+          };
+        };
         const room = { offer: mem(to, "memory.room.offer"), export: mem(from, "memory.room.export"), import: mem(to, "memory.room.import"), forget: mem(from, "memory.room.forget") };
         const memory = Object.values(room).every(Boolean) ? room : undefined;
         const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
