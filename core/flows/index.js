@@ -80,7 +80,8 @@ export default {
     // tool lets this caller see). The watchers module is the home's own, so this is the home's own Space.
     const stopBridge = ctx.flowsHost && ctx.kernel ? bridgeWatchers({
       runner: { watcherItem: async (/** @type {any} */ w) => { const f = ctx.flowsHost.get(ctx.kernel.space); if (!f) return; return f.flows.watcherItem(w); } },
-      on: (/** @type {string} */ type, /** @type {any} */ fn) => ctx.events.on(type, fn),
+      // the daemon's event bus hands a listener the whole event ({ type, payload, ... }); the bridge reads the payload ({ name, items }), so give it that
+      on: (/** @type {string} */ type, /** @type {any} */ fn) => ctx.events.on(type, (/** @type {any} */ ev) => fn(ev && ev.payload !== undefined ? ev.payload : ev)),
       call: async (/** @type {string} */ tool, /** @type {any} */ input) => { const r = await ctx.call(tool, input); return r && r.data !== undefined ? r.data : r; },
       log: (/** @type {string} */ m) => ctx.log(m) }) : null;
     return { async stop() { if (typeof stopBridge === "function") stopBridge(); } };

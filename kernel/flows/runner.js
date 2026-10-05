@@ -29,6 +29,11 @@ class StepFail extends Error {
   /** @param {string} code @param {string} message */
   constructor(code, message) { super(message); this.name = "StepFail"; this.code = code; }
 }
+/** A port's own failure (the sandbox's timeout, the door's refusal) keeps its code as the step's. @param {any} e @returns {never} */
+function portFail(e) {
+  if (e instanceof StepFail || e instanceof Suspend || e instanceof PauseFlow || !e || typeof e.code !== "string") throw e;
+  throw new StepFail(e.code, e instanceof Error ? e.message : String(e));
+}
 class PauseFlow extends Error {
   /** @param {string} reason */
   constructor(reason) { super(reason); this.name = "PauseFlow"; this.reason = reason; }
@@ -769,8 +774,9 @@ export class FlowRunner {
     return this.#effect(ctx, s, key, need, async () => {
       if (ctx.dry) return { dry: true, label: null };
       const m = this.ports.model || { provider: "default", model: "default" };
+      // The door's refusal (a budget, a residency rule, a value it would not let through) is the step's failure with its own code, so the owner reads the rule and not "error".
       const r = await this.k.model.call({ chain: this.#chain(ctx), purpose: "classify", provider: m.provider, model: m.model,
-        messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: String(val(s.input) ?? "") }] });
+        messages: [{ role: "system", content: `Answer with exactly one of: ${s.labels.join(", ")}. Nothing else.` }, { role: "user", content: String(val(s.input) ?? "") }] }).catch(portFail);
       const label = String(r.content || "").trim();
       return { label: s.labels.includes(label) ? label : null, raw_ok: s.labels.includes(label) };
     }, { input_class: "text" });
@@ -782,7 +788,7 @@ export class FlowRunner {
       if (ctx.dry) return { dry: true };
       if (!this.ports.sandbox) throw new StepFail("unavailable", "this Space has no code sandbox yet");
       const inputs = val(s.inputs);
-      const r = await this.ports.sandbox({ language: s.language, source: s.source, hash: s.hash, inputs, outputs: s.outputs, needs: s.needs || [] });
+      const r = await this.ports.sandbox({ language: s.language, source: s.source, hash: s.hash, inputs, outputs: s.outputs, needs: s.needs || [] }).catch(portFail);
       const out = {};
       for (const name of s.outputs) out[name] = Object.hasOwn(r.outputs || {}, name) ? r.outputs[name] : null;
       for (const k of Object.keys(r.outputs || {})) if (!s.outputs.includes(k)) throw new StepFail("bad_output", `step ${s.id} returned ${k}, which it did not declare`);

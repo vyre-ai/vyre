@@ -12,6 +12,7 @@
 // and no more, and the runner's declared caps narrow it further.
 import { createFlows, RecordsFlowStore, RecordsKitStore, KIT_TYPES } from "../../kernel/flows/index.js";
 import { createStages } from "../../kernel/flows/stages.js";
+import { createCodeSandbox } from "../../kernel/flows/code-sandbox.js";
 
 const MIN_TICK_MS = 60_000;
 
@@ -23,6 +24,7 @@ export function createFlowsHost(o) {
   const log = o.log || (() => {});
   const clock = o.clock || Date.now;
   /** @type {Map<string, any>} */ const spaces = new Map();
+  const sandbox = o.sandbox || createCodeSandbox();
 
   /** @param {string} space @param {any} k the Space's kernel (kernel/index.js) @param {string} ownerId the Space's first owner */
   async function attach(space, k, ownerArg) {
@@ -42,7 +44,9 @@ export function createFlowsHost(o) {
     const kernel = {
       records: gw.records, ask: gw.ask, ...(gw.kits ? { kits: gw.kits } : {}), authorize: (/** @type {any} */ i) => gw.authorize(i), grants: gw.grants,
       events: { read: (/** @type {any} */ c, /** @type {any} */ f) => gw.events.read(c, f), subscribe: (/** @type {any} */ c, /** @type {string} */ n, /** @type {any} */ f, /** @type {any} */ cb) => gw.events.subscribe(c, n, f, cb), latestSeq: async () => k.log.latestSeq() },
-      model: { call: async () => { throw Object.assign(new Error("no model door is wired to Flows yet"), { code: "unavailable" }); } },
+      // The model door is the kernel's own (gateway.model, present when the home was booted with the inference door): every classify step goes through its scan, so a sealed field reaches the
+      // model only as a placeholder, and the step passes no tools. Without a door the step fails plainly and the owner is told.
+      model: gw.model || { call: async () => { throw Object.assign(new Error("this home has no model door, so a classify step cannot run"), { code: "unavailable" }); } },
     };
     const chains = {
       forFlow: (/** @type {any} */ x) => k.chains.forFlow({ ...x, approver: personChain(x.approver.id) }),
@@ -60,6 +64,8 @@ export function createFlowsHost(o) {
       try { return (await gw.grants.members.list(owner())).filter((/** @type {any} */ m) => m.role === role).map((/** @type {any} */ m) => actor(m.person)); } catch { return []; }
     };
     const ports = {
+      // A Code step runs in the module sandbox's own OS confinement, one process per call (kernel/flows/code-sandbox.js); one sandbox (and one self-test) for the whole host.
+      sandbox,
       roles: async (/** @type {string} */ _space, /** @type {string} */ role) => roleHolders(role),
       // "Call a service": the gateway authorizes it for the run's chain against the route (service.read, or service.call held as outward) BEFORE the vault is asked, then the vault's
       // forward does it with the Space's own credential (kernel/gateway/leases.js forward).
