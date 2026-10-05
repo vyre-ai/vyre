@@ -99,6 +99,30 @@
         "effect": "write"
       },
       {
+        "name": "work.chat.keys.begin",
+        "summary": "ask to lend a chat's key to this server: the request the device answers",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.finish",
+        "summary": "lend a chat's key: the keys wrapped to the request, held in memory only",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.lock",
+        "summary": "wipe a chat's key from this server's memory",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.keys.status",
+        "summary": "whether a chat is sealed, its ring epoch, and whether its key is lent",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
         "name": "work.chat.rename",
         "summary": "rename a chat you are in: its record and every run agree",
         "reach": "anyone",
@@ -115,6 +139,11 @@
         "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "work.space-brief",
+        "effect": "read",
+        "reach": "modules"
       },
       {
         "name": "work.team.context",
