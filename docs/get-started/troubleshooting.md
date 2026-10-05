@@ -20,7 +20,7 @@ vyre doctor
 
 It checks that Vyre is running, that you are signed in to Vyre, the link to your space, the path to your
 server and the relay, the server's door, storage, the clock, pairing, a passkey, Claude on the box, the Lumen,
-every module and search, in under two seconds. Each line is a check that passed, failed (with the one thing to
+every module, search, that `vyre` is on your PATH and the install size, in under two seconds. Each line is a check that passed, failed (with the one thing to
 do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
 opens anything. `vyre doctor --json` gives the same list to a script.
 
@@ -34,7 +34,7 @@ vyre logs                   # follow Vyre's output
 docker compose -p vyre ps   # is the vyre container up
 ```
 
-If your account on the server is not in the `docker` group, every `vyre` command there needs `sudo`.
+`vyre logs`, `docker compose` and `vyre uninstall --keep-data` run through the `vyre` command the installer puts on a Docker server (`/usr/local/bin/vyre`, the `box/vyre` wrapper), not the Mac's own CLI. If your account on the server is not in the `docker` group, every `vyre` command there needs `sudo`.
 ::: tab On this Mac
 ```
 vyre status

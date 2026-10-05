@@ -44,7 +44,7 @@ Your server is served at one HTTPS address:
 | `https://alex.vyre.run` | the default after setup at vyre.run/setup: a name you claim there | Let's Encrypt, by DNS challenge |
 | your own domain, such as `https://vyre.harlowlegal.example` | when you bring a domain at the end of setup | Let's Encrypt, by DNS challenge through a record you add |
 
-A `vyre.run` name is an A record pointing at your server's address on the private network (a `100.64.x.x` address). It resolves on the public internet, but nothing off your network can reach it. The name is claimed through Vyre's hosted name directory. For your own domain, you add two records, an A record to the server's address on the private network and an `_acme-challenge` CNAME, and Vyre checks both before it serves the domain.
+A `vyre.run` name is an A record pointing at your server's address on the private network (a `100.64.x.x` address). It resolves on the public internet, but nothing off your network can reach it. The name is claimed through Vyre's hosted name directory. For your own domain, you add two records, an A record to the server's address on the private network and an `_acme-challenge` CNAME, and Vyre checks the CNAME before it serves the domain.
 
 ```
 vyre name                 # this box's address and its phase
@@ -53,19 +53,15 @@ vyre name claim alex
 vyre name release
 ```
 
-vyred renews certificates itself, 30 days before they expire, and swaps them into the running listener without a restart. A failing renewal raises `certificate.failed` once fewer than 14 days remain.
-
 ## Identity: who is calling
 
 A device that reaches your server arrives at its door as `device:<id>`. Who that is comes from the entry on your identity list and from the sessions the door admitted, never from anything a peer could set itself, such as a tag or host information. Every call on a direct or relay session reads the entry again first, so a removed device is refused at once.
 
 That caller is a device of yours, not yet you. Tools that act as you, and the ones that need a person present, also need a person session, made by signing in with a passkey on that device (see [presence](presence.md)).
 
-The browser is not trusted blindly either. A request other than GET or HEAD must be `application/json`, and if it carries an `Origin`, that must be your server's own address or one of the sites listed in `network.origins` (Vyre's hosted app by default). This stops another site open in your browser from sending a form to your server.
-
 ## The owner
 
-A space has owners, and a role decides what each person may do: owner, admin, manager, member and temp. An owner may assign every role. An admin may manage members and roles below admin and devices, never owners or admins, and never delete, move or transfer. Managers, members and temp manage no members. Your own space has you as its owner.
+A space has owners, and a role decides what each person may do: owner, admin, manager, member and temp. An owner may assign every role. An admin may manage members and roles below admin, and devices, never owners or admins. Managers, members and temp manage no members. Your own space has you as its owner.
 
 ## Device identity is not presence
 
@@ -74,7 +70,7 @@ A space has owners, and a role decides what each person may do: owner, admin, ma
 ## What it will not do
 
 - No passwords, no login screen, no sessions on the network address.
-- vyred opens no listener of its own on the network: the built-in network and the relay carry every connection.
+- vyred itself opens no listener on the network. Connections arrive through the relay and through the built-in network's own gate.
 - If you run another VPN of your own on a machine, Vyre does not use it and does not ask for it. Vyre's connection to a space then stays on the relay.
 - Root on the server, and anyone who can reach its Docker socket, are out of scope.
 

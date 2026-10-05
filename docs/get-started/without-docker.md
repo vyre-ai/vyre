@@ -52,8 +52,8 @@ Deck on your phone), offers once to add Vyre's line to Claude Code's status line
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
 [Install, step 10](install.md#10-put-the-lumen-on-your-mac).
 
-`vyre up --box` sets the role to `box` and prints the onboarding link. On a Mac it also opens
-the link in your browser. The Mac then serves your phone, so it has to stay awake for the
+`vyre up --box` sets the role to `box` and prints the pairing line (`wink.server.code`), which you
+pair from your Vyre app. The Mac then serves your phone, so it has to stay awake for the
 phone to reach it. For a Mac that is the always-on server, use the setup page and choose **A
 Mac that stays on** ([Install](install.md#2-run-the-line-on-your-server)): it installs Vyre as a
 service that starts when the Mac does, which `vyre up --box` does not.
@@ -120,7 +120,7 @@ sudo vyre uninstall --system
 sudo npm rm -g vyre
 ```
 
-`vyre uninstall --system` disables and removes both units. `~/.vyre` (the vault, memory and
+`vyre uninstall --system` disables and removes the `vyre.service` unit. `~/.vyre` (the vault, memory and
 config) stays unless you add `--purge`, which deletes it and cannot be undone. `--dry-run`
 works here too.
 
