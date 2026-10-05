@@ -96,7 +96,7 @@ test("a Contact shows Leads, Clients, Appointments and Projects: every link to i
   for (const l of toContact) assert.ok(l.inverse && l.inverse.name && l.inverse.label, `${l.at} has a named inverse`);
   const labels = toContact.map((l) => l.inverse.label);
   for (const want of ["Leads", "Clients", "Appointments", "Projects"]) assert.ok(labels.includes(want), `a Contact shows ${want}`);
-  // every link in core and base has an inverse, bar the ones that point at any record
+  // every link in core and base that names a target has an inverse (a link with no target points at any record and has none)
   for (const t of types) for (const f of t.fields) if (f.kind === "link" && f.to) assert.ok(f.inverse, `${t.name}.${f.name} has a named inverse`);
   // no two links to one type share an inverse name
   const seen = new Map();

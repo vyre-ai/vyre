@@ -44,7 +44,7 @@ export const TEAM_MEMBER = {
     choice("kind", "Kind", ["person", "assistant"], { required: true }),
     text("role", "Role"),
     text("skills", "Skills (words, comma separated; a Flow that names skills picks among those who have them)"),
-    f("link", "project", "Project", { to: "project", inverse: { name: "team", label: "Team" } }),
+    f("link", "project", "Project"), // any record that holds work (a Kit's matter or trip too), so no target type and no inverse
     f("rich_text", "instructions", "Role instructions (assistants)"),
     text("doing", "Doing right now"),
     f("datetime", "doing_since", "Doing since"),
