@@ -738,6 +738,28 @@ export default {
       return { removed: item.id, restore_until: t + 30 * 86_400_000 };
     };
 
+    /**
+     * Delete or restore one of the planner's own events. The record goes to the records' bin (records.remove) and comes back with records.restore, so a restore works after a
+     * restart and from any record id: the event's, or one of a repeating event's occurrences (`<record>~<start>`). An outside calendar's event is changed on that calendar.
+     */
+    const removeEvent = async (i, w) => {
+      if (!w.person) throw fail("an agent may change only the items it added", "denied");
+      const rec = recordOf(i.item);
+      if (i.restore) {
+        const row = await st.cal.restore(rec);
+        if (!row) throw fail("no such event in the bin", "not_found");
+        const shown = cal.add({ ...row, own: row.own });
+        emit("planner.added", { item: rec, kind: "event", title: row.title, at: row.start }, {});
+        return shapeCal(shown);
+      }
+      const row = cal.row(i.item);
+      if (row && !row.own) throw fail("that event belongs to an outside calendar: delete it there", "denied");
+      if (!(await st.cal.remove(rec))) throw fail("no such event", "not_found");
+      cal.forget(rec);
+      emit("planner.removed", { item: rec, kind: "event" }, {});
+      return { removed: rec, kind: "event", restore: "planner.delete with restore: true, or the Records bin" };
+    };
+
     // ---- Agenda -------------------------------------------------------------------------------
 
     const agenda = async i => {
@@ -1045,8 +1067,12 @@ export default {
     tool("planner.dismiss", "Stop a firing without finishing a todo. A one-off alarm, timer or reminder ends.",
       ref, async (i, w) => dismiss(i, w), { agents: true });
 
-    tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days.",
-      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => remove(i, w), { agents: true });
+    tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days. An event goes to the records' bin and can be restored from there (restore: true with its id).",
+      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => {
+        // An event is a record of the Space's calendar, not a planner row: its delete and restore go through the records' bin.
+        if (!st.item(i.item) && (cal.row(i.item) || (i.restore && i.item))) return removeEvent(i, w);
+        return remove(i, w);
+      }, { agents: true });
 
     tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. Also returns last_event, the event cursor it is current to. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
       { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => { const last_event = cursor(); return { ...(await agenda(i)), last_event }; }, { agents: true });

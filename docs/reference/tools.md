@@ -5204,11 +5204,13 @@ Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms
     - `every` one of "day", "weekday", "week", "month", "year"
     - `interval` integer
     - `until` string
+  - `rrule` string or null
   - `tags` list of string
   - `text` string
   - `thread` string
   - `title` string
   - `tz` string
+  - `url` string or null
   - `waits_on` string
   - `wall` string
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
@@ -5237,8 +5239,10 @@ Make an event. Without account it is the planner's own event. With account it is
   - `attendees` string or list of string
   - `end` any: an ISO time (with an offset, or read in the item's zone without one), YYYY-MM-DD, or ms since 1970
   - `project` string
+  - `rrule` string
   - `thread` string
   - `tz` string
+  - `url` string
   - `where` string
   - `why` string
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`
@@ -5253,7 +5257,7 @@ Read the connected Google calendars (a day back to 14 days ahead) into the plann
 
 ### `planner.delete`
 
-Delete an item. It can be restored (restore: true) for 30 days.
+Delete an item. It can be restored (restore: true) for 30 days. An event goes to the records' bin and can be restored from there (restore: true with its id).
 
 - Input:
   - `item` string, required
@@ -5388,11 +5392,13 @@ Change an item: title, body, list, priority, pinned, tags, project, thread, pare
     - `every` one of "day", "weekday", "week", "month", "year"
     - `interval` integer
     - `until` string
+  - `rrule` string or null
   - `state` one of "open", "done", "cancelled"
   - `tags` list of string
   - `thread` string
   - `title` string
   - `tz` string
+  - `url` string or null
   - `waits_on` string
   - `wall` string
 - Callers: `capsule`, `cli`, `deck`, `harness`, `local`, `mcp`, `module`

@@ -146,6 +146,8 @@ export function calendar({ ctx, K, st, scheduler, settings, now, emit, active })
       for (const r of st.cal.rows()) if (!r.all_day) st.cal.patch(r.id, { next_fire: ringAt(r, t, s) });
       scheduler.arm();
     },
+    /** An event's record is gone (removed): stop what is ringing for it and take every occurrence out of the working set. */
+    forget(rec) { for (const r of rowsOf(recordOf(rec))) { cancel(r.id); st.cal.drop(r.id); } scheduler.arm(); },
     snooze(id, until) { st.cal.patch(id, { snooze_until: until }); scheduler.arm(); },
     clearSnooze(id) { st.cal.patch(id, { snooze_until: null }); scheduler.arm(); },
     cancel,

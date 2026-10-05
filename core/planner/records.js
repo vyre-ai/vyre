@@ -238,6 +238,21 @@ export async function openRecords(o) {
         return fromEvent(rec, now());
       },
       async update(/** @type {string} */ id, /** @type {any} */ patch) { const rec = await updateRecord("event", id, patch, { version: null }); return rec ? fromEvent(rec, now()) : null; },
+      /** Move an event's record to the bin (the records' own remove): it can come back with `restore`, after a restart too. @returns {Promise<boolean>} false when there is no such record */
+      async remove(/** @type {string} */ id) {
+        const cur = await K.records.get(chain(), "event", id).catch(() => null);
+        if (!cur) return false;
+        await K.records.remove(chain(), "event", id, cur.version);
+        known.delete(id);
+        return true;
+      },
+      /** Bring an event back from the bin. @returns {Promise<any | null>} its calendar row, or null when it is not in the bin */
+      async restore(/** @type {string} */ id) {
+        let rec;
+        try { rec = await K.records.restore(chain(), "event", id); } catch (e) { if (e && ["not_found", "bad_input"].includes(/** @type {any} */ (e).code)) return null; throw e; }
+        known.set(id, rec.version);
+        return fromEvent(rec, now());
+      },
     },
     /** Make an item (a record or a Task) and learn its id: the one write the caller waits for. @param {any} row @param {{ chain?: any }} [w] */
     async create(row0, w = {}) {

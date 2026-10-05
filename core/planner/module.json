@@ -30,6 +30,7 @@
         "records.create",
         "records.update",
         "records.remove",
+        "records.restore",
         "events.read",
         "tasks.request",
         "tasks.read",
