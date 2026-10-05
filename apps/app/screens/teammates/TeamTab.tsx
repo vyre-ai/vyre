@@ -115,7 +115,7 @@ export function AddTeammate({ project, done }: { project: string; done: () => vo
   );
 }
 
-/** The project page's Team tab: the teammates that serve the project, and what each is doing. `project` is the box project's slug. */
+/** The project page's Team tab: the teammates that serve the project, and what each is doing. `project` is the Project record's id (the box keys a team by it). */
 export function TeamTab({ project }: { project: string }) {
   const { rows, error, steer, reload } = useTeam(project);
   const [open, setOpen] = useState("");

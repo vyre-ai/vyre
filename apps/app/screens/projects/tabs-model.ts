@@ -4,6 +4,10 @@
 export type Tab = "project" | "brief" | "files" | "memory" | "team";
 export const TAB_LABELS: [Tab, string][] = [["project", "Project"], ["brief", "Brief"], ["files", "Files"], ["memory", "Memory"], ["team", "Team"]];
 
+/** A Project record's id (the kernel's v4 uuid): what the box's team tools take. A short name is anything else. */
+export const isRecordId = (v: string): boolean => /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(v);
+export const noSlugLine = "This project has no short name on the box yet, so there is nothing to read here.";
+
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const arr = (v: unknown): Record<string, any>[] => (Array.isArray(v) ? v.filter((x) => x && typeof x === "object") : []);

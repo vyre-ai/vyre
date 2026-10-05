@@ -6,7 +6,7 @@ import { Page } from "../places/Frame";
 import { agentsList, providers } from "../settings/real";
 import { SURFACE } from "../../src/state/live";
 import { tool } from "../../src/real/box";
-import { agentChoices, defaultAccount, startInput, threadIdOf } from "../../src/state/new-chat-model.js";
+import { agentChoices, defaultAccount, isProjectRecordId, slugFromRef, startInput, threadIdOf } from "../../src/state/new-chat-model.js";
 
 /** /u/chats/new: pick an agent (your assistant is the default), say what you want first if you like, and start. threads.start runs as you, naming the agent and the AI account; the new session opens. */
 export default function NewChatScreen() {
@@ -14,6 +14,8 @@ export default function NewChatScreen() {
   // From a project's Chats card the project comes in the address (?project=<short name>); the chat is filed there.
   const { project: projectParam } = useLocalSearchParams<{ project?: string }>();
   const project = typeof projectParam === "string" && /^[A-Za-z0-9._-]{1,64}$/.test(projectParam) ? projectParam : null;
+  const [projectName, setProjectName] = useState("");
+  useEffect(() => { if (project) tool<{ name?: string }>("work.project.ref", { project }).then((r) => setProjectName(String(r?.name ?? ""))).catch(() => {}); }, [project]);
   const [agents, setAgents] = useState<ReturnType<typeof agentChoices> | null>(null);
   const [pick, setPick] = useState<string | null>(null);
   const [account, setAccount] = useState<string | null>(null);
@@ -36,7 +38,13 @@ export default function NewChatScreen() {
   }, []);
   const start = async () => {
     const agent = agents?.find((a) => a.name === pick) ?? null;
-    const r = startInput({ agent, account, text, root, surface: SURFACE, project });
+    // A project's page names it by its record id; threads.start takes the short name, which the box gives for the id.
+    let slug = project;
+    if (project && isProjectRecordId(project)) {
+      slug = slugFromRef(await tool("work.project.ref", { project }).catch(() => null));
+      if (!slug) { setErr("That project is not here any more."); return; }
+    }
+    const r = startInput({ agent, account, text, root, surface: SURFACE, project: slug });
     if ("error" in r) { setErr(r.error); return; }
     setBusy(true); setErr("");
     try {
@@ -46,7 +54,7 @@ export default function NewChatScreen() {
     } catch (e) { setErr(e instanceof Error ? e.message : "The chat did not start."); } finally { setBusy(false); }
   };
   return (
-    <Page title="New chat" sub={project ? `In the project ${project}. Who do you want to talk to?` : "Who do you want to talk to?"} back="/u/chats">
+    <Page title="New chat" sub={project ? `In the project ${projectName || "you opened this from"}. Who do you want to talk to?` : "Who do you want to talk to?"} back="/u/chats">
       {loadErr ? <Card><EmptyState title="Your Vyre did not answer" body={loadErr} action={{ label: "Back to Chat", onPress: () => router.replace("/u/chats" as never) }} /></Card>
         : agents === null ? <LoadingState rows={3} />
         : !agents.length ? <Card><EmptyState title="No assistants yet" body="A chat needs an assistant to talk to." action={{ label: "Connect your AI account", onPress: () => router.replace("/u/settings/ai" as never) }} /></Card>

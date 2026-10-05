@@ -37,3 +37,9 @@ export function startInput(o) {
 
 /** The thread's id out of what threads.start answers. @param {any} r */
 export const threadIdOf = (r) => (typeof r?.id === "string" && r.id ? r.id : typeof r?.thread?.id === "string" ? r.thread.id : null);
+
+/** A Project record's id (the kernel's v4 uuid). A chat started from a project's page names the project by it; threads.start takes the short name, so the screen asks work.project.ref first. @param {unknown} v */
+export const isProjectRecordId = (v) => typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(v);
+
+/** The short name threads.start takes, from what work.project.ref answered (or null: the project is not here). @param {any} ref */
+export const slugFromRef = (ref) => (typeof ref?.slug === "string" && ref.slug ? ref.slug : null);

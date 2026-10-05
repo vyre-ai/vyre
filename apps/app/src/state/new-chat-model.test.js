@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { agentChoices, defaultAccount, startInput, threadIdOf } from "./new-chat-model.js";
+import { agentChoices, defaultAccount, isProjectRecordId, slugFromRef, startInput, threadIdOf } from "./new-chat-model.js";
 
 test("the assistant is first and the default", () => {
   const c = agentChoices([{ name: "kit", kind: "agent" }, { name: "juno", kind: "assistant" }, { bad: 1 }]);
@@ -34,4 +34,13 @@ test("a chat started from inside a project names it, and one started anywhere el
   assert.deepEqual(startInput({ agent: null, account: null, text: "", root: "/r", surface: "web", project: "harlow" }), { input: { surface: "web", cwd: "/r", project: "harlow" } });
   assert.deepEqual(startInput({ agent: null, account: null, text: "", root: "/r", surface: "web", project: "" }), { input: { surface: "web", cwd: "/r" } });
   assert.deepEqual(startInput({ agent: null, account: null, text: "", root: "/r", surface: "web", project: null }), { input: { surface: "web", cwd: "/r" } });
+});
+
+test("a project's page names it by record id; threads.start takes the short name the box gives for it", () => {
+  assert.equal(isProjectRecordId("7f9c2c0e-1d1b-4b6e-9a53-0c5f7d0e6a11"), true);
+  assert.equal(isProjectRecordId("harlow"), false);
+  assert.equal(isProjectRecordId(null), false);
+  assert.equal(slugFromRef({ id: "x", slug: "harlow", name: "Harlow" }), "harlow");
+  assert.equal(slugFromRef({ id: "x", slug: "" }), null);
+  assert.equal(slugFromRef(null), null);
 });

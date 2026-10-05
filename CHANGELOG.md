@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the project page keys everything by the Project record's id. The Brief, Files and Memory tabs show for every project (the box's slug-keyed tools get the short name from `work.project.ref`, once; a record with no short name says so plainly), the Team tab passes the record id the team tools now take, and the Chats card's New chat opens `/u/chats/new?project=<record id>`, which New chat turns into the short name `threads.start` takes.
 - feat(app): New project from a GitHub repo, on Projects (the repo picker, then `github.project` clones it fresh and makes the project, and the new project opens), and a New chat button on a project's Chats card that starts a chat in that project (`/u/chats/new?project=<short name>` passes it to `threads.start`).
 - feat(app): Memory's Facts tab on a real box has a "Learned today" filter (facts seen since the start of the day, newest first, with the newest fact's date when there are none) and a line under Ask from `memory.stats`: how many facts from how many sessions, how many learned today, and when Memory last read.
 - docs(work): docs/work/web2.md, the web-2 stream's notes: what is done, the open items and the next step.

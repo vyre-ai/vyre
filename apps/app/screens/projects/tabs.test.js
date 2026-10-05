@@ -5,6 +5,7 @@ import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+const RID = "7f9c2c0e-1d1b-4b6e-9a53-0c5f7d0e6a11", NOSLUG = "11111111-2222-4333-8444-555555555555";
 const strip = Boolean(/** @type {any} */ (process.features).typescript);
 
 /** @param {any} [o] */
@@ -14,6 +15,7 @@ function box(o = {}) {
     seen.push({ tool, input });
     if (o.error?.[tool]) return { error: o.error[tool] };
     switch (tool) {
+      case "work.project.ref": return input.project === RID ? { data: { id: RID, slug: "harlow", name: "Harlow Legal" } } : input.project === NOSLUG ? { data: { id: NOSLUG, slug: "", name: "No short name" } } : { error: { code: "not_found", message: "no such project" } };
       case "projects.list": return { data: { projects: [{ slug: "harlow", name: "Harlow Legal", home: "/p/harlow", workspaces: ["/p/harlow", "/p/harlow-site"] }, { slug: "harlow", name: "Mac copy", source: "mac" }, { slug: "other", name: "Other" }] } };
       case "projects.context": return { data: { text: "You are working in the Vyre project Harlow.\nThis brief is background from Vyre.\nHome: /p/harlow\n- People: Dana, Kit\nOther threads in this project\n- Intake call" } };
       case "projects.threads": return { data: [{ id: "t3", label: "Old intake", last: 5 }, { id: "t1", name: "Live one", last: 1 }, { nope: 1 }] };
@@ -92,4 +94,26 @@ test("repos: connected, reachable-but-not, plain git and not a repo; a link is o
 test("the tabs: all five for a project with a short name", { skip: !strip }, async () => {
   const { TAB_LABELS } = await import("./tabs-model.ts");
   assert.deepEqual(TAB_LABELS.map(([k]) => k), ["project", "brief", "files", "memory", "team"]);
+});
+
+test("a project named by its record id: the tabs ask work.project.ref for the short name once and use it; a short name is used as it is; a record with none says so plainly", { skip: !strip }, async () => {
+  const { projectTabsSource } = await import("./tabs-source.ts");
+  const { isRecordId, noSlugLine } = await import("./tabs-model.ts");
+  assert.equal(isRecordId(RID), true);
+  assert.equal(isRecordId("harlow"), false);
+  const b = box();
+  const s = projectTabsSource(b.call);
+  assert.equal(await s.slugOf(RID), "harlow");
+  assert.equal(await s.slugOf("harlow"), "harlow", "a short name needs no lookup");
+  assert.deepEqual(b.seen.map((x) => x.tool), ["work.project.ref"]);
+  b.seen.length = 0;
+  const r = await s.brief(RID);
+  assert.equal(r.project?.slug, "harlow");
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["work.project.ref", { project: RID }], ["projects.list", {}], ["projects.context", { project: "harlow" }]]);
+  b.seen.length = 0;
+  await s.facts(RID); await s.repos(RID); await s.addRepo(RID, "acme/new", "work");
+  assert.deepEqual(b.seen.filter((x) => x.tool === "github.project.add-repo").map((x) => x.input), [{ project: "harlow", repo: "acme/new", account: "work" }]);
+  assert.ok(b.seen.filter((x) => x.tool === "work.project.ref").length >= 3);
+  await assert.rejects(() => s.brief(NOSLUG), (e) => { assert.equal(/** @type {any} */ (e).code, "no_slug"); assert.equal(/** @type {any} */ (e).message, noSlugLine); return true; });
+  await assert.rejects(() => projectTabsSource(box().call).touched("22222222-2222-4333-8444-555555555555"), (e) => /** @type {any} */ (e).code === "no_slug", "a project the box does not know is the same plain refusal");
 });

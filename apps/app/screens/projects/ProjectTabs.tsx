@@ -17,8 +17,8 @@ function useLoad<T>(f: () => Promise<T>, deps: unknown[]) {
   return { d, reload: load };
 }
 
-export function BriefTab({ slug, onNewChat }: { slug: string; onNewChat: () => void }) {
-  const { d, reload } = useLoad(() => projectTabs.brief(slug), [slug]);
+export function BriefTab({ project, onNewChat }: { project: string; onNewChat: () => void }) {
+  const { d, reload } = useLoad(() => projectTabs.brief(project), [project]);
   if (!d) return <LoadingState rows={3} />;
   if (d.error) return <ErrorState title="The brief is not available" reason={d.error} retry={reload} />;
   const lines = briefLines(d.data!.text);
@@ -29,13 +29,13 @@ export function BriefTab({ slug, onNewChat }: { slug: string; onNewChat: () => v
       {lines.length ? <Card><View className="gap-s2">{lines.map((l: BriefLine, i) => <Text key={i} strong={l.heading} mono={l.mono} size={l.heading ? "secondary" : "body"} tone={l.heading ? "label" : undefined}>{l.text}</Text>)}</View></Card>
         : <Card><EmptyState title="Nothing in the brief yet" body="It fills in as threads run." action={{ label: "Start a chat", onPress: onNewChat }} /></Card>}
       {p ? <View className="gap-s1"><Text size="secondary" mono tone="label">{`Home  ${p.home}`}</Text>{p.workspaces.filter((w) => w !== p.home).map((w) => <Text key={w} size="secondary" mono tone="label">{`Also  ${w}`}</Text>)}</View> : null}
-      <Repos slug={slug} name={p?.name ?? slug} />
+      <Repos project={project} name={p?.name ?? project} />
     </View>
   );
 }
 
-function Repos({ slug, name }: { slug: string; name: string }) {
-  const { d, reload } = useLoad(() => projectTabs.repos(slug), [slug]);
+function Repos({ project, name }: { project: string; name: string }) {
+  const { d, reload } = useLoad(() => projectTabs.repos(project), [project]);
   const [picking, setPicking] = useState<GithubAccount[] | null>(null);
   if (!d || d.data === null || d.error) return null;
   const rows: Repo[] = d.data ?? [];
@@ -46,15 +46,15 @@ function Repos({ slug, name }: { slug: string; name: string }) {
       <View className="self-start"><Button kind="ghost" size="sm" icon="plus" label="Add a repo" onPress={() => connections.githubAccounts().then(setPicking).catch(() => setPicking([]))} /></View>
       <RepoPicker open={picking !== null} accounts={picking ?? []} onClose={() => setPicking(null)} onPick={(repo, account) => {
         setPicking(null);
-        projectTabs.addRepo(slug, repo.full, account).then(() => { showToast(`Added ${repo.full}`); reload(); }).catch((e) => showToast(`Could not add ${repo.full} to ${name}: ${say(e, "it did not work")}`));
+        projectTabs.addRepo(project, repo.full, account).then(() => { showToast(`Added ${repo.full}`); reload(); }).catch((e) => showToast(`Could not add ${repo.full} to ${name}: ${say(e, "it did not work")}`));
       }} />
     </View>
   );
 }
 
-export function FilesTab({ slug }: { slug: string }) {
+export function FilesTab({ project }: { project: string }) {
   const router = useRouter();
-  const { d, reload } = useLoad(() => projectTabs.touched(slug), [slug]);
+  const { d, reload } = useLoad(() => projectTabs.touched(project), [project]);
   if (!d) return <LoadingState rows={3} />;
   if (d.error) return <ErrorState title="Files are not available" reason={d.error} retry={reload} />;
   const { rows, error } = d.data!;
@@ -75,9 +75,9 @@ export function FilesTab({ slug }: { slug: string }) {
   );
 }
 
-export function MemoryTab({ slug }: { slug: string }) {
+export function MemoryTab({ project }: { project: string }) {
   const router = useRouter();
-  const { d, reload } = useLoad(() => projectTabs.facts(slug), [slug]);
+  const { d, reload } = useLoad(() => projectTabs.facts(project), [project]);
   if (!d) return <LoadingState rows={3} />;
   if (d.error) return <ErrorState title="Memory is not available" reason={d.error} retry={reload} />;
   const facts: Fact[] = d.data!;

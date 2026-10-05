@@ -3,7 +3,6 @@ import { ScrollView, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { EmptyState, ErrorState, PageHeader, ProjectView, Segmented, SkeletonRows, projectHeader, useProject, useTaskActions } from "@vyre/ui";
 import { TeamTab } from "../teammates/TeamTab";
-import { projectSlug } from "../teammates/model";
 import { BriefTab, FilesTab, MemoryTab } from "./ProjectTabs";
 import { TAB_LABELS, type Tab } from "./tabs-model";
 
@@ -18,7 +17,8 @@ export default function ProjectScreen() {
   const back = () => (router.canGoBack() ? router.back() : router.replace("/u/projects" as never));
   const f = q.data?.found;
   const h = f && q.data ? projectHeader(q.data.world, f.def, f.row) : null;
-  const slug = f ? projectSlug(f.row) : "";
+  // The box keys a project's team by the Project record id; the other tabs ask the box for its short name themselves (work.project.ref).
+  const projectId = f ? String(f.row.id) : "";
   return (
     <View className="min-h-0 flex-1">
       <PageHeader title={h?.title ?? "Project"} context={h?.context} faces={h?.faces} onBack={back} />
@@ -28,12 +28,12 @@ export default function ProjectScreen() {
           : !q.data.found ? <EmptyState title="That project is not here" body="It may have been removed, or it lives in a space you cannot see." action={{ label: "Back to Projects", onPress: back }} />
           : (
             <>
-              <Segmented label="Project" value={tab} onChange={setTab} options={slug ? TAB_LABELS : TAB_LABELS.filter(([k]) => k === "project" || k === "team")} />
-              {slug && tab === "brief" ? <BriefTab slug={slug} onNewChat={() => go(`/u/chats/new?project=${encodeURIComponent(slug)}`)} /> : null}
-              {slug && tab === "files" ? <FilesTab slug={slug} /> : null}
-              {slug && tab === "memory" ? <MemoryTab slug={slug} /> : null}
-              {tab === "brief" || tab === "files" || tab === "memory" ? null : tab === "team" ? (slug ? <TeamTab project={slug} /> : <EmptyState title="No team here" body="This project has no short name yet, so the box cannot keep a team under it." />)
-                : <ProjectView world={q.data.world} {...q.data.found} onOpenTask={(t) => void run(t, "open")} onNewChat={slug ? () => go(`/u/chats/new?project=${encodeURIComponent(slug)}`) : undefined} />}
+              <Segmented label="Project" value={tab} onChange={setTab} options={TAB_LABELS} />
+              {tab === "brief" ? <BriefTab project={projectId} onNewChat={() => go(`/u/chats/new?project=${encodeURIComponent(projectId)}`)} /> : null}
+              {tab === "files" ? <FilesTab project={projectId} /> : null}
+              {tab === "memory" ? <MemoryTab project={projectId} /> : null}
+              {tab === "brief" || tab === "files" || tab === "memory" ? null : tab === "team" ? <TeamTab project={projectId} />
+                : <ProjectView world={q.data.world} {...q.data.found} onOpenTask={(t) => void run(t, "open")} onNewChat={() => go(`/u/chats/new?project=${encodeURIComponent(projectId)}`)} />}
             </>
           )}
         {sheets}
