@@ -80,27 +80,19 @@ export const Project = defineType({
   icon: "IconBriefcase",
   kind: "project",
   fields: {
-    title: defineField.text({ label: "Title", required: true }),
-    client: defineField.link({ to: "client", label: "Client", required: true }),
-    practice_area: defineField.choice(["Personal Injury", "Estate Planning", "Family Law", "Immigration", "Business", "Criminal Defense", "Other"], { label: "Practice area" }),
+    // `name` and `client` are the core Project's own (records/core-types.js, DESIGN-project-hub.md); they are written here so the Kit reads whole, and the core ones win.
+    name: defineField.text({ label: "Name", required: true }),
+    client: defineField.link({ to: "contact", label: "Client", required: true }),
     owner: defineField.actor({ label: "Owner" }),
     due: defineField.date({ label: "Due" }),
-    accident_date: defineField.date({ label: "Accident date", visible_if: 'practice_area == "Personal Injury"', required_if: 'practice_area == "Personal Injury"' }),
-    trust_name: defineField.text({ label: "Trust or plan name", visible_if: 'practice_area == "Estate Planning"' }),
-    hearing_date: defineField.date({ label: "Next hearing", visible_if: 'practice_area == "Family Law" or practice_area == "Criminal Defense"' }),
-    stage: defineStage(["Intake", "Active", "Review", "Done"], {
-      sets: [
-        { name: "personal_injury", when: 'practice_area == "Personal Injury"', stages: ["Intake", "Treating", "Demand", { name: "Negotiation", enter_if: "not empty(accident_date)" }, "Settled", "Closed"] },
-        { name: "estate_planning", when: 'practice_area == "Estate Planning"', stages: ["Intake", "Drafting", "Review", { name: "Signing", enter_if: "not empty(trust_name)" }, "Funding", "Closed"] },
-      ],
-    }),
+    stage: defineStage(["New", "Active", "Review", "Done"]),
   },
 });
 
 export const LeadsBoard = defineView({ name: "leads_board", type: "board", of: "lead", label: "Leads by stage", groupBy: "stage", columns: ["contact", "practice_area", "source"] });
 export const AppointmentsCalendar = defineView({ name: "appointments_calendar", type: "calendar", of: "appointment", label: "Appointments", dateField: "starts", filter: 'stage != "Cancelled"' });
 export const ClientsList = defineView({ name: "clients_list", type: "list", of: "client", label: "Clients", columns: ["contact", "practice_area", "stage", "since"], sort: { field: "since", dir: "desc" } });
-export const ProjectsBoard = defineView({ name: "projects_board", type: "board", of: "project", label: "Projects by stage", groupBy: "stage", columns: ["title", "client", "practice_area", "owner", "due"] });
+export const ProjectsBoard = defineView({ name: "projects_board", type: "board", of: "project", label: "Projects by stage", groupBy: "stage", columns: ["name", "client", "owner", "due"] });
 
 export default defineKit({
   id: "base",
