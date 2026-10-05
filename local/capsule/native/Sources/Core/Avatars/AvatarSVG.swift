@@ -1,12 +1,12 @@
 // AvatarSVG: the five identity families of ADR 0043 as SVG source, a line-for-line port of the
-// Deck's locked renderers at native-core a1d8ac72 (deck/vendor/vyrecode: identity.js's userAvatar,
+// Deck's locked renderers at native-core a1d8ac72 (web/vendor/vyrecode: identity.js's userAvatar,
 // creature.js, characters.js's blob and character, project.js, vyrecode2.js's renderCode2 with the
 // ticksSunburst style, and payload.js/rs.js for the ring's codeword). Dark theme only: the
 // Capsule is always dark.
 //
 // The output is the Deck's markup byte for byte, whitespace included, so every template below
 // keeps the JS template literal's own line breaks and indentation. Change nothing here without
-// the same change landing in deck/vendor/vyrecode first; Tests/AvatarTests.swift holds vectors
+// the same change landing in web/vendor/vyrecode first; Tests/AvatarTests.swift holds vectors
 // printed by the JS and fails on any drift.
 
 import Foundation

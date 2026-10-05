@@ -27,8 +27,6 @@ a message you type into one goes to the Mac (see [Sessions from your Mac](#sessi
 A session in two projects is listed under both. A new session, a rename or a new turn shows up
 on its own, without a reload.
 
-![Chat in the Deck: recent sessions with their turn counts and projects, and every session by project in the rail](shots/deck-chat.png)
-
 | Path | Opens |
 | --- | --- |
 | `/chat` | every session, newest first |

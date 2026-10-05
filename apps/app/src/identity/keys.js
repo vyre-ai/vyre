@@ -2,6 +2,7 @@
 // This device's identity key: Ed25519, made here, never sent anywhere. Where the platform's WebCrypto has Ed25519 the key is NON-EXTRACTABLE (the browser or the
 // phone holds it and only signs with it). Where it does not, @noble/curves makes it and the seed is the app's to keep (flagged `software`, so a screen can say so).
 
+import { restorePasskeyKey } from "./passkey.js";
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { b64u, eidOf } from "../../../../kernel/identity/chain.js";
 
@@ -51,6 +52,8 @@ export async function wrapKept(kept) {
 
 /** A key from what keep() gave, or from what wrapKept made of it. @param {any} kept @returns {Promise<DeviceKey>} */
 export async function restoreDeviceKey(kept) {
+  // A passkey stays in the authenticator; only its id and public key are kept, and signing asks the person again.
+  if (kept && kept.kind === "passkey") return /** @type {any} */ (restorePasskeyKey(kept));
   if (kept && kept.kind === "webcrypto") return fromPair(kept.pair);
   if (kept && kept.kind === "wrapped-seed") return fromSeed(new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv: kept.iv }, kept.wk, kept.ct)));
   return fromSeed(kept.seed);

@@ -6,13 +6,13 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@vyre/resilience/*": ["../../core/resilience/*"],
-      "@vyre/chat-core/*": ["../../deck/chat/core/*"],
+      "@vyre/chat-core/*": ["./src/chat/core/*"],
       "@vyre/relay-client/*": ["./src/types/relay-client/*"],
       "@vyre/stream/*": ["../../core/stream/*"],
       "@vyre/perf/*": ["../../lib/perf/*"],
       "@vyre/ui": ["./ui/index.ts"],
       "@vyre/ui/*": ["./ui/*"],
-      "@vyre/deck-ui/*": ["../../deck/ui/*"],
+      "@vyre/store/*": ["./src/store-core/*"],
       "@vyre/kernel/*": ["../../kernel/contracts/*"]
     }
   },

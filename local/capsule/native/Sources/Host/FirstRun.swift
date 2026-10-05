@@ -18,7 +18,7 @@ public enum FirstRunChoice: String, Equatable {
 public enum FirstRunStart: Equatable {
     /// Nothing to show: a Mac that already runs vyred, from before the first run existed.
     case nothing
-    /// No choice yet and no vyred: ask where Vyre should run.
+    /// Asks where Vyre should run. No launch gives this any more (a Mac with no vyred opens the app window as a client); kept for a window that asks on purpose.
     case askWhere
     /// Chose this Mac, and vyred is not running (restarted, or setup was left half done): start it, then open the app.
     case startHere
@@ -55,7 +55,9 @@ public enum FirstRun {
         switch remembered {
         case .server?: return .openApp(boxless: true)
         case .here?: return vyredUp ? .openApp(boxless: false) : .startHere
-        case nil: return vyredUp ? .nothing : .askWhere
+        // No choice and no vyred: this Mac is a client (the page asks setup's one question: joining a team, or setting up My Cloud on the person's own server). Making this Mac a server is an
+        // explicit choice later, in Settings, never automatic (`FirstRunController.makeThisMacServer`).
+        case nil: return vyredUp ? .nothing : .openApp(boxless: true)
         }
     }
 }

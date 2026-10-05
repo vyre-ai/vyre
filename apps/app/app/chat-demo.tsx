@@ -15,14 +15,15 @@ import { createMockStream, historyFrames } from "../src/chat/mock-stream";
 
 type Meter = { delta: number[]; first: number[]; keys: number[]; paints: number[]; mounted: number };
 
-export default function ChatDemo() {
+/** `sample` is one of the sample world's chats (demo-three, demo-people), opened from the Chats list; with none it is the default demo. */
+export default function ChatDemo({ sample }: { sample?: string } = {}) {
   const q = useLocalSearchParams<{ n?: string; at?: string; composer?: string; tps?: string; hold?: string; scenario?: string; about?: string; note?: string }>();
   const group = q.scenario === "group";
   const n = Number(q.n) || 0;
   const at = Number(q.at) || 0;
   const source = useMemo(
-    () => createMockStream({ session: "demo", scenario: group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
-    [n, at, q.tps, q.hold, group],
+    () => createMockStream({ session: sample ?? "demo", scenario: sample === "demo-three" ? "models" : sample === "demo-people" ? "people" : sample === "demo-assistant" ? "assistant" : group ? "group" : undefined, startAt: at, hold: q.hold === "1", tps: Number(q.tps) || (group ? 30 : 40), history: n ? historyFrames(n) : undefined }),
+    [n, at, q.tps, q.hold, group, sample],
   );
   const router = useRouter();
   const meter = useMemo<Meter>(() => ({ delta: [], first: [], keys: [], paints: [], mounted: 0 }), []);
@@ -32,9 +33,9 @@ export default function ChatDemo() {
   return (
     <ThemeProvider>
       <ChatScreen
-        sessionId="demo"
+        sessionId={sample ?? "demo"}
         onBack={() => router.back()}
-        title={group ? "Northwind lease, before the 3 pm call" : "Fix the intake date check"}
+        title={sample === "demo-three" ? "Which clause is riskier?" : sample === "demo-people" ? "Intake hand-off" : sample === "demo-assistant" ? "Tests before the call" : group ? "Northwind lease, before the 3 pm call" : "Fix the intake date check"}
         about={group ? { record: { title: "Northwind Bakery, lease dispute", type: "Matter" }, space: "Harlow Legal", sealed: 2, runsOn: "server" } : undefined}
         initialAbout={q.about === "1"}
         showSealedNote={q.note === "0" ? false : undefined}

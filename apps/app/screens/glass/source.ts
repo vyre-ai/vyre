@@ -30,9 +30,10 @@ export function glassSource(call: Call) {
       const r = await ask<{ since?: number; private?: boolean }>("glass.take", { target, surface, ...(priv ? { private: true } : {}) });
       return { surface, since: typeof r?.since === "number" ? r.since : Date.now(), private: Boolean(r?.private ?? priv) };
     },
-    async release(target: string, surface: string, note: string): Promise<{ heldMs: number | null }> {
-      const r = await ask<{ held_ms?: number }>("glass.release", { target, surface, ...(note.trim() ? { note: note.trim() } : {}) });
-      return { heldMs: typeof r?.held_ms === "number" ? r.held_ms : null };
+    /** `noted` is whether the agent's thread was told (false when it has no thread open); a box that does not say is read as not told. */
+    async release(target: string, surface: string, note: string): Promise<{ heldMs: number | null; noted: boolean }> {
+      const r = await ask<{ held_ms?: number; noted?: boolean }>("glass.release", { target, surface, ...(note.trim() ? { note: note.trim() } : {}) });
+      return { heldMs: typeof r?.held_ms === "number" ? r.held_ms : null, noted: r?.noted === true };
     },
     async list(target: string, path: string) { return pickList(await ask("glass.files.list", { target, ...(path ? { path } : {}) })); },
     async preview(target: string, path: string) { const d = await ask<{ path?: string }>("glass.files.preview", { target, path }); return { preview: pickPreview(d), path: typeof d?.path === "string" ? d.path : "" }; },

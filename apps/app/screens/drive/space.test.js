@@ -85,3 +85,13 @@ test("shared links: the words, the order, the address, and the three calls to th
   assert.deepEqual(seen[0].input, { path: "Clients/A/retainer.pdf" });
   assert.deepEqual(seen[1].input, { space: "spc_x", path: "a/b", version: 2, days: 3 });
 });
+
+test("files.drive.space.list's real extras: names show a folder by its name, folders carry open, and a chat the caller is not in is locked", async () => {
+  const { children } = await import("./space-model.ts");
+  // core/files/space-drive.js answers { prefix, entries, next, names, folders }: names keyed by folder path, folders for Projects/<id>/chat/.
+  const top = children([{ path: "Projects/pa/brief.md", size: 4 }], "Projects", { names: { "Projects/pa": "Probate Alpha" } });
+  assert.deepEqual(top.map((i) => [i.name, i.path, i.dir]), [["Probate Alpha", "Projects/pa", true]]);
+  const chats = children([], "Projects/pa/chat", { folders: [{ path: "Projects/pa/chat/s1", name: "Draft the welcome email", open: true }, { path: "Projects/pa/chat/s2", name: "Private strategy chat", open: false }] });
+  assert.deepEqual(chats.map((i) => [i.name, !!i.locked]), [["Draft the welcome email", false], ["Private strategy chat", true]]);
+  assert.equal(chats[1].path, "Projects/pa/chat/s2");
+});

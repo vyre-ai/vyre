@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, TextInput, View, type NativeSyntheticEvent, type TextInputSelectionChangeEventData } from "react-native";
 import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
-import { COMMANDS } from "../../../../deck/chat/core/commands.js";
+import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
@@ -24,7 +24,9 @@ export type ComposerProps = {
   records?: readonly RecordPick[];
   models?: readonly ModelChoice[];
   model?: string;
-  onModel?: (id: string) => void;
+  onModel?: (id: string, slot?: string) => void;
+  /** The slots in a chat with several assistants or models: each gets its own chip to switch that one's model. Fewer than two: the one model chip. */
+  slots?: readonly { id: string; label: string; provider?: string | null }[];
   runsOn?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
@@ -60,6 +62,7 @@ export function ChatComposer(p: ComposerProps) {
   const [caret, setCaret] = useState(0);
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState(false);
+  const [slotSel, setSlotSel] = useState<string | undefined>(undefined);
   const [askAll, setAskAll] = useState(false);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
@@ -127,14 +130,18 @@ export function ChatComposer(p: ComposerProps) {
   );
   const chips = (
     <>
-      {p.models?.length ? (
-        <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => setModels((m) => !m)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+      {p.models?.length && (p.slots?.length ?? 0) > 1 ? p.slots!.map((sl) => (
+        <Pressable key={sl.id} accessibilityRole="button" accessibilityLabel={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip>{sl.label}</Chip>
+        </Pressable>
+      )) : p.models?.length ? (
+        <Pressable accessibilityRole="button" accessibilityLabel="Switch model" onPress={() => { setSlotSel(undefined); setModels((m) => !m); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
           <Chip>{current ? `${current.label}${current.fit != null ? `, fit ${current.fit}` : ""}` : "Model"}</Chip>
         </Pressable>
       ) : null}
       {assistants > 1 ? (
         <Pressable accessibilityRole="button" accessibilityLabel="Ask all assistants at once" accessibilityState={{ selected: askAll }} onPress={() => setAskAll((a) => !a)} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
-          <Chip tone={askAll ? "accent" : "plain"} icon="agents">Ask all</Chip>
+          <Chip tone={askAll ? "accent" : "plain"} icon="agents">{(p.slots?.length ?? assistants) === 2 ? "Ask both" : "Ask all"}</Chip>
         </Pressable>
       ) : null}
       {p.runsOn ? (
@@ -172,7 +179,7 @@ export function ChatComposer(p: ComposerProps) {
       {models ? (
         <View style={{ backgroundColor: color["surface-3"], borderWidth: 1, borderColor: color["edge-strong"], borderRadius: 14, padding: 4, marginBottom: 6 }}>
           {(p.models ?? []).map((m) => (
-            <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ selected: m.id === p.model }} onPress={() => { p.onModel?.(m.id); setModels(false); }} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 }}>
+            <Pressable key={m.id} accessibilityRole="button" accessibilityState={{ selected: m.id === p.model }} onPress={() => { p.onModel?.(m.id, slotSel); setModels(false); }} style={{ minHeight: big ? T : 36, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 10 }}>
               <Text strong style={{ flex: 1 }}>{m.label}</Text>
               {m.fit != null ? <Text size="caption" tone="label">{`fit ${m.fit}`}</Text> : null}
               {m.id === p.model ? <Icon name="check" /> : null}

@@ -24,6 +24,28 @@ export const WELCOME = {
   have: "I already have Vyre",
 };
 
+/** Setup's one question (the user, 5 Oct): joining a team needs only a name and a typed code; "my own server" sets up My Cloud. Never "Pro" or "Basic" in copy. */
+export const QUESTION = {
+  title: "Do you have your own server, or are you joining a team?",
+  join: { title: "I am joining a team", line: "Make your name, connect this device with a code, and you are in." },
+  own: { title: "I have my own server", line: "Set up My Cloud on it." },
+};
+
+/** The route that sets up My Cloud on the person's own server: where "Add your own server" on a home that joined a team links to, and where the question's second answer goes. */
+export const SERVER_SETUP_ROUTE = "/u/setup/server";
+
+/** "Set up My Cloud": the person's own server. A phone is sent the setup link (it never shows an install line); a computer shows the one line to run there, then connects by the code the server shows. */
+export const MY_CLOUD = {
+  title: "Set up My Cloud",
+  line: "My Cloud runs on a computer or a server that stays on. Your phones and browsers connect to it.",
+  lineComputer: "Open its terminal and paste the line. It shows a code when it is ready.",
+  linePhone: "Send yourself the setup link and open it on that computer. It shows a code when it is ready.",
+  send: "Send me the setup link",
+  ready: "My server shows a code",
+  share: "Set up My Cloud on a computer or a server: https://vyre.run",
+  codeTitle: "Type the code your server shows",
+};
+
 /** Step 4 on a Mac: where Vyre runs. The server path shows one line to run there. */
 export const MAC_WHERE = {
   title: "Where should Vyre run?",
@@ -110,6 +132,9 @@ export const NO_VYRE = {
 /** RC1: the drawn Wink avatar cannot be read by the camera yet (RC2), so a pairing screen offers no camera view; a code is typed or pasted. */
 export const CAMERA_SCAN = false;
 
+/** The drawn Wink code is read by the camera (src/native/WinkScan, the Deck's decoder in a WebView) wherever a person can type a code: TypeCode's "Scan the code" action. A phone only; a browser has no reader here. */
+export const DRAWN_CODE_SCAN = true;
+
 /** "I don't have Vyre running yet" is offered on a phone's connect screen only (never in a mock walk, a Mac or a browser). @param {DeviceKind} kind @param {boolean} mock */
 export const offersNoVyre = (kind, mock) => isPhone(kind) && !mock;
 
@@ -167,6 +192,9 @@ export function gapOf({ kind, paired, hasBox, devices }) {
 export function pairSayFor(text, kind) {
   if (kind === "mac") return text;
   const t = String(text);
+  // A server that is someone else's says whose: a phone is told it about "this Vyre", never "server".
+  const owned = /^This server belongs to (\S+?)\.(?: |$)/.exec(t);
+  if (owned) return kind === "web" ? t : `This Vyre belongs to ${owned[1]}. Ask them to add you to a space, or reset it to start over.`;
   if (/words were not the same|did not match/i.test(t)) return PHONE_SAY.rejected;
   if (/cannot reach|unreachable/i.test(t)) return PHONE_SAY.unreachable;
   if (/ran out of time|expired/i.test(t)) return PHONE_SAY.expired;
@@ -184,3 +212,8 @@ export const PHONE_SAY = {
   ended: "The pairing did not finish, so nothing was paired. Start again from your Vyre.",
   spaceOffline: "Your phone cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
 };
+
+/** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
+export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
+/** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
+export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your assistant, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };

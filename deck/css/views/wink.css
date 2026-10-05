@@ -1,4 +1,0 @@
-/* /pair/scan (views/wink.js): the sheet itself is styled by css/pair.css (js/pair-scan.js loads
-   it), loaded on demand rather than duplicated here. This file exists only so app.js's per-view
-   stylesheet fetch has something real to load instead of a 404. */
-.scan-sheet { max-width: 420px; margin: 0 auto; }

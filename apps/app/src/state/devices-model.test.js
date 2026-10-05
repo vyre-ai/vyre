@@ -107,7 +107,7 @@ test("lines: kind, path and last seen", { skip: !strip }, async () => {
   assert.equal(kindText(app()), "App");
   assert.equal(pathText(web()), "Relay · 80 ms");
   assert.equal(pathText(web({ rtt: null })), "Relay");
-  assert.equal(pathText(app({ path: "direct", rtt: 12, online: true })), "Tailscale · direct 12 ms");
+  assert.equal(pathText(app({ path: "direct", rtt: 12, online: true })), "Direct · 12 ms");
   assert.equal(pathText(app()), "Not connected");
   assert.equal(seenText(web(), NOW), "Seen now");
   assert.equal(seenText(app(), NOW), "Seen 4 min ago");

@@ -1,15 +1,18 @@
 // Planner (the Deck's views/planner.js, ported): type to add ("alarm 7am", "todo send the invoice"), see what the box read before it goes in, today's agenda, the next alarms, open todos and notes, and a banner with Done and Snooze for anything ringing.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Divider, ErrorState, Field, LoadingState, Text, showToast } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { listen } from "../../src/api/box";
 import { planner } from "./planner";
-import { CHANGES, addInput, agendaOf, clock, kindWord, nextAlarms, nextAt, previewLine, repeatWord, ringingOf, sortNotes, splitKind, type Item, type Ringing } from "./model.ts";
+import { CHANGES, PLACES, addInput, agendaOf, clock, hrefOf, kindWord, nextAlarms, nextAt, previewLine, repeatWord, ringingOf, sortNotes, splitKind, type Item, type Ringing } from "./model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
 export function PlannerScreen() {
+  const router = useRouter();
+  const go = (it: { id: string; kind: string }) => router.push(hrefOf(it) as never);
   const [agenda, setAgenda] = useState<ReturnType<typeof agendaOf> | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const [err, setErr] = useState("");
@@ -50,7 +53,7 @@ export function PlannerScreen() {
   };
   const ack = (r: Ringing, tool: "planner.done" | "planner.snooze") => { setRingErr(""); planner.answer(tool, r.firing).then(() => setRings((l) => l.filter((x) => x.firing !== r.firing))).catch((e) => setRingErr(say(e))); };
   const finish = (t: Item) => planner.done(t.id).then(() => { load(); showToast(`Done: ${t.title}`); }).catch((e) => showToast(say(e)));
-  const remove = (t: Item) => planner.remove(t.id).then(() => { load(); showToast("Deleted. It can be restored for 30 days."); }).catch((e) => showToast(say(e)));
+  const remove = (t: Item) => planner.remove(t.id).then(() => { load(); showToast(t.kind === "todo" ? "Dropped." : "Deleted. It can be restored for 30 days."); }).catch((e) => showToast(say(e)));
 
   const open = items || [];
   const alarms = nextAlarms(open);
@@ -89,15 +92,20 @@ export function PlannerScreen() {
         ...agenda.entries.map((e, i) => row(`e${i}`, e.all_day ? "All day" : clock(e.at), e.title || kindWord(e.kind), e.source !== "planner" ? "Calendar" : kindWord(e.kind) + (e.snoozed ? " · snoozed" : ""))),
         ...agenda.todos.map((t, i) => row(`t${i}`, t.due ? "Due" : "", t.title, "Todo", t.id ? <View className="self-start"><Button kind="ghost" size="sm" label="Done" onPress={() => void finish(t)} /></View> : undefined)),
       ], "Nothing on today. Add something above.") : null}
-      {items ? section("Alarms", alarms.map((a) => row(a.id, clock(nextAt(a) as number), a.title || kindWord(a.kind), a.snooze_until ? "Snoozed" : repeatWord(a.repeat), <View className="self-start"><Button kind="ghost" size="sm" label="Delete" onPress={() => void remove(a)} /></View>)), "No alarms set.") : null}
-      {items ? section(`Todos${todos.length ? `  ${todos.length}` : ""}`, todos.map((t) => row(t.id, "", t.title, t.due || "", <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Done" onPress={() => void finish(t)} /><Button kind="ghost" size="sm" label="Delete" onPress={() => void remove(t)} /></View>)), "No open todos. Type todo above.") : null}
+      {items ? section("Alarms", alarms.map((a) => row(a.id, clock(nextAt(a) as number), a.title || kindWord(a.kind), a.snooze_until ? "Snoozed" : repeatWord(a.repeat), <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Open" onPress={() => go(a)} /><Button kind="ghost" size="sm" label="Delete" onPress={() => void remove(a)} /></View>)), "No alarms set.") : null}
+      {items ? section(`Todos${todos.length ? `  ${todos.length}` : ""}`, todos.map((t) => row(t.id, "", t.title, t.due || "", <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Open" onPress={() => go(t)} /><Button kind="ghost" size="sm" label="Done" onPress={() => void finish(t)} /><Button kind="ghost" size="sm" label="Delete" onPress={() => void remove(t)} /></View>)), "No open todos. Type todo above.") : null}
       {items ? section("Notes", notes.map((n) => (
         <View key={n.id} className="gap-s1 py-s2">
           <View className="flex-row flex-wrap items-center gap-s2">{n.pinned ? <Chip>Pinned</Chip> : null}<Text strong className="min-w-0 flex-1">{n.title || "Note"}</Text></View>
           {n.body ? <Text size="caption" tone="muted">{n.body}</Text> : null}
-          <View className="self-start"><Button kind="ghost" size="sm" label="Delete" onPress={() => void remove(n)} /></View>
+          <View className="flex-row gap-s2"><Button kind="ghost" size="sm" label="Open" onPress={() => go(n)} /><Button kind="ghost" size="sm" label="Delete" onPress={() => void remove(n)} /></View>
         </View>
       )), "No notes. Type note above.") : null}
+      <Card className="gap-s2">
+        <Text strong>Everything the planner keeps</Text>
+        <Text size="caption" tone="muted">Reminders, notes and events are records in your Space, and todos are tasks. Open them where they live.</Text>
+        <View className="flex-row flex-wrap gap-s2">{PLACES.map((p) => <Button key={p.href} kind="ghost" size="sm" label={p.label} onPress={() => router.push(p.href as never)} />)}</View>
+      </Card>
     </Page>
   );
 }

@@ -1,7 +1,7 @@
 // @ts-check
 // A minimal RFB server: enough of the real handshake for rfb.js's clientHandshake to complete
 // against it, offering security type None so DES is not in the loop. Stands in for Xvnc in
-// core/computers/glass.test.js (Glass's relay tests) and deck/test/glass-world.js (a real browser
+// core/computers/glass.test.js (Glass's relay tests) and web/test/glass-world.js (a real browser
 // against a real Deck, through a real Glass relay).
 import net from "node:net";
 

@@ -1,7 +1,8 @@
 // The pure half of the shell on the real box: spaces.list and spaces.identity.status as the space switcher's rows and the person's line.
+import { isBasicRow } from "./basic.js";
 import type { ShellSpace } from "@vyre/ui";
 
-export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string };
+export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; tier?: "basic" | "cloud"; who?: string; setup?: { who?: string; picks?: { who?: string } } | null };
 export type IdentityRow = { exists?: boolean; name?: string; label?: string; pending?: boolean };
 export type Me = { name: string; sub: string; vyreName: string };
 export type ShellData = { me: Me; spaces: ShellSpace[] };
@@ -9,11 +10,11 @@ export type ShellData = { me: Me; spaces: ShellSpace[] };
 const ROLE: Record<string, string> = { owner: "Owner", admin: "Admin", manager: "Manager", member: "Member", temp: "Guest" };
 export const roleWord = (r?: string): string => (r && ROLE[r]) || "Member";
 
-/** What a space is called: the name the person gave it, else its label, else its address. */
-export const spaceName = (s: SpaceRow): string => s.displayName || s.label || s.name || s.id;
+export { spaceName, isPersonal } from "../../src/state/space-name.js";
+import { spaceName, isPersonal } from "../../src/state/space-name.js";
 
-/** The line under a space in the switcher: the person's role there, or that it is still being set up. */
-export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));
+/** The line under a space in the switcher: the person's role there (a team space also carries its small "Cloud" tag), or that it is still being set up. */
+export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : [!isPersonal(s) && s.tier === "cloud" ? "Cloud" : "", roleWord(s.role)].filter(Boolean).join(" · "));
 
 export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, everything" };
 
@@ -22,7 +23,7 @@ export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, 
 export const isListed = (s: SpaceRow): boolean => s.status !== "failed" && s.status !== "cancelled";
 
 export function spacesFrom(rows: SpaceRow[]): ShellSpace[] {
-  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s) }));
+  const own = rows.filter(isListed).map((s) => ({ id: s.id, name: spaceName(s), sub: spaceSub(s), ...(isBasicRow(s) ? { basic: true } : {}) }));
   return own.length > 1 ? [ALL, ...own] : own.length ? own : [ALL];
 }
 

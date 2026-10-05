@@ -39,7 +39,7 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  welcome: null, adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
+  welcome: null, question: "welcome", mycloud: "question", adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
   name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
@@ -47,7 +47,8 @@ export const BACK = {
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
 export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
   // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
-  if (ctx.welcome && (step === "name" || step === "have")) return "welcome";
+  if (ctx.welcome && step === "name") return "question";
+  if (ctx.welcome && step === "have") return "welcome";
   if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
   // A Mac's first run chooses where Vyre runs before the space is named, and goes on to the line or "here" without asking again.
   if (ctx.macFlow) {
@@ -101,7 +102,7 @@ export const connectedLine = (/** @type {string} */ space, /** @type {string} */
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {
   // "phone" is the Mac's Add your phone, and "connect" is a phone or browser scanning a code from its Vyre: the actions of the empty states (first-run.js GAP).
-  return start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
+  return start === "server" ? "mycloud" : start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
 }
 
 /** Where "Where will it live?" sends each choice. */
@@ -156,6 +157,12 @@ export const SERVER_FAILED = {
 };
 
 // A sentence a phone already says (first-run.js PHONE_SAY) passes through again unchanged.
+/** The Vyre name in "This server belongs to <name>..." (a plain name or name.vyre.run), as name.vyre.run, or null. @param {string} text */
+export function ownedBy(text) {
+  const m = /^This server belongs to ([a-z0-9][a-z0-9-]{0,40})(?:\.vyre\.run\b|(?=\.(?:\s|$)))/i.exec(String(text ?? "").trim());
+  return m ? `${m[1].toLowerCase()}.vyre.run` : null;
+}
+
 const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY)]);
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
@@ -163,6 +170,9 @@ export function serverSay(e) {
   const c = String(e?.code ?? "");
   // A plain string is a sentence that already went through here (the screens pass the mapped words back): it counts as the message.
   const m0 = String(e?.message ?? (typeof e === "string" ? e : "")).trim();
+  // A server that already has an owner says whose it is. That one sentence is shown (with the name cut out of it and checked, never the server's own text): the person needs it to know what to do.
+  const owner = ownedBy(m0);
+  if (owner) return `This server belongs to ${owner}. Ask them to add you to a space, or reset the server to start over.`;
   if (c === "bad_code") return SERVER_FAILED.badCode;
   if (c === "bad_owner") return SERVER_FAILED.badOwner;
   if (c === "taken") return SERVER_FAILED.used;

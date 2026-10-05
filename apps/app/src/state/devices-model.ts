@@ -142,11 +142,11 @@ export function kindText(d: Device): string {
   return d.kind ? d.kind[0].toUpperCase() + d.kind.slice(1) : "Device";
 }
 
-/** How it reaches the box right now: "Relay · 80 ms", "Tailscale · direct 12 ms", "Not connected". */
+/** How it reaches the box right now: "Relay · 80 ms", "Direct · 12 ms", "Not connected". */
 export function pathText(d: Device): string {
   const ms = typeof d.rtt === "number" ? ` ${Math.round(d.rtt)} ms` : "";
   if (d.path === "relay") return `Relay${ms ? " ·" + ms : ""}`;
-  if (d.path === "direct") return `Tailscale · direct${ms}`;
+  if (d.path === "direct") return `Direct${ms ? " ·" + ms : ""}`;
   return "Not connected";
 }
 

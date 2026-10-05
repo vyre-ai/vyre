@@ -11,7 +11,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", ".
 export const ENTRY = "relay/wink/wink.js";
 export const STYLE = "relay/wink/wink.css";
 // Code a page loads at run time without a static import the walk can see: the decode worker is made with new URL().
-const EXTRA = ["deck/js/scan-worker.js"];
+const EXTRA = ["web/js/scan-worker.js"];
 
 /** The relative specifiers a module imports: static, dynamic with a string, and new URL("./x", import.meta.url). @param {string} src */
 export function specifiers(src) {
