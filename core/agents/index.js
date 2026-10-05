@@ -132,7 +132,13 @@ export default {
     const hasPerson = async (/** @type {any} */ meta) => { try { const c = await K.chain(meta); return c.hops.length === 1 && c.hops[0].actor.kind === "person"; } catch { return false; } };
     const syncAccess = async (/** @type {string} */ name, /** @type {any} */ before, /** @type {any} */ after, /** @type {any} */ meta) => {
       if (!K || !K.grants) return; // no kernel here: there are no grants to keep in step with
-      if (!(await hasPerson(meta))) return; // no person on this call: nothing to grant as
+      if (!(await hasPerson(meta))) {
+        // reach is a kernel grant, a person's own act. A call with nothing to change is fine; one that would grant or revoke and carries no person is refused, never silently left without the grant
+        // (the plugin agent's module call is the one exception: it makes its own wildcard grant in the person's call).
+        const changes = after === "*" ? before !== "*" : before === "*" || slugs(after).some(s => !slugs(before).includes(s)) || slugs(before).some(s => !slugs(after).includes(s));
+        if (changes && String((meta && meta.caller) || "") !== "module:pluginagent") throw Object.assign(new Error("giving an agent a project is the person's own act; this call carries no person"), { code: "denied" });
+        return;
+      }
       const pr = await ctx.call("projects.list", {});
       if (pr.error) return; // projects is not running: nothing to keep in step with
       if (after === "*" && before !== "*") await grantReach(K, meta, { urn: wild(), agent: name });

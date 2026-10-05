@@ -140,3 +140,18 @@ test("the source files are removed under the mover's chain after the hashes matc
   assert.equal(calls.length, 2);
   assert.equal([...b.rows.values()].filter(r => r.type === "project").length, 1, "the resume made nothing twice");
 });
+
+test("the memory room moves between the files and the marker: offered, sealed, imported with a receipt, and forgotten only after", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {string[]} */ const order = [];
+  const memory = {
+    offer: async (/** @type {any} */ i) => { order.push("offer"); assert.match(i.target, /^vyre:\/\/B\/project\//); return { to_key: "k" }; },
+    export: async (/** @type {any} */ i) => { order.push("export"); assert.equal(i.to_key, "k"); assert.ok(a.rows.get(proj.urn).data.drive_path, "the source project is still whole"); return { package: "sealed" }; },
+    import: async (/** @type {any} */ i) => { order.push("import"); assert.equal(i.package, "sealed"); return { digest: "d", counts: { writes: 3 } }; },
+    forget: async (/** @type {any} */ i) => { order.push("forget"); assert.equal(i.receipt.digest, "d"); return { forgotten: { writes: 3 } }; },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  const done = await runMove({ from: a, to: b, plan, ports: { memory } });
+  assert.deepEqual(order, ["offer", "export", "import", "forget"]);
+  assert.deepEqual(done.moved.memory, { writes: 3 });
+});

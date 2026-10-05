@@ -53,7 +53,8 @@ export async function planMove({ from, to, project, client = "leave" }) {
   if (install.length && typeof to.install !== "function") for (const t of install) blockers.push(`the target Space has no record type ${t}`);
   const counts = { records: byType, files: files.length, bytes: files.reduce((n, f) => n + f.size, 0), sealed_fields: sealed };
   const ids = [...found.keys()].sort();
-  const hash = sha({ from: from.space, to: to.space, project: root.urn, client, counts, ids, install });
+  // base64url, 43 characters: the form the kernel's moves and memory's room move both require of a plan hash
+  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, install })).digest("base64url");
   return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
 }
 
@@ -64,7 +65,7 @@ async function freeSlug(to, base) {
 }
 
 /**
- * Do the move. `ports`: `reseal(fromRef, toRecordUrn, field)` for sealed fields (the sealing process's own transfer), `onStep(name)` for progress and tests, `cleanupFiles(paths)` or, with `move_id`, the Drive's `removeMoved` for removing source
+ * Do the move. `ports`: `reseal(fromRef, toRecordUrn, field)` for sealed fields (the sealing process's own transfer), `onStep(name)` for progress and tests, `memory` {offer, export, import, forget} (the memory room's move), `cleanupFiles(paths)` or, with `move_id`, the Drive's `removeMoved` for removing source
  * files (the one approval of the move covers it; with neither, the files are listed as left behind), `state` an object kept between attempts so a resume continues.
  * @param {{ from: any, to: any, plan: any, ports?: any }} o
  */
@@ -151,20 +152,30 @@ export async function runMove({ from, to, plan, ports = {} }) {
   const mapped = Object.keys(state.map).length - 1;
   if (mapped !== wanted.filter((/** @type {any} */ r) => state.map[r.urn]).length) throw Object.assign(new Error("the records that arrived do not match the plan; nothing was removed"), { code: "verify_failed" });
 
-  // 5. the old Space keeps a marker and nothing else
+  // 5. the project's memory room: sealed to a one-use key of the target, imported there with a receipt (`ports.memory`: offer, export, import, forget; the memory module's own calls, one per move id).
+  //    Nothing is forgotten in the source until the receipt is in hand and the files are verified.
+  if (ports.memory && !state.memory_receipt) {
+    step("memory");
+    const offer = await ports.memory.offer({ target: target.urn });
+    const exp = await ports.memory.export({ to_key: offer.to_key });
+    state.memory_receipt = await ports.memory.import({ package: exp.package, into: target.urn });
+  }
+
+  // 6. the old Space keeps a marker and nothing else
   step("marker");
   /** @type {string[]} */ let left = [];
   for (const r of wanted) { const p = urnParts(r.urn); try { const cur = await from.records.get(from.chain, p.type, p.id); if (cur) await from.records.remove(from.chain, p.type, p.id); } catch { /* removed already */ } }
-  // 6. the source files go under the mover's chain: the one approval of the move covers it. Resumable: `state.cleaned` is set once they are gone; what cannot be removed is reported, never silently kept
+  // 7. the source files go under the mover's chain: the one approval of the move covers it. Resumable: `state.cleaned` is set once they are gone; what cannot be removed is reported, never silently kept
   step("cleanup");
   if (!state.cleaned) {
     const remove = typeof ports.cleanupFiles === "function" ? ports.cleanupFiles : (from.drive && typeof from.drive.removeMoved === "function" && ports.move_id ? (/** @type {string[]} */ paths) => from.drive.removeMoved(from.chain, paths, { move_id: ports.move_id }).then(() => []) : null);
     left = remove ? ((await remove(plan.files)) || []) : [...plan.files];
     if (!left.length) state.cleaned = true;
   }
+  if (ports.memory && state.memory_receipt && !state.memory_forgotten) { step("forget"); const f = await ports.memory.forget({ receipt: state.memory_receipt }); state.memory_forgotten = true; state.memory_counts = f && f.forgotten; }
   const cur = await from.records.get(from.chain, PROJECT, id);
   await from.records.update(from.chain, PROJECT, id, { status: "moved", moved_to: `${to.space}:${target.urn}`, repo: null, client: null, drive_path: null, memory_scope: null }, cur.version);
-  const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length }, left_behind: left, map: state.map };
+  const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length, ...(state.memory_receipt ? { memory: state.memory_receipt.counts } : {}) }, left_behind: left, map: state.map };
   step("done");
   return out;
 }
