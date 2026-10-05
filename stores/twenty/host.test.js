@@ -174,8 +174,8 @@ test("merge over Twenty: the dropped contact's unique phone moves to the kept on
 });
 
 // TODO(windows): a many to many link follows a merge over Twenty. Today the relink answers store_disagreed ("the store's answer does not match what was asked"); the same merge passes on the memory store
-// (kernel/gateway/gateway.test.js). Windows owns the relation fix and is filing the issue; this becomes a plain test when it lands.
-test("merge over Twenty: a many to many link (Communication.contacts) follows the merge, and unmerge puts it back", { todo: "windows: many to many relink over Twenty answers store_disagreed (issue being filed)" }, async () => {
+// (kernel/gateway/gateway.test.js). Fixed on origin/work/spaces (vyre-ai/vyre#92, with stores/twenty/merge-many.test.js); this becomes a plain test the moment that is in the branch's base.
+test("merge over Twenty: a many to many link (Communication.contacts) follows the merge, and unmerge puts it back", { todo: "vyre-ai/vyre#92: the fix is on work/spaces (kernel/gateway/records.js reads each link before the removal); drop this todo when it is in trunk" }, async () => {
   const { host } = await boot();
   await host.defineCore();
   const c = host.ownerChain(), R = host.kernel.records;
