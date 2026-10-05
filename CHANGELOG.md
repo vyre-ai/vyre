@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
+
 - test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.
 - test(walk): the walk's paired-device helper builds its device row the way the daemon does (the relay's row plus the person Wink's record names), so a signed-in paired app device reaches bridges.merge.links as the person. Not a bridges bug: the check reads the call's kernel chain, and a paired device's chain is one person (core/daemon callerFacts); the test's row had no person, so no chain was built. publish.whoIs uses the same chain check and needs no change.
 - feat(one-yes): relay.enable, relay.pair.start and wink.phone.open take a proof signed over the call itself, through yes() (lib/one-yes.js), instead of widening the development stand-in. `x-vyre-presence: yes proof=<base64url>` carries the owner key's proof for the act and fields signOf gives the call, checked in the home owner's chain by the sealing process; a software key stands on a development build only, a release build answers software_key and nothing runs; a proof is single use and covers exactly that tool and input. The three tools are in MOMENT_OPS.pair. `node scripts/dev-sign-proof.mjs --home <dir> --yes pair --tool wink.phone.open --input '{}' --header` signs one for a test or a headless walk. test/one-yes-tool-proof.test.js covers both builds.
