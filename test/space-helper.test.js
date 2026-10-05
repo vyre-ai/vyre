@@ -589,6 +589,7 @@ test("space helper SH-1, SH-4, SH-5: the host writes a marker that names this ST
   // A container started and no marker yet: the daemon does not start.
   let w = as("abcdef012345", S1);
   assert.equal(w.status, 1); assert.match(w.stderr, /the daemon is not starting/);
+  assert.ok(!/cannot open/.test(w.stderr), "a marker that is not there yet is waited for quietly: " + w.stderr);
   // The helper proves the rules for the running container and names this start.
   const ok = /** @type {any} */ (await r.run(["space-helper", "reattach"])); assert.equal(ok.code, 0, ok.out);
   assert.equal(fs.readFileSync(path.join(r.SP, "status", "wall-ready"), "utf8").trim(), `abcdef012345 ${S1}`);

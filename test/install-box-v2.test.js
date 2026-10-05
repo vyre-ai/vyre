@@ -481,3 +481,12 @@ test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it ag
   assert.ok(!fs.existsSync(out));
 });
 
+
+test("install-box.sh: the Space helper is installed as soon as the container is running, before the wait for modules (the entry holds the daemon back until the helper proves the firewall), and once, not after the wait", () => {
+  const src = fs.readFileSync(SCRIPT, "utf8");
+  const body = src.slice(src.indexOf("\nverify_up() {"), src.indexOf("\n}\n", src.indexOf("\nverify_up() {")));
+  const at = (/** @type {string} */ re) => body.search(new RegExp(re));
+  assert.ok(at("install_space_helper") > at("status=running") && at("install_space_helper") < at("modules running"), "inside verify_up, after the container runs and before the modules wait");
+  assert.equal((src.match(/^\s*install_space_helper$/gm) ?? []).length, 1, "called once");
+  assert.ok(!/verify_running_build; install_space_helper/.test(src), "no second call after the wait");
+});
