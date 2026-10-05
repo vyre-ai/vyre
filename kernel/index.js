@@ -195,6 +195,19 @@ export async function createKernel(cfg) {
        *  - serviceChain(name): the module's own service chain (the name is the module's, never another's).
        *  - tasks.list(chain): the queue of the person the chain acts for; tasks.forRecord(chain, urn): the open tasks on a record, read through the caller's own chain.
        */
+      // Whether a named agent, acting for this Space's owner, may do a READ-risk act on a resource: the answer only. The agent's chain is built here and never leaves the kernel, so no module can mint an
+      // agent chain; a chain of [owner, agent] holds only what BOTH hold, so an agent passes only with a grant of its own. Used by the projects module for "may this agent reach this project".
+      ...(needs.reach === true ? {
+        agentMay: async (/** @type {string} */ agent, /** @type {string} */ action, /** @type {string} */ resource) => {
+          if (typeof agent !== "string" || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(agent)) throw new KernelError("bad_input", "name one agent");
+          const def = gateway.actions().find((/** @type {any} */ a) => a.action === action);
+          if (!def || def.risk !== "read") throw new KernelError("not_allowed", "only a read can be asked this way");
+          try {
+            const chain = chains.fromFacts({ kind: "agent_session", agent, session: `reach:${agent}`, person: ownerRef.id, vouched: true });
+            return (await gateway.authorize({ chain, action, resource })).effect === "allow";
+          } catch { return false; }
+        },
+      } : {}),
       ...(needs.work === true ? (() => {
         const personOnly = async (/** @type {any} */ meta) => {
           const c = await handle.chain(meta || {});

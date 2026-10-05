@@ -91,33 +91,6 @@ export const MIGRATIONS = [
     kind    TEXT NOT NULL CHECK (kind IN ('home', 'workspace'))
   );
   `,
-  // Step 1 (federation, Vyre Drive step 3): which agent may reach a project's data at all. Deny
-  // by default; Drive, sync and anything else that serves a project's files or sessions to an
-  // agent asks projects.access.check before serving. Lives here, not appended in index.js, so
-  // core/store's migrate() (which numbers steps by array index) never collides with a step
-  // another team adds to this array later — sessions' next MIGRATIONS step (after e87f63df,
-  // still just the projects_projects table on main as of this write) is told this slot is taken.
-  `
-  CREATE TABLE projects_access (
-    id      TEXT PRIMARY KEY,
-    project TEXT NOT NULL,
-    agent   TEXT NOT NULL DEFAULT '',
-    status  TEXT NOT NULL,
-    by      TEXT NOT NULL,
-    at      INTEGER NOT NULL,
-    UNIQUE (project, agent)
-  );
-  `,
-  // Step 2 (federation, reviewer's MEDIUM 2 on 656b3f79): a single-row sentinel recording that
-  // the one-time auto-seed of projects_access from agents.projects has run (core/projects/
-  // index.js), so an upgrade never has to be told about the manual projects.access.migrate tool
-  // for a scoped agent to keep reading what it already could.
-  `
-  CREATE TABLE projects_access_seeded (
-    id INTEGER PRIMARY KEY CHECK (id = 1),
-    at INTEGER NOT NULL
-  );
-  `,
   // Local version history for a project's folder (github.project.local-init): 'kept' once it is a
   // repo, 'declined' when the person said no, 'offered' once the one quiet question was asked.
   // Any row means never ask again.

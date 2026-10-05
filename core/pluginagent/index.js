@@ -6,6 +6,7 @@
 // it holds only what the grant names: memory and recall reads, the sessions of the person's projects, and memory.remember (a pending suggestion). Every other tool, read or write, is refused for it
 // with `not_in_grant`, decided HERE (`pluginagent.allows`, asked by the daemon's route for every call and every tool listing), never tool by tool. `pluginagent.revoke` ends it. A decline or a revoke
 // means no until the person turns it back on (`pluginagent.on`, from Access); an ask nobody answers expires after 24 h and the next one waits 7 days. The key is never kept here, only its hash.
+import { grantReach } from "../../lib/project-reach.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
@@ -116,6 +117,8 @@ export default {
         }
         const made = await ctx.call("agents.create", { name: agent, projects: "*", personal: true });
         if (made && made.error) throw refuse(String(made.error.message || "the agent could not be made"), String(made.error.code || "failed"));
+        // "every project" is ONE kernel grant, made here in the person's own call with their proof (the agents module made the agent from a module call, which carries no person)
+        if (k) await grantReach(k, meta, { urn: `vyre://${k.space}/project/*`, agent });
         const agentId = made && made.data && made.data.id ? String(made.data.id) : null;
         const key = crypto.randomBytes(32).toString("base64url");
         const file = keyPath();

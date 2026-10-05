@@ -43,6 +43,12 @@
         "effect": "write"
       },
       {
+        "name": "work.project.ensure",
+        "summary": "the Project record for a short name, made if missing (the projects module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
         "name": "work.project.rename",
         "summary": "rename a Project from Records: its record, Drive folder and project list follow",
         "reach": "anyone",

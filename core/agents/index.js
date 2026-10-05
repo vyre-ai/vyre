@@ -18,6 +18,7 @@
 //
 // The switchboard is used through ctx.call and its events, never by importing it.
 
+import { grantReach, revokeReach } from "../../lib/project-reach.js";
 import fs from "node:fs";
 import { AsyncLocalStorage } from "node:async_hooks";
 import path from "node:path";
@@ -120,43 +121,25 @@ export default {
     /** Tool results unwrapped; an error becomes a throw with its message. */
     const use = async (tool, input) => { const r = await ctx.call(tool, input); if (r.error) throw new Error(r.error.message); return r.data; };
 
-    // Option (a) (the lead's decision, on top of the reviewer's drift MEDIUM): projects.access
-    // is kept in step with an agent's own agents.projects as part of the person's already-gated
-    // create/update action, never a separate step and never a model's own. ctx.call sets the
-    // caller "module:agents" (only the loader can), so this reaches projects.access.grant/revoke
-    // (both now list "module" among their callers) with no presence prompt beyond what creating
-    // or editing the agent already asked for. Never for the assistant: its reach is the
-    // assistant rule (core/memory's reach()), not a per-project grant.
-    const BY = `module:${ctx.name}`;
-    const syncAccess = async (name, before, after) => {
+    // An agent's `projects` list is kept in step with its KERNEL GRANTS on those projects (action project.reach, lib/project-reach.js), as part of the person's own, already-proved create or update:
+    // a grant is a person's act with the kernel's proof, so only that call can make or take one. A "*" agent holds ONE grant on every project (`vyre://<space>/project/*`). Never for the assistant: its
+    // reach is the assistant rule (core/memory's reach()), not a per-project grant.
+    const K = ctx.kernel;
+    const wild = () => `vyre://${K.space}/project/*`;
+    const slugs = (/** @type {any} */ v) => (Array.isArray(v) ? v.map(String) : []);
+    const urnOf = async (/** @type {string} */ slug) => { const r = await ctx.call("projects.record", { project: slug }); if (r.error) throw new Error(`no record for project ${slug}: ${r.error.message}`); return String(r.data.urn); };
+    /** Whether this call carries a person to act as: a module's own call (the plugin agent's grant makes its agent this way) carries none, and then the grants are the caller's to make with its own proof. */
+    const hasPerson = async (/** @type {any} */ meta) => { try { const c = await K.chain(meta); return c.hops.length === 1 && c.hops[0].actor.kind === "person"; } catch { return false; } };
+    const syncAccess = async (/** @type {string} */ name, /** @type {any} */ before, /** @type {any} */ after, /** @type {any} */ meta) => {
+      if (!K || !K.grants) return; // no kernel here: there are no grants to keep in step with
+      if (!(await hasPerson(meta))) return; // no person on this call: nothing to grant as
       const pr = await ctx.call("projects.list", {});
-      if (pr.error) return; // projects (or projects.access) is not running: nothing to keep in step with
-      const all = (Array.isArray(pr.data) ? pr.data : pr.data?.projects || []).filter(p => p && p.slug).map(p => String(p.slug));
-      const was = before === "*" ? new Set(all) : new Set((Array.isArray(before) ? before : []).map(String));
-      const now = after === "*" ? new Set(all) : new Set((Array.isArray(after) ? after : []).map(String));
-      const added = [...now].filter(s => !was.has(s)), dropped = [...was].filter(s => !now.has(s));
-      // Checked, and refused, before anything is written: a project the person explicitly
-      // revoked already (by anyone other than this same internal path) is never silently
-      // re-granted just because it landed back on this agent's list.
-      for (const slug of added) {
-        const c = await ctx.call("projects.access.check", { project: slug, agent: name });
-        if (!c.error && c.data && c.data.status === "revoked" && c.data.by !== BY) {
-          throw new Error(`${slug} was explicitly revoked for ${name} (by ${c.data.by}); grant it back on purpose with projects.access.grant, this will not do it silently`);
-        }
-      }
-      for (const slug of added) {
-        const g = await ctx.call("projects.access.grant", { project: slug, agent: name });
-        if (g.error) throw new Error(`could not grant ${name} access to ${slug}: ${g.error.message}`);
-      }
-      for (const slug of dropped) {
-        // Skip a project that is already revoked, rather than writing over it: setAccess is an
-        // upsert, and overwriting `by` here would erase the record that a person, not this
-        // internal path, was the one who revoked it, which the "added" check above depends on.
-        const c = await ctx.call("projects.access.check", { project: slug, agent: name });
-        if (!c.error && c.data && c.data.status === "revoked") continue;
-        const r = await ctx.call("projects.access.revoke", { project: slug, agent: name });
-        if (r.error) throw new Error(`could not revoke ${name}'s access to ${slug}: ${r.error.message}`);
-      }
+      if (pr.error) return; // projects is not running: nothing to keep in step with
+      if (after === "*" && before !== "*") await grantReach(K, meta, { urn: wild(), agent: name });
+      if (before === "*" && after !== "*") await revokeReach(K, meta, { urn: wild(), agent: name });
+      const was = new Set(slugs(before)), now = new Set(slugs(after));
+      for (const slug of [...now].filter(s => !was.has(s))) await grantReach(K, meta, { urn: await urnOf(slug), agent: name });
+      for (const slug of [...was].filter(s => !now.has(s))) await revokeReach(K, meta, { urn: await urnOf(slug), agent: name });
     };
 
     // Spend on the API key is counted from each turn's result, per agent, so the budget holds
@@ -334,7 +317,8 @@ export default {
       // A person's surfaces and vyred's modules (onboarding makes the assistant), with no passkey:
       // making an agent is the person's own business. No model, the assistant included, and no guest.
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async (i, { caller }) => {
+      run: async (i, meta) => {
+        const { caller } = meta;
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
@@ -343,7 +327,7 @@ export default {
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         // Written before the row exists (option (a)): a failed grant means no agent was ever
         // created, rather than one whose memory access silently does not match what it says.
-        if (kind !== "assistant") await syncAccess(i.name, [], projects);
+        if (kind !== "assistant") await syncAccess(i.name, [], projects, meta);
         const now = Date.now();
         db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at)
           VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
@@ -362,7 +346,8 @@ export default {
       // models, only the assistant, and only for its words and model: never credentials, budget,
       // projects, skills or a computer. Every other agent, a bare MCP session and a guest are refused.
       callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
-      run: async (i, { caller }) => {
+      run: async (i, meta) => {
+        const { caller } = meta;
         if (/^mcp(?=$|[\s:])/.test(String(caller))) {
           const m = /^mcp:agent:(.+)$/.exec(String(caller));
           const plain = Object.keys(i).every(k => i[k] === undefined || PLAIN_UPDATE.has(k));
@@ -381,7 +366,7 @@ export default {
         // Option (a): before the row changes, so a failed grant or an explicit-revoke refusal
         // means the edit never took either. Never for the assistant (a.kind === "assistant"
         // above already refuses any real change to its projects, so there is nothing to sync).
-        if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.name, a.projects, next.projects);
+        if (a.kind !== "assistant" && i.projects !== undefined) await syncAccess(a.name, a.projects, next.projects, meta);
         db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, personal = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
             next.computer ? 1 : 0, next.model || null, next.effort || null, next.personal === true && a.kind !== "assistant" ? 1 : 0, Date.now(), a.name);
@@ -548,18 +533,15 @@ export default {
       description: "Remove an agent's record and its spend. Refused while one of its threads is running (agents.stop first), and for the assistant. Its threads' transcripts and events stay.",
       input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, id: { type: "string", description: "The agent's id (agents.list shows it): when given, a different agent that now has the same name is not deleted" } } },
       callers: ["cli", "local", "deck", "capsule"],
-      run: async ({ agent, id }) => {
+      run: async ({ agent, id }, meta) => {
         const a = must(agent);
         if (id !== undefined && String(id) !== a.id) throw Object.assign(new Error(`no agent ${agent} with that id`), { code: "not_found" });
         if (a.builtin) throw Object.assign(new Error(`${a.name} is built in and stays`), { code: "denied" });
         if (a.kind === "assistant") throw new Error(`${a.name} is the assistant; there must be one, so change it with agents.update instead`);
         const running = (await use("threads.list", { agent })).filter(t => t.status !== "stopped");
         if (running.length) throw new Error(`${a.name} has ${running.length} running thread${running.length === 1 ? "" : "s"}; stop ${running.length === 1 ? "it" : "them"} first: vyre agents stop ${a.name}`);
-        // Option (a): the agent is gone, so its projects.access rows are deleted outright, not
-        // merely revoked; there is nothing left for a future re-add to weigh against. Before the
-        // agent's own rows: a failed clear means the delete never happened either.
-        const c = await ctx.call("projects.access.clear", { agent: a.name });
-        if (c.error && c.error.code !== "no_such_tool") throw new Error(`could not clear ${a.name}'s projects.access rows: ${c.error.message}`);
+        // the agent is gone: its project reach grants are revoked first, so a failed revoke means the delete never happened either
+        if (K && K.grants && (await hasPerson(meta))) await revokeReach(K, meta, { agent: a.name });
         db.prepare("DELETE FROM agents_spend WHERE agent = ?").run(a.name);
         db.prepare("DELETE FROM agents_agents WHERE name = ?").run(a.name);
         return { agent: a.name, deleted: true };

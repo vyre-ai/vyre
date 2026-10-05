@@ -40,6 +40,9 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Take a Kit's parts out. Records stay." },
   // What a Flow's steps do (kernel/flows/runner.js, compile.js STEP_ACTIONS): run a Flow by hand, give someone a task, run a Code step in the sandbox, send text to a model through the door. Registered
   // here so the real authorizer knows them (an unregistered action answers unknown_action, which the Flow harness hid by registering its own).
+  // Which agents may reach a Project's data (its files, sessions, memory). A person holds it by role; an AGENT holds it only by a grant of its own on that Project record. This replaces the
+  // projects module's own access table: one permission system, the kernel's.
+  { action: "project.reach", resource_type: "project", risk: "read", label: "reach a project", gloss: "Read a project's files, sessions and memory." },
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },

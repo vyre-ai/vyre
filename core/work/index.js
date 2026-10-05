@@ -146,6 +146,18 @@ export default {
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length };
       },
     });
+    // The Project record for a short name, made if this Space has none yet: what the projects module asks before it grants an agent reach (a grant names the record).
+    ctx.tool("work.project.ensure", {
+      description: "The Project record for a short name (made if there is none): { urn, slug, name }. For the projects module's own use.",
+      input: obj({ slug: { type: "string" }, name: { type: "string" } }, ["slug"]),
+      callers: ["module"],
+      run: async (input, extra) => {
+        if (String((extra && extra.caller) || "") !== "module:projects") throw Object.assign(new Error("work.project.ensure is the projects module's"), { code: "denied" });
+        const rec = await hubOf().ensureProject(String(input.slug), typeof input.name === "string" ? input.name : undefined);
+        if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
+        return { urn: rec.urn, slug: rec.data.slug, name: rec.data.name };
+      },
+    });
     ctx.tool("work.project.rename", {
       description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),

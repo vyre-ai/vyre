@@ -108,15 +108,6 @@
         "effect": "read"
       },
       {
-        "name": "projects.access.migrate",
-        "reach": "anyone",
-        "effect": "write"
-      },
-      {
-        "name": "projects.access.clear",
-        "reach": "modules"
-      },
-      {
         "name": "projects.reach",
         "reach": "modules"
       },
@@ -125,6 +116,12 @@
         "summary": "learn of a Project record: a local row and a home folder (the work module only)",
         "reach": "modules",
         "effect": "write"
+      },
+      {
+        "name": "projects.record",
+        "summary": "the Project record's address for a short name (the agents module only)",
+        "reach": "modules",
+        "effect": "read"
       }
     ]
   },
@@ -149,7 +146,14 @@
       "unpick"
     ]
   },
-  "needs": {},
+  "needs": {
+    "kernel": {
+      "reach": true,
+      "actions": [
+        "records.read"
+      ]
+    }
+  },
   "teaches": {
     "tips": [
       {

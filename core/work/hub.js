@@ -64,14 +64,22 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     catch (e) { if (strict) throw e; log(`project hub: no Drive folder marker for ${rec.data.slug} (${/** @type {Error} */ (e).message})`); }
   }
 
+  /** @type {Map<string, Promise<any>>} one in flight per short name: the project list's event and the projects module's own ask can both arrive at once, and a short name is unique */
+  const making = new Map();
   /** The Project for a slug an older part of the system still names; made from the folder project's name on first sight. @param {string} slug @param {string} [name] */
-  async function ensureProject(slug, name) {
-    if (!slug || !SLUG_RE.test(slug)) return null;
-    const have = await find(PROJECT, "slug", slug);
-    if (have) return have;
-    let nm = name;
-    if (!nm) { const r = await tool("projects.list", {}); const list = (r && r.projects) || []; const hit = Array.isArray(list) ? list.find((/** @type {any} */ p) => p.slug === slug) : null; if (hit) nm = hit.name; }
-    return createProject(chain(), { name: nm || slug, slug });
+  function ensureProject(slug, name) {
+    if (!slug || !SLUG_RE.test(slug)) return Promise.resolve(null);
+    const hit = making.get(slug);
+    if (hit) return hit;
+    const p = (async () => {
+      const have = await find(PROJECT, "slug", slug);
+      if (have) return have;
+      let nm = name;
+      if (!nm) { const r = await tool("projects.list", {}); const list = (r && r.projects) || []; const h = Array.isArray(list) ? list.find((/** @type {any} */ x) => x.slug === slug) : null; if (h) nm = h.name; }
+      return createProject(chain(), { name: nm || slug, slug });
+    })().finally(() => making.delete(slug));
+    making.set(slug, p);
+    return p;
   }
 
   /** The Space's default project, "General": made on first need. A session started without a project is filed here, and "Move to project" files it later. */
