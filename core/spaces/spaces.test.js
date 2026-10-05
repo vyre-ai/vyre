@@ -1416,6 +1416,7 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   assert.deepEqual(await d.ok("spaces.storage.delete", { space: HOME, name: "personal/a", expected: sha("v2") }, "cli", as(MEM)), { ok: true, deleted: true });
   assert.equal((await d.ok("spaces.storage.usage", { space: HOME }, "cli", as(MEM))).used, 0);
   void w;
+});
 
 test("spaces.identity.devices: the id and key-agreement point of a device of a person you share a space with, public data only; a stranger gets nothing", async t => {
   const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
