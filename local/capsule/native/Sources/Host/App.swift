@@ -77,6 +77,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         // The Vyre app window (VyreAppWindow.swift) reaches vyred over the same socket and answers presence with Touch ID.
         VyreAppWindow.shared.socket = vyredSocketPath(ProcessInfo.processInfo.environment)
         VyreAppWindow.shared.presence = presence
+        VyreAppWindow.shared.identity = MacIdentity(store: KeychainSeedStore(home: home))
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
         let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"

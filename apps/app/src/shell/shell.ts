@@ -6,6 +6,13 @@ export type MacShell = {
   kind: "mac";
   /** The Mac app's window runs this page with no vyred of its own (On a server): the page pairs to the server by code. */
   boxless?: boolean;
+  /** This Mac's identity key (Host/MacIdentity.swift): an Ed25519 key whose seed stays in the Mac's Keychain. The page gets the public key and signatures, never the seed. Values are base64url. */
+  identity?: {
+    public(create?: boolean): Promise<string>;
+    sign(message: string): Promise<string>;
+    has(): Promise<boolean>;
+    forget(): Promise<void>;
+  };
   /** The version of this app, when the bridge says (a release candidate shows its own install line). */
   version?: string;
   /** The x-vyre-presence header for one call, from Touch ID (the person's own prompt). Rejects with plain words when it is refused. */

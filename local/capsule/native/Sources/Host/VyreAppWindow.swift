@@ -24,6 +24,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     /// Set by the Capsule at launch (App.swift).
     var socket = ""
     var presence: CapsulePresence?
+    /// This Mac's identity key (MacIdentity.swift), set by the Capsule at launch; the page signs through it and never sees the seed.
+    var identity: MacIdentity?
 
     /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
@@ -130,6 +132,18 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             switch await p.proofFromAnyThread(tool: tool, input: UncheckedBox(input), summary: args["summary"] as? String) {
             case .success(let header): reply(id, ["header": header])
             case .failure(let f): reply(id, ["error": f.message])
+            }
+        case "identity.public", "identity.sign", "identity.has", "identity.forget":
+            guard let id0 = identity else { return reply(id, ["error": "This Mac cannot keep your key."]) }
+            switch op {
+            case "identity.public":
+                guard let pub = id0.publicKey(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": args["create"] as? Bool == true ? "This Mac would not keep your key." : "There is no key on this Mac."]) }
+                reply(id, ["publicKey": MacIdentity.b64url(pub)])
+            case "identity.sign":
+                guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let sig = id0.sign(m) else { return reply(id, ["error": "There is no key on this Mac to sign with."]) }
+                reply(id, ["signature": MacIdentity.b64url(sig)])
+            case "identity.has": reply(id, ["has": id0.has])
+            default: id0.forget(); reply(id, ["ok": true])
             }
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
@@ -277,6 +291,12 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
+        identity: {
+          public: function (create) { return call("identity.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
+          has: function () { return call("identity.has").then(function (r) { return r.has; }); },
+          forget: function () { return call("identity.forget").then(function () {}); }
+        },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },
         _command: function (name) { commands.forEach(function (f) { try { f(name); } catch (e) {} }); }

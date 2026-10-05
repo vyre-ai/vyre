@@ -3,6 +3,7 @@
 // (a follow-up: until then a phone keeps it for the session only). The recovery code is never here: it is shown once and dropped.
 
 import { restoreDeviceKey, wrapKept, type DeviceKey } from "./keys.js";
+import { MAC_KEPT, macDeviceKey } from "./mac-key.ts";
 
 export type KeptIdentity = { name: string; id: string; eid: string; ops: unknown[]; pin: { id: string; seq: number; head: string }; kept: unknown; software: boolean; createdAt: number };
 
@@ -48,6 +49,11 @@ export async function loadIdentity(): Promise<(KeptIdentity & { key: DeviceKey }
     ? await new Promise((resolve) => { const q = db.transaction("identity").objectStore("identity").get(KEY); q.onsuccess = () => resolve((q.result as KeptIdentity) ?? null); q.onerror = () => resolve(null); })
     : memory;
   if (!rec) return null;
+  // The Mac app's window keeps the seed in the Mac's Keychain: the record says so, and the key is the shell's.
+  if ((rec.kept as { kind?: string } | null)?.kind === MAC_KEPT.kind) {
+    const key = await macDeviceKey();
+    return key ? { ...rec, key } : null;
+  }
   return { ...rec, key: await restoreDeviceKey(rec.kept) };
 }
 
@@ -64,7 +70,7 @@ export async function forgetIdentity(): Promise<void> {
 export async function hasIdentity(): Promise<boolean> { return (await loadIdentity()) !== null; }
 
 /** The identity key made before a claim (the browser keeps it with the record, so the claim makes its own): none. */
-export const createIdentityKey = async (): Promise<DeviceKey | undefined> => undefined;
+export const createIdentityKey = async (): Promise<DeviceKey | undefined> => (await macDeviceKey(true)) ?? undefined;
 
 /** The key kept on this device, or null. */
 export async function identityKey(): Promise<DeviceKey | null> { return (await loadIdentity())?.key ?? null; }

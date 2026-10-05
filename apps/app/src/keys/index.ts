@@ -2,8 +2,9 @@
 // Secure Enclave presence key, so a presence proof from a browser is the passkey path (src/auth/person.web.ts), not this.
 
 import { createIdentityKey, hasIdentity, identityKey, forgetIdentity } from "../identity/store";
+import { macDeviceKey, macKeyAvailable } from "../identity/mac-key.ts";
 
-export type KeyStorage = { identity: "webcrypto-indexeddb" | "software-indexeddb" | "none"; presence: "passkey" | "none" | "not-in-rc1" | "secure-enclave" | "keystore" | "software" };
+export type KeyStorage = { identity: "webcrypto-indexeddb" | "software-indexeddb" | "mac-keychain" | "none"; presence: "passkey" | "none" | "not-in-rc1" | "secure-enclave" | "keystore" | "software" };
 export type { PresenceCard, PresenceProof } from "../../modules/vyre-signer/index";
 
 export { createIdentityKey };
@@ -13,12 +14,16 @@ export async function signIdentityOp(message: Uint8Array): Promise<Uint8Array> {
   if (!k) throw Object.assign(new Error("no identity key on this device"), { code: "ERR_NO_KEY" });
   return k.sign(message);
 }
-export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean }> => ({});
+/** The Mac app's window hands recovery its own key (the seed stays in the Keychain); a browser makes one in the call. */
+export const recoveryKeyOptions = async (): Promise<{ enclave?: string; requireEnclave?: boolean; key?: NonNullable<Awaited<ReturnType<typeof macDeviceKey>>> }> => {
+  const key = macKeyAvailable() ? await macDeviceKey(true) : null;
+  return key ? { key } : {};
+};
 export async function hasKeys(): Promise<{ identity: boolean; presence: boolean }> { return { identity: await hasIdentity(), presence: false }; }
 export async function wipeKeys(): Promise<void> { await forgetIdentity(); }
 export async function keyStorage(): Promise<KeyStorage> {
   const k = await identityKey();
-  return { identity: !k ? "none" : k.software ? "software-indexeddb" : "webcrypto-indexeddb", presence: "passkey" };
+  return { identity: !k ? "none" : macKeyAvailable() ? "mac-keychain" : k.software ? "software-indexeddb" : "webcrypto-indexeddb", presence: "passkey" };
 }
 const notOnWeb = (): never => { throw Object.assign(new Error("a browser answers presence with a passkey, not this key"), { code: "ERR_NOT_ON_WEB" }); };
 export const signPresence = async (_card: import("../../modules/vyre-signer/index").PresenceCard): Promise<import("../../modules/vyre-signer/index").PresenceProof> => notOnWeb();
