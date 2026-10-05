@@ -45,6 +45,7 @@ function boxOf(w, key = wire.newRouteKey()) {
 const data = r => { assert.ok(r.json && r.json.data, JSON.stringify(r.json)); return r.json.data; };
 const code = r => r.json && r.json.error && r.json.error.code;
 const TOKEN = "x".repeat(43);
+const nextHash = (name, c) => W.codeHash(name, c);
 
 test("the repeated rules and constants equal core/names/rules.js and core/relay/wire.js", async () => {
   assert.deepEqual([...W.RESERVED].sort(), [...rules.RESERVED].sort());
@@ -55,6 +56,7 @@ test("the repeated rules and constants equal core/names/rules.js and core/relay/
   const key = wire.newRouteKey();
   assert.equal(await W.routeId(key.pub), wire.routeId(key.pub));
   assert.equal(await W.routeHash(wire.routeId(key.pub)), rules.routeHash(wire.routeId(key.pub)));
+  assert.equal(await W.codeHash("alex", "ABCD-efgh"), rules.codeHash("alex", "abcdefgh"));
 });
 
 test("names: reserved, lookalikes, format", () => {
@@ -90,15 +92,18 @@ test("check: ok, taken, reserved, invalid, mine; no signature needed", async t =
   assert.equal((await a.get("/v1/names/check?name=alex", { sig: "AAAA" })).status, 401);
 });
 
-test("claim binds a name for good and says so; there is no recovery code (instant recovery through the identity is the way back)", async t => {
+test("claim binds a name for good, returns a one-time code, stores only its hash", async t => {
   const w = world(t), a = boxOf(w);
   const r = data(await a.post("/v1/names/claim", { name: "Alex" }));
-  assert.deepEqual(r, { name: "alex", mine: true, fresh: true });
+  assert.equal(r.name, "alex");
+  assert.match(r.code, /^([a-z2-7]{4}-){6}[a-z2-7]{2}$/);
+  const plain = r.code.replace(/-/g, "");
+  assert.equal(plain.length, 26);
   const stored = JSON.stringify([...w.rt.object("v1", "DIRECTORY").ctx.storage.map]);
-  assert.ok(!/codeHash/.test(stored), "no recovery code hash is kept");
-  // the same route asking again learns it is theirs
-  assert.deepEqual(data(await a.post("/v1/names/claim", { name: "alex" })), { name: "alex", mine: true, fresh: false });
-  assert.equal((await a.post("/v1/names/code", { name: "alex", next: "x" })).status, 405, "the old recovery-code route is gone");
+  assert.ok(!stored.includes(plain), "the code is not stored");
+  assert.ok(stored.includes(await W.codeHash("alex", r.code)), "its hash is");
+  // the same route asking again learns it is theirs and gets no second code
+  assert.deepEqual(data(await a.post("/v1/names/claim", { name: "alex" })), { name: "alex", mine: true, code: null });
   const mine = data(await a.get("/v1/names/mine"));
   assert.equal(mine.name, "alex");
   assert.equal(mine.state, "claimed");
@@ -234,7 +239,7 @@ test("request checks: a foreign Origin, cross-site, content type, size, methods,
   assert.equal((await claim({ origin: "https://names.vyre.run.evil.example" })).status, 403);
   assert.equal((await claim({ "sec-fetch-site": "cross-site" })).status, 403);
   assert.equal((await a.del("/v1/names/acme", { own: true }, { headers: { origin: "https://evil.example" } })).status, 403);
-  assert.equal((await a.post("/v1/names/release", { name: "x" }, { headers: { origin: "https://evil.example" } })).status, 403);
+  assert.equal((await a.post("/v1/names/code", { name: "x" }, { headers: { origin: "https://evil.example" } })).status, 403);
   assert.equal((await claim({ "content-type": "text/plain" })).status, 415);
   assert.equal((await claim({ "content-type": "application/x-www-form-urlencoded" })).status, 415);
   assert.equal(w.rt.object("v1", "DIRECTORY").ctx.storage.map.size, 0, "nothing was written by any refused request");
@@ -333,6 +338,14 @@ async function claimed(w, name = "alex") {
   return { a, code: c };
 }
 
+test("code: the owner replaces the recovery code", async t => {
+  const w = world(t), { a, code: c } = await claimed(w);
+  const n = boxOf(w);
+  assert.equal(code(await n.post("/v1/names/code", { name: "alex", next: await nextHash("alex", "b") })), "not_yours");
+  assert.equal(code(await a.post("/v1/names/code", { name: "alex", next: "bad" })), "bad_code");
+  data(await a.post("/v1/names/code", { name: "alex", next: await nextHash("alex", "newcod") }));
+});
+
 test("a DNS failure while wiping is retried by the sweep", async t => {
   const w = world(t), { a } = await claimed(w);
   w.dns.state.failNext = 1;
@@ -349,7 +362,7 @@ const admin = (w, body, secret = ADMIN, extra = {}) => worker.fetch(new Request(
   method: "POST", headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.9", ...(secret === null ? {} : { "x-vyre-admin": secret }), ...extra }, body: JSON.stringify(body),
 }), w.env).then(async r => ({ status: r.status, json: await r.json().catch(() => null) }));
 
-test("admin rebind: a name moves at once, is logged, and tells the old route", async t => {
+test("admin rebind: a name moves at once, is logged, tells the old route, and keeps the recovery code", async t => {
   const w = world(t, { ADMIN_SECRET: ADMIN }), { a, code: c } = await claimed(w);
   data(await a.post("/v1/names/point", { name: "alex", ip: "100.101.1.1" }));
   const n = boxOf(w);
