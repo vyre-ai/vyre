@@ -1204,6 +1204,8 @@ export default {
       // and a joiner's device asks this server to sign a fresh nonce with it (spaces.attest, answered inside grants.invites.get) before it shows the join card.
       const kp = await files.keys.generate();
       await files.keys.hold(id, kp.privateKey);
+      // the device that asked for it is enrolled in the new space on this server (a device that already has a list is not added by itself: devices enrol per space), so its own later calls into the space have a chain
+      { const dk = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : ""; if (dk) { const l = await enrolledList(dk); if (l !== null && !l.includes(id)) await kv.put(`device-spaces/${dk}`, [...l, id]); } }
       return { space: id, existed: false, rootPublic: kp.publicKey };
     });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
