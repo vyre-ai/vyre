@@ -67,8 +67,11 @@ export const ADMIN_ROLES = Object.freeze(["owner", "admin"]);
  * page script can reach, so the entry cannot change who speaks for the identity). The chain validates each one's shape; nothing else is copied, and a `held` that is not "web" or true is dropped.
  * @param {any} e @returns {{ agree?: string, enclave?: string, held?: "web", attest?: string }}
  */
+/** Is this a real P-256 key-agreement point: 65 bytes, uncompressed, and ON the curve (noble's decoder throws off-curve), so a made-up point never reaches the identity list. @param {string} v */
+const onCurve = v => { try { const b = Buffer.from(v, "base64url"); if (b.length !== 65 || b[0] !== 4 || b.toString("base64url") !== v) return false; p256.ProjectivePoint.fromHex(new Uint8Array(b)); return true; } catch { return false; } };
+
 export const entryExtras = e => ({
-  ...(e && typeof e.agree === "string" && e.agree ? { agree: e.agree.slice(0, 200) } : {}),
+  ...(e && typeof e.agree === "string" && onCurve(e.agree) ? { agree: e.agree } : {}),
   ...(e && typeof e.enclave === "string" && e.enclave ? { enclave: e.enclave.slice(0, 200) } : {}),
   ...(e && (e.held === "web" || e.held === true) ? { held: /** @type {"web"} */ ("web") } : {}),
   ...(e && typeof e.attest === "string" && e.attest && e.attest.length <= 16384 ? { attest: e.attest } : {}),
