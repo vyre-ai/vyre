@@ -67,3 +67,11 @@ test("a hidden or missing folder is one plain refusal that keeps its code", { sk
   const b = box({ "files.drive.list": { error: { code: "not_available", message: "not available" } } });
   await assert.rejects(driveSource(b.call).listReal("projects", "/secret"), (/** @type {any} */ e) => e.code === "not_available" && /not available on your home/.test(driveRefusal(e.code, e.message)));
 });
+
+test("the real Drive has one Shared tab, and no separate Shared links tab", async () => {
+  const { REAL_TABS } = await import("./tabs.js");
+  const names = REAL_TABS.map(([k]) => k);
+  assert.ok(names.includes("shared"));
+  assert.ok(!names.includes("links"));
+  assert.ok(!REAL_TABS.some(([, label]) => label === "Shared links"));
+});

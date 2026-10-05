@@ -28,3 +28,13 @@ test("watchers.shown names each card once, and the watcher tools are recognised 
   for (const t of ["watchers.card", "watchers.preset", "mcp__vyre__watchers_card"]) assert.equal(showsWatcherCard(t), true, t);
   assert.equal(showsWatcherCard("watchers.list"), false);
 });
+
+import { artifactOf, artifactHref } from "./extras.js";
+test("an artifact made in a chat is read from its row key and links to its page at the version made", () => {
+  // core/stream/adapter.js thread.artifact: tool_id art:<id>:<version>, words "Artifact <title>"; the folder keys the row "t:" + tool_id.
+  const a = artifactOf("t:art:ar_123:2", "Artifact Lease summary");
+  assert.deepEqual(a, { id: "ar_123", version: 2, title: "Lease summary" });
+  assert.equal(artifactHref(a), "/a/ar_123?v=2");
+  assert.equal(artifactHref({ id: "ar_1", version: 0 }), "/a/ar_1");
+  assert.equal(artifactOf("t:Bash1", "x"), null);
+});

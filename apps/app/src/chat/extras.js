@@ -27,3 +27,17 @@ export function watcherNames(data) {
 
 /** Did the assistant call a tool that shows a watcher card? The row's tool is watchers.card or watchers.preset, possibly with an MCP prefix and underscores. @param {string} tool */
 export const showsWatcherCard = (tool) => /(^|[._]|__)watchers[._](card|preset)$/.test(String(tool));
+
+/**
+ * An artifact the assistant made in this chat. The stream's frame is a finished tool row keyed `art:<artifact id>:<version>` whose words are "Artifact <title>" (core/stream/adapter.js, thread.artifact):
+ * the row key is "t:" and that id. @param {string} key @param {unknown} text @returns {{ id: string, version: number, title: string } | null}
+ */
+export function artifactOf(key, text) {
+  const m = /^t:art:(.+):(\d+)$/.exec(String(key));
+  if (!m) return null;
+  const words = typeof text === "string" ? text.replace(/^Artifact\s+/, "").trim() : "";
+  return { id: m[1], version: Number(m[2]), title: words || "Artifact" };
+}
+
+/** Where a chat's artifact opens: the artifact page, at the version the chat made. @param {{ id: string, version: number }} a */
+export const artifactHref = (a) => `/a/${encodeURIComponent(a.id)}${a.version > 0 ? `?v=${a.version}` : ""}`;

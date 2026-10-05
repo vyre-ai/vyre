@@ -1,5 +1,6 @@
 // One artifact full screen (the Deck's /a/<id>?v=N): the version, who made it, its versions, what happened to it, and a public link.
 // The page it made is untrusted: it runs in a sealed frame and sits under a line that says so. A link is posting as the person, so the box asks their yes.
+import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, LoadingState, Row, SectionLabel, Text, showToast } from "@vyre/ui";
@@ -35,7 +36,7 @@ export function ArtifactScreen({ id, version }: { id: string; version?: number }
   const title = String(art?.title || art?.name || "Shared");
   const by = String(art?.agent || art?.by || "");
   return (
-    <Page title={title} back="/u/shared">
+    <Page title={title} back="/u/drive">
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!art && !err ? <LoadingState rows={4} /> : null}
       {art ? (
@@ -50,7 +51,7 @@ export function ArtifactScreen({ id, version }: { id: string; version?: number }
           </Card>
           <Card flush>
             <SectionLabel first>What happened</SectionLabel>
-            {log.length ? log.slice(0, 20).map((e, i) => <View key={i}>{i ? <Divider /> : null}<Row dense title={e.line} sub={[when(e.at), e.by].filter(Boolean).join(" · ") || undefined} /></View>) : <EmptyState title="Nothing yet" body="Opens, links and changes show here." />}
+            {log.length ? log.slice(0, 20).map((e, i) => <View key={i}>{i ? <Divider /> : null}<Row dense title={e.line} sub={[when(e.at), e.by, e.via ? ASSISTANT_MARK : ""].filter(Boolean).join(" · ") || undefined} /></View>) : <EmptyState title="Nothing yet" body="Opens, links and changes show here." />}
           </Card>
           {problem ? <Banner tone="warn">{problem}</Banner> : null}
           {link ? <Text selectable>{link}</Text> : null}

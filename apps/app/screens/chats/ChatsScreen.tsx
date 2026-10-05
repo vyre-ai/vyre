@@ -8,7 +8,7 @@ import { useGap } from "../../src/state/setup-gap";
 import { useConnection } from "../../src/state/connection";
 import { refresh } from "../../src/state/live";
 import { ageOf } from "./chat-model.js";
-import { chatState, chatSub, chatsOrdered } from "./chats-model.js";
+import { UNSUPPORTED, chatState, chatSub, chatsOrdered } from "./chats-model.js";
 import { ProviderBadge } from "@vyre/ui";
 
 /** /u/chats: every chat you can see, the ones that need you first. One row type for solo, group and people-only chats; a row for a chat you are not in is greyed and does not open. */
@@ -23,7 +23,8 @@ export default function ChatsScreen() {
   const rows = chatsOrdered(chats.rows);
   return (
     <Page top title="Chat" actions={<Button kind="primary" size="sm" icon="plus" label="New chat" onPress={() => go("/u/chats/new")} />}>
-      {gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
+      {chats.from === "unsupported" ? <Card><EmptyState title={UNSUPPORTED} body="This app and your server ship together. Update the server, then come back." /></Card>
+        : gap ? <Card><EmptyState title={gap.title} body={gap.line} action={{ label: gap.action, onPress: () => go(gap.route) }} /></Card>
         : chats.from === "none" && !rows.length ? (status === "live" ? <LoadingState rows={4} /> : <Card><EmptyState title="Your Vyre has not answered yet" body="Check that it is on and online. Nothing was lost." action={{ label: "Try again", onPress: () => refresh() }} /></Card>)
         : !rows.length ? <Card><EmptyState title="No chats yet" body="Start one with your assistant or an agent." action={{ label: "New chat", onPress: () => go("/u/chats/new") }} /></Card>
         : (

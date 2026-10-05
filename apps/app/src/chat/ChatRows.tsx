@@ -12,6 +12,8 @@ import { BlockView, type BlockCtx } from "./Blocks";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience } from "./group.js";
+import { useRouter } from "expo-router";
+import { artifactHref, artifactOf } from "./extras.js";
 import { readSelection } from "./highlight.js";
 import { FanoutSet } from "./FanoutSet";
 import { MessageTools, Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
@@ -217,7 +219,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const w = whoOf(store, k);
       const mine = store.group.isMine(k);
       return (
-        <Message who={w.name} family={w.family} sub={w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text)} wide={wide}>
+        <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text)} wide={wide}>
           <Text size="read" selectable>{it.text}</Text>
           {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
           <HighlightAction from={w.name} text={it.text} ctx={ctx} />
@@ -246,6 +248,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const running = it.status === "running";
       let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;
       if (!block && it.toolKind === "terminal") block = { block: "terminal", command: it.summary, output: it.output, exit: null, running: true };
+      const art = block && block.block === "text" ? artifactOf(it.key, block.text) : null;
+      if (art) return <Frame wide={wide} indent><ArtifactLink title={art.title} href={artifactHref(art)} /></Frame>;
       return (
         <Frame wide={wide} indent>
           {block ? <BlockView block={block} ctx={ctx} output={running ? it.output : undefined} running={running} /> : <ToolLine it={it} running={running} />}
@@ -268,6 +272,19 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
     default:
       return null;
   }
+}
+
+/** An artifact made in this chat: one tap opens its page. */
+function ArtifactLink({ title, href }: { title: string; href: string }) {
+  const router = useRouter();
+  const { color } = useUiTheme();
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={`Open ${title}`} onPress={() => router.push(href as never)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], alignSelf: "flex-start" }}>
+      <Icon name="file" />
+      <Text strong numberOfLines={1}>{title}</Text>
+      <Icon name="chev" />
+    </Pressable>
+  );
 }
 
 export const ChatRow = memo(

@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMockStore } from "../../src/vendor/deck/ui/mock-store.js";
+import { createMockStore } from "../../src/store-core/mock-store.js";
 import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });

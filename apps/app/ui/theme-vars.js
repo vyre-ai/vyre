@@ -2,7 +2,7 @@
 // @vyre/ui/theme-vars: the custom properties that restyle every component. Pure, so Node tests it. Input is the resolved theme
 // (deck/ui/theme.js: defaults, then the space, then the person) and the token source (lib/theme/tokens.json v2 and v3);
 // output is a flat { "--name": value } map the ThemeProvider writes on its root view. Nothing here is a design choice: every number is a token.
-import { V3 } from "../src/vendor/deck/ui/tokens-v3.js";
+import { V3 } from "../src/store-core/tokens-v3.js";
 import { tokens } from "../src/theme/tokens";
 
 const kebab = (/** @type {string} */ s) => s.replace(/[A-Z0-9]/g, (c) => "-" + c.toLowerCase());

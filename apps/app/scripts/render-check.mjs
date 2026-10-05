@@ -23,7 +23,7 @@ const { chromium } = require("playwright");
 /** The main screens, as the shell offers them (screens/shell/nav.ts) plus what the first run and a chat open. */
 export const ROUTES = [
   "/u/now", "/u/chats", "/u/chats/new", "/u/search", "/u/projects", "/u/records/contact", "/u/records/matter", "/u/drive", "/u/calendar", "/u/memory", "/u/vault", "/u/flows", "/u/kits", "/u/assistants",
-  "/u/settings", "/u/appearance", "/u/settings/devices", "/u/settings/customize", "/u/spaces", "/u/wink", "/u/install", "/u/install/create", "/u/install/join", "/session/demo",
+  "/u/settings", "/u/appearance", "/u/settings/devices", "/u/settings/customize", "/u/spaces", "/u/wink", "/u/install", "/u/install/create", "/u/install/join", "/session/demo", "/u/chats/demo", "/u/chats/demo-three", "/u/chats/demo-people", "/u/chats/demo-assistant",
 ];
 const WIDTHS = [390, 1280];
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".json": "application/json", ".ttf": "font/ttf", ".woff2": "font/woff2", ".svg": "image/svg+xml" };

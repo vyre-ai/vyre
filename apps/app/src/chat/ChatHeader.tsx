@@ -66,7 +66,7 @@ export function ChatHeader({ title, participants, viewer, line, phone, onBack, o
           <Icon name="chev-l" size={20} tone="text" />
         </Pressable>
       ) : <View style={S.s1} />}
-      <Pressable accessibilityRole="button" accessibilityLabel={`About this chat: ${title}`} onPress={onOpen} style={S.open}>
+      <Pressable accessibilityRole="button" accessibilityLabel={`In this chat: ${title}`} onPress={onOpen} style={S.open}>
         <HeaderStack faces={stack.shown} more={stack.more} />
         <View style={S.s2}>
           <Text strong numberOfLines={1}>{title}</Text>

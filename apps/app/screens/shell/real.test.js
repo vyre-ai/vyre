@@ -66,8 +66,16 @@ test("a box that cannot list spaces is an error with its code, not an empty shel
 });
 
 import { spaceName as spaceNameOf } from "./real-model.ts";
-test("a space is never called by its id: its name, its label, or Home", () => {
-  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1" }), "Home");
+test("a space is never called by its id: its name, label or address; Home only for the personal space; else Space", () => {
+  const warn = console.warn; let warned = 0; console.warn = () => { warned++; };
+  try {
+    assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1" }), "Space");
+    assert.equal(warned, 1, "the gap is logged");
+    assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "SPC_9ZK4", name: "spc_9zk4" }), "Space");
+  } finally { console.warn = warn; }
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", setup: { who: "personal" } }), "Home");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "example.vyre.run" }), "example");
   assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", label: "harlow" }), "harlow");
   assert.equal(spaceNameOf({ id: "spc_x1", name: "x", displayName: "Harlow Legal" }), "Harlow Legal");
+  assert.equal(spaceNameOf({ id: "spc_1", displayName: "spc_9zk4", label: "Harlow Legal" }), "Harlow Legal");
 });

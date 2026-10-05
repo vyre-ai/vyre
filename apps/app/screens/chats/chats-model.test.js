@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatsFrom, fromThread, chatState, chatSub, chatsOrdered, chatIdOf, sampleChats } from "./chats-model.js";
+import { withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, sampleChats } from "./chats-model.js";
 
 test("work.chat.list rows become one row type; the id comes from the record address; a row with no open flag is not openable", () => {
   const rows = chatsFrom({ rows: [
@@ -17,18 +17,37 @@ test("work.chat.list rows become one row type; the id comes from the record addr
   assert.deepEqual(chatsFrom(null), []);
 });
 
-test("the older session list makes the same row, so the list works before a box has work.chat.list", () => {
-  const r = fromThread({ id: "th1", name: "Refactor", agent: "rex", project: "p", projectName: "Billing", status: "working", asks: 2, last: 9, model: "claude-opus" });
-  assert.deepEqual([r.id, r.title, r.agents, r.project, r.providers, r.open], ["th1", "Refactor", ["rex"], "Billing", ["claude"], true]);
-  assert.equal(chatState(r), "needs-you");
-  assert.equal(chatSub(r), "2 waiting on you · rex · Billing");
+test("a box without work.chat.list is told to update; there is no older list", () => {
+  assert.equal(UNSUPPORTED, "Update your server to use Chats");
+  assert.equal(noSuchTool({ code: "unknown_tool" }), true);
+  assert.equal(noSuchTool({ code: "offline" }), false);
 });
 
 test("chats that need you come first, and no row reads a session, a thread or a room", () => {
   const list = sampleChats(1_000_000_000);
-  assert.equal(list.length, 3);
-  assert.deepEqual(list.map((c) => c.models.length), [1, 3, 0]);
-  const ordered = chatsOrdered([{ ...list[2], asks: 1 }, list[0], list[1]]);
+  assert.equal(list.length, 4);
+  const people = list.find((c) => c.id === "demo-people");
+  const ordered = chatsOrdered([{ ...people, asks: 1 }, ...list.filter((c) => c.id !== "demo-people")]);
   assert.equal(ordered[0].id, "demo-people");
   for (const c of list) assert.doesNotMatch(`${c.title} ${chatSub(c)}`, /\b(session|thread|room|fan-?out)\b/i);
+});
+
+test("work.chat.list's real answer: { chats }, flat rows, people and agents as comma-joined strings, chat is the id, open only for chats the caller is in", () => {
+  const rows = chatsFrom({ chats: [
+    { id: "rec_1", urn: "vyre://home/chat-record/rec_1", title: "Lease reply", project: { urn: "vyre://home/project/general" }, chat: "chat_a1", people: "per_1, per_2", agents: "kit", started: 1, last_active: 9, status: "idle", drive: "", location: "", open: true },
+    { id: "rec_2", urn: "vyre://home/chat-record/rec_2", title: "Payroll", project: { urn: "vyre://home/project/hr" }, chat: "chat_b2", people: "per_3", agents: "", last_active: 3, status: "working" },
+  ] });
+  assert.deepEqual(rows.map((r) => r.id), ["chat_a1", "chat_b2"]);
+  assert.deepEqual(rows[0].people, ["per_1", "per_2"]);
+  assert.deepEqual(rows[0].agents, ["kit"]);
+  assert.deepEqual(rows[1].agents, []);
+  assert.deepEqual(rows.map((r) => r.open), [true, false]);
+  assert.equal(rows[0].project, "", "an urn is never shown as a project name");
+});
+
+test("person ids become names, and an id with no name reads Someone, never the id", () => {
+  const rows = chatsFrom({ chats: [{ chat: "c1", title: "t", people: "per_1,per_2", agents: "kit", open: true }] });
+  const named = withNames(rows, { actors: [{ id: "per_1", name: "Dana Okafor" }, { id: "per_2", name: "per_2" }] });
+  assert.deepEqual(named[0].people, ["Dana Okafor", "Someone"]);
+  assert.deepEqual(named[0].agents, ["kit"]);
 });

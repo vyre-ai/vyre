@@ -1,7 +1,7 @@
 // The space calendar, as pure functions: every record with a date on it (an Event, a deadline, a task's due date) as one dated item, shown by day, week or month.
 // Nothing here knows a record type. An Event type, when the space has one, is read by its fields: the first datetime field is the start, a field named
 // like end/ends/until after it is the end. Any other type shows once for each date field it has.
-import { viewDefOf } from "../../src/vendor/deck/ui/view-defs.js";
+import { viewDefOf } from "../../src/store-core/view-defs.js";
 import { isoDay, toDate } from "../../ui/fields/logic.js";
 
 export const VIEWS = /** @type {const} */ (["day", "week", "month"]);
