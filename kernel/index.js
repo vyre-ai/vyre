@@ -93,8 +93,8 @@ export async function createKernel(cfg) {
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
-  await store.define({ add_types: [TASK] });
-  await tasks.migrate();
+  // A space whose record store cannot start here holds no records at all (the refusing store): its kernel still boots, with no task records.
+  try { await store.define({ add_types: [TASK] }); await tasks.migrate(); } catch (e) { if (/** @type {any} */ (e).code !== "unavailable") throw e; }
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });
