@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { Banner, Button, Card, Chip, EmptyState, Field, Segmented, Text } from "@vyre/ui";
+import { Banner, Button, Card, Chip, EmptyState, Field, Segmented, Text, useUiTheme } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import FilesTab from "./FilesTab";
 import { GlassFrame } from "./GlassFrame";
@@ -28,6 +28,7 @@ function Box() {
 function Computer({ name }: { name: string }) {
   const target = `computer:${name}`;
   const g = useGlass(name, target);
+  const { color } = useUiTheme();
   const [tab, setTab] = useState<"screen" | "files">("screen");
   const [priv, setPriv] = useState(false);
   const [note, setNote] = useState("");
@@ -78,11 +79,11 @@ function Computer({ name }: { name: string }) {
         {g.other && g.holder ? <Banner><Text>{`${blocked.replace(/ has control\.$/, "")} has the keyboard${g.holder.since ? `, ${clock(now - g.holder.since)}` : ""}. ${name} is paused and this view is read-only.`}</Text></Banner> : null}
         <View className="flex-row flex-wrap gap-s3">
           <View className="min-w-0 flex-[3] gap-s2" style={{ minWidth: 320 }}>
-            <View style={{ width: "100%", aspectRatio: g.size ? g.size.w / g.size.h : 16 / 10, backgroundColor: "#0b0b0c", borderRadius: 8, overflow: "hidden" }} accessibilityLabel={`Live view of ${name}'s screen`}>
+            <View style={{ width: "100%", aspectRatio: g.size ? g.size.w / g.size.h : 16 / 10, backgroundColor: color["surface-3"], borderRadius: 8, overflow: "hidden" }} accessibilityLabel={`Live view of ${name}'s screen`}>
               <GlassFrame src={FRAME_URL} onMessage={g.onFrame} frameRef={g.frame} label={`${name}'s screen`} />
               {g.conn !== "live" ? (
-                <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", padding: 16, backgroundColor: "rgba(0,0,0,.45)" }}>
-                  <View className="items-center gap-s2"><Text strong tone="inverse">{title}</Text>{detail ? <Text size="secondary" tone="inverse">{detail}</Text> : null}
+                <View style={{ position: "absolute", inset: 0, alignItems: "center", justifyContent: "center", padding: 16 }}>
+                  <View className="items-center gap-s2 rounded-card border border-edge bg-surface-3 p-s4"><Text strong>{title}</Text>{detail ? <Text size="secondary" tone="muted">{detail}</Text> : null}
                     {["ended", "error", "noscreen", "failed"].includes(g.conn) ? <Button size="sm" label={g.conn === "failed" ? "Retry" : "Try again"} onPress={g.retryNow} /> : null}</View>
                 </View>
               ) : null}
