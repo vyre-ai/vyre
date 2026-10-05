@@ -128,15 +128,61 @@ test("a public control address: the gate listens on every interface and a pairin
   assert.equal(await m.handover({}), null, "a loopback-only network gives another machine nothing to dial");
 });
 
-test("reach: its status is carried, and it never blocks the network", async () => {
+test("reach: its status is carried, and it never blocks the network (a configured control address: the gate listens in public, so its port is the one mapped)", async () => {
   const f = fakes();
-  const started = [];
-  const reach = { start: () => { started.push(1); return new Promise(() => {}); }, status: () => ({ state: "relay", public: { v4: null, v6: null, via: null } }), stop: () => {} };
-  const n = createNetd(base(f, { reach }));
+  const made = /** @type {any[]} */ ([]);
+  const reach = { start: () => { made.push("start"); return new Promise(() => {}); }, status: () => ({ state: "relay", public: { v4: null, v6: null, via: null } }), stop: () => {} };
+  const n = createNetd(base(f, { controlUrl: "https://home.example:9443", gatePort: 9443, reach: (/** @type {any} */ opts) => { made.push(opts.ports); return reach; } }));
   await n.start();
   assert.equal(n.status().state, "up");
-  assert.equal(started.length, 1);
+  assert.deepEqual(made, [[{ port: 9443, proto: "tcp" }], "start"]);
   assert.equal(n.status().reach.state, "relay");
+});
+
+test("reach (NW2-2): a box with no name, or with the public gate off, has only the loopback gate and nothing is ever mapped for it", async () => {
+  const f = fakes(), p = fakePublic();
+  let made = 0;
+  const spy = () => { made++; return { start: async () => {}, status: () => ({ state: "relay" }), stop: () => {} }; };
+  const noName = createNetd(base(f, { name: () => null, directory: dirStub, reach: spy, deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await noName.start();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(noName.status().state, "up");
+  assert.equal(made, 0, "no public gate is listening, so no port is mapped");
+  assert.equal(noName.status().reach, null);
+  await noName.stop();
+  const f2 = fakes();
+  const off = createNetd(base(f2, { name: () => "alex", reach: spy }));   // no directory: no public gate at all
+  await off.start();
+  await new Promise(r => setTimeout(r, 20));
+  assert.equal(made, 0, "no public gate, so nothing is mapped");
+  await off.stop();
+});
+
+test("reach (NW2-2): a named box maps the PUBLIC gate's port, and only once that gate is up with its certificate", async () => {
+  const f = fakes();
+  const order = /** @type {string[]} */ ([]);
+  /** @type {() => void} */ let release = () => {};
+  const gateUp = new Promise(r => { release = () => r(undefined); });
+  const p = fakePublic();
+  const createPublicGate = (/** @type {any} */ o) => { const g = p.createPublicGate(o); const start = g.start; g.start = async () => { order.push("gate starting"); await gateUp; order.push("gate up"); return start.call(g); }; return g; };
+  const n = createNetd(base(f, { name: () => "alex", directory: dirStub, reach: (/** @type {any} */ opts) => { order.push(`reach ${JSON.stringify(opts.ports)}`); return { start: async () => { order.push("reach start"); }, status: () => ({ state: "relay" }), stop: () => {} }; }, deps: { ...f.deps, createPublicGate } }));
+  await n.start();
+  await new Promise(r => setTimeout(r, 20));
+  assert.deepEqual(order, ["gate starting"], "nothing is mapped while the gate is still getting its certificate");
+  release();
+  await new Promise(r => setTimeout(r, 30));
+  assert.deepEqual(order, ["gate starting", "gate up", 'reach [{"port":7443,"proto":"tcp"}]', "reach start"]);
+  await n.stop();
+});
+
+test("reach (NW2-2): a public gate that failed to get its certificate maps nothing", async () => {
+  const f = fakes(), p = fakePublic({ state: "failed" });
+  let made = 0;
+  const n = createNetd(base(f, { name: () => "alex", directory: dirStub, reach: () => { made++; return { start: async () => {}, status: () => ({ state: "relay" }), stop: () => {} }; }, deps: { ...f.deps, createPublicGate: p.createPublicGate } }));
+  await n.start();
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(made, 0);
+  await n.stop();
 });
 
 test("findBinaries: under node --test nothing is found unless both programs are named", () => {

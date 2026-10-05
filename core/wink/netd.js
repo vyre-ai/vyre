@@ -144,14 +144,20 @@ export function createNetd(o) {
       });
       // started in the background below: a certificate can take a minute, and the network does not wait for it
     }
-    // the reachability helper (UPnP, IPv6, relay): optional and best effort; it never blocks the network from coming up
-    try {
-      const mk = (/** @type {any} */ x) => ({ ...x, onchange: (/** @type {any} */ s) => { try { x.onchange && x.onchange(s); } catch { /* a listener */ } if (pub) pub.reachChanged().catch(() => {}); } });
-      const r = typeof o.reach === "function" ? o.reach(mk({ log, ports: [{ port: reachPort, proto: "tcp" }] })) : o.reach;
-      reach = r || (o.reach === undefined ? await loadReach(reachPort) : null);
-      if (reach && reach.start) Promise.resolve(reach.start()).catch(e => log(`wink net: reach did not start: ${/** @type {Error} */ (e).message}`));
-    } catch (e) { log(`wink net: reach unavailable: ${/** @type {Error} */ (e).message}`); }
-    if (pub) Promise.resolve(pub.start()).catch(e => log(`wink net: public gate: ${/** @type {Error} */ (e).message}`));
+    // the reachability helper (UPnP, NAT-PMP, IPv6, relay): optional and best effort; it never blocks the network from coming up. It maps a port on the person's router only for a gate that is
+    // listening in public: a configured control address (wink.controlUrl, the gate binds every address), or the public gate once it is up with its certificate. A box with no name yet, or with the
+    // public gate off, has only the loopback gate, and nothing is ever mapped for that (NW2-2).
+    const startReach = async () => {
+      if (reach || stopped) return;
+      try {
+        const mk = (/** @type {any} */ x) => ({ ...x, onchange: (/** @type {any} */ s) => { try { x.onchange && x.onchange(s); } catch { /* a listener */ } if (pub) pub.reachChanged().catch(() => {}); } });
+        const r = typeof o.reach === "function" ? o.reach(mk({ log, ports: [{ port: reachPort, proto: "tcp" }] })) : o.reach;
+        reach = r || (o.reach === undefined ? await loadReach(reachPort) : null);
+        if (reach && reach.start) Promise.resolve(reach.start()).catch(e => log(`wink net: reach did not start: ${/** @type {Error} */ (e).message}`));
+      } catch (e) { log(`wink net: reach unavailable: ${/** @type {Error} */ (e).message}`); }
+    };
+    if (publicUrl) await startReach();
+    if (pub) Promise.resolve(pub.start()).then(s => { if (s && s.state === "up") return startReach(); return undefined; }).catch(e => log(`wink net: public gate: ${/** @type {Error} */ (e).message}`));
 
     // the node: one wink-forwarder process joined with a one-time key; the door answers peers as device:<eid>
     host = D.createHost({ root: path.join(dir, "node"), forwarderBin: bins.forwarder, log });
