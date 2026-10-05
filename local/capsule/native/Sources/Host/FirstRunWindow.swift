@@ -80,6 +80,9 @@ final class FirstRunController: ObservableObject {
 
     func chooseHere() { setUpHere(remember: true) }
 
+    /// "Make this Mac a server" from Settings: the person asked for it, so the setup window opens and runs the bundled setup. Never called by a launch.
+    func makeThisMacServer() { show(); setUpHere(remember: true) }
+
     private func setUpHere(remember: Bool) {
         if remember { store.save(.here) }
         phase = .settingUp

@@ -44,7 +44,7 @@ let macIdentitySuite = Suite("mac identity") { t in
 
     t.test("the page's bridge carries the four identity calls") {
         MainActor.assumeIsolated {
-            for piece in ["identity.public", "identity.sign", "identity.has", "identity.forget", "identity: {"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) }
+            for piece in ["identity.public", "identity.sign", "identity.has", "identity.forget", "identity: {", "setup.server", "makeServer"] { t.ok(VyreAppWindow.bridgeSource.contains(piece), piece) }
         }
     }
 }
