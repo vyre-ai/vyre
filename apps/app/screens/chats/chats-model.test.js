@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, sampleChats } from "./chats-model.js";
+import { withNames, chatsFrom, noSuchTool, UNSUPPORTED, chatState, chatSub, chatsOrdered, chatIdOf, sampleChats } from "./chats-model.js";
 
 test("work.chat.list rows become one row type; the id comes from the record address; a row with no open flag is not openable", () => {
   const rows = chatsFrom({ rows: [
@@ -30,4 +30,24 @@ test("chats that need you come first, and no row reads a session, a thread or a 
   const ordered = chatsOrdered([{ ...people, asks: 1 }, ...list.filter((c) => c.id !== "demo-people")]);
   assert.equal(ordered[0].id, "demo-people");
   for (const c of list) assert.doesNotMatch(`${c.title} ${chatSub(c)}`, /\b(session|thread|room|fan-?out)\b/i);
+});
+
+test("work.chat.list's real answer: { chats }, flat rows, people and agents as comma-joined strings, chat is the id, open only for chats the caller is in", () => {
+  const rows = chatsFrom({ chats: [
+    { id: "rec_1", urn: "vyre://home/chat-record/rec_1", title: "Lease reply", project: { urn: "vyre://home/project/general" }, chat: "chat_a1", people: "per_1, per_2", agents: "kit", started: 1, last_active: 9, status: "idle", drive: "", location: "", open: true },
+    { id: "rec_2", urn: "vyre://home/chat-record/rec_2", title: "Payroll", project: { urn: "vyre://home/project/hr" }, chat: "chat_b2", people: "per_3", agents: "", last_active: 3, status: "working" },
+  ] });
+  assert.deepEqual(rows.map((r) => r.id), ["chat_a1", "chat_b2"]);
+  assert.deepEqual(rows[0].people, ["per_1", "per_2"]);
+  assert.deepEqual(rows[0].agents, ["kit"]);
+  assert.deepEqual(rows[1].agents, []);
+  assert.deepEqual(rows.map((r) => r.open), [true, false]);
+  assert.equal(rows[0].project, "", "an urn is never shown as a project name");
+});
+
+test("person ids become names, and an id with no name reads Someone, never the id", () => {
+  const rows = chatsFrom({ chats: [{ chat: "c1", title: "t", people: "per_1,per_2", agents: "kit", open: true }] });
+  const named = withNames(rows, { actors: [{ id: "per_1", name: "Dana Okafor" }, { id: "per_2", name: "per_2" }] });
+  assert.deepEqual(named[0].people, ["Dana Okafor", "Someone"]);
+  assert.deepEqual(named[0].agents, ["kit"]);
 });

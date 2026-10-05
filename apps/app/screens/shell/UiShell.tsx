@@ -8,6 +8,9 @@ import { NAV } from "./nav";
 import { useShell } from "./shared";
 import { loadReal } from "./real";
 import { whoIsThere } from "./gate.js";
+import { gatedPath } from "./basic.js";
+import { SERVER_SETUP_ROUTE } from "../install/first-run.js";
+import { NeedsServer } from "./NeedsServer";
 import { call, signIn } from "../../src/api/box";
 import { startSpace } from "./real-model";
 import { useSpaces } from "./state";
@@ -49,6 +52,10 @@ export function UiShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", on);
     return () => window.removeEventListener("keydown", on);
   }, [router]);
+  // On a Basic personal space (no server) the places that need a server say so, and offer the team spaces and a server of the person's own.
+  const showing = DATA.spaces.find((x) => x.id === space);
+  const needsServer = Boolean(showing?.basic) && gatedPath(path);
+  const teams = DATA.spaces.filter((x) => x.id !== "all" && !x.basic);
   const setSpace = useAppearance((s) => s.setSpace);
   const world = useWorld();
   const waiting = world.data ? nowCount(world.data) : 0;
@@ -60,7 +67,7 @@ export function UiShell({ children }: { children: React.ReactNode }) {
       <SessionNotice />
       {gate === "asking" ? <LoadingState rows={3} /> : gate === "out" ? (
         <EmptyState title="Sign in to Vyre" body="Nobody is signed in on this device yet." action={{ label: "Sign in", onPress: () => { void signIn(); } }} />
-      ) : children}
+      ) : needsServer ? <NeedsServer teams={teams} onOpenTeam={(id) => { setShowing(id); }} onAddServer={() => router.push(SERVER_SETUP_ROUTE as never)} /> : children}
       <ApprovalSheet />
       <FindHost />
     </Shell>

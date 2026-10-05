@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { ALPHABET, formatCode, parseCode } from "./code.js";
 import { codeToAvatarBytes, avatarBytesToCode, AVATAR_KIND } from "./avatarcode.js";
-import * as payload from "../../deck/vyrecode/payload.js";
+import * as payload from "../../lib/wink-code/payload.js";
 
 const randomCode = () => { const s = Array.from(crypto.randomBytes(8), b => ALPHABET[b & 31]).join(""); return formatCode(s.slice(0, 2), s.slice(2)); };
 

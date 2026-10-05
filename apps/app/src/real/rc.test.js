@@ -31,3 +31,10 @@ test("the name step on a blocked browser offers only scan, and Sites is hidden f
   assert.match(read("../../screens/shell/nav.ts"), /RC\.sites \? \[/);
   assert.match(read("../../app/u/sites.tsx"), /RC\.sites \? SitesScreen : HiddenSites/);
 });
+
+test("a browser on an origin that cannot hold the passkey is blocked from claiming, so it pairs with the typed code", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../../screens/shell/rc.ts", import.meta.url), "utf8");
+  assert.match(src, /passkeyRp\(typeof location !== "undefined" \? location\.origin : undefined, \{ dev: process\.env\.NODE_ENV !== "production" \}\) === null/);
+  assert.match(src, /Platform\.OS === "web" && !macKeyAvailable\(\)/, "the Mac app's window is never blocked");
+});

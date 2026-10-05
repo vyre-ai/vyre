@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
-import { BoardView, CalendarView, DashboardView, EmptyState, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Select, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewsOf } from "@vyre/ui";
+import { BoardView, Button, CalendarView, DashboardView, EmptyState, ErrorState, LargeTitleScreen, ListView, LoadingState, Segmented, Select, Tabs, Text, showToast, useFieldEnv, useRecordsWorld, useStore, useUiTheme, viewDefOf, viewsOf } from "@vyre/ui";
 
 type ViewKind = "list" | "board" | "calendar" | "dashboard";
 /** More types than this are a picker, not tabs. */
@@ -40,6 +40,11 @@ export function RecordsScreen({ type }: { type: string }) {
           <Text size="page" strong>{vd.plural}</Text>
           <Text size="caption" tone="label">{rows.length} {rows.length === 1 ? def.label.toLowerCase() : vd.plural.toLowerCase()}</Text>
         </View>
+      </View>
+      {/* Reminders and Notes are Records types (the app map): the same list, board and calendar as any other. */}
+      <View className="flex-row gap-s2">
+        <Button kind="ghost" size="sm" icon="alarm" label="Reminders" onPress={() => router.push("/u/records/reminder" as never)} />
+        <Button kind="ghost" size="sm" icon="edit" label="Notes" onPress={() => router.push("/u/records/note" as never)} />
       </View>
       {/* A handful of types read as tabs; more than that would run off the edge and cut a name, so they are one picker. */}
       {world.types.length > TABS_MAX

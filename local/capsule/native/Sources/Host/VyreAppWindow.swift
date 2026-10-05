@@ -28,6 +28,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     var identity: MacIdentity?
     /// The Secure Enclave key of this Mac's device entry (MacEnclave.swift).
     var enclave: MacEnclave?
+    /// Settings' "Make this Mac a server": runs this Mac's own setup (FirstRunWindow.swift). Set by the Capsule at launch.
+    var makeServer: (() -> Void)?
 
     /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
@@ -147,6 +149,9 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case "identity.has": reply(id, ["has": id0.has])
             default: id0.forget(); reply(id, ["ok": true])
             }
+        case "setup.server":
+            makeServer?()
+            reply(id, ["ok": true])
         case "enclave.public":
             guard let pt = enclave?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no Secure Enclave key."]) }
             reply(id, ["publicKey": MacIdentity.b64url(pt)])
@@ -305,6 +310,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
           sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
           has: function () { return call("identity.has").then(function (r) { return r.has; }); },
           forget: function () { return call("identity.forget").then(function () {}); },
+          makeServer: function () { return call("setup.server").then(function () {}); },
           enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
           enclaveSign: function (message, prompt) { return call("enclave.sign", { message: message, prompt: prompt }).then(function (r) { return r.signature; }); }
         },

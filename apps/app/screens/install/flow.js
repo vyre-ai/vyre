@@ -39,7 +39,7 @@ export function nameNote(/** @type {ReturnType<typeof nameStatus>} */ st, /** @t
 
 /** @type {Record<string, string|null>} */
 export const BACK = {
-  welcome: null, adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
+  welcome: null, question: "welcome", mycloud: "question", adding: "scan", macserver: null, browser: null, nosetup: "browser", novyre: "scan", macwhere: null, addphone: null,
   name: null, have: "name", recover: "have", scan: "name", scanwords: "scan", recovery: null, spaces: null, create: "spaces", where: "create", cmd: "where", vps: "where", vpsbusy: null,
   srv1: "cmd", srv2: "cmd", here: "where", look: null, members: "look", connectors: "members", kit: "connectors", done: null, join: "spaces", invite: "join", joined: null,
 };
@@ -47,7 +47,8 @@ export const BACK = {
 /** Where Back goes from a step. The code step goes back to the server's own first screen (the line or the new server); the words go back to the code. */
 export function backOf(/** @type {string} */ step, /** @type {{ vps?: boolean, have?: boolean, welcome?: boolean, browser?: boolean, macFlow?: boolean }} */ ctx = {}) {
   // First run: the welcome offers a new name or an existing one, so both go back to it. A browser's pairing goes back to its own screen.
-  if (ctx.welcome && (step === "name" || step === "have")) return "welcome";
+  if (ctx.welcome && step === "name") return "question";
+  if (ctx.welcome && step === "have") return "welcome";
   if (ctx.browser && (step === "scanwords" || step === "scan")) return "browser";
   // A Mac's first run chooses where Vyre runs before the space is named, and goes on to the line or "here" without asking again.
   if (ctx.macFlow) {
@@ -101,7 +102,7 @@ export const connectedLine = (/** @type {string} */ space, /** @type {string} */
 /** The first step for a route: /u/install, /u/install/create, /u/install/join. */
 export function startStep(/** @type {string|undefined} */ start) {
   // "phone" is the Mac's Add your phone, and "connect" is a phone or browser scanning a code from its Vyre: the actions of the empty states (first-run.js GAP).
-  return start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
+  return start === "server" ? "mycloud" : start === "create" ? "create" : start === "join" ? "join" : start === "phone" ? "addphone" : start === "connect" ? "scan" : "name";
 }
 
 /** Where "Where will it live?" sends each choice. */

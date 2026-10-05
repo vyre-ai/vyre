@@ -24,6 +24,28 @@ export const WELCOME = {
   have: "I already have Vyre",
 };
 
+/** Setup's one question (the user, 5 Oct): joining a team needs only a name and a typed code; "my own server" sets up My Cloud. Never "Pro" or "Basic" in copy. */
+export const QUESTION = {
+  title: "Do you have your own server, or are you joining a team?",
+  join: { title: "I am joining a team", line: "Make your name, connect this device with a code, and you are in." },
+  own: { title: "I have my own server", line: "Set up My Cloud on it." },
+};
+
+/** The route that sets up My Cloud on the person's own server: where "Add your own server" on a home that joined a team links to, and where the question's second answer goes. */
+export const SERVER_SETUP_ROUTE = "/u/setup/server";
+
+/** "Set up My Cloud": the person's own server. A phone is sent the setup link (it never shows an install line); a computer shows the one line to run there, then connects by the code the server shows. */
+export const MY_CLOUD = {
+  title: "Set up My Cloud",
+  line: "My Cloud runs on a computer or a server that stays on. Your phones and browsers connect to it.",
+  lineComputer: "Open its terminal and paste the line. It shows a code when it is ready.",
+  linePhone: "Send yourself the setup link and open it on that computer. It shows a code when it is ready.",
+  send: "Send me the setup link",
+  ready: "My server shows a code",
+  share: "Set up My Cloud on a computer or a server: https://vyre.run",
+  codeTitle: "Type the code your server shows",
+};
+
 /** Step 4 on a Mac: where Vyre runs. The server path shows one line to run there. */
 export const MAC_WHERE = {
   title: "Where should Vyre run?",

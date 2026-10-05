@@ -51,13 +51,19 @@ export function eventActor(e) {
 /**
  * What the Deck prints for an event. The kernel's envelope carries a type, a subject and data, not a sentence; the sentence is the Deck's own (data.what and data.why
  * in the mock, until a gateway defines where card text comes from).
- * @param {EventEnvelope} e @returns {{ id: string, actor: string, what: string, why?: string, at: number, record?: string, task?: string }}
+ * @param {EventEnvelope} e @returns {{ via?: "assistant", id: string, actor: string, what: string, why?: string, at: number, record?: string, task?: string }}
  */
 export function eventLine(e) {
   const d = /** @type {any} */ (e.data || {});
-  return { id: e.id, actor: eventActor(e), what: String(d.what ?? e.type), why: d.why, at: e.time, record: d.record ?? (e.subject && parseUrn(e.subject)?.type !== "task" ? e.subject : undefined),
+  return { ...(actedVia(e) ? { via: /** @type {"assistant"} */ ("assistant") } : {}), id: e.id, actor: eventActor(e), what: String(d.what ?? e.type), why: d.why, at: e.time, record: d.record ?? (e.subject && parseUrn(e.subject)?.type !== "task" ? e.subject : undefined),
     task: d.task ?? (parseUrn(e.subject)?.type === "task" ? parseUrn(e.subject)?.id : undefined) };
 }
+
+/** What is shown after the person's name wherever the person's assistant did something for them (CONTRACT-one-chat.md section 5). */
+export const ASSISTANT_MARK = "(Sent by Vyre Assistant)";
+
+/** Did the person's assistant do this? The kernel event, a task or a held card carries acted_via: "assistant" (on the event, its data or its actor). @param {any} x */
+export const actedVia = (x) => Boolean(x) && (x.acted_via === "assistant" || x.data?.acted_via === "assistant" || x.actor?.acted_via === "assistant" || x.ext?.acted_via === "assistant");
 
 /** True for the states a finished task is in. @param {Task} t */
 export const finished = t => t.state === "done" || t.state === "skipped";

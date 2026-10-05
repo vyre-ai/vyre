@@ -1,4 +1,4 @@
-// The pure half of This computer: what runs here, history search, webhooks, guests, agent computers, shares and Tailnet Lock as lines (the Deck's settings.js sections, ported).
+// The pure half of This computer: what runs here, history search, webhooks, the Wink network, agent computers and shares as lines (the Deck's settings.js sections, ported).
 // A command a person must run themselves is shown to copy, never run: the box never runs it for them.
 
 export type Card = { title: string; state?: string; lines: string[]; warn: string[]; commands: { say: string; line: string }[] };
@@ -38,7 +38,7 @@ export function recallView(s: any, now = Date.now()): { lines: [string, string][
   };
 }
 
-/** Webhooks: off, or the open routes and where the public tunnel and Vyre disagree. */
+/** Webhooks: off, or the open routes. */
 export function hooksCard(d: any, status: any): Card {
   const c = card("Webhooks");
   const routes = list(d?.routes, "name");
@@ -52,64 +52,26 @@ export function hooksCard(d: any, status: any): Card {
   if (d.listening === false) c.warn.push(`The webhook listener is not answering${d.error ? ` (${d.error})` : ""}.`);
   for (const r of routes) {
     c.lines.push(`${r.path || `/hooks/${r.name}`} ${r.verify?.scheme || ""}${typeof r.deliveries === "number" ? `, ${plural(r.deliveries, "delivery", "deliveries")} kept` : ""}`.trim());
-    if (r.funnel?.open) c.commands.push({ say: `Publish ${r.name} with Funnel:`, line: String(r.funnel.open) });
-    if (r.funnel?.close) c.commands.push({ say: `Stop publishing ${r.name}:`, line: String(r.funnel.close) });
   }
-  for (const m of list(status?.mismatches, "message")) {
-    c.warn.push(m.harmless ? `${m.message}. Harmless.` : `Funnel and Vyre disagree: ${m.message}.`);
-    if (m.fix) c.commands.push({ say: "To fix it:", line: String(m.fix) });
-  }
-  c.lines.push("Vyre never runs tailscale funnel. Run these yourself, on your home computer.");
   c.commands.push({ say: "Open a route:", line: "vyre hooks open <name> --scheme hmac-sha256 --header <header> --secret <vault item>" });
   if (routes.length) c.commands.push({ say: "Close one:", line: `vyre hooks close ${routes[0].name}` });
   c.commands.push({ say: "Turn webhooks off:", line: "vyre hooks off" });
   return c;
 }
 
-/** Guests: people on another private network this home is shared with, and the tools each may call. */
-export function guestsCard(d: any): Card {
-  const c = card("Guests");
-  const people = list(d?.people, "login");
-  const safe: string[] = Array.isArray(d?.safe) ? d.safe : [];
-  if (safe.length) c.lines.push(`A guest can only ever call these: ${safe.join(", ")}.`);
-  if (!d?.enabled) {
-    c.state = "Off";
-    c.lines.unshift("A guest is someone on another tailnet you shared your home with. They may call only the tools you list for them, and never act as you.");
-    c.commands.push({ say: "Turn guests on from your home computer's terminal:", line: `vyre call --tty network.guests.enable '{"on":true}'` });
-    return c;
+/** The Wink network: whether this computer is signed in, each space's link (state, the path it takes, how fast, how many devices) and the relay. Read only, from network.wink.status. */
+export function winkCard(d: any): Card {
+  const c = card("Wink network");
+  const spaces = list(d?.spaces, "id");
+  const bad = spaces.filter((x) => x.state !== "connected");
+  c.state = !spaces.length ? "No spaces linked" : bad.length ? `${plural(bad.length, "space")} not connected` : "Connected";
+  for (const x of spaces) {
+    const via = x.path === "direct" ? "direct" : x.path === "relay" ? "through the relay" : "";
+    c.lines.push([String(x.name || "A space"), String(x.state || "unknown"), via, typeof x.latencyMs === "number" ? `${Math.round(x.latencyMs)} ms` : "", typeof x.peers === "number" ? plural(x.peers, "device") : ""].filter(Boolean).join(", "));
   }
-  c.state = people.length ? `On, ${plural(people.length, "person", "people")}` : "On, no one yet";
-  for (const p of people) {
-    const allowed: string[] = Array.isArray(p.allowed) ? p.allowed : Array.isArray(p.tools) ? p.tools : [];
-    const asked: string[] = Array.isArray(p.tools) ? p.tools.filter((t: string) => !allowed.includes(t)) : [];
-    c.lines.push(`${p.login}: ${allowed.join(", ") || "no tools"}`);
-    if (asked.length) c.warn.push(`Listed for ${p.login} but not guest-safe, so refused: ${asked.join(", ")}.`);
-  }
-  c.commands.push({ say: "Add someone:", line: `vyre call --tty network.guests.add '{"login":"<login>","tools":["threads.list"]}'` });
-  if (people.length) c.commands.push({ say: "Remove them:", line: `vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'` });
-  c.commands.push({ say: "Turn guests off:", line: `vyre call --tty network.guests.enable '{"on":false}'` });
-  return c;
-}
-
-/** Agent nodes: whether each agent's computer joins the private network as its own tagged node. */
-export function tailnetCard(d: any): Card {
-  const c = card("Agent nodes");
-  const tag = d?.tag || "tag:vyre-agent";
-  const v = d?.vault;
-  if (d?.problem) c.warn.push(String(d.problem));
-  if (v) c.lines.push(`Auth key ${v.item || ""} in the Vault: ${v.exists == null ? "not known" : v.exists ? (v.granted ? "there, and granted" : "there, not granted yet") : "not there yet"}${v.why ? ` (${v.why})` : ""}.`);
-  if (!d?.enabled) {
-    c.state = "Off";
-    c.lines.unshift(`With this on, each agent's computer joins your private network as its own node, tagged ${tag}, so your network policy can tell agents apart.`);
-    c.commands.push({ say: "Turn it on:", line: `vyre call --tty computers.tailnet.set '{"enabled":true}'` });
-    return c;
-  }
-  c.state = "On";
-  c.lines.unshift(`Tagged ${tag}.`);
-  const comps = list(d?.computers, "");
-  c.lines.push(comps.length ? comps.map((x) => `${x.agent || "an agent"}${x.node ? ` (${x.node})` : ""}, ${x.running ? "running" : "not running"}`).join("; ") : "No agent has a computer yet.");
-  if (d.applies) c.lines.push(`This ${d.applies}.`);
-  c.commands.push({ say: "Turn it off:", line: `vyre call --tty computers.tailnet.set '{"enabled":false}'` });
+  if (d?.relay) c.lines.push(`Relay: ${d.relay.enabled === false ? "off" : d.relay.reachable === false ? "not reachable" : "reachable"}${typeof d.relay.latencyMs === "number" ? `, ${Math.round(d.relay.latencyMs)} ms` : ""}`);
+  if (d?.otherVpn) c.warn.push("Another VPN is running on this computer. It can get in the way of the link to your devices.");
+  if (typeof d?.clock?.skewMs === "number" && Math.abs(d.clock.skewMs) > 30_000) c.warn.push("This computer's clock is off by more than 30 seconds. Sign-in can fail until it is right.");
   return c;
 }
 
@@ -140,27 +102,6 @@ export function handbackOf(d: any): { minutes: number; choices: number[]; warn: 
 }
 export const handbackLabel = (m: number) => (m ? `After ${m} min idle` : "Off");
 
-/** Tailnet Lock: read only. On (and whether this home is signed), or what it is and the steps to turn it on from the Mac. */
-export function lockCard(d: any): Card {
-  const c = card("Tailnet Lock");
-  if (d?.enabled) {
-    c.state = "On";
-    const keys = d.trusted ? ` Your network trusts ${plural(Number(d.trusted), "signing key")}.` : "";
-    c.lines.push(d.signed === true ? `Tailnet Lock is on, and your home is signed.${keys}` : d.signed === false ? `Tailnet Lock is on, but your home is not signed yet. Sign it from a device you trust, with tailscale lock sign or in the Tailscale admin console.${keys}` : `Tailnet Lock is on.${keys}`);
-    return c;
-  }
-  c.state = "Off";
-  c.lines.push("With Tailnet Lock, a new device must be signed by a device you trust before it can join your private network. So even someone who steals your Tailscale login cannot add a machine.");
-  c.lines.push("The cost: every new device needs that signature first. If you lose every signing device and the disablement secrets too, you are locked out of changing it.");
-  const cm = d?.commands || { mac: "tailscale lock", init: `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${d?.key || "<home key>"}` };
-  c.commands.push({ say: "On your Mac, read its key. It is the one that starts with tlpub:", line: String(cm.mac) });
-  if (d?.key) c.commands.push({ say: "Your home's key:", line: String(d.key) });
-  else c.warn.push(`Your home did not give its key${d?.why ? ` (${d.why})` : ""}. Check again once Tailscale is running here.`);
-  c.commands.push({ say: "On your Mac, run this, with your Mac's key in place of <mac key>:", line: String(cm.init) });
-  c.lines.push("It prints two disablement secrets. Save both in the Vault. Either one turns the lock off if every signing device is lost, and Tailscale support keeps one more. Vyre never runs these. Run them yourself, on your Mac.");
-  return c;
-}
-
 /** VyreDrive shares and what each allows. */
 export type Share = { name: string; shared?: boolean; mounted?: boolean; access?: string };
 export function sharesOf(d: any): { enabled: boolean; why: string; shares: Share[] } {
@@ -175,7 +116,7 @@ export function auditLines(a: any): { ok: boolean; lines: string[] } {
     return u.why ? `${u.share} could not be checked for secrets: ${u.why}${found.length ? `. Found so far: ${found.join(", ")}` : ""}.` : `${u.share} has secrets inside: ${found.length ? found.join(", ") : "files that look like keys"}`;
   });
   const f = list(a?.findings, "");
-  if (f.length) lines.push(`${plural(f.length, "device")} outside your paired Macs can reach these shares: ${f.map((x) => x.node || "a device").join(", ")}. Only your network policy decides this. Remove them in the Tailscale admin console, Access controls. Vyre does not change it.`);
+  if (f.length) lines.push(`${plural(f.length, "device")} outside your paired Macs can reach these shares: ${f.map((x) => x.node || "a device").join(", ")}. Only your network policy decides this. Remove them in your network's access settings. Vyre does not change it.`);
   const ok = !lines.length;
   if (ok) lines.push(`Only your paired Macs can reach them.${a?.checked != null ? ` Checked ${plural(a.checked, "online device")}.` : ""}`);
   return { ok, lines };

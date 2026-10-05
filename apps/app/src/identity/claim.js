@@ -8,7 +8,7 @@ import { recordMessage } from "../../../../names/worker/id-messages.js";
 import { sealRecord } from "./seal.js";
 import { newCode, codeKey, STRETCH } from "./recovery.js";
 import { generateDeviceKey } from "./keys.js";
-import { createPasskeyKey } from "./passkey.js";
+import { createPasskeyKey, passkeyRp, WRONG_ORIGIN_SAY } from "./passkey.js";
 
 const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
@@ -64,6 +64,11 @@ export async function claimIdentity(o) {
  * @param {Omit<Parameters<typeof claimIdentity>[0], "key"> & { rp?: string, webauthn?: { create(o: any): Promise<any>, get(o: any): Promise<any> } }} o
  */
 export async function claimIdentityWithPasskey(o) {
-  const key = await createPasskeyKey({ rp: o.rp || "app.vyre.run", name: o.name, ...(o.webauthn ? { webauthn: o.webauthn } : {}), ...(o.random ? { random: o.random } : {}) });
+  // The page decides where a passkey may be made (passkeyRp): app.vyre.run in a release build, also http://localhost in a development one. Anywhere else it is refused before the browser is asked,
+  // with the words that say where to go; that origin pairs as its own device with the typed code instead. A page with no location (a test with its own authenticator) uses the default.
+  const origin = typeof globalThis.location !== "undefined" ? globalThis.location.origin : undefined;
+  const rp = o.rp || (origin === undefined ? "app.vyre.run" : passkeyRp(origin, { dev: typeof process !== "undefined" && process.env.NODE_ENV !== "production" }));
+  if (!rp) throw Object.assign(new Error(WRONG_ORIGIN_SAY), { code: "wrong_origin" });
+  const key = await createPasskeyKey({ rp, name: o.name, ...(o.webauthn ? { webauthn: o.webauthn } : {}), ...(o.random ? { random: o.random } : {}) });
   return claimIdentity({ ...o, key: /** @type {any} */ (key) });
 }
