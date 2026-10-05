@@ -7,6 +7,7 @@ import { afterPaired } from "../../src/real/pairing";
 import { relayUrl } from "../../src/api/relay-url";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { MAC_SERVER, macServerSay } from "./first-run.js";
+import { RC } from "../shell/rc";
 
 type Stage = "enter" | "ack" | "done";
 
@@ -14,7 +15,20 @@ type Stage = "enter" | "ack" | "done";
  * The Mac app's window, On a server, with no vyred of its own (rows 4e and 4f): type the code the server shows, then type this Mac's ack code on the server (typing it there is the yes), then it is connected.
  * Three wrong tries end the code. Nothing is connected until joinWithCode resolves.
  */
-export function MacServer({ name, onBack, onDone }: { name: string; onBack: () => void; onDone: () => void }) {
+export function MacServer(p: { name: string; onBack: () => void; onDone: () => void }) {
+  if (!RC.typedCode) {
+    // The short typed code is off in this version (RC.typedCode): the server's QR or long code, with three words, is how a computer is paired.
+    return (
+      <View className="gap-s4">
+        <View className="gap-s1"><Text size="page" strong>{MAC_SERVER.title}</Text><Text tone="muted">This version pairs with the QR or the long code your server shows, then three words to check. A short typed code is not used.</Text></View>
+        <Button kind="ghost" label={MAC_SERVER.back} onPress={p.onBack} />
+      </View>
+    );
+  }
+  return <MacServerTyped {...p} />;
+}
+
+function MacServerTyped({ name, onBack, onDone }: { name: string; onBack: () => void; onDone: () => void }) {
   const [stage, setStage] = useState<Stage>("enter");
   const [text, setText] = useState("");
   const [ack, setAck] = useState("");

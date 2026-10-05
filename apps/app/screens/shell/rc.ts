@@ -10,6 +10,9 @@ export const RC = {
   glass: false,
   // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
   browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM !== "0",
+  // The short two-sided typed code (WINK-XXXX-XXXX, the other device's code typed back) is OFF in every release build until its cryptography is independently reviewed (user ruling): no field, no scan, no ack box.
+  // Pairing is the QR or the long code, confirmed by three words. A development or walk build turns it on with EXPO_PUBLIC_VYRE_TYPED_CODE=1 (read as process.env.NAME exactly: Expo inlines it).
+  typedCode: process.env.EXPO_PUBLIC_VYRE_TYPED_CODE === "1",
 };
 
 /** True when this build is a browser and may not claim a name here: the claim is switched off, or the page is not where a passkey can be made (app.vyre.run in a release build, also http://localhost in a development one). Such a browser pairs as its own device with the typed code, the one way to pair.  The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */

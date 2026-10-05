@@ -153,3 +153,15 @@ test("the setup banner shows only when the box says setup is not finished", () =
   assert.equal(setupUnfinished({}), false);
   assert.equal(SETUP_BANNER.route, "/u/install/setup");
 });
+
+test("the short typed code is off unless a development build turns it on", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rc = readFileSync(new URL("../shell/rc.ts", import.meta.url), "utf8");
+  assert.match(rc, /typedCode: process\.env\.EXPO_PUBLIC_VYRE_TYPED_CODE === "1"/, "off by default: only an explicit 1 turns it on");
+  for (const f of ["../devices/TypeCode.tsx"]) {
+    const src = readFileSync(new URL(f, import.meta.url), "utf8");
+    assert.match(src, /export function TypeCode\(p: TypeCodeProps\) \{ return RC\.typedCode \?/, "the typed field renders nothing while it is off");
+    assert.match(src, /export function AckCode\(p: \{ offer: string; onDone: \(\) => void \}\) \{ return RC\.typedCode \?/, "so does the ack box");
+  }
+  assert.match(readFileSync(new URL("./MacServer.tsx", import.meta.url), "utf8"), /if \(!RC\.typedCode\)/, "and the Mac's typed-code window");
+});
