@@ -40,12 +40,12 @@ export default {
     } });
     const byUrn = (/** @type {any} */ i) => ({ space: parseUrn(i.urn).space });
 
-    // Called by the spaces module when a Space is made: every Space already has its built-in store (the kernel opens one per hosted Space), so this answers at once and writes nothing. Twenty is
-    // the store a Space asks for by name (VYRE_STORE), made by the stores layer at first use, never here.
+    // Called by the spaces module when a Space is made: every Space already has its record store (the kernel opens one per hosted Space: Twenty), so this answers at once and writes nothing. Twenty is
+    // provisioned by the stores layer at first use, never here.
     ctx.tool("records.workspace.create", {
-      description: "Internal, for the spaces module: confirm a new Space has its store. The built-in store is always there.", input: obj({ space: str, name: str, store: str }, ["space"]), callers: ["module"],
+      description: "Internal, for the spaces module: confirm a new Space has its store. Its Twenty is made when the Space is opened.", input: obj({ space: str, name: str, store: str }, ["space"]), callers: ["module"],
       run: async (/** @type {any} */ i) => {
-        if (i.store && i.store !== "builtin") throw refuse("that store is chosen when the Space is made; this one has the built-in store", "unavailable");
+        if (i.store && i.store !== "twenty") throw refuse("Twenty is the only record store", "unavailable");
         return { workspaceId: await door.spaceOf(i) };
       },
     });

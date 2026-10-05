@@ -242,12 +242,12 @@ async function startLocked(opts, root, p, release) {
   /** @type {(() => void) | null} */ let closeFlowsHost = null;
   if (opts.kernel === true || (opts.kernel === undefined && process.env.VYRE_KERNEL === "1")) {
     const { bootHomeKernel } = await import("../../kernel/home.js");
-    // The record store: VYRE_STORE=sqlite (the default), auto or twenty (stores/twenty/space-store.js). With auto or twenty each Space's records live in its own Twenty, provisioned
-    // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
+    // The record store: VYRE_STORE=twenty (the default on a packaged build) or memory (a development build, for tests) (stores/twenty/space-store.js). Each Space's records live in its own Twenty, provisioned
+    // on first use; where the box cannot run it a new Space is not made (the server is offered) and the home's own Space answers every record call with one plain refusal. The reach, memory
     // profile and gateway container are options of that factory with defaults, not settings.
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
     const { storeMode } = await import("../../stores/twenty/space-store.js");
-    if (storeMode() !== "sqlite") {
+    if (storeMode() === "twenty") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
       storeFor = createStoreFor({ home: root, log });
     }

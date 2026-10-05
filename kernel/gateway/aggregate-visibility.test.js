@@ -3,10 +3,8 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
 import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
-import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -21,7 +19,7 @@ let n = 0;
 const G = (who, over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor(who) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active", ...over });
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }, { name: "fee", kind: "number", label: "Fee" }] };
 
-const stores = { memory: () => createMemoryStore({ clock }), sqlite: () => createSqliteStore({ db: new DatabaseSync(":memory:"), clock, hotRows: 10 }) };
+const stores = { memory: () => createMemoryStore({ clock }) };
 
 for (const [name, make] of Object.entries(stores)) {
   test(`aggregate and search on ${name}: a row a person may not see is neither counted nor found`, async () => {
@@ -65,7 +63,7 @@ for (const [name, make] of Object.entries(stores)) {
 }
 
 test("aggregate: a type holding a privileged record is totalled row by row, even for a caller with no row predicate", async () => {
-  const store = stores.sqlite();
+  const store = stores.memory();
   const log = createEventLog({ space: SPACE, clock });
   const g = G(OWNER);
   const gw = createGateway({ space: SPACE, store, log, chains, clock, grants: { forSubject: a => (a.id === OWNER ? [g] : []), get: () => g }, members: { has: a => a.id === OWNER }, hasPresenceSession: () => true });

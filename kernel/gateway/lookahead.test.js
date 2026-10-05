@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
-import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -21,9 +20,9 @@ let n = 0;
 const G = (who, over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor(who) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active", ...over });
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }, { name: "fee", kind: "number", label: "Fee" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "body", kind: "text", label: "Body" }] };
-const make = (grants, attrs = () => ({}), kind = "sqlite") => {
+const make = (grants, attrs = () => ({}), kind = "memory") => {
   const db = new DatabaseSync(":memory:");
-  const store = kind === "memory" ? createMemoryStore({ clock }) : createSqliteStore({ db, clock, hotRows: 10 });
+  const store = createMemoryStore({ clock });
   const log = createEventLog({ space: SPACE, clock });
   const all = new Map(grants.map(g => [g.id, g]));
   const known = new Set([`person:${OWNER}`, `person:${MEMBER}`]);
@@ -33,7 +32,7 @@ const make = (grants, attrs = () => ({}), kind = "sqlite") => {
   return { store, gw, db };
 };
 
-for (const kind of ["memory", "sqlite"]) {
+for (const kind of ["memory"]) {
   test(`list and search (${kind}): a caller whose answer is the same for every row costs one store call per page, a restricted one still looks ahead, and both return the same rows`, async () => {
     const proj = { prefix: `vyre://${SPACE}/matter/*`, where: [{ attr: "project", op: "eq", value: "p1" }] };
     const { store, gw } = make([G(OWNER), G(MEMBER, { actions: ["records.read"], resource: proj })], () => ({ project: "p1" }), kind);

@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
-import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -21,9 +20,9 @@ let n = 0;
 const G = (who, over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor(who) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active", ...over });
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }, { name: "fee", kind: "number", label: "Fee" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "body", kind: "text", label: "Body" }] };
-const make = (grants, attrs = () => ({}), kind = "sqlite", over = {}) => {
+const make = (grants, attrs = () => ({}), kind = "memory", over = {}) => {
   const db = new DatabaseSync(":memory:");
-  const store = kind === "memory" ? createMemoryStore({ clock }) : createSqliteStore({ db, clock, hotRows: 10 });
+  const store = createMemoryStore({ clock });
   const log = createEventLog({ space: SPACE, clock });
   const all = new Map(grants.map(g => [g.id, g]));
   const known = new Set([`person:${OWNER}`, `person:${MEMBER}`]);
@@ -53,8 +52,8 @@ const allPages = async (gw, who) => { const out = []; let cursor; for (let n = 0
 
 for (const [name, where] of Object.entries(scenarios)) {
   test(`attr_filter (${name}): the store's count and list under the pushed predicate equal the gateway's row by row, and the count is one native statement`, async () => {
-    const on = make(grantsFor(where), () => ({}), "sqlite", { attrPush: () => true });
-    const off = make(grantsFor(where), () => ({}), "sqlite", {});
+    const on = make(grantsFor(where), () => ({}), "memory", { attrPush: () => true });
+    const off = make(grantsFor(where), () => ({}), "memory", {});
     for (const w of [on, off]) { await w.gw.records.define(owner(), { add_types: [MATTER] }); await fill(w.gw); }
     const spec = { group_by: ["stage"], measures: [{ fn: "count" }, { fn: "sum", field: "fee" }] };
     const before = on.store.stats().aggregate_pushed;
@@ -69,7 +68,7 @@ for (const [name, where] of Object.entries(scenarios)) {
 }
 
 test("attr_filter: it is only used where it is safe: not without attrPush, not for a caller with a whole-type grant, not for a caller with no grant, and the store counted natively", async () => {
-  const { store, gw } = make(grantsFor([[P("project", "p1")]]), () => ({}), "sqlite", { attrPush: () => true });
+  const { store, gw } = make(grantsFor([[P("project", "p1")]]), () => ({}), "memory", { attrPush: () => true });
   await gw.records.define(owner(), { add_types: [MATTER] }); await fill(gw);
   const spec = { group_by: ["stage"], measures: [{ fn: "count" }] };
   let queries = 0; const q = store.query.bind(store); store.query = async (...a) => { queries++; return q(...a); };
@@ -82,7 +81,7 @@ test("attr_filter: it is only used where it is safe: not without attrPush, not f
   await gw.records.query(member(), "matter", { sort: [{ field: "fee", dir: "asc" }], page: { limit: 5 } });
   assert.equal(queries, 1, "one store call for a page");
   // no grant on the type at all (KQ-1): nothing, and nothing pushed
-  const none = make([G(OWNER), G(MEMBER, { actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/note/*` } })], () => ({}), "sqlite", { attrPush: () => true });
+  const none = make([G(OWNER), G(MEMBER, { actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/note/*` } })], () => ({}), "memory", { attrPush: () => true });
   await none.gw.records.define(owner(), { add_types: [MATTER] }); await fill(none.gw);
   const b2 = none.store.stats().aggregate_pushed;
   assert.deepEqual(await none.gw.records.aggregate(member(), "matter", spec), []);

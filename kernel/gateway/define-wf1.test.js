@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
-import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -21,9 +20,9 @@ let n = 0;
 const G = (who, over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor(who) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active", ...over });
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }, { name: "fee", kind: "number", label: "Fee" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "body", kind: "text", label: "Body" }] };
-const make = (grants, attrs = () => ({}), kind = "sqlite", over = {}) => {
+const make = (grants, attrs = () => ({}), kind = "memory", over = {}) => {
   const db = new DatabaseSync(":memory:");
-  const store = kind === "memory" ? createMemoryStore({ clock }) : createSqliteStore({ db, clock, hotRows: 10 });
+  const store = createMemoryStore({ clock });
   const log = createEventLog({ space: SPACE, clock });
   const all = new Map(grants.map(g => [g.id, g]));
   const known = new Set([`person:${OWNER}`, `person:${MEMBER}`]);
@@ -34,7 +33,7 @@ const make = (grants, attrs = () => ({}), kind = "sqlite", over = {}) => {
   return { store, gw, db };
 };
 
-for (const kind of ["memory", "sqlite"]) {
+for (const kind of ["memory"]) {
   test(`WF-1 (${kind}): a type definition whose event the log refuses is not left defined (new type removed, changed type put back), and a retry works`, async () => {
     let fail = false;
     const { store, gw } = make([G(OWNER)], () => ({}), kind, { wrap: real => ({ ...real, append: (...a) => { if (fail && a[1] && a[1].type === "types.defined") throw new Error("log refused"); return real.append(...a); } }) });

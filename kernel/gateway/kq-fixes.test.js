@@ -6,7 +6,6 @@ import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
-import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -21,9 +20,9 @@ let n = 0;
 const G = (who, over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space: SPACE, subject: { kind: "actor", actor: actor(who) }, actions: ["records.*", "records.define"], action_set_version: 1, resource: { prefix: `vyre://${SPACE}/*` }, status: "active", ...over });
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }, { name: "fee", kind: "number", label: "Fee" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "body", kind: "text", label: "Body" }] };
-const make = (grants, attrs = () => ({}), kind = "sqlite") => {
+const make = (grants, attrs = () => ({}), kind = "memory") => {
   const db = new DatabaseSync(":memory:");
-  const store = kind === "memory" ? createMemoryStore({ clock }) : createSqliteStore({ db, clock, hotRows: 10 });
+  const store = createMemoryStore({ clock });
   const log = createEventLog({ space: SPACE, clock });
   const all = new Map(grants.map(g => [g.id, g]));
   const known = new Set([`person:${OWNER}`, `person:${MEMBER}`]);
@@ -37,7 +36,7 @@ const kqIndexes = (db, type) => db.prepare("SELECT name FROM sqlite_master WHERE
 const NOTE_ONLY = G(MEMBER, { actions: ["records.read"], resource: { prefix: `vyre://${SPACE}/note/*` } });
 const SPEC = { group_by: ["stage"], measures: [{ fn: "count" }, { fn: "sum", field: "fee" }] };
 
-for (const kind of ["memory", "sqlite"]) {
+for (const kind of ["memory"]) {
   test(`KQ-1 (${kind}): a member whose grants cover only another type totals nothing, and the store never ran a GROUP BY for them`, async () => {
     const { store, gw } = make([G(OWNER), NOTE_ONLY], () => ({}), kind);
     await gw.records.define(owner(), { add_types: [MATTER, NOTE] });

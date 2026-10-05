@@ -1,6 +1,7 @@
 // kernel/store/memory.js: the in-memory reference store. It implements the whole Store interface (contracts store.d.ts)
 // and passes the conformance suite (kernel/conformance). It is what the gateway tests run against and what a real
-// store (Twenty, K-later) is measured by. Not durable; not trusted either: the gateway treats it like any store.
+// store (Twenty) is measured by. TEST AND DEVELOPMENT ONLY: not durable, and a packaged build never uses it (boot.js gives a packaged
+// build with no Twenty a store that refuses every record call). Not trusted either: the gateway treats it like any store.
 import { canonical, sha256 } from "../core/canonical.js";
 import { isUuid } from "../core/ids.js";
 import { checkValue } from "./values.js";
@@ -13,9 +14,7 @@ const clone = (/** @type {any} */ v) => structuredClone(v);
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * One type's rows. The reference store keeps them in a Map; a durable store (kernel/store/sqlite.js) pages them from its database behind a small LRU, so the rows it holds in
- * memory are the hot ones, not all of them. `candidates` and `searchCandidates` may return a SUPERSET of what a query or a search needs (the database narrows by an equality
- * filter or a word); the same code then applies the exact rules, so an answer is the same either way.
+ * One type's rows, kept in a Map. `candidates` and `searchCandidates` return every row (a store with an index may return a SUPERSET of what a query or a search needs; the same code then applies the exact rules).
  * @typedef {{ get(id: string): any, has(id: string): boolean, set(id: string, r: any): void, drop(id: string): void, values(): Iterable<any>, searchTop?(words: string[], n: number, after?: { score: number, id: string }): Iterable<any> | null, pageQuery?(spec: any): any, aggregateQuery?(spec: any): any, candidates(spec: any): Iterable<any>, searchCandidates(words: string[]): Iterable<any> }} Table
  */
 /** @returns {Table} */
@@ -25,32 +24,22 @@ function mapTable() {
 }
 
 /**
- * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void,
- *   initial?: { types: any[], records: any[], changes: any[] },
- *   backing?: { table(type: string): Table, changes: { readonly length: number, push(e: any): void, pop?(): void, slice(from: number, to: number): any[] } },
- *   persist?: { type(name: string, def: any | null): void, record(r: any): void, change(e: any): void } }} [cfg]
- *   hook: tests throw from it to simulate a crash or an outage. initial and persist make the store durable (kernel/store/sqlite.js): the state it starts from, and a
- *   write-through for every change, called after the in-memory change is made.
+ * @param {{ clock?: () => number, hook?: (op: string, args: any[]) => void }} [cfg]
+ *   hook: tests throw from it to simulate a crash or an outage.
  */
 export function createMemoryStore(cfg = {}) {
   const clock = cfg.clock || Date.now;
   /** @type {Map<string, any>} */ const types = new Map();
   /** @type {Map<string, Table>} */ const rows = new Map();
-  const makeTable = (/** @type {string} */ name) => (cfg.backing ? cfg.backing.table(name) : mapTable());
+  const makeTable = (/** @type {string} */ _name) => mapTable();
   /** @type {{ readonly length: number, push(e: any): void, pop?(): void, slice(from: number, to: number): any[] }} */
-  const changes = cfg.backing ? cfg.backing.changes : (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, pop: () => { a.pop(); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
-  if (cfg.initial) {
-    for (const t of cfg.initial.types) { types.set(t.name, t); rows.set(t.name, makeTable(t.name)); }
-    for (const r of cfg.initial.records) rows.get(r.type)?.set(r.id, r);
-    if (!cfg.backing) for (const e of cfg.initial.changes) changes.push(e);
-  }
+  const changes = (() => { /** @type {any[]} */ const a = []; return { get length() { return a.length; }, push: (/** @type {any} */ e) => { a.push(e); }, pop: () => { a.pop(); }, slice: (/** @type {number} */ f, /** @type {number} */ t) => a.slice(f, t) }; })();
   // (the unique indexes for a loaded store are rebuilt below, once the helpers exist)
   const touch = (/** @type {string} */ op, /** @type {any[]} */ args) => cfg.hook && cfg.hook(op, args);
   const table = (/** @type {string} */ t) => { if (!types.has(t)) throw fail("unknown_type", `no type ${t}`); return rows.get(t); };
   const note = (/** @type {string} */ kind, /** @type {any} */ r, /** @type {any} */ before) => {
     const entry = { cursor: `c${changes.length + 1}`, type: r.type, id: r.id, kind, version: r.version, at: r.updated_at, ...(before ? { before: clone(before) } : {}), after: clone(r.data) };
     changes.push(entry);
-    if (cfg.persist) { cfg.persist.record(clone(r)); cfg.persist.change(clone(entry)); }
   };
 
   // Unique fields (contract: FieldDefinition.unique): among a type's LIVE records, a non-null value held by one record is refused for another. An index per (type, field)
@@ -110,7 +99,6 @@ export function createMemoryStore(cfg = {}) {
         const had = types.get(t.name);
         if (had && canonical(had) === canonical(t)) continue;
         types.set(t.name, clone(t));
-        if (cfg.persist) cfg.persist.type(t.name, clone(t));
         if (!rows.has(t.name)) rows.set(t.name, makeTable(t.name));
         rebuildUnique(t.name);
         changesMade.push(had ? `changed type ${t.name}` : `added type ${t.name}`);
@@ -121,14 +109,12 @@ export function createMemoryStore(cfg = {}) {
         const before = types.get(t.name);
         types.set(t.name, clone(t));
         try { rebuildUnique(t.name); } catch (e) { types.set(t.name, before); rebuildUnique(t.name); throw e; }
-        if (cfg.persist) cfg.persist.type(t.name, clone(t));
         changesMade.push(`changed type ${t.name}`);
       }
       for (const name of diff.remove_types || []) {
         if (!types.has(name)) continue;
         if ([.../** @type {Table} */ (rows.get(name)).values()].some((/** @type {any} */ r) => !r.deleted_at)) throw fail("invalid", `type ${name} still has records`);
         types.delete(name); rows.delete(name);
-        if (cfg.persist) cfg.persist.type(name, null);
         changesMade.push(`removed type ${name}`);
       }
       return { applied: changesMade.length > 0, changes: changesMade };
@@ -308,7 +294,7 @@ export function createMemoryStore(cfg = {}) {
     },
     /**
      * Destroy one record for good (the gateway's `forget`): its row, its index entries and what the change log holds of it. The log keeps an entry's envelope (type, id, kind, version, time)
-     * and loses its data, so the cursors still line up. A table that cannot drop a row has it blanked (data emptied, kept as a tombstone in the bin); `cfg.persist.destroy` does the same on disk.
+     * and loses its data, so the cursors still line up.
      */
     async destroy(type, id) {
       touch("destroy", [type, id]);
@@ -317,15 +303,12 @@ export function createMemoryStore(cfg = {}) {
       if (!r.deleted_at) indexSet(type, r, false);
       for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type && e.id === id) { delete e.before; delete e.after; e.erased = true; }
       if (typeof t.drop === "function") t.drop(id);
-      else { r.data = {}; r.deleted_at = r.deleted_at || clock(); r.version += 1; r.updated_at = clock(); t.set(id, r); if (cfg.persist) cfg.persist.record(clone(r)); }
-      if (cfg.persist && typeof cfg.persist.destroy === "function") cfg.persist.destroy(type, id);
+      else { r.data = {}; r.deleted_at = r.deleted_at || clock(); r.version += 1; r.updated_at = clock(); t.set(id, r); }
     },
-    /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). Stores with a durable log do the same through `cfg.persist.scrub`. */
+    /** Forget the values these fields held in the change log (a field was sealed: its old plain values must not survive here). */
     async scrub(type, fields) {
       touch("scrub", [type, fields]);
-      // the change log is read in slices (it may be backed by a table); a slice of the in-memory log holds the live entries, and a backed log is scrubbed by `cfg.persist.scrub` below
       for (let i = 0; i < changes.length; i += 500) for (const e of changes.slice(i, i + 500)) if (e.type === type) for (const f of fields) { if (e.before) delete e.before[f]; if (e.after) delete e.after[f]; }
-      if (cfg.persist && typeof cfg.persist.scrub === "function") cfg.persist.scrub(type, fields);
     },
     features() { return { aggregate: true, search: true, changes: true, cursor_paging: /** @type {const} */ (true) }; },
   };

@@ -19,20 +19,20 @@ export async function pairedRoute(): Promise<{ relay: string; route: string; box
 }
 
 /** The paired session plus the presence proof: spaces.host-here over the peer wire as this device's paired session (renewed once on a lapse), and the proof answered as for any person-only act. Answers { space }. */
-export const hostOnPairedServer = (name: string, o: { acceptBuiltinStore?: boolean } = {}) =>
-  tool<{ space: string; rootPublic?: string }>("spaces.host-here", { name, ...(o.acceptBuiltinStore ? { acceptBuiltinStore: true } : {}) });
+export const hostOnPairedServer = (name: string) =>
+  tool<{ space: string; rootPublic?: string }>("spaces.host-here", { name });
 
 /** Takes back a space the server started for a claim the directory refused. */
 export const retireOnPairedServer = (space: string) => tool("spaces.retire-here", { id: space });
 
-export async function makeSpaceOnPairedServer(o: { name: string; displayName?: string; acceptBuiltinStore?: boolean }) {
+export async function makeSpaceOnPairedServer(o: { name: string; displayName?: string }) {
   const [mine, route] = await Promise.all([loadIdentity().catch(() => null), pairedRoute()]);
   if (!mine) throw Object.assign(new Error("Choose your Vyre name first."), { code: "no_identity" });
   return claimServerSpace({
     identity: { id: mine.id, name: mine.name, eid: mine.eid, ops: mine.ops as any[], key: mine.key },
     name: o.name, displayName: o.displayName, base: DIRECTORY,
     route,
-    host: ({ name }) => hostOnPairedServer(name, o),
+    host: ({ name }) => hostOnPairedServer(name),
     retire: retireOnPairedServer,
   });
 }

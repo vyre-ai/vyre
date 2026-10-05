@@ -8,6 +8,7 @@
 //   k.gateway.records / .events / .grants / .seal / .audit / .tasks   k.chains.fromFacts(...)   k.log   k.store   k.limits
 import { createGateway } from "./gateway/index.js";
 import { createMemoryStore } from "./store/memory.js";
+import { isPackaged } from "./devbuild.js";
 import { createEventLog } from "./core/events.js";
 import { createChainBuilder, isExactlyPerson, isChain } from "./core/chain.js";
 import { createGrantsStore } from "./grants/index.js";
@@ -38,6 +39,8 @@ import { createKitApply } from "./tasks/kit-apply.js";
 export async function createKernel(cfg) {
   const clock = cfg.clock || Date.now;
   const log = cfg.log || createEventLog({ space: cfg.space, clock });
+  // The in-memory reference store is for tests and development builds. A packaged kernel is given its Space's store (or the refusing one) and never makes this.
+  if (!cfg.store && isPackaged()) throw new KernelError("unavailable", "a packaged Vyre keeps records in Twenty and was given no record store");
   const store = cfg.store || createMemoryStore({ clock });
   // The one sealing handle (K-3): the sealing process when there is one, a development key when there is not. Only the chain builder and the grants store are given it.
   const seal = cfg.seal || createKernelSeal({ sealer: cfg.sealer, key: cfg.key });
@@ -231,13 +234,13 @@ export async function createKernel(cfg) {
       })() : {}),
       /**
        * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
-       * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
+       * show BEFORE it is made) and starting to host one (`host({ owner, name })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
        */
       ...(needs.spaces === true ? { spaces: Object.freeze({
         retire: async (/** @type {string} */ id) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.retire(id); },
         storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
-        host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
+        host: async (/** @type {{ owner: string, name?: string }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
       }) } : {}),
       /**
        * Sessions for a daemon (kernel/core/surfaces.js): the PERSON opens one under their own chain (`open(chain, { agent?, chat?, session?, thread?, ttl_ms? })` gives

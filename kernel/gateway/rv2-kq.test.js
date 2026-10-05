@@ -2,11 +2,9 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { createGateway } from "./index.js";
 import { createMemoryStore } from "../store/memory.js";
-import { createSqliteStore } from "../store/sqlite.js";
 import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 
@@ -22,7 +20,7 @@ const G = (who, over = {}) => ({ id: `gr_${String(++n).padStart(4, "0")}`, space
 const MATTER = { name: "matter", label: "Matter", fields: [{ name: "title", kind: "text", label: "Title" }, { name: "stage", kind: "stage", label: "Stage", options: ["intake", "open", "closed"] }, { name: "fee", kind: "number", label: "Fee" }] };
 const NOTE = { name: "note", label: "Note", fields: [{ name: "body", kind: "text", label: "Body" }] };
 const make = (grants, attrs = () => ({})) => {
-  const store = createSqliteStore({ db: new DatabaseSync(":memory:"), clock, hotRows: 10 });
+  const store = createMemoryStore({ clock });
   const log = createEventLog({ space: SPACE, clock });
   const all = new Map(grants.map(g => [g.id, g]));
   const known = new Set([`person:${OWNER}`, `person:${MEMBER}`]);

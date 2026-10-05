@@ -15,7 +15,7 @@ const BASE_DIRS = ["core", "grants", "tasks", "audit", "door", "modules"];
 const BASE_FILES = [
   "gateway/records.js", "gateway/sealing.js", "gateway/index.js",
   "seal/client.js", "seal/uses.js", "seal/wire.js", "seal/classes.js",
-  "store/sqlite.js", "store/sqlite-log.js", "store/values.js", "store/query.js",
+  "store/sqlite-log.js", "store/values.js", "store/query.js",
   "index.js", "boot.js", "home.js", "keys.js", "devbuild.js",
 ];
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */

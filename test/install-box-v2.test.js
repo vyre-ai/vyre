@@ -144,7 +144,7 @@ test("install-box.sh v2: the preflight says how many spaces fit, its memory numb
   assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });
-  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_STORE=sqlite\n", { mode: 0o600 });
+  fs.writeFileSync(path.join(b.dir, "vyre.env"), "CLOUDFLARE_VYRE_TOKEN=keep\nVYRE_STORE=memory\n", { mode: 0o600 });
   const r = run(b.env, ["--yes", "--from", REPO]);
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout + r.stderr, /GB of memory free/);
@@ -152,7 +152,7 @@ test("install-box.sh v2: the preflight says how many spaces fit, its memory numb
   assert.match(text, /^CLOUDFLARE_VYRE_TOKEN=keep$/m);
   assert.match(text, /^VYRE_KERNEL=1$/m);
   assert.equal(text.match(/^VYRE_STORE=/gm)?.length, 1, "a person's own VYRE_STORE stays, and none is added");
-  assert.match(text, /^VYRE_STORE=sqlite$/m);
+  assert.match(text, /^VYRE_STORE=memory$/m);
 });
 
 test("install-box.sh v2: the custody notice is the one the kernel says, and it is printed when the server is ready", async t => {

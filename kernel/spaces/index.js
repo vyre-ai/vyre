@@ -115,8 +115,8 @@ export function createSpaceKernels(cfg) {
       if (typeof cfg.audit === "function") await cfg.audit("space.hosting", { space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}) });
       fs.mkdirSync(d, { recursive: true, mode: 0o700 });
       if (!cfg.sealer) { if (cfg.fileKey !== true) throw new KernelError("key_custody", "a hosted Space's kernel key must live in the sealing process: give the registry the home's sealer"); fs.writeFileSync(path.join(d, "kernel.key"), crypto.randomBytes(32).toString("hex"), { mode: 0o600 }); }
-      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), ...(o.accept_builtin_store === true ? { accept_builtin_store: true } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
-      // a Space that cannot be opened (the box cannot run its store and the person has not agreed to the built-in one) is not left half made
+      fs.writeFileSync(path.join(d, "space.json"), JSON.stringify({ space: id, owner: o.owner, ...(o.name ? { name: String(o.name).slice(0, 80) } : {}), made_at: (cfg.clock || Date.now)() }), { mode: 0o600 });
+      // a Space that cannot be opened (the box cannot run its record store, Twenty) is not left half made
       let k;
       try { k = await open(id); } catch (e) { fs.rmSync(d, { recursive: true, force: true }); throw e; }
       live.set(id, k);
@@ -157,7 +157,7 @@ export function createSpaceKernels(cfg) {
       });
     },
     /** What a Space made here now would be stored in, and the confirmation to show BEFORE it is made (`confirm`: text and choices). Nothing is created. */
-    storePlan: () => (cfg.storeFor && /** @type {any} */ (cfg.storeFor).plan ? /** @type {any} */ (cfg.storeFor).plan() : Promise.resolve({ store: "sqlite", reasons: [] })),
+    storePlan: () => (cfg.storeFor && /** @type {any} */ (cfg.storeFor).plan ? /** @type {any} */ (cfg.storeFor).plan() : Promise.resolve({ store: "memory", reasons: [] })),
     /** What a hosted Space says about itself on disk: { name? } (its space.json). Nothing secret. @param {string} id */
     describe(id) {
       if (!SPACE_ID.test(id)) return null;

@@ -16,9 +16,9 @@ const SP = "spc_aaaaaaaaaaaa";
 const kdir = (home) => path.join(home, "kernel");
 const hdir = (home) => path.join(home, "kernel", "spaces", SP);
 
-test("sqlite is the default: nothing is checked, nothing is provisioned", async () => {
+test("memory (a development build): nothing is checked, nothing is provisioned", async () => {
   let called = 0;
-  const f = createStoreFor({ home: tmp(), mode: "sqlite", preflight: async () => { called++; return { ok: true, reasons: [] }; } });
+  const f = createStoreFor({ home: tmp(), mode: "memory", preflight: async () => { called++; return { ok: true, reasons: [] }; } });
   assert.equal(await f(SP, { personal: true }), undefined);
   assert.equal(called, 0);
 });
@@ -32,27 +32,29 @@ test("preflight names every reason a box is too small, and passes a big enough o
   assert.equal(big.ok, process.platform === "linux");
 });
 
-test("auto on a box that is too small falls back to SQLite for the home's own Space, says why in a file, and remembers it", async () => {
+test("on a box that is too small the home's own Space gets a store that refuses every record call, says why in a file, and the daemon still starts", async () => {
   const home = tmp(), lines = [];
-  const f = createStoreFor({ home, mode: "auto", log: (l) => lines.push(l), preflight: async () => ({ ok: false, reasons: ["not enough free memory"], facts: {} }) });
-  assert.equal(await f(SP, { personal: true }), undefined);
+  const f = createStoreFor({ home, mode: "twenty", log: (l) => lines.push(l), preflight: async () => ({ ok: false, reasons: ["not enough free memory"], facts: {} }) });
+  const store = await f(SP, { personal: true });
+  assert.equal(store.refusing, true);
   assert.match(fs.readFileSync(path.join(kdir(home), "twenty-unavailable.json"), "utf8"), /not enough free memory/);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(kdir(home), "store.json"), "utf8")).kind, "sqlite");
-  assert.ok(lines.some((l) => /SQLite/.test(l)));
-  const g = createStoreFor({ home, mode: "auto", preflight: async () => { throw new Error("not asked"); } });
-  assert.equal(await g(SP, { personal: true }), undefined, "a later start does not move the Space to a second, empty store");
+  assert.equal(fs.existsSync(path.join(kdir(home), "store.json")), false, "nothing was decided: a later start with room provisions Twenty");
+  await assert.rejects(() => store.query("contact", {}), (e) => e.code === "unavailable" && /cannot run the record store \(Twenty\): not enough free memory\. Put your space on your server/.test(e.message));
+  assert.ok(lines.some((l) => /store for .*: none/.test(l)));
 });
 
-test("twenty on a box that is too small refuses to start the Space, with the reasons", async () => {
-  const f = createStoreFor({ home: tmp(), mode: "twenty", preflight: async () => ({ ok: false, reasons: ["Docker is not installed"], facts: {} }) });
-  await assert.rejects(() => f(SP, { personal: true }), (e) => e.code === "unavailable" && /Docker is not installed/.test(e.message));
-});
-
-test("a Space made on Twenty never falls back to SQLite", async () => {
+test("a Space made on Twenty never starts without it", async () => {
   const home = tmp(); fs.mkdirSync(kdir(home), { recursive: true });
   fs.writeFileSync(path.join(kdir(home), "store.json"), JSON.stringify({ kind: "twenty" }));
-  const f = createStoreFor({ home, mode: "auto", preflight: async () => ({ ok: false, reasons: ["Docker is not running"], facts: {} }) });
+  const f = createStoreFor({ home, mode: "twenty", preflight: async () => ({ ok: false, reasons: ["Docker is not running"], facts: {} }) });
   await assert.rejects(() => f(SP, { personal: true }), /cannot start here/);
+});
+
+test("VYRE_STORE is twenty or memory: sqlite and auto are refused by name", async () => {
+  const { checkMode } = await import("./space-store.js");
+  assert.equal(checkMode("twenty"), "twenty"); assert.equal(checkMode("memory"), "memory");
+  for (const m of ["sqlite", "auto"]) assert.throws(() => checkMode(m), /twenty or memory/);
+  assert.equal(await createStoreFor({ home: tmp(), mode: "memory" })(SP, { personal: true }), undefined, "memory: the kernel makes its in-memory reference store");
 });
 
 test("a Space name becomes a compose-safe name", () => { assert.equal(nameOf("spc_abcdefghijkl"), "spc-abcdefghijkl"); });
@@ -65,20 +67,19 @@ test("the admission check and the container limits are the same numbers", () => 
   assert.equal(spacesThatFit(300 + 2 * caps), 2);
 });
 
-test("a new hosted Space on a box too small for Twenty is not created until the person agrees; the plan is shown first", async () => {
+test("a new hosted Space on a box too small for Twenty is not created; the plan is shown first and offers the server", async () => {
   const { planStore, SMALL_BOX_NOTE, SMALL_BOX_CHOICES } = await import("./space-store.js");
   const small = async () => ({ ok: false, reasons: ["not enough free memory"], facts: {} });
   const home = tmp();
-  const f = createStoreFor({ home, mode: "auto", preflight: small });
+  const f = createStoreFor({ home, mode: "twenty", preflight: small });
   const plan = await f.plan();
-  assert.equal(plan.store, "sqlite");
+  assert.equal(plan.store, "none");
   assert.equal(plan.confirm.text, SMALL_BOX_NOTE);
   assert.deepEqual(plan.confirm.choices, SMALL_BOX_CHOICES);
   assert.match(SMALL_BOX_NOTE, /Put it on your server instead/);
-  assert.equal((await planStore({ dir: tmp(), mode: "auto", preflight: async () => ({ ok: true, reasons: [], facts: {} }) })).confirm, undefined);
-  await assert.rejects(() => f(SP, { owner: "per_x" }), (e) => e.code === "needs_confirmation" && e.plan.confirm.choices.includes("cancel"));
+  assert.equal((await planStore({ dir: tmp(), mode: "twenty", preflight: async () => ({ ok: true, reasons: [], facts: {} }) })).confirm, undefined);
+  await assert.rejects(() => f(SP, { owner: "per_x" }), (e) => e.code === "needs_confirmation" && e.plan.confirm.choices.includes("server") && !e.plan.confirm.choices.includes("create"));
   assert.equal(fs.existsSync(path.join(hdir(home), "store.json")), false, "nothing was decided or written");
-  assert.equal(await f(SP, { owner: "per_x", accept_builtin_store: true }), undefined, "once agreed it opens on the built-in store");
 });
 
 test("opening a Space whose key is inside the rotation window rotates it; a failed rotation is loud and writes a warning; an expired key refuses to start", async () => {
