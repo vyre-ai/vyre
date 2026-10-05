@@ -333,6 +333,14 @@
    "module": "computers",
    "reason": "ownSurface check in code: an agent that is not the assistant is refused, and the one-use ticket is for a person's screen"
   },
+  "connectors.declared": {
+   "module": "connectors",
+   "reason": "read-only, no value: lists the shipped declarations and whether a credential exists; a model sees only names and operation kinds (guard: holds no secret or host beyond the public base host)"
+  },
+  "connectors.logging": {
+   "module": "connectors",
+   "reason": "read-only recipe that writes nothing: the watcher and Flow it returns are made only through watchers.preset (asked, held) and flows.define (a person approves), so nothing runs from this call (guard: checked input, no side effect)"
+  },
   "events.catalog": {
    "module": "events",
    "reason": "read-only, scoped by the module itself"
@@ -1949,6 +1957,14 @@
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update is records.update under the caller's chain, and the run side is threads.rename, which refuses a caller who may not reach that thread"
   },
+  "work.files.share": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's shareFile decides (only a participant of the chat, as the person's own act; anyone else, an owner included, gets not_found)"
+  },
+  "work.files.unshare": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain; the kernel's unshareFile decides (a participant of the chat or an admin)"
+  },
   "work.know.answer": {
    "module": "work",
    "reason": "own-scope check: every citation is a source the caller may read, authorized per source for the caller's chain at the Gate; it writes nothing; the kernel builds the chain and a tool with no kernel wired answers unavailable"
@@ -1992,14 +2008,6 @@
   "work.tools": {
    "module": "work",
    "reason": "read-only: lists only the tools the caller's grants allow; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
-  },
-  "connectors.declared": {
-   "module": "connectors",
-   "reason": "read-only, no value: lists the shipped declarations and whether a credential exists; a model sees only names and operation kinds (guard: holds no secret or host beyond the public base host)"
-  },
-  "connectors.logging": {
-   "module": "connectors",
-   "reason": "read-only recipe that writes nothing: the watcher and Flow it returns are made only through watchers.preset (asked, held) and flows.define (a person approves), so nothing runs from this call (guard: checked input, no side effect)"
   }
  }
 }

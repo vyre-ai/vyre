@@ -40,6 +40,26 @@
         "name": "work.project.move",
         "summary": "move a Project to another Space as a new project there, with one yes",
         "reach": "anyone",
+        "effect": "write",
+        "outward": true
+      },
+      {
+        "name": "work.know.move-export",
+        "summary": "a project's Work-engine lines, read for a move between Spaces (needs the move's own event)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
+        "name": "work.know.move-import",
+        "summary": "write a moved project's Work-engine lines in the target Space (needs the move's own event)",
+        "reach": "modules",
+        "effect": "write",
+        "crossSpace": "project.move_in"
+      },
+      {
+        "name": "work.know.move-forget",
+        "summary": "drop a moved project's Work-engine lines in the source Space, against the receipt",
+        "reach": "modules",
         "effect": "write"
       },
       {
@@ -87,6 +107,18 @@
       {
         "name": "work.chat.move",
         "summary": "move a chat you are in to another Project",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.files.share",
+        "summary": "share one file of a chat you are in with its project's members",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.files.unshare",
+        "summary": "take back the sharing of one file of a chat",
         "reach": "anyone",
         "effect": "write"
       },

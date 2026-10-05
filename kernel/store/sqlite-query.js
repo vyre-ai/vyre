@@ -24,7 +24,7 @@ const isAscii = (/** @type {string} */ s) => /^[\x20-\x7e]*$/.test(s);
 /**
  * What a field is for the planner: how to read it in SQL and what values it holds.
  * @param {any} def the type's definition @param {string} name
- * @returns {{ col?: string, expr: string, cls: "string" | "number" | "boolean" | "object" | "array" | "int", name: string } | null}
+ * @returns {{ col?: string, expr: string, cls: "string" | "number" | "boolean" | "object" | "array" | "linklist" | "int", name: string } | null}
  */
 export function fieldInfo(def, name) {
   if (name === "id") return { col: "id", expr: "id", cls: "string", name };
@@ -36,6 +36,7 @@ export function fieldInfo(def, name) {
   if (STRING_KINDS.has(f.kind)) return { expr, cls: "string", name };
   if (NUMBER_KINDS.has(f.kind)) return { expr, cls: "number", name };
   if (f.kind === "boolean") return { expr, cls: "boolean", name };
+  if (f.kind === "link" && f.many === true) return { expr, cls: "linklist", name }; // a list of { urn }: `contains` pushes down, the rest is the reference code's
   if (OBJECT_KINDS.has(f.kind)) return { expr, cls: "object", name };
   if (ARRAY_KINDS.has(f.kind)) return { expr, cls: "array", name };
   return null; // sealed and anything unknown
@@ -61,6 +62,11 @@ function filterSql(f, def, ascii, args, pos = false) {
   if (f.not) return `(NOT ${filterSql(f.not, def, ascii, args, false)})`;
   const info = typeof f.field === "string" ? fieldInfo(def, f.field) : null;
   if (!info) no();
+  if (info.cls === "linklist") {
+    if (f.op === "contains" && f.value && typeof f.value === "object" && !Array.isArray(f.value) && typeof f.value.urn === "string") { args.push(f.value.urn); return `EXISTS (SELECT 1 FROM json_each(data, '$.${info.name}') WHERE json_extract(json_each.value, '$.urn') = ?)`; }
+    if (f.op === "is_null") return `(${info.expr} IS NULL)`;
+    no();
+  }
   const textOrd = info.cls === "string" && !info.col; // ordered comparison of text needs the ASCII guarantee
   const needAscii = () => { if (info.cls === "string" && !(info.col === "id" || ascii(info.name))) no(); };
   const eqOf = (/** @type {any} */ v, p = pos) => {

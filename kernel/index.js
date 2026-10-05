@@ -91,7 +91,10 @@ export async function createKernel(cfg) {
   gateway = createGateway({
     // The stored attributes are the whole truth about a type's owner and project only where no module supplies them and the home has no attribute function: then a store may filter by them.
     attrPush: (/** @type {string} */ type) => !cfg.attrs && !attrProviders.has(type),
+    ...(cfg.basic ? { basic: cfg.basic } : {}),
     kitApply, waives: (/** @type {any} */ w, /** @type {any} */ q) => kitApply.waives(w, q),
+    // the other Space's log, for a move received here: this home hosts both (kernel/gateway/moves.js); a Space it does not host has no evidence
+    moveEvidence: (/** @type {string} */ from, /** @type {string} */ moveId) => { const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(from) : null; return h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === moveId) ?? null : null; },
     room: roomPort,
     space: cfg.space, store, log, chains, clock, limits, tasks, approvedAct: (/** @type {any} */ q) => tasks.useApproval(q), get owner() { return ownerRef.id; }, presence, hasPresenceSession, expr: cfg.expr === undefined ? defaultExpr : cfg.expr,
     ...(grantsStore ? { grantsStore } : { grants: cfg.grants, members: cfg.members }),
@@ -244,13 +247,13 @@ export async function createKernel(cfg) {
       })() : {}),
       /**
        * Only for a first-party module that declares `needs.kernel.spaces: true` (the module that creates Spaces): what a Space made here would be stored in (`storePlan`, with the confirmation to
-       * show BEFORE it is made) and starting to host one (`host({ owner, name, accept_builtin_store })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
+       * show BEFORE it is made) and starting to host one (`host({ owner, name })` -> `{ space }`, the kernel's own `spc_` plus 12 base32 id). The Space's first owner is the
        * person id named; nothing here lists or reaches another Space (`for` and `chainIn` do that, under a chain).
        */
       ...(needs.spaces === true ? { spaces: Object.freeze({
         retire: async (/** @type {string} */ id) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.retire(id); },
         storePlan: () => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); return spaces.storePlan(); },
-        host: async (/** @type {{ owner: string, name?: string, accept_builtin_store?: boolean }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
+        host: async (/** @type {{ owner: string, name?: string }} */ o) => { if (!spaces) throw new KernelError("unavailable", "this kernel has no Spaces registry"); const h = await spaces.host(o); return { space: h.space || h.id, id: h.space || h.id }; },
       }) } : {}),
       /**
        * Sessions for a daemon (kernel/core/surfaces.js): the PERSON opens one under their own chain (`open(chain, { agent?, chat?, session?, thread?, ttl_ms? })` gives
@@ -341,7 +344,14 @@ export async function createKernel(cfg) {
       if (space === cfg.space) return handle.chain(meta);
       const h = spaces && typeof spaces.hosted === "function" ? spaces.hosted(space) : null;
       if (!h || !h.kernel) throw new KernelError("not_found", "no such space here");
-      if (meta && typeof meta.token === "string") return h.surfaces.chainFor(meta.token);
+      if (meta && typeof meta.token === "string") {
+        try { return await h.surfaces.chainFor(meta.token); } catch { /* not a token of that Space's own: a session of this home, below */ }
+        // A session opened in this home speaks for its person in every Space they belong to (an assistant works wherever its person does): this home verifies the token it signed, and the other Space
+        // builds the chain from the person and agent the token names by the same rule a session of its own gets. The Space's own grants still decide what that chain may do, and a person who is not a member there gets no chain.
+        let t; try { t = await surfaces.verify(meta.token); } catch { throw new KernelError("not_a_member", "no chain for this connection"); }
+        const facts = t.agent ? { kind: "agent_session", agent: t.agent, session: t.session, thread: t.thread || t.session, person: t.person, from_token: true, vouched: true } : { kind: "session_person", person: t.person, session: t.session, from_token: true, vouched: true };
+        try { return h.kernel.chains.fromFacts(facts); } catch { throw new KernelError("not_a_member", "no chain for this connection"); }
+      }
       if (meta && meta.kernelFacts && typeof meta.kernelFacts === "object") {
         if (!(await enrolledHere(space, meta.kernelFacts))) throw new KernelError("not_a_member", "this device is not enrolled in that space");
         try { return h.kernel.chains.fromFacts(meta.kernelFacts); } catch { /* no person chain for this connection */ }

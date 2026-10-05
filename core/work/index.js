@@ -11,13 +11,14 @@ import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
 import { createFiles, KINDS as FILE_KINDS, MAX_FILE } from "./files.js";
-import { planMove, runMove } from "./project-move.js";
+import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
 import { teammateFromRole, markReviewed, checkAdd, addCardData } from "./team/roles.js";
 import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
+import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
 import { createEngineer } from "./engineer/index.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
@@ -31,7 +32,6 @@ const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]
 export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
-    /** @type {any} */ let engine = null;
     /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
@@ -73,11 +73,14 @@ export default {
       });
     }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
+    // One engine per Space: a call that runs in a hosted Space has that Space's own kernel handle and its own database (`ctx.store.db` is a router that picks the running Space's file), and an engine built once
+    // holds the home's. Keyed by the running Space's id, built inside the call.
+    /** @type {Map<string, any>} */ const engines = new Map();
     const engineOf = () => {
-      if (engine) return engine;
       const k = kernelOf();
+      if (engines.has(k.space)) return engines.get(k.space);
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
-      return (engine = createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) }));
+      const made = (createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) })); engines.set(k.space, made); return made;
     };
     const engineerOf = () => {
       if (engineer) return engineer;
@@ -126,15 +129,30 @@ export default {
     const sideOf = async (/** @type {string} */ space, /** @type {any} */ extra) => {
       const k = kernelOf();
       const chain = await k.chainIn(space, extra);
-      const gw = space === k.space ? { records: k.records, drive: k.drive, definitions: k.definitions } : (await k.for(space)).gateway;
-      return { space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+      // every Space, this one included, through its own gateway: its records, its Drive, its definitions and its moves
+      const gw = (await k.for(space)).gateway;
+      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+    };
+    // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when the source's gateway has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
+    // The record types a target lacks are installed from the source's own definitions, under the same approval (a plan that needs them says so in its hash).
+    const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => {
+      // the kernel gives the work module `moves.carryFiles` on its own handle (network-2, kernel/moves/carry.js: bytes go pool to pool inside the kernel, never to a module)
+      const mv = kernelOf().moves || (from.gw && from.gw.moves);
+      if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id });
+      if (to.gw && to.gw.records && typeof to.gw.records.define === "function") to.install = async (/** @type {any} */ c, /** @type {string[]} */ names) => {
+        const defs = (await from.types(from.chain)).filter((/** @type {any} */ t) => names.includes(t.name));
+        if (defs.length !== names.length) throw Object.assign(new Error("a record type of this project is not defined here, so it cannot be installed in the other Space"), { code: "blocked" });
+        await to.gw.records.define(c, { add_types: defs });
+      };
+      return from;
     };
     ctx.tool("work.project.move-plan", {
       description: "What moving a Project to another Space would carry: counts of records, files and sealed fields, anything that blocks it, and the hash the person approves. Reads only; the mover must be an owner or admin in both Spaces.",
       input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" } }, ["project", "to_space"]),
       run: async (input, extra) => {
         const k = kernelOf();
-        const plan = await planMove({ from: await sideOf(k.space, extra), to: await sideOf(String(input.to_space), extra), project: String(input.project), client: input.client === "move" ? "move" : "leave" });
+        const to0 = await sideOf(String(input.to_space), extra);
+        const plan = await planMove({ from: withCarry(await sideOf(k.space, extra), to0), to: to0, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
         return { plan_hash: plan.hash, counts: plan.counts, blockers: plan.blockers, from: plan.from, to: plan.to };
       },
     });
@@ -143,13 +161,23 @@ export default {
       input: obj({ project: { type: "string" }, to_space: { type: "string" }, client: { type: "string" }, plan_hash: { type: "string" } }, ["project", "to_space", "plan_hash"]),
       run: async (input, extra) => {
         const k = kernelOf();
-        if (!k.moves || typeof k.moves.out !== "function" || typeof k.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet (the compound approval is Windows'), so nothing was moved"), { code: "unavailable" });
-        const from = await sideOf(k.space, extra), to = await sideOf(String(input.to_space), extra);
-        const plan = await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
+        const to = await sideOf(String(input.to_space), extra), from = withCarry(await sideOf(k.space, extra), to);
+        if (!from.gw.moves || typeof from.gw.moves.out !== "function" || !to.gw.moves || typeof to.gw.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet, so nothing was moved"), { code: "unavailable" });
+        // A move is saved as it goes (the id map, the move id, what is done), so a crash or a retry resumes it: no second target project, no second approval, no record copied twice.
+        const db = ctx.store.db;
+        db.exec("CREATE TABLE IF NOT EXISTS work_moves (key TEXT PRIMARY KEY, state TEXT NOT NULL, at INTEGER NOT NULL)");
+        const key = `${from.space}|${to.space}|${String(input.project)}`;
+        const row = /** @type {any} */ (db.prepare("SELECT state FROM work_moves WHERE key = ?").get(key));
+        /** @type {any} */ const state = row ? JSON.parse(String(row.state)) : {};
+        const save = (/** @type {any} */ st) => { db.prepare("INSERT INTO work_moves (key, state, at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET state = excluded.state, at = excluded.at").run(key, JSON.stringify(st), Date.now()); };
+        // a resumed move that already emptied part of the source continues under the plan it was approved with; anything else is planned afresh and must be what the person saw
+        const plan = state.plan && state.plan.hash === input.plan_hash ? state.plan : await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
         if (plan.hash !== input.plan_hash) throw Object.assign(new Error("the project is not what you were shown; plan the move again"), { code: "stale_plan" });
+        state.plan = plan; save(state);
         // one yes, verified in the source Space's sealing process, bound to this exact plan; the target checks it carries the same one
-        const out = await k.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof });
-        await k.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
+        if (!state.move_id) { const o = await from.gw.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof }); state.move_id = o.move_id; save(state); }
+        const out = { move_id: String(state.move_id) };
+        if (!state.move_in) { await to.gw.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id }); state.move_in = true; save(state); }
         // The memory room moves with it: each Space has its own memory instance, reached through that Space's handle under the mover's chain there (the target proves the source with the signed evidence).
         // A kernel that cannot reach a Space's memory this way has no `memory` port, and the move says so instead of leaving the room behind unseen.
         const mem = (/** @type {any} */ side, /** @type {string} */ tool) => {
@@ -164,8 +192,65 @@ export default {
         };
         const room = { offer: mem(to, "memory.room.offer"), export: mem(from, "memory.room.export"), import: mem(to, "memory.room.import"), forget: mem(from, "memory.room.forget") };
         const memory = Object.values(room).every(Boolean) ? room : undefined;
-        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        // the Work engine's own lines: this module's tools, in each Space (the own Space through ctx.call, the other through its handle)
+        const kn = { export: mem(from, "work.know.move-export"), import: mem(to, "work.know.move-import"), forget: mem(from, "work.know.move-forget") };
+        const know = Object.values(kn).every(Boolean) ? kn : undefined;
+        const done = await runMove({ from, to, plan, ports: { state, save, move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(from.gw.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => from.gw.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        if (!done.left_behind.length) db.prepare("DELETE FROM work_moves WHERE key = ?").run(key);
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
+      },
+    });
+    // The Work engine's session lines move with the project (core/work/memory/move.js). Each call refuses unless THIS Space's log holds the kernel's event for the move, the way the memory room's
+    // do: `project.move_started` in the source, `project.move_in` in the target, for this move id, plan hash and project. The mover's own chain reads the log.
+    const knowProof = async (/** @type {any} */ extra, /** @type {"project.move_started"|"project.move_in"} */ type, /** @type {any} */ i) => {
+      kernelOf();
+      // run by the move (this module's own tool, through ctx.call or the Space handle), never by a person's surface or another module: the authority is the move's own event in this Space's log
+      if (String((extra && extra.caller) || "") !== "module:work") throw fail("denied", "the Work engine's lines move only inside a project move");
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(i.move_id)) || !/^[A-Za-z0-9_-]{43}$/.test(String(i.plan_hash)) || !urnOk(i.project)) throw fail("bad_input", "a move names its move id, plan hash and project");
+      // Inside a hosted Space this module runs with THAT Space's own kernel handle (windows' per-Space stores), so `kernelOf()` already reads the running Space's log; a call that crossed into it
+      // carries the caller's chain there (`in_space_chain`, set only by the registry), which is the one that may read it.
+      const chain = extra && extra.in_space_chain ? extra.in_space_chain : kernelOf().serviceChain("work");
+      const evs = await kernelOf().events.read(chain, { type });
+      const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
+      if (!ev || ev.data.plan_hash !== i.plan_hash || (type === "project.move_started" ? ev.subject !== i.project : ev.data.project !== i.project)) throw fail("not_found", "no such move");
+    };
+    const knowMove = obj({ move_id: { type: "string" }, plan_hash: { type: "string" }, project: { type: "string", description: "the project's record urn in the Space the move starts from" } }, ["move_id", "plan_hash", "project"]);
+    ctx.tool("work.know.move-export", {
+      description: "Source side of a project's Work-engine lines move: the lines of the project's records, read for the move. Refused unless this Space's log holds project.move_started for it. Returns { rows, digest, count }.",
+      callers: ["module"],
+      input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } } } },
+      run: async (i, extra) => {
+        engineOf(); await knowProof(extra, "project.move_started", i);
+        const k = kernelOf();
+        const allowed = new Set(await linkedClosure({ records: k.records, chain: k.serviceChain("work") }, String(i.project)));
+        const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
+        if (records.some((/** @type {string} */ r) => !allowed.has(r))) throw fail("denied", "that record is not part of this project");
+        return exportKnow(ctx.store.db, { records });
+      },
+    });
+    ctx.tool("work.know.move-import", {
+      description: "Target side: writes the exported lines under the target project's records (one transaction, a repeat is a no-op) and indexes them. Refused unless this Space's log holds project.move_in for the move. Returns the receipt { digest, count }.",
+      callers: ["module"],
+      input: { ...knowMove, properties: { ...knowMove.properties, rows: { type: "array", items: { type: "object" } }, map: { type: "object" }, from_space: { type: "string" } } },
+      run: async (i, extra) => {
+        engineOf(); await knowProof(extra, "project.move_in", i);
+        const k = kernelOf();
+        const r = importKnow(ctx.store.db, Array.isArray(i.rows) ? i.rows : [], { map: i.map && typeof i.map === "object" ? i.map : {}, from: String(i.from_space || ""), to: k.space });
+        for (const s of r.sessions) { try { await engineOf().index({ kind: "lines", session: s }); } catch { /* indexed by the next sweep */ } }
+        return { digest: r.digest, count: r.count };
+      },
+    });
+    ctx.tool("work.know.move-forget", {
+      description: "Source side, after the target imported: needs the receipt; refuses if the lines changed since the export; drops them and what was derived from them. Returns { forgotten }.",
+      callers: ["module"],
+      input: { ...knowMove, properties: { ...knowMove.properties, records: { type: "array", items: { type: "string" } }, receipt: { type: "object" } } },
+      run: async (i, extra) => {
+        engineOf(); await knowProof(extra, "project.move_started", i);
+        const k = kernelOf();
+        const allowed = new Set(await linkedClosure({ records: k.records, chain: k.serviceChain("work") }, String(i.project)));
+        const records = (Array.isArray(i.records) ? i.records : [i.project]).map(String);
+        if (records.some((/** @type {string} */ r) => !allowed.has(r))) throw fail("denied", "that record is not part of this project");
+        return forgetKnow(ctx.store.db, { records, receipt: i.receipt });
       },
     });
     // The Project record for a short name, made if this Space has none yet: what the projects module asks before it grants an agent reach (a grant names the record).
@@ -284,6 +369,21 @@ export default {
       try { ctx.kernel.events.subscribe(ctx.kernel.serviceChain("work"), "work-files-moved", { type: "file.moved" }, async (/** @type {any} */ e) => { if (e && e.data) await filesOf().onMoved(e.data); }); }
       catch (err) { if (typeof ctx.log === "function") ctx.log(`work: the file-move follower did not start: ${/** @type {Error} */ (err).message}`); }
     }
+    // Share to project: one file of a chat's folders becomes readable by the Space's members (a drive.read on exactly that file, source "chat:share"); never the folder, never another file, never a write. Only a
+    // participant of the chat shares (the kernel refuses anyone else as not_found, an owner included), and it is the person's own act under their own chain, never the service chain.
+    const pathIn = (/** @type {any} */ input) => { const p = String(input.path ?? ""); if (!/^Projects\/[^/]+\/(?:chat|made)\/[^/]+\/[^/]+$/.test(p) || p.split("/").some(x => x === "." || x === "..")) throw fail("bad_input", "path is a file in a chat's folders: Projects/<project id>/chat|made/<chat id>/<name>"); return p; };
+    ctx.tool("work.files.share", {
+      description: "Share one file of a chat you are in with its project: every member of the Space can read that file, and nothing else of the chat. { path: Projects/<project id>/chat|made/<chat id>/<name> } -> the grant. Sharing twice changes nothing.",
+      input: obj({ path: { type: "string" } }, ["path"]),
+      callers: WORK_CALLERS,
+      run: async (input, extra) => { const g = await kernelOf().grants.shareFile(await chainOf(extra), pathIn(input)); return { shared: pathIn(input), grant: g && (g.id || g) }; },
+    });
+    ctx.tool("work.files.unshare", {
+      description: "Take back the sharing of one file of a chat: the project's members can no longer read it. A person in the chat, or an admin, does it. { path } -> { unshared: n }.",
+      input: obj({ path: { type: "string" } }, ["path"]),
+      callers: WORK_CALLERS,
+      run: async (input, extra) => kernelOf().grants.unshareFile(await chainOf(extra), pathIn(input)),
+    });
     ctx.tool("work.files.save", {
       description: "Save one file of a session into its project's Drive folder (Projects/<slug>/chat|made/<session>/<name>) and record it, linked from the session and the Project. { thread, kind: chat|made, name, base64, mime?, source?, artifact?, key? } -> { path, created } or { path: null } when the session has no project. Vyre's own modules only.",
       input: obj({ thread: { type: "string" }, kind: { type: "string", enum: FILE_KINDS }, name: { type: "string" }, base64: { type: "string" }, from_artifact: { type: "string" }, mime: { type: "string" }, source: { type: "string" }, artifact: { type: "string" }, key: { type: "string" } }, ["thread", "kind", "name"]),

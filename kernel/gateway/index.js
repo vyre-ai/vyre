@@ -17,6 +17,8 @@ import { createDriveGateway } from "./drive.js";
 import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
+import { createMoves } from "./moves.js";
+import { canonical as canon, sha256 as sha } from "../core/canonical.js";
 
 /**
  * @param {{ expr?: any, stageTasks?: any, onStageEnter?: any, limits?: any, grantsStore?: any, presence?: any, tasks?: any, sealer?: any, door?: any, approvals?: any, templates?: any, destinations?: any, owner?: string, space: string, store: any, log: any, chains: any, grants: any, members: any, actions?: any[], attrs?: any, sealedFields?: any,
@@ -42,7 +44,7 @@ export function createGateway(cfg) {
     sharedRead: (/** @type {any} */ person, /** @type {string} */ resource) => gs.provider.forSubject(person).some((/** @type {any} */ g) => g.status === "active" && g.resource && g.resource.prefix === resource && !(g.resource.fields && g.resource.fields.length) && Array.isArray(g.actions) && g.actions.includes("drive.read")),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
+  records = createRecords({ room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -207,8 +209,12 @@ export function createGateway(cfg) {
     return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
+  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
+
   return Object.freeze({
     authorize: authorizer.authorize,
+    /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
+    moves,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     ...(drive ? { drive } : {}),

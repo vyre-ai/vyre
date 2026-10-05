@@ -82,6 +82,9 @@ test("surfaces: a daemon presents a token; the kernel mints the chain for that s
   const t2 = (await k2.surfaces.open(o2, { agent: "kit" })).token;
   assert.equal((await k2.surfaces.model.call(t2, { messages: [] })).content, "ok");
   assert.deepEqual(seen, [["person", "agent"]]);
+  // SL-1: a Switchboard slot name is not an agent name: no session opens under it, and a token that names one yields no chain
+  await assert.rejects(() => k2.surfaces.open(o2, { agent: "model:a/b#1" }), { code: "bad_input" }, "an agent session cannot be opened under a model slot's name");
+  assert.throws(() => k2.chains.fromFacts({ kind: "agent_session", agent: "model:a/b#1", session: "s", thread: "t", person: OWNER, vouched: true }), { code: "not_a_member" }, "and the chain builder refuses the name");
   await assert.rejects(async () => { for await (const _ of k2.surfaces.model.stream(t2, {})) void _; }, { code: "unsupported" }, "a door with no streaming call says so");
   // a door with streaming: the chain is the session's, and the events come through as the door yields them
   const chains2 = [];

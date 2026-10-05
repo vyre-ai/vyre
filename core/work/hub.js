@@ -48,13 +48,16 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
     const made = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}) });
-    // the folder is named by the record's own id, which never changes: a rename never touches Drive. The hub writes this field; a person's edit of it is put back.
-    const rec = await kernel.records.update(chain(), PROJECT, made.id, { drive_path: `Projects/${made.id}` }, made.version);
+    // A Basic personal space (no server, no Drive) keeps its projects as plain folders on this device: the record's `drive_path` is that device folder, learned when this computer adopts the
+    // project. With a Drive, the folder is named by the record's own id, which never changes: a rename never touches Drive. The hub writes this field; a person's edit of it is put back.
+    const plain = !kernel.drive;
+    let rec = plain ? made : await kernel.records.update(chain(), PROJECT, made.id, { drive_path: `Projects/${made.id}` }, made.version);
     // The marker is the CALLER's own write (drive.write on its chain): a person who cannot write Drive cannot make a project, and the record is taken back so none is left half made.
     try { await folderMarker(rec, caller || chain(), true); }
     catch (e) { await kernel.records.remove(caller || chain(), PROJECT, rec.id).catch(() => {}); throw e; }
     // this computer learns of it: a local row and a home folder for the sessions that start here
-    await tool("projects.adopt", { slug: s, name: nm });
+    const adopted = await tool("projects.adopt", { slug: s, name: nm });
+    if (plain && adopted && typeof adopted.home === "string" && adopted.home) rec = await kernel.records.update(chain(), PROJECT, made.id, { drive_path: adopted.home }, made.version);
     return rec;
   }
 
@@ -87,7 +90,7 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   /** @type {Promise<any> | null} */ let generalOnce = null;
   const generalProject = () => (generalOnce ||= (async () => (await find(PROJECT, "slug", GENERAL)) || createProject(chain(), { name: "General", slug: GENERAL }))().catch(e => { generalOnce = null; throw e; }));
   /** A Project's Drive folder: its own field, or (in the instant between its creation and the hub setting it) the same id-named path. @param {any} proj */
-  const rootOf = proj => proj.data.drive_path || `Projects/${proj.id}`;
+  const rootOf = proj => proj.data.drive_path || (kernel.drive ? `Projects/${proj.id}` : "");
 
   const ids = (/** @type {any} */ l) => (Array.isArray(l) ? l : []).map(String).join(",");
   const findChat = (/** @type {string} */ chat) => find(CHAT, "chat", chat);

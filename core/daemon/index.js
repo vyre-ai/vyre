@@ -237,7 +237,7 @@ async function startLocked(opts, root, p, release) {
   // of this function can pass it; vyred's own start (main.js) passes nothing, and it is never read
   // from config.json, the environment or the command line.
   const firstPartyRoots = Array.isArray(opts.firstPartyRoots) ? opts.firstPartyRoots.filter(r => typeof r === "string" && path.isAbsolute(r)) : [];
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
+  registry = new Registry({ db, events, config: cfg, paths: p, spaceDir: (/** @type {string} */ id) => path.join(root, "kernel", "spaces", id), log, rules, handler, upgrader, presence, firstPartyRoots, coreKeys: opts.coreKeys || null });
   // The kernel is ON unless this is a development build started with VYRE_KERNEL=0 (or opts.kernel false). When on, it gives the home a
   // Space and a first owner, a durable log and store, and the module host: modules from outside Vyre then run only under the supervisor (core/modules/index.js).
   /** @type {any} */ let kernel = null;
@@ -251,9 +251,14 @@ async function startLocked(opts, root, p, release) {
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
     // profile and gateway container are options of that factory with defaults, not settings.
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
-    if ((process.env.VYRE_STORE || "sqlite") !== "sqlite") {
+    const { storeMode } = await import("../../stores/twenty/space-store.js");
+    const isServerInstall = config.isServer(cfg.machine);
+    // A device install (a laptop or desktop that is not a server) is Basic: its own SQLite store and only the fixed personal types (records/basic-types.js). A development build allows every type.
+    /** @type {{ allow: Set<string>, refusal: string } | undefined} */ let basic;
+    if (opts.basic === true || (!isServerInstall && isPackaged())) { const { basicAllow, BASIC_REFUSAL } = await import("../../records/basic-types.js"); basic = { allow: basicAllow(), refusal: BASIC_REFUSAL }; }
+    if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall });
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
@@ -331,7 +336,7 @@ async function startLocked(opts, root, p, release) {
     const { openrouterDoorDriver } = await import("../sessions/drivers/openrouter.js");
     // The inference door's providers (the API-key chat drivers' door side: the door scans first, this only makes the call with the key the session passes) and what it reports (counts and classes, never values).
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
-    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
+    kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, ...(basic ? { basic } : {}), modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
@@ -351,8 +356,9 @@ async function startLocked(opts, root, p, release) {
         return out.data;
       },
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
-      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
-    stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+      stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (basic ? null : (await flowsHost.attach(space, k, meta.owner)).stages) });
+    // Flows, Kits, roles and views need a server: a Basic device attaches no flows host, so none of their record types is defined and nothing fails at boot.
+    stages = basic ? null : (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
@@ -1152,7 +1158,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
       // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
-      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
+      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, server: config.isServer(cfg.machine), store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
   // The plugin agent reaches the tool door and nothing else (no events, hooks, challenges or module listing): its grant names tools, and the tool door is where the grant is checked.
   if (pluginAgent && !((req.method === "GET" && url.pathname === "/v1/tools") || (req.method === "POST" && url.pathname.startsWith("/v1/tools/")))) return send(res, 403, { error: { code: "not_in_grant", message: "Claude Code on this computer reaches only the tools its grant names" } });

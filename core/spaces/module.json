@@ -82,6 +82,14 @@
     "reach": "person"
    },
    {
+    "name": "spaces.tier", "effect": "read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.time-zone.set", "effect": "write",
+    "reach": "person"
+   },
+   {
     "name": "spaces.get", "effect": "read",
     "reach": "person"
    },

@@ -6,7 +6,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { proofBytes } from "../../kernel/core/presence.js";
+import { proofBytes, payloadHash } from "../../kernel/core/presence.js";
 import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { proofChainHash } from "../../kernel/remote/proof.js";
 
@@ -31,25 +31,39 @@ export function softwareKey(file) {
 }
 
 /**
- * A PresenceProof over the home's challenge, or null when the challenge does not say what to sign.
- * @param {string} file @param {string} person the identity id the home knows this person by @param {{ op?: string, fields?: any, payload_hash?: string, home?: string, nonce?: string, space?: string }} ch @param {() => number} [now]
+ * WN-1: the signer works out what it signs. The payload hash is recomputed here from the op, the space and the fields (never taken from the challenge), and a challenge whose own hash is not
+ * that, or that is not for the request this device made (`expect`, built from the device's own call), is refused: a home asking for a signature over something else gets none.
+ * @param {{ op?: string, fields?: any, payload_hash?: string, space?: string }} ch @param {{ op: string, space: string, fields: any, payload_hash: string } | undefined} [expect]
+ * @returns {string | null} the reason it must not be signed, or null
  */
-export function softwareProof(file, person, ch, now = Date.now) {
-  if (!ch || typeof ch.op !== "string" || typeof ch.payload_hash !== "string" || typeof ch.nonce !== "string" || typeof ch.home !== "string" || typeof ch.space !== "string" || !ch.nonce) return null;
+export function challengeProblem(ch, expect) {
+  if (!ch || typeof ch.op !== "string" || typeof ch.space !== "string" || !ch.fields || typeof ch.fields !== "object") return "no_challenge";
+  const own = payloadHash(ch.op, ch.space, ch.fields);
+  if (typeof ch.payload_hash !== "string" || ch.payload_hash !== own) return "hash_mismatch";
+  if (expect && (ch.op !== expect.op || ch.space !== expect.space || own !== expect.payload_hash)) return "not_this_request";
+  return null;
+}
+
+/**
+ * A PresenceProof over the home's challenge, or null when the challenge does not say what to sign or is not what it claims (see `challengeProblem`). The hash that is signed is the one worked out here.
+ * @param {string} file @param {string} person the identity id the home knows this person by @param {{ op?: string, fields?: any, payload_hash?: string, home?: string, nonce?: string, space?: string }} ch @param {() => number} [now] @param {{ op: string, space: string, fields: any, payload_hash: string }} [expect] what this device itself asked for
+ */
+export function softwareProof(file, person, ch, now = Date.now, expect) {
+  if (!ch || typeof ch.nonce !== "string" || typeof ch.home !== "string" || !ch.nonce || challengeProblem(ch, expect)) return null;
   const key = softwareKey(file);
   const issued = now();
-  const body = { signer: key.signer, key_id: key.key_id, payload_hash: ch.payload_hash, decision: ch.op, chain_hash: proofChainHash(ch.space, person), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce: crypto.randomBytes(8).toString("base64url"), home: ch.home, challenge: ch.nonce };
+  const body = { signer: key.signer, key_id: key.key_id, payload_hash: payloadHash(/** @type {string} */ (ch.op), /** @type {string} */ (ch.space), ch.fields), decision: ch.op, chain_hash: proofChainHash(/** @type {string} */ (ch.space), person), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce: crypto.randomBytes(8).toString("base64url"), home: ch.home, challenge: ch.nonce };
   return { ...body, signature: key.sign(proofBytes(body)) };
 }
 
 /**
  * A PresenceProof for the person's own act on a space (accepting an invite): over the request the kernel built (`op`, `payload_hash`, the space), with no home or challenge, because no home asked for it.
- * @param {string} file @param {string} person @param {{ op?: string, payload_hash?: string, space?: string }} req
+ * @param {string} file @param {string} person @param {{ op?: string, fields?: any, payload_hash?: string, space?: string }} req
  */
 export function softwareActProof(file, person, req) {
-  if (!req || typeof req.op !== "string" || typeof req.payload_hash !== "string" || typeof req.space !== "string") return null;
+  if (!req || typeof req.space !== "string" || challengeProblem({ op: req.op, space: req.space, fields: /** @type {any} */ (req).fields, payload_hash: req.payload_hash })) return null;
   const key = softwareKey(file);
   const issued = Date.now();
-  const body = { signer: key.signer, key_id: key.key_id, payload_hash: req.payload_hash, decision: req.op, chain_hash: proofChainHash(req.space, person), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce: crypto.randomBytes(8).toString("base64url") };
+  const body = { signer: key.signer, key_id: key.key_id, payload_hash: payloadHash(/** @type {string} */ (req.op), req.space, /** @type {any} */ (req).fields), decision: req.op, chain_hash: proofChainHash(req.space, person), issued_at: issued, expires_at: issued + PROOF_LIFE_MS, nonce: crypto.randomBytes(8).toString("base64url") };
   return { ...body, signature: key.sign(proofBytes(body)) };
 }

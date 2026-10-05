@@ -143,3 +143,19 @@ test("a rename never moves a chat's files; filing the chat under another Project
   const project = (await w.d.kernel.gateway.records.query(admin, "project", { page: { limit: 20 } })).rows.find((/** @type {any} */ x) => x.data.slug === "rivera-estate");
   assert.ok((await files()).every((/** @type {any} */ r) => r.data.project.urn === project.urn), "each file is linked from the new Project");
 });
+
+test("Share to project: a person in the chat shares one of its files with the project's members, sharing twice changes nothing, and unsharing takes it back", { timeout: 180_000 }, async t => {
+  const { w, chat, say, drive, root } = await world(t);
+  await say("look at this", { images: [{ media_type: "image/png", data: png("dropped ").toString("base64"), name: "site photo" }] });
+  const path = `${root}/chat/${chat}/site photo.png`;
+  await until(async () => (await drive()).includes(path), "the dropped image in the chat's folder");
+  const meta = { token: (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.d.kernel.id.owner, path: "direct", session: "s" }), {})).token };
+  const a = await w.d.registry.call("work.files.share", { path }, "cli", meta);
+  assert.ok(a.data && a.data.shared === path, JSON.stringify(a));
+  const b = await w.d.registry.call("work.files.share", { path }, "cli", meta);
+  assert.deepEqual(b.data.grant, a.data.grant, "sharing twice returns the same grant");
+  assert.equal((await w.d.registry.call("work.files.share", { path: `${root}/chat/${chat}/../x` }, "cli", meta)).error?.code, "bad_input");
+  assert.equal((await w.d.registry.call("work.files.share", { path: `${root}/chat/${chat}/site photo.png` }, "mcp")).error !== undefined, true, "a model with no session of the person's does not share");
+  const u = await w.d.registry.call("work.files.unshare", { path }, "cli", meta);
+  assert.equal(u.data.unshared, 1, JSON.stringify(u));
+});
