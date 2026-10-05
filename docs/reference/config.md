@@ -31,7 +31,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `modules` | `object` | see below | Modules to start or stop against their role. |
 | `modules.enable` | `string[]` | none | Modules to start even where their role says not to. |
 | `modules.disable` | `string[]` | none | Modules never to start. |
-| `network` | `object` | see [network](#network) | How this machine is reached. See [Tailscale](../using/tailscale.md). |
+| `network` | `object` | see [network](#network) | How this machine is reached. See [Install](../get-started/install.md). |
 | `onboard` | `any` | unset | Onboarding's own settings. |
 | `owner` | `{ id: string }` | unset | The person's own, non-secret identity. Written only by core/onboard's own startup, never by a tool's input. |
 | `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
