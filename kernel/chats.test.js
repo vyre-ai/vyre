@@ -53,7 +53,9 @@ const SLOT = "model:anthropic/claude-sonnet-5-5#1";
 test("model slot: opened by the person in a chat, the chain is the person's plus the slot's agent hop, the Project is in the token, and nothing a caller says widens it", async () => {
   const { k, owner, bob, carol, ada, g, C } = await rig();
   const group = await C.create(bob, { people: [CAROL] });
-  const t = await k.surfaces.open(bob, { chat: group.id, agent: SLOT, project: "p1" });
+  // SL-1: a caller cannot open a slot; only vyred's own door (slot_open) does
+  await assert.rejects(() => k.surfaces.open(bob, { chat: group.id, agent: SLOT, project: "p1" }), { code: "bad_input" }, "no slot without the daemon's own say");
+  const t = await k.surfaces.open(bob, { chat: group.id, agent: SLOT, project: "p1", slot_open: true });
   const facts = await k.surfaces.verify(t.token);
   assert.deepEqual([facts.agent, facts.chat, facts.project], [SLOT, group.id, "p1"]);
   const chain = await k.surfaces.chainFor(t.token);
@@ -61,14 +63,14 @@ test("model slot: opened by the person in a chat, the chain is the person's plus
   assert.equal(chain.project, "p1");
   assert.equal(chain.delegated, true);
   // no client-chosen id: a slot is a model:provider/model#n id and lives in a chat; a Project belongs to a slot only; a session's own chain cannot open another
-  await assert.rejects(() => k.surfaces.open(bob, { chat: group.id, agent: "model:nonsense" }), { code: "bad_input" });
-  await assert.rejects(() => k.surfaces.open(bob, { agent: SLOT }), { code: "bad_input" }, "a slot lives in a chat");
+  await assert.rejects(() => k.surfaces.open(bob, { chat: group.id, agent: "model:nonsense", slot_open: true }), { code: "bad_input" });
+  await assert.rejects(() => k.surfaces.open(bob, { agent: SLOT, slot_open: true }), { code: "bad_input" }, "a slot lives in a chat");
   await assert.rejects(() => k.surfaces.open(bob, { chat: group.id, project: "p1" }), { code: "bad_input" }, "only a slot is narrowed to a project");
-  await assert.rejects(() => k.surfaces.open(ada, { chat: group.id, agent: SLOT }), { code: "not_found" }, "an admin outside the chat opens no slot in it");
-  await assert.rejects(() => k.surfaces.open(chain, { chat: group.id, agent: SLOT }), { code: "chain_not_person" });
+  await assert.rejects(() => k.surfaces.open(ada, { chat: group.id, agent: SLOT, slot_open: true }), { code: "not_found" }, "an admin outside the chat opens no slot in it");
+  await assert.rejects(() => k.surfaces.open(chain, { chat: group.id, agent: SLOT, slot_open: true }), { code: "chain_not_person" });
   // the slot reads its chat while its person is in it, as the person's, and is never a listed assistant
   assert.equal(C.read(chain, group.id).id, group.id);
-  const other = await (async () => { const t2 = await k.surfaces.open(carol, { chat: group.id, agent: "model:openai/gpt-5#2" }); return k.surfaces.chainFor(t2.token); })();
+  const other = await (async () => { const t2 = await k.surfaces.open(carol, { chat: group.id, agent: "model:openai/gpt-5#2", slot_open: true }); return k.surfaces.chainFor(t2.token); })();
   assert.equal(C.read(other, group.id).id, group.id, "carol's slot, carol being in the chat");
   // the slot ends when its adding person leaves the chat
   await C.change(carol, group.id, { remove_people: [BOB] });
@@ -644,4 +646,24 @@ test("the person's own assistant is never listed: it acts as its person, so a ch
   // the person leaves: their assistant's session loses the chat at once
   await C.change(carol, group.id, { remove_people: [BOB] });
   await assert.rejects(() => stream.chats.append(t.token, { body: "after bob left" }), { code: "not_found" });
+});
+
+test("chats.mine: the one answer to which chats a chain is in: the person's own, the assistant acting for them, nobody's else; never an owner or admin outside", async () => {
+  const { k, owner, bob, carol, ada, C } = await rig();
+  const a = await C.create(bob, { people: [CAROL] });
+  const b = await C.create(bob, {});
+  const c = await C.create(carol, {});
+  const mineOf = chain => k.gateway.grants.chats.mineIds(chain);
+  assert.deepEqual(mineOf(bob).sort(), [a.id, b.id].sort());
+  assert.deepEqual(mineOf(carol).sort(), [a.id, c.id].sort());
+  assert.deepEqual(mineOf(owner), [], "an owner in none");
+  assert.deepEqual(mineOf(ada), [], "an admin in none");
+  const asst = (person, session) => k.chains.fromFacts({ kind: "agent_session", vouched: true, person, agent: "assistant", session });
+  assert.deepEqual(mineOf(asst(BOB, "m1")).sort(), [a.id, b.id].sort(), "the assistant acting for bob");
+  assert.deepEqual(mineOf(asst(OWNER, "m2")), [], "and for someone in none");
+  await C.change(bob, a.id, { remove_people: [CAROL] });
+  assert.deepEqual(mineOf(carol), [c.id], "a person who left is out at once");
+  // through the kernel handle the same list carries what Records knows (here no chat-record type: ids only)
+  const handle = k.kernelFor({ name: "stream", needs: { kernel: { actions: [] } } });
+  assert.deepEqual((await handle.chats.mine(bob)).map(x => x.chat).sort(), [a.id, b.id].sort());
 });

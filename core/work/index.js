@@ -31,7 +31,6 @@ const urnOk = (/** @type {any} */ s) => typeof s === "string" && /^vyre:\/\/[^/]
 export default {
   async start(ctx) {
     /** @type {any} */ let surface = null;
-    /** @type {any} */ let engine = null;
     /** @type {any} */ let engineer = null;
     /** @type {Map<string, any>} */ const doing = new Map();
 
@@ -73,11 +72,14 @@ export default {
       });
     }
     const surfaceOf = () => surface || (surface = createToolSurface({ kernel: kernelOf(), space: kernelOf().space, types: async c => (kernelOf().definitions ? kernelOf().definitions(c) : []), actions: () => (kernelOf().actions ? kernelOf().actions() : []) }));
+    // One engine per Space: a call that runs in a hosted Space has that Space's own kernel handle and its own database (`ctx.store.db` is a router that picks the running Space's file), and an engine built once
+    // holds the home's. Keyed by the running Space's id, built inside the call.
+    /** @type {Map<string, any>} */ const engines = new Map();
     const engineOf = () => {
-      if (engine) return engine;
       const k = kernelOf();
+      if (engines.has(k.space)) return engines.get(k.space);
       if (!k.serviceChain || !k.chainForPerson || !ctx.store || !ctx.store.db) throw unavailable();
-      return (engine = createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) }));
+      const made = (createMemoryEngine({ kernel: k, db: ctx.store.db, space: k.space, serviceChain: k.serviceChain("memory"), chainFor: k.chainForPerson, ...(k.embed ? { embed: k.embed } : {}), ...(k.fieldDef ? { fieldDef: k.fieldDef, ownerOf: k.ownerOf } : {}) })); engines.set(k.space, made); return made;
     };
     const engineerOf = () => {
       if (engineer) return engineer;
@@ -127,7 +129,8 @@ export default {
       const chain = await k.chainIn(space, extra);
       // every Space, this one included, through its own gateway: its records, its Drive, its definitions and its moves
       const gw = (await k.for(space)).gateway;
-      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+      // the chats and members of that Space too, for a chat that moves with its project (core/work/chat-carry.js): the target's own, under the mover's own chain there
+      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []), ...(gw.grants && gw.grants.chats ? { chats: gw.grants.chats } : {}), ...(gw.members ? { members: gw.members } : {}) };
     };
     // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when the source's gateway has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
     // The record types a target lacks are installed from the source's own definitions, under the same approval (a plan that needs them says so in its hash).
@@ -203,9 +206,10 @@ export default {
       // run by the move (this module's own tool, through ctx.call or the Space handle), never by a person's surface or another module: the authority is the move's own event in this Space's log
       if (String((extra && extra.caller) || "") !== "module:work") throw fail("denied", "the Work engine's lines move only inside a project move");
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(String(i.move_id)) || !/^[A-Za-z0-9_-]{43}$/.test(String(i.plan_hash)) || !urnOk(i.project)) throw fail("bad_input", "a move names its move id, plan hash and project");
-      // a call that crossed into a hosted Space says so (`in_space`, set only by the registry): that Space's own log is the one to read, under the chain the caller holds there
-      const inSpace = extra && typeof extra.in_space === "string" && extra.in_space !== kernelOf().space ? extra.in_space : null;
-      const evs = inSpace ? await (await kernelOf().for(inSpace)).gateway.events.read(extra.in_space_chain, { type }) : await kernelOf().events.read(kernelOf().serviceChain("work"), { type });
+      // Inside a hosted Space this module runs with THAT Space's own kernel handle (windows' per-Space stores), so `kernelOf()` already reads the running Space's log; a call that crossed into it
+      // carries the caller's chain there (`in_space_chain`, set only by the registry), which is the one that may read it.
+      const chain = extra && extra.in_space_chain ? extra.in_space_chain : kernelOf().serviceChain("work");
+      const evs = await kernelOf().events.read(chain, { type });
       const ev = evs.find((/** @type {any} */ e) => e && e.data && e.data.move_id === i.move_id);
       if (!ev || ev.data.plan_hash !== i.plan_hash || (type === "project.move_started" ? ev.subject !== i.project : ev.data.project !== i.project)) throw fail("not_found", "no such move");
     };
@@ -286,10 +290,11 @@ export default {
         const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
         let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
         // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)
+        const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
         const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
-          if (!inChat(chain, r.data.chat)) return base;
+          if (!mine.has(r.data.chat)) return base;
           const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
           return { ...base, open: true, providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };

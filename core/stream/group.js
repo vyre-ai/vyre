@@ -50,12 +50,16 @@ const MIGRATIONS = [`
 // One Chat: a member that is a run started outside the stream (kind 'run') is kept whatever the kernel's list of assistants says: it is the run's slot, not an agent somebody added.
 `ALTER TABLE stream_groups_members ADD COLUMN kind TEXT;`,
 // A message sent while a turn works is steered into it at its next step by default; `queue` waits for the turn to end (and can be taken back).
-`ALTER TABLE stream_groups_outbox ADD COLUMN mode TEXT;`];
+`ALTER TABLE stream_groups_outbox ADD COLUMN mode TEXT;`,
+// The sending device's IANA time zone, handed to the run with the words.
+`ALTER TABLE stream_groups_outbox ADD COLUMN tz TEXT;`];
 
 const EVENTS = /^(thread\.|ask\.)/;
 /** Frames a group takes from an assistant's thread: its words, tools, asks and files (not the person's message, which the group has, and not the thread's own state). */
 const SKIP = new Set(["user-message", "status", "term-command", "term-chunk"]);
 const ID = /^[A-Za-z0-9_.:-]{1,128}$/;
+/** Is this an IANA time zone name? */
+const zoneOk = (/** @type {string} */ z) => { if (!z || z.length > 64) return false; try { new Intl.DateTimeFormat("en", { timeZone: z }); return true; } catch { return false; } };
 
 /** @param {string} code @param {string} message */
 const fail = (code, message) => Object.assign(new Error(message), { code });
@@ -116,7 +120,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     upsert: db.prepare(`INSERT INTO stream_groups_members (grp, who, thread, cwd, name, asker, answer, last_event, kind) VALUES (?,?,?,?,?,?,?,?,?)
       ON CONFLICT(grp, who) DO UPDATE SET thread = excluded.thread, cwd = excluded.cwd, name = excluded.name, asker = excluded.asker, answer = excluded.answer, kind = excluded.kind`),
     last: db.prepare("UPDATE stream_groups_members SET last_event = ? WHERE grp = ? AND who = ?"),
-    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode) VALUES (?,?,?,?,?,?,?,?)"),
+    outAdd: db.prepare("INSERT OR IGNORE INTO stream_groups_outbox (uuid, grp, who, text, asker, answer, surface, mode, tz) VALUES (?,?,?,?,?,?,?,?,?)"),
     outDone: db.prepare("UPDATE stream_groups_outbox SET done = 1 WHERE uuid = ?"),
     outOpen: db.prepare("SELECT * FROM stream_groups_outbox WHERE done = 0 ORDER BY rowid"),
     mark: db.prepare("INSERT INTO stream_groups_marks (person, session, upto) VALUES (?,?,?) ON CONFLICT(person, session) DO UPDATE SET upto = excluded.upto"),
@@ -316,6 +320,22 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (g.people.size > 0 && !g.people.has(who)) throw fail("not_found", "no such session");
   };
   const sessionOf = (/** @type {any} */ i) => { const s = String(i.chat || ""); if (!ID.test(s)) throw fail("bad_input", "chat must be a chat id"); return s; };
+
+  /**
+   * What a reply quotes: the message it answers, read from this chat's own log (never from the caller), as { message, author, text }. A person's message gives its text; an assistant's gives what it said, whole
+   * messages joined. The text is the first lines, cut to 140 characters. A private message (enc) cannot be quoted, and one the log no longer holds is refused: nothing is made up. @param {string} grp @param {string} id
+   */
+  function quoteOf(grp, id) {
+    const fr = logs.get(grp).read(0);
+    const mine = fr.filter(f => f.data && f.data.message === id && (f.type === "chat.user-message" || f.type === "chat.text-delta" || f.type === "chat.text-done"));
+    if (!mine.length) throw fail("not_found", "that message is not in this chat");
+    const first = mine.find(f => f.author) || mine[0];
+    const um = mine.filter(f => f.type === "chat.user-message").pop();
+    if (um && um.data.enc !== undefined) throw fail("bad_input", "a private message cannot be quoted");
+    const text = um ? String(um.data.text || "") : mine.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => String(f.data.text || "")).join("");
+    const flat = text.replace(/\s+/g, " ").trim();
+    return { message: id, author: String(first.author || ""), text: flat.length > 140 ? `${flat.slice(0, 139)}…` : flat };
+  }
 
   // ---- live presence: who is typing, and what an assistant is doing (ephemeral frames, never logged or replayed) ----------------------------------------------------------------------
 
@@ -699,7 +719,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       await catchUp(m);
     } else {
       byThread.set(m.thread, m);
-      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...turn }));
+      const send = () => run(() => ctx.call("threads.send", { thread: m.thread, text: String(row.text), surface, uuid: String(row.uuid), ...(row.mode ? { mode: String(row.mode) } : {}), ...(row.tz ? { tz: String(row.tz) } : {}), ...turn }));
       let r = await send();
       if (r.error) throw fail(r.error.code || "failed", r.error.message);
       // A run started elsewhere (the CLI, a terminal) is held by the surface that started it: a person speaking in the chat takes the keyboard, once, as the stream's own runs always have it.
@@ -819,6 +839,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const slot = g.bots.get(who);
         if (slot) { slot.kind = "run"; save(slot); g.dflt = who; }
       }
+      // a quoted reply (WhatsApp-style, same timeline): the quote is read from this chat's log; the model is told what it answers
+      const quote = typeof i.reply_to === "string" && /^[^\s]{1,300}$/.test(i.reply_to) ? quoteOf(grp, i.reply_to) : null;
+      if (i.reply_to !== undefined && !quote) throw fail("bad_input", "reply_to is a message id");
       const parts = participants(g);
       const mentions = mentionedIn({ participants: parts, text, mentions: i.mentions });
       /** @type {string[]} */ let to;
@@ -848,7 +871,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         kid = String((await append(mine.token, { text })).id);
         for (const [m, t] of bots) giveToken(/** @type {Member} */ (m), author, /** @type {any} */ (t));
       }
-      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}) }, { author, message });
+      out.append("user-message", { message, text, state: "sent", ...(kid ? { kid } : {}), ...(quote ? { reply_to: quote.message, quote } : {}), ...(i.tz !== undefined && typeof i.tz === "string" && zoneOk(i.tz) ? { tz: i.tz } : {}) }, { author, message });
       if (mentions.length) out.append("mention", { message, who: mentions }, { author, message });
       g.previous = author;
       const answers = to.map(who => ({ who, message: `${message}.${g.names.get(who) || shortOf(who)}` }));
@@ -856,10 +879,11 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (answers.length >= 2) { groupId = typeof i.group === "string" && ID.test(i.group) ? i.group : `g.${message}`; out.append("fanout", { group: groupId, message, members: answers }, { author, message }); }
       const surface = typeof i.surface === "string" ? i.surface : "deck";
       const mode = i.mode === "queue" || i.mode === "steer" ? i.mode : null;
+      const tz = typeof i.tz === "string" && zoneOk(i.tz) ? i.tz : null;
       const rows = answers.map(a => {
-        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text, asker: author, answer: a.message, surface, mode };
+        const row = { uuid: uuidOf(`${message}|${a.who}`), grp, who: a.who, text: quote ? `Replying to ${g.names.get(quote.author) || shortOf(quote.author) || "an earlier message"}: "${quote.text}"\n\n${text}` : text, asker: author, answer: a.message, surface, mode, tz };
         const m = g.bots.get(a.who); if (m && !m.cwd && cwd) { m.cwd = cwd; save(m); }
-        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode);
+        q.outAdd.run(row.uuid, grp, row.who, row.text, row.asker, row.answer, row.surface, row.mode, row.tz);
         return row;
       });
       for (const r of rows) void schedule(r);

@@ -275,3 +275,64 @@ test("the plan carries every file's content hash from the Drive's own record, an
   a.files.set(f, enc("edited after approval"));
   await assert.rejects(() => runMove({ from: a, to: b, plan }), /changed since/);
 });
+
+test("the Work lines: a crash between import and forget resumes and completes, and a line written in between is carried again", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {string[]} */ const order = [];
+  let late = false;
+  const know = {
+    export: async () => { order.push("export"); return { rows: [{ record: proj.urn }] }; },
+    import: async () => { order.push("import"); return { digest: late ? "new" : "old", count: 1 }; },
+    forget: async (/** @type {any} */ i) => { order.push(`forget:${i.receipt.digest}`); if (!late) { late = true; throw Object.assign(new Error("changed since export"), { code: "conflict" }); } return { forgotten: 1 }; },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  /** @type {any} */ let saved = null;
+  const save = async (/** @type {any} */ st) => { saved = JSON.parse(JSON.stringify(st)); };
+  // crash right after the import, before the forget
+  await assert.rejects(() => runMove({ from: a, to: b, plan, ports: { know, save, onStep: (/** @type {string} */ n) => { if (n === "marker") throw new Error("crash"); } } }), /crash/);
+  assert.deepEqual(order, ["export", "import"]);
+  assert.equal(saved.know_receipt.digest, "old", "the receipt was saved");
+  // the resume forgets against it, meets a line written meanwhile, carries again and forgets once more
+  const done = await runMove({ from: a, to: b, plan, ports: { know, save, state: saved } });
+  assert.deepEqual(order, ["export", "import", "forget:old", "export", "import", "forget:new"]);
+  assert.equal(done.moved.know, 1);
+});
+
+test("a chat moves with its project: made again in the target under a NEW id as the mover's act, people who are members and agents that exist stay, the rest are former, and its sealed files land under the new id", async () => {
+  const a = space("A", ["project", "chat-record"]), b = space("B", ["project", "chat-record"]);
+  const proj = await a.records.create(null, "project", { name: "Rivera", slug: "rivera", status: "active", memory_scope: "project:rivera" });
+  await a.records.update(null, "project", proj.id, { drive_path: `Projects/${proj.id}` });
+  await a.records.create(null, "chat-record", { title: "Intake", chat: "chat_old1", project: { urn: proj.urn }, people: "per_a,per_b,per_mover", agents: "kit,ghost", status: "idle" });
+  const chatPath = `Projects/${proj.id}/chat/chat_old1/dropped.txt`;
+  a.files.set(chatPath, enc("hello"));
+  /** @type {any[]} */ const carried = [];
+  /** @type {any} */ (a.drive).survey = async () => ({ files: 1, bytes: 5 });
+  /** @type {any} */ (a.drive).inventory = async () => [{ path: chatPath, size: 5, sha256: "ct", chat: true }];
+  /** @type {any} */ (a.drive).removeMoved = async (/** @type {any} */ _c, /** @type {string[]} */ paths) => { for (const p of paths) a.files.delete(p); return { removed: paths.length }; };
+  /** @type {any} */ (a).carry = async (/** @type {any[]} */ entries) => { carried.push(...entries); return entries.map(e => ({ path: e.path, dest: e.dest, sha256: "ct" })); };
+  // the target Space: per_a and the mover are members; kit exists there, ghost does not
+  /** @type {any} */ const made = [];
+  /** @type {any} */ (b).members = { roleOf: (/** @type {any} */ x) => (["per_a", "per_mover"].includes(x.id) ? "member" : null) };
+  /** @type {any} */ (b).chain = { who: "B", hops: [{ actor: { kind: "person", id: "per_mover" } }] };
+  /** @type {any} */ (b).chats = {
+    create: async (/** @type {any} */ _c, /** @type {any} */ o) => { const c = { id: "chat_new1", people: ["per_mover", ...o.people], assistants: [...o.assistants] }; made.push(c); return c; },
+    change: async (/** @type {any} */ _c, /** @type {string} */ id, /** @type {any} */ ch) => {
+      const c = made[0];
+      for (const x of ch.add_assistants || []) { if (x !== "kit") throw Object.assign(new Error("an assistant in a chat belongs to the Space"), { code: "bad_input" }); c.assistants.push(x); }
+      for (const x of ch.remove_people || []) c.people = c.people.filter((/** @type {string} */ p) => p !== x);
+      return { ...c };
+    },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  assert.deepEqual(plan.blockers, []);
+  const done = await runMove({ from: a, to: b, plan, ports: { move_id: "mvc" } });
+  assert.ok(done.target);
+  const rec = [...b.rows.values()].find(r => r.type === "chat-record");
+  assert.equal(rec.data.chat, "chat_new1", "a new chat id in the target");
+  assert.equal(rec.data.title, "Intake");
+  assert.deepEqual(rec.data.people.split(",").sort(), ["per_a", "per_mover"], "per_a and the mover (who was in it) stay; per_b is no member there");
+  assert.equal(rec.data.agents, "kit");
+  assert.deepEqual(rec.data.former.split(",").sort(), ["ghost", "per_b"]);
+  assert.ok(rec.data.location.endsWith("/chat/chat_new1/") && rec.data.drive === `Projects/${done.target.split("/").pop()}`);
+  assert.match(carried[0].dest, /\/chat\/chat_new1\/dropped\.txt$/, "the files go under the new id");
+});
