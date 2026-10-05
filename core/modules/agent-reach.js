@@ -59,6 +59,15 @@ export const PERSON_ONLY = new Map([
   ["vault.provider.set", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["vault.provider.remove", "needs the person's Face ID or presence: changes which provider holds the Space's secrets"],
   ["wink.server.pairing", "needs the person's Face ID or presence: pairing and devices"],
+  ["wink.server.probe", "the person's own device calls out to a server it paired: a network call as the person's device"],
+  ["pluginagent.grant", "would let an assistant widen its own authority: lets Claude Code on a computer read memory and every project's sessions"],
+  ["pluginagent.revoke", "the person's own decision about what Claude Code on a computer may reach"],
+  ["pluginagent.decline", "the person's own decision about what Claude Code on a computer may reach"],
+  ["pluginagent.on", "the person's own decision about what Claude Code on a computer may reach"],
+  ["presence.person.renew-allow", "needs the person's presence: lifts the lock on a device that answered its sign-in wrongly"],
+  ["spaces.members.add-agent", "would let an assistant widen its own authority: adds an assistant to the Space"],
+  ["stream.open-peer", "controls the person's own device wire: only over the peer wire, for a paired device"],
+  ["team.charter.accept", "the person's own act: a teammate's charter becomes a version as the person's decision"],
   ["wink.server.pair.answer", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.server.release", "needs the person's Face ID or presence: pairing and devices"],
   ["wink.server.reset.begin", "only the person at the server's own console: resetting a server"],
@@ -232,6 +241,8 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  "pluginagent.pending",
+  "presence.person.locked",
   "files.drive.space.list",
   "files.drive.space.read",
   "records.linked",
@@ -377,6 +388,8 @@ export const ASK_FIRST = new Map([
   ["files.drive.url", "leaves the Space: makes a link"],
   ["files.send", "leaves the Space: sends a file"],
   ["agents.delete", "destructive"],
+  ["threads.delete", "destructive: deletes a thread for good"],
+  ["threads.rewind", "destructive: rewinds a thread, and with restore its files, to an earlier turn"],
   ["bridges.kit.export", "leaves the Space"],
   ["bridges.kit.install", "changes the Space's shape"],
   ["hooks.close", "changes what reaches the Space from outside"],

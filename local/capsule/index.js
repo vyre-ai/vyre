@@ -30,6 +30,7 @@ export default {
     registerViews(ctx);
     ctx.tool("capsule.status", {
       effect: "read",
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller
       description: "Whether the Capsule can run on this machine: macOS, the native app's source, whether it is built, and autostart.",
       input: { type: "object", properties: {} },
       run: async () => ({ mac: process.platform === "darwin", native: native(), native_built: fs.existsSync(appPath(ctx.paths.root)),
