@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { createTwentyStore } from "./store.js";
+import { createDeferredStore } from "./deferred-store.js";
 import { TwentyClient } from "./client.js";
 import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
 import { CORE_TYPES } from "../../records/core-types.js";
@@ -27,8 +28,9 @@ import { isPackaged } from "../../kernel/devbuild.js";
  * VYRE_STORE overrides only in a development build. @param {Record<string, string | undefined>} [env] @param {{ server?: boolean, root?: string }} [o] `server`: this install is a server; `root`: read the build kind from that folder (tests)
  */
 export const storeMode = (env = process.env, o = {}) => {
-  // a packaged build has no override: a server is always Twenty (never sqlite or auto), a device is always Basic (the built-in store, fixed personal types only)
-  if (isPackaged(o.root)) return o.server === true ? "twenty" : "sqlite";
+  // a packaged build has almost no override: a server is Twenty unless the person said sqlite (never auto), a device is always Basic (the built-in store, fixed personal types only)
+  // The one thing a person may say on a server is `sqlite`: an explicit VYRE_STORE=sqlite (in vyre.env) is their choice and is honored; anything else on a server is Twenty.
+  if (isPackaged(o.root)) return o.server === true ? (env.VYRE_STORE === "sqlite" ? "sqlite" : "twenty") : "sqlite";
   return env.VYRE_STORE || "sqlite";
 };
 import { kitFromLibrary } from "../../records/kits/library.js";
@@ -92,14 +94,14 @@ export async function planStore(o) {
  * Space; for a hosted one its space.json, which carries `accept_builtin_store` when the person agreed to the built-in store). Returns a store, or undefined for SQLite.
  * Options, all with defaults: `home` (the daemon's root; a Space's state lives under <home>/kernel), `reach` ("ip", or "alias" with `gatewayContainer` attached to the
  * Space's network), `memory` ("small"), `runner` (docker through the box's proxy), `mode` (VYRE_STORE).
- * @param {{ home: string, mode?: string, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number }} cfg
+ * @param {{ home: string, mode?: string, degrade?: boolean, retryBaseMs?: number, retryMaxMs?: number, log?: (line: string) => void, runner?: any, memory?: any, preflight?: typeof preflight, provision?: typeof provisionSpace, reach?: "alias" | "ip", gatewayContainer?: string | null, rotate?: typeof rotateApiKey, keyCheckEveryMs?: number }} cfg
  * @returns {(space: string, meta?: any) => Promise<any | undefined>}
  */
 export function createStoreFor(cfg) {
   const mode = cfg.mode ?? storeMode(process.env, { server: cfg.server });
   const log = cfg.log ?? (() => {});
   /** @type {any} */
-  const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
+  const open = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
     const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
     const opts = { requireConfirm: !meta.personal && meta.accept_builtin_store !== true };
     if (!["sqlite", "auto", "twenty"].includes(mode)) throw new Error(`VYRE_STORE is sqlite, auto or twenty, not ${mode}`);
@@ -155,6 +157,57 @@ export function createStoreFor(cfg) {
     /** @type {any} */ (store).stopKeyCheck = () => clearInterval(timer);
     return store;
   };
+  // `cfg.degrade` (the daemon sets it): a store that cannot be set up must not stop the daemon, or the supervisor starts it again forever. The Space gets a store that
+  // answers `unavailable` in plain words, `<dir>/store-state.json` says why, and the setup is tried again in the background (30 s, doubling to 15 min, or now with `retry`).
+  // A refusal that is an answer to a person (`needs_confirmation`) and a bad VYRE_STORE value still throw.
+  /** @type {Map<string, { store: any, dir: string, meta: any, attempts: number, reason: string, since: string, timer: any, running: boolean }>} */
+  const waiting = new Map();
+  const stateFile = (/** @type {string} */ dir) => path.join(dir, "store-state.json");
+  const writeState = (/** @type {any} */ w, /** @type {any} */ extra) => {
+    try { fs.mkdirSync(w.dir, { recursive: true, mode: 0o700 }); fs.writeFileSync(stateFile(w.dir), JSON.stringify({ state: "unavailable", reason: w.reason, since: w.since, attempts: w.attempts, ...extra }), { mode: 0o600 }); } catch { /* the state is a convenience */ }
+  };
+  const backoff = (/** @type {number} */ n) => Math.min((cfg.retryBaseMs ?? 30_000) * 2 ** Math.max(0, n - 1), cfg.retryMaxMs ?? 15 * 60_000);
+  const attempt = async (/** @type {string} */ space) => {
+    const w = waiting.get(space);
+    if (!w || w.running) return;
+    w.running = true;
+    if (w.timer) { clearTimeout(w.timer); w.timer = null; }
+    try {
+      const real = await open(space, w.meta);
+      if (real) await w.store.attach(real);
+      waiting.delete(space);
+      try { fs.rmSync(stateFile(w.dir), { force: true }); } catch { /* none */ }
+      log(`store for ${space}: Records are available now`);
+    } catch (e) {
+      w.attempts++; w.reason = /** @type {Error} */ (e).message;
+      const wait = backoff(w.attempts);
+      writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
+      log(`store for ${space}: still not available (${w.reason}); trying again in ${Math.round(wait / 1000)} s`);
+      w.timer = setTimeout(() => { attempt(space).catch(() => {}); }, wait); w.timer.unref?.();
+    } finally { w.running = false; }
+  };
+  const storeFor = async function (/** @type {string} */ space, /** @type {any} */ meta = {}) {
+    if (!cfg.degrade) return open(space, meta);
+    const dir = meta.personal ? path.join(cfg.home, "kernel") : path.join(cfg.home, "kernel", "spaces", space);
+    try { return await open(space, meta); } catch (e) {
+      const err = /** @type {any} */ (e);
+      if (err && (err.code === "needs_confirmation" || /^VYRE_STORE is /.test(String(err.message)))) throw e;
+      const w = waiting.get(space) ?? { store: null, dir, meta, attempts: 0, reason: "", since: new Date().toISOString(), timer: null, running: false };
+      w.attempts++; w.reason = String(err && err.message || e);
+      if (!w.store) w.store = createDeferredStore({ reason: () => `the record store for this space is not available yet: ${w.reason}`, log });
+      waiting.set(space, w);
+      const wait = backoff(w.attempts);
+      writeState(w, { next_try_at: new Date(Date.now() + wait).toISOString() });
+      log(`store for ${space}: not available (${w.reason}); the server keeps running and tries again in ${Math.round(wait / 1000)} s`);
+      if (!w.timer) { w.timer = setTimeout(() => { attempt(space).catch(() => {}); }, wait); w.timer.unref?.(); }
+      return w.store;
+    }
+  };
+  /** Try the setup again now, for one Space or for every waiting one. Resolves when the attempts have finished. @param {string} [space] */
+  storeFor.retry = async (/** @type {string | undefined} */ space) => { for (const id of space ? [space] : [...waiting.keys()]) await attempt(id); return { waiting: [...waiting.keys()] }; };
+  /** The home's kernel has started: a definition made now is a person's, and is refused while its store is away (a hosted Space's store keeps queueing). */
+  storeFor.bootDone = () => { for (const w of waiting.values()) if (w.meta && w.meta.personal) w.store.bootDone(); };
+  storeFor.waiting = () => [...waiting].map(([space, w]) => ({ space, reason: w.reason, since: w.since, attempts: w.attempts }));
   storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, server: cfg.server, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
   return storeFor;
 }

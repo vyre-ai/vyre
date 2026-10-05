@@ -257,7 +257,7 @@ async function startLocked(opts, root, p, release) {
     const isServerInstall = config.isServer(cfg.machine);
     if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log, server: isServerInstall });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall, degrade: true });
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
@@ -357,6 +357,9 @@ async function startLocked(opts, root, p, release) {
       onStageEnter: (/** @type {any} */ e) => (stages ? stages.onStageEnter(e) : Promise.resolve()), stageTasks: (/** @type {string} */ u, /** @type {string} */ st) => (stages ? stages.stageTasks(u, st) : []),
       stageFactory: async (/** @type {string} */ space, /** @type {any} */ k, /** @type {any} */ meta) => (await flowsHost.attach(space, k, meta.owner)).stages });
     stages = (await flowsHost.attach(kernel.id.space, kernel, () => kernel.id.owner)).stages;
+    // The home's kernel is up. If its record store could not be set up, it holds a store that answers `unavailable` and the setup is tried again in the background (stores/twenty/space-store.js):
+    // from here a definition is a person's act and is refused while the store is away. `registry.deps.storeRetry` tries again now.
+    if (storeFor && typeof /** @type {any} */ (storeFor).bootDone === "function") { /** @type {any} */ (storeFor).bootDone(); registry.deps.storeRetry = /** @type {any} */ (storeFor).retry; }
     if (typeof kernel.bindCalls === "function") kernel.bindCalls(currentCall);
     // ONE yes (DESIGN-one-yes): the three moments' proofs are checked by the kernel's own presence verifier (the sealing process; it spends the proof). The card's act and fields are the vocabulary the sealer accepts
     // (signOf in lib/one-yes.js); a software key is refused by the sealer on a release build, and a result that does not say how strong the key was never counts as real.
