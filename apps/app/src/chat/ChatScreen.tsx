@@ -153,7 +153,7 @@ export function ChatScreen(p: ChatScreenProps) {
     [phone, p.handlers, p.onOpenTerminal, actions, onBranched],
   );
   const onSend = useCallback(
-    async (text: string, o?: { to: string[]; fanout: boolean; mentions?: { kind: string; id: string; name: string }[] }) => {
+    async (text: string, o?: { to: string[]; fanout: boolean; mode?: "steer" | "queue"; mentions?: { kind: string; id: string; name: string }[] }) => {
       setNote(null);
       if (editing && actions) {
         const r = await actions.editRetry!(editing.uuid, text);
@@ -168,7 +168,7 @@ export function ChatScreen(p: ChatScreenProps) {
       // What the person highlighted is quoted into the message they send now, and the chips clear: nothing was sent before this.
       const body = withQuotes(text, highlights);
       setHighlights([]);
-      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, o?.mentions?.length ? { mentions: o.mentions } : undefined);
+      const why = (o && (o.to.length || o.fanout)) || parent ? await store.sendTo(body, { to: o?.to ?? [], fanout: o?.fanout ?? false, replyTo: quoted?.message, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions } : {}) }) : await store.send(body, { ...(o?.mentions?.length ? { mentions: o.mentions } : {}), ...(o?.mode ? { mode: o.mode } : {}) });
       if (why) setNote(why);
     },
     [store, editing, actions, replyTo, highlights],
@@ -293,6 +293,7 @@ export function ChatScreen(p: ChatScreenProps) {
           autoFocus={p.autoFocusComposer}
           onKey={p.onKey}
           onSend={onSend}
+          onTyping={() => store.typing()}
           editing={editing}
           onCancelEdit={() => setEditing(null)}
           people={realComposer ? realComposer.people : people ?? (allowsMock() ? [{ name: "juno", family: "assistant" }, { name: "kit", family: "assistant" }, { name: "alex", family: "person" }, { name: "Dana Okafor", family: "person" }] : [])}

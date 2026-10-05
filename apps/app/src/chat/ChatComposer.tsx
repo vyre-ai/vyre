@@ -11,6 +11,7 @@ import { Chip, Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
 import { COMMANDS } from "./core/commands.js";
 import { readDraft, writeDraft } from "./drafts";
+import { busyState } from "./frames.js";
 import { mentionsIn, pick, rankByName, rankCommands, runsOnLabel, sealedChip, sendIntent, sendTargets, triggerAt } from "./composer-model.js";
 
 export type Person = { name: string; family: "person" | "assistant" };
@@ -30,7 +31,9 @@ export type ComposerProps = {
   runsOn?: "mac" | "server";
   onRunsOn?: () => void;
   /** `o` says who it goes to: the @mentioned assistants, or all of them with "Ask all"; two or more make a fan-out. */
-  onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[] }) => void;
+  onSend: (text: string, o?: { to: string[]; fanout: boolean; mentions?: PickedMention[]; mode?: "steer" | "queue" }) => void;
+  /** Called while the person types (at most once every 3 seconds): the chat tells the others. */
+  onTyping?: () => void;
   /** Edit and retry: the words to put in the box, once per `id`. Sending then replaces that message. */
   editing?: { id: number; text: string } | null;
   onCancelEdit?: () => void;
@@ -63,6 +66,9 @@ export function ChatComposer(p: ComposerProps) {
   const [focused, setFocused] = useState(false);
   const [models, setModels] = useState(false);
   const [slotSel, setSlotSel] = useState<string | undefined>(undefined);
+  // While the assistant works, a message either steers it now or waits in the queue for the end of the turn.
+  const [mode, setMode] = useState<"steer" | "queue">("steer");
+  const lastTyping = useRef(0);
   const [askAll, setAskAll] = useState(false);
   // The # tags picked from the list, by the name typed into the words: only the ones still in the message are sent.
   const picked = useRef(new Map<string, PickedMention>());
@@ -103,12 +109,13 @@ export function ChatComposer(p: ComposerProps) {
     if (!t) return;
     const to = sendTargets({ text: t, askAll, people: p.people ?? [] });
     const mentions = mentionsIn(t, picked.current) as PickedMention[];
-    if (to.to.length || mentions.length) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}) }); else p.onSend(t);
+    const working = busyState(p.state);
+    if (to.to.length || mentions.length || working) p.onSend(t, { ...to, ...(mentions.length ? { mentions } : {}), ...(working ? { mode } : {}) }); else p.onSend(t);
     picked.current.clear();
     setText("");
     setCaret(0);
     setAskAll(false);
-  }, [text, p, askAll]);
+  }, [text, p, askAll, mode]);
   const onSel = (e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => setCaret(e.nativeEvent.selection.end);
   const insert = (ch: string) => { const t = text.slice(0, caret) + ch + text.slice(caret); setText(t); setCaret(caret + 1); input.current?.focus(); };
   const current = (p.models ?? []).find((m) => m.id === p.model);
@@ -116,7 +123,7 @@ export function ChatComposer(p: ComposerProps) {
       <TextInput
         ref={input}
         value={text}
-        onChangeText={(t) => { p.onKey?.(performance.now()); setText(t); }}
+        onChangeText={(t) => { p.onKey?.(performance.now()); setText(t); if (t.trim() && p.onTyping && Date.now() - lastTyping.current > 3000) { lastTyping.current = Date.now(); p.onTyping(); } }}
         onSelectionChange={onSel}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -131,6 +138,11 @@ export function ChatComposer(p: ComposerProps) {
   );
   const chips = (
     <>
+      {busyState(p.state) ? (
+        <Pressable accessibilityRole="button" accessibilityLabel={mode === "steer" ? "Sends now, steering the reply. Tap to queue instead" : "Waits for the reply to end. Tap to steer instead"} onPress={() => setMode((m) => (m === "steer" ? "queue" : "steer"))} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
+          <Chip tone="accent" icon={mode === "steer" ? "bolt" : "clock"}>{mode === "steer" ? "Steer now" : "Queue"}</Chip>
+        </Pressable>
+      ) : null}
       {p.models?.length && (p.slots?.length ?? 0) > 1 ? p.slots!.map((sl) => (
         <Pressable key={sl.id} accessibilityRole="button" accessibilityLabel={`Switch the model for ${sl.label}`} onPress={() => { setSlotSel(sl.id); setModels((m) => (slotSel === sl.id ? !m : true)); }} style={{ minHeight: big ? T : 32, justifyContent: "center" }}>
           <Chip>{sl.label}</Chip>

@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the chat's live items on chat's shapes (work/one-chat 15750bafa): while the assistant works, the composer offers Steer now or Queue and sends stream.send { mode }; typing is sent with stream.typing (at most every 3 seconds) and the others' typing and the assistant's doing line (chat.presence frames) show above the composer; the Chats list shows a count when work.chat.list rows carry `unread`. Stop uses threads.chat-stop.
+
 - feat(app): Settings shows how much of their storage on the hosting Cloud space a person's personal items use ("Using 12 MB of 1 GB on harlow", from spaces.storage.usage). The owner's cap setting (spaces.storage.set-cap) is not in the app yet.
 
 - feat(app): the chat-key ring in WebCrypto (src/crypto/ring.js), once: seal and open, wrap and unwrap to a device key (ECDH-ES P-256, HKDF-SHA256, AES-256-GCM), the ring (create, open, add holders with or without history, remove by rotation) and the bundle that lends a key to the server. Byte-compatible with memory's node reference (lib/keywrap.js, lib/chat-keys.js, copied from work/memory-c4 f2b61f5db until it merges): tests wrap and open each way. Not wired into New chat yet: it needs every participant's device public keys and this device's ECDH key.

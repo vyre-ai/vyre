@@ -33,7 +33,7 @@ export default function ChatsScreen() {
               <View key={t.id} style={t.open ? undefined : { opacity: 0.5 }}>
                 {i ? <Divider /> : null}
                 <Row lead={<AvatarStack of={[...t.people.map((n) => markRef("person", n)), ...t.agents.map((n) => markRef("assistant", n))]} size={40} max={3} />} title={t.title} sub={chatSub(t)}
-                  end={<>{t.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{chatState(t) === "needs-you" ? <Chip tone="accent">Needs you</Chip> : chatState(t) === "failed" ? <Chip tone="warn">Failed</Chip> : null}{t.last ? <Text size="caption" tone="label">{ageOf(t.last, now)}</Text> : null}</>}
+                  end={<>{t.providers.map((p) => <ProviderBadge key={p} provider={p} size={16} />)}{chatState(t) === "needs-you" ? <Chip tone="accent">Needs you</Chip> : chatState(t) === "failed" ? <Chip tone="warn">Failed</Chip> : null}{t.unread > 0 ? <Chip tone="accent">{t.unread > 99 ? "99+" : String(t.unread)}</Chip> : null}{t.last ? <Text size="caption" tone="label">{ageOf(t.last, now)}</Text> : null}</>}
                   onPress={t.open ? () => router.push({ pathname: "/u/chats/[id]", params: { id: t.id } }) : undefined} />
               </View>
             ))}

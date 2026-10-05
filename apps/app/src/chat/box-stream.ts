@@ -29,14 +29,16 @@ export type SessionActions = {
   /** A new session with the conversation up to (not including) `at`; resolves with its id. */
   branch(at: string): Done;
   /** Send a message; resolves with why it was refused, or null. */
-  sendText(text: string, o?: { mentions?: Mention[] }): Promise<string | null>;
+  sendText(text: string, o?: { mentions?: Mention[]; mode?: "steer" | "queue" }): Promise<string | null>;
+  /** Tell the chat this person is typing (shown to the others for a few seconds; nothing is kept). */
+  typing(): void;
   stopSession(): Promise<string | null>;
   answerAsk(ask: string, decision: "approve" | "deny"): Promise<string | null>;
 };
 /** What the screen can do in a group chat (a session with several people and assistants): every call is a server tool through the outbox. The StreamSource methods (sendGroup, keep, react, pin, markRead) fire and forget; these return what the box answered. */
 export type GroupActions = {
   /** One message to several assistants at once (a fan-out set), or to whoever routing picks when `to` is empty. Resolves with the answer message ids and the fan-out group id. */
-  sendGroupText(text: string, opts?: { to?: string[]; mentions?: string[]; message?: string; replyTo?: string }): Promise<{ ok: true; message: string; group?: string; answers: { who: string; message: string }[] } | { ok: false; reason: string }>;
+  sendGroupText(text: string, opts?: { to?: string[]; mentions?: string[]; message?: string; replyTo?: string; mode?: "steer" | "queue" }): Promise<{ ok: true; message: string; group?: string; answers: { who: string; message: string }[] } | { ok: false; reason: string }>;
   keepAnswer(group: string, message: string): Promise<string | null>;
   reactTo(message: string, emoji: string, on?: boolean): Promise<string | null>;
   pinMessage(message: string, on?: boolean): Promise<string | null>;
@@ -106,13 +108,13 @@ export function boxStream(session: string): BoxStream {
     head: () => head,
     // A # tag the person picked (a record, a vault item, a file) goes beside the words as { kind, id, name }: the box resolves it as the person, and a sealed part of a record reaches the assistant only as a placeholder.
     // Any chat takes a message through stream.send: the first one into a new chat starts its run (E3).
-    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
+    sendText: (text, o) => note("stream.send", { chat: session, text, message: newUuid(), surface: SURFACE, ...(o?.mode ? { mode: o.mode } : {}), ...(o?.mentions?.length ? { mentions: o.mentions.slice(0, 8).map((m) => m.id) } : {}) }),
     stopSession: () => note("threads.chat-stop", { chat: session }),
     // The ask's own answer path (threads.answer): the same call the inbox swipe makes.
     answerAsk: (ask, decision) => note("threads.answer", { ask, decision: decision === "approve" ? "allow" : "deny", surface: SURFACE }),
     sendGroupText: async (text, opts = {}) => {
       const message = opts.message ?? newUuid();
-      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, ...(opts.to?.length ? { to: opts.to } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
+      const r = await write("stream.send", { chat: session, text, message, surface: SURFACE, ...(opts.to?.length ? { to: opts.to } : {}), ...(opts.mode ? { mode: opts.mode } : {}), ...replyInput(opts.replyTo ? { message: opts.replyTo } : null), ...(opts.mentions?.length ? { mentions: opts.mentions } : {}) });
       if (r.error) return { ok: false, reason: reason(r.error) };
       const d = (r.data ?? {}) as { message?: string; group?: string; answers?: { who: string; message: string }[] };
       return { ok: true, message: d.message ?? message, ...(d.group ? { group: d.group } : {}), answers: d.answers ?? [] };
@@ -125,6 +127,7 @@ export function boxStream(session: string): BoxStream {
     retry: (message) => onRun((thread) => done("threads.retry", { thread, message, surface: SURFACE })),
     branch: (at) => onRun((thread) => done("threads.branch", { thread, at, surface: SURFACE })),
     // StreamSource's own, for callers that hold only that shape: fire and forget.
+    typing() { void write("stream.typing", { chat: session }); },
     send(text) { void this.sendText(text); },
     answer(ask, decision) { void this.answerAsk(ask, decision); },
     stop() { void this.stopSession(); },
