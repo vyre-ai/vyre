@@ -80,7 +80,7 @@ const CHECK = {
   "status": d => (STATES.includes(d.state) ? null : `status needs state, one of ${STATES.join(", ")}`),
   "participant-joined": d => (isAuthor(d.who) && (d.role === undefined || isStr(d.role)) ? null : "participant-joined needs who, person:<id>, assistant:<id> or model:<id>"),
   "participant-left": d => (isAuthor(d.who) ? null : "participant-left needs who"),
-  "presence": d => (isAuthor(d.who) && ["typing", "doing"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing or doing, and doing (up to 120 characters) when doing"),
+  "presence": d => (isAuthor(d.who) && ["typing", "doing", "idle"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing, doing or idle, and doing (up to 120 characters) when doing"),
   "reaction": d => (idStr(d.message) && isStr(d.emoji) && d.emoji.length > 0 && d.emoji.length <= 32 && typeof d.on === "boolean" ? null : "reaction needs message, emoji and on (true or false)"),
   "pin": d => (idStr(d.message) && typeof d.on === "boolean" ? null : "pin needs message and on (true or false)"),
   "mention": d => (idStr(d.message) && Array.isArray(d.who) && d.who.length > 0 && d.who.length <= 50 && d.who.every(isAuthor) ? null : "mention needs message and who, a list of authors"),

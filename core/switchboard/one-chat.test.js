@@ -337,8 +337,16 @@ test("a message sent in the chat while its run works joins the running turn (ste
   t.after(() => d.stop());
   const owner = kernelCaller(d, root);
   const chat = (await owner("work.chat.create", { title: "Busy" })).data.chat;
+  // presence: what the slot is doing, and who is typing, are ephemeral frames on the chat's log
+  const logs = d.registry.modules.get("stream").handle.logs;
+  /** @type {any[]} */ const seen = [];
+  const off = logs.get(chat).subscribe(f => { if (f.type === "chat.presence") seen.push(f.data); });
+  t.after(off);
+  assert.ok((await owner("stream.typing", { chat })).data);
+  await until(async () => seen.some(p => p.state === "typing"), "the typing frame");
   assert.ok((await owner("stream.send", { chat, text: "demo" })).data);
   const thread = await until(async () => { const r = (await owner("work.chat.get", { chat })).data.slots[0]; return r && r.thread; }, "the run");
+  await until(async () => seen.some(p => p.state === "doing" && p.who.startsWith("model:") && p.doing), "what the slot is doing");
   await until(async () => (await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn to be busy");
   const events = async () => (await d.registry.call("threads.get", { thread, limit: 200 }, "cli")).data.events;
   // the default: the words join the running turn
@@ -352,4 +360,5 @@ test("a message sent in the chat while its run works joins the running turn (ste
   assert.deepEqual(stopped.data && stopped.data.stopped, [thread], JSON.stringify(stopped.error));
   await until(async () => !(await d.registry.call("threads.asks", { thread }, "cli")).data.some(a => a.state === "open"), "the turn's open question to be cancelled");
   assert.equal((await owner("threads.chat-stop", { chat, slot: "model:claude/nonesuch#9" })).error.code, "not_found");
+  await until(async () => seen.some(p => p.state === "idle" && p.who.startsWith("model:")), "the slot's line to clear when the turn ends");
 });

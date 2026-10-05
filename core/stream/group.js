@@ -33,6 +33,7 @@ import { whoAnswers, mentionedIn } from "./routing.js";
 import { validEnc } from "./protocol.js";
 import { createReadMarkers } from "./readmarks.js";
 import { cutNote } from "./reply-port.js";
+import { presenceFor } from "./presence.js";
 
 const MIGRATIONS = [`
   CREATE TABLE stream_groups_members (
@@ -76,7 +77,7 @@ const shortOf = (/** @type {string} */ id) => id.slice(id.indexOf(":") + 1);
 const botId = (/** @type {string} */ id) => id.startsWith("assistant:") || id.startsWith("model:");
 
 /**
- * @typedef {{ who: string, name: string, kind?: string|null, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
+ * @typedef {{ who: string, name: string, kind?: string|null, doing?: boolean, thread: string|null, cwd: string|null, asker: string|null, answer: string|null, last: number,
  *   ad: ReturnType<typeof createAdapter>, msgs: Map<string, string>, held: any[]|null, q: Promise<any>, grp: string,
  *   tokens?: Map<string, { token: string, exp: number }>, tokenWaiters?: { asker: string|null, res: (t: any) => void, timer?: any }[], dead?: boolean, running?: boolean, queuedTurns?: Map<number, { asker: string, answer: string, grp: string, message: string, text: string }>, pq?: Promise<any>, buf?: Map<string, any>, refused?: Set<string>, turnAt?: number|null }} Member
  * @typedef {{ people: Set<string>, bots: Map<string, Member>, names: Map<string, string>, dflt: string|null, previous: string|null, spans: Map<string, { from: number, to: number|null }[]> }} Group
@@ -316,6 +317,15 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
   };
   const sessionOf = (/** @type {any} */ i) => { const s = String(i.chat || ""); if (!ID.test(s)) throw fail("bad_input", "chat must be a chat id"); return s; };
 
+  // ---- live presence: who is typing, and what an assistant is doing (ephemeral frames, never logged or replayed) ----------------------------------------------------------------------
+
+  /** @type {Map<string, ReturnType<typeof presenceFor>>} */ const presences = new Map();
+  const presenceOf = (/** @type {string} */ grp) => { let p = presences.get(grp); if (!p) { p = presenceFor(logs.get(grp), now, 1000); presences.set(grp, p); } return p; };
+  /** What a member is doing now, in a few words ("Read src/intake.ts"): one line per author, at most once a second. @param {Member} m @param {string} what */
+  function doing(m, what) { try { m.doing = true; presenceOf(m.grp).set(m.who, "doing", String(what || "").replace(/\s+/g, " ").slice(0, 120) || undefined); } catch { /* a notice, never a stop */ } }
+  /** The member is not doing anything now: the line clears at once. @param {Member} m */
+  function idle(m) { if (!m.doing) return; m.doing = false; try { presenceOf(m.grp).clear(m.who); logs.get(m.grp).emit("presence", { who: m.who, state: "idle" }, { author: m.who }); } catch { /* a notice, never a stop */ } }
+
   // ---- projection: a thread's events into the group's log ---------------------------------------
 
   /**
@@ -429,6 +439,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
    * @param {Member} m
    */
   async function endTurn(m) {
+    idle(m);
     const buf = m.buf; if (!buf) return;
     for (const [id, b] of [...buf]) {
       if (id === ACT) { buf.delete(ACT); if (m.refused) m.refused.delete(ACT); if (b.h) { try { await b.h.close({ text: "" }); } catch {} } continue; }
@@ -438,6 +449,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
 
   /** Not a message: tools, asks, files. Written through the handle of the reply that streams, else the turn's own. @param {Member} m @param {any} s */
   async function activity(m, s) {
+    if (s.kind === "tool-started") doing(m, s.data && (s.data.summary || s.data.tool));
     if (carriesFieldValue(s.data) && group(m.grp).people.size > 1) { log(`${s.kind} for ${m.who} in ${m.grp}: dropped, it carried a field value (cite it as a field-ref)`); return; }
     const m0 = m.buf || (m.buf = new Map()); m.refused ||= new Set();
     /** @type {any} */ let b = null; let message = ACT;
@@ -910,6 +922,17 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const run = before.catch(() => {}).then(() => sendOnce(i, meta));
       inflight.set(key, run);
       try { return await run; } finally { if (inflight.get(key) === run) inflight.delete(key); }
+    },
+
+    /** The caller is typing in the chat (on: false: not any more). Ephemeral: one frame per person every 3 seconds, never logged. @param {any} i @param {any} meta */
+    typing(i, meta) {
+      const grp = sessionOf(i);
+      const author = personOf(meta, i);
+      mustBeIn(grp, author);
+      const p = presenceOf(grp);
+      if (i.on === false) { p.clear(author); logs.get(grp).emit("presence", { who: author, state: "idle" }, { author }); return { session: grp }; }
+      p.set(author, "typing");
+      return { session: grp };
     },
 
     /** @param {any} i @param {any} meta */
