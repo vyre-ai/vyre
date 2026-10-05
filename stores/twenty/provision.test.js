@@ -272,4 +272,5 @@ test("on a server the saved database is root's: nothing is written for it here, 
   await provisionSpace({ home: home2, space: "northwind", runner: { ...fakeRunner(fake2, []), adminPassword: async () => null }, golden });
   assert.deepEqual(fake2.boot.calls.slice(0, 3), ["Boot_signUp", "Boot_workspace", "Boot_login"], "a plain bootstrap");
   assert.ok(!fs.existsSync(path.join(spaceDir(home2, "northwind"), "state", "types.json")), "and no saved types are claimed");
+  await fake.stop(); await fake2.stop();
 });
