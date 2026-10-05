@@ -60,9 +60,11 @@ test("an email is filed once as a Communication, with a participant for each per
   // the Communication links straight to each Contact on it (many to many), beside the Participants; a stranger with no contact adds nothing
   assert.deepEqual(comms[0].data.contacts.map((/** @type {any} */ c) => c.urn).sort(), [bob.urn, jane.urn].sort());
   // and the Contact shows it as "Communications" (the named reverse)
-  const onJane = await R.linked(chain(), jane.urn, { type: "communication" });
-  assert.deepEqual(onJane.rows.map((/** @type {any} */ c) => c.urn), [comms[0].urn], "the reverse link on the Contact");
-  assert.equal((await R.linked(chain(), bob.urn, { type: "communication" })).rows.length, 1, "on Bob too");
+  const via = async (/** @type {string} */ urn) => (await R.linked(chain(), urn, { type: "communication" })).rows.filter((/** @type {any} */ r) => r.field === "contacts");
+  const onJane = await via(jane.urn);
+  assert.equal(onJane.length, 1, "the reverse link on the Contact: " + JSON.stringify(onJane));
+  assert.deepEqual(onJane[0].inverse, { name: "communications", label: "Communications" });
+  assert.equal((await via(bob.urn)).length, 1, "on Bob too");
   // the timeline on the contact shows it, from both of Bob's addresses
   assert.equal((await timelineOf(host.kernel, chain(), jane.urn)).length, 1);
   assert.equal((await timelineOf(host.kernel, chain(), bob.urn)).length, 1);
