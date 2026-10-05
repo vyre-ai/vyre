@@ -143,7 +143,8 @@ export const MIGRATIONS = [
   // A chat message queued behind another person's running turn keeps who asked and in which chat, so the next turn opens its kernel session for them (never the running turn's).
   `ALTER TABLE threads_inbox ADD COLUMN kturn TEXT;`,
   // One Chat (team/0.3/DESIGN-one-chat.md): every thread is a run inside a chat. The kernel chat it belongs to; a thread with none (an older one, or a daemon without the kernel) gets one on its next start.
-  `ALTER TABLE threads_runs ADD COLUMN chat TEXT;`,
+  `ALTER TABLE threads_runs ADD COLUMN chat TEXT;
+   CREATE TABLE threads_terminal_chats (session TEXT PRIMARY KEY, chat TEXT NOT NULL);`,
 ];
 
 /** A model id as a person reads it: without the effort suffix some agents add ("gpt-6.1-sol[low]" is "gpt-6.1-sol"). @param {any} m */
@@ -557,6 +558,23 @@ export class Switchboard {
       if (chat && chat !== have.chat) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ?").run(chat, id);
       return chat || null;
     } catch (e) { this.deps.log(`threads: no chat for ${String(id).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+
+  /**
+   * A terminal session (`claude` or `vyre start` outside vyred) is a run in a chat too. The Harness's SessionStart hook says `thread.started` for it, and the chat is made here, once, and
+   * remembered by the session id; adopting that session later (a resume here) takes the same chat. A session this Switchboard already runs has its own (ensureChat).
+   * @param {string} session @returns {Promise<string | null>}
+   */
+  async terminalChat(session) {
+    try {
+      if (this.record(session)) return await this.ensureChat(session);
+      const have = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(session));
+      if (have) return have.chat;
+      if (!this.deps.chatFor) return null;
+      const chat = await this.deps.chatFor({ thread: session, agent: null, name: null, project: null });
+      this.db.prepare("INSERT OR IGNORE INTO threads_terminal_chats (session, chat) VALUES (?,?)").run(session, chat);
+      return /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(session)).chat;
+    } catch (e) { this.deps.log(`threads: no chat for terminal session ${String(session).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
   record(id) {
@@ -1856,6 +1874,9 @@ export class Switchboard {
     const now = Date.now();
     this.db.prepare(`INSERT OR IGNORE INTO threads_runs (id, name, cwd, project, status, auth, started_at, last_at, stopped_reason)
       VALUES (?,?,?,?, 'stopped', 'ambient', ?,?, 'adopted')`).run(id, info.name, info.cwd, of.data?.slug || null, t.mtime, now);
+    // the terminal session's chat, when its SessionStart already made one; otherwise the adopted run gets its own
+    const term = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(id));
+    if (term) this.db.prepare("UPDATE threads_runs SET chat = ? WHERE id = ? AND chat IS NULL").run(term.chat, id); else await this.ensureChat(id);
     return this.must(id);
   }
 
@@ -3349,6 +3370,8 @@ export default {
     // so cleaning its worktree up there would break resume outright unless resume also learned to
     // recreate a missing one, which is real, separate work, not done here. Flagged to github/
     // reviewer-2 rather than guessed at silently.
+    // One Chat: a terminal session's SessionStart (the Harness says `thread.started` with a `session` and no thread of ours) is a run in a chat of the person's.
+    const offTerminalChat = ctx.events.on("thread.started", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (e && !e.thread && typeof p.session === "string" && p.session) void sb.terminalChat(p.session); });
     const offGithubCleanup = ctx.events.on("thread.status", e => {
       if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
         ctx.call("github.project.of", { project: e.project }).then(gh => {
@@ -4123,6 +4146,6 @@ export default {
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
     // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
-    return { async stop() { clearTimeout(resumeTimer); offGithubCleanup(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
+    return { async stop() { clearTimeout(resumeTimer); offGithubCleanup(); offTerminalChat(); for (const off of offs) off(); await abortInstalls(); await sb.stopAll(); } };
   },
 };

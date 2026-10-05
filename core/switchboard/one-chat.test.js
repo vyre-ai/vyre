@@ -22,7 +22,7 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
-  const d = await start({ root, presence: present, log: m => { if (/no chat/.test(m)) console.log(m); }, kernel: true });
+  const d = await start({ root, presence: present, log: m => { if (/no chat/.test(m)) console.log(m); }, kernel: true, kernelPresence: { check: async () => null } });
   t.after(() => d.stop());
   const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
@@ -62,7 +62,8 @@ test("every threads.start leaves a chat: its own for a plain start, the stream's
   assert.ok(again.data, JSON.stringify(again.error));
   assert.match((await get(plain.data.id)).chat, /^chat_/);
 
-  // a named agent that is not yet an actor of the Space is registered when its run starts, and the chat is the owner plus that agent (never an owner-only chat that drops it)
+  // an agent that runs in the Space is an actor of it (added with the owner's yes, as everywhere); its run's chat is the owner plus that agent, never an owner-only chat that drops it
+  await grants.addActor(ownerChain, { kind: "agent", id: "kit", space: d.kernel.id.space }, { presence: { op: "x", fields: {}, n: 1 } });
   const made = await d.registry.call("agents.create", { name: "kit", projects: "*" }, "cli");
   assert.ok(made.data, JSON.stringify(made.error));
   const withKit = await d.registry.call("threads.start", { cwd: work, prompt: "hi", surface: "cli", agent: "kit" }, "cli");
@@ -101,4 +102,27 @@ test("the person's own assistant is never a listed participant: its chat is the 
   assert.throws(() => d.kernel.gateway.grants.chats.read(other, chat), { code: "not_found" });
   const mine = d.kernel.chains.fromFacts({ kind: "agent_session", vouched: true, person: owner, agent: "assistant", session: "sy" });
   assert.equal(d.kernel.gateway.grants.chats.read(mine, chat).id, chat, "acting for its person it reads the person's chat without being listed");
+});
+
+test("a terminal session's SessionStart leaves a chat of the person's, remembered by the session id and taken by an adopt", { timeout: 90_000 }, async t => {
+  const root = tempHome(t);
+  const transcripts = path.join(root, "transcripts");
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const session = "7d1c1b0a-5e2f-4c3a-9b8d-0a1b2c3d4e5f";
+  const brief = await d.registry.call("harness.brief", { session, cwd: work, source: "startup" }, "cli");
+  assert.ok(!brief.error, JSON.stringify(brief.error));
+  const row = await until(async () => d.registry.deps.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(session), "the terminal session's chat");
+  assert.match(row.chat, /^chat_/);
+  assert.deepEqual([...d.kernel.gateway.grants.chats.read(ownerChain, row.chat).people], [owner]);
+  // a second SessionStart for the same session (a resume) is the same chat
+  await d.registry.call("harness.brief", { session, cwd: work, source: "resume" }, "cli");
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(d.registry.deps.db.prepare("SELECT COUNT(*) AS n FROM threads_terminal_chats").get().n, 1);
 });
