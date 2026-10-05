@@ -1043,7 +1043,7 @@ test("agents: the assistant's brief says how to watch and drive threads for the 
 });
 
 test("agents.delete: a person removes a stopped agent and its spend; never the assistant, a running one, or by a model", async t => {
-  const { tool } = await boot(t);
+  const { tool, d, root } = await boot(t);
   await tool("agents.create", { name: "juno", kind: "assistant" });
   await tool("agents.create", { name: "probe", projects: [] });
   await tool("agents.ask", { agent: "probe", text: "hi" });
@@ -1051,7 +1051,9 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.equal((await tool("agents.delete", { agent: "probe" }, "mcp")).error.code, "denied", "a model never deletes an agent");
   assert.match((await tool("agents.delete", { agent: "juno" })).error.message, /is the assistant/);
   await tool("agents.stop", { agent: "probe" });
-  assert.deepEqual((await tool("agents.delete", { agent: "probe" }, "deck")).data, { agent: "probe", deleted: true });
+  // deleting takes back what the agent was given, a person's own act: a call that carries no person is refused and nothing is deleted
+  assert.equal((await tool("agents.delete", { agent: "probe" }, "deck")).error?.code, "denied", "no person on the call");
+  assert.deepEqual((await kernelCaller(d, root, "deck")("agents.delete", { agent: "probe" })).data, { agent: "probe", deleted: true });
   assert.deepEqual((await tool("agents.list", {})).data.filter(a => !a.builtin).map(a => a.name), ["juno"]);
   assert.match((await tool("agents.delete", { agent: "probe" })).error.message, /no agent probe/);
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
