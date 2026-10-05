@@ -169,7 +169,10 @@ export const PROJECT = {
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived", "moved"]),
-    f("link", "client", "Client"),
+    // the client is the Contact (one Contact per person; Client is a role type linked to it). No practice area here: that is a field of a Kit's own type (R2).
+    f("link", "client", "Client", { to: "contact" }),
+    f("actor", "owner", "Owner"),
+    f("date", "due", "Due"),
     text("drive_path", "Drive folder"),
     text("repo", "Repository"),
     text("memory_scope", "Memory scope"),

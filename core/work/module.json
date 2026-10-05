@@ -194,7 +194,18 @@
             {
               "name": "client",
               "kind": "link",
-              "label": "Client"
+              "label": "Client",
+              "to": "contact"
+            },
+            {
+              "name": "owner",
+              "kind": "actor",
+              "label": "Owner"
+            },
+            {
+              "name": "due",
+              "kind": "date",
+              "label": "Due"
             },
             {
               "name": "drive_path",

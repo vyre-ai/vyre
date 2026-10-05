@@ -48,11 +48,13 @@ export async function planMove({ from, to, project, client = "leave" }) {
   if (truncated || found.size >= MAX_RECORDS) blockers.push("the project has more linked records than one move carries");
   if (files.length && !to.drive) blockers.push("the target Space has no Drive to receive the files");
   const types = to.types ? new Set((await to.types(to.chain)).map((/** @type {any} */ t) => t.name)) : null;
-  if (types) for (const t of Object.keys(byType)) if (!types.has(t)) blockers.push(`the target Space has no record type ${t}`);
+  // a type the target lacks is installed under the same approval (`to.install`), so it is part of the plan and the hash, not a blocker; without an installer it still blocks
+  const install = types ? Object.keys(byType).filter(t => !types.has(t)).sort() : [];
+  if (install.length && typeof to.install !== "function") for (const t of install) blockers.push(`the target Space has no record type ${t}`);
   const counts = { records: byType, files: files.length, bytes: files.reduce((n, f) => n + f.size, 0), sealed_fields: sealed };
   const ids = [...found.keys()].sort();
-  const hash = sha({ from: from.space, to: to.space, project: root.urn, client, counts, ids });
-  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
+  const hash = sha({ from: from.space, to: to.space, project: root.urn, client, counts, ids, install });
+  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
 }
 
 /** A slug free in the target. @param {any} to @param {string} base */
@@ -62,20 +64,24 @@ async function freeSlug(to, base) {
 }
 
 /**
- * Do the move. `ports`: `reseal(fromRef, toRecordUrn, field)` for sealed fields (the sealing process's own transfer), `onStep(name)` for progress and tests, `cleanupFiles(paths)` for removing source
- * files (a Drive delete asks, so the caller decides how it is approved; without it the files are listed as left behind), `state` an object kept between attempts so a resume continues.
+ * Do the move. `ports`: `reseal(fromRef, toRecordUrn, field)` for sealed fields (the sealing process's own transfer), `onStep(name)` for progress and tests, `cleanupFiles(paths)` or, with `move_id`, the Drive's `removeMoved` for removing source
+ * files (the one approval of the move covers it; with neither, the files are listed as left behind), `state` an object kept between attempts so a resume continues.
  * @param {{ from: any, to: any, plan: any, ports?: any }} o
  */
 export async function runMove({ from, to, plan, ports = {} }) {
   if (plan.blockers.length) throw Object.assign(new Error(`this move cannot run: ${plan.blockers.join("; ")}`), { code: "blocked" });
-  const again = await planMove({ from, to, project: plan.project, client: plan.client });
+  const state = ports.state || (ports.state = {});
+  // once the copy is verified the source is being emptied, so a resume must not re-plan it (it no longer matches); the hash it was approved under is what it continues under
+  const removing = state.verified === plan.hash;
+  const again = removing ? plan : await planMove({ from, to, project: plan.project, client: plan.client });
   if (again.hash !== plan.hash) throw Object.assign(new Error("the project changed since it was approved; plan the move again"), { code: "stale_plan" });
   if (plan.counts.sealed_fields > 0 && typeof ports.reseal !== "function") throw Object.assign(new Error("sealed fields move only through the sealing process, which this build does not offer yet; nothing was moved"), { code: "unavailable" });
-  const state = ports.state || (ports.state = {});
   state.map ||= {};
   const step = (/** @type {string} */ n) => { if (ports.onStep) ports.onStep(n); };
   const { type, id } = urnParts(plan.project);
   const root = await from.records.get(from.chain, type, id);
+
+  if (plan.install && plan.install.length && !state.installed) { step("install"); await to.install(to.chain, plan.install); state.installed = true; }
 
   // 1. the new project in the target: new id, new folder, the name and repo, a pointer back
   step("create");
@@ -127,7 +133,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
   step("files");
   const oldRoot = root.data.drive_path, newRoot = target.data.drive_path;
   /** @type {Record<string, string>} */ const hashes = {};
-  for (const f of plan.files) {
+  if (!removing) for (const f of plan.files) {
     const dest = `${newRoot}${f.slice(oldRoot.length)}`;
     const bytes = bytesOf(await from.drive.get(from.chain, f));
     hashes[f] = sha(bytes);
@@ -136,11 +142,12 @@ export async function runMove({ from, to, plan, ports = {} }) {
 
   // 4. verify: the counts and every file's hash in the target
   step("verify");
-  for (const f of plan.files) {
+  if (!removing) for (const f of plan.files) {
     const dest = `${newRoot}${f.slice(oldRoot.length)}`;
     const got = bytesOf(await to.drive.get(to.chain, dest));
     if (sha(got) !== hashes[f]) throw Object.assign(new Error(`a file did not arrive intact (${f}); nothing was removed from the old Space`), { code: "verify_failed" });
   }
+  state.verified = plan.hash;
   const mapped = Object.keys(state.map).length - 1;
   if (mapped !== wanted.filter((/** @type {any} */ r) => state.map[r.urn]).length) throw Object.assign(new Error("the records that arrived do not match the plan; nothing was removed"), { code: "verify_failed" });
 
@@ -148,8 +155,13 @@ export async function runMove({ from, to, plan, ports = {} }) {
   step("marker");
   /** @type {string[]} */ let left = [];
   for (const r of wanted) { const p = urnParts(r.urn); try { const cur = await from.records.get(from.chain, p.type, p.id); if (cur) await from.records.remove(from.chain, p.type, p.id); } catch { /* removed already */ } }
-  if (typeof ports.cleanupFiles === "function") left = (await ports.cleanupFiles(plan.files)) || [];
-  else left = [...plan.files];
+  // 6. the source files go under the mover's chain: the one approval of the move covers it. Resumable: `state.cleaned` is set once they are gone; what cannot be removed is reported, never silently kept
+  step("cleanup");
+  if (!state.cleaned) {
+    const remove = typeof ports.cleanupFiles === "function" ? ports.cleanupFiles : (from.drive && typeof from.drive.removeMoved === "function" && ports.move_id ? (/** @type {string[]} */ paths) => from.drive.removeMoved(from.chain, paths, { move_id: ports.move_id }).then(() => []) : null);
+    left = remove ? ((await remove(plan.files)) || []) : [...plan.files];
+    if (!left.length) state.cleaned = true;
+  }
   const cur = await from.records.get(from.chain, PROJECT, id);
   await from.records.update(from.chain, PROJECT, id, { status: "moved", moved_to: `${to.space}:${target.urn}`, repo: null, client: null, drive_path: null, memory_scope: null }, cur.version);
   const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length }, left_behind: left, map: state.map };

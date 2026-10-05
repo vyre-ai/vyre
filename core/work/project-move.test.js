@@ -106,3 +106,37 @@ test("a move that was interrupted resumes with the same state and does not creat
   assert.equal([...b.rows.values()].filter(r => r.type === "project").length, 1);
   assert.equal([...b.rows.values()].filter(r => r.type === "chat").length, 1);
 });
+
+test("a type the target lacks is installed under the same approval and is part of the plan hash, not a blocker", async () => {
+  const a = space("A"), b = space("B", ["project"]);
+  const proj = await a.records.create(null, "project", { name: "R", slug: "r" });
+  await a.records.create(null, "note", { title: "x", project: { urn: proj.urn } });
+  const installed = /** @type {string[][]} */ ([]);
+  /** @type {any} */ (b).install = async (/** @type {any} */ _c, /** @type {string[]} */ names) => { installed.push(names); };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  assert.deepEqual(plan.blockers, []);
+  assert.deepEqual(plan.install, ["note"]);
+  await runMove({ from: a, to: b, plan });
+  assert.deepEqual(installed, [["note"]]);
+});
+
+test("the source files are removed under the mover's chain after the hashes match, once, and a failed removal resumes", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {string[][]} */ const calls = [];
+  let fail = true;
+  /** @type {any} */ (a.drive).removeMoved = async (/** @type {any} */ _c, /** @type {string[]} */ paths, /** @type {any} */ o) => {
+    calls.push(paths); assert.equal(o.move_id, "mv1");
+    if (fail) { fail = false; throw new Error("drive busy"); }
+    for (const p of paths) a.files.delete(p);
+    return { removed: paths.length };
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  const ports = { move_id: "mv1", state: {} };
+  await assert.rejects(() => runMove({ from: a, to: b, plan, ports }), /drive busy/);
+  assert.equal(a.files.size, 2, "nothing was lost when the removal failed");
+  const done = await runMove({ from: a, to: b, plan, ports });
+  assert.deepEqual(done.left_behind, []);
+  assert.equal(a.files.size, 0, "the source files are gone");
+  assert.equal(calls.length, 2);
+  assert.equal([...b.rows.values()].filter(r => r.type === "project").length, 1, "the resume made nothing twice");
+});
