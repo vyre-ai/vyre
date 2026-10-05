@@ -121,8 +121,8 @@ test("a Basic personal space keeps a project as a plain device folder: no Drive,
   assert.equal([...rows.values()].filter(r => r.type === "project").length, 1);
   const general = await hub.createProject({ who: "person" }, { name: "Other" });
   assert.equal(general.data.drive_path, "/home/alex/Work/rivera", "each adopt answers its own home (the stand-in answers one)");
-  // moving a session between projects has no folders to move, and does not fail for it
-  const sess = await kernel.records.create(null, "session-summary", { title: "Intake", thread: "0f0e0d0c-0b0a-4908", project: { urn: proj.urn }, drive: proj.data.drive_path });
-  const moved = await hub.moveSession(sess.data.thread, general.urn, { who: "p" });
+  // moving a chat between projects has no folders to move, and does not fail for it
+  const sess = await kernel.records.create(null, "chat-record", { title: "Intake", chat: "chat_0f0e0d0c-0b0a-4908", project: { urn: proj.urn }, drive: proj.data.drive_path });
+  const moved = await hub.moveChat(sess.data.chat, general.urn, { who: "p" });
   assert.equal(moved.data.project.urn, general.urn);
 });
