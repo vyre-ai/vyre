@@ -1440,3 +1440,40 @@ test("KP-2: spaces.identity.enrol decides held itself: an entry nobody proved is
   await d.ok("spaces.identity.enrol", { publicKey: k5.publicKey }, "module:wink");
   assert.equal(await listHeld(k5.eid), "web");
 });
+
+// memory's key-wrap vector (lib/vectors/keywrap.json, on work/memory-noble until it merges): this device's ecdh gives the vector's shared secret, and memory's own HKDF and AES-GCM then open the wrap.
+// Skipped while the file is not in this tree; the check is real as soon as it is.
+const KEYWRAP = new URL("../../lib/vectors/keywrap.json", import.meta.url);
+test("spaces.identity.ecdh matches memory's keywrap vector: the shared secret is the vector's, and its kek opens the wrap", { skip: !fs.existsSync(KEYWRAP) && "lib/vectors/keywrap.json is not in this tree yet" }, async t => {
+  world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "vecalex" });
+  const V = JSON.parse(fs.readFileSync(KEYWRAP, "utf8"));
+  const file = path.join(d.space, "identity.json");
+  const rec = JSON.parse(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(file, JSON.stringify({ ...rec, agreePrivate: V.agree_private_jwk.d }) + "\n", { mode: 0o600 });
+  const r = await d.ok("spaces.identity.ecdh", { epk: V.wrap.epk }, "module:files");
+  assert.equal(r.secret, V.shared);
+  const epk = Buffer.from(V.wrap.epk, "base64url");
+  const kek = Buffer.from(crypto.hkdfSync("sha256", Buffer.from(r.secret, "base64url"), epk, Buffer.from("vyre-identity-wrap-v1"), 32));
+  assert.equal(kek.toString("base64url"), V.kek);
+  const dec = crypto.createDecipheriv("aes-256-gcm", kek, Buffer.from(V.wrap.iv, "base64url"));
+  dec.setAAD(Buffer.from(V.aad)); dec.setAuthTag(Buffer.from(V.wrap.tag, "base64url"));
+  const plain = Buffer.concat([dec.update(Buffer.from(V.wrap.ct, "base64url")), dec.final()]);
+  assert.equal(plain.toString("base64url"), V.plaintext_key);
+});
+
+test("agree key and held web: a web-held entry that carries agree at genesis or add keeps it, and its own agree op is refused (a web key changes nothing about the list)", async t => {
+  const w = world(t), d = await device(t), d2 = await device(t);
+  await d.ok("spaces.identity.create", { name: "webagree" });
+  w.clock.t += 2 * 3_600_000;
+  const k = fileIdentityStore(d2.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k.publicKey, agree: k.agree }, "module:wink"); // unproven: held web, carrying its point
+  const st = (await C_.verifyChain(fileIdentityStore(d.space).ops(), { now: w.clock.t + 1 })).entries.find(e => e.eid === k.eid);
+  assert.equal(st.held, "web");
+  assert.equal(st.agree, k.agree, "a web-held entry keeps the point it came with");
+  // the web key signs its own agree op: refused, like any list change it signs
+  const state = await C_.verifyChain(fileIdentityStore(d.space).ops(), { now: w.clock.t + 1 });
+  const op = await C_.makeOp(state, { type: "agree", target: k.eid, agree: k.agree }, { by: k.eid, ts: w.clock.t + 1, sign: m => crypto.sign(null, Buffer.from(m), privateKeyOf(k.privateKey)) });
+  await assert.rejects(C_.applyOp(state, op, { now: w.clock.t + 1 }), e => e.code === "web_key" || e.code === "exists");
+});
