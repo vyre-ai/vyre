@@ -12,6 +12,7 @@ import { isChain } from "../core/chain.js";
 import { mintUuid, isUuid } from "../core/ids.js";
 
 const SPACE = /^spc_[a-z2-7]{12}$/;
+const WINDOW_MS = 24 * 60 * 60 * 1000;
 const HASH = /^[A-Za-z0-9_-]{43}$/;
 const bad = (/** @type {string} */ m) => new KernelError("bad_input", m);
 
@@ -50,6 +51,8 @@ export function createUpgrade(cfg) {
       const failed = Array.isArray(i.failed) ? i.failed.map(x => String(x).slice(0, 120)).slice(0, 200) : [];
       const started = events("space.upgrade_started").find((/** @type {any} */ e) => e.data && e.data.upgrade_id === i.upgrade_id);
       if (!started || typeof started.actor !== "string" || !started.actor.startsWith(`person:${who.id}@`)) throw new KernelError("not_found", "no such upgrade started here by you");
+      // the upgrade may finish within a day of the approval it was given under: a live session cannot close an old approval at any later time (reviewer-3's UP-1)
+      if (!(clock() - Number(started.time) <= WINDOW_MS)) throw new KernelError("invalid", "that upgrade was approved too long ago to finish; start again");
       const d = await gate(chain, "space.upgrade_finish", `vyre://${space}/space/upgrade`);
       const done = events("space.upgraded").find((/** @type {any} */ e) => e.data && e.data.upgrade_id === i.upgrade_id);
       if (!done) {
