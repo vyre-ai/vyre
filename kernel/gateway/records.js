@@ -320,7 +320,7 @@ export function createRecords(cfg) {
       const label = words(t.label || t.name);
       const same = defs.find((/** @type {any} */ d) => d.name === t.name);
       if (!same) {
-        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
+        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) && seen.get(label) !== t.name ? { label: t.label } : null);
         if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
       }
       seen.set(label, t.name);
