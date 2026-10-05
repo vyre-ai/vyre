@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":345,"tool":1337,"event":463,"config":271,"env":255,"screen":20,"concept":43},
+  "counts": {"command":345,"tool":1339,"event":463,"config":271,"env":255,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -2730,12 +2730,14 @@
     {"kind":"tool","name":"work.project.ensure","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectensure","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.move","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectmove","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.move-plan","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectmove-plan","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.project.ref","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectref","module":"work","mentions":[]},
     {"kind":"tool","name":"work.project.rename","definedIn":"core/work/index.js","page":"reference/tools.md#workprojectrename","module":"work","mentions":[]},
     {"kind":"tool","name":"work.situation","definedIn":"core/work/index.js","page":"reference/tools.md#worksituation","module":"work","mentions":[]},
     {"kind":"tool","name":"work.space-brief","definedIn":"core/work/index.js","page":"reference/tools.md#workspace-brief","module":"work","mentions":[]},
     {"kind":"tool","name":"work.team.add","definedIn":"core/work/index.js","page":"reference/tools.md#workteamadd","module":"work","mentions":[]},
     {"kind":"tool","name":"work.team.context","definedIn":"core/work/index.js","page":"reference/tools.md#workteamcontext","module":"work","mentions":[]},
     {"kind":"tool","name":"work.team.doing","definedIn":"core/work/index.js","page":"reference/tools.md#workteamdoing","module":"work","mentions":[]},
+    {"kind":"tool","name":"work.team.member","definedIn":"core/work/index.js","page":"reference/tools.md#workteammember","module":"work","mentions":[]},
     {"kind":"tool","name":"work.tools","definedIn":"core/work/index.js","page":"reference/tools.md#worktools","module":"work","mentions":[]}
   ]
 }
