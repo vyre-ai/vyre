@@ -1284,7 +1284,7 @@ export default {
     /** The tier shown for a space (the user's two-tier ruling): a space whose home is a server (a team space, or a personal one on the person's own server) is "cloud"; a space whose home is this computer is "cloud" only when this machine is a server, and "basic" on a device. The same machine role storeMode reads. @param {any} home */
     const tierOf = (home) => (home && home.kind && home.kind !== "this-computer") || config.isServer(ctx.config && ctx.config.machine) ? "cloud" : "basic";
 
-    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), async (_i, meta) => {
+    const listSpaces = async (_i, meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
       if ((!st0 || !st0.exists) && K && K.spaces && typeof K.spaces.list === "function" && typeof K.owner === "string") {
         const mine = [];
@@ -1318,7 +1318,13 @@ export default {
         }
       } catch { /* no joined spaces */ }
       return out;
-    });
+    };
+    tool("spaces.list", "Spaces on this device that you created or belong to, with your role in each. For a space with a kernel the role is the kernel's answer. On a server that has no identity of its own (paired to yours), the spaces its kernel hosts for its owner.", obj(), listSpaces);
+    // The Spaces this person belongs to, by name and role, for what an agent is told at the start of a session (core/sessions/environment.js): names and roles only, and only for a module.
+    tool("spaces.brief", "The person's Spaces by name and role, and which one this home is: what an agent's environment brief says. Names and roles only. Modules only.", obj(), async (i, meta) => {
+      const rows = /** @type {any[]} */ (await listSpaces(i, meta));
+      return { spaces: rows.map(x => ({ name: String(x.label || x.name || x.id), role: x.role || null, current: Boolean(K && x.id === K.space) })) };
+    }, { internal: true, callers: ["module"] });
 
     tool("spaces.get", "One space: its name, home, owners and warnings.", obj({ space: str }, ["space"]), async (i, meta) => {
       const row = spaceOf(i.space);

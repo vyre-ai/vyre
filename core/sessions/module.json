@@ -65,6 +65,10 @@
         "reach": "modules"
       },
       {
+        "name": "sessions.environment",
+        "reach": "modules"
+      },
+      {
         "name": "sessions.models",
         "reach": "anyone",
         "effect": "read"
@@ -929,6 +933,34 @@
         "project"
       ],
       "apply": "session"
+    },
+    {
+      "key": "sessions.rollover",
+      "group": "sessions",
+      "label": "Roll a session over before its window fills",
+      "help": "Vyre ends the agent's session between turns and starts a fresh one with your decisions, the plan, an index of what came before and the last turns word for word. Every earlier turn stays stored and searchable. Turn it off to let the agent compact its own window.",
+      "type": "bool",
+      "default": true,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live"
+    },
+    {
+      "key": "sessions.rollover_at",
+      "group": "sessions",
+      "label": "Roll a session over at (percent of its window)",
+      "help": "Between turns, once the window is this full and nothing is running. Vyre rolls at 75 percent whatever is running.",
+      "type": "int",
+      "min": 20,
+      "max": 90,
+      "default": 60,
+      "levels": [
+        "account",
+        "project"
+      ],
+      "apply": "live"
     },
     {
       "key": "sessions.idle_minutes",
