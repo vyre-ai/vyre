@@ -44,18 +44,18 @@ test("load: agents (the assistant first), sessions merged from the catalog and t
   assert.deepEqual([none.agents, none.assistant], [[], null]);
 });
 
-test("search: four tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
+test("search: five tools per query, only from two characters, the files tool sends its source only when it is the mac or the box", { skip: !strip }, async () => {
   const { findSource } = await import("./source.ts");
   const b = box();
   const s = findSource(b.call, "web");
   const got = [];
-  const on = { recall: () => got.push("r"), files: () => got.push("f"), memory: () => got.push("m"), mentions: () => got.push("x") };
+  const on = { recall: () => got.push("r"), files: () => got.push("f"), memory: () => got.push("m"), mentions: () => got.push("x"), drive: () => got.push("d") };
   s.search("a", on);
   assert.equal(b.seen.length, 0);
   s.search("harlow", on);
   await new Promise((r) => setTimeout(r, 5));
-  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "harlow", limit: 20 }], ["files.search", { q: "harlow", limit: 20 }], ["memory.relevant", { text: "harlow", limit: 5 }], ["mentions.search", { q: "harlow", limit: 8 }]]);
-  assert.deepEqual(got.sort(), ["f", "m", "r", "x"]);
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["recall.search", { q: "harlow", limit: 20 }], ["files.search", { q: "harlow", limit: 20 }], ["memory.relevant", { text: "harlow", limit: 5 }], ["mentions.search", { q: "harlow", limit: 8 }], ["files.drive.space.search", { q: "harlow", limit: 20 }]]);
+  assert.deepEqual(got.sort(), ["d", "f", "m", "r", "x"]);
   await s.preview("/a/b.txt", "mac"); await s.preview("/a/c.txt", "other");
   assert.deepEqual(b.seen.slice(-2).map((x) => x.input), [{ path: "/a/b.txt", source: "mac" }, { path: "/a/c.txt" }]);
 });
@@ -231,4 +231,16 @@ test("arrow keys: rows in drawn order (a section's first five unless open, else 
   assert.equal(flatRows(secs, { a: true }).length, 9);
   assert.deepEqual(flatRows([], {}, rows("i", 2)).map((r) => r.key), ["i0", "i1"]);
   assert.deepEqual([stepHi(-1, "ArrowDown", 3), stepHi(0, "ArrowDown", 3), stepHi(2, "ArrowDown", 3), stepHi(0, "ArrowUp", 3), stepHi(2, "ArrowUp", 3), stepHi(-1, "ArrowDown", 0)], [0, 1, 2, -1, 1, -1]);
+});
+
+test("Drive file names: a chat's file opens its chat and says so; a Drive file opens the Drive; nothing is shown until the tool answers or when it has nothing", { skip: !strip }, async () => {
+  const { driveHits, sections } = await import("./model.ts");
+  const b = await base();
+  const d = { results: [{ path: "Clients/A/retainer.txt", name: "retainer.txt", size: 3 }, { path: "Projects/p1/chat/chat_abc1234/notes.txt", name: "notes.txt", chat: "chat_abc1234" }, { name: "no path" }] };
+  assert.deepEqual(driveHits(d).map((r) => [r.title, r.sub, r.href]), [["retainer.txt", "Clients/A", "/u/drive"], ["notes.txt", "In a chat you are in, …/chat/chat_abc1234", "/u/chats/chat_abc1234"]]);
+  assert.deepEqual(sections(b, "retainer", "all", {}).map((x) => x.key), []);
+  assert.deepEqual(sections(b, "retainer", "all", { drive: d }).map((x) => x.key), ["drive"]);
+  assert.deepEqual(sections(b, "retainer", "chats", { drive: d }).map((x) => x.key), [], "only in the all and files scopes");
+  assert.deepEqual(sections(b, "retainer", "files", { drive: { results: [] } }).map((x) => x.key), []);
+  assert.deepEqual(driveHits(null), []);
 });
