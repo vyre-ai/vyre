@@ -68,9 +68,9 @@ export default {
       return { types: i.system === true ? withFlag : withFlag.filter((/** @type {any} */ t) => !t.system) };
     });
     tool("records.define", "Add or change record types and their fields (a DefineDiff). The kernel decides who may.", obj({ space: str, diff: { type: "object" } }, ["diff"]), (i, d) => d.gateway.records.define(d.chain, i.diff));
-    tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" } }, ["type"]), async (i, d) => {
+    tool("records.list", "One page of records of a type: filter, sort, a cursor from the last page. include_deleted lists the removed ones too (the Bin): your own, or all for an owner or admin.", obj({ space: str, type: str, filter: {}, sort: { type: "array" }, cursor: str, limit: { type: "integer" }, include_deleted: { type: "boolean" } }, ["type"]), async (i, d) => {
       const limit = Number.isInteger(i.limit) ? Math.min(Math.max(i.limit, 1), 200) : 50;
-      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
+      const r = await d.gateway.records.query(d.chain, String(i.type), { ...(i.filter ? { filter: i.filter } : {}), ...(Array.isArray(i.sort) ? { sort: i.sort } : {}), ...(i.include_deleted === true ? { include_deleted: true } : {}), page: { limit, ...(i.cursor ? { cursor: String(i.cursor) } : {}) } });
       return { rows: r.rows, next_cursor: r.next_cursor || null };
     });
     tool("records.get", "One record by its reference, or null when it is not there or not yours to see.", obj({ urn: str }, ["urn"]), async (i, d) => {

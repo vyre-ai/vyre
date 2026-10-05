@@ -102,6 +102,14 @@ jobs:
           echo "$got" | tee -a "$GITHUB_STEP_SUMMARY"
           case "$got" in "gh version $want "*) ;; *) echo "gh is not the pinned $want"; exit 1 ;; esac
           docker run --rm --entrypoint sh "$IMAGE" -c 'command -v gh | grep -qx /usr/local/bin/gh && gh auth login --help >/dev/null'
+      - name: The built-in network's two programs are in the image, Headscale at the pinned version, and no Tailscale
+        run: |
+          want=$(sed -n 's/^ARG HEADSCALE_VERSION=//p' box/Dockerfile)
+          [ -n "$want" ]
+          got=$(docker run --rm --entrypoint headscale "$IMAGE" version | head -n 1)
+          echo "$got" | tee -a "$GITHUB_STEP_SUMMARY"
+          [ "$got" = "headscale version v$want" ] || { echo "headscale is not the pinned $want"; exit 1; }
+          docker run --rm --entrypoint sh "$IMAGE" -c 'test -x /usr/local/bin/wink-forwarder && ! command -v tailscale && ! command -v tailscaled'
       - name: Image size
         run: docker image ls "$IMAGE" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
 

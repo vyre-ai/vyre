@@ -158,6 +158,19 @@ export function createRecords(cfg) {
     if (role !== "owner" && role !== "admin") return false;
     return chain.hops.length === 1 || chain.hops[chain.hops.length - 1].actor.kind === "service";
   };
+  /**
+   * A removed row is listed (include_deleted) only to an owner or admin, or to the person whose act made it: the person themselves, or an assistant acting for them. The record says who
+   * (`created_for`, the person on the creating chain), so a person's own chain sees what their assistant made and another person acting through the shared "assistant" agent id does not.
+   * A row made before `created_for` existed matches only the person who made it directly (`created_by` is the chain's last hop, which for an assistant is the shared agent id).
+   * @param {any} chain @param {any} r
+   */
+  const ownsBinned = (chain, r) => {
+    if (adminish(chain)) return true;
+    const who = isChain(chain) ? chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : null;
+    if (!who) return false;
+    const a = kattrs.get(urn(r.type, r.id)) || {};
+    return String(a.created_for || a.created_by || "") === `person:${who.actor.id}`;
+  };
   /** Was this row of a protected type made by a service or by a person who is an owner or admin? A row anyone else made (before a rule, or by a path that skipped it) is not shown. @param {string} u */
   const madeByTrusted = (u) => {
     const made = String((kattrs.get(u) || {}).created_by || "");
@@ -307,7 +320,7 @@ export function createRecords(cfg) {
       const label = words(t.label || t.name);
       const same = defs.find((/** @type {any} */ d) => d.name === t.name);
       if (!same) {
-        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
+        const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) && seen.get(label) !== t.name ? { label: t.label } : null);
         if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
       }
       seen.set(label, t.name);
@@ -569,6 +582,8 @@ export function createRecords(cfg) {
 
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
+    // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
+    { const mv = cfg.isMoved ? cfg.isMoved() : null; if (mv) throw new KernelError("moved", "this space moved to My Cloud; work there", { to: mv.to }); }
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
@@ -680,13 +695,27 @@ export function createRecords(cfg) {
   }
 
   async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
-    const id = mintUuid(clock());
+    // `{ import: true, id }`: a record moved here from another space of the person's keeps its id (links, chats and memory point at ids). An admin act of its own (`records.import`), and the id is a time-prefixed uuid.
+    let id = mintUuid(clock());
+    if (opts.import === true) {
+      if (!isUuid(String(opts.id))) throw new KernelError("bad_input", "an imported record keeps a time-prefixed uuid id");
+      id = String(opts.id);
+      checkType(type);
+      await gate(chain, "records.import", urn(type, id));
+    } else if (opts.id !== undefined) throw new KernelError("bad_input", "ids are the kernel's to mint; an import says so");
     const a = opts.attrs || {};
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
     const last = chain.hops[chain.hops.length - 1].actor;
     // The attributes ride in the create event (the chain covers it), so the log, not the disk, says what a record's owner, project and sensitivity are.
-    const attrs = { space, created_by: `${last.kind}:${last.id}`, ...a };
-    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
+    // A module writing on a person's behalf (the planner's events) names that person with `on_behalf`: the person's OWN kernel-built chain, which only the call being served holds (a chain
+    // cannot be made outside the kernel), and only a service chain may pass it. So `created_for` is never a value a caller types; a plain chain that passes one is refused.
+    if (opts.on_behalf !== undefined) {
+      if (!isChain(opts.on_behalf)) throw new KernelError("bad_input", "on_behalf is a kernel-built chain");
+      if (last.kind !== "service") throw new KernelError("denied", "only a module's own chain writes on a person's behalf");
+    }
+    const forWho = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || (opts.on_behalf ? opts.on_behalf.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : undefined);
+    const attrs = { space, created_by: `${last.kind}:${last.id}`, ...(forWho ? { created_for: `person:${forWho.actor.id}` } : {}), ...a };
+    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data, { attrs, urn: urn(type, id) }), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
     return rec;
   }
@@ -780,20 +809,23 @@ export function createRecords(cfg) {
       if (!isChain(chain)) throw new KernelError("bad_input", "a call needs a kernel-built chain");
       checkType(type);
       spec = checkPage(spec);
+      if (spec.include_deleted !== undefined && typeof spec.include_deleted !== "boolean") throw new KernelError("bad_input", "include_deleted is true or false");
+      // The Bin: removed rows listed under the same read rules, and only the caller's own (an owner or admin sees all): every row is asked about, so the store's own page is never the answer.
+      const bin = spec.include_deleted === true;
       const vs = await viewersOf(chain);
       await guardSealed(chain, type, spec, vs);
       await refuseComputed(type, spec);
       const readDec = await countRead(chain, type);
       // When every row of the type gets this chain's answer (rowUniform: the grants cover the whole type, no rule or room or privileged record can tell two rows apart) every row the store
       // returns is allowed, so the store's own page and cursor are the answer: no row is asked about, and no second page is read to look ahead.
-      if (readDec && !vs && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
+      if (readDec && !vs && !bin && typeof authorizer.rowUniform === "function" && !hasPrivileged(type) && await authorizer.rowUniform({ chain, action: "records.read", type })) {
         let p;
         try { p = await store.query(type, { ...spec, build_index: true, page: { limit: spec.page.limit, ...(spec.page.cursor ? { cursor: spec.page.cursor } : {}) } }); } catch (e) { throw mapError(e); }
         const lim = { allow: allowList(readDec), hidden: (await hiddenFields(chain, type)) || new Set() };
         return { rows: await withComputed(chain, type, p.rows.filter((/** @type {any} */ r) => r.type === type).map((/** @type {any} */ r) => ({ rec: shape(chain, r, lim), lim }))), ...(p.next_cursor ? { next_cursor: p.next_cursor } : {}) };
       }
       // A restricted caller whose access is attribute equalities: the store lists under the same predicate, so its page and cursor are the answer; every row is still asked about (cheap: one page).
-      if (readDec && !vs) {
+      if (readDec && !vs && !bin) {
         const af = await attrFilterFor(chain, type);
         if (af) {
           let p;
@@ -820,6 +852,7 @@ export function createRecords(cfg) {
         const hiddenSet = await hiddenFields(chain, type);
         for (const r of p.rows) {
           if (r.type !== type) continue;
+          if (bin && r.deleted_at && !ownsBinned(chain, r)) continue;
           const dec = await check(chain, "records.read", urn(r.type, r.id));
           if (!dec) continue;
           const room = vs ? await roomLim(vs, type, urn(r.type, r.id)) : undefined;
@@ -836,7 +869,7 @@ export function createRecords(cfg) {
       for (let ahead = 0; next && !more && ahead < 10; ahead++) {
         let p;
         try { p = await store.query(type, { ...spec, build_index: Boolean(readDec), page: { limit: spec.page.limit, cursor: next } }); } catch (e) { throw mapError(e); }
-        for (const r of p.rows) if (r.type === type && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
+        for (const r of p.rows) if (r.type === type && !(bin && r.deleted_at && !ownsBinned(chain, r)) && await allowed(chain, "records.read", urn(r.type, r.id)) && (!vs || await roomLim(vs, type, urn(r.type, r.id)))) { more = true; break; }
         if (!more) next = p.next_cursor;
       }
       return { rows: await withComputed(chain, type, out.map((rec, i) => ({ rec, lim: lims[i] }))), ...(more ? { next_cursor: next } : {}) };
@@ -966,7 +999,7 @@ export function createRecords(cfg) {
     },
 
     async create(chain, type, data, opts = {}) {
-      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
+      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs, ...(opts.import === true ? { id: opts.id } : {}) }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
       const cell = { patch };

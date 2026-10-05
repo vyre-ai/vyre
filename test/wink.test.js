@@ -68,11 +68,14 @@ async function world(t, opt = {}) {
   if (opt.seam) { seams.set(root, { ...(seams.get(root) || {}), ...opt.seam }); t.after(() => seams.delete(root)); }
   if (opt.pendingMs || opt.abandonMs) { seams.set(root, { ...(opt.pendingMs ? { pendingMs: opt.pendingMs } : {}), ...(opt.abandonMs ? { abandonMs: opt.abandonMs } : {}) }); t.after(() => seams.delete(root)); }
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [], network: { name: "alex" }, relay: { enabled: true, url }, modules: { disable: ["names", "onboard"] } }));
-  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), ...(opt.kernel ? { kernel: true } : {}) });
+  const d = await start({ ...(opt.realPresence ? {} : { presence: lenient }), root, log: m => { logs.push(String(m)); if (process.env.WLOG) console.error(m); }, coreKeys: macCore(), kernelPresence: { check: async () => null }, ...(opt.kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const events = [];
   d.events.on("*", e => events.push([e.type, e.payload]));
-  const call = (tool, input = {}, caller = SCREEN, meta = A) => d.registry.call(tool, input, caller, meta);
+  // With the kernel on, the owner's device is the facts the listener proves (a paired app row and a person session), never the label SCREEN stands for.
+  let screenRow = false; // the screen's own paired row is made the first time it calls, so a test that never uses it sees none
+  const screenFacts = { kind: "device", device_key_id: SCREEN.slice(7), person: d.kernel.id.owner, path: "relay", session: "ps1" };
+  const call = (tool, input = {}, caller = SCREEN, meta = A) => (caller === SCREEN && meta && meta.person && !screenRow && (screenRow = true, d.registry.deps.db.prepare("INSERT OR IGNORE INTO relay_devices (id, name, pub, paired_at, kind, trusted, removed_at) VALUES (?, 'screen', 'p', 1, 'app', 0, NULL)").run(SCREEN.slice(7)), true), d.registry.call(tool, input, caller, caller === SCREEN && meta && meta.person && !meta.kernelFacts ? { ...meta, kernelFacts: screenFacts, kernel_proof: { op: "stand-in", fields: {}, n: 1 } } : meta));
   const status = (await d.registry.call("relay.status", {}, "cli", PROOF)).data;
   return { d, url, root, events, call, status, logs };
 }
@@ -176,7 +179,7 @@ test("wink: an invitation is sealed into a ticket; the invited person's redempti
   assert.equal(grants[0].source, "wink:W5");
   assert.equal(grants[0].subject.actor.kind, "person");
   assert.ok(w.events.some(e => e[0] === "wink.joined" && e[1].role === "member"));
-  assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.length, 0, "no device row for the invitee");
+  assert.equal((await w.d.registry.call("relay.devices.list", {}, "cli", PROOF)).data.devices.filter(d => d.id !== SCREEN.slice(7)).length, 0, "no device row for the invitee (the screen's own row is this test world's)");
   // the invitation is single use
   await assert.rejects(() => pairTicket(ticket, { relay: w.status.url, crypto: nodeCrypto(), keyStore: keystore(t) }), /expired or was already used/);
 });
@@ -210,12 +213,18 @@ test("wink: sharing a computer is a node.host grant with limits, and only for a 
   await until(() => w.events.find(e => e[0] === "wink.found"));
   await w.call("wink.code.ack", { offer: open.data.offer, typed: ack.code });
   const r = await done;
+  // With the kernel the member's side of the compute offer is bound to the computer's own key (the Identity stud's device key a full pairing records); this typed-code pairing records none, so it is set here.
+  w.d.registry.deps.db.prepare("UPDATE wink_devices SET node_key = ? WHERE id = ?").run(crypto.randomBytes(32).toString("base64url"), r.paired.device);
   const shared = await w.call("wink.share", { device: r.paired.device, cpu: 0.25, hours_day: 4, awake: true, on_power: true });
   assert.ok(shared.data?.grant, JSON.stringify(shared.error));
   const g = (await w.call("wink.access")).data.grants.find(x => x.source === "wink:W4");
   assert.ok(g);
   assert.ok(g.resource.includes(`/node/${r.paired.device}/`));
   assert.ok(w.events.some(e => e[0] === "wink.shared"));
+  // Sharing is the two sides of the compute offer, not only a grant: the computer now offers compute and its owner accepts, so the runner may lease it for the personal space.
+  assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));
+  const dev = (await w.call("wink.access")).data.devices.find(x => x.id === r.paired.device);
+  assert.equal(dev.offers.compute, true);
 });
 
 test("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {
@@ -1377,4 +1386,28 @@ test("typed code, release: a browser with no box pairs to the server by the code
   assert.ok(dev, "the browser is a device of the identity");
   // a wrong code pairs nothing
   assert.equal((await joinWithCode({ relay: w.status.url, input: "WINK-ZZZZ-ZZZZ", name: "x", waitMs: 500, pollMs: 50, pairOptions: { crypto: nodeCrypto(), keyStore: keystore(t) } })).ok, false);
+});
+
+test("the camera reader: wink.phone.open and an invitation's code carry the avatar bytes of the same code, and addThisDevice takes them in place of typing", async t => {
+  const saved = process.env.VYRE_WINK_TYPED_CODE; delete process.env.VYRE_WINK_TYPED_CODE; t.after(() => { if (saved !== undefined) process.env.VYRE_WINK_TYPED_CODE = saved; });
+  const { avatarBytesToCode } = await import("../relay/client/avatarcode.js");
+  const { addThisDevice } = await import("../relay/client/phonepair.js");
+  const w = await world(t);
+  const open = (await w.call("wink.phone.open", {})).data;
+  assert.equal(avatarBytesToCode(Buffer.from(open.avatar, "base64url")), open.code, "the avatar is the code, as a picture");
+  // the phone that decoded the ring pairs with it: the typed code's own pairing, the ack typed back
+  const phone = open;
+  const key = crypto.generateKeyPairSync("ed25519");
+  const publicKey = key.publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64url");
+  let ack = "";
+  const joining = addThisDevice({ avatar: Buffer.from(phone.avatar, "base64url"), relay: w.status.url, key: { publicKey }, name: "Sam's phone", crypto: nodeCrypto(), keyStore: keystore(t), pollMs: 50, onAck: a => { ack = a; } });
+  joining.catch(() => {});
+  await until(() => ack);
+  await until(() => w.events.find(e => e[0] === "wink.found"));
+  assert.equal((await w.call("wink.code.ack", { offer: phone.code_offer, typed: ack })).data.ok, true);
+  assert.equal((await joining).paired, true);
+  // an invitation's code has its avatar too (a newer code replaces the one showing, so this comes after the pairing)
+  const carry = (await w.call("wink.code.carry", { link: "https://northwind.vyre.run/join/inv_abc.x" }, "module:spaces")).data;
+  assert.equal(avatarBytesToCode(Buffer.from(carry.avatar, "base64url")), carry.code);
+  await assert.rejects(() => addThisDevice({ avatar: [1, 2, 3, 4, 5, 6, 7, 8], relay: w.status.url, key: { publicKey }, crypto: nodeCrypto(), keyStore: keystore(t) }), e => e.code === "bad_code");
 });

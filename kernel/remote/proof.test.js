@@ -1,7 +1,7 @@
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { proofRequest, proofFrom, PROOF_CALLS } from "./proof.js";
+import { proofRequest, proofFrom, PROOF_CALLS, sealExportApproveRequest } from "./proof.js";
 import { createKernel } from "../index.js";
 import { payloadHash } from "../seal/wire.js";
 
@@ -45,7 +45,7 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
   const rule = await g.rules.set(owner, rr, proofFrom(signed("ruleSet", rr)));
   assert.equal((await g.rules.disable(owner, rule.id, proofFrom(signed("ruleDisable", rule.id)))).status, "disabled");
   assert.equal((await g.rules.enable(owner, rule.id, proofFrom(signed("ruleEnable", rule.id)))).status, "active");
-  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "lend", "moveOut", "moveOutMany", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer"]);
+  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "lend", "moveOut", "moveOutMany", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer", "upgrade"]);
 });
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {
@@ -72,4 +72,21 @@ test("join card: the Space's name and fingerprint words come from the module tha
   assert.deepEqual((await g.invites.get(stranger, card.id)).space, { id: SPACE });
   k.setLabel(() => ({ name: "Harlow Legal", words: "amber river stone lamp" }));
   assert.deepEqual((await g.invites.get(stranger, card.id)).space, { id: SPACE, name: "Harlow Legal", words: "amber river stone lamp" });
+});
+
+test("the wire's offer calls map to their proof requests, so a home's challenge for a lend carries the op, fields and payload hash the device must sign", async () => {
+  const { WIRE_TO_PROOF } = await import("./proof.js");
+  for (const [wire, proof] of [["grants.offers.lend", "lend"], ["grants.offers.unlend", "unlend"], ["grants.offers.offer", "offer"], ["grants.offers.unoffer", "unoffer"]]) {
+    assert.equal(WIRE_TO_PROOF[wire], proof);
+    assert.ok(PROOF_CALLS.includes(proof));
+  }
+});
+
+test("sealExportApproveRequest: the one approval of a sealed-value move covers the plan hash, the target's key and the sorted, de-duplicated refs", () => {
+  const r = sealExportApproveRequest("spc_a", { plan_hash: "ph1", target_key: "TK", refs: ["b", "a", "b"] });
+  assert.equal(r.op, "seal.export_approve");
+  assert.deepEqual(r.fields, { plan_hash: "ph1", target_key: "TK", refs: ["a", "b"] });
+  assert.equal(r.payload_hash, payloadHash("seal.export_approve", "spc_a", r.fields));
+  assert.notEqual(sealExportApproveRequest("spc_a", { plan_hash: "ph2", target_key: "TK", refs: ["a", "b"] }).payload_hash, r.payload_hash, "another plan is another proof");
+  assert.throws(() => sealExportApproveRequest("spc_a", { plan_hash: "ph1", target_key: "TK", refs: [] }), { code: "bad_input" });
 });

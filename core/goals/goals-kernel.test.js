@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { createKernel } from "../../kernel/index.js";
 

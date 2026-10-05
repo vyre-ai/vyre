@@ -8,7 +8,7 @@ import fs from "node:fs";
 import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed, agentClaim, roleBuckets, firstParty, satisfies } from "./index.js";
 import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 
 const good = { name: "notes", version: "0.1.0", does: { tools: ["notes.add"] }, watches: { emits: ["note.added"] } };
@@ -776,6 +776,12 @@ test("modules v1: a bakery-shaped v1 module loads, its tools register, and reach
   assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).data.ran, "bakery.mailout");
   assert.equal((await reg.call("bakery.mailout", { to: "supplier", body: "x".repeat(500) }, "tailnet-guest:juno", { approval: card.id })).error.code, "approval_refused", "spent once");
   setCardRedeemer(null);
+  // The kernel's legacy gates, wired as the daemon wires them, leave the plain `outward: true` hold to this inline rule: it still holds the agent and still lets you through.
+  const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
+  reg.deps.gates = createLegacyGates({ registry: reg });
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "mcp:agent:kit")).error.code, "held_for_approval", "deps.gates wired: an agent is still held");
+  assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "cli")).data.ran, "bakery.mailout", "deps.gates wired: you still run it");
+  delete reg.deps.gates;
   // a module acting for you (its origin is you) is you
   assert.equal((await reg.call("bakery.mailout", { to: "supplier" }, "module:notes", { origin: "cli" })).data.ran, "bakery.mailout");
   // modules: internal, hidden from everyone but another module.
@@ -1264,4 +1270,36 @@ test("modules: each hosted Space gets the module its own database, data folder a
   assert.equal((await there("spc_a", "notes.dir")).dir, path.join(home, "spaces", "spc_a", "modules", "notes"), "and a data folder per Space");
   assert.notEqual((await there("spc_b", "notes.dir")).dir, (await there("spc_a", "notes.dir")).dir);
   void asked;
+});
+
+test("modules: a first-party module relays the person it acts for to the tools its allowlist names, and only those; a wire client cannot set the facts", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  const spaces = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "spaces.go", reach: "anyone" }, { name: "spaces.bad", reach: "anyone" }, { name: "spaces.storage.put", reach: "anyone" }] } };
+  writeModule(root, "spaces", spaces, `export default { async start(ctx) {
+    ctx.tool("spaces.go", { effect: "write", input: { type: "object" }, run: async () => ({ plan: (await ctx.call("memory.upgrade.plan", {}, { relay: true })).data, move: (await ctx.call("memory.upgrade.move", {}, { relay: true })).data }) });
+    ctx.tool("spaces.bad", { effect: "write", input: { type: "object" }, run: async () => ctx.call("memory.other", {}, { relay: true }).then(r => ({ ok: r }), e => ({ refused: e.code })) });
+    ctx.tool("spaces.storage.put", { effect: "write", input: { type: "object" }, run: async (_i, meta) => ({ facts: meta.kernelFacts || null }) });
+    return {};
+  } };`);
+  const memory = { version: "0.1.0", roles: ["local"], does: { tools: [{ name: "memory.upgrade.plan", reach: "anyone" }, { name: "memory.upgrade.move", reach: "anyone" }, { name: "memory.other", reach: "anyone" }] } };
+  writeModule(root, "memory", memory, `export default { async start(ctx) {
+    ctx.tool("memory.upgrade.plan", { effect: "read", input: { type: "object" }, run: async (_i, meta) => ({ facts: meta.kernelFacts || null }) });
+    ctx.tool("memory.upgrade.move", { effect: "write", input: { type: "object" }, run: async () => (await ctx.call("spaces.storage.put", {}, { relay: true })).data });
+    ctx.tool("memory.other", { effect: "write", input: { type: "object" }, run: async () => ({ reached: true }) });
+    return {};
+  } };`);
+  const db = open(path.join(home, "vyre.db"));
+  const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {}, firstPartyRoots: [root] });
+  await reg.start(discover([root]).map(f => ({ ...f, problems: validate(f.manifest, { firstParty: true }), warnings: [] })), { role: "local" });
+  t.after(() => db.close());
+  const facts = { kind: "device", device_key_id: "d1", person: "per_alex", path: "direct" };
+  const r = await reg.call("spaces.go", {}, "cli", { kernelFacts: facts });
+  assert.deepEqual(r.data, { plan: { facts }, move: { facts } }, "the person's proven facts reach the port and, from it, the storage");
+  assert.deepEqual((await reg.call("spaces.bad", {}, "cli", { kernelFacts: facts })).data, { refused: "undeclared" }, "a tool off the allowlist is refused");
+  const none = await reg.call("spaces.go", {}, "cli", {});
+  assert.ok(none.error, "with no person on the running call there is nothing to relay, and the call fails");
+  // a client-sent meta on a plain call to a port tool is just a call: nothing relays for it
+  const direct = await reg.call("memory.upgrade.plan", {}, "cli", { kernelFacts: facts });
+  assert.deepEqual(direct.data, { facts }, "the daemon's own facts are the daemon's to set");
 });

@@ -18,6 +18,7 @@ import { grantProofVerifier } from "../core/presence.js";
 import { isChain, actorString, isExactlyPerson } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createMoves } from "./moves.js";
+import { createUpgrade } from "./upgrade.js";
 import { canonical as canon, sha256 as sha } from "../core/canonical.js";
 
 /**
@@ -29,6 +30,7 @@ export function createGateway(cfg) {
   const limits = cfg.limits || createLimits({ space: cfg.space, log: cfg.log, clock: cfg.clock });
   const enforce = (/** @type {any} */ chain, /** @type {any} */ d) => limits.enforce(chain, d);
   /** @type {any} */ let records;
+  /** @type {any} */ let upgrade = null;
   // Kernel attributes come from the gateway's own index (K2-7); a caller-supplied resolver only fills what the gateway does not hold.
   const attrs = (/** @type {string} */ u) => ({ ...((cfg.attrs && cfg.attrs(u)) || {}), ...((records && records.attrsOf(u)) || {}) });
   // `authorize` reads grants and members from the kernel's grants store when one is given; otherwise from the caller (the retrofit path).
@@ -38,7 +40,7 @@ export function createGateway(cfg) {
   // A group session's reads are the room's: every gated read below goes through this (kernel/core/room.js roomedAuthorizer).
   const authorizer = cfg.room && cfg.chains ? roomedAuthorizer(rawAuthorizer, cfg.room, cfg.chains) : rawAuthorizer;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ tasks: cfg.tasks, room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
+  records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */
@@ -204,12 +206,16 @@ export function createGateway(cfg) {
     return { forgotten: u, erased_events: erased, tasks_cleared: tasks.cleared || 0, sealed_dropped, sealed_left: refs.length - sealed_dropped, files_kept: files };
   }
 
-  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence });
+  upgrade = createUpgrade({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, verifyReceipt: cfg.verifyUpgradeReceipt,
+    countLocal: async () => { let n = 0; for (const t of await cfg.store.types()) { const r = await cfg.store.aggregate(t.name, { group_by: [], measures: [{ fn: "count" }] }); n += Number(r && r[0] && r[0].values && r[0].values.count) || 0; } return n; } });
+  const moves = createMoves({ space: cfg.space, gate, log: cfg.log, clock: cfg.clock || Date.now, sha256: sha, canonical: canon, evidence: cfg.moveEvidence, remoteEvidence: cfg.remoteMoveEvidence, verifyReceipt: cfg.verifyMoveReceipt });
 
   return Object.freeze({
     authorize: authorizer.authorize,
     /** Moving a project between two Spaces of this home: `out` (approved once, in the source) and `in` (in the target, under the same person's chain there). kernel/gateway/moves.js. */
     moves,
+    /** Upgrading this Personal space to My Cloud: `start` (approved once), `finish`, `movedTo`. kernel/gateway/upgrade.js. */
+    upgrade,
     /** An approved Kit install: `kits.begin({ chain, task, kit })` gives the waiver `records.define(chain, diff, { waiver })` takes, `kits.end(waiver)` ends it (kernel/tasks/kit-apply.js). */
     ...(cfg.kitApply ? { kits: Object.freeze({ begin: cfg.kitApply.begin, resume: cfg.kitApply.resume, end: cfg.kitApply.end }) } : {}),
     memory,
@@ -227,6 +233,23 @@ export function createGateway(cfg) {
     },
     /** The action registry: what each action is and how risky (ActionDef). */
     actions: () => [...authorizer.actions.values()],
+    /**
+     * A module's tools that may be a step of a Flow, as actions of the registry: `<module>.<tool>`, risk read, write or outward.send, on the resource type `module`. Only a name that starts with the module's own
+     * name, never one the kernel already has, and never a risk that is not one of those three (an admin or grant action is the kernel's). Idempotent for the same module.
+     * @param {string} module @param {{ action: string, risk: string, label?: string, gloss?: string }[]} defs @returns {string[]} the names registered
+     */
+    registerActions(module, defs) {
+      const out = [];
+      for (const d of Array.isArray(defs) ? defs : []) {
+        if (!d || typeof d.action !== "string" || !/^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]{0,60}$/.test(d.action) || !d.action.startsWith(module + ".")) throw new KernelError("bad_input", `an action of ${module} is written ${module}.<tool>`);
+        if (!["read", "write", "outward.send"].includes(d.risk)) throw new KernelError("bad_input", `${d.action}: a module's action is read, write or outward.send`);
+        const have = authorizer.actions.get(d.action);
+        if (have && have.module !== module) throw new KernelError("bad_input", `${d.action} is already an action of the kernel`);
+        authorizer.actions.set(d.action, Object.freeze({ action: d.action, resource_type: "module", risk: d.risk, label: String(d.label || d.action).slice(0, 80), gloss: String(d.gloss || "").slice(0, 200), module }));
+        out.push(d.action);
+      }
+      return out;
+    },
     members: Object.freeze({
       /** The role a member holds in this Space, or null. A role is read from the membership the kernel holds, never from the caller. */
       roleOf: (/** @type {any} */ a) => ((wiring.members || cfg.members).has(a) && (wiring.members || cfg.members).membership ? (wiring.members || cfg.members).membership(a)?.role ?? null : null),

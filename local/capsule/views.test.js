@@ -9,7 +9,7 @@ import path from "node:path";
 import { discover, Registry, validate } from "../../core/modules/index.js";
 import { capabilities, widened } from "../../packages/module-sdk/manifest.js";
 import { open } from "../../core/store/index.js";
-import { Events } from "../../core/events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { fill, fillDeep, getPath, allowed, listFrame } from "./frames.js";
 import { needOf } from "./views.js";

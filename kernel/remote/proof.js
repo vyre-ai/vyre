@@ -43,14 +43,31 @@ const CALLS = {
   moveOut: (s, i) => ({ action: "project.move_out", resource: i.project, input: { to: i.to, plan_hash: i.plan_hash } }),
   // the batch form of moveOut (one approval for every project in an upgrade): the proof binds the target, the plan hash and the sorted list of projects
   moveOutMany: (s, i) => ({ action: "project.move_out", resource: urn(s, "project", "batch"), input: { to: i.to, plan_hash: i.plan_hash, projects: [...i.projects].map(String).sort() } }),
+  // upgrading a Personal space to My Cloud: one approval, bound to the target and the plan hash the person was shown
+  upgrade: (s, i) => ({ action: "space.upgrade", resource: urn(s, "space", "upgrade"), input: { to: i.to, plan_hash: i.plan_hash } }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
 
 /** The presence op a gated action is proved under: grants.invite -> grant.invite, rules.set -> grant.rule_set. The one list of how an action becomes an op (scripts/dev-sign-proof.mjs uses it too). @param {string} action */
 export const opOf = action => (String(action).startsWith("rules.") ? `grant.rule_${String(action).split(".")[1]}` : `grant.${String(action).split(".")[1]}`);
 
+/**
+ * The proof request a wire call is covered by, or null: a grants call by its short name (`grants.invites.create` is `inviteCreate`), a project move by its own (`moves.out` is `moveOut`,
+ * `moves.outMany` is `moveOutMany`). The one place the server and the client agree on it. @param {string} call
+ */
+export const proofNameOf = (call) => {
+  const c = String(call);
+  const named = /** @type {Record<string, string>} */ (WIRE_TO_PROOF)[c];
+  if (named) return named;
+  if (!c.startsWith("grants.")) return null;
+  const short = c.split(".").slice(1).join(".");
+  return Object.hasOwn(CALLS, short) ? short : null;
+};
+
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
+/** Gateway paths whose proof request has another name (the wire says `grants.offers.lend`, the request is `lend`). */
+export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "moves.out": "moveOut", "moves.outMany": "moveOutMany", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend" });
 
 /**
  * What a surface shows and signs for one grants call: `{ op, space, fields, payload_hash }`. The signer signs `payload_hash` (and the rest of the PresenceProof
@@ -62,6 +79,17 @@ export function proofRequest(space, call, ...args) {
   const { action, resource, input } = f(space, args[0], args[1]);
   const op = opOf(action);
   const fields = { resource, input_hash: sha256(canonical({ action, input })) };
+  return Object.freeze({ op, space, fields, payload_hash: payloadHash(op, space, fields) });
+}
+
+/**
+ * What a surface shows and signs for the ONE approval of a sealed-value move (the Personal to My Cloud upgrade): the upgrade's plan hash, the target Space's wrapping key and the exact refs it will carry.
+ * Signed in the same prompt as the upgrade's own proof, then handed to `gateway.seal.exportApprove` as `proof`. `{ op, space, fields, payload_hash }` like proofRequest; the sealing process recomputes it.
+ * @param {string} space @param {{ plan_hash: string, target_key: string, refs: string[] }} i
+ */
+export function sealExportApproveRequest(space, i) {
+  if (!i || typeof i.plan_hash !== "string" || typeof i.target_key !== "string" || !Array.isArray(i.refs) || !i.refs.length) throw new KernelError("bad_input", "an export approval names a plan hash, the target's key and the refs");
+  const op = "seal.export_approve", fields = { plan_hash: i.plan_hash, target_key: i.target_key, refs: [...new Set(i.refs.map(String))].sort() };
   return Object.freeze({ op, space, fields, payload_hash: payloadHash(op, space, fields) });
 }
 

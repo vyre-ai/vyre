@@ -20,6 +20,10 @@ import crypto from "node:crypto";
 import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
+import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
+import { planUpgrade, runUpgrade, fingerprint, resealPortFor } from "../../lib/spaces/upgrade.js";
+import { sealExportApproveRequest } from "../../kernel/remote/proof.js";
+import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
 import { createInvites, parseJoinLink, previewInvite, acceptMessage } from "../../lib/spaces/invites.js";
@@ -937,15 +941,29 @@ export default {
     const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member) => {
       const h = kernelHandle(spaceId);
       const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
-      if (!offers || typeof offers.lend !== "function") return false;
+      if (!h || !offers || typeof offers.lend !== "function") return false;
       // the person's chain IN that Space (a hosted Space has its own key), and the proof that comes with the call. ONE kernel act: the first lend takes one proof bound to it and makes both
       // sides (an owner or admin's Space side and the member's own); the member's own turning on again, and any turning off, take only the live session (kernel ruling 5 Oct).
       const k = await kctxOf(meta, spaceId);
+      // A Space on a server knows this computer by the id its home gives it (from what the transport proved), not by the identity list's entry id: the Offers are made for that id, which is also the one the
+      // computer presents when it runs a session. Another of the person's computers is named by its entry id as before.
+      let kdev = dev.eid;
+      if (h.hosted === false && dev.eid === ownDeviceEid(meta) && typeof h.call === "function") { try { const me = await h.call("lent.whoami", []); if (me && typeof me.device === "string" && me.device) kdev = me.device; } catch { /* the home did not answer: the entry id stands */ } }
+      const act = (/** @type {any} */ kc) => (on ? offers.lend(kc.chain, { member, device: kdev, device_key: kdev }, kc.proof) : offers.unlend(kc.chain, { member, device: kdev }, kc.proof));
       try {
-        if (on) await offers.lend(k.chain, { member, device: dev.eid, device_key: dev.eid }, k.proof);
-        else await offers.unlend(k.chain, { member, device: dev.eid }, k.proof);
+        try { await act(k); }
+        catch (e) {
+          // A space on a server: its home asks for the person's yes on THIS act with a one-use challenge. This computer answers with the person's own key (the hardware signer, or a software key on a development
+          // build) and the same act goes again with that proof; with no key to answer, the refusal stands and carries the challenge for a surface that can sign.
+          const ch = /** @type {any} */ (e) && /** @type {any} */ (e).challenge;
+          if (!ch || typeof ch.nonce !== "string" || !/^(presence_required|needs_presence)$/.test(String(/** @type {any} */ (e).code))) throw e;
+          const proof = await answerChallenge(ch, spaceId);
+          ctx.log.warn(`lend: the home asked for a yes (${String(/** @type {any} */ (e).code)}); this computer ${proof ? "answered it" : "has no key to answer with"}; challenge ${Object.keys(ch).join(",")}`);
+          if (!proof) throw e;
+          await act(await kctxOf({ ...meta, kernel_proof: proof }, spaceId));
+        }
       } catch (e) { ctx.log.warn(`lend: the kernel refused: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")}`); throw plainKernelError(e); }
-      return true;
+      return kdev;
     };
     /** Delete lend records (LD-1): a removal of the device from the Space, of the person from it, or of the Space ends the consent, so the next first grant asks Face ID again. @param {string} space @param {{ device?: string, person?: string }} [only] */
     const clearLends = (space, only = {}) => {
@@ -977,7 +995,7 @@ export default {
       try { const c = await K.chain(meta); const h = c && c.hops && c.hops.length === 1 ? c.hops[0].actor : null; return h && h.kind === "person" ? String(h.id) : home; } catch { return home; }
     };
     tool("spaces.devices.lend", "Lend one of your computers to a space, or stop. The first time for a device in a space needs your Face ID or fingerprint; stopping never does.",
-      obj({ space: str, device: str, on: { type: "boolean" } }, ["space", "device", "on"]), async (i, meta) => {
+      obj({ space: str, device: str, on: { type: "boolean" }, member: { ...str, description: "Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it)." } }, ["space", "device", "on"]), async (i, meta) => {
         const s = me();
         const row = spaceOf(i.space);
         const caller = await callerPerson(meta);
@@ -992,9 +1010,16 @@ export default {
             // off: the person whose device it is, or an owner of the space
             const owner = (m && m.role === "owner") || row.createdBy === s.id;
             let mine = true; try { await deviceOf(i.device, meta); } catch { mine = false; }
+            // An owner or admin stopping a member's computer from the space's own home names it by the id the space knows it by, and the person: nothing local says whose it is.
+            const byHome = !mine && owner && !cur && typeof i.member === "string" && i.member;
+            if (byHome) {
+              const viaHome = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, "owner", String(i.member));
+              emit("space.device-lent", { space: row.id, device: String(i.device), lent: false });
+              return { space: row.id, device: String(i.device), lent: false, first_grant_at: null, allowed_by: null, stopped: viaHome };
+            }
             if (!mine && !(owner && cur)) throw refuse("That is not one of your devices.", "not_found");
             if (!cur || !cur.lent) return { space: row.id, device: String(i.device), lent: false, first_grant_at: cur ? cur.first_grant_at : null, allowed_by: cur ? cur.allowed_by : null };
-            const viaKernel = await kernelOffers(row.id, { eid: String(i.device) }, false, meta, m ? m.role : "owner", cur.device_person || /** @type {string} */ (s.id));
+            const viaKernel = await kernelOffers(row.id, { eid: cur.kdevice || String(i.device) }, false, meta, m ? m.role : "owner", cur.device_person || /** @type {string} */ (s.id));
             // LD-2: the space's owner switching a computer off that is not theirs withdraws the space's consent: turning it on again asks the device's person for Face ID again
             const next = { ...cur, lent: false, ended_at: now(), ended_by: s.id, kernel: viaKernel, ...(mine ? {} : { first_grant_at: null, allowed_by: null }) };
             await kv.put(key, next);
@@ -1005,7 +1030,7 @@ export default {
           if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
           const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id));
           const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
-          const next = { lent: true, kernel: viaKernel, device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
+          const next = { lent: true, kernel: Boolean(viaKernel), ...(typeof viaKernel === "string" ? { kdevice: viaKernel } : {}), device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
           await kv.put(key, next);
           emit("space.device-lent", { space: row.id, device: dev.eid, lent: true });
           return { space: row.id, device: dev.eid, lent: true, first_grant_at: next.first_grant_at, allowed_by: next.allowed_by };
@@ -1180,6 +1205,8 @@ export default {
       // and a joiner's device asks this server to sign a fresh nonce with it (spaces.attest, answered inside grants.invites.get) before it shows the join card.
       const kp = await files.keys.generate();
       await files.keys.hold(id, kp.privateKey);
+      // the device that asked for it is enrolled in the new space on this server (a device that already has a list is not added by itself: devices enrol per space), so its own later calls into the space have a chain
+      { const dk = meta && meta.kernelFacts && meta.kernelFacts.kind === "device" ? String(meta.kernelFacts.device_key_id || "") : ""; if (dk) { const l = await enrolledList(dk); if (l !== null && !l.includes(id)) await kv.put(`device-spaces/${dk}`, [...l, id]); } }
       return { space: id, existed: false, rootPublic: kp.publicKey };
     });
     // Making a space is not one of the yes moments (pair, vault, outward, owner changes): it rides on the owner's authenticated call above and asks for no presence.
@@ -1266,6 +1293,8 @@ export default {
       return Promise.all(rows.map(async (/** @type {any} */ r) => ({ ...r, time_zone: await zoneOf(r.id) })));
     };
     /** The person's own (home) space always carries a name to show: label "personal", and the display name the tier gives it (the app words it from `tier`). */
+    /** Where the Personal space points after an upgrade: `upgraded_to` is My Cloud's id, and the row says it is frozen. */
+    const upgradedRow = () => { try { const h = K && typeof K.space === "string" ? K.for(K.space) : null; const m = h && h.gateway && h.gateway.upgrade ? h.gateway.upgrade.movedTo() : null; return m ? { upgraded_to: m.to } : {}; } catch { return {}; } };
     const homeNames = () => ({ label: "personal", displayName: tierOf({ kind: "this-computer" }) === "cloud" ? "My Cloud" : "Personal" });
     const listSpacesRaw = async (/** @type {any} */ _i, /** @type {any} */ meta) => {
       let st0 = null; try { st0 = identity.status(); } catch { st0 = null; }
@@ -1296,7 +1325,7 @@ export default {
         if (K && typeof K.space === "string" && K.owner && !out.some(x => x.id === K.space)) {
           const sId = /** @type {string} */ (me().id);
           const m = typeof K.membership === "function" ? await K.membership(sId, K.space).catch(() => null) : null;
-          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
+          if (m && m.member === true) out.unshift({ tier: tierOf({ kind: "this-computer" }), id: K.space, name: null, ...homeNames(), ...upgradedRow(), status: "done", home: { kind: "this-computer" }, role: m.role, aliases: [], workspaceId: null, warnings: [], hosted: true });
         }
       } catch { /* no home row */ }
       // spaces this person joined on someone else's server: they live there, this device keeps only where the home is
@@ -1370,6 +1399,294 @@ export default {
       return wrapStorage(() => storage.setCap(i.space, i.person, i.bytes));
     });
 
+    // ---- moving a project to a Space on ANOTHER home (kernel/gateway/moves.js, reviewer-3's team/0.3/reviews/remote-move-design.md). The mover's own device is the courier between the two homes; each side
+    // signs only what its own log says, with its Space key (the one whose public half is the Space's published `rootPublic`), and the other side checks that signature against the DIRECTORY's key for
+    // that Space id, resolved under the pin the mover's device holds (RM-6), never against a key it is handed. ----
+    const MOVE_EVIDENCE_TAG = "vyre-move-evidence-v1", MOVE_RECEIPT_TAG = "vyre-move-receipt-v1", MOVE_UPGRADE_RECEIPT_TAG = "vyre-upgrade-receipt-v1";
+    const EVIDENCE_KEYS = ["v", "from", "to", "project", "plan_hash", "move_id", "person", "at"];
+    const RECEIPT_KEYS = ["v", "move_id", "from", "to", "counts", "files_root", "at"];
+    const exactKeys = (/** @type {any} */ o, /** @type {string[]} */ keys) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
+    /** The directory context a hook needs for the move being checked, set by the tool around its one kernel call. @type {Map<string, { name: string, pin: any }>} */
+    const moveContext = new Map();
+    /** Sign `obj` under `tag` with a hosted Space's own key: { pub, sig }. The kernel hands over only what its own log said, never a key. */
+    const signMove = async (/** @type {string} */ space, /** @type {string} */ tag, /** @type {any} */ obj) => {
+      const k = files.keys.load(space);
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
+      return { pub: k.publicKey, sig: b64u(await k.sign(Buffer.from(`${tag}\n${canonicalOf(obj)}`))) };
+    };
+    /** The Space's published key, by Space id, resolved under the pin (RM-6): null unless the directory names this very Space id with a key. */
+    const publishedKeyOf = async (/** @type {string} */ spaceId, /** @type {{ name: string, pin: any } | undefined} */ c) => {
+      if (!c || typeof c.name !== "string" || !c.pin) return null;
+      let r; try { r = await dir.resolve(c.name.replace(/\.vyre\.run$/, ""), { pin: c.pin, resolve: ownerLookup }); } catch { return null; }
+      return r && r.ok && r.kind === "space" && r.payload && r.payload.id === spaceId && typeof r.payload.rootPublic === "string" && r.payload.rootPublic ? r.payload.rootPublic : null;
+    };
+    const verifySigned = async (/** @type {string} */ pub, /** @type {string} */ tag, /** @type {any} */ obj, /** @type {string} */ sig) => { try { return await C.verifyWith(pub, Buffer.from(`${tag}\n${canonicalOf(obj)}`), sig); } catch { return false; } };
+    if (K && K.spaces && typeof K.spaces.setMoveHooks === "function") {
+      K.spaces.setMoveHooks({
+        /** The target checks the source's signed evidence: the signature is the Space key's, and that key is the directory's for the source Space id. */
+        remoteEvidence: async (/** @type {any} */ bundle, /** @type {{ from: string, to: string }} */ c) => {
+          if (!bundle || typeof bundle.pub !== "string" || typeof bundle.sig !== "string" || !exactKeys(bundle.evidence, EVIDENCE_KEYS) || bundle.evidence.v !== 1) return null;
+          const ev = bundle.evidence;
+          if (ev.from !== c.from || ev.to !== c.to) return null;
+          const ctx = moveContext.get(`${ev.from}/${ev.to}/${ev.move_id}`);
+          const published = await publishedKeyOf(ev.from, ctx);
+          if (!published || published !== bundle.pub) return null;
+          return (await verifySigned(bundle.pub, MOVE_EVIDENCE_TAG, ev, bundle.sig)) ? ev : null;
+        },
+        /** The Personal kernel checks My Cloud's signed upgrade receipt against My Cloud's published key (name and pin from the device that is upgrading). */
+        verifyUpgradeReceipt: async (/** @type {any} */ receipt, /** @type {{ from: string, to: string, upgrade_id: string }} */ c) => {
+          if (!receipt || typeof receipt.sig !== "string" || !receipt.body || typeof receipt.body !== "object") return null;
+          const b = receipt.body;
+          if (b.v !== 1 || b.from !== c.from || b.to !== c.to || b.upgrade_id !== c.upgrade_id) return null;
+          const published = await publishedKeyOf(c.to, moveContext.get(`${c.from}/${c.to}/${c.upgrade_id}`));
+          if (!published) return null;
+          return (await verifySigned(published, MOVE_UPGRADE_RECEIPT_TAG, b, receipt.sig)) ? b : null;
+        },
+        /** The source checks the target's signed receipt the same way, against the TARGET Space's published key. */
+        verifyReceipt: async (/** @type {any} */ receipt, /** @type {{ from: string, to: string }} */ c) => {
+          if (!receipt || typeof receipt.pub !== "string" || typeof receipt.sig !== "string" || !exactKeys(receipt.body, RECEIPT_KEYS) || receipt.body.v !== 1) return null;
+          const b = receipt.body;
+          if (b.from !== c.from || b.to !== c.to) return null;
+          const ctx = moveContext.get(`${b.from}/${b.to}/${b.move_id}`);
+          const published = await publishedKeyOf(b.to, ctx);
+          if (!published || published !== receipt.pub) return null;
+          return (await verifySigned(receipt.pub, MOVE_RECEIPT_TAG, b, receipt.sig)) ? b : null;
+        },
+      });
+    }
+    /** The mover's chain in a hosted Space and its gateway's moves. @param {string} space @param {any} meta */
+    const moveSide = async (space, meta) => {
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(String(space)) !== true) throw refuse("This home does not host that space.", "not_found");
+      let chain; try { chain = await K.chainIn(String(space), meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
+      const h = kernelHandle(String(space));
+      if (!h || !h.gateway || !h.gateway.moves) throw refuse("That space cannot move projects.", "unavailable");
+      return { chain, moves: h.gateway.moves };
+    };
+    const asRefusal = (/** @type {any} */ e) => { const c = String((e && e.code) || ""); if (/^(not_found|invalid|bad_input|chain_not_person|rate_limited|unavailable|not_allowed|needs_presence)$/.test(c)) return refuse(String(e.message || "That move is refused."), c); throw plainKernelError(e); };
+    tool("spaces.moves.evidence", "In the SOURCE home: the signed evidence that you started a move of a project out of a space here, for the target to check. { evidence, pub, sig }; the Space's own key signs only what its own log says. `toName` and `pin` say which published space the move goes to: this home resolves that space's key now and holds the right to pull for that space only.", obj({ space: str, move_id: str, toName: str, pin: str }, ["space", "move_id", "toName", "pin"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      let evidence; try { evidence = moves.evidenceOf(chain, { move_id: i.move_id }); } catch (e) { throw asRefusal(e); }
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the target space's list.", "bad_input");
+      const toKey = await publishedKeyOf(evidence.to, { name: String(i.toName), pin });
+      if (!toKey) throw refuse("The target space has no published key, so a move to it cannot be checked. Ask its owner to publish it.", "not_found");
+      const signed = await signMove(String(i.space), MOVE_EVIDENCE_TAG, evidence);
+      // this home may now serve a pull for this move to the target space whose key it just resolved, for as long as a pull may live
+      await kv.put(`move-pull/${evidence.move_id}`, { from: String(i.space), to: evidence.to, to_pub: toKey, person: evidence.person, plan_hash: evidence.plan_hash, project: evidence.project, expires: evidence.at + SESSION_CAP_MS });
+      // the home's door admits the target home for this move, and only while this is open (network's home-to-home channel); with no such tool (a build without it) the pull simply cannot arrive
+      try { const r = await ctx.call("wink.home-move.open", { space: String(i.space), move_id: evidence.move_id, to: evidence.to, expires: evidence.at + SESSION_CAP_MS }); if (r && r.error && r.error.code !== "no_such_tool") throw refuse("This server could not open its door for the move. Nothing was started.", "unavailable"); }
+      catch (e) { if (e && /** @type {any} */ (e).code === "unavailable") throw e; /* the channel is not part of this build */ }
+      return { evidence, ...signed };
+    });
+    tool("spaces.moves.receive", "In the TARGET home: receive a project moved from a space on another home. `bundle` is the signed evidence; `fromName` and `pin` say which published space it names, the way an invite does.", obj({ space: str, from: str, project: str, plan_hash: str, move_id: str, bundle: { type: "object" }, fromName: str, pin: str }, ["space", "from", "project", "plan_hash", "move_id", "bundle", "fromName", "pin"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
+      const key = `${i.from}/${i.space}/${i.move_id}`;
+      moveContext.set(key, { name: String(i.fromName), pin });
+      try { return await moves.in(chain, { from: i.from, project: i.project, plan_hash: i.plan_hash, move_id: i.move_id, bundle: i.bundle }); }
+      catch (e) { throw asRefusal(e); }
+      finally { moveContext.delete(key); }
+    });
+    tool("spaces.moves.receipt", "In the TARGET home, after the copy is checked: finish the move here and answer the receipt the SOURCE needs ({ body, pub, sig }), signed with this space's key over the counts and the root of the per-file hashes.", obj({ space: str, move_id: str, counts: { type: "object" }, files_root: str }, ["space", "move_id", "counts", "files_root"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      let body; try { body = await moves.finishTarget(chain, { move_id: i.move_id, counts: i.counts, files_root: i.files_root }); } catch (e) { throw asRefusal(e); }
+      return { body, ...(await signMove(String(i.space), MOVE_RECEIPT_TAG, body)) };
+    });
+    tool("spaces.moves.finish", "In the SOURCE home: the target's signed receipt arrived. Checked against the target space's published key (`toName`, `pin`), then the move is marked done here, and only then may anything be cleared from the source.", obj({ space: str, move_id: str, receipt: { type: "object" }, toName: str, pin: str }, ["space", "move_id", "receipt", "toName", "pin"]), async (i, meta) => {
+      const { chain, moves } = await moveSide(i.space, meta);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the target space's list.", "bad_input");
+      const b = i.receipt && i.receipt.body;
+      const key = `${i.space}/${b && b.to}/${i.move_id}`;
+      moveContext.set(key, { name: String(i.toName), pin });
+      try {
+        const done = await moves.finishSource(chain, { move_id: i.move_id, receipt: i.receipt });
+        // the move is over: its door closes at once (best effort; it also closes by itself when the right expires)
+        try { await ctx.call("wink.home-move.close", { move_id: i.move_id }); } catch { /* not part of this build, or already closed */ }
+        return done;
+      }
+      catch (e) { throw asRefusal(e); }
+      finally { moveContext.delete(key); }
+    });
+    /** @type {Map<string, any>} one pull source per hosted Space this home serves, so a stream's nonces and sessions persist between its requests */ const pullSources = new Map();
+    const pullSourceOf = (/** @type {string} */ space) => {
+      let src = pullSources.get(space);
+      if (!src) {
+        const serve = async (/** @type {any} */ input) => { const r = await ctx.call("work.move.serve", { space, ...input }); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "the move could not be served")), { code: String(r.error.code || "unavailable") }); return r.data; };
+        src = createPullSource({
+          space,
+          grantOf: async (/** @type {string} */ moveId) => { const g = await kv.get(`move-pull/${moveId}`); return g && g.from === space ? g : null; },
+          sign: async (/** @type {string} */ m) => { const k = files.keys.load(space); if (!k) throw refuse("This home holds no key for that space.", "unavailable"); return b64u(await k.sign(Buffer.from(m))); },
+          verify: async (/** @type {string} */ pub, /** @type {string} */ m, /** @type {string} */ sig) => { try { return await C.verifyWith(pub, Buffer.from(m), sig); } catch { return false; } },
+          // every call names exactly what was approved: the serving side checks it against the source's own `project.move_started` (it does not rely on this pull check alone)
+          planFor: (g) => serve({ op: "plan", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, to_space: g.to }),
+          readRecord: (g, urn) => serve({ op: "record", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, urn }),
+          readFile: async (g, path, offset, length) => Buffer.from(String((await serve({ op: "file", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, path, offset, length })).base64 || ""), "base64"),
+          sealedFor: (g, ref) => serve({ op: "sealed", person: g.person, project: g.project, move_id: g.move_id, plan_hash: g.plan_hash, ref }),
+          log: (m) => ctx.log.info(m),
+        });
+        pullSources.set(space, src);
+      }
+      return src;
+    };
+    tool("spaces.moves.pull", "In the SOURCE home: answer one request of a target home's pull (hello, auth, plan, records, file, sealed or done). For the daemon's peer door only: the target proves itself with its Space key, and nothing is served outside the plan this home recomputes under the mover. See lib/spaces/move-pull.js.", obj({ space: str, request: { type: "object" } }, ["space", "request"]), async (i, meta) => {
+      onlyModules(meta, ["vyred"]);
+      const space = String(i.space);
+      if (!SPACE_ID_RE.test(space) || !K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      const r = i.request;
+      const t = r && typeof r.t === "string" ? r.t : "";
+      if (!["hello", "auth", "plan", "records", "file", "sealed", "done"].includes(t)) throw refuse("That is not a request this home answers.", "bad_input");
+      try { return await pullSourceOf(space)[/** @type {"hello"} */ (t)](r); }
+      catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (/^(not_found|denied|bad_input|rate_limited|plan_changed|too_large|unavailable|blocked)$/.test(c)) throw refuse(String(/** @type {Error} */ (e).message), c); throw plainKernelError(e); }
+    }, { internal: true });
+    // the TARGET side of the pull: the driver (the Flow's copy) checks the source before it signs anything, then asks this home to sign with the target Space's key. Neither tool takes a key or returns one.
+    tool("spaces.moves.pull-check-source", "In the TARGET home: is this signature the SOURCE space's, by its published key (`fromName`, `pin`)? The driver asks before it signs anything.", obj({ from: str, to: str, move_id: str, nonce: str, src_sig: str, fromName: str, pin: str }, ["from", "to", "move_id", "nonce", "src_sig", "fromName", "pin"]), async (i, meta) => {
+      onlyModules(meta, ["work", "vyred"]);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
+      const key = await publishedKeyOf(String(i.from), { name: String(i.fromName), pin });
+      return { ok: Boolean(key) && await C.verifyWith(key, Buffer.from(srcMessage(i.from, i.to, i.move_id, i.nonce)), String(i.src_sig)).catch(() => false) };
+    }, { internal: true });
+    tool("spaces.moves.source-channel", "In the TARGET home: where the SOURCE space's home can be reached, from its published directory record (`fromName`, `pin`): { relay, route, box }. The driver passes it to the home-to-home channel (`wink.home.call`). Refused unless the record names this very space id.", obj({ from: str, fromName: str, pin: str }, ["from", "fromName", "pin"]), async (i, meta) => {
+      onlyModules(meta, ["work", "vyred"]);
+      const pin = parsePin(i.pin);
+      if (!pin) throw refuse("A move names the pinned version of the source space's list.", "bad_input");
+      let r; try { r = await dir.resolve(String(i.fromName).replace(/\.vyre\.run$/, ""), { pin, resolve: ownerLookup }); } catch { throw refuse("The source space could not be looked up.", "not_found"); }
+      const rt = r && r.ok && r.kind === "space" && r.payload && r.payload.id === i.from ? r.payload.route : null;
+      if (!rt || typeof rt.route !== "string" || typeof rt.box !== "string" || !rt.box) throw refuse("The source space publishes no address for its home, so it cannot be pulled from.", "not_found");
+      return { relay: String(rt.relay || ""), route: rt.route, box: rt.box };
+    }, { internal: true });
+    tool("spaces.moves.pull-sign", "In the TARGET home: sign the pull proof for a move this space received, bound to both spaces, the move and the source's nonce, with this space's key. Only for a move this space has received (`project.move_in` in its log).", obj({ space: str, from: str, move_id: str, nonce: str }, ["space", "from", "move_id", "nonce"]), async (i, meta) => {
+      onlyModules(meta, ["work", "vyred"]);
+      const space = String(i.space);
+      if (!K || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      const h = kernelHandle(space);
+      const got = h && h.kernel && h.kernel.log ? h.kernel.log.read({ type: "project.move_in" }).find((/** @type {any} */ e) => e.data && e.data.move_id === i.move_id && e.data.from === i.from) : null;
+      if (!got) throw refuse("This space received no such move.", "not_found");
+      if (!/^[A-Za-z0-9_-]{16,64}$/.test(String(i.nonce))) throw refuse("That is not a challenge.", "bad_input");
+      const k = files.keys.load(space);
+      if (!k) throw refuse("This home holds no key for that space.", "unavailable");
+      return { proof: b64u(await k.sign(Buffer.from(pullMessage(String(i.from), space, String(i.move_id), String(i.nonce))))) };
+    }, { internal: true });
+    // ---- upgrading this device's Personal space to My Cloud (kernel/gateway/upgrade.js, lib/spaces/upgrade.js). The device carries it: it holds this home's gateway and My Cloud's over the paired session. ----
+    /**
+     * The upgrade ports of the modules that own sealed data. Chats are `work.chat.upgrade-plan { to }` and `work.chat.upgrade-move { to }`, memory is `memory.upgrade.plan` and `memory.upgrade.move { to }`:
+     * module callers only, and each runs AS THE PERSON in both Spaces, so this module relays the person it is acting for (`relay: true`, an allowlist in core/modules/index.js). A module without the tools is
+     * simply not part of the plan.
+     */
+    /** The four port calls, by literal tool name (the reach check reads them from source). `relay` carries the person; the allowlist is RELAY_ALLOWED in core/modules/index.js. */
+    const portCall = (/** @type {"chats" | "memory"} */ kind, /** @type {"plan" | "move"} */ op, /** @type {any} */ input) => {
+      if (kind === "chats") return op === "plan" ? ctx.call("work.chat.upgrade-plan", input, { relay: true }) : ctx.call("work.chat.upgrade-move", input, { relay: true });
+      return op === "plan" ? ctx.call("memory.upgrade.plan", input, { relay: true }) : ctx.call("memory.upgrade.move", input, { relay: true });
+    };
+    const upgradePorts = async (/** @type {string} */ to) => {
+      /** @type {Record<string, any>} */ const ports = {};
+      for (const k of /** @type {("chats" | "memory")[]} */ (["chats", "memory"])) {
+        let plan = null;
+        try {
+          const r = await portCall(k, "plan", { to });
+          if (r && r.error) { if (r.error.code === "no_such_tool") continue; plan = { blockers: [`could not be read: ${String(r.error.message || r.error.code).slice(0, 80)}`], counts: null }; } else plan = r.data;
+        } catch (e) { if (String(/** @type {any} */ (e).code) === "no_such_tool") continue; plan = { blockers: ["could not be read"], counts: null }; }
+        ports[k] = { items: plan && Array.isArray(plan.chats) ? plan.chats : [], plan: async () => plan, move: async (/** @type {{ to: string }} */ a) => { const r = await portCall(k, "move", a); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; } };
+      }
+      return ports;
+    };
+    const upgradeSides = async (/** @type {string} */ to, /** @type {any} */ meta) => {
+      if (!K || typeof K.space !== "string") throw refuse("This device has no Personal space to upgrade.", "unavailable");
+      if (!SPACE_ID_RE.test(String(to)) || to === K.space) throw refuse("Name your My Cloud space.", "bad_input");
+      const lh = kernelHandle(K.space), rh = kernelHandle(String(to));
+      if (!lh || !lh.gateway || !rh || !rh.gateway) throw refuse("That space is not reachable from this device.", "not_found");
+      const lk = await kctxOf(meta, K.space);
+      return {
+        local: { space: K.space, records: lh.gateway.records, definitions: (/** @type {any} */ c) => lh.gateway.definitions(c), chain: lk.chain },
+        remote: { space: String(to), records: rh.gateway.records, definitions: (/** @type {any} */ c) => rh.gateway.definitions(c), chain: null },
+        gateway: lh.gateway, proof: lk.proof, sealing: { local: lh.gateway.seal, remote: rh.gateway.seal },
+      };
+    };
+    /** See `resealPortFor` (lib/spaces/upgrade.js): the sealed-value transfer through platform's seal ops. */
+    const resealPort = (/** @type {any} */ sides, /** @type {string} */ plan_hash, /** @type {{ proof?: any }} */ approval) => resealPortFor({ local: sides.local, remote: sides.remote, sealing: sides.sealing, plan_hash, approval });
+    tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name }] }, where `id` is what `spaces.create` takes as `home.device.id`. Empty when none is paired.", obj(), async () => {
+      let who = null; try { who = identity.status(); } catch { who = null; }
+      /** @type {any[]} */ let rows = [];
+      try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' ORDER BY created, id").all(); } catch { rows = []; }
+      void who;
+      // `online` is null: whether the server is reachable right now is not known without opening its session, which a list does not do
+      return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name), online: null })) };
+    });
+    tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
+      const space = String(i.space);
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      if (!Array.isArray(i.objects) || i.objects.length > 5000) throw refuse("An upgrade receipt covers at most 5000 objects.", "bad_input");
+      let chain; try { chain = await K.chainIn(space, meta); } catch (e) { ctx.log.warn(`upgrade receipt: no chain in ${space}: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message} (facts ${JSON.stringify(meta && meta.kernelFacts ? Object.keys(meta.kernelFacts) : null)})`); throw refuse("You are not a member of that space.", "forbidden"); }
+      const h = kernelHandle(space);
+      const objects = i.objects.map((/** @type {any} */ o) => ({ type: String(o.type), id: String(o.id), keys: Array.isArray(o.keys) ? o.keys.map(String) : [] }));
+      const fp = await fingerprint({ space, records: h.gateway.records, chain }, objects);
+      const body = { v: 1, upgrade_id: String(i.upgrade_id), from: String(i.from), to: space, count: fp.count, objects_root: fp.root, at: now() };
+      return { body, ...(await signMove(space, MOVE_UPGRADE_RECEIPT_TAG, body)) };
+    });
+    tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
+      const sides = await upgradeSides(i.to, meta);
+      const { local, remote } = sides;
+      const ports = await upgradePorts(String(i.to));
+      { const rp = resealPort(sides, "", {}); if (rp) ports.reseal = rp; }
+      try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
+      catch (e) { throw plainKernelError(e); }
+    });
+    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. My Cloud's name, the pinned version of its list and the paired server are worked out from the space this device made (override with `toName`, `pin`, `server`). It asks My Cloud for its signed receipt: only then does this space point to My Cloud and stop taking new records.", obj({ to: str, plan_hash: str, toName: str, pin: str, server: str, approve_proof: { type: "object" } }, ["to", "plan_hash"]), async (i, meta) => {
+      const sides = await upgradeSides(i.to, meta);
+      const { local, remote, gateway, proof } = sides;
+      const ports = await upgradePorts(String(i.to));
+      const approval = { proof: i.approve_proof };
+      const rp = resealPort(sides, String(i.plan_hash), approval);
+      if (rp) ports.reseal = rp;
+      let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
+      if (plan.hash !== i.plan_hash) throw refuse("Your Personal space changed since you were shown the plan. Look at it again.", "plan_changed");
+      if (plan.blockers.length) throw refuse(`This cannot start yet: ${plan.blockers.join("; ")}`, "blocked");
+      // sealed values need the person's one approval of the exact list (the same prompt as the upgrade's own): the app signs `request` and `approve_request` together and calls again with both
+      const refs = plan.sealedRefs || [];
+      /** @type {any} */ let approveRequest = null;
+      if (refs.length && rp) { try { approveRequest = sealExportApproveRequest(K.space, { plan_hash: plan.hash, target_key: await rp.targetKey(), refs }); } catch (e) { throw plainKernelError(e); } }
+      if (approveRequest && !i.approve_proof && !(proof && proof.presence)) return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }), approve_request: approveRequest };
+      if (approveRequest && !i.approve_proof) return { needs_proof: true, approve_request: approveRequest };
+      let started;
+      try { started = await gateway.upgrade.start(local.chain, { to: String(i.to), plan_hash: plan.hash }, proof); }
+      catch (e) { if (String(/** @type {any} */ (e).code) === "needs_presence") return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }) }; ctx.log.warn(`upgrade start failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
+      if (approveRequest) {
+        const m = /^([^/]+)\/([^:]+): /.exec(String(plan.sealed[0] || ""));
+        try { await rp.approve(refs, `vyre://${K.space}/${m ? m[1] : "contact"}/${m ? m[2] : ""}`); }
+        catch (e) { ctx.log.warn(`upgrade export approval failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
+      }
+      let report; try { report = await runUpgrade({ plan, local, remote, ports }); } catch (e) { ctx.log.warn(`upgrade run failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
+      const server = typeof i.server === "string" && i.server ? i.server : await serverOf(String(i.to));
+      /** @type {{ what: string, why: string }[]} */ const notes = [];
+      // each moved chat's history (its frames, members and runs) comes back to life in My Cloud once its files have landed: chat's own tool, run there
+      if (ports.chats && server) {
+        for (const chat of ports.chats.items || []) {
+          try { await remoteCall(server, "work.chat.history-import", { chat }, meta); }
+          catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found") report.notMoved.push({ what: `chats: ${chat} history`, why: String(/** @type {Error} */ (e).message).slice(0, 120) }); }
+        }
+      } else if (ports.chats && (ports.chats.items || []).length) report.notMoved.push({ what: "chats: history", why: "no paired server to bring it back on" });
+      // My Cloud says what it holds, signed with its own key; only that lets this space point there and freeze
+      let receipt = null;
+      // My Cloud is an ordinary space on the person's own server: its name and the pinned version of its list are this device's own (it made the space), so nothing needs to be typed
+      const toRow = spaces.get(String(i.to));
+      const toName = typeof i.toName === "string" && i.toName ? i.toName : (toRow ? toRow.name : "");
+      const kept = await chainOf(String(i.to));
+      const pin = parsePin(i.pin) || (kept && kept.pin) || null;
+      if (report.notMoved.length === 0 && server && pin && toName) {
+        try {
+          receipt = await remoteCall(server, "spaces.upgrade.receipt", { space: String(i.to), upgrade_id: started.upgrade_id, from: K.space, objects: plan.objects.map((/** @type {any} */ o) => ({ type: o.type, id: o.id, keys: o.keys })) }, meta);
+        } catch (e) { notes.push({ what: "My Cloud's receipt", why: String(/** @type {Error} */ (e).message).slice(0, 120) }); }
+      } else if (report.notMoved.length === 0) notes.push({ what: "My Cloud's receipt", why: "not asked for: this needs My Cloud's published name, the pin and the paired server" });
+      const ctxKey = `${K.space}/${String(i.to)}/${started.upgrade_id}`;
+      if (pin && toName) moveContext.set(ctxKey, { name: String(toName), pin });
+      let fin;
+      try { fin = await gateway.upgrade.finish(local.chain, { upgrade_id: started.upgrade_id, counts: { records: report.moved.records, chats: report.moved.chats ?? null, memory: report.moved.memory ?? null }, failed: report.notMoved.map((/** @type {any} */ n) => `${n.what}: ${n.why}`), freeze: report.recordsComplete && report.notMoved.length === 0, ...(receipt ? { receipt } : {}) }); }
+      catch (e) { ctx.log.warn(`upgrade finish failed: ${/** @type {any} */ (e).code} ${/** @type {Error} */ (e).message}`); throw plainKernelError(e); }
+      finally { moveContext.delete(ctxKey); }
+      return { upgraded: true, to: fin.to, moved: report.moved, notMoved: report.notMoved, frozen: fin.frozen, ...(fin.not_frozen_because ? { not_frozen_because: fin.not_frozen_because } : {}), ...(notes.length ? { notes } : {}) };
+    });
     tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
       let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
       if (!rows.some(r => r.id === i.space && r.tier === "cloud")) throw refuse("That is not a Cloud space you are in.", "bad_input");
@@ -1594,7 +1911,7 @@ export default {
       try {
         const r = /** @type {any} */ (await ctx.call("wink.code.carry", { link, space }));
         const d = r && !r.error && r.data ? r.data : null;
-        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer } : { code: null };
+        return d && d.code ? { code: d.code, code_expires: d.expires, code_offer: d.offer, ...(d.avatar ? { code_avatar: d.avatar } : {}) } : { code: null };
       } catch { return { code: null }; }
     };
     tool("spaces.invites.create", "Make a join link (https://<space>.vyre.run/join/...) for a role. A temp or member invite can name projects. Owners and admins only, unless the space lets managers invite.",

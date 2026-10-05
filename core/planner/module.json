@@ -15,6 +15,7 @@
     {"name": "planner.dismiss", "effect": "write", "reach": "anyone"},
     {"name": "planner.delete", "effect": "write", "reach": "anyone"},
     {"name": "planner.agenda", "effect": "read", "reach": "anyone"},
+    {"name": "planner.bin", "effect": "read", "reach": "anyone"},
     {"name": "planner.upcoming", "effect": "read", "reach": "anyone"},
     {"name": "planner.parse", "effect": "read", "reach": "anyone"},
     {"name": "planner.settings", "effect": "write", "reach": "person"},
@@ -30,6 +31,7 @@
         "records.create",
         "records.update",
         "records.remove",
+        "records.restore",
         "events.read",
         "tasks.request",
         "tasks.read",
@@ -267,6 +269,11 @@
               "label": "Done"
             },
             {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
+            },
+            {
               "name": "waits_on",
               "kind": "text",
               "label": "Runs when this item is done"
@@ -428,6 +435,11 @@
               "name": "done_at",
               "kind": "datetime",
               "label": "Done"
+            },
+            {
+              "name": "legacy_id",
+              "kind": "text",
+              "label": "Carried from the old planner (its id)"
             }
           ]
         },

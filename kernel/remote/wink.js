@@ -33,8 +33,8 @@ export function winkTransport(o) {
  */
 export function withKernelCall(next, o) {
   if (!o || typeof o.pathOf !== "function") throw new Error("withKernelCall needs pathOf: say which path this dispatcher serves");
-  return async (caller, tool, input) => {
-    if (tool !== KERNEL_CALL_TOOL) return next(caller, tool, input);
+  return async (caller, tool, input, ...rest) => {
+    if (tool !== KERNEL_CALL_TOOL) return next(caller, tool, input, ...rest);
     const id = input && typeof input.id === "string" ? input.id.slice(0, 64) : null;
     const refuse = (/** @type {string} */ code, /** @type {string} */ message) => ({ v: WIRE_VERSION, id, ok: false, error: { code, message } });
     const m = DEVICE.exec(String(caller));

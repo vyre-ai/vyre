@@ -22,10 +22,10 @@ const G = (actions, subject = actor("person", OWNER)) => ({ id: `gr_${String(++n
 function rig(extra = {}) {
   const calls = [];
   const sealer = {
-    api: { put: async i => { calls.push(["put", i]); return { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 }; }, use: async i => { calls.push(["use", i]); return { merged: true, output_ref: "d_1" }; }, reveal: async i => { calls.push(["reveal", i]); return { value: "x", expires_in_ms: 1 }; } },
+    api: { wrapKey: async i => { calls.push(["wrapKey", i]); return { key: "K" }; }, exportApprove: async i => { calls.push(["exportApprove", i]); return { approved: i.refs.length }; }, export: async i => { calls.push(["export", i]); return { blob: { ct: "x" } }; }, import: async i => { calls.push(["import", i]); return { ref: { sealed: "ssn", ref: "sv_9" } }; }, put: async i => { calls.push(["put", i]); return { sealed: "ssn", ref: "sv_1", present: true, valid_format: true, set_at: 1 }; }, use: async i => { calls.push(["use", i]); return { merged: true, output_ref: "d_1" }; }, reveal: async i => { calls.push(["reveal", i]); return { value: "x", expires_in_ms: 1 }; } },
     deliver: async i => { calls.push(["deliver", i]); return { delivered: true }; },
   };
-  const grants = [G(["seal.put", "seal.use", "seal.reveal", "seal.deliver"]), G(["seal.put", "seal.use", "seal.deliver"], actor("agent", "kit"))];
+  const grants = [G(["seal.put", "seal.use", "seal.reveal", "seal.export", "seal.deliver"]), G(["seal.put", "seal.use", "seal.deliver"], actor("agent", "kit"))];
   const known = new Set([`person:${OWNER}`, "agent:kit"]);
   const log = createEventLog({ space: SPACE, clock });
   const gw = createGateway({ space: SPACE, store: createMemoryStore({ clock }), log, chains, clock, sealer, hasPresenceSession: () => true,
@@ -117,4 +117,16 @@ test("template immutability: a template whose body is not the one the approval h
 
 test("the gateway refuses a door that was not built with the kernel's isChain", () => {
   assert.throws(() => rig({ door: { call: async () => ({}), usesKernelChain: false } }), { code: "bad_input" });
+});
+
+test("sealing wiring: moving sealed values to another server goes through authorize and the log; a model's chain cannot, and nothing but the blob comes back", async () => {
+  const { gw, calls } = rig();
+  assert.equal((await gw.seal.wrapKey(owner(), { record: REC })).key, "K");
+  assert.equal((await gw.seal.exportApprove(owner(), { record: REC, plan_hash: "u1", target_key: "K", refs: ["a", "b"], proof: { sig: "p" } })).approved, 2);
+  assert.deepEqual(await gw.seal.export(owner(), { record: REC, to_record: REC, field: "ssn", ref: "a", target_key: "K", plan_hash: "u1" }), { blob: { ct: "x" } });
+  assert.equal((await gw.seal.import(owner(), { record: REC, field: "ssn", blob: { ct: "x" } })).ref.ref, "sv_9");
+  const before = calls.length;
+  for (const f of [() => gw.seal.export(agent(), { record: REC, field: "ssn", ref: "a", target_key: "K", plan_hash: "u1" }), () => gw.seal.exportApprove(agent(), { record: REC, plan_hash: "u2", target_key: "K", refs: ["a"] })])
+    await assert.rejects(f);
+  assert.equal(calls.length, before, "the sealing process is not touched for a chain with no grant");
 });

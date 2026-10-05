@@ -36,8 +36,9 @@ test("gates: callers, visibility, hook, internal and outward refuse with the reg
   assert.equal(await t("a.hook", tools["a.hook"], "cli"), "no_such_tool");
   assert.equal(await t("a.open", tools["a.open"], "hook"), "no_such_tool");
   assert.equal(await t("a.out", tools["a.out"], "deck"), "pass");
-  assert.equal(await t("a.out", tools["a.out"], "mcp"), "held_unavailable");
-  assert.equal(await t("a.out", tools["a.out"], "cli:agent:kit"), "held_unavailable");
+  // A plain `outward: true` is held by the registry's own inline rule, which still runs with the gates wired (core/modules/modules.test.js proves it); the gate holds the named kinds only.
+  assert.equal(await t("a.out", tools["a.out"], "mcp"), "pass");
+  assert.equal(await t("a.out", tools["a.out"], "cli:agent:kit"), "pass");
 });
 
 test("gates: a device acts as the person only with the person's session, for a person-only or proof-needing tool", async () => {

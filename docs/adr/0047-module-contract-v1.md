@@ -553,3 +553,24 @@ which already applies those rules.
 ## Person reach and an assistant's claim (3 Oct 2026 addendum)
 
 A `reach: person` tool is refused to any caller that carries an agent or thread claim (`cli:agent:kit`, `deck:agent:kit`) on every surface, and is left out of that caller's listing. The tools an assistant legitimately needs from the CLI are named, each with a reason, in `AGENT_REACH` (core/modules/index.js); the default for every other person-reach tool is person only. This stops a caller that declares an agent claim. It does not stop a model with a shell that leaves the claim out and calls the person's own CLI socket as plain `cli`: person reach is not a boundary against a hostile agent, and presence stays the real control. The claim is meant to be assigned by the daemon from a per-session socket that a Vyre-started session alone can reach (design in the team's CHAT.md, L-1); until that ships, and for a session the person starts by hand in their own terminal, the boundary is a courtesy.
+
+
+## Addendum (5 Oct 2026): an added module runs this contract in the sandbox
+
+With the kernel always on, a module installed from outside never runs in the daemon. It runs under the supervisor (`kernel/modules`), and it is written the same way as a built-in one: `export default { async start(ctx) }`.
+Its `ctx` is the host-side one the registry builds for every module, so each declaration above (`needs.tools`, `needs.network`, `needs.credentials`, `watches.emits`, `teaches.memory`, ...) is checked in one place; the sandbox sends
+each door as a message and gets JSON back (`core/modules/sandbox-ctx.js`). Only the doors of API 1 cross; the built-in members, `ctx.call(..., { as })` and `ctx.vault.fetch` do not.
+
+What differs for an added module, and why:
+
+- **The store.** Its database is its own file in its data folder, reached with the async `ctx.store.migrate`, `exec(sql, params)` and `query(sql, params)`. There is no `ctx.store.db` (a synchronous handle cannot cross a process boundary).
+  The built-in ctx has the same three methods, so one module source runs in either place.
+- **`needs.kernel`.** `records` (record types it may make, read, list and change) and `files` (Drive folders it may write into) become `ctx.kernel.records` and `ctx.kernel.files`, narrow verbs that run as the module itself, a service of
+  the Space with exactly those grants and an external label. It cannot define a type, remove a record, or reach the kernel's handle. The install card says "makes, reads and changes <types> records, as you" and "writes files in <folders> in your Drive".
+- **`does.kits`.** Kit files it ships. `vyre module add` proposes each for the person's yes; the Kit's own card shows everything it adds.
+- **`does.tools[].flow: { risk, label? }`.** The tool may be a `call` step of a Flow: it becomes an action of the Space (`<module>.<tool>`), the owner and admins hold it, and the runner authorizes it for the run's chain before the tool runs as the Flows service.
+  The tool must be reach `anyone`. A module also starts Flows through the records it files (a record trigger).
+- **`reach: "hook"`** is the inbound path for a public form: the webhook route reaches the tool, a person or an assistant does not.
+- **`shows.deck: ["now:<tool>"]`** is drawn in the app's Now (`system.modules` lists the slots; the tool answers `{ title, detail?, meta? }`). `view:` and `panel:` slots from an added module are still code in an iframe (not built).
+
+`examples/modules/forms` and `examples/modules/docgen` are written against the public SDK only and run this way.

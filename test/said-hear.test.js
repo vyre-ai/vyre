@@ -13,7 +13,7 @@ import { matches } from "../lib/said/match.js";
 import { settingTo } from "../lib/said/setting.js";
 import { Registry, discover } from "../core/modules/index.js";
 import { open } from "../core/store/index.js";
-import { Events } from "../core/events/index.js";
+import { Events } from "../kernel/bus.js";
 import { tempHome, writeModule } from "./helpers.js";
 
 const KINDS = ["mail", "calendar", "repo", "slack", "feed"];

@@ -1,5 +1,5 @@
 // @ts-check
-// events: the catalog of event types (ADR 0033). The folder is event-catalog because core/events
+// events: the catalog of event types (ADR 0033). The folder is event-catalog because kernel/bus (the bus over the kernel log)
 // is the kernel's event bus, which has no manifest; the module and its tools are named "events".
 //
 // Every type comes from a running module's watches.emits, so the list is what can actually

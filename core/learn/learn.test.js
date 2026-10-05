@@ -8,7 +8,7 @@ import path from "node:path";
 import { distill, atStop, atTool, weakens, invalid, reply, CODE } from "./checks.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
-import { Events } from "../events/index.js";
+import { Events } from "../../kernel/bus.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { personTypes } from "../../test/typed-line.js";
 
@@ -108,9 +108,13 @@ test("weakens: retiring lessons, reaching the store and stopping vyred ask first
 
 // The module, run through a Registry with the real Harness, as the hooks reach it.
 
+/** The bus is the kernel's log, which outlives a restart: a "restart" over the same home keeps the same bus (and its events). */
+const busByHome = new Map();
+const busFor = home => { if (!busByHome.has(home)) busByHome.set(home, new Events()); return busByHome.get(home); };
+
 async function learning(t, home = tempHome(t), extra = []) {
   const db = open(path.join(home, "vyre.db"));
-  const events = new Events(db);
+  const events = busFor(home);
   const reg = new Registry({ db, events, config: { role: "local" }, paths: { root: home }, log: () => {}, firstPartyRoots: [path.join(home, "mods")] });
   const core = discover([path.join(path.dirname(new URL(import.meta.url).pathname), "..")]).filter(f => ["harness", "learn"].includes(f.manifest?.name));
   await reg.start([...core, ...extra], { role: "local" });

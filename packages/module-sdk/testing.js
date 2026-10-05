@@ -286,6 +286,9 @@ export function createTestContext(manifest, opts = {}) {
     },
     store: {
       db,
+      /** Async, as an added module's own file is reached from the sandbox: `exec(sql, params)` answers { changes, lastInsertRowid }, `query(sql, params)` the rows. */
+      async exec(/** @type {string} */ sql, /** @type {any[]} */ params = []) { const r = db.prepare(sql).run(...params); return { changes: Number(r.changes), lastInsertRowid: Number(r.lastInsertRowid) }; },
+      async query(/** @type {string} */ sql, /** @type {any[]} */ params = []) { return db.prepare(sql).all(...params).map(r => ({ ...r })); },
       /** Forward only: each step runs once, in order, and a step once run is never taken away. */
       migrate(/** @type {string[]} */ steps) {
         const done = new Set(db.prepare("SELECT version FROM _migrations WHERE module = ?").all(name).map(r => Number(r.version)));
@@ -406,6 +409,33 @@ export function createTestContext(manifest, opts = {}) {
     },
   });
 
+  // needs.kernel (module API 1.x): narrow verbs for the Space's records and Drive, held to what the manifest declared. Records live in memory here; `files` collects what was written.
+  const nk = (m.needs && m.needs.kernel) || {};
+  const recordTypes = Array.isArray(nk.records) ? nk.records : [], driveFolders = Array.isArray(nk.files) ? nk.files : [];
+  /** @type {Map<string, any[]>} */ const spaceRecords = new Map();
+  /** @type {Array<{ path: string, text?: string, base64?: string, version: number }>} */ const driveFiles = [];
+  if (recordTypes.length) {
+    const only = (/** @type {string} */ t) => { if (!recordTypes.includes(t)) throw undeclared(`ctx.kernel.records on ${t}, which needs.kernel.records does not list`); return t; };
+    const typeOf = (/** @type {string} */ urn) => String(urn).split("/").slice(-2)[0];
+    /** @type {any} */ (ctx).kernel = { ...(/** @type {any} */ (ctx).kernel || {}), records: {
+      async create(/** @type {string} */ type, /** @type {any} */ data) { only(type); const rows = spaceRecords.get(type) || []; const id = `r${rows.length + 1}`; const rec = { urn: `vyre://test/${type}/${id}`, id, type, data: { ...data }, version: 1 }; rows.push(rec); spaceRecords.set(type, rows); calls.push({ member: "kernel.records.create", type, data }); return rec; },
+      async get(/** @type {string} */ urn) { const t = only(typeOf(urn)); return (spaceRecords.get(t) || []).find(r => r.urn === urn) || null; },
+      async list(/** @type {string} */ type, /** @type {any} */ o = {}) { only(type); return { rows: (spaceRecords.get(type) || []).slice(0, o.limit || 50), next_cursor: null }; },
+      async update(/** @type {string} */ urn, /** @type {any} */ patch, /** @type {number} */ base) { const t = only(typeOf(urn)); const r = (spaceRecords.get(t) || []).find(x => x.urn === urn); if (!r) throw refuse("not_found", "no such record"); if (base !== r.version) throw refuse("version_conflict", "stale base_version"); r.data = { ...r.data, ...patch }; r.version += 1; return r; },
+    } };
+  }
+  if (driveFolders.length) {
+    /** @type {any} */ (ctx).kernel = { ...(/** @type {any} */ (ctx).kernel || {}), files: {
+      async write(/** @type {{ path: string, text?: string, base64?: string }} */ f) {
+        const q = String(f.path).replace(/^\/+/, "");
+        if (!driveFolders.some((/** @type {string} */ d) => q === d || q.startsWith(d.replace(/\/+$/, "") + "/"))) throw undeclared(`ctx.kernel.files.write to ${q}, which is in no folder needs.kernel.files lists`);
+        const version = driveFiles.filter(x => x.path === q).length + 1;
+        driveFiles.push({ path: q, ...(f.text !== undefined ? { text: f.text } : {}), ...(f.base64 !== undefined ? { base64: f.base64 } : {}), version });
+        return { path: q, version, size: Buffer.byteLength(f.base64 !== undefined ? Buffer.from(f.base64, "base64") : String(f.text ?? "")) };
+      },
+    } };
+  }
+
   // Built in only in 0.2 (ADR 0047 section 3). An added module gets a clear refusal, not a TypeError.
   const builtIn = (/** @type {string} */ member, /** @type {keyof typeof registered} */ list, /** @type {string[]} */ declared) => (/** @type {string} */ n) => {
     if (!firstParty) throw new Error(violate(`ctx.${member} is built in only in 0.2`));
@@ -471,7 +501,7 @@ export function createTestContext(manifest, opts = {}) {
   }
 
   return {
-    ctx: adapter.context(ctx), home, dir: home, holds, calls, events, logs, memory, violations, warnings, tools, registered, gateItems, adapter,
+    ctx: adapter.context(ctx), home, dir: home, holds, calls, events, logs, memory, violations, warnings, tools, registered, gateItems, adapter, records: spaceRecords, files: driveFiles,
     /** Call one of this module's tools as the person (default), an agent, another module or the webhook. */
     call: (/** @type {string} */ tool, /** @type {any} */ input = {}, /** @type {As} */ as = {}) => route(tool, input, as),
     /** Approve a held outward call, as the person at the Gate: it runs as module:gate, with content they may have edited. */

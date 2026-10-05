@@ -55,7 +55,7 @@ test("link federation: the box reads the Mac's catalog and sessions, labelled wi
 
   // Nothing about the Mac is in the box's store: no recall rows, no copy of what was said.
   assert.equal(recallRows(s), 0);
-  const events = JSON.stringify(s.box.registry.deps.db.prepare("SELECT * FROM events").all());
+  const events = JSON.stringify(s.box.events.since(0, { limit: 1_000_000 }));
   assert.ok(!events.includes("intake form") && !events.includes("Harlow site rebuild"));
 });
 

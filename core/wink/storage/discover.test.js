@@ -2,7 +2,7 @@
 import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseAvahi, parseDnsSd, parseSmbShares, parseExports, mdnsScanner, smbScanner, nfsScanner, localDiskScanner, createDiscovery, candidateId } from "./discover.js";
+import { parseAvahi, parseDnsSd, parseSmbShares, parseExports, mdnsScanner, smbScanner, nfsScanner, localDiskScanner, parseMountinfo, createDiscovery, candidateId } from "./discover.js";
 
 const AVAHI = [
   "+;eth0;IPv4;Office\\032NAS;_smb._tcp;local",
@@ -88,4 +88,41 @@ test("discovery: two asks at once share one scan", async () => {
   const d = createDiscovery({ scanners: [{ name: "slow", scan: async () => { scans++; await new Promise(r => setTimeout(r, 30)); return { found: [] }; } }], from: () => "x" });
   await Promise.all([d.discover(), d.discover()]);
   assert.equal(scans, 1);
+});
+
+test("what other devices saw is listed beside this device's own, with that device's label and id, once per drive", async () => {
+  const mine = { name: "local", scan: async () => ({ found: [{ name: "Office NAS", kind: "smb", host: "nas.local", share: "Files" }] }) };
+  const d = createDiscovery({ scanners: [mine], from: () => "home", now: () => 0,
+    extra: async () => ({ found: [
+      { name: "Office NAS", kind: "smb", host: "nas.local", share: "Files", seenFrom: "Mini", seenFromDevice: "dev_mini" },
+      { name: "usbdisk1", kind: "usb-disk", path: "/Volumes/usbdisk1", size: 5, seenFrom: "Mini", seenFromDevice: "dev_mini" },
+      { name: "junk", kind: "toaster", seenFrom: "Mini", seenFromDevice: "dev_mini" },
+    ], notes: ["Mini has no avahi."] }) });
+  const r = await d.discover();
+  assert.deepEqual(r.candidates.map((/** @type {any} */ c) => [c.name, c.seenFrom, c.seenFromDevice]), [["Office NAS", "home", undefined], ["usbdisk1", "Mini", "dev_mini"]], "a drive both saw is listed once, from the home's own look; an unknown kind is dropped");
+  assert.deepEqual(r.notes, ["Mini has no avahi."]);
+  assert.equal(d.candidate(r.candidates[1].id).seenFromDevice, "dev_mini", "a pick can find a candidate another device saw");
+});
+
+test("a device that cannot look is a note, not a failed search", async () => {
+  const d = createDiscovery({ scanners: [], from: () => "home", now: () => 0, extra: async () => { throw new Error("no answer"); } });
+  const r = await d.discover();
+  assert.deepEqual(r.candidates, []);
+  assert.match(r.notes[0], /another device could not look: no answer/);
+});
+
+test("mountinfo: an attached cloud volume is a candidate, the system's own partitions and loop devices are not", async () => {
+  const text = [
+    "29 1 252:1 / / rw,relatime shared:1 - ext4 /dev/vda1 rw",
+    "40 29 252:15 / /boot/efi rw - vfat /dev/vda15 rw",
+    "41 29 252:16 / /boot rw - ext4 /dev/vda16 rw",
+    "50 29 7:0 / /snap/core/1 ro - squashfs /dev/loop0 ro",
+    "60 29 8:16 / /mnt/volume_nyc1_01 rw,noatime - ext4 /dev/sdb rw",
+    "61 29 8:32 / /mnt/my\\040disk rw - xfs /dev/sdc rw",
+    "62 29 0:50 / /run/user/0 rw - tmpfs tmpfs rw",
+  ].join("\n");
+  assert.deepEqual(parseMountinfo(text).map(m => m.path), ["/mnt/volume_nyc1_01", "/mnt/my disk"]);
+  const fake = { readFileSync: () => text, readdirSync: () => { throw new Error("none"); }, statSync: () => ({ isDirectory: () => true }), statfsSync: () => ({ blocks: 1000, bsize: 4096 }) };
+  const r = await localDiskScanner({ fs: /** @type {any} */ (fake), roots: ["/mnt"] }).scan();
+  assert.deepEqual(r.found.map(x => [x.name, x.kind, x.path, x.size]), [["volume_nyc1_01", "usb-disk", "/mnt/volume_nyc1_01", 4096000], ["my disk", "usb-disk", "/mnt/my disk", 4096000]]);
 });

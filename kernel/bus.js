@@ -1,12 +1,15 @@
 // @ts-check
-// events — an append-only log of what happened, and a bus to hear it as it happens.
+// bus — the bus modules hear what happened on, over the kernel's log: there is one mechanism, the log.
 //
 // Events are facts about the past, named "<noun>.<past-verb>": watcher.fired, thread.started,
 // gate.held. They are how modules built separately learn about each other without importing
 // each other. A payload never carries a secret: the log is readable by every module and shown
 // in the Deck, so anything that looks like a credential is refused at the door.
 
-import { migrate } from "../store/index.js";
+import { randomBytes } from "node:crypto";
+import { createEventLog } from "./core/events.js";
+import { createChainBuilder } from "./core/chain.js";
+import { createKernelSeal } from "./core/seal.js";
 
 const NAME = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/;
 
@@ -21,40 +24,8 @@ const LOOKS_SECRET = { test: (/** @type {string} */ json) => SECRET_PREFIX.test(
 export const DRAIN_CAP = 10_000;
 
 export class Events {
-  /** @param {import("node:sqlite").DatabaseSync} db */
-  constructor(db) {
-    this.db = db;
-    migrate(db, "events", [`
-      CREATE TABLE events (
-        id INTEGER PRIMARY KEY,
-        at INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        source TEXT NOT NULL,
-        project TEXT,
-        thread TEXT,
-        payload TEXT NOT NULL
-      );
-      CREATE INDEX events_type ON events(type, id);
-      CREATE INDEX events_project ON events(project, id);
-    `,
-    // AUTOINCREMENT: an id is a surface's cursor, so it must never be handed out twice, even when
-    // the newest rows are pruned or the table is emptied (docs/adr/0029-resilience.md, R1).
-    `
-      CREATE TABLE events_v2 (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        at INTEGER NOT NULL,
-        type TEXT NOT NULL,
-        source TEXT NOT NULL,
-        project TEXT,
-        thread TEXT,
-        payload TEXT NOT NULL
-      );
-      INSERT INTO events_v2 (id, at, type, source, project, thread, payload) SELECT id, at, type, source, project, thread, payload FROM events;
-      DROP TABLE events;
-      ALTER TABLE events_v2 RENAME TO events;
-      CREATE INDEX events_type ON events(type, id);
-      CREATE INDEX events_project ON events(project, id);
-    `]);
+  /** @param {any} [_db] unused: the log is the kernel's (kept so a caller that used to hand the store over still reads the same) */
+  constructor(_db) {
     /** @type {Map<string, Set<(e: any) => void>>} */
     this.listeners = new Map();
     /** Events stored and not yet delivered to the listeners, and whether a delivery is running. @type {any[]} */
@@ -62,7 +33,49 @@ export class Events {
     /** Where a dropped drain is said; the daemon sets it to its log. @type {(msg: string) => void} */
     this.log = () => {};
     this.delivering = false;
-    this.insert = db.prepare("INSERT INTO events (at, type, source, project, thread, payload) VALUES (?,?,?,?,?,?)");
+    // Until the daemon attaches the home's kernel log (what it does as soon as the kernel is up), the bus runs over a reference log of its own with the kernel's own chain builder.
+    const B32 = "abcdefghijklmnopqrstuvwxyz234567", space = "spc_" + Array.from(randomBytes(12), b => B32[b & 31]).join("");
+    const builder = createChainBuilder({ space, owner: "per_bus", owner_uid: 0, seal: createKernelSeal({ key: randomBytes(32) }), clock: Date.now, is_person: () => true });
+    /** @type {{ log: any, chainFor: (name: string) => any, space: string }} */
+    this.k = { log: createEventLog({ space }), chainFor: name => builder.fromFacts({ kind: "module", module: String(name), first_party: true }), space };
+    this.lastId = 0;
+  }
+
+  /**
+   * Make the home's kernel log the store: every event from now on is appended to it (its id is the log's sequence number, so a surface's cursor is a log position), `since` reads it, and what
+   * was emitted before it was attached moves in, in order. Listeners are the same in-process bus as ever.
+   * @param {any} log the kernel's event log @param {(name: string) => any} chainFor the kernel chain of a service by name @param {string} space
+   */
+  attach(log, chainFor, space) {
+    const before = [...this.k.log.iterate({})];
+    this.k = { log, chainFor, space };
+    /** The newest bus event's position (the log also holds the kernel's own entries, which are not bus events): a surface that follows from here hears everything emitted after it. */
+    this.lastId = log.latestSeq();
+    for (const e of before) {
+      const ev = Events.#fromLog(e);
+      if (ev) { try { this.#append(ev.source, ev.type, ev.payload, { project: ev.project || undefined, thread: ev.thread || undefined, at: ev.at }); } catch { /* an event the log refuses is not carried over */ } }
+    }
+  }
+
+  /** The subject an event is filed under in the log: its thread when it has one (an indexed read of one thread's history), else its source. @param {string} source @param {string | undefined} thread */
+  #subject(source, thread) {
+    const seg = (/** @type {string} */ x) => String(x).toLowerCase().replace(/[^a-z0-9_-]/g, "-").slice(0, 120) || "x";
+    return thread ? `vyre://${this.k?.space}/thread/${seg(thread)}` : `vyre://${this.k?.space}/event/${seg(source)}`;
+  }
+
+  /** @returns {{ id: number, at: number, type: string, source: string, project: string | null, thread: string | null, payload: any }} */
+  #append(/** @type {string} */ source, /** @type {string} */ type, /** @type {any} */ payload, /** @type {{ project?: string, thread?: string, at?: number }} */ where) {
+    const k = /** @type {any} */ (this.k), at = where.at || Date.now();
+    const e = k.log.append(k.chainFor(source), { type, sv: 1, subject: this.#subject(source, where.thread), data: { legacy: 1, source, at, project: where.project || null, thread: where.thread || null, payload }, vis: "owner", red: "internal" });
+    this.lastId = Math.max(this.lastId || 0, e.seq);
+    return { id: e.seq, at, type, source, project: where.project || null, thread: where.thread || null, payload };
+  }
+
+  /** One log entry as the bus's event, or null for an entry that is not a bus event (the kernel's own) or whose data was erased. @param {any} e */
+  static #fromLog(e) {
+    const d = e && e.data;
+    if (!d || d.legacy !== 1) return null;
+    return { id: e.seq, at: d.at, type: e.type, source: d.source, project: d.project, thread: d.thread, payload: d.payload };
   }
 
   /**
@@ -77,8 +90,7 @@ export class Events {
     const json = JSON.stringify(payload);
     if (LOOKS_SECRET.test(json)) throw new Error(`event ${type} from ${source} carries something that looks like a secret; events are readable by every module`);
     const at = where.at || Date.now();
-    const r = this.insert.run(at, type, source, where.project || null, where.thread || null, json);
-    const event = { id: Number(r.lastInsertRowid), at, type, source, project: where.project || null, thread: where.thread || null, payload };
+    const event = this.#append(source, type, payload, { ...where, at });
     // An event a listener emits while another is being delivered waits its turn: every listener hears events in id order, so a stream that
     // follows an id cursor (the SSE one) never meets 13 before 12 and drops the 12 (a model.switched the settings hub answered with its own
     // event was lost to every live Deck this way, #41).
@@ -125,17 +137,21 @@ export class Events {
     if (!NAME.test(String(type))) throw new Error(`event type "${type}" must look like noun.past-verb`);
     if (!Number.isInteger(before)) throw new Error("prune needs an event id to stop at");
     if (has !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(has)) throw new Error(`"${has}" is not a payload key`);
-    const where = ["type = ?", "id <= ?"], args = [type, before];
-    if (source !== undefined) { where.push("source = ?"); args.push(source); }
-    if (thread !== undefined) { where.push("thread = ?"); args.push(thread); }
-    if (has !== undefined) { where.push("json_extract(payload, ?) IS NOT NULL"); args.push("$." + has); }
-    return Number(this.db.prepare(`DELETE FROM events WHERE ${where.join(" AND ")}`).run(...args).changes);
+    {
+      let n = 0;
+      for (const e of [...this.k.log.iterate({ type })]) {
+        if (e.seq > before) break;
+        const ev = Events.#fromLog(e);
+        if (!ev || (source !== undefined && ev.source !== source) || (thread !== undefined && ev.thread !== thread) || (has !== undefined && !(ev.payload && ev.payload[has] !== undefined && ev.payload[has] !== null))) continue;
+        this.k.log.erase(e.seq); n++;
+      }
+      return n;
+    }
   }
 
   /** The newest id handed out, or 0 on a fresh log. Counts pruned ids too: a cursor never goes back. */
   latestId() {
-    const seq = /** @type {any} */ (this.db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'events'").get());
-    return Math.max(Number(seq?.seq || 0), Number(this.db.prepare("SELECT COALESCE(MAX(id), 0) AS id FROM events").get().id));
+    return this.lastId || 0;
   }
 
   /**
@@ -151,9 +167,27 @@ export class Events {
 
   /** Events after a cursor, oldest first. How a surface catches up after being away. */
   since(id = 0, { type = null, project = null, limit = 200 } = {}) {
-    const rows = this.db.prepare(`SELECT * FROM events WHERE id > ?
-      ${type ? "AND type = ?" : ""} ${project ? "AND project = ?" : ""} ORDER BY id LIMIT ?`)
-      .all(...[id, ...(type ? [type] : []), ...(project ? [project] : []), limit]);
-    return rows.map(r => ({ ...r, payload: JSON.parse(String(r.payload)) }));
+    const out = [];
+    for (const e of this.k.log.iterate({ since: id, ...(type ? { type } : {}) })) {
+      const ev = Events.#fromLog(e);
+      if (!ev || (project && ev.project !== project)) continue;
+      out.push(ev);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
+  /**
+   * One thread's events, oldest first (an indexed read of the log by its subject): `types` keeps those types, `after` those with an id past it, `before` those below one,
+   * `limit` the first that many, or with `tail` the last that many.
+   * @param {string} thread @param {{ types?: string[], after?: number, before?: number, limit?: number, tail?: boolean }} [o]
+   */
+  ofThread(thread, { types, after = 0, before = Infinity, limit = Infinity, tail = false } = {}) {
+    /** @type {any[]} */ const out = [];
+    for (const e of this.k.log.iterate({ subject_prefix: this.#subject("x", thread), since: after })) {
+      const ev = Events.#fromLog(e);
+      if (ev && ev.thread === thread && ev.id < before && (!types || types.includes(ev.type))) out.push(ev);
+    }
+    return Number.isFinite(limit) ? (tail ? out.slice(-limit) : out.slice(0, limit)) : out;
   }
 }

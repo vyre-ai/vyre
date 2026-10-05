@@ -5,7 +5,7 @@
 import { KernelError } from "../core/errors.js";
 import { CALLS, CACHEABLE, WIRE_VERSION, MAX_RESPONSE_BYTES, PRESENCE_CODES } from "./wire.js";
 import { canonical, sha256 } from "../core/canonical.js";
-import { proofRequest, PROOF_CALLS } from "./proof.js";
+import { proofRequest, PROOF_CALLS, proofNameOf } from "./proof.js";
 
 /** @typedef {{ send(space: string, request: any): Promise<any> }} RemoteTransport the port the Wink connection (or the relay) fills; it delivers to the home and returns its reply */
 
@@ -59,8 +59,8 @@ export function createRemoteKernel(cfg) {
     try {
       if (ch.call !== call || ch.space !== cfg.space || ch.args_hash !== sha256(canonical(sent))) return false;
       if (cfg.home && ch.home !== cfg.home) return false;
-      const short = call.split(".").slice(1).join(".");
-      if (call.startsWith("grants.") && PROOF_CALLS.includes(short)) {
+      const short = proofNameOf(call);
+      if (short && PROOF_CALLS.includes(short)) {
         const r = proofRequest(cfg.space, short, ...sent);
         if (ch.op !== r.op || ch.payload_hash !== r.payload_hash || canonical(ch.fields) !== canonical(r.fields)) return false;
       }
@@ -71,7 +71,7 @@ export function createRemoteKernel(cfg) {
   /** A caller that already holds a proof passes it as the trailing options `{ presence, challenge }`: moved out of the args to travel beside them (the home puts it back for the kernel). */
   function invokeWith(/** @type {string} */ call, /** @type {any[]} */ args) {
     // A grants call whose proof options came empty (no proof yet) is the same call as one with none: the home binds its challenge to the exact arguments, so the first ask and the answer must agree.
-    if (call.startsWith("grants.") && args.length) {
+    if ((call.startsWith("grants.") || call.startsWith("moves.")) && args.length) {
       const l = args[args.length - 1];
       if (l === undefined || l === null || (typeof l === "object" && !Array.isArray(l) && Object.keys(l).length === 0)) args = args.slice(0, -1);
     }
@@ -103,7 +103,7 @@ export function createRemoteKernel(cfg) {
   return Object.freeze({
     space: cfg.space,
     hosted: false,
-    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), seal: build("seal"), leases: build("leases") }),
+    gateway: Object.freeze({ definitions: (/** @type {any} */ _chain, /** @type {any[]} */ ...args) => invokeWith("records.definitions", args), grants: build("grants"), records: build("records"), tasks: build("tasks"), ask: build("tasks"), events: build("events"), seal: build("seal"), moves: build("moves"), leases: build("leases") }),
     lent: build("lent"),
     /** One wire call by its path (`lent.start`, `leases.issue`): the lent computer's runner client (core/runner/lent-client.js) speaks in these. The home still allows only what CALLS lists. */
     call: (/** @type {string} */ name, /** @type {any[]} */ args) => invokeWith(String(name), Array.isArray(args) ? args : []),

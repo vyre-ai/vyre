@@ -3,6 +3,7 @@ import { collect, today } from "../calendar/logic.js";
 import { useEffect, useMemo } from "react";
 import { useMembers } from "../spaces/state";
 import { PhoneApprovals } from "../shell/PhoneApprovals";
+import { ModuleNowCards } from "../modules/ModuleNowCards";
 import { GapNotice, WaitingOnYou } from "./WaitingOnYou";
 import { useSpaces } from "../shell/state";
 import { Button, ErrorState, allowsMock, useRecordsWorld, LargeTitleScreen, LoadingState, NowView, usePlayScenario, useTaskActions, useWorld } from "@vyre/ui";
@@ -30,6 +31,7 @@ export default function NowScreen() {
     <LargeTitleScreen title="Now" own wide onRefresh={q.reload} startAt={allowsMock() ? Number(scroll) || undefined : undefined}>
       {real ? <GapNotice /> : null}
       {real ? <WaitingOnYou /> : null}
+      {real ? <ModuleNowCards /> : null}
       {q.error && !q.data ? <ErrorState title="Now did not load" reason={q.error.message} retry={q.reload} />
         : !q.data ? <LoadingState rows={4} />
         : <NowView world={world ?? q.data} notice={play.notice} onEdit={canEdit ? () => go("/u/settings/customize") : undefined} onMore={(k) => go(`/u/now/${k}`)} onAction={(t, id, input) => void run(t, id, input)} onOpen={(t) => void run(t, "open")} />}
