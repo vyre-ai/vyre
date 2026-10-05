@@ -351,7 +351,7 @@ export function createPeerDoor(o) {
     log(`peer door: server ${id} opened a peer stream through the relay`);
   };
   // The home door: ANOTHER HOME (the target of a project move) reaching this one through the relay with no row of any kind. It may call exactly one tool, spaces.moves.pull, for the one Space the head
-  // names, and only while this home has a move open for that Space (wink.homeMove.open; closed or expired, the next request is refused and the stream ends). The protocol inside authenticates both
+  // names, and only while this home has a move open for that Space (wink.home-move.open; closed or expired, the next request is refused and the stream ends). The protocol inside authenticates both
   // Spaces with their own keys, so this door asks nothing of the caller beyond the move. The tool runs as the daemon on the stranger's behalf; an answer over the cap is refused, one request runs at a time.
   const moves = () => (typeof o.homeMoves === "function" ? o.homeMoves() : o.homeMoves) || null;
   door.homeArrive = () => { const m = moves(); if (m) m.arrive(); };

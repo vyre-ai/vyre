@@ -4,7 +4,7 @@
 //   node scripts/e2e-wink-home.mjs run --config F     (internal: one real vyred and a control socket on one machine)
 //
 // SOURCE home (E2E_SOURCE, default testbox2): a real vyred with the relay on. TARGET home (E2E_TARGET, default testbox6): a real vyred with the relay on, and a stand-in relay (relay/node/server.js)
-// both use. The source's spaces.moves.pull is a stub (the daemon's registry answers it; the spaces module is off), so what is proven is the DOOR: wink.homeMove.open/close on the source and
+// both use. The source's spaces.moves.pull is a stub (the daemon's registry answers it; the spaces module is off), so what is proven is the DOOR: wink.home-move.open/close on the source and
 // wink.home.call on the target, across real daemons and a real relay. Checked: no move open = refused; an open move = a pull crosses and the stub's answer comes back; another space of an
 // open move and any other tool = refused at the door (a hand-built stream, not only the caller's own check); a closed move refuses at once, including on a stream already open; an expired move refuses; a
 // pull of a full 1 MiB of base64 text crosses and one over the cap is too_large; one request at a time; the per-move rate limit; the box-wide cap on new strange channels.
@@ -121,9 +121,9 @@ async function main() {
     check("an open stream can pull while the move is open", Boolean(r.data) && held.held === true, r);
     ctl(HOSTS.source, P.ctlSource, { cmd: "close", move_id: "mv_a" });
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "holdcall", name: "h1", request: { t: "hello" } });
-    check("wink.homeMove.close: the open stream's next request is refused", coded(r), r);
+    check("wink.home-move.close: the open stream's next request is refused", coded(r), r);
     r = ctl(HOSTS.target, P.ctlTarget, { cmd: "call", ...dial, space: "spc_a", request: { t: "hello" }, timeoutS: 40 });
-    check("wink.homeMove.close: a new pull is refused", coded(r), r);
+    check("wink.home-move.close: a new pull is refused", coded(r), r);
 
     // 7. expiry
     ctl(HOSTS.source, P.ctlSource, { cmd: "open", space: "spc_c", move_id: "mv_c", ttlMs: 6000 });
@@ -212,8 +212,8 @@ async function runner(args) {
   const holds = new Map();
   const H = {
     info: async () => { const r = await orig("relay.route.id", {}, "module:vyred", {}); return r.data || {}; },
-    open: async b => (await asSpaces("wink.homeMove.open", { space: b.space, move_id: b.move_id, to: "spc_target", expires: Date.now() + Number(b.ttlMs) })),
-    close: async b => (await asSpaces("wink.homeMove.close", { move_id: b.move_id })),
+    open: async b => (await asSpaces("wink.home-move.open", { space: b.space, move_id: b.move_id, to: "spc_target", expires: Date.now() + Number(b.ttlMs) })),
+    close: async b => (await asSpaces("wink.home-move.close", { move_id: b.move_id })),
     served: async () => ({ calls: served }),
     call: async b => {
       const r = await asSpaces("wink.home.call", { route: b.route, box: b.box, relay: b.relay, tool: b.tool || "spaces.moves.pull", input: { space: b.space, request: b.request } });

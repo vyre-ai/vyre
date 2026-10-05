@@ -1,8 +1,8 @@
 // @ts-check
 // homecall: the tools for one home to pull from another (a project move between two servers; lib/spaces/move-pull.js is the protocol, core/wink/homemove.js the door's side).
 //
-//   wink.homeMove.open   the SOURCE home's spaces module says a move is open for a Space: another home may now ask `spaces.moves.pull` for it, until `expires` or wink.homeMove.close
-//   wink.homeMove.close  the move is finished or cancelled: the door shuts at once
+//   wink.home-move.open   the SOURCE home's spaces module says a move is open for a Space: another home may now ask `spaces.moves.pull` for it, until `expires` or wink.home-move.close
+//   wink.home-move.close  the move is finished or cancelled: the door shuts at once
 //   wink.home.call       the TARGET home's spaces module: one request to the source home by its relay route and box key, answered with the tool's data or its error code
 //
 // All three are for modules (the spaces module), never for a model, an agent or a device. The call dials through the relay: a Noise channel with a throwaway key, the box key pinned (the source
@@ -61,15 +61,15 @@ export function createHomeCaller(o = {}) {
 /** @param {any} ctx @param {{ moves: ReturnType<typeof import("./homemove.js").createHomeMoves>, caller?: ReturnType<typeof createHomeCaller>, relayUrl?: () => string }} d */
 export function registerHomeMove(ctx, d) {
   const caller = d.caller || createHomeCaller({ log: m => ctx.log(m) });
-  ctx.tool("wink.homeMove.open", {
+  ctx.tool("wink.home-move.open", {
     internal: true,
-    description: "The source home's spaces module opens a move for a Space: another home may then ask this home for the move's pull (spaces.moves.pull) until `expires` (a time in ms) or wink.homeMove.close. Modules only.",
+    description: "The source home's spaces module opens a move for a Space: another home may then ask this home for the move's pull (spaces.moves.pull) until `expires` (a time in ms) or wink.home-move.close. Modules only.",
     input: obj({ space: str, move_id: str, to: str, expires: { type: "number" } }, ["space", "move_id", "expires"]),
     run: async (input, meta = {}) => { modulesOnly(meta, "opening a move"); return d.moves.open(input); },
   });
-  ctx.tool("wink.homeMove.close", {
+  ctx.tool("wink.home-move.close", {
     internal: true,
-    description: "Closes a move opened with wink.homeMove.open: the door shuts at once. Modules only.",
+    description: "Closes a move opened with wink.home-move.open: the door shuts at once. Modules only.",
     input: obj({ move_id: str }, ["move_id"]),
     run: async (input, meta = {}) => { modulesOnly(meta, "closing a move"); return d.moves.close(input); },
   });

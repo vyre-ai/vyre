@@ -1,6 +1,6 @@
 // @ts-check
 // homemove: the one thing a HOME may ask of another home (a project move between two servers, lib/spaces/move-pull.js). The source home's spaces module opens a move for a Space
-// (`wink.homeMove.open`), and only then does the peer door admit a stranger home, for that Space and for one tool, `spaces.moves.pull`. Closing the move, or its expiry, shuts the door again.
+// (`wink.home-move.open`), and only then does the peer door admit a stranger home, for that Space and for one tool, `spaces.moves.pull`. Closing the move, or its expiry, shuts the door again.
 // This file keeps who has a move open and the limits a stranger is held to; the door (core/daemon/peer-door.js) asks it on every request, and nothing else here reaches a tool.
 
 const SPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;

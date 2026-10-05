@@ -28,12 +28,12 @@
         "reach": "modules"
       },
       {
-        "name": "wink.homeMove.open",
+        "name": "wink.home-move.open",
         "reach": "modules",
         "effect": "write"
       },
       {
-        "name": "wink.homeMove.close",
+        "name": "wink.home-move.close",
         "reach": "modules",
         "effect": "write"
       },
