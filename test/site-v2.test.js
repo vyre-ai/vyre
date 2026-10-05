@@ -67,7 +67,8 @@ test("site v2: llms.txt, llms-full.txt, agents.md and the agent file exist and a
   for (const f of ["llms.txt", "llms-full.txt", "agents.md"]) assert.ok(!BANNED.test(read(f)), f);
   const agent = JSON.parse(read(".well-known/agent.json"));
   assert.equal(agent.license, "Apache-2.0");
-  assert.match(read("llms-full.txt"), /Tailscale is required/);
+  assert.match(read("llms-full.txt"), /Network: built in/);
+  assert.ok(!/Tailscale/i.test(read("llms-full.txt")), "no other VPN product in the full text");
   assert.match(read("agents.md"), /Do not run the install line/);
 });
 
