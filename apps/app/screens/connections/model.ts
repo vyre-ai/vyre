@@ -79,10 +79,19 @@ export function groupsOf(d: unknown): { group: string; presets: Preset[] }[] {
 export type Step =
   | { step: "connected"; line: string }
   | { step: "open"; id: string; url: string | null }
-  | { step: "token"; label: string; help: string; extra: { name: string; label: string; required: boolean }[] }
-  | { step: "client"; help: string; redirect: string }
+  | { step: "token"; label: string; help: string; guide: Guide | null; extra: { name: string; label: string; required: boolean }[] }
+  | { step: "client"; help: string; redirect: string; guide: Guide | null; fields: { name: string; label: string; secret: boolean; required: boolean }[] }
   | { step: "via"; message: string }
   | { step: "none" };
+
+/** A vendor's own steps for making an app or a token: lines, and links that are https only. */
+export type Guide = { steps: string[]; links: { label: string; url: string }[] };
+export function guideOf(g: unknown): Guide | null {
+  if (!isObj(g)) return null;
+  const links = list(g.links).map((l) => ({ label: str(l.label) || "Open", url: httpsOnly(l.url) })).filter((l): l is { label: string; url: string } => Boolean(l.url));
+  const steps = strs(g.steps);
+  return steps.length || links.length ? { steps, links } : null;
+}
 
 export function stepOf(d: unknown, label: string): Step {
   const s = (isObj(d) ? d : {}) as Record<string, unknown>;
@@ -91,8 +100,10 @@ export function stepOf(d: unknown, label: string): Step {
     return { step: "connected", line: `${label} is connected${s.tools ? `, ${plural(tools, "tool")}` : ""}${s.warning ? `. ${str(s.warning)}` : "."}` };
   }
   if (s.step === "open" && str(s.id)) return { step: "open", id: str(s.id), url: httpsOnly(s.url) };
-  if (s.step === "needs" && s.needs === "token") return { step: "token", label: str(s.label) || "Token", help: str(s.help), extra: list(s.extra).filter((x) => x.name).map((x) => ({ name: String(x.name), label: str(x.label) || String(x.name), required: x.required === true })) };
-  if (s.step === "needs" && s.needs === "client") return { step: "client", help: str(s.help), redirect: str(s.redirect) };
+  if (s.step === "needs" && s.needs === "token") return { step: "token", label: str(s.label) || "Token", help: str(s.help), guide: guideOf(s.guide), extra: list(s.extra).filter((x) => x.name).map((x) => ({ name: String(x.name), label: str(x.label) || String(x.name), required: x.required === true })) };
+  if (s.step === "needs" && s.needs === "client") return { step: "client", help: str(s.help), redirect: str(s.redirect), guide: guideOf(s.guide),
+    fields: (list(s.fields).length ? list(s.fields) : [{ name: "client_id", label: "Client ID", secret: false, required: true }, { name: "client_secret", label: "Client secret", secret: true, required: false }])
+      .filter((f) => f.name).map((f) => ({ name: String(f.name), label: str(f.label) || String(f.name), secret: f.secret === true, required: f.required !== false })) };
   if (s.step === "via") return { step: "via", message: str(s.message) || `Connect this through ${str(s.via)}.` };
   return { step: "none" };
 }

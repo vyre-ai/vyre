@@ -2,8 +2,8 @@
 import { useEffect, useRef } from "react";
 import { Linking } from "react-native";
 import { View } from "react-native";
-import { Chip, Segmented, Text } from "@vyre/ui";
-import { WHO, whoHelp, type Who } from "./model";
+import { Button, Chip, Segmented, Text } from "@vyre/ui";
+import { WHO, whoHelp, type Guide, type Who } from "./model";
 
 /** Runs `fn` every `ms` while `on`. Nothing runs otherwise: Connections never polls on its own. */
 export function usePoll(on: boolean, fn: () => void, ms = 3000) {
@@ -40,4 +40,15 @@ export function ItemPick({ items, value, onChange, empty }: { items: { name: str
   return items.length
     ? <View className="flex-row flex-wrap gap-s2">{items.map((i) => <Chip key={i.name} selected={value === i.name} onPress={() => onChange(value === i.name ? "" : i.name)}>{i.name}</Chip>)}</View>
     : <Text tone="muted" size="secondary">{empty}</Text>;
+}
+
+/** A vendor's own steps for making an app or a token, with its links (https only, checked by the model). */
+export function GuideView({ guide }: { guide: Guide | null }) {
+  if (!guide) return null;
+  return (
+    <View className="gap-s1">
+      {guide.steps.map((t, i) => <Text key={i} size="secondary">{`${i + 1}. ${t}`}</Text>)}
+      {guide.links.map((l) => <View key={l.url} className="self-start"><Button size="sm" kind="ghost" label={l.label} onPress={() => openUrl(l.url)} /></View>)}
+    </View>
+  );
 }

@@ -161,15 +161,14 @@ test("update: only what changed is sent; a typed value and a generated one toget
   assert.equal(savedLine("Gmail"), "Saved Gmail. The values are sealed on your server.");
 });
 
-test("ssh key and clipboard: tool names; a bad name is caught before anything is sent", { skip: !strip }, async () => {
+test("ssh key: tool names; a bad name is caught before anything is sent", { skip: !strip }, async () => {
   const { vaultMoreSource } = await import("./more-source.ts");
   const { sshNameError } = await import("./more-model.ts");
   const b = box();
   const s = vaultMoreSource(b.call);
   await s.sshGenerate("deploy", " for CI ");
   await s.sshGenerate("deploy2");
-  await s.clearClipboard();
-  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["vault.ssh.generate", { name: "deploy", description: "for CI" }], ["vault.ssh.generate", { name: "deploy2" }], ["vault.clipboard.clear", {}]]);
+  assert.deepEqual(b.seen.map((x) => [x.tool, x.input]), [["vault.ssh.generate", { name: "deploy", description: "for CI" }], ["vault.ssh.generate", { name: "deploy2" }]]);
   assert.equal(sshNameError("deploy"), "");
   assert.match(sshNameError("my key"), /no spaces/);
 });

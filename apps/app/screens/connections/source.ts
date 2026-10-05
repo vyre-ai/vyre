@@ -15,8 +15,8 @@ export function connectionsSource(call: Call) {
     // the catalog
     async catalog() { return groupsOf(await ask("connectors.catalog", {})); },
     /** One step of a connect. The scope is sent only when the person chose one (the default writes nothing). */
-    async connect(preset: string, label: string, o: { scope?: Scope; token?: string; extra?: Record<string, string>; client?: string } = {}) {
-      return stepOf(await ask("connectors.connect", { preset, ...(o.scope ? { scope: o.scope } : {}), ...(o.token ? { token: o.token } : {}), ...(o.extra && Object.keys(o.extra).length ? { extra: o.extra } : {}), ...(o.client ? { client: o.client } : {}) }), label);
+    async connect(preset: string, label: string, o: { scope?: Scope; token?: string; extra?: Record<string, string>; client?: string; app?: { client_id: string; client_secret?: string } } = {}) {
+      return stepOf(await ask("connectors.connect", { preset, ...(o.scope ? { scope: o.scope } : {}), ...(o.token ? { token: o.token } : {}), ...(o.extra && Object.keys(o.extra).length ? { extra: o.extra } : {}), ...(o.client ? { client: o.client } : {}), ...(o.app ? { app: o.app } : {}) }), label);
     },
     connectCancel: (id: string) => ask("connectors.connect.cancel", { id }),
     /** Finish a sign-in with the whole address the browser landed on (a browser on another device). */

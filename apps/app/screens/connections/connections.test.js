@@ -57,7 +57,8 @@ test("connect: only what was chosen is sent; each answer becomes one step", { sk
   assert.deepEqual(await s.connect("linear", "Linear"), { step: "open", id: "f1", url: "https://vendor.example/auth" });
   await s.connect("linear", "Linear", { scope: { projects: ["harlow"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" });
   await s.connect("linear", "Linear", { scope: null, extra: {} });
-  assert.deepEqual(b.seen.map((x) => x.input), [{ preset: "linear" }, { preset: "linear", scope: { projects: ["harlow"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" }, { preset: "linear" }]);
+  await s.connect("slack", "Slack", { app: { client_id: "id", client_secret: "sec" } });
+  assert.deepEqual(b.seen.map((x) => x.input), [{ preset: "linear" }, { preset: "linear", scope: { projects: ["harlow"], agents: "*" }, token: "tok", extra: { team: "x" }, client: "c" }, { preset: "linear" }, { preset: "slack", app: { client_id: "id", client_secret: "sec" } }]);
 });
 
 test("steps: connected line, open with an https-only link, token, client, via", { skip: !strip }, async () => {
@@ -65,8 +66,13 @@ test("steps: connected line, open with an https-only link, token, client, via", 
   assert.deepEqual(stepOf({ step: "connected", tools: [1, 2, 3], warning: "Read only" }, "Linear"), { step: "connected", line: "Linear is connected, 3 tools. Read only" });
   assert.deepEqual(stepOf({ step: "connected" }, "Linear"), { step: "connected", line: "Linear is connected." });
   assert.deepEqual(stepOf({ step: "open", id: "f", url: "javascript:alert(1)" }, "x"), { step: "open", id: "f", url: null });
-  assert.deepEqual(stepOf({ step: "needs", needs: "token", label: "API key", extra: [{ name: "team", required: true }, { label: "no name" }] }, "x"), { step: "token", label: "API key", help: "", extra: [{ name: "team", label: "team", required: true }] });
-  assert.deepEqual(stepOf({ step: "needs", needs: "client", help: "Make an app", redirect: "http://127.0.0.1/cb" }, "x"), { step: "client", help: "Make an app", redirect: "http://127.0.0.1/cb" });
+  assert.deepEqual(stepOf({ step: "needs", needs: "token", label: "API key", extra: [{ name: "team", required: true }, { label: "no name" }] }, "x"), { step: "token", label: "API key", help: "", guide: null, extra: [{ name: "team", label: "team", required: true }] });
+  const two = [{ name: "client_id", label: "Client ID", secret: false, required: true }, { name: "client_secret", label: "Client secret", secret: true, required: true }];
+  const c = stepOf({ step: "needs", needs: "client", help: "Make an app", redirect: "http://127.0.0.1/cb", fields: two, guide: { steps: ["Open the console", "Make an app"], links: [{ label: "Make it", url: "https://api.slack.com/apps?new_app=1" }, { label: "bad", url: "javascript:x" }] } }, "x");
+  assert.deepEqual(c, { step: "client", help: "Make an app", redirect: "http://127.0.0.1/cb", fields: two, guide: { steps: ["Open the console", "Make an app"], links: [{ label: "Make it", url: "https://api.slack.com/apps?new_app=1" }] } });
+  const bare = /** @type {any} */ (stepOf({ step: "needs", needs: "client" }, "x"));
+  assert.deepEqual(bare.fields.map((/** @type {any} */ x) => x.name), ["client_id", "client_secret"]);
+  assert.equal(bare.guide, null);
   assert.deepEqual(stepOf({ step: "via", via: "linear" }, "x"), { step: "via", message: "Connect this through linear." });
   assert.deepEqual(stepOf(null, "x"), { step: "none" });
 });

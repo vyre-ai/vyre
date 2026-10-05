@@ -50,7 +50,5 @@ export function vaultMoreSource(call: Call) {
     },
     /** An ed25519 key made on the box: the private half never leaves it. */
     sshGenerate: (name: string, description?: string) => ask("vault.ssh.generate", { name, ...(description?.trim() ? { description: description.trim() } : {}) }),
-    /** Clear what a copy put on the clipboard. */
-    clearClipboard: () => ask("vault.clipboard.clear", {}),
   };
 }

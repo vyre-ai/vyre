@@ -6,13 +6,13 @@ import { View } from "react-native";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, Field, LoadingState, Row, Text, showToast } from "@vyre/ui";
 import { connections } from "./source-real";
 import { SETUP_WORD, scopeLine, scopeOf, whoFrom, words, type Preset, type Step, type Who, type VaultItem } from "./model";
-import { ItemPick, WhoControl, openUrl, usePoll } from "./shared";
+import { GuideView, ItemPick, WhoControl, openUrl, usePoll } from "./shared";
 
 export default function RealCatalog() {
   const [groups, setGroups] = useState<{ group: string; presets: Preset[] }[] | null>(null);
   const [problem, setProblem] = useState("");
   const [notice, setNotice] = useState("");
-  const [flow, setFlow] = useState<{ preset: Preset; who: Who; step: Step | null; busy: boolean; error: string; token: string; extra: Record<string, string>; client: string; paste: string } | null>(null);
+  const [flow, setFlow] = useState<{ preset: Preset; who: Who; step: Step | null; busy: boolean; error: string; token: string; extra: Record<string, string>; client: string; app: Record<string, string>; paste: string } | null>(null);
   const [editing, setEditing] = useState<{ name: string; label: string; who: Who; error: string } | null>(null);
   const [projects, setProjects] = useState<{ slug: string; name: string }[] | null>(null);
   const [items, setItems] = useState<VaultItem[]>([]);
@@ -28,8 +28,8 @@ export default function RealCatalog() {
     if (now && flow && now.connected.length > flow.preset.connected.length) { setNotice(`${now.label} is connected.`); setFlow(null); }
   }).catch(() => {}));
 
-  const start = (preset: Preset) => { needProjects(); setFlow({ preset, who: { mode: "me", projects: [] }, step: null, busy: false, error: "", token: "", extra: {}, client: "", paste: "" }); setNotice(""); };
-  const connect = (extra: { token?: string; extra?: Record<string, string>; client?: string } = {}) => {
+  const start = (preset: Preset) => { needProjects(); setFlow({ preset, who: { mode: "me", projects: [] }, step: null, busy: false, error: "", token: "", extra: {}, client: "", app: {}, paste: "" }); setNotice(""); };
+  const connect = (extra: { token?: string; extra?: Record<string, string>; client?: string; app?: { client_id: string; client_secret?: string } } = {}) => {
     if (!flow) return;
     const scope = scopeOf(flow.who);
     if (scope === undefined) { setFlow({ ...flow, error: "Choose at least one project." }); return; }
@@ -38,8 +38,8 @@ export default function RealCatalog() {
       if (step.step === "connected") { setNotice(step.line); setFlow(null); load(); return; }
       if (step.step === "open" && step.url) openUrl(step.url);
       if (step.step === "client") connections.vaultItems().then(setItems).catch(() => setItems([]));
-      setFlow((f) => (f ? { ...f, busy: false, step, token: "" } : f));
-    }).catch((e) => setFlow((f) => (f ? { ...f, busy: false, token: "", error: words(e, [extra.token ?? "", extra.client ?? ""]) } : f)));
+      setFlow((f) => (f ? { ...f, busy: false, step, token: "", app: {} } : f));
+    }).catch((e) => setFlow((f) => (f ? { ...f, busy: false, token: "", error: words(e, [extra.token ?? "", extra.client ?? "", extra.app?.client_secret ?? ""]) } : f)));
   };
   const cancel = () => { const f = flow; setFlow(null); if (f?.step?.step === "open") connections.connectCancel(f.step.id).catch(() => {}); };
   const finish = () => {
@@ -86,6 +86,7 @@ export default function RealCatalog() {
       return (
         <View className="gap-s3 p-s4">
           {s.help ? <Text size="secondary">{s.help}</Text> : null}
+          <GuideView guide={s.guide} />
           <Field label={s.label} kind="password" value={f.token} onChangeText={(token) => set({ token })} />
           {s.extra.map((x) => <Field key={x.name} label={`${x.label}${x.required ? "" : " (optional)"}`} value={f.extra[x.name] ?? ""} onChangeText={(v) => set({ extra: { ...f.extra, [x.name]: v } })} />)}
           {err}
@@ -104,10 +105,17 @@ export default function RealCatalog() {
       return (
         <View className="gap-s3 p-s4">
           {s.help ? <Text size="secondary">{s.help}</Text> : null}
-          {s.redirect ? <Text size="caption" tone="label">Redirect address to register: <Text mono size="caption">{s.redirect}</Text></Text> : null}
-          <ItemPick items={items} value={f.client} onChange={(client) => set({ client })} empty="No vault items to pick from." />
+          <GuideView guide={s.guide} />
+          {s.redirect ? <Text size="caption" tone="label">Redirect address to register: <Text mono size="caption" selectable>{s.redirect}</Text></Text> : null}
+          {s.fields.map((x) => <Field key={x.name} label={`${x.label}${x.required ? "" : " (optional)"}`} kind={x.secret ? "password" : undefined} value={f.app[x.name] ?? ""} onChangeText={(v) => set({ app: { ...f.app, [x.name]: v }, client: "" })} />)}
+          {items.length ? <><Text size="caption" tone="label">Or use an app already in the vault:</Text><ItemPick items={items} value={f.client} onChange={(client) => set({ client, app: {} })} empty="" /></> : null}
           {err}
-          <View className="flex-row gap-s2"><Button kind="primary" size="sm" label="Use it" disabled={f.busy} onPress={() => { if (!f.client) { set({ error: "Choose the vault item first." }); return; } connect({ client: f.client }); }} />{cancelBtn}</View>
+          <View className="flex-row gap-s2"><Button kind="primary" size="sm" label={f.busy ? "Connecting" : "Use it"} disabled={f.busy} onPress={() => {
+            if (f.client) { connect({ client: f.client }); return; }
+            const miss = s.fields.find((x) => x.required && !(f.app[x.name] ?? "").trim());
+            if (miss) { set({ error: `${miss.label} is needed.` }); return; }
+            connect({ app: { client_id: (f.app.client_id ?? "").trim(), ...((f.app.client_secret ?? "").trim() ? { client_secret: f.app.client_secret.trim() } : {}) } });
+          }} />{cancelBtn}</View>
         </View>
       );
     }
