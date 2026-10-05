@@ -216,7 +216,6 @@ Run it in the folder, after /exit. It builds a seed from what you decided, an in
 --thread <id>: a session Vyre runs: ask it to roll its window over now (it does this by itself when the window fills)
 --print: print the seed and start nothing, for any agent to use
 --no-start: build the seed and a fresh session id, write the seed to a file, and start nothing
-VYRE_CLAUDE_BIN names the claude to start (default: claude on PATH).
 
 ### vyre threads
 
