@@ -67,7 +67,7 @@ export function register(ctx, { denied }) {
   };
 
   /** Who may use the store: the person's surfaces, their other devices, and Vyre's own modules. Never an agent. @param {any} caller @param {any} meta */
-  const isPerson = (/** @type {any} */ caller) => { const w = whoNow(); return w ? Boolean(w.ownerSurface || w.device) : false; };
+  const isPerson = (/** @type {any} */ caller) => { const w = whoNow(); return w ? Boolean(w.ownerSurface || w.device) : false; }; path
   const chrome = (caller, meta) => isPerson(caller) || (String(caller || "").startsWith("module:") && meta && meta.firstParty === true);
   const personOnly = (caller, what) => { if (!isPerson(caller)) throw denied(`${what} is for the person's own surfaces`); };
 

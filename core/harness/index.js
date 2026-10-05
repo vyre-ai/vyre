@@ -196,7 +196,7 @@ export default {
         let terminal = false;
         if (interactive === true && !agent && session && !(typeof meta.thread === "string" && meta.thread)) {
           let typedBy = false;
-          const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain({ ...meta, caller }).catch(() => null) : null;
+          const c = await ctx.kernel.chain({ ...meta, caller }).catch(() => null);
           typedBy = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
           if (typedBy) {
             const claimed = await ask("threads.claimed", { session: String(session) });
