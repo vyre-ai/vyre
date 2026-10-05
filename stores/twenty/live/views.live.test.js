@@ -31,7 +31,7 @@ else test("the base Kit's views are the Records' views", { timeout: 300000 }, as
   const project = base.find((t) => t.name === "project");
   const stages = project.fields.find((f) => f.kind === "stage").options;
   for (const st of stages) assert.ok(board.viewGroups.some((g) => g.fieldValue === st.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "")), `a group for ${st}`);
-  assert.deepEqual(board.viewFields.map((f) => f.position).sort((a, b) => a - b), [0, 1, 2, 3, 4]);
+  assert.deepEqual(board.viewFields.map((f) => f.position).sort((a, b) => a - b), [0, 1, 2, 3]);
   // the calendar and the list with a sort
   const cal = await readView(client, viewId(SPACE, "appointment", "appointments_calendar"));
   assert.equal(cal.type, "CALENDAR"); assert.ok(cal.calendarFieldMetadataId);
@@ -46,12 +46,12 @@ else test("the base Kit's views are the Records' views", { timeout: 300000 }, as
   const idx = (await client.gql("metadata", "query IV($o: String) { getViews(objectMetadataId: $o) { id key } }", { o: lead.id })).getViews.find((v) => v.key === "INDEX");
   const vfs = (await client.gql("metadata", "query VF($v: String!) { getViewFields(viewId: $v) { fieldMetadataId position isVisible } }", { v: idx.id })).getViewFields;
   const byId = new Map(lead.fields.edges.map((e) => [e.node.id, e.node.name]));
-  const mine = ["contact", "practiceArea", "source", "summary"];
+  const mine = ["contact", "source", "summary"];
   const order = vfs.filter((x) => mine.includes(byId.get(x.fieldMetadataId))).sort((a, b) => a.position - b.position).map((x) => byId.get(x.fieldMetadataId));
   assert.deepEqual(order, mine, "the table lists the fields in the order of the definition");
   // changing a view replaces it; removing one destroys it; an expression the Records cannot hold is kept in the definition only
   const client_ = base.find((t) => t.name === "client");
-  const changed = await store.define({ change_types: [{ ...client_, views: [{ name: "clients_list", type: "list", columns: ["contact"], filter: "len(practice_area) > 3" }] }] });
+  const changed = await store.define({ change_types: [{ ...client_, views: [{ name: "clients_list", type: "list", columns: ["contact"], filter: "len(stage) > 3" }] }] });
   assert.ok(changed.changes.some((c) => /changed view client.clients_list.*kept in the definition only/.test(c)), changed.changes.join("; "));
   assert.deepEqual((await readView(client, viewId(SPACE, "client", "clients_list"))).viewFields.length, 1);
   const gone = await store.define({ change_types: [{ ...client_, views: [] }] });

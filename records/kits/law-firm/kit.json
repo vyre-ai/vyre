@@ -4,8 +4,255 @@
   "id": "law-firm",
   "version": 1,
   "label": "Law firm",
-  "description": "For a law firm: a Project follows its own stages by practice area (personal injury and estate planning to start), with the accident date, trust name and hearing date shown and required only where they apply. Install the base Kit first.",
+  "description": "For a law firm: practice area on leads, appointments, clients and projects, and a Project that follows its own stages by practice area (personal injury and estate planning to start), with the accident date, trust name and hearing date shown and required only where they apply. Install the base Kit first.",
   "types": [
+    {
+      "name": "lead",
+      "label": "Lead",
+      "icon": "IconUserPlus",
+      "fields": [
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact"
+        },
+        {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
+        },
+        {
+          "name": "source",
+          "kind": "choice",
+          "label": "Source",
+          "options": [
+            "Website",
+            "Referral",
+            "Ad",
+            "Event",
+            "Phone",
+            "Other"
+          ]
+        },
+        {
+          "name": "summary",
+          "kind": "rich_text",
+          "label": "What they need"
+        },
+        {
+          "name": "lost_reason",
+          "kind": "text",
+          "label": "Why we lost them",
+          "required_if": "stage == \"Lost\"",
+          "visible_if": "stage == \"Lost\""
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "New",
+            "Contacted",
+            "Meeting booked",
+            "Qualified",
+            "Converted",
+            "Lost"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "New"
+        },
+        {
+          "name": "Contacted"
+        },
+        {
+          "name": "Meeting booked"
+        },
+        {
+          "name": "Qualified"
+        },
+        {
+          "name": "Converted"
+        },
+        {
+          "name": "Lost"
+        }
+      ],
+      "role": {
+        "link": "contact",
+        "ended": [
+          "Converted",
+          "Lost"
+        ]
+      }
+    },
+    {
+      "name": "appointment",
+      "label": "Appointment",
+      "icon": "IconCalendarEvent",
+      "fields": [
+        {
+          "name": "title",
+          "kind": "text",
+          "label": "Title",
+          "required": true
+        },
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact"
+        },
+        {
+          "name": "kind",
+          "kind": "choice",
+          "label": "Kind",
+          "options": [
+            "Consultation",
+            "Meeting",
+            "Follow-up",
+            "Signing",
+            "Call",
+            "Other"
+          ]
+        },
+        {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
+        },
+        {
+          "name": "starts",
+          "kind": "datetime",
+          "label": "Starts",
+          "required": true
+        },
+        {
+          "name": "ends",
+          "kind": "datetime",
+          "label": "Ends"
+        },
+        {
+          "name": "where",
+          "kind": "text",
+          "label": "Where or link"
+        },
+        {
+          "name": "outcome",
+          "kind": "text",
+          "label": "Outcome",
+          "visible_if": "stage == \"Completed\" or stage == \"No show\""
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Status",
+          "options": [
+            "Scheduled",
+            "Completed",
+            "No show",
+            "Cancelled"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "Scheduled"
+        },
+        {
+          "name": "Completed"
+        },
+        {
+          "name": "No show"
+        },
+        {
+          "name": "Cancelled"
+        }
+      ]
+    },
+    {
+      "name": "client",
+      "label": "Client",
+      "icon": "IconUserCheck",
+      "fields": [
+        {
+          "name": "contact",
+          "kind": "link",
+          "label": "Contact",
+          "required": true,
+          "to": "contact"
+        },
+        {
+          "name": "practice_area",
+          "kind": "choice",
+          "label": "Practice area",
+          "options": [
+            "Personal Injury",
+            "Estate Planning",
+            "Family Law",
+            "Immigration",
+            "Business",
+            "Criminal Defense",
+            "Other"
+          ]
+        },
+        {
+          "name": "since",
+          "kind": "date",
+          "label": "Client since"
+        },
+        {
+          "name": "stage",
+          "kind": "stage",
+          "label": "Stage",
+          "options": [
+            "Onboarding",
+            "Active",
+            "Closed"
+          ]
+        }
+      ],
+      "stages": [
+        {
+          "name": "Onboarding"
+        },
+        {
+          "name": "Active"
+        },
+        {
+          "name": "Closed"
+        }
+      ],
+      "role": {
+        "link": "contact",
+        "ended": [
+          "Closed"
+        ]
+      }
+    },
     {
       "name": "project",
       "label": "Project",
@@ -73,10 +320,11 @@
           "kind": "stage",
           "label": "Stage",
           "options": [
-            "Intake",
+            "New",
             "Active",
             "Review",
             "Done",
+            "Intake",
             "Treating",
             "Demand",
             "Negotiation",
@@ -90,7 +338,7 @@
       ],
       "stages": [
         {
-          "name": "Intake"
+          "name": "New"
         },
         {
           "name": "Active"
@@ -161,6 +409,42 @@
   "flows": [],
   "views": [
     {
+      "name": "leads_board",
+      "type": "board",
+      "of": "lead",
+      "label": "Leads by stage",
+      "groupBy": "stage",
+      "columns": [
+        "contact",
+        "practice_area",
+        "source"
+      ]
+    },
+    {
+      "name": "appointments_calendar",
+      "type": "calendar",
+      "of": "appointment",
+      "label": "Appointments",
+      "dateField": "starts",
+      "filter": "stage != \"Cancelled\""
+    },
+    {
+      "name": "clients_list",
+      "type": "list",
+      "of": "client",
+      "label": "Clients",
+      "columns": [
+        "contact",
+        "practice_area",
+        "stage",
+        "since"
+      ],
+      "sort": {
+        "field": "since",
+        "dir": "desc"
+      }
+    },
+    {
       "name": "projects_board",
       "type": "board",
       "of": "project",
@@ -172,6 +456,17 @@
         "practice_area",
         "owner",
         "due"
+      ]
+    },
+    {
+      "name": "leads_by_area",
+      "type": "board",
+      "of": "lead",
+      "label": "Leads by practice area",
+      "groupBy": "practice_area",
+      "columns": [
+        "contact",
+        "source"
       ]
     }
   ],

@@ -28,12 +28,12 @@ test("the base Kit installs on a Space and the types are there with their views 
 test("one Contact, many roles: a person who is a Lead and then a Client is still one Contact", async () => {
   const { R, o } = await rig();
   const c = await R.create(o, "contact", { name: "Jordan Reyes", email: "jordan@example.com" });
-  const lead = await R.create(o, "lead", { contact: { urn: c.urn }, practice_area: "Estate Planning", stage: "New" });
-  const client = await R.create(o, "client", { contact: { urn: c.urn }, practice_area: "Estate Planning", stage: "Onboarding" });
+  const lead = await R.create(o, "lead", { contact: { urn: c.urn }, stage: "New" });
+  const client = await R.create(o, "client", { contact: { urn: c.urn }, stage: "Onboarding" });
   const roles = await R.roles(o, c.urn);
   assert.deepEqual(roles.map((r) => r.role).sort(), ["client", "lead"]);
   assert.ok(lead.urn && client.urn);
-  await assert.rejects(() => R.create(o, "lead", { practice_area: "Estate Planning" }), "a lead without a contact is refused");
+  await assert.rejects(() => R.create(o, "lead", { stage: "New" }), "a lead without a contact is refused");
 });
 
 test("the Law firm Kit: a Project follows the stages of its practice area, and the fields that apply only there are required only there", async () => {
@@ -55,10 +55,20 @@ test("the Law firm Kit: a Project follows the stages of its practice area, and t
   assert.equal(other.data.stage, "Active", "an area with no stage set follows the default stages");
 });
 
-test("the base Project is generic: practice area is a choice and the stages are the same for every area", async () => {
+test("the base Project is generic: the same stages for every project", async () => {
   const { R, o } = await rig();
   const c = await R.create(o, "contact", { name: "Casey Lin" });
-  const p = await R.create(o, "project", { client: { urn: c.urn }, name: "Lin v. Acme", practice_area: "Personal Injury", stage: "Intake" });
+  const p = await R.create(o, "project", { client: { urn: c.urn }, name: "Website rebuild", stage: "New" });
   assert.equal((await R.update(o, "project", p.id, { stage: "Active" }, p.version)).data.stage, "Active");
-  await assert.rejects(() => R.update(o, "project", p.id, { stage: "Treating" }, p.version + 1), "a personal injury stage is the Law firm Kit's, not the base's");
+  await assert.rejects(() => R.update(o, "project", p.id, { stage: "Treating" }, p.version + 1), "a stage of the Law firm Kit is not the base's");
+});
+
+test("no legal words anywhere in the base Kit: its source, its stored form, its labels, stages, options and descriptions", () => {
+  const WORDS = /practice|attorney|lawyer|\blaw\b|legal|\bcourt|\bcase\b|\bmatter|trust|estate|injury|accident|hearing|consult|retainer|litigation|plaintiff|settle|demand|signing|immigration|criminal|family|probate|counsel|intake/i;
+  for (const file of ["kit.ts", "kit.json"]) {
+    const text = fs.readFileSync(new URL(`./base/${file}`, import.meta.url), "utf8");
+    const hits = text.split(/\r?\n/).flatMap((l) => (l.match(new RegExp(WORDS, "gi")) || []).map((w) => `${file}: ${w} in ${l.trim().slice(0, 80)}`));
+    assert.deepEqual(hits, [], "legal words in the base Kit");
+  }
+  for (const t of BASE.types) assert.equal(t.fields.some((f) => f.name === "practice_area"), false, `${t.name} has no practice area`);
 });

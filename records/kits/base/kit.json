@@ -4,7 +4,7 @@
   "id": "base",
   "version": 1,
   "label": "Base",
-  "description": "The objects every firm starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, practice area as a choice, and and a Project with stages.",
+  "description": "The objects any business starts from: Contact, Lead, Appointment, Client, Subscriber and Project. One Contact per person, with Lead, Client and Subscriber as roles linked to it, and a Project with stages.",
   "types": [
     {
       "name": "contact",
@@ -88,20 +88,6 @@
           "to": "contact"
         },
         {
-          "name": "practice_area",
-          "kind": "choice",
-          "label": "Practice area",
-          "options": [
-            "Personal Injury",
-            "Estate Planning",
-            "Family Law",
-            "Immigration",
-            "Business",
-            "Criminal Defense",
-            "Other"
-          ]
-        },
-        {
           "name": "source",
           "kind": "choice",
           "label": "Source",
@@ -133,7 +119,7 @@
           "options": [
             "New",
             "Contacted",
-            "Consult booked",
+            "Meeting booked",
             "Qualified",
             "Converted",
             "Lost"
@@ -148,7 +134,7 @@
           "name": "Contacted"
         },
         {
-          "name": "Consult booked"
+          "name": "Meeting booked"
         },
         {
           "name": "Qualified"
@@ -191,23 +177,9 @@
           "kind": "choice",
           "label": "Kind",
           "options": [
-            "Consultation",
+            "Meeting",
             "Follow-up",
-            "Signing",
-            "Other"
-          ]
-        },
-        {
-          "name": "practice_area",
-          "kind": "choice",
-          "label": "Practice area",
-          "options": [
-            "Personal Injury",
-            "Estate Planning",
-            "Family Law",
-            "Immigration",
-            "Business",
-            "Criminal Defense",
+            "Call",
             "Other"
           ]
         },
@@ -271,20 +243,6 @@
           "label": "Contact",
           "required": true,
           "to": "contact"
-        },
-        {
-          "name": "practice_area",
-          "kind": "choice",
-          "label": "Practice area",
-          "options": [
-            "Personal Injury",
-            "Estate Planning",
-            "Family Law",
-            "Immigration",
-            "Business",
-            "Criminal Defense",
-            "Other"
-          ]
         },
         {
           "name": "since",
@@ -392,20 +350,6 @@
           "to": "contact"
         },
         {
-          "name": "practice_area",
-          "kind": "choice",
-          "label": "Practice area",
-          "options": [
-            "Personal Injury",
-            "Estate Planning",
-            "Family Law",
-            "Immigration",
-            "Business",
-            "Criminal Defense",
-            "Other"
-          ]
-        },
-        {
           "name": "owner",
           "kind": "actor",
           "label": "Owner"
@@ -420,7 +364,7 @@
           "kind": "stage",
           "label": "Stage",
           "options": [
-            "Intake",
+            "New",
             "Active",
             "Review",
             "Done"
@@ -429,7 +373,7 @@
       ],
       "stages": [
         {
-          "name": "Intake"
+          "name": "New"
         },
         {
           "name": "Active"
@@ -455,7 +399,6 @@
       "groupBy": "stage",
       "columns": [
         "contact",
-        "practice_area",
         "source"
       ]
     },
@@ -474,7 +417,6 @@
       "label": "Clients",
       "columns": [
         "contact",
-        "practice_area",
         "stage",
         "since"
       ],
@@ -492,7 +434,6 @@
       "columns": [
         "name",
         "client",
-        "practice_area",
         "owner",
         "due"
       ]
