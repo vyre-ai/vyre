@@ -36,6 +36,14 @@ export function shellIdentity(): ShellIdentity | null {
   return s && (s.kind === "mac" || s.kind === "windows") && s.identity ? s.identity : null;
 }
 
+/** Is this page the Windows app's panel? It is a client: pairing, chats, the app, Windows Hello for the yes moments and its device key. Lending the computer and running agents on it are a later update. */
+export function isWindowsShell(): boolean {
+  return typeof window !== "undefined" && (window as unknown as { __vyreShell?: { kind?: string } }).__vyreShell?.kind === "windows";
+}
+
+/** What the person reads where lending this computer or running agents on it would be offered, in the Windows app. */
+export const WINDOWS_LATER = "Lending this computer comes in a later update.";
+
 /** The shell the page runs in, or null. (The Mac app's window: the one with a menu bar, Touch ID presence and notices. The Windows panel has none of those, only the identity key: `shellIdentity`.) */
 export function shell(): MacShell | null {
   const w = typeof window === "undefined" ? null : (window as unknown as { __vyreShell?: MacShell });

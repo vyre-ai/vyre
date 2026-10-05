@@ -5,6 +5,8 @@ import { AppState, Platform, View } from "react-native";
 import { Button, Card, Divider, Row, Text, showToast } from "@vyre/ui";
 import { call } from "../../src/api/box";
 import { phoneSigner } from "../../src/real/phone-signer";
+import { shellSigner } from "../../src/real/shell-signer";
+import { shellIdentity } from "../../src/shell/shell";
 import { proofHeader } from "../../src/real/approvals.js";
 import { howWord } from "../../src/real/on-phone.js";
 import { answerRefusal, approveCard, askedLine, cardsFrom, factLines, refuseCard, type Pending } from "../../src/real/phone-approve.js";
@@ -15,26 +17,29 @@ const ask = async (tool: string, input: Record<string, unknown>, o?: { kernelPro
   return r.data;
 };
 
+/** The key that says yes on this device: the phone's, or on a Mac or Windows app the computer's hardware key (Touch ID, Windows Hello). */
+const signer = async () => (await phoneSigner()) ?? (await shellSigner());
+
 export function PhoneApprovals() {
   const [cards, setCards] = useState<Pending[]>([]);
   const [canSign, setCanSign] = useState<boolean | null>(null);
   const [busy, setBusy] = useState("");
   const load = useCallback(() => { ask("approvals.pending", {}).then((a) => setCards(cardsFrom(a))).catch(() => setCards([])); }, []);
   useEffect(() => {
-    if (Platform.OS === "web") return;
+    if (Platform.OS === "web" && !shellIdentity()) return;
     load();
-    void phoneSigner().then((s) => setCanSign(!!s));
+    void signer().then((s) => setCanSign(!!s));
     const t = setInterval(load, 60_000);
     const sub = AppState.addEventListener("change", (s) => { if (s === "active") load(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [load]);
-  if (Platform.OS === "web" || !cards.length) return null;
+  if ((Platform.OS === "web" && !shellIdentity()) || !cards.length) return null;
   const approve = async (c: Pending) => {
     setBusy(c.id);
     try {
       const me = await ask("records.me", {}).catch(() => null);
       const person = typeof me?.person === "string" ? me.person : me?.person?.id ?? "";
-      await approveCard(c, await phoneSigner(), ask, proofHeader, person);
+      await approveCard(c, await signer(), ask, proofHeader, person);
       showToast("Approved.");
     }
     catch (e) { showToast(answerRefusal((e as { code?: string }).code, howWord(Platform.OS))); }
