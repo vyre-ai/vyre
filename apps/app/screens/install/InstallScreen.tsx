@@ -14,7 +14,7 @@ import { TypeCode, redeemInvite, redeemPairing } from "../devices/TypeCode";
 import { MacServer } from "./MacServer";
 import { shell } from "../../src/shell/shell";
 import { pairSayHere } from "../../src/real/pair-say";
-import { codeRoute, installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
+import { afterQuestion, codeRoute, installLine, MY_CLOUD, QUESTION, ADD_PHONE, BROWSER, MAC_WHERE, NO_VYRE, WELCOME, WHO, deviceKind, firstStep, isBoxlessMac, isPhone, isWho, offersNoVyre, whoLine } from "./first-run.js";
 import { COPY } from "../devices/wink.js";
 import { inviteRefusal } from "../devices/invite.js";
 import { parseWinkCode } from "../../src/api/wink-code";
@@ -151,7 +151,8 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
   const scanStep = dk === "web" && !canClaim ? "browser" : "scan";
   // After a name is made, a Mac chooses where Vyre runs; everything else goes to the spaces.
   const boxless = isBoxlessMac(shell());
-  const afterName = () => (invite ? "invite" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
+  const ownServer = useRef(false);
+  const afterName = () => (invite ? "invite" : ownServer.current ? "mycloud" : first && dk === "mac" ? (boxless ? "macserver" : "macwhere") : "spaces");
   // The space has its home (the server is paired, or it lives here): setup carries on by itself on this device, with no refresh and no second sign-in.
   const make = (w: "server" | "vps" | "here") => {
     setMade((m) => [...m, { name: sn, look, addr: `${spaceSt.slug}.vyre.run`, line: homeLine(w) }]);
@@ -276,9 +277,9 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
     body = (
       <Page title={QUESTION.title}>
         <Card flush>
-          <Choice icon="users" title={QUESTION.join.title} sub={QUESTION.join.line} onPress={() => setStep("name")} />
+          <Choice icon="users" title={QUESTION.join.title} sub={QUESTION.join.line} onPress={() => { ownServer.current = false; setStep(afterQuestion("join", false)); }} />
           <Divider />
-          <Choice icon="server" title={QUESTION.own.title} sub={QUESTION.own.line} onPress={() => setStep("mycloud")} />
+          <Choice icon="server" title={QUESTION.own.title} sub={QUESTION.own.line} onPress={() => { void readIdentity().catch(() => null).then((w) => { ownServer.current = !w; setStep(afterQuestion("own", Boolean(w))); }); }} />
         </Card>
       </Page>
     );
@@ -402,7 +403,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
       <Page title="Save your recovery code" sub="It is the only way back in if you lose every device.">
         <CopyLine text={MOCK ? RECOVERY_CODE : recovery ?? ""} big />
         {MOCK ? <Banner>You can add a PIN you memorise later, so the paper alone is useless.</Banner> : <Banner>It is shown once. Anyone who holds it can get back into your name, so keep it somewhere only you can reach.</Banner>}
-        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); setStep(afterName()); }} />
+        <Button kind="primary" label="I saved it" onPress={() => { noId.current = false; setRecovery(null); const next = afterName(); ownServer.current = false; setStep(next); }} />
       </Page>
     );
   } else if (step === "spaces") {

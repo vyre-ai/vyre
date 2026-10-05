@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { afterQuestion, codeRoute, installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -179,4 +179,16 @@ test("a phone's long code adds this device to the name (a browser too); a server
   assert.equal(codeRoute({ kind: "ticket", for: "server" }), "pair-server");
   assert.equal(codeRoute({ kind: "offer" }), "pair-server");
   assert.equal(codeRoute(null), "pair-server");
+});
+
+test("a fresh device that picks I have my own server reaches the name screen before it pairs anything; a device with a name goes straight to My Cloud", async () => {
+  assert.equal(afterQuestion("own", false), "name", "no name, no identity to pair with: the name comes first");
+  assert.equal(afterQuestion("own", true), "mycloud");
+  assert.equal(afterQuestion("join", false), "name");
+  assert.equal(afterQuestion("join", true), "name");
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("./InstallScreen.tsx", import.meta.url), "utf8");
+  assert.match(src, /setStep\(afterQuestion\("own", Boolean\(w\)\)\)/, "the question's own answer goes through afterQuestion, not straight to the My Cloud page");
+  assert.doesNotMatch(src, /QUESTION\.own\.title\}[^\n]*setStep\("mycloud"\)/);
+  assert.match(src, /ownServer\.current \? "mycloud"/, "after the name and the recovery code, an own-server first run carries on to My Cloud");
 });

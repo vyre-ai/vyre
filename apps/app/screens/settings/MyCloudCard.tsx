@@ -8,7 +8,7 @@ import { proofHeader } from "../../src/real/approvals.js";
 import { hashMatches } from "../../src/real/payload-hash.js";
 import { yesSigner } from "../../src/personal/signer";
 import { createSpace } from "../../src/real/install";
-import { MOVE, SET_UP, blockersOf, canMove, cloudState, offerFor, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
+import { MOVE, SET_UP, approvalLine, blockersOf, canMove, cloudState, offerFor, planLines, proofsAsked, refusalLine, reportLines, runInput, runInputWith, serversOf, setupInput } from "./my-cloud.js";
 
 type Step = { kind: "idle" } | { kind: "plan"; plan: any } | { kind: "report"; report: ReturnType<typeof reportLines> };
 
@@ -50,7 +50,7 @@ export function MyCloudCard() {
       const person = (await loadIdentity())?.id ?? "";
       const sign = async (q: any) => {
         if (!hashMatches(q)) throw new Error("This request does not match what it says. Nothing was approved.");
-        return signer.signPresence({ op: q.op, space: q.space, fields: q.fields, payload_hash: q.payload_hash, prompt: MOVE.title, person });
+        return signer.signPresence({ op: q.op, space: q.space, fields: q.fields, payload_hash: q.payload_hash, prompt: approvalLine(plan), person });
       };
       const moveProof = asked.move ? await sign(asked.move) : null;
       const approveProof = asked.approve ? await sign(asked.approve) : null;
@@ -74,6 +74,7 @@ export function MyCloudCard() {
         <View className="flex-row"><Button label={MOVE.action} loading={busy} onPress={() => void look()} /></View>
       </>) : null}
       {offer === "move" && step.kind === "plan" ? (<>
+        <Text strong>{approvalLine(step.plan)}</Text>
         <Text strong>What would move</Text>
         {planLines(step.plan).length ? planLines(step.plan).map((l, i) => <Text key={i}>{l}</Text>) : <Text tone="muted">There is nothing in Personal to move yet.</Text>}
         {blockersOf(step.plan).length ? <Banner tone="warn"><View className="gap-s1"><Text strong>{MOVE.blocked}</Text>{blockersOf(step.plan).map((b, i) => <Text key={i}>{b}</Text>)}</View></Banner> : null}

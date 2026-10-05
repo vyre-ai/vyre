@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { proofsAsked, runInputWith, plural, serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
+import { approvalLine, targetOf, proofsAsked, runInputWith, plural, serversOf, blockersOf, canMove, cloudState, offerFor, planLines, reportLines, refusalLine, runInput, setupInput } from "./my-cloud.js";
 
 const plan = { hash: "h1", counts: { records: { note: 3, reminder: 1, planner_alarm: 2 }, total: 6, chats: { chats: 2 } }, extend: [{ type: "contact", fields: ["job_title", "other_emails"] }], skippedTypes: [{ type: "legacy", why: "its link names a type that does not exist" }], sealed: ["a", "b"], blockers: [] };
 
@@ -63,4 +63,13 @@ test("my cloud: a move with private fields asks for two signatures, and the seco
   assert.deepEqual(proofsAsked({ needs_proof: true, request: { op: "x" } }), { move: null, approve: null }, "a request that is not whole is not signed");
   assert.deepEqual(runInputWith({ hash: "h1" }, "spc_c", { signed: true }), { to: "spc_c", plan_hash: "h1", approve_proof: { signed: true } });
   assert.deepEqual(runInputWith({ hash: "h1" }, "spc_c", null), { to: "spc_c", plan_hash: "h1" });
+});
+
+test("my cloud: the approval says where the data goes, from the plan's own target_name", () => {
+  assert.equal(targetOf({ target_name: "acme" }), "acme.vyre.run");
+  assert.equal(targetOf({ target_name: "Acme.Vyre.Run" }), "acme.vyre.run");
+  assert.equal(targetOf({}), null, "no name in the plan, no name on the screen");
+  assert.equal(targetOf({ target_name: "bad name; drop" }), null);
+  assert.equal(approvalLine({ target_name: "acme" }), "Move to My Cloud: acme.vyre.run");
+  assert.equal(approvalLine({}), "Move to My Cloud");
 });

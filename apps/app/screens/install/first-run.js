@@ -230,3 +230,9 @@ export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few step
  * @param {{ kind?: string, for?: string }} code @returns {"add-device" | "pair-server"}
  */
 export const codeRoute = (code) => (code && code.kind === "ticket" && code.for === "phone" ? "add-device" : "pair-server");
+
+/**
+ * Where the setup question's answer goes. A device that holds no name has no identity to pair a server with, so "I have my own server" asks for the name first (the name, then the recovery code) and My Cloud
+ * comes after; a device that already holds a name goes straight to My Cloud. Joining a team always asks for the name. @param {"join" | "own"} answer @param {boolean} hasName
+ */
+export const afterQuestion = (answer, hasName) => (answer === "own" && hasName ? "mycloud" : "name");

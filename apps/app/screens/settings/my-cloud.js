@@ -46,6 +46,19 @@ export function planLines(plan) {
   return out;
 }
 
+/**
+ * Where the data goes, named for the one approval: the plan's own `target_name` (it is inside the plan hash the person approves, so what is shown is what is bound), as an address ("acme" is acme.vyre.run). null when the
+ * plan names none: nothing is made up. @param {any} plan @returns {string | null}
+ */
+export function targetOf(plan) {
+  const n = typeof plan?.target_name === "string" ? plan.target_name.trim().toLowerCase() : "";
+  if (!n || !/^[a-z0-9][a-z0-9.-]{0,80}$/.test(n)) return null;
+  return n.includes(".") ? n : `${n}.vyre.run`;
+}
+
+/** The line over the approval and the words the signature prompt shows. @param {any} plan */
+export const approvalLine = (plan) => { const t = targetOf(plan); return t ? `${MOVE.title}: ${t}` : MOVE.title; };
+
 /** Nothing to move says so. @param {any} plan */
 export const planEmpty = (plan) => planLines(plan).length === 0;
 /** What stops the move, in the box's own words; empty when it can start. @param {any} plan @returns {string[]} */
