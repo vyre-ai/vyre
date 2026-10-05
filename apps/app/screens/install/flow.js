@@ -1,5 +1,5 @@
 // @ts-check
-import { PHONE_SAY } from "./first-run.js";
+import { PHONE_SAY, WEB_SAY } from "./first-run.js";
 // The install flow's rules, pure so Node tests them: names, the step graph, the server's scan-or-paste code and the three-word confirm.
 // Steps (prototype p3Inst): name > recovery > spaces; or name > scan > scanwords > spaces. spaces > create > where > (cmd | vps | here) > ... > done.
 // spaces > join > invite > joined.
@@ -163,7 +163,7 @@ export function ownedBy(text) {
   return m ? `${m[1].toLowerCase()}.vyre.run` : null;
 }
 
-const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY)]);
+const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY), ...Object.values(WEB_SAY)]);
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
   // wink-2's codes (relay/client/serverpair.js) decide. The words of a server the person does not own yet are never shown: only our own sentences.

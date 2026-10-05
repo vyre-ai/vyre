@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
+import { installLine, isBoxlessMac, MAC_SERVER, macServerSay, ADD_PHONE, BROWSER, EMPTY, WAITING, GAP, MAC_WHERE, NO_VYRE, PHONE_SAY, WEB_SAY, WELCOME, WHO, deviceKind, firstStep, gapOf, isPhone, isWho, pairSayFor, whoLine } from "./first-run.js";
 import { backOf, nextSetup, packProgress, startStep, unpackProgress } from "./flow.js";
 import { applyClaim, setupFrom } from "./real.js";
 
@@ -80,7 +80,14 @@ test("a phone and a browser never read a server or an install line for a pairing
   assert.equal(pairSayFor(server, "mac"), server, "the Mac is the device that runs the line");
   assert.equal(pairSayFor("Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.", "android"), PHONE_SAY.unreachable);
   assert.equal(pairSayFor("The pairing ran out of time, so nothing was paired. Run the install line on your server again to get a new code.", "ios"), PHONE_SAY.expired);
-  for (const s of Object.values(PHONE_SAY)) assert.doesNotMatch(s, /server|install/i);
+  for (const s of [...Object.values(PHONE_SAY), ...Object.values(WEB_SAY)]) assert.doesNotMatch(s, /server|install/i);
+});
+
+test("a browser that cannot reach the Vyre says This browser, a phone says Your phone", () => {
+  const t = "Your phone cannot reach the server right now. Check that it is on and online, then try again. Nothing was paired.";
+  assert.equal(pairSayFor(t, "web"), "This browser cannot reach your Vyre right now. Nothing was paired.");
+  assert.equal(pairSayFor(t, "ios"), PHONE_SAY.unreachable);
+  assert.doesNotMatch(WEB_SAY.spaceOffline, /phone/i);
 });
 
 test("the phone and browser screens name no command, and the Mac's server line stays the Mac's", () => {

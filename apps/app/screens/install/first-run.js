@@ -196,7 +196,7 @@ export function pairSayFor(text, kind) {
   const owned = /^This server belongs to (\S+?)\.(?: |$)/.exec(t);
   if (owned) return kind === "web" ? t : `This Vyre belongs to ${owned[1]}. Ask them to add you to a space, or reset it to start over.`;
   if (/words were not the same|did not match/i.test(t)) return PHONE_SAY.rejected;
-  if (/cannot reach|unreachable/i.test(t)) return PHONE_SAY.unreachable;
+  if (/cannot reach|unreachable/i.test(t)) return kind === "web" ? WEB_SAY.unreachable : PHONE_SAY.unreachable;
   if (/ran out of time|expired/i.test(t)) return PHONE_SAY.expired;
   if (/already used/i.test(t)) return PHONE_SAY.used;
   if (/install line|server/i.test(t)) return PHONE_SAY.ended;
@@ -211,6 +211,12 @@ export const PHONE_SAY = {
   used: "That code was already used. Start again from your Vyre to get a new one.",
   ended: "The pairing did not finish, so nothing was paired. Start again from your Vyre.",
   spaceOffline: "Your phone cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
+};
+
+/** The same sentences for a browser: the device in them is the one the person is holding, so a browser says "This browser", never "Your phone". */
+export const WEB_SAY = {
+  unreachable: "This browser cannot reach your Vyre right now. Nothing was paired.",
+  spaceOffline: "This browser cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
 };
 
 /** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
