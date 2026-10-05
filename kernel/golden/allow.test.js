@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { OPEN, ASK_FIRST, PERSON_ONLY } from "../../core/modules/agent-reach.js";
-import { generate, render, flowsAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES } from "../../scripts/gen-allow.mjs";
+import { generate, render, flowsAnyone, memoryAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES, MEMORY_NOTES } from "../../scripts/gen-allow.mjs";
 
 const committed = () => JSON.parse(fs.readFileSync(ALLOW_FILE, "utf8"));
 
@@ -13,10 +13,10 @@ test("the committed allow file is exactly the generator's output: nothing hand-w
 });
 
 test("every allow entry is a tool in OPEN or ASK_FIRST, or a reach anyone flows tool whose module authenticates the chain", () => {
-  const flows = new Set(flowsAnyone());
+  const flows = new Set(flowsAnyone()), memory = new Set(memoryAnyone());
   for (const e of committed()) {
     assert.deepEqual(Object.keys(e).sort(), ["reason", "tool"], `${e.tool}: only tool and reason`);
-    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool), `${e.tool} is in neither OPEN nor ASK_FIRST nor the flows manifest`);
+    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool) || memory.has(e.tool), `${e.tool} is in neither OPEN nor ASK_FIRST nor the flows or memory lists`);
     if (flows.has(e.tool)) assert.match(e.reason, /module authenticates the caller's chain/, `${e.tool}: a flows entry says the module authenticates the chain`);
   }
 });
@@ -48,4 +48,10 @@ test("the generator refuses a person-only tool and an open tool with no note", (
   // generate() throws on both; the exported lists prove the tools it walks are all covered today
   for (const t of OPEN) assert.ok(t in OPEN_NOTES, `${t} has no note`);
   for (const t of flowsAnyone()) assert.ok(t in FLOWS_NOTES, `${t} has no flows note`);
+});
+
+test("every memory tool a model may call has a note, and a note is only for a tool the manifest still has", () => {
+  const have = new Set(memoryAnyone());
+  for (const t of Object.keys(MEMORY_NOTES)) assert.ok(have.has(t), `${t} has a memory note but is not a memory manifest tool`);
+  for (const t of have) assert.equal(PERSON_ONLY.has(t), false, `${t} is person only`);
 });
