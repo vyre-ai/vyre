@@ -34,7 +34,7 @@ const tkit = Date.now(); const inst = await host.installKit(kit); lap(`kit insta
 
 // kernel.records.* on real Twenty
 const c = host.ownerChain();
-const sam = await host.kernel.records.create(c, "contact", { name: "Pat Harlow", email: "pat@example.test", ssn: { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
+const sam = await host.kernel.records.create(c, "contact", { name: "Pat Juniper", email: "pat@example.test", ssn: { sealed: "us-ssn", ref: "sv_1", present: true, valid_format: true, set_at: Date.now() } });
 const up = await host.kernel.records.update(c, "contact", sam.id, { phone: "555 0100" }, sam.version);
 console.log(`kernel.records: contact v${sam.version} -> v${up.version}; log verify=${host.log.verify().ok}`);
 const denied = await host.kernel.records.get(host.chains.fromFacts({ kind: "socket", surface: "mcp", uid: 1, pid: 1, inside_model_process: true }), "contact", sam.id).then((r) => (r ? "SEEN" : "absent"), (e) => `refused:${e.code}`);

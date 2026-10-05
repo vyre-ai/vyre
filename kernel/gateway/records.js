@@ -582,6 +582,8 @@ export function createRecords(cfg) {
 
   async function write(/** @type {any} */ chain, /** @type {"create"|"update"|"remove"|"restore"} */ op, /** @type {string} */ type, /** @type {string} */ id, /** @type {any} */ input, /** @type {number | null} */ base, /** @type {() => Promise<any>} */ run, /** @type {(() => Promise<any>) | null} */ getBefore, /** @type {any} */ attrs, /** @type {readonly string[]} */ redact = [], /** @type {{ expand?: (before: any) => Promise<any> }} */ hooks = {}) {
     checkType(type); checkId(id);
+    // a Personal space that moved to My Cloud keeps its records readable and takes no new writes: they live in the new space now
+    { const mv = cfg.isMoved ? cfg.isMoved() : null; if (mv) throw new KernelError("moved", "this space moved to My Cloud; work there", { to: mv.to }); }
     const u = urn(type, id);
     const d = await gate(chain, `records.${op}`, u);
     // A protected type (the Kits' own bookkeeping, or a type that says `protected: true`): a row is changed or removed only by whoever made it, or by an owner or admin acting as themselves. Anyone else who
@@ -693,7 +695,14 @@ export function createRecords(cfg) {
   }
 
   async function createOnce(/** @type {any} */ chain, /** @type {string} */ type, /** @type {any} */ data, /** @type {any} */ opts) {
-    const id = mintUuid(clock());
+    // `{ import: true, id }`: a record moved here from another space of the person's keeps its id (links, chats and memory point at ids). An admin act of its own (`records.import`), and the id is a time-prefixed uuid.
+    let id = mintUuid(clock());
+    if (opts.import === true) {
+      if (!isUuid(String(opts.id))) throw new KernelError("bad_input", "an imported record keeps a time-prefixed uuid id");
+      id = String(opts.id);
+      checkType(type);
+      await gate(chain, "records.import", urn(type, id));
+    } else if (opts.id !== undefined) throw new KernelError("bad_input", "ids are the kernel's to mint; an import says so");
     const a = opts.attrs || {};
     for (const k of Object.keys(a)) if (!["owner", "project", "sensitivity"].includes(k)) throw new KernelError("bad_input", `${k} is not a kernel attribute`);
     const last = chain.hops[chain.hops.length - 1].actor;
@@ -706,7 +715,7 @@ export function createRecords(cfg) {
     }
     const forWho = chain.hops.find((/** @type {any} */ h) => h.actor.kind === "person") || (opts.on_behalf ? opts.on_behalf.hops.find((/** @type {any} */ h) => h.actor.kind === "person") : undefined);
     const attrs = { space, created_by: `${last.kind}:${last.id}`, ...(forWho ? { created_for: `person:${forWho.actor.id}` } : {}), ...a };
-    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data), null, attrs);
+    const rec = await write(chain, "create", type, id, data, null, () => store.create(type, id, data, { attrs, urn: urn(type, id) }), null, attrs);
     if (a.sensitivity === "privileged") noPrivileged.delete(type);
     return rec;
   }
@@ -990,7 +999,7 @@ export function createRecords(cfg) {
     },
 
     async create(chain, type, data, opts = {}) {
-      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs }, () => createOnce(chain, type, data, opts));
+      return idem.once(chain, "create", opts.idem, { type, data, attrs: opts.attrs, ...(opts.import === true ? { id: opts.id } : {}) }, () => createOnce(chain, type, data, opts));
     },
     async update(chain, type, id, patch, base, opts = {}) {
       const cell = { patch };

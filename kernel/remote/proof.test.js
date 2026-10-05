@@ -45,7 +45,7 @@ test("proof pass-through: a proof a surface signed from proofRequest is the one 
   const rule = await g.rules.set(owner, rr, proofFrom(signed("ruleSet", rr)));
   assert.equal((await g.rules.disable(owner, rule.id, proofFrom(signed("ruleDisable", rule.id)))).status, "disabled");
   assert.equal((await g.rules.enable(owner, rule.id, proofFrom(signed("ruleEnable", rule.id)))).status, "active");
-  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "lend", "moveOut", "moveOutMany", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer"]);
+  assert.deepEqual([...PROOF_CALLS].sort(), ["addActor", "create", "inviteConfirm", "inviteCreate", "lend", "moveOut", "moveOutMany", "narrow", "offer", "removeActor", "removeMember", "revoke", "ruleAccept", "ruleDisable", "ruleDismiss", "ruleEnable", "ruleRemove", "ruleSet", "setRole", "transferOwner", "unlend", "unoffer", "upgrade"]);
 });
 
 test("proof pass-through: a proof for other input, a used proof, and a legacy or malformed one are refused by the kernel's verifier", async () => {
