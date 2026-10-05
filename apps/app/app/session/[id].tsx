@@ -1,6 +1,6 @@
 // One session: the 0.3 chat screen on the real session stream (src/chat, core/stream), with the
 // session's terminal beside it on a desktop and full screen on a phone (src/terminal). `demo` is the
-// same screen on the mock stream. The old transcript path (src/session/store.ts) is no longer
+// same screen on the mock stream. The old transcript path is gone;
 // reached from here; its Transcript list is what the chat screen virtualises with.
 
 import { useCallback, useMemo, useState } from "react";
@@ -24,7 +24,7 @@ import { TerminalScreen } from "../../src/terminal/TerminalScreen";
 /** /session/demo is the chat screen on the mock stream; every other id is a box session on the real stream. */
 export default function SessionScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  return String(id) === "demo" ? <ChatDemo /> : <ThemeProvider><BoxSession thread={String(id)} /></ThemeProvider>;
+  return /^demo(-three|-people|-assistant)?$/.test(String(id)) ? <ChatDemo sample={String(id)} /> : <ThemeProvider><BoxSession thread={String(id)} /></ThemeProvider>;
 }
 
 /** This screen's name for the terminal: a ticket is bound to the surface that asked for it (core/term). */
@@ -70,7 +70,7 @@ function BoxSession({ thread }: { thread: string }) {
       title={title}
       belowHeader={guts}
       onBack={() => router.back()}
-      onBranched={(id) => router.push({ pathname: "/session/[id]", params: { id } })}
+      onBranched={(id) => router.push({ pathname: "/u/chats/[id]", params: { id } })}
       onOpenTerminal={() => void openTerminal()}
       handlers={handlers}
     />

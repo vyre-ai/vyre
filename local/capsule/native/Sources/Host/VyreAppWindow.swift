@@ -24,6 +24,10 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     /// Set by the Capsule at launch (App.swift).
     var socket = ""
     var presence: CapsulePresence?
+    /// This Mac's identity key (MacIdentity.swift), set by the Capsule at launch; the page signs through it and never sees the seed.
+    var identity: MacIdentity?
+    /// The Secure Enclave key of this Mac's device entry (MacEnclave.swift).
+    var enclave: MacEnclave?
 
     /// A server Mac (FirstRun.swift): no local vyred, so the window serves the web build inside this app and the page connects to its server over the relay.
     private(set) var boxless = false
@@ -31,6 +35,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     private(set) var window: NSWindow?
     private var web: WKWebView?
     private let proxy = BoxSchemeHandler()
+    /// The page's open streams (BoxSocket.swift), by the id the page's WebSocket shim gave them.
+    private var sockets: [Int: BoxSocket] = [:]
     private var priorMenu: NSMenu?
 
     var isOpen: Bool { window?.isVisible ?? false }
@@ -58,6 +64,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         if boxless { cfg.userContentController.addUserScript(WKUserScript(source: "window.__vyreBoxless = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         // The app's version, for the page to show the line that matches it (a release candidate's install line differs from a stable one's).
         cfg.userContentController.addUserScript(WKUserScript(source: Self.versionScript(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""), injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        // A WebSocket cannot ride a custom scheme: the page's WebSocket is replaced by one the app opens on vyred's socket (a server Mac has no vyred socket to open).
+        if !boxless { cfg.userContentController.addUserScript(WKUserScript(source: Self.wsShimSource, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         cfg.userContentController.addUserScript(WKUserScript(source: Self.bridgeSource, injectionTime: .atDocumentStart, forMainFrameOnly: true))
         let view = WKWebView(frame: .zero, configuration: cfg)
         view.navigationDelegate = self
@@ -82,6 +90,8 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func windowWillClose(_ notification: Notification) {
         web?.stopLoading()
         proxy.stopAll()
+        for s in sockets.values { s.stop() }
+        sockets.removeAll()
         web = nil
         window = nil
         NSApp.mainMenu = priorMenu
@@ -110,6 +120,7 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
     func userContentController(_ c: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any], let id = body["id"] as? Int, let op = body["op"] as? String else { return }
         let args = body["args"] as? [String: Any] ?? [:]
+        if op.hasPrefix("ws.") { return wsCall(op, args) } // fire and forget: the page's events come back through _ws
         let box = UncheckedBox(args)
         Task { @MainActor in await self.handle(id: id, op: op, args: box) }
     }
@@ -124,6 +135,25 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
             case .success(let header): reply(id, ["header": header])
             case .failure(let f): reply(id, ["error": f.message])
             }
+        case "identity.public", "identity.sign", "identity.has", "identity.forget":
+            guard let id0 = identity else { return reply(id, ["error": "This Mac cannot keep your key."]) }
+            switch op {
+            case "identity.public":
+                guard let pub = id0.publicKey(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": args["create"] as? Bool == true ? "This Mac would not keep your key." : "There is no key on this Mac."]) }
+                reply(id, ["publicKey": MacIdentity.b64url(pub)])
+            case "identity.sign":
+                guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let sig = id0.sign(m) else { return reply(id, ["error": "There is no key on this Mac to sign with."]) }
+                reply(id, ["signature": MacIdentity.b64url(sig)])
+            case "identity.has": reply(id, ["has": id0.has])
+            default: id0.forget(); reply(id, ["ok": true])
+            }
+        case "enclave.public":
+            guard let pt = enclave?.publicPoint(create: args["create"] as? Bool ?? false) else { return reply(id, ["error": "This Mac has no Secure Enclave key."]) }
+            reply(id, ["publicKey": MacIdentity.b64url(pt)])
+        case "enclave.sign":
+            guard let m = (args["message"] as? String).flatMap(MacIdentity.unb64url), let e = enclave else { return reply(id, ["error": "There is no Secure Enclave key on this Mac to sign with."]) }
+            guard let sig = await e.sign(m, reason: (args["prompt"] as? String).map { String($0.prefix(120)) } ?? "Approve this change to your name") else { return reply(id, ["error": "Not approved. Nothing was changed."]) }
+            reply(id, ["signature": MacIdentity.b64url(sig)])
         case "notify":
             Notifier.shared.post(title: args["title"] as? String ?? "Vyre", body: args["body"] as? String ?? "")
             reply(id, ["ok": true])
@@ -133,6 +163,45 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         default:
             reply(id, ["error": "Unknown call \(op)."])
         }
+    }
+
+    // MARK: The page's WebSockets
+
+    /// Only vyred's own stream routes are opened for the page: /v1/streams/<module>/<name>, with its query (the ticket).
+    static func isStreamPath(_ p: String) -> Bool {
+        p.range(of: "^/v1/streams/[a-z][a-z0-9-]*/[a-z][a-z0-9-]*(\\?[A-Za-z0-9._~%=&+-]*)?$", options: .regularExpression) != nil
+    }
+
+    private func wsCall(_ op: String, _ args: [String: Any]) {
+        guard let sid = args["sid"] as? Int else { return }
+        switch op {
+        case "ws.open":
+            guard let path = args["path"] as? String, Self.isStreamPath(path), !socket.isEmpty, sockets[sid] == nil else { return wsEvent(sid, "close", ["code": 1006, "reason": ""]) }
+            let ws = BoxSocket(socket: socket, path: path,
+                onOpen: { [weak self] in DispatchQueue.main.async { self?.wsEvent(sid, "open", NSNull()) } },
+                onMessage: { [weak self] m in
+                    DispatchQueue.main.async {
+                        switch m {
+                        case .text(let t): self?.wsEvent(sid, "text", t)
+                        case .binary(let d): self?.wsEvent(sid, "binary", d.base64EncodedString())
+                        default: break
+                        }
+                    }
+                },
+                onClose: { [weak self] code, reason in DispatchQueue.main.async { self?.sockets[sid] = nil; self?.wsEvent(sid, "close", ["code": code, "reason": reason]) } })
+            sockets[sid] = ws
+            ws.start()
+        case "ws.send":
+            if let t = args["text"] as? String { sockets[sid]?.send(.text(t)) }
+            else if let b = args["b64"] as? String, let d = Data(base64Encoded: b) { sockets[sid]?.send(.binary(d)) }
+        case "ws.close":
+            sockets[sid]?.close(code: args["code"] as? Int ?? 1000, reason: args["reason"] as? String ?? "")
+        default: break
+        }
+    }
+
+    private func wsEvent(_ sid: Int, _ kind: String, _ data: Any) {
+        run("window.__vyreWS && window.__vyreWS._event(\(sid), \(Self.js(kind)), \(Self.json(["v": data])).v)")
     }
 
     private func reply(_ id: Int, _ value: [String: Any]) { run("window.__vyreShell && window.__vyreShell._reply(\(id), \(Self.json(value)))") }
@@ -164,6 +233,54 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         panel.begin { completionHandler($0 == .OK ? panel.urls : nil) }
     }
 
+    /// Replaces the page's WebSocket for the app's own address (vyreapp://box/...): the stream is opened by the app on vyred's socket (BoxSocket.swift). Any other address
+    /// gets the real WebSocket. Binary messages cross as base64.
+    static let wsShimSource = """
+    (function () {
+      if (window.__vyreWS) return;
+      var Native = window.WebSocket, socks = {}, next = 1;
+      function post(op, args) { window.webkit.messageHandlers.vyre.postMessage({ id: 0, op: op, args: args }); }
+      function b64(buf) { var b = new Uint8Array(buf), s = ""; for (var i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); }
+      function unb64(s) { var r = atob(s), b = new Uint8Array(r.length); for (var i = 0; i < r.length; i++) b[i] = r.charCodeAt(i); return b.buffer; }
+      function VyreWS(url, protocols) {
+        var m = /^(?:vyreapp|ws):\\/\\/box(\\/[^#]*)$/.exec(String(url));
+        if (!m) return new Native(url, protocols);
+        if (!(this instanceof VyreWS)) throw new TypeError("Failed to construct 'WebSocket': Please use the 'new' operator");
+        var sid = next++, self = this, L = {}, queue = Promise.resolve();
+        this.url = String(url); this.readyState = 0; this.bufferedAmount = 0; this.extensions = ""; this.protocol = ""; this.binaryType = "blob";
+        this.onopen = this.onmessage = this.onerror = this.onclose = null;
+        function fire(type, ev) {
+          ev.type = type; ev.target = self;
+          var h = self["on" + type]; if (h) { try { h.call(self, ev); } catch (e) {} }
+          (L[type] || []).slice().forEach(function (f) { try { f.call(self, ev); } catch (e) {} });
+        }
+        this.addEventListener = function (t, f) { (L[t] = L[t] || []).push(f); };
+        this.removeEventListener = function (t, f) { L[t] = (L[t] || []).filter(function (x) { return x !== f; }); };
+        this.dispatchEvent = function (e) { fire(e.type, e); return true; };
+        this.send = function (d) {
+          if (self.readyState !== 1) throw new DOMException("The socket is not open.", "InvalidStateError");
+          queue = queue.then(function () {
+            if (typeof d === "string") return post("ws.send", { sid: sid, text: d });
+            var buf = d instanceof Blob ? d.arrayBuffer() : Promise.resolve(ArrayBuffer.isView(d) ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d);
+            return buf.then(function (b) { post("ws.send", { sid: sid, b64: b64(b) }); });
+          });
+        };
+        this.close = function (code, reason) { if (self.readyState >= 2) return; self.readyState = 2; post("ws.close", { sid: sid, code: code || 1000, reason: reason || "" }); };
+        socks[sid] = function (kind, v) {
+          if (kind === "open") { self.readyState = 1; fire("open", {}); }
+          else if (kind === "text") fire("message", { data: v });
+          else if (kind === "binary") { var ab = unb64(v); fire("message", { data: self.binaryType === "arraybuffer" ? ab : new Blob([ab]) }); }
+          else if (kind === "close") { self.readyState = 3; delete socks[sid]; if (v.code !== 1000 && v.code !== 1001) fire("error", {}); fire("close", { code: v.code, reason: v.reason, wasClean: v.code === 1000 }); }
+        };
+        post("ws.open", { sid: sid, path: m[1] });
+      }
+      VyreWS.CONNECTING = 0; VyreWS.OPEN = 1; VyreWS.CLOSING = 2; VyreWS.CLOSED = 3;
+      VyreWS.prototype.CONNECTING = 0; VyreWS.prototype.OPEN = 1; VyreWS.prototype.CLOSING = 2; VyreWS.prototype.CLOSED = 3;
+      window.__vyreWS = { _event: function (sid, kind, v) { var f = socks[sid]; if (f) f(kind, v); } };
+      window.WebSocket = VyreWS;
+    })();
+    """
+
     /// The page the bridge makes: window.__vyreShell.
     static let bridgeSource = """
     (function () {
@@ -183,6 +300,14 @@ final class VyreAppWindow: NSObject, NSWindowDelegate, WKNavigationDelegate, WKU
         presence: function (tool, input, summary) { return call("presence", { tool: tool, input: input, summary: summary }).then(function (r) { return r.header; }); },
         notify: function (title, body) { return call("notify", { title: title, body: body }); },
         open: function (url) { return call("open", { url: url }); },
+        identity: {
+          public: function (create) { return call("identity.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          sign: function (message) { return call("identity.sign", { message: message }).then(function (r) { return r.signature; }); },
+          has: function () { return call("identity.has").then(function (r) { return r.has; }); },
+          forget: function () { return call("identity.forget").then(function () {}); },
+          enclavePublic: function (create) { return call("enclave.public", { create: !!create }).then(function (r) { return r.publicKey; }); },
+          enclaveSign: function (message, prompt) { return call("enclave.sign", { message: message, prompt: prompt }).then(function (r) { return r.signature; }); }
+        },
         onCommand: function (fn) { commands.push(fn); return function () { commands = commands.filter(function (f) { return f !== fn; }); }; },
         _reply: function (id, value) { var p = pending[id]; if (!p) return; delete pending[id]; if (value && value.error) p.reject(new Error(value.error)); else p.resolve(value); },
         _command: function (name) { commands.forEach(function (f) { try { f(name); } catch (e) {} }); }

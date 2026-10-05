@@ -9,12 +9,15 @@ import { cn } from "../lib/cn";
 import { useUiTheme } from "../theme";
 import { fmtDate, sortRows } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
-import { MONTHS, WEEKDAYS, dayKey, fieldOf, monthWeeks, rowsByDay, startMonth, stepMonth, titleOf, val, viewDefOf } from "./logic.js";
+import { MONTHS, WEEKDAYS, dayKey, fieldOf, monthWeeks, rowsByDay, startMonth, stepMonth, titleOf, val, viewDefOf, viewRows } from "./logic.js";
 
 /** The calendar: a month grid on a date field on a wide screen; a dot per day and an agenda below on a phone. */
 export function CalendarView({ def, rows, env, onOpen }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void }) {
   const { phone } = useUiTheme();
   const vd = viewDefOf(def);
+  const calFilter = vd.calendar?.filter;
+  const allRows = rows;
+  rows = useMemo(() => viewRows(allRows, calFilter), [allRows, calFilter]);
   const f = vd.calendar && fieldOf(def, vd.calendar.date);
   const now = env.now ?? Date.now();
   const [ym, setYm] = useState(() => startMonth(rows, f?.name ?? "", now));

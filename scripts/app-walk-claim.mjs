@@ -53,8 +53,13 @@ const server = http.createServer((q, r) => {
 await new Promise((r) => server.once("listening", r));
 const BASE = `http://127.0.0.1:${server.address().port}`;
 
+// --save-state <file>: after the claim, keep this browser's storage (its identity key) so a later run can be the SAME identity. --use-state <file>: start from such a file, skip the claim and go straight to the
+// pairing as that existing identity (the same-identity browser case, and with another server, the "this server belongs to someone else" refusal).
+const SAVE_STATE = flag("--save-state", "");
+const USE_STATE = flag("--use-state", "");
 const browser = await chromium.launch({ args: [...CHROME_SAFE] });
-const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
+const context = await browser.newContext({ viewport: { width: 1000, height: 900 }, ...(USE_STATE ? { storageState: USE_STATE } : {}) });
+const page = await context.newPage();
 const results = [];
 if (args.includes("--debug")) { page.on("console", (m) => console.log("  console:", m.type(), m.text().slice(0, 240))); page.on("pageerror", (e) => console.log("  pageerror:", String(e).slice(0, 240))); page.on("websocket", (w) => console.log("  ws:", w.url())); }
 const check = async (name, fn) => {
@@ -66,13 +71,17 @@ const check = async (name, fn) => {
 };
 const body = () => page.locator("body").innerText();
 
-let alive = await check("install: the name step is open (the web claim flag is on)", async () => {
+let alive = USE_STATE ? await check("install: this browser already holds a name (a saved state), so the page opens on Your spaces", async () => {
+  await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
+  await page.getByText("Create a space").first().waitFor({ timeout: 40000 });
+}) : await check("install: the name step is open (the web claim flag is on)", async () => {
   await page.goto(`${BASE}/app/u/install`, { waitUntil: "networkidle" });
   // First run opens on the welcome: Get started goes to the name.
   await page.getByText("Get started", { exact: true }).first().click({ timeout: 25000 });
   await page.getByText("Choose your Vyre name").first().waitFor({ timeout: 25000 }).catch(() => {}); // the app retries the missing box for a few seconds before it draws
   if (!(await body()).includes("Choose your Vyre name")) throw new Error("the page does not offer the claim (built from a tree whose rc.ts says browserClaim: false, or from a cached bundle)");
 });
+if (!USE_STATE) {
 alive = alive && await check(`a free name is offered: ${NAME}`, async () => { await page.locator("input").first().fill(NAME); await page.getByText(/is yours to take/).waitFor({ timeout: 10000 }); });
 alive = alive && await check("Face ID sheet opens, Create makes the identity and shows the recovery code once", async () => {
   // the name step's button is "Create my name" (no biometric sheet) in newer builds, "Continue with Face ID" then a sheet in older ones
@@ -89,11 +98,13 @@ alive = alive && await check("the directory now resolves the name (and the key i
   const kept = await page.evaluate(() => new Promise((res) => { const q = indexedDB.open("vyre-identity"); q.onsuccess = () => { try { const g = q.result.transaction("identity").objectStore("identity").get("self"); g.onsuccess = () => res(Boolean(g.result && g.result.name)); g.onerror = () => res(false); } catch { res(false); } }; q.onerror = () => res(false); }));
   if (!kept) throw new Error("no identity kept in IndexedDB");
 });
+}
+if (SAVE_STATE) { await context.storageState({ path: SAVE_STATE, indexedDB: true }).catch(async () => { await context.storageState({ path: SAVE_STATE }); }); console.log("  saved this browser's state to " + SAVE_STATE); }
 if (CODE_CMD && ANSWER_CMD) {
   // The user's install order: identity first (above), then a space on a server, which pairs the server from this browser alone. STAND-INS: the server is a throwaway vyred on a test box
   // on the stand-in relay; the person at the server is this script answering with the words the page shows (the real answer is typed at the server's own console).
   alive = alive && await check("after the recovery code the app offers a space on a server I have", async () => {
-    await page.getByRole("button", { name: /I saved it/ }).click();
+    if (!USE_STATE) await page.getByRole("button", { name: /I saved it/ }).click();
     await page.getByText("Create a space").first().click();
     await page.locator("input").first().fill("ws" + Math.floor(Math.random() * 90000 + 10000));
     await page.getByText(/is yours to take/).waitFor({ timeout: 10000 });

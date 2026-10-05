@@ -1,0 +1,259 @@
+{
+  "onboard.status": {
+    "mode": "loopback",
+    "role": "box",
+    "machine": "solo",
+    "can": { "relayJoin": false, "relayJoinReason": "Not available on a Mac yet. Needs vyre-core." },
+    "owner": null,
+    "address": null,
+    "host": "alex-box",
+    "name": "",
+    "assistant": "",
+    "current": "you",
+    "finished": false,
+    "steps": {
+      "you": "todo",
+      "claude": "todo",
+      "tailscale": "todo",
+      "name": "todo",
+      "history": "todo",
+      "devices": "todo"
+    },
+    "detail": {
+      "you": {
+        "state": "todo"
+      },
+      "claude": {
+        "state": "todo"
+      },
+      "tailscale": {
+        "state": "todo"
+      },
+      "name": {
+        "state": "todo"
+      },
+      "history": {
+        "state": "todo",
+        "why": "Your Mac's sessions appear here when you connect your Mac"
+      },
+      "devices": {
+        "state": "todo",
+        "phoneUrl": "https://alex.tail-example.ts.net/now",
+        "macDownload": "https://vyre.run/download/mac",
+        "mac": {
+          "connected": false
+        }
+      }
+    }
+  },
+  "onboard.you": {
+    "ok": true
+  },
+  "onboard.skip": {
+    "ok": true
+  },
+  "onboard.history": {
+    "ok": true
+  },
+  "onboard.name": {
+    "$by": "action",
+    "cases": {
+      "check": {
+        "name": "alex",
+        "valid": true,
+        "available": true,
+        "why": null
+      },
+      "reserve": {
+        "phase": "working",
+        "why": null,
+        "address": null,
+        "via": "ts.net",
+        "steps": [
+          {
+            "id": "reserve",
+            "state": "done"
+          },
+          {
+            "id": "dns",
+            "state": "doing"
+          },
+          {
+            "id": "cert",
+            "state": "todo"
+          }
+        ]
+      },
+      "status": {
+        "phase": "done",
+        "why": null,
+        "address": "alex.tail-example.ts.net",
+        "via": "ts.net",
+        "steps": [
+          {
+            "id": "reserve",
+            "state": "done"
+          },
+          {
+            "id": "dns",
+            "state": "done",
+            "note": "alex.tail-example.ts.net \u2192 100.101.12.7"
+          },
+          {
+            "id": "cert",
+            "state": "done",
+            "note": "tailscale cert, renews automatically"
+          }
+        ],
+        "url": "https://alex.tail-example.ts.net"
+      }
+    }
+  },
+  "onboard.claude": {
+    "$by": "mode",
+    "cases": {
+      "detect": {
+        "installed": true,
+        "install": "npm install -g @anthropic-ai/claude-code",
+        "version": "2.1.40",
+        "signedIn": false,
+        "via": null,
+        "url": null,
+        "needsCode": false
+      },
+      "setup-token": {
+        "installed": true,
+        "version": "2.1.40",
+        "signedIn": false,
+        "url": "https://claude.ai/oauth/authorize?example",
+        "needsCode": true
+      },
+      "api-key": {
+        "signedIn": true,
+        "via": "api-key"
+      }
+    }
+  },
+  "onboard.tailscale": {
+    "$by": "action",
+    "cases": {
+      "policy": {
+        "ready": true,
+        "why": null,
+        "policy": {
+          "nodeAttrs": [{ "target": ["alex-box"], "attr": ["drive:share"] }],
+          "grants": [
+            { "src": ["autogroup:member"], "dst": ["alex-box"], "app": { "tailscale.com/cap/files": [{}] } },
+            { "src": ["autogroup:member"], "dst": ["tag:vyre-owner"], "ip": ["22"] }
+          ],
+          "ssh": [{ "action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot"] }]
+        },
+        "notes": [
+          "Merges Taildrive, Taildrop and SSH; egress joins once a device turns it on.",
+          "Paste this into Access Controls in the Tailscale admin console."
+        ]
+      },
+      "lock": {
+        "enabled": false,
+        "nodeKey": "tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "key": "tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0",
+        "trusted": null,
+        "signed": null,
+        "why": null,
+        "commands": {
+          "mac": "tailscale lock",
+          "init": "tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> tlpub:b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0"
+        }
+      },
+      "*": {
+        "$seq": [
+          {
+            "state": "off",
+            "step": "todo",
+            "installed": true,
+            "install": "curl -fsSL https://tailscale.com/install.sh | sh",
+            "operator": {
+              "ok": true,
+              "fix": null
+            }
+          },
+          {
+            "state": "needs-login",
+            "step": "working",
+            "installed": true,
+            "loginUrl": "https://login.tailscale.com/a/example",
+            "operator": {
+              "ok": true,
+              "fix": null
+            }
+          },
+          {
+            "state": "needs-login",
+            "step": "working",
+            "installed": true,
+            "loginUrl": "https://login.tailscale.com/a/example",
+            "operator": {
+              "ok": true,
+              "fix": null
+            }
+          },
+          {
+            "state": "connected",
+            "step": "done",
+            "installed": true,
+            "operator": {
+              "ok": true,
+              "fix": null
+            },
+            "owner": "alex@example.com",
+            "node": {
+              "ip": "100.101.12.7",
+              "dns": "alex-box.tail-example.ts.net"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "onboard.passkey": {
+    "address": "https://alex.tail-example.ts.net",
+    "passkeyUrl": "https://alex.tail-example.ts.net/onboard/passkey#e=abc123"
+  },
+  "onboard.finish": {
+    "url": "https://alex.tail-example.ts.net",
+    "thread": null,
+    "passkeyUrl": null
+  },
+  "onboard.machine": {
+    "$by": "machine",
+    "cases": {
+      "solo": { "machine": "solo", "service": null },
+      "server": { "machine": "server", "service": null },
+      "*": { "machine": "solo", "service": null }
+    }
+  },
+  "onboard.join": {
+    "$by": "action",
+    "cases": {
+      "status": { "tailscale": { "state": "off" }, "relay": { "available": true, "enabled": false, "connected": false, "pairing": null } },
+      "tailscale": {
+        "$by": "step",
+        "cases": {
+          "status": { "state": "off", "installed": true },
+          "connect": { "loginUrl": "https://login.tailscale.com/a/example" },
+          "policy": { "ready": true, "policy": { "note": "same merged ACL snippet as onboard.tailscale action=policy" } },
+          "lock": { "enabled": false }
+        }
+      },
+      "relay": { "pairing": { "url": "https://relay.vyre.run/pair/abc123", "qr": "abc123" } },
+      "verify": {
+        "$by": "node",
+        "cases": {
+          "wrong-node": { "path": "unknown", "relay": null, "latencyMs": null, "lastHandshake": null, "online": false, "why": "the node is offline" },
+          "*": { "path": "direct", "relay": null, "endpoint": "100.101.12.9:41641", "latencyMs": 14, "lastHandshake": "$ago:5s", "online": true, "checkedAt": "$ago:0s", "cached": false }
+        }
+      },
+      "*": { "online": false }
+    }
+  }
+}

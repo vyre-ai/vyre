@@ -1,5 +1,5 @@
 // The pure half of Kits on the real box: flows.kit.list rows (kernel/flows/kits.js list) as the lines the screen shows. The box has no catalog of Kits to install
-// from, so there is no "available" list here, and no update diff: both would be invented.
+// from, so there is no "available" list here, and the update diff is the kernel's own (flows.kit.diff), never one made up here.
 
 export type KitRow = { id: string; version: number; status: string; by?: string; at?: number };
 
@@ -62,3 +62,44 @@ export function cardLines(card: Card): { head: string; lines: string[]; notes: s
   const k = card.kit ?? {};
   return { head: [k.name, k.version ? `v${k.version}` : ""].filter(Boolean).join(" "), lines, notes: card.notes ?? [], blocked: card.ok === false ? card.errors?.[0]?.message ?? "This Kit does not pass the box's checks." : "" };
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------ update diff
+
+type Part = { kind: string; name: string };
+/** What flows.kit.diff answers (kernel/flows/kits.js diff): the installed version against a newer one, read only. */
+export type KitDiff = { installed: boolean; from: number | null; to: number; newer: boolean; diff: null | { added: Part[]; removed: Part[]; changed: Part[]; widenings: { part: string; what: string }[]; risks: { part: string; what: string }[]; widening: boolean } };
+
+/** The Kits installed whose library version is newer: id to the version on offer. A Kit that is removed or pending is not offered an update. */
+export function updatesOf(rows: KitRow[], lib: LibraryKit[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    if (r.status !== "installed") continue;
+    const l = lib.find((k) => k.id === r.id);
+    if (l && typeof l.version === "number" && l.version > r.version) out[r.id] = l.version;
+  }
+  return out;
+}
+
+const KIND_WORD: Record<string, string> = { type: "Record type", flow: "Flow", template: "Template", role: "Role", teammate: "Assistant", view: "View" };
+const partText = (p: Part): string => `${KIND_WORD[p.kind] ?? p.kind} ${p.name}`;
+
+/** The diff as lines for the diff block: a plus for a part added, a minus for one removed, a plain line for one changed. */
+export function diffLines(d: KitDiff): { t: "a" | "d" | "c"; s: string }[] {
+  const x = d.diff;
+  if (!x) return [];
+  return [
+    ...x.added.map((p) => ({ t: "a" as const, s: partText(p) })),
+    ...x.changed.map((p) => ({ t: "c" as const, s: `${partText(p)} changes` })),
+    ...x.removed.map((p) => ({ t: "d" as const, s: partText(p) })),
+  ];
+}
+
+/** "What it can do that it could not before" and the risks, as plain lines. */
+export const widenings = (d: KitDiff): { part: string; what: string }[] => d.diff?.widenings ?? [];
+export const risks = (d: KitDiff): { part: string; what: string }[] => d.diff?.risks ?? [];
+
+/** The sub line under an update page's title. */
+export const versionLine = (d: KitDiff): string => (d.from == null ? `Not installed. v${d.to} is on offer.` : d.newer ? `v${d.from} to v${d.to}` : `v${d.from} is the newest this box has.`);
+
+/** True when there is something to approve: newer, and the box found a difference. */
+export const hasChanges = (d: KitDiff): boolean => d.installed && d.newer && !!d.diff && (d.diff.added.length + d.diff.removed.length + d.diff.changed.length > 0 || d.diff.widenings.length > 0);

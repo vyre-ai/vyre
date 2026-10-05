@@ -33,7 +33,7 @@ export function loadDeviceSpaces(): Record<string, string[]> {
 }
 
 export function loadLend() {
-  return { spaceId: "harlow", spaceAllows: true, allowedBy: "Chris, 30 Sep", limits: "Only when it is idle, within 4 GB and 2 sessions. It runs Harlow Legal's work and nothing of yours." };
+  return { spaceId: "harlow", spaceAllows: true, allowedBy: "Chris, 30 Sep", limits: "Only when it is idle, within 4 GB and 2 chats. It runs Harlow Legal's work and nothing of yours." };
 }
 
 export const ACCESS_FILTERS: [string, string][] = [["all", "All"], ["Device", "Devices"], ["Person", "People"], ["Assistant", "Assistants"], ["Kit", "Kits"], ["Flow", "Flows"]];

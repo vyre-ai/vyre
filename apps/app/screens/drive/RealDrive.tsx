@@ -2,17 +2,21 @@
 // from its first chunk (files.drive.read). The box refuses secrets and anything outside a share; a refusal reads as "not available".
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
-import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, Sheet, Tabs, Text, ErrorState, LoadingState } from "@vyre/ui";
+import { Banner, Button, Card, Chip, Divider, EmptyState, IconTile, Row, SectionLabel, Sheet, Tabs, Text, ErrorState, LoadingState } from "@vyre/ui";
 import { Frame } from "../places/Frame";
 import { driveRefusal, entryLine, crumbs, isText, join, bytesOf, sizeWord, textOf, type Chunk, type Entry, type Listing, type Status } from "./real-model";
 import { listReal, readReal, statusReal } from "./real";
 import { SpaceDrive } from "./SpaceDrive";
+import { SharedLinks } from "./SharedLinks";
+import { SharedArtifacts } from "../chat-tools";
+import { REAL_TABS } from "./tabs.js";
 
-type Tab = "space" | "files" | "sharing";
+type Tab = "space" | "shared" | "files" | "sharing";
 const say = (e: unknown) => driveRefusal((e as { code?: string }).code, e instanceof Error ? e.message : "");
 
 export default function RealDrive() {
   const [tab, setTab] = useState<Tab>("space");
+  const [made, setMade] = useState(0);
   const [status, setStatus] = useState<Status | null>(null);
   const [share, setShare] = useState<string | null>(null);
   const [path, setPath] = useState("");
@@ -85,8 +89,8 @@ export default function RealDrive() {
 
   return (
     <Frame title="Drive" sub="The space's files with their versions, and the box's own folders.">
-      <Tabs<Tab> value={tab} onChange={setTab} items={[["space", "Space"], ["files", "Box folders"], ["sharing", "On your computer"]]} />
-      {tab === "space" ? <SpaceDrive /> : tab === "files" ? files : sharing}
+      <Tabs<Tab> value={tab} onChange={setTab} items={REAL_TABS as unknown as [Tab, string][]} />
+      {tab === "space" ? <SpaceDrive onLink={() => { setMade((n) => n + 1); setTab("shared"); }} /> : tab === "shared" ? <View className="gap-s3"><SectionLabel first>Links to files</SectionLabel><SharedLinks refresh={made} /><SectionLabel>Made for you</SectionLabel><SharedArtifacts /></View> : tab === "files" ? files : sharing}
       <Sheet open={!!open} onClose={() => setOpen(null)} title={open?.e.name}>
         {open ? (
           <View className="gap-s2">

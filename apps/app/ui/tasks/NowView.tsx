@@ -18,7 +18,7 @@ import { Pulse } from "../motion/Pulse";
 import { PressableScale } from "../motion/PressableScale";
 import type { SwipeSet } from "../motion/SwipeActions";
 import { useUiTheme } from "../theme";
-import { aid } from "../../../../deck/ui/kernel-view.js";
+import { aid } from "../../src/store-core/kernel-view.js";
 
 const WIDE = 1000;
 /** How many Needs you cards show before "N more waiting": three on a wide screen, two (both hero cards) on a phone. */

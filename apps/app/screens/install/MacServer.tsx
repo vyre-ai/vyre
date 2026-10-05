@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import { joinWithCode } from "@vyre/relay-client/join.js";
 import { Banner, Button, Card, Field, IconTile, Row, Text } from "@vyre/ui";
-import { about, presenceKey, relayCrypto, relayKeyStore, savePairing } from "../../src/api/relay";
+import { about, presenceKey, relayCrypto, relayKeyStore } from "../../src/api/relay";
+import { afterPaired } from "../../src/real/pairing";
 import { relayUrl } from "../../src/api/relay-url";
 import { parseWinkCode } from "../../src/api/wink-code";
 import { MAC_SERVER, macServerSay } from "./first-run.js";
@@ -28,7 +29,7 @@ export function MacServer({ name, onBack, onDone }: { name: string; onBack: () =
     if (!c.ok || c.kind !== "typed") { setSaid({ title: MAC_SERVER.wrongTitle, line: "It looks like WINK-7K4Q-M2XD.", over: false }); return; }
     setSaid(null);
     const r = await joinWithCode({ relay: relayUrl(), input: c.code, name: "Vyre on this Mac", onState: (s) => { if (live.current && s.state === "ack" && s.code) { setAck(s.code); setStage("ack"); } },
-      pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey() } }).catch(() => ({ ok: false as const, reason: "offline" as const }));
+      pairOptions: { crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), deviceKind: "computer", keyStorage: "software" } }).catch(() => ({ ok: false as const, reason: "offline" as const }));
     if (!live.current) return;
     if (!r.ok) {
       const wrong = r.reason === "refused" || r.reason === "closed" || r.reason === "format";
@@ -38,7 +39,7 @@ export function MacServer({ name, onBack, onDone }: { name: string; onBack: () =
       setStage("enter"); setAck("");
       return;
     }
-    await savePairing({ relay: r.paired.relay, route: r.paired.route, box: r.paired.box, name: r.paired.name, device: r.paired.device, presence: null }).catch(() => {});
+    await afterPaired(r.paired).catch(() => {});
     setPaired(r.paired.name); setStage("done");
   };
 

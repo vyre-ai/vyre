@@ -6,6 +6,7 @@
 // The box is imported on first use so the pure parts stay runnable in Node.
 
 import type { PairingSession } from "../api/pairing-session";
+import { macKeyAvailable } from "../identity/mac-key.ts";
 import type { WinkCode } from "../api/wink-code";
 import { added, pairPhase, payloadOf, targetsOf } from "../../screens/devices/real.js";
 
@@ -129,7 +130,7 @@ async function directSessionFor(code: Extract<WinkCode, { ok: true; kind: "ticke
     }, name: deviceName(),
     crypto: relayCrypto(), keyStore: relayKeyStore(), about, presenceKey: await presenceKey(), signal: abort.signal,
     // what this device is, honestly: the server records it as the owner's device of this kind and makes its paired session grant at the person's pick (tailnet, wink-rc1)
-    deviceKind: phoneKeys ? "phone" : "web", keyStorage: phoneKeys ? "hardware" : "software",
+    deviceKind: macKeyAvailable() ? "computer" : phoneKeys ? "phone" : "web", keyStorage: phoneKeys ? "hardware" : "software",
     onWords: (w) => { const p = w.split(" "); if (p.length === 3) { words = [p[0], p[1], p[2]]; wake(); } },
   });
   run.catch((e: Error) => { failed = e; wake(); });
@@ -164,6 +165,21 @@ const textOf = (code: Extract<WinkCode, { ok: true; kind: "ticket" }>) => `vyre:
 export const plainName = (n: string): string => String(n).replace(/[\u0000-\u001f\u007f-\u009f\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u2069\ufeff]+/g, " ").replace(/ {2,}/g, " ").trim().slice(0, 64);
 
 const toB64u = (b: Uint8Array): string => { let s = ""; for (const x of b) s += String.fromCharCode(x); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+
+/**
+ * A device with no box of its own was just paired by a typed code: keep the pairing, mark the server as the way it reaches its box, open its paired person session (presence.person.start-paired, signed with
+ * the presence key it reported at pairing) and reconnect over the relay, so the next call carries the session.
+ */
+export async function afterPaired(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
+  const { savePairing } = await import("../api/relay");
+  await savePairing({ relay: r.relay, route: r.route, box: r.box, name: r.name, device: r.device, presence: null } as never);
+  (await import("./peer")).usePeer(true);
+  // A browser the owner has not trusted yet cannot start its session: the pairing stays, the session starts (renewSession) once the owner trusts it, and Devices says so.
+  await openPairedSession(r).catch(() => {});
+  const { disconnect, connect } = await import("../api/box");
+  await disconnect().catch(() => {});
+  await connect().catch(() => {});
+}
 
 /** After the yes: this device's person session (presence.person.pair-challenge, then start-paired), kept for the box so every request carries it. */
 async function openPairedSession(r: { relay: string; route: string; box: string; device: string; name: string }): Promise<void> {
