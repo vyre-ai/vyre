@@ -1263,10 +1263,10 @@ export function createPairing(o) {
     });
     ctx.tool("wink.server.owner", {
       internal: true,
-      description: "For the spaces module: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.",
+      description: "For the spaces and files modules: the identity this server's own pairing record names as its owner, { identity, kind, id, name? }, or null. Read only; it is how spaces.owner.adopt knows the identity came from the pairing and not from a caller.",
       input: obj(),
       run: async (_i, meta0 = {}) => {
-        if (String((meta0 && meta0.caller) || "") !== "module:spaces") throw fail("denied", "this is for the spaces module");
+        if (!["module:spaces", "module:files"].includes(String((meta0 && meta0.caller) || ""))) throw fail("denied", "this is for the spaces and files modules");
         const o2 = meta.get("owner");
         return o2 && typeof o2.identity === "string" ? { identity: o2.identity, kind: o2.kind, id: o2.id, ...(o2.name ? { name: o2.name } : {}) } : null;
       },

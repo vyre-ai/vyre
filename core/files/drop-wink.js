@@ -37,8 +37,10 @@ export function dropWink(ctx, { role, g, cfg, store, now = Date.now }) {
   const emit = (/** @type {string} */ t, /** @type {any} */ p) => { try { ctx.events.emit(t, p); } catch (e) { log(`${t} was not announced: ${/** @type {Error} */ (e).message}`); } };
   /** The key to seal to, from the person's identity list and nowhere else: the key-agreement point of the receiving entry. A computer the list does not carry, or one with no such key, gets nothing sent. @param {string} eid */
   const agreeOf = async eid => {
+    // a computer knows its own identity; a server knows whose it is from the pairing that made it theirs
     const me = /** @type {any} */ (await ctx.call("spaces.identity.id", {}).catch(() => null));
-    const person = me && me.data && me.data.id;
+    const own = role === "box" ? /** @type {any} */ (await ctx.call("wink.server.owner", {}).catch(() => null)) : null;
+    const person = (me && me.data && me.data.id) || (own && own.data && /^per_/.test(String(own.data.identity)) ? String(own.data.identity) : null);
     if (!person) throw fail("not_ready", "this computer has no identity yet");
     const r = /** @type {any} */ (await ctx.call("spaces.identity.devices.read", { person }).catch(() => null));
     const e = r && r.data && Array.isArray(r.data.devices) ? r.data.devices.find((/** @type {any} */ d) => d && d.device === eid && typeof d.agree === "string") : null;
