@@ -37,7 +37,7 @@ export function parsePhonePayload(s) {
 }
 
 /**
- * @param {{ payload: string, key: { publicKey: string, label?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
+ * @param {{ payload: string, key: { publicKey: string, label?: string, agree?: string, held?: "web" | boolean, enclave?: string, attest?: string }, name?: string, crypto?: any, keyStore?: any, WebSocket?: any, relay?: string, about?: any,
  *   avatar?: ArrayLike<number>, presenceKey?: { public_key: string, alg?: number, storage?: "hardware"|"software" }, code?: string, onAck?: (ack: string) => void, fetch?: typeof fetch,
  *   onWords?: (words: string) => void, signal?: AbortSignal, pollMs?: number, timeoutMs?: number }} o
  */
@@ -91,7 +91,10 @@ export async function addThisDevice(o) {
   };
   try {
     const na = newNonce(), commit = await nonceCommit(na), tag = await ticketTag(ticket);
-    const entry = { publicKey: o.key.publicKey, ...(o.key.label ? { label: String(o.key.label).slice(0, 60) } : {}), ...(typeof o.key.agree === "string" ? { agree: o.key.agree } : {}) };
+    const entry = { publicKey: o.key.publicKey, ...(o.key.label ? { label: String(o.key.label).slice(0, 60) } : {}), ...(typeof o.key.agree === "string" ? { agree: o.key.agree } : {}),
+      // what the chain may be told about this key: a key a page script can reach says so (`held: "web"`: it cannot change who speaks for the identity), a chip key says which (`enclave`), and a platform proof of it (`attest`);
+      // the existing device copies these into the entry (core/wink/pairing.js entryExtras) and the identity chain decides what each is worth
+      ...(o.key.held === "web" || o.key.held === true ? { held: "web" } : {}), ...(typeof o.key.enclave === "string" ? { enclave: o.key.enclave } : {}), ...(typeof o.key.attest === "string" ? { attest: o.key.attest } : {}) };
     const base = { commit, tag, name: deviceName.slice(0, 64), entry };
     const first = await wait(base);
     const nb = String(first && first.nb || "");

@@ -9,11 +9,22 @@ import crypto from "node:crypto";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { dropWink } from "./drop-wink.js";
 import { createDropStore } from "./drop-store.js";
-import { newDropKey, sender, receiver } from "./drop-seal.js";
+import { sender, receiver } from "./drop-seal.js";
+import { newDeviceKey, pointOf, ecdhFrom, unwrapWithDevice, b64 } from "../../lib/keywrap.js";
 
-/** Stand-ins for the identity list: a device signs a text with its own secret, and any device of the identity can check it. */
-const sigOf = (eid, pub) => crypto.createHash("sha256").update(`${eid}|${pub}`).digest("base64url");
-const identityCheck = async (_t, input) => ({ data: { ok: ["A", "B"].includes(input.eid) && input.sig === sigOf(input.eid, input.pub) } });
+/** Stand-ins for the identity list: each device (A, B) has an entry whose key-agreement key is its own P-256 key; the list serves the public points, the device's own ECDH is its alone. */
+const KEYS = { A: newDeviceKey(), B: newDeviceKey(), X: newDeviceKey() };
+const pointOfEid = eid => b64(pointOf(KEYS[eid].publicJwk));
+const listDevices = () => ["A", "B"].map(e => ({ device: e, agree: pointOfEid(e) }));
+const identityCalls = async (tool, input, me) => {
+  if (tool === "spaces.identity.id") return { data: { id: "per_alex", eid: me } };
+  if (tool === "spaces.identity.devices.read") return { data: { devices: listDevices() } };
+  if (tool === "spaces.identity.unwrap-drop") {
+    if (!String(input.aad).startsWith("vyre-drop-wrap\n")) throw Object.assign(new Error("wrong purpose"), { code: "wrong_purpose" });
+    return { data: { key: b64(await unwrapWithDevice(input.wrap, ecdhFrom(KEYS[me].privateJwk), input.aad)) } };
+  }
+  return undefined;
+};
 const dir = p => fs.mkdtempSync(path.join(SCRATCH, p));
 const guardFor = roots => ({ resolveSafe: p => { const real = fs.realpathSync(String(p)); if (path.basename(real).startsWith(".")) throw Object.assign(new Error("not available"), { code: "not_available" }); return { real }; }, roots: () => ({ live: roots.map(r => ({ given: r, real: fs.realpathSync(r) })) }) });
 
@@ -26,7 +37,7 @@ function world(t, { devices } = {}) {
   const srvCtx = { paths: { root }, config: { files: {} }, log() {}, events: { emit: (n, p) => events.push([n, p]), on: () => () => {} }, tool: (n, d) => tools.set(n, d),
     call: async (tool, input) => {
       if (tool === "relay.devices.all") return { data: { devices: devices || [{ id: "A", name: "laptop", kind: "app", online: online.has("A") }, { id: "B", name: "desktop", kind: "app", online: online.has("B") }, { id: "W", name: "a browser", kind: "web", online: true }] } };
-      if (tool === "wink.identity.check") return identityCheck(tool, input);
+      { const r = await identityCalls(tool, input, "A"); if (r) return r; }
       if (tool === "wink.device.call") { if (!online.has(input.device)) throw Object.assign(new Error("not connected"), { code: "unreachable" }); offers.push(input); void peers[input.device]?.offered(input.input.id); return { ok: true }; }
       throw new Error("unexpected " + tool);
     } };
@@ -38,7 +49,7 @@ function world(t, { devices } = {}) {
     const t2 = new Map(), ev = [];
     const home = dir(`drop-${id}-`), files = dir(`drop-${id}-files-`);
     const ctx = { paths: { root: home }, config: { files: { roots: [files] } }, log() {}, events: { emit: (n, p) => ev.push([n, p]), on: (n, f) => { ctx.fire = ctx.fire || {}; (ctx.fire[n] ||= []).push(f); return () => {}; } }, tool: (n, d) => t2.set(n, d),
-      call: async (tool, input) => { if (tool === "wink.home.id") return { data: { device: "srv" } }; if (tool === "wink.identity.sign") return { data: { eid: id, sig: sigOf(id, input.pub) } }; if (tool === "wink.identity.check") return identityCheck(tool, input); throw new Error("unexpected " + tool); },
+      call: async (tool, input) => { if (tool === "wink.home.id") return { data: { device: "srv" } }; { const r = await identityCalls(tool, input, id); if (r) return r; } throw new Error("unexpected " + tool); },
       sessionFor: () => ({ call: async (tool, input) => via(id)(tool, input) }) };
     fs.writeFileSync(path.join(home, "config.json"), JSON.stringify({ files: { roots: [files] } }));
     const inbox = path.join(files, "inbox");
@@ -53,18 +64,19 @@ function world(t, { devices } = {}) {
 const until = async (f, ms = 4000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) throw new Error("timed out"); await new Promise(r => setTimeout(r, 25)); } };
 const allFiles = d => { const o = []; const w = x => { for (const n of fs.existsSync(x) ? fs.readdirSync(x) : []) { const p = path.join(x, n); fs.statSync(p).isDirectory() ? w(p) : o.push(p); } }; w(d); return o; };
 
-test("sealing: only the receiver's key opens a drop, a chunk cannot be moved, repeated or taken from another drop, and every drop has its own key", () => {
-  const k = newDropKey(), other = newDropKey();
-  const a = sender("d".repeat(30), k.pub), b = sender("d".repeat(30), k.pub);
+test("sealing: only the receiver's key opens a drop, a chunk cannot be moved, repeated or taken from another drop, and every drop has its own key", async () => {
+  const id = "d".repeat(30), unwrapBy = k => (w, aad) => unwrapWithDevice(w, ecdhFrom(KEYS[k].privateJwk), aad), mine = unwrapBy("A"), theirs = unwrapBy("X");
+  const a = sender(id, pointOfEid("A"), "A"), b = sender(id, pointOfEid("A"), "A");
   assert.notEqual(a.eph, b.eph, "a fresh key for each drop");
   const c0 = a.seal(0, 3, Buffer.from("header")), c1 = a.seal(1, 3, Buffer.from("data"));
-  const r = receiver("d".repeat(30), a.eph, k.priv);
+  const r = await receiver(id, a.eph, mine, "A");
   assert.equal(r.open(0, 3, c0).toString(), "header");
   assert.throws(() => r.open(1, 3, c0), { code: "bad_chunk" }, "a chunk in another place");
   assert.throws(() => r.open(0, 4, c0), { code: "bad_chunk" }, "a different total");
-  assert.throws(() => receiver("e".repeat(30), a.eph, k.priv).open(0, 3, c0), { code: "bad_chunk" }, "another drop");
-  assert.throws(() => receiver("d".repeat(30), a.eph, other.priv).open(1, 3, c1), { code: "bad_chunk" }, "another device's key");
-  const bad = Buffer.from(c1); bad[0] ^= 1; assert.throws(() => r.open(1, 3, bad), { code: "bad_chunk" }, "a changed byte");
+  assert.throws(() => r.open(1, 3, Object.assign(Buffer.from(c1), { 0: c1[0] ^ 1 })), { code: "bad_chunk" }, "a changed byte");
+  await assert.rejects(receiver("e".repeat(30), a.eph, mine, "A"), { code: "bad_chunk" }, "another drop");
+  await assert.rejects(receiver(id, a.eph, theirs, "A"), { code: "bad_chunk" }, "another device's key");
+  await assert.rejects(receiver(id, a.eph, mine, "B"), { code: "bad_chunk" }, "sealed to another entry of the list");
 });
 
 test("a file crosses between two computers through the server: it arrives intact, the server held only ciphertext and keeps nothing after", async t => {
@@ -107,7 +119,7 @@ test("who can do what: a receiver that has not turned receiving on gets nothing;
   const A = w.computer("A"), B = w.computer("B");        // B has receiving off
   const src = path.join(A.files, "a.txt"); fs.writeFileSync(src, "x");
   await assert.rejects(A.tool("files.send", { path: src, to: "desktop" }), { code: "not_ready" });
-  for (const t2 of ["files.drop.targets", "files.drop.pending", "files.drop.register"]) await assert.rejects(w.tools.get(t2).run({ pub: "x".repeat(44) }, { caller: "cli" }), { code: "denied" }, `${t2} from a non-device`);
+  for (const t2 of ["files.drop.targets", "files.drop.pending", "files.drop.register"]) await assert.rejects(w.tools.get(t2).run({ eid: "A" }, { caller: "cli" }), { code: "denied" }, `${t2} from a non-device`);
   await B.tool("files.receive", { on: true });
   await assert.rejects(A.tool("files.send", { path: src, to: "a browser" }), { code: "not_found" }, "a browser is no target");
   await assert.rejects(A.tool("files.send", { path: src, to: "laptop" }), { code: "not_found" }, "not oneself");
@@ -149,8 +161,8 @@ test("a damaged drop is refused: the file does not appear, the drop stays for an
 test("the server's bounds: a file over the cap, a server holding as much as it will, an open drop that never finished, and an expired drop", () => {
   let T = 1_000_000;
   const st = createDropStore({ dir: dir("drop-cap-"), maxBytes: 100, homeBytes: 150, ttlMs: 1000, now: () => T });
-  const k = newDropKey().pub;
-  st.register("B", k, { eid: "B", sig: "s" });
+  const k = "k".repeat(44);
+  st.register("B", "B");
   assert.throws(() => st.begin({ id: "a".repeat(30), from: "A", to: "B", total: 2, size: 101, eph: k }), { code: "too_large" });
   const id = "b".repeat(30); st.begin({ id, from: "A", to: "B", total: 2, size: 90, eph: k }); st.put(id, "A", 0, Buffer.alloc(40)); st.put(id, "A", 1, Buffer.alloc(40)); st.finish(id, "A");
   assert.throws(() => st.begin({ id: "c".repeat(30), from: "A", to: "B", total: 2, size: 90, eph: k }), { code: "no_room" }, "the server holds as much as it will");
@@ -177,19 +189,23 @@ test("files.deliver: the server's own file to one of the person's computers, sea
   assert.equal(fs.readFileSync(landed, "utf8"), "delivered ".repeat(1000));
 });
 
-test("a key the server alone vouches for is refused: a swapped drop key, or one signed by something that is not on the identity list, seals nothing", async t => {
+test("the receiving key comes from the identity list, never the server: an entry the list does not carry seals nothing, and a drop sealed to another of the person's computers does not open on the real receiver", async t => {
   const w = world(t);
   const A = w.computer("A"), B = w.computer("B", { receive: true });
   await until(() => w.tools.get("files.drop.targets").run({}, { caller: "device:A" }).then(r => r.devices.find(d => d.id === "B" && d.ready)));
   const src = path.join(A.files, "x.txt"); fs.writeFileSync(src, "x");
-  // the server swaps in its own key for B's (keeping B's signature, which signed another key)
   const keys = path.join(w.root, "drop", "keys.json"); const m = JSON.parse(fs.readFileSync(keys, "utf8"));
-  const real = m.B; m.B = { ...real, pub: newDropKey().pub }; fs.writeFileSync(keys, JSON.stringify(m));
-  await assert.rejects(A.tool("files.send", { path: src, to: "desktop" }), { code: "not_verified" }, "a swapped key");
+  const real = m.B;
+  // the server names an entry the identity list does not carry (its own, say): nothing is sealed
+  m.B = { eid: "attacker" }; fs.writeFileSync(keys, JSON.stringify(m));
+  await assert.rejects(A.tool("files.send", { path: src, to: "desktop" }), { code: "not_verified" }, "an entry not on the list");
   await assert.rejects(w.tools.get("files.deliver").run({ path: src, device: "desktop" }, { caller: "cli" }), { code: "not_verified" }, "the server's own deliver checks it too");
-  m.B = { ...real, eid: "attacker", sig: sigOf("attacker", real.pub) }; fs.writeFileSync(keys, JSON.stringify(m));
-  await assert.rejects(A.tool("files.send", { path: src, to: "desktop" }), { code: "not_verified" }, "signed by something not on the list");
+  // the server names another entry that IS on the list (A's): the file is sealed to A, so B, the intended receiver, cannot open it and nothing lands
+  m.B = { eid: "A" }; fs.writeFileSync(keys, JSON.stringify(m));
+  await A.tool("files.send", { path: src, to: "desktop" });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal(fs.existsSync(path.join(B.inbox, "x.txt")), false, "B could not open a drop sealed to A's key");
   m.B = real; fs.writeFileSync(keys, JSON.stringify(m));
-  assert.equal((await A.tool("files.send", { path: src, to: "desktop" })).sent, "x.txt", "the real key still works");
-  void B;
+  assert.equal((await A.tool("files.send", { path: src, to: "desktop" })).sent, "x.txt", "the real entry still works");
+  await until(() => fs.existsSync(path.join(B.inbox, "x.txt")));
 });

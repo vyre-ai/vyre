@@ -324,6 +324,7 @@ export const OPEN = new Set([
   "spaces.invites.preview",
   "spaces.list",
   "spaces.members.list",
+  "spaces.identity.devices",
   "spaces.move.plan",
   "spaces.roles.names",
   "spaces.status",

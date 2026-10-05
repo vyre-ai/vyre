@@ -557,10 +557,11 @@ install_wrapper() {
 }
 
 # The Space helper (box/vyre `space-helper`): the root path unit that starts a Space's Twenty store and firewalls it from the agents, on vyred's request. It records the
-# image vyre runs, so it is installed once the container is up. Best effort: without it a Space has no store on this server and Vyre says so.
+# image vyre runs, so it is installed once the container is up. It is required: a space on a server runs on Twenty, and without the helper (or its images) it
+# would have no store. A failure stops the install with the helper's own cause (an image that could not be pulled names the image and the registry's reason).
 install_space_helper() {
   [ "$DRY" != 1 ] && [ -z "${VYRE_WRAPPER:-}" ] || return 0
-  priv env "VYRE_DIR=$DIR" "$WRAPPER" space-helper install || say "note: could not set up the Space helper; Spaces have no records store on this server until: sudo vyre space-helper install"
+  priv env "VYRE_DIR=$DIR" "$WRAPPER" space-helper install || die "the Space helper could not be set up (the cause is the line above), so a space on this server would have no records store. Vyre is running but unfinished; fix the cause, then run: sudo vyre space-helper install, and pair the server after it"
 }
 
 # Start the stack. VYRE_DIR and SSH_CONNECTION are passed on because sudo drops them, and the
