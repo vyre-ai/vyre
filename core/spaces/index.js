@@ -923,7 +923,7 @@ export default {
     const lendKey = (/** @type {string} */ space, /** @type {string} */ device) => `lend/${space}/${device}`;
     const lendSync = (/** @type {string} */ key) => { try { const r = /** @type {any} */ (db.prepare("SELECT value FROM spaces_kv WHERE key = ?").get(key)); return r ? JSON.parse(r.value) : null; } catch { return null; } };
     /** The kernel's compute offers for a lent computer, the ONE mechanism: the Space's side (an owner or admin) and the member's own side, bound to the computer's key. A Space with no kernel has only the stored record. */
-    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member) => {
+    const kernelOffers = async (/** @type {string} */ spaceId, /** @type {any} */ dev, /** @type {boolean} */ on, /** @type {any} */ meta, /** @type {any} */ _role, /** @type {string} */ member, /** @type {boolean} */ again = false) => {
       const h = kernelHandle(spaceId);
       const offers = h && h.gateway && h.gateway.grants && h.gateway.grants.offers;
       if (!h || !offers || typeof offers.lend !== "function") return false;
@@ -935,8 +935,9 @@ export default {
       let kdev = dev.eid;
       if (h.hosted === false && dev.eid === ownDeviceEid(meta) && typeof h.call === "function") { try { const me = await h.call("lent.whoami", []); if (me && typeof me.device === "string" && me.device) kdev = me.device; } catch { /* the home did not answer: the entry id stands */ } }
       const act = (/** @type {any} */ kc) => (on ? offers.lend(kc.chain, { member, device: kdev, device_key: kdev }, kc.proof) : offers.unlend(kc.chain, { member, device: kdev }, kc.proof));
-      try {
-        try { await act(k); }
+      /** Run one act that needs the person's yes; a space on a server asks with a one-use challenge, which this computer answers (its own key; on a development build the software key) and the act goes again. */
+      const withYes = async (/** @type {(kc: any) => Promise<any>} */ run) => {
+        try { return await run(k); }
         catch (e) {
           // A space on a server: its home asks for the person's yes on THIS act with a one-use challenge. This computer answers with the person's own key (the hardware signer, or a software key on a development
           // build) and the same act goes again with that proof; with no key to answer, the refusal stands and carries the challenge for a surface that can sign.
@@ -945,7 +946,15 @@ export default {
           const proof = await answerChallenge(ch, spaceId);
           ctx.log.warn(`lend: the home asked for a yes (${String(/** @type {any} */ (e).code)}); this computer ${proof ? "answered it" : "has no key to answer with"}; challenge ${Object.keys(ch).join(",")}`);
           if (!proof) throw e;
-          await act(await kctxOf({ ...meta, kernel_proof: proof }, spaceId));
+          return await run(await kctxOf({ ...meta, kernel_proof: proof }, spaceId));
+        }
+      };
+      try {
+        await withYes(act);
+        // Granting a computer again after its access ended is the reinstate (the sealing process refuses a lease for a removed computer until an owner or admin says yes): it goes with the new lend, under the
+        // kernel's own role check, and a person who may not reinstate gets that refusal in words.
+        if (on && again && h.gateway.leases && typeof h.gateway.leases.reinstate === "function") {
+          await withYes(kc => (h.hosted === false ? (kc.proof && kc.proof.presence !== undefined ? h.gateway.leases.reinstate(null, { member, device: kdev }, kc.proof) : h.gateway.leases.reinstate(null, { member, device: kdev })) : h.gateway.leases.reinstate(kc.chain, { member, device: kdev, proof: kc.proof && kc.proof.presence })));
         }
       } catch (e) { ctx.log.warn(`lend: the kernel refused: ${/** @type {any} */ (e).code || ""} ${String(/** @type {any} */ (e).hidden_reason || "")}`); throw plainKernelError(e); }
       return kdev;
@@ -1013,7 +1022,7 @@ export default {
           }
           const dev = await deviceOf(i.device, meta);
           if (!(await isEnrolled(dev.eid, row.id))) throw refuse("That device is not in this space. Add it first.", "device_removed");
-          const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id));
+          const viaKernel = await kernelOffers(row.id, dev, true, meta, m ? m.role : "owner", /** @type {string} */ (s.id), Boolean(cur));
           const first = cur && cur.first_grant_at ? cur.first_grant_at : now();
           const next = { lent: true, kernel: Boolean(viaKernel), ...(typeof viaKernel === "string" ? { kdevice: viaKernel } : {}), device: dev.eid, device_person: s.id, first_grant_at: first, allowed_by: cur && cur.allowed_by ? cur.allowed_by : s.id, at: now() };
           await kv.put(key, next);
