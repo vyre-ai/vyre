@@ -26,7 +26,7 @@ export function toData(/** @type {any} */ r) {
   const d = {
     title: r.title, state: r.state, body: r.body ?? null, list: r.list ?? null, priority: r.priority ?? 0, pinned: Boolean(r.pinned), tags: typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || []),
     project: r.project ?? null, thread: r.thread ?? null, source: r.source ?? null, added_by: r.source_name ?? null, created: r.created, updated: r.updated,
-    deleted_at: iso(r.deleted_at), done_at: iso(r.done_at),
+    removed_at: iso(r.deleted_at), done_at: iso(r.done_at),
   };
   if (r.kind === "note") return d;
   return { ...d, kind: r.kind, at: iso(r.at), tz: r.tz ?? null, floating: Boolean(r.floating), wall: r.wall ?? null, date: r.date ?? null, repeat: r.repeat == null ? null : typeof r.repeat === "string" ? r.repeat : JSON.stringify(r.repeat),
@@ -41,30 +41,63 @@ export function fromRecord(/** @type {any} */ rec, /** @type {"reminder"|"note"}
     id: rec.id, kind: type === "note" ? "note" : d.kind, title: d.title ?? "", body: d.body ?? null, list: d.list ?? null, priority: d.priority ?? 0, parent: null, project: d.project ?? null, thread: d.thread ?? null,
     tags: typeof d.tags === "string" ? d.tags : "[]", pinned: d.pinned ? 1 : 0, state: d.state ?? "open", at: ms(d.at), tz: d.tz ?? null, floating: d.floating ? 1 : 0, wall: d.wall ?? null, date: d.date ?? null,
     repeat: d.repeat ?? null, due: null, duration_ms: d.duration_ms ?? null, snooze_until: ms(d.snooze_until), next_fire: d.next_fire ?? null, created: d.created ?? 0, updated: d.updated ?? 0,
-    done_at: ms(d.done_at), deleted_at: ms(d.deleted_at), source: d.source ?? null, source_name: d.added_by ?? null, where_: null, waits_on: d.waits_on ?? null, run_count: d.run_count ?? 0,
+    done_at: ms(d.done_at), deleted_at: ms(d.removed_at), source: d.source ?? null, source_name: d.added_by ?? null, where_: null, waits_on: d.waits_on ?? null, run_count: d.run_count ?? 0,
     last_result: d.last_result ?? null, paused: d.paused ? 1 : 0, waits_on_fired: d.waits_on_fired ?? null,
   };
 }
 
-/** A to-do's extras (what a Task has no field for) ride in the Task's `form`, which is plain data. */
-const TODO_FORM = ["list", "priority", "pinned", "tags", "project", "thread", "tz", "floating", "wall", "date", "source", "source_name", "created"];
+/**
+ * What the planner keeps on a to-do that is nobody's to read or edit: its time-of-day bookkeeping, who added it, a plain project name. One hidden field of the `task` record (`planner`, JSON). The things
+ * a person sets (list, priority, tags, pinned, repeat) are real fields of the type, so a view, a filter and the app see them like on any task.
+ */
+const CARRIER = ["tz", "floating", "wall", "date", "thread", "source", "source_name", "created", "deleted_at", "project_name"];
+const carrierOf = (/** @type {any} */ r) => JSON.stringify(Object.fromEntries(CARRIER.map(k => [k, k === "project_name" ? (isProjectUrn(r.project) ? null : r.project ?? null) : r[k] ?? null]).filter(([, v]) => v !== null && v !== undefined && v !== 0)));
+const readCarrier = (/** @type {any} */ v) => { try { return v ? JSON.parse(String(v)) : null; } catch { return null; } };
 
-/** A Task made by the planner as a planner row, or null for any other Task. */
-export function fromTask(/** @type {any} */ t) {
-  const p = t.form && t.form.planner;
+/** A project that is a link to a Project record rides as the Task's own `project`; a plain name stays in the carrier. */
+const isProjectUrn = (/** @type {any} */ v) => typeof v === "string" && /^vyre:\/\/[^/\s]+\/project\/[A-Za-z0-9_-]+$/.test(v);
+
+/**
+ * A Task made by the planner as a planner row, or null for any other Task. `t` is the task as the kernel gives it (the record's words laid over the authority); `d` is the task record's data.
+ * @param {any} t @param {any} d
+ */
+export function fromTask(t, d) {
+  const p = readCarrier(d && d.planner);
   if (!p) return null;
   const state = t.state === "done" ? "done" : t.state === "skipped" ? "cancelled" : "open";
-  const timed = Boolean(p.wall);
-  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: p.list ?? null, priority: p.priority ?? 0, parent: null, project: p.project ?? null, thread: p.thread ?? null,
-    tags: typeof p.tags === "string" ? p.tags : "[]", pinned: p.pinned ? 1 : 0, state, at: timed && t.due != null ? t.due : null, tz: p.tz ?? null, floating: p.floating ? 1 : 0, wall: p.wall ?? null,
-    date: p.date ?? null, repeat: null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
-    deleted_at: null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
+  return { id: t.id, kind: "todo", title: t.title, body: t.note ?? null, list: d.list ?? null, priority: d.priority ?? 0, parent: t.parent ?? null, assignee: t.doer && t.doer.kind === "agent" ? t.doer.id : null, project: t.project ?? p.project_name ?? null, thread: p.thread ?? null,
+    tags: typeof d.tags === "string" ? d.tags : "[]", pinned: d.pinned ? 1 : 0, state, at: t.due ?? null, tz: p.tz ?? null, floating: p.floating ? 1 : 0, wall: p.wall ?? null,
+    date: p.date ?? null, repeat: typeof d.repeat === "string" ? d.repeat : null, due: p.date ?? null, duration_ms: null, snooze_until: null, next_fire: null, created: p.created ?? t.created_at, updated: t.updated_at, done_at: state === "open" ? null : t.updated_at,
+    deleted_at: p.deleted_at ?? null, source: p.source ?? null, source_name: p.source_name ?? null, where_: null, waits_on: null, run_count: 0, last_result: null, paused: 0, waits_on_fired: null, _task: true };
 }
+
+/** The record fields of a to-do that are not its words: what a person sets, and the hidden carrier. */
+const todoFields = (/** @type {any} */ r) => ({
+  ...(r.list ? { list: r.list } : {}), ...(r.priority ? { priority: r.priority } : {}), ...(r.pinned ? { pinned: true } : {}),
+  tags: typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || []), ...(r.repeat ? { repeat: typeof r.repeat === "string" ? r.repeat : JSON.stringify(r.repeat) } : {}), planner: carrierOf(r),
+});
 
 /** A to-do row as the Task it is made as. */
 export function toTaskSpec(/** @type {any} */ r, /** @type {{ kind: string, id: string, space: string }} */ doer) {
-  const planner = Object.fromEntries(TODO_FORM.map(k => [k, k === "tags" ? (typeof r.tags === "string" ? r.tags : JSON.stringify(r.tags || [])) : r[k] ?? null]));
-  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), form: { planner } };
+  return { title: r.title, doer, output: { kind: "note" }, source: "manual", ...(r.at != null ? { due: r.at } : {}), ...(r.body ? { note: String(r.body).slice(0, 400) } : {}), ...(r.parent ? { parent: r.parent } : {}), ...(isProjectUrn(r.project) ? { project: r.project } : {}), fields: todoFields(r) };
+}
+
+/** The `records.update` patch for a to-do row's changed fields: the words, due time, parent and project (the kernel routes those through `tasks.edit`) and the fields beside them, with a cleared one as null. @param {any} r @param {string[]} keys */
+export function taskEdit(r, keys) {
+  /** @type {any} */ const p = {};
+  if (keys.includes("title")) p.title = r.title;
+  if (keys.includes("body")) p.note = r.body ? String(r.body).slice(0, 400) : null;
+  if (keys.includes("at") || keys.includes("wall")) p.due = r.at != null ? new Date(r.at).toISOString() : null;
+  if (keys.includes("parent")) p.parent = r.parent ?? null;
+  if (keys.includes("project")) { p.project = isProjectUrn(r.project) ? r.project : null; }
+  const f = todoFields(r);
+  if (keys.includes("list")) p.list = f.list ?? null;
+  if (keys.includes("priority")) p.priority = f.priority ?? 0;
+  if (keys.includes("pinned")) p.pinned = Boolean(f.pinned);
+  if (keys.includes("tags")) p.tags = f.tags;
+  if (keys.includes("repeat")) p.repeat = f.repeat ?? null;
+  if (keys.some(k => CARRIER.includes(k) && k !== "created") || keys.includes("project") || keys.includes("thread")) p.planner = f.planner;
+  return p;
 }
 
 /** An Event record as a calendar row. */
@@ -92,14 +125,15 @@ export async function openRecords(o) {
   /** @type {Map<string, any>} */ const settings = new Map();
   const stateRefs = new Map();
   /** @type {Map<string, number>} writes queued and not yet done, by item: a change event that arrives meanwhile is ours and older than the working set */ const writing = new Map();
-  const busy = (/** @type {string} */ id, /** @type {number} */ d) => writing.set(id, Math.max(0, (writing.get(id) || 0) + d));
+  /** @type {Map<string, number>} a count that moves with every change the planner makes to an item: an outside change read before it moved is older than the working set */ const epoch = new Map();
+  const busy = (/** @type {string} */ id, /** @type {number} */ d) => { writing.set(id, Math.max(0, (writing.get(id) || 0) + d)); epoch.set(id, (epoch.get(id) || 0) + 1); };
 
   // ---- Writes, in order -----------------------------------------------------------------------
   let queue = Promise.resolve();
   /** @type {Error | null} */ let failed = null;
-  const enqueue = (/** @type {() => Promise<any>} */ fn) => {
+  const enqueue = (/** @type {() => Promise<any>} */ fn, /** @type {string} */ what = "") => {
     const p = queue.then(fn);
-    queue = p.catch(e => { failed ||= e; log(`planner: a change was not saved (${e && e.message})`); });
+    queue = p.catch(e => { failed ||= e; log(`planner: a change was not saved${what ? ` (${what})` : ""} (${e && e.message})`); });
     return p.catch(() => {});
   };
   /** Wait for every queued write; the first failure since the last flush is thrown once. */
@@ -139,8 +173,13 @@ export async function openRecords(o) {
   async function load() {
     for (const rec of await pages("reminder")) { items.set(rec.id, fromRecord(rec, "reminder")); versions.set(rec.id, rec.version); known.set(rec.id, rec.version); }
     for (const rec of await pages("note")) { items.set(rec.id, fromRecord(rec, "note")); known.set(rec.id, rec.version); versions.set(rec.id, rec.version); }
-    const tasks = K.tasks && K.tasks.list ? await K.tasks.list(chain(), { doer: owner() }).catch(() => []) : [];
-    for (const t of tasks) { const r = fromTask(t); if (r) items.set(r.id, r); }
+    // To-dos are the Space's Tasks: the planner's are the task records that carry its hidden `planner` field.
+    for (const rec of await pages("task").catch(() => [])) {
+      if (!rec.data.planner) continue;
+      const t = await K.tasks.get(chain(), rec.id).catch(() => null);
+      const r = t && fromTask(t, rec.data);
+      if (r) items.set(r.id, r);
+    }
     for (const rec of await pages("planner_firing")) {
       const f = { id: rec.data.fid, item: rec.data.item, kind: rec.data.kind, due: rec.data.due, ring: rec.data.ring ?? 1, missed: rec.data.missed ? 1 : 0, state: rec.data.state, fired_at: rec.data.fired_at ?? 0,
         next_ring: rec.data.next_ring ?? null, acked_at: rec.data.acked_at ?? null, action: rec.data.action ?? null, by: rec.data.by ?? null, until: rec.data.until ?? null };
@@ -153,7 +192,8 @@ export async function openRecords(o) {
   const eventSpec = (/** @type {number} */ from, /** @type {number} */ to) => ({ filter: { and: [{ field: "starts_at", op: "lt", value: iso(to) }, { field: "starts_at", op: "gte", value: iso(from - 40 * DAY) }] } });
   /** Every Event record that starts in [from, to) or began a while before and is still going: read straight from the records, for an agenda. */
   async function eventsBetween(/** @type {number} */ from, /** @type {number} */ to) {
-    const recs = await pages("event", eventSpec(from, to));
+    // The Event type is the Space's shared one (defined once for every Space); a Space that has none yet has no events.
+    const recs = await pages("event", eventSpec(from, to)).catch(e => { if (e && /** @type {any} */ (e).code === "unknown_type") return []; throw e; });
     return recs.map(r => fromEvent(r, now())).filter(r => r && r.start < to && (r.end ?? r.start) >= from);
   }
   /** Refresh the working set of events the planner will ring for: a day back to 14 days ahead. @returns {Promise<{ added: number, changed: number, removed: number, events: number }>} */
@@ -206,13 +246,17 @@ export async function openRecords(o) {
     async create(row0, w = {}) {
       const row = norm(row0);
       if (row.kind === "todo") {
-        const t = await K.tasks.request(chain(), toTaskSpec(row, { kind: "person", id: owner(), space }));
+        // A to-do for the person is the planner's own request (the service made it); one given to an assistant is the person's, so the assistant is its doer under them.
+        const given = row.assignee ? { kind: "agent", id: String(row.assignee), space } : null;
+        if (given && !w.chain) throw Object.assign(new Error("only the person gives a to-do to an assistant"), { code: "denied" });
+        const t = await K.tasks.request(given ? w.chain : chain(), toTaskSpec(row, given || { kind: "person", id: owner(), space }));
         const made = { ...row, id: t.id, _task: true };
         items.set(t.id, made);
         return made;
       }
       const type = typeOf(row);
-      const rec = await K.records.create(chain(), type, toData(row));
+      // A field with nothing in it is left out: a store may keep an empty field as no field (Twenty does), and a create that said null would then read back as something else.
+      const rec = await K.records.create(chain(), type, Object.fromEntries(Object.entries(toData(row)).filter(([, v]) => v !== null && v !== undefined)));
       versions.set(rec.id, rec.version); known.set(rec.id, rec.version);
       const made = { ...row, id: rec.id };
       items.set(rec.id, made);
@@ -224,25 +268,38 @@ export async function openRecords(o) {
       const r = items.get(String(id));
       if (!r) return;
       const was = r.state;
+      const before = { deleted_at: r.deleted_at };
       fields = norm(fields);
       Object.assign(r, fields);
       if (r._task) {
-        if (fields.state && fields.state !== was) {
-          const c = w.chain;
-          const undo = { state: was, done_at: r.done_at ?? null };
+        const keys = Object.keys(fields);
+        const c = w.chain;
+        const undo = { state: was, done_at: r.done_at ?? null, deleted_at: before.deleted_at ?? null };
+        const edit = taskEdit(r, keys);
+        const stateChange = fields.state && fields.state !== was ? fields.state : null;
+        // In order: the words and form first, then the state, each under the chain that may do it. A refusal puts the working set back.
+        if (Object.keys(edit).length || stateChange) {
+          busy(r.id, 1);
           void enqueue(async () => {
             try {
-              if (!c) throw Object.assign(new Error("a to-do is finished by the person, not by an assistant"), { code: "denied" });
-              if (fields.state === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
-              else if (fields.state === "cancelled") await K.tasks.skip(c, r.id, "cancelled in the planner");
-            } catch (e) { Object.assign(r, undo); throw e; }
+              const mine = r.assignee ? c : chain();
+              if (Object.keys(edit).length) {
+                // One records.update: the gateway routes the words, due time, parent and project through tasks.edit and writes the rest as plain fields.
+                const who = mine || chain();
+                const cur = await K.records.get(who, "task", r.id);
+                if (cur) await K.records.update(who, "task", r.id, edit, cur.version);
+              }
+              if (stateChange === "done") { await K.tasks.start(c, r.id).catch(() => {}); await K.tasks.complete(c, r.id, { note: "Done in the planner", sources: [`vyre://${space}/task/${r.id}`] }); }
+              else if (stateChange === "cancelled") { if (!c) throw Object.assign(new Error("a to-do is cancelled by the person"), { code: "denied" }); await K.tasks.skip(c, r.id, "cancelled in the planner"); }
+              else if (stateChange === "open") { await K.tasks.reopen(c || chain(), r.id); }
+            } catch (e) { Object.assign(r, undo); throw e; } finally { busy(r.id, -1); }
           });
         }
         return;
       }
       const type = typeOf(r);
       // Only the fields that changed: an edit made in the app meanwhile to any other field stays.
-      const full = toData(r), named = Object.keys(fields).map(k => (k === "source_name" ? "added_by" : k));
+      const full = toData(r), named = Object.keys(fields).map(k => (k === "source_name" ? "added_by" : k === "deleted_at" ? "removed_at" : k));
       const patch = Object.fromEntries(Object.entries(full).filter(([k]) => named.includes(k)));
       if (!Object.keys(patch).length) return;
       busy(r.id, 1);
@@ -252,7 +309,7 @@ export async function openRecords(o) {
           const rec = await updateRecord(type, r.id, patch, ref);
           if (rec) versions.set(r.id, rec.version);
         } finally { busy(r.id, -1); }
-      });
+      }, `${type} ${Object.keys(patch).join(",")}`);
     },
     /** @returns {any[]} */
     list({ kind, state: st = "open", list, project, pinned, tag, limit = 100, deleted = false } = /** @type {any} */ ({})) {
@@ -286,8 +343,8 @@ export async function openRecords(o) {
       const ref = { rid: /** @type {string | null} */ (null), version: /** @type {number | null} */ (null) };
       refs.set(row.id, ref);
       void enqueue(async () => {
-        const rec = await K.records.create(chain(), "planner_firing", { fid: row.id, item: row.item, kind: row.kind, due: row.due, ring: row.ring, missed: Boolean(row.missed), state: row.state, fired_at: row.fired_at,
-          next_ring: row.next_ring, acked_at: row.acked_at, action: row.action, by: row.by, until: row.until });
+        const rec = await K.records.create(chain(), "planner_firing", Object.fromEntries(Object.entries({ fid: row.id, item: row.item, kind: row.kind, due: row.due, ring: row.ring, missed: Boolean(row.missed), state: row.state, fired_at: row.fired_at,
+          next_ring: row.next_ring, acked_at: row.acked_at, action: row.action, by: row.by, until: row.until }).filter(([, v]) => v !== null && v !== undefined)));
         ref.rid = rec.id; ref.version = rec.version;
       });
     },
@@ -304,7 +361,7 @@ export async function openRecords(o) {
           const cur = await K.records.get(chain(), "planner_firing", ref.rid); return K.records.update(chain(), "planner_firing", ref.rid, data, cur.version);
         });
         ref.version = rec.version;
-      });
+      }, `planner_firing ${Object.keys(fields).join(",")}`);
     },
     /** @returns {any} */ ringing: (/** @type {string} */ item) => [...firings.values()].filter(f => f.item === String(item) && f.state === "ringing").sort((a, b) => b.fired_at - a.fired_at)[0],
     allRinging: () => [...firings.values()].filter(f => f.state === "ringing").sort((a, b) => a.fired_at - b.fired_at),
@@ -330,18 +387,30 @@ export async function openRecords(o) {
     async external(/** @type {{ type: string, id: string }} */ e) {
       const same = (/** @type {any} */ a, /** @type {any} */ b) => { const strip = (/** @type {any} */ r) => { const { updated: _u, ...d } = toData(r); return JSON.stringify(d); }; return strip(a) === strip(b); };
       if (e.type === "task") {
+        // Our own change is still on its way: what the Task shows now is older than the working set.
+        if ((writing.get(e.id) || 0) > 0) return;
+        const seen = epoch.get(e.id) || 0;
         const t = await K.tasks.get(chain(), e.id).catch(() => null);
-        const row = t && fromTask(t);
+        const rec = t ? await K.records.get(chain(), "task", e.id).catch(() => null) : null;
+        if ((writing.get(e.id) || 0) > 0 || (epoch.get(e.id) || 0) !== seen) return;
+        const row = t && rec && fromTask(t, rec.data);
         const old = items.get(e.id);
-        if (!row || !old || old.state === row.state) return;
-        Object.assign(old, { state: row.state, done_at: row.done_at, updated: row.updated });
+        if (!row || !old) return;
+        // What changed on the Task, from the app or a Flow: the words, the due time, the fields beside them and the state. The planner's own working fields (its next ring) stay.
+        const keys = ["title", "body", "list", "priority", "tags", "pinned", "repeat", "parent", "project", "state", "at", "assignee"];
+        const changed = keys.filter(k => JSON.stringify(old[k] ?? null) !== JSON.stringify(row[k] ?? null));
+        if (!changed.length) return;
+        for (const k of changed) old[k] = row[k];
+        if (changed.includes("state")) { old.done_at = row.done_at; old.updated = row.updated; }
         o.onExternal?.(old, "changed");
         return;
       }
       if (e.type !== "reminder" && e.type !== "note") return;
       // Our own writes are still on their way: whatever the record shows now is older than the working set.
       if ((writing.get(e.id) || 0) > 0) return;
+      const seen = epoch.get(e.id) || 0;
       const rec = await K.records.get(chain(), e.type, e.id).catch(() => null);
+      if ((writing.get(e.id) || 0) > 0 || (epoch.get(e.id) || 0) !== seen) return;
       if (!rec) { const old = items.get(e.id); if (old) { items.delete(e.id); o.onExternal?.(old, "removed"); } return; }
       if (known.get(e.id) === rec.version) return;
       known.set(e.id, rec.version); versions.set(e.id, rec.version);
