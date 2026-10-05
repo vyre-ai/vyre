@@ -123,7 +123,9 @@ public class VyreSignerModule: Module {
     // The agreement key (ECDH, no prompt per use): a P-256 key in the Secure Enclave (a software Keychain key in the simulator, the same API), no biometry flag, usable while the phone is unlocked.
     // `agree(epk)` is the 32-byte shared secret, the raw X coordinate; HKDF and AES-GCM stay portable code in the app (lib/keywrap.js). Its public point goes in the identity entry as `agree`.
     AsyncFunction("agreePublic") { (create: Bool) throws -> String in
-      guard let key = try findKey(agreeAlias) ?? (create ? makeKey(agreeAlias, biometric: false) : nil) else { throw fail("ERR_NO_KEY", "there is no agreement key") }
+      var found = findKey(agreeAlias)
+      if found == nil && create { found = try makeKey(agreeAlias, biometric: false) }
+      guard let key = found else { throw fail("ERR_NO_KEY", "there is no agreement key") }
       guard let pub = SecKeyCopyPublicKey(key) else { throw fail("ERR_NO_KEY", "the key has no public half") }
       var error: Unmanaged<CFError>?
       guard let raw = SecKeyCopyExternalRepresentation(pub, &error) as Data?, raw.count == 65, raw.first == 0x04 else { throw fail("ERR_NO_KEY", "the public key is not an uncompressed P-256 point: \(describe(error))") }
@@ -132,7 +134,7 @@ public class VyreSignerModule: Module {
 
     AsyncFunction("agree") { (epk: String) throws -> String in
       guard let point = fromB64url(epk), point.count == 65, point.first == 0x04 else { throw fail("ERR_INPUT", "that is not a public key") }
-      guard let key = try findKey(agreeAlias) else { throw fail("ERR_NO_KEY", "there is no agreement key") }
+      guard let key = findKey(agreeAlias) else { throw fail("ERR_NO_KEY", "there is no agreement key") }
       var error: Unmanaged<CFError>?
       let attrs: [String: Any] = [kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom, kSecAttrKeyClass as String: kSecAttrKeyClassPublic, kSecAttrKeySizeInBits as String: 256]
       guard let peer = SecKeyCreateWithData(point as CFData, attrs as CFDictionary, &error) else { throw fail("ERR_INPUT", "that is not a public key") }
