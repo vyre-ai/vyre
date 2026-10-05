@@ -4,13 +4,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { isBasicRow, gatedPath, backupLine, NEEDS_SERVER } from "./basic.js";
 
-test("a personal space with no server is Basic; a server or a team space is not", () => {
-  assert.equal(isBasicRow({ setup: { who: "personal" }, home: { kind: "this-computer" } }), true);
-  assert.equal(isBasicRow({ setup: { who: "personal" }, home: null }), true);
-  assert.equal(isBasicRow({ setup: { who: "personal" }, home: { kind: "server" } }), false);
-  assert.equal(isBasicRow({ setup: { who: "team" }, home: { kind: "server" } }), false);
+test("a space is Basic only when the box says tier basic; cloud and team spaces are not", () => {
+  assert.equal(isBasicRow({ tier: "basic" }), true);
+  assert.equal(isBasicRow({ tier: "cloud" }), false);
+  assert.equal(isBasicRow({ setup: { who: "personal" }, home: { kind: "this-computer" } }), false, "no inference from other fields");
   assert.equal(isBasicRow(null), false);
-  assert.equal(NEEDS_SERVER, "This needs a space on a server");
+  assert.equal(NEEDS_SERVER, "This needs a Cloud space");
 });
 
 test("records, flows, the planner and the calendar are gated; chats and projects are not", () => {
@@ -19,8 +18,10 @@ test("records, flows, the planner and the calendar are gated; chats and projects
 });
 
 test("the backup line: not backed up with no team, the destination when the box says, nothing when it is unknown", () => {
-  assert.equal(backupLine({ basic: true, teams: [] }), "Not backed up: join a team or add a server");
-  assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }], status: { to: "Harlow" } }), "Backed up, encrypted, to Harlow");
+  const NB = "Not backed up: join a team or set up My Cloud";
+  assert.equal(backupLine({ basic: true, teams: [] }), NB);
+  assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }], status: { to: "Harlow", state: "ok" } }), "Backed up, encrypted, to Harlow");
+  assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }], status: { to: null } }), NB);
   assert.equal(backupLine({ basic: true, teams: [{ name: "Harlow" }] }), null, "a team exists but the box has not said: no claim");
   assert.equal(backupLine({ basic: false, teams: [] }), null);
 });

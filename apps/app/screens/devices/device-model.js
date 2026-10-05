@@ -1,10 +1,12 @@
 // @ts-check
 // A device's spaces on the real box (UX-17, UX-18): spaces.devices.list rows as the lines the Device screen shows, and the words for each refusal. Pure.
 
+import { spaceName } from "../shell/real-model.ts";
+
 /** @typedef {{ space: string, name?: string, label?: string, displayName?: string, role?: string, enrolled?: boolean, removed?: boolean, lent?: boolean }} SpaceRow */
 
 /** The name a person knows a space by. @param {SpaceRow} r */
-export const spaceTitle = (r) => r.displayName || r.label || r.name || r.space;
+export const spaceTitle = (r) => spaceName({ id: r.space, name: r.name || "", label: r.label, displayName: r.displayName, tier: /** @type {any} */ (r).tier, setup: /** @type {any} */ (r).setup });
 
 /** Spaces the device is in now, and spaces it is not (removed or never enrolled). @param {SpaceRow[]} rows */
 export function split(rows) {

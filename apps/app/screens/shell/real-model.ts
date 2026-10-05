@@ -2,7 +2,7 @@
 import { isBasicRow } from "./basic.js";
 import type { ShellSpace } from "@vyre/ui";
 
-export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; home?: { kind?: string } | null; who?: string; setup?: { who?: string; picks?: { who?: string } } | null };
+export type SpaceRow = { id: string; name: string; label?: string; displayName?: string; status?: string; role?: string; tier?: "basic" | "cloud" | "pro"; who?: string; setup?: { who?: string; picks?: { who?: string } } | null };
 export type IdentityRow = { exists?: boolean; name?: string; label?: string; pending?: boolean };
 export type Me = { name: string; sub: string; vyreName: string };
 export type ShellData = { me: Me; spaces: ShellSpace[] };
@@ -11,21 +11,24 @@ const ROLE: Record<string, string> = { owner: "Owner", admin: "Admin", manager: 
 export const roleWord = (r?: string): string => (r && ROLE[r]) || "Member";
 
 /**
- * What a space is called: the name the person gave it (displayName), else its label, else its address without ".vyre.run". Only the person's own personal space is "Home". A space with no readable name
- * is "Space" and the gap is logged, so it is found and fixed instead of dressed up as something else. Never an id.
+ * What a space is called (the user's names, CHAT 5 Oct 03:30Z): a personal space with no server is "Personal"; a personal space on the person's own server is "My Cloud"; a team space is called by its
+ * own name (the name the person gave it, else its label, else its address without ".vyre.run"). A team space with no readable name is "Space" and the gap is logged. Never an id, and never "Basic" or "Pro".
  */
 const idLike = (v: unknown) => typeof v === "string" && /^spc_/i.test(v.trim());
 const nameable = (v: unknown): string => (typeof v === "string" && v.trim() && !idLike(v) ? v.trim().replace(/\.vyre\.run$/i, "") : "");
 export const isPersonal = (s: SpaceRow): boolean => s.who === "personal" || s.setup?.who === "personal" || s.setup?.picks?.who === "personal";
 export const spaceName = (s: SpaceRow): string => {
+  if (s.tier === "basic") return "Personal";
+  if (isPersonal(s) && (s.tier === "cloud" || s.tier === "pro")) return "My Cloud";
   const n = nameable(s.displayName) || nameable(s.label) || nameable(s.name);
   if (n) return n;
-  if (isPersonal(s)) return "Home";
+  if (isPersonal(s)) return "Personal";
   console.warn(`space ${s.id} has no readable name (displayName, label and name are empty or ids); showing "Space"`);
   return "Space";
 };
 
-export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : roleWord(s.role));
+/** The line under a space in the switcher: the person's role there (a team space also carries its small "Cloud" tag), or that it is still being set up. */
+export const spaceSub = (s: SpaceRow): string => (s.status && s.status !== "done" ? "Setting up" : [!isPersonal(s) && (s.tier === "cloud" || s.tier === "pro") ? "Cloud" : "", roleWord(s.role)].filter(Boolean).join(" · "));
 
 export const ALL: ShellSpace = { id: "all", name: "All spaces", sub: "One list, everything" };
 

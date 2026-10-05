@@ -6,7 +6,7 @@ import { ADD_SERVER, NEEDS_SERVER } from "./basic.js";
 export function NeedsServer({ teams, onOpenTeam, onAddServer }: { teams: readonly ShellSpace[]; onOpenTeam: (id: string) => void; onAddServer: () => void }) {
   return (
     <View className="gap-s4 p-s4">
-      <Card><EmptyState title={NEEDS_SERVER} body="Chats and projects work here as they are. This part lives on a server." /></Card>
+      <Card><EmptyState title={NEEDS_SERVER} body="Chats and projects work in Personal as they are. This part lives in a Cloud space." /></Card>
       {teams.length ? (
         <View className="gap-s2">
           <SectionLabel>Your team spaces</SectionLabel>

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Card, Divider, IconTile, Row, Text, type IconName } from "@vyre/ui";
@@ -10,7 +10,7 @@ import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
 import { backupLine } from "../shell/basic.js";
 import { VERSION } from "./data";
-import { MOCK } from "../../src/real/box";
+import { MOCK, tool } from "../../src/real/box";
 import { useMembers } from "../spaces/state";
 
 /** Settings, rebuilt around who sets what: you, your devices, the space showing, more places, Vyre. One card per section; every row opens something. */
@@ -27,7 +27,9 @@ export function SettingsHome() {
   useEffect(() => { void loadMembers(); }, [loadMembers]);
   // On a Basic personal space (no server) say where it is backed up, or that it is not.
   const showing = shell.spaces.find((x) => x.id === space);
-  const backup = backupLine({ basic: Boolean(showing?.basic), teams: shell.spaces.filter((x) => x.id !== "all" && !x.basic) });
+  const [backupStatus, setBackupStatus] = useState<{ to?: string | null; last?: number | string | null; state?: string } | null>(null);
+  useEffect(() => { if (showing?.basic && !MOCK) tool("memory.backup.status").then((d) => setBackupStatus(d as never)).catch(() => setBackupStatus(null)); }, [showing?.basic]);
+  const backup = backupLine({ basic: Boolean(showing?.basic), teams: shell.spaces.filter((x) => x.id !== "all" && !x.basic), status: backupStatus });
   const state = (href: string) => (href === "/u/settings/devices" ? `${devices} ${devices === 1 ? "device" : "devices"}` : undefined);
   return (
     <Frame title="Settings" top>

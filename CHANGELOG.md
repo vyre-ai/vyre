@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the user's names for spaces. A personal space with no server (the box's tier "basic") is "Personal"; a personal space on the person's own server (tier "cloud") is "My Cloud"; a team space keeps its own name with a small "Cloud" tag in the switcher. The Basic gate reads only the box's tier field. Gated places say "This needs a Cloud space" with a "Set up My Cloud" button; the backup line reads "Not backed up: join a team or set up My Cloud" and takes the destination from memory.backup.status ({ to, last, state }). The Spaces screen and Devices use the same names.
+
 - fix(app): no Tailscale in the app. This computer drops the guests, agent-node and Tailnet Lock cards and the funnel lines in Webhooks, and gets a Wink network card from network.wink.status (each space's link, the path, speed and devices, the relay, a second VPN, clock skew); a device's direct path reads "Direct". feat(app): in Drive, a chat folder the caller is not in (open: false) shows its title greyed and does not open.
 
 - feat(app): a Basic personal space (a personal space with no server) says "This needs a space on a server" where Records, Contacts, flows, Kits, the planner, tasks and the calendar would be, lists the team spaces the person is in (each opens that space) and offers "Add your own server"; chats and projects work as normal. Settings shows the backup line: "Not backed up: join a team or add a server" with no team, the destination when the box says, nothing when it is unknown.
