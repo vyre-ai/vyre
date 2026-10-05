@@ -12,10 +12,10 @@ import type { FieldEnv } from "../fields/types";
 import { MONTHS, WEEKDAYS, dayKey, fieldOf, monthWeeks, rowsByDay, startMonth, stepMonth, titleOf, val, viewDefOf, viewRows } from "./logic.js";
 
 /** The calendar: a month grid on a date field on a wide screen; a dot per day and an agenda below on a phone. */
-export function CalendarView({ def, rows, env, onOpen }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void }) {
+export function CalendarView({ def, rows, env, onOpen, view, noFilter }: { def: any; view?: string; noFilter?: boolean; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void }) {
   const { phone } = useUiTheme();
-  const vd = viewDefOf(def);
-  const calFilter = vd.calendar?.filter;
+  const vd = viewDefOf(def, undefined, view);
+  const calFilter = noFilter ? undefined : vd.calendar?.filter;
   const allRows = rows;
   rows = useMemo(() => viewRows(allRows, calFilter), [allRows, calFilter]);
   const f = vd.calendar && fieldOf(def, vd.calendar.date);

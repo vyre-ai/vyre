@@ -1,6 +1,6 @@
 // @ts-check
 // "Add your phone": the ticket ring's own logic (deck/js/phone-code.js), independent of tailnet's
-// still-unbuilt relay.pair.ticket mint call — see docs/work/launch-surfaces.md "Add your phone".
+// still-unbuilt relay.pair.ticket mint call — see team/archive/work-journals/launch-surfaces.md "Add your phone".
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";

@@ -32,6 +32,11 @@
     "docs:shots": "node scripts/docs-shots",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
+  "dependencies": {
+    "@noble/ciphers": "1.3.0",
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0"
+  },
   "files": [
     "bin",
     "build.json",
@@ -47,6 +52,8 @@
     "modules",
     "names/worker/id-messages.js",
     "stores",
+    "wink/forwarder",
+    "!wink/forwarder/**/*_test.go",
     "records",
     "box",
     "apps/app/dist",
@@ -57,7 +64,6 @@
     "scripts/dev-enrol-software-key.mjs",
     "scripts/dev-sign-proof.mjs",
     "docs",
-    "!docs/work",
     "!docs/proposals",
     "!docs/design",
     "!docs/**/*.png",

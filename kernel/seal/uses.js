@@ -76,6 +76,15 @@ export function requestBind(r) {
   const canon = v => (v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]` : `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`);
   return crypto.createHash("sha256").update(canon({ c: String(r.connector), m: String(r.method).toUpperCase(), p: canonicalPath(String(r.path).split(/[?#]/)[0]), q: r.query ?? null, b: r.body === undefined ? null : r.body, h: r.headers ? Object.fromEntries(Object.entries(r.headers).map(([k, v]) => [String(k).toLowerCase(), v])) : null, u: r.upload ?? null, s: r.saveTo ?? null })).digest("base64url");
 }
+/**
+ * The binding of an approval to ONE outward act that is not a service request (a drive share, a deliver, a Flow's call step): a hash of the action, the resource and the input it will run with.
+ * The held task records it as `form.bind` and the act, when it runs, passes the same one, so an approved id cannot release a different act (the one rule beside requestBind).
+ * @param {{ action: string, resource: string, input?: any }} a @returns {string}
+ */
+export function actBind(a) {
+  const canon = v => (v === null || typeof v !== "object" ? JSON.stringify(v) : Array.isArray(v) ? `[${v.map(canon).join(",")}]` : `{${Object.keys(v).filter(k => v[k] !== undefined).sort().map(k => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`);
+  return crypto.createHash("sha256").update(canon({ a: String(a.action), r: String(a.resource), i: a.input === undefined ? null : a.input })).digest("hex");
+}
 /** One URN segment (a credential name): no slash, dot segment, encoding or control character. */
 export function segment(x) { const s = String(x ?? ""); if (!s || /[/\\%]|^\.+$|[\u0000-\u001f\u007f]/.test(s)) throw Object.assign(new Error("bad_input"), { code: "bad_input" }); return s; }
 const EVENTS = { allow: { vault: "vault.used", drive: "file.accessed" }, deny: "access.refused" };

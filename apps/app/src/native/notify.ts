@@ -3,7 +3,7 @@
 // showing a notice are here; no push token is requested, stored or sent anywhere. See
 // notify-model.ts for the transport interface that a person-owned push path would implement.
 // On Android a notice while the app is closed comes over Vyre's own connection (see
-// docs/work/native-core.md, "Notices when the app is closed").
+// team/archive/work-journals/native-core.md, "Notices when the app is closed").
 
 import { Linking, Platform } from "react-native";
 import Notify, { type PermissionState } from "../../modules/vyre-notify";

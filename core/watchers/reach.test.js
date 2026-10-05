@@ -15,8 +15,6 @@ import { tempHome, writeModule } from "../../test/helpers.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(fs.readFileSync(path.join(here, "module.json"), "utf8"));
-// the callers list the real tools declare (core/watchers/index.js): the person's surfaces, a module and a model; a state-changing tool open to anyone that declared none would be the person's surfaces only (RG-1)
-const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"];
 const REACH = {
   "watchers.list": "anyone", "watchers.test": "anyone", "watchers.card": "anyone", "watchers.logs": "anyone", "watchers.items": "anyone",
   "watchers.create": "asked", "watchers.preset": "asked", "watchers.pause": "anyone",
@@ -36,7 +34,10 @@ test("reach holds against the real registry: asked for a model, person for delet
   const stub = { ...manifest, requires: [], needs: {}, teaches: {} };
   const names = Object.keys(REACH);
   writeModule(root, "watchers", stub, `export default { async start(ctx) {
-    for (const name of ${JSON.stringify(names)}) ctx.tool(name, { ...(${JSON.stringify(REACH)}[name] === "anyone" ? { callers: ${JSON.stringify(CALLERS)} } : {}), input: { type: "object" }, run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
+    // watchers.test and watchers.pause are writes by declaration (kernel-declare, RG-1), so a write open to anyone is the person's surfaces and modules unless the tool names its callers: the real module
+    // does (core/watchers/index.js: people, module, mcp, harness), and a stub that left it out would test the default, not the module.
+    const OPEN = ["watchers.test", "watchers.pause"];
+    for (const name of ${JSON.stringify(names)}) ctx.tool(name, { input: { type: "object" }, ...(OPEN.includes(name) ? { callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"] } : {}), run: async (input, meta) => ({ ran: name, caller: meta.caller }) });
     return { async stop() {} };
   } };`);
   writeModule(root, "projects", { name: "projects", version: "0.1.0", does: { tools: [{ name: "projects.reach", reach: "modules" }] } },

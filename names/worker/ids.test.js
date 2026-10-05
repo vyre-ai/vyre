@@ -430,7 +430,7 @@ test("cors: claim, append and update accept the app's origin (and only its exact
     assert.equal(pre.h("access-control-allow-origin"), "https://app.vyre.run");
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://evil.example", headers: { "access-control-request-method": "POST" } })).status, 405, p);
   }
-  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"], ["POST", "/v1/names/code"]]) {
+  for (const [method, p] of [["POST", "/v1/ids/alias"], ["DELETE", "/v1/ids/alias"], ["POST", "/v1/ids/release"], ["POST", "/v1/names/claim"], ["POST", "/v1/names/release"]]) {
     assert.equal((await raw(w, "OPTIONS", p, { origin: "https://app.vyre.run", headers: { "access-control-request-method": method } })).status, 405, `${method} ${p} has no preflight`);
     const r = await raw(w, method, p, { origin: "https://app.vyre.run", body: { name: "alex" } });
     assert.equal(r.status, 403, `${method} ${p} still refuses a foreign Origin`);
@@ -528,4 +528,29 @@ test("ids: continuing one's own record needs a readable age: an unreadable or la
   assert.equal(continuesOwnRecord({ by: "o", via: "d1", ts: 1000 }, { by: "o", via: "d1", since: 5 }), true);
   assert.equal(continuesOwnRecord({ by: "o", via: "d1", ts: 1000 }, { by: "o", via: "d2", since: 5 }), false);
   assert.equal(continuesOwnRecord(null, { by: "e1", since: 1 }), false);
+});
+
+test("ids: the directory accepts a device's self-signed agree op, resolves the entry with its point, and refuses a second one and another device's", async t => {
+  const w = world(t), alex = await person(w), phone = alex.first;
+  data(await alex.claim("alex"));
+  const laptop = await key("laptop");
+  w.clock.t += HOUR;
+  const add = await alex.append({ type: "add", entry: laptop.entry("device") }, phone);
+  data(await alex.post("/v1/ids/append", { name: "alex", ops: [add] }));
+  await alex.accept(add);
+  w.clock.t += HOUR;
+  const pt = crypto.createECDH("prime256v1"); pt.generateKeys();
+  const point = pt.getPublicKey().toString("base64url");
+  // the laptop cannot set the phone's point; the phone sets its own
+  const foreign = await alex.append({ type: "agree", target: phone.eid, agree: point }, laptop);
+  assert.equal(code(await alex.post("/v1/ids/append", { name: "alex", ops: [foreign] })), "not_allowed");
+  const mine = await alex.append({ type: "agree", target: phone.eid, agree: point }, phone);
+  assert.equal(data(await alex.post("/v1/ids/append", { name: "alex", ops: [mine] })).seq, 2);
+  await alex.accept(mine);
+  const resolved = data(await alex.get("/v1/ids/resolve?name=alex"));
+  assert.equal(resolved.ops.length, 3);
+  const st = await C.verifyChain(resolved.ops, { now: w.clock.t });
+  assert.equal(st.entries.find(e => e.eid === phone.eid).agree, point);
+  const second = await alex.append({ type: "agree", target: phone.eid, agree: point }, phone);
+  assert.equal(code(await alex.post("/v1/ids/append", { name: "alex", ops: [second] })), "exists");
 });

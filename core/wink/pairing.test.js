@@ -25,7 +25,7 @@ function world(o = {}) {
   const tools = new Map();
   const events = /** @type {any[]} */ ([]);
   const drops = /** @type {any[]} */ ([]);
-  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => events.push([n, d]) }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
+  const ctx = { store: { db }, config: { name: "alex" }, log() {}, events: { emit: (n, d) => { if (o.failEmit && o.failEmit === n) throw new Error(`${n} is not declared`); events.push([n, d]); } }, tool: (n, def) => tools.set(n, def), call: async (tool, input) => { if (o.call) { const r = await o.call(tool, input); if (r !== undefined) return r; } if (tool === "relay.route.id") return { data: { box: o.box || "Qm94S2V5" } }; drops.push([tool, input]); return { data: { closed: true } }; } };
   const typed = /** @type {any[]} */ ([]);
   const finishes = /** @type {any[]} */ ([]);
   const minted = /** @type {any[]} */ ([]);
@@ -963,7 +963,8 @@ test("Q-1, app side: the app shows the same three words from its own keys and no
       } });
     const r = await w.call("wink.pair.server", { payload: serverQrPayload(seedBytes, "ws://relay.test"), target: { kind: "identity", id: ME } });
     assert.equal(r.ack, null);
-    await new Promise(x => setTimeout(x, 60));
+    // wait for the pairing to settle (bounded), not a fixed 60 ms: the polls take a moment on a busy box
+    for (let k = 0; k < 150; k++) { const st = (await w.call("wink.pair.status", { pairing: r.pairing })).state; if (st !== "waiting" && st !== "confirm") break; await new Promise(x => setTimeout(x, 20)); }
     return { w, r, seen };
   };
   const ok = await run(false);
@@ -1197,6 +1198,24 @@ test("Add a phone: the phone that redeems the QR is held, both sides show the sa
   assert.equal((await w.call("wink.phone.pairing")).asking, false);
   assert.equal(w.events.some(e => e[0] === "wink.joined" && e[1].kind === "phone"), true);
   assert.equal(await w.p.phone.hold({ id: "second", name: "Kit's phone" }), false, "the ticket was one use: a second device is not held for it");
+});
+
+test("Add a phone: the phone's key-agreement point goes to the identity list with its key, so it opens private chats at once (a point not on the curve is dropped)", async () => {
+  const kp = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
+  const point = Buffer.concat([Buffer.from([4]), Buffer.from(kp.x, "base64url"), Buffer.from(kp.y, "base64url")]).toString("base64url");
+  const offCurve = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 1)]).toString("base64url");
+  const pub = Buffer.alloc(32, 7).toString("base64url");
+  for (const [agree, passed] of [[point, point], [offCurve, undefined], [Buffer.alloc(33, 4).toString("base64url"), undefined], [undefined, undefined]]) {
+    /** @type {any[]} */ const enrols = [];
+    const w = world({ ...OFF, call: async (tool, input) => { if (tool === "spaces.identity.enrol") { enrols.push(input); return { data: { eid: "e1" } }; } return undefined; } });
+    await phoneOpen(w);
+    assert.equal(await w.p.phone.hold(PHONE), true);
+    await w.call("wink.phone.wait", { entry: { publicKey: pub, label: "iPhone", ...(agree ? { agree } : {}) } }, { caller: "device:phoneabcdef" });
+    assert.equal((await w.call("wink.phone.pair.answer", { yes: true, words: "Amber  Coral phoneabcdef" })).yes, true);
+    assert.equal(enrols.length, 1);
+    assert.equal(enrols[0].publicKey, pub);
+    assert.equal(enrols[0].agree, passed, agree ? "only a point on the curve goes to enrol" : "no point, none passed");
+  }
 });
 
 test("Add a phone: a no, or the wrong words, adds nothing and lets the phone go", async () => {
@@ -1640,4 +1659,37 @@ test("the enclave key must still stand on the identity's directory list: checked
   // another key under the same entry id is not this device's key
   clock += 11 * 60_000; entries = [{ eid: "e_phone", kind: "device", enclave: "BBBB" }];
   assert.deepEqual(await live(), { ok: false });
+});
+
+test("the home server is the newest COMPLETED pairing: a channel with no completion mark is the oldest, a newer completed pairing wins, a removed one is gone", async () => {
+  const w = world();
+  const ch = { relay: "ws://relay.test", route: "r", box: "b" };
+  assert.equal(w.p.homeServerId(), null, "nothing paired");
+  w.p.meta.set("channel:srv_legacy", ch);   // made before the completion mark existed
+  assert.equal(w.p.homeServerId(), "srv_legacy", "an older pairing still counts");
+  w.p.meta.set("channel:srv_a", ch); w.p.meta.set("paired:srv_a", { at: 100 });
+  w.p.meta.set("channel:srv_b", ch); w.p.meta.set("paired:srv_b", { at: 200 });
+  assert.equal(w.p.homeServerId(), "srv_b", "the newest completed pairing is the home");
+  w.p.meta.set("channel:srv_half", ch);   // a channel with no completion mark never beats a completed one
+  assert.equal(w.p.homeServerId(), "srv_b");
+  w.p.meta.del("channel:srv_b"); w.p.meta.del("paired:srv_b");
+  assert.equal(w.p.homeServerId(), "srv_a", "once the newest is removed the next completed one is the home");
+});
+
+test("a pairing that fails AFTER the server was adopted gives back the channel it wrote, so the failed server is never this computer's home; a completed pairing is the home", async () => {
+  const rows = (w) => /** @type {any[]} */ (w.db.prepare("SELECT k FROM wink_meta WHERE k LIKE 'channel:%' OR k LIKE 'probe:%' OR k LIKE 'paired:%'").all()).map(r => r.k);
+  const bad = world({ failEmit: "wink.server-paired" });
+  const r = await bad.call("wink.pair.server", { code: "wink-k7qm-4p2x", target: { kind: "identity", id: ME } });
+  await settle();
+  assert.equal((await bad.call("wink.pair.status", { pairing: r.pairing })).state, "failed");
+  assert.deepEqual(rows(bad), [], "a failed pairing leaves no channel, probe or completion mark");
+  assert.equal(bad.p.homeServerId(), null, "and no home");
+  assert.equal(bad.p.devices.list(ME).length, 0);
+  const good = world();
+  const g = await good.call("wink.pair.server", { code: "wink-k7qm-4p2x", target: { kind: "identity", id: ME } });
+  await settle();
+  assert.equal((await good.call("wink.pair.status", { pairing: g.pairing })).state, "done");
+  const [d] = good.p.devices.list(ME);
+  assert.equal(good.p.homeServerId(), d.id, "a completed pairing is the home");
+  assert.ok(good.p.meta.get(`paired:${d.id}`).at > 0, "with its completion mark");
 });

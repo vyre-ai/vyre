@@ -18,6 +18,7 @@ const SAFE = "open to the person's assistant, safe only for a daemon-stamped ses
 
 /** What each OPEN tool does, in its own words. A tool in OPEN with no line here fails the generator, so a new open tool must say what it is. */
 export const OPEN_NOTES = Object.freeze({
+  "spaces.identity.devices": "lists the devices of a person you share a space with: id and key-agreement point only, public data, nothing for a stranger",
   "files.drive.space.list": "lists a Space drive folder the caller may read; the kernel decides",
   "files.drive.space.read": "reads a Space drive file the caller may read; the kernel decides",
   "records.linked": "lists the records linked to one, under the caller's own chain; the kernel decides each",
@@ -33,6 +34,7 @@ export const OPEN_NOTES = Object.freeze({
   "records.types": "lists the record types; the kernel hides what the caller may not see",
   "records.list": "lists records under the caller's own chain; the kernel decides every row",
   "records.get": "reads one record under the caller's own chain; the kernel decides",
+  "records.reference": "reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides",
   "records.create": "writes a record under the caller's own chain; an assistant's chain is narrowed by the kernel and a sealed value goes through a placeholder",
   "records.update": "edits a record under the caller's own chain; the kernel decides",
   "records.seal-put": "puts a sealed value through the sealing process: the kernel and the sealer decide, never the module",
@@ -149,8 +151,6 @@ export const OPEN_NOTES = Object.freeze({
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",
   "wink.storage.status": "reads whether each storage device is there",
-  "work.engineer.revise": "edits the Engineer's proposed definition, which is checked again and gets its own card",
-  "work.engineer.talk": "talks to the Engineer, which only admins can do; explain reads a definition back",
   "work.team.add": "adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen",
 });
 

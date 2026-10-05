@@ -11,7 +11,7 @@ import { CONTACT } from "../../../kernel/conformance/suite.js";
 import { nameOf } from "../space-store.js";
 import { names } from "../provision.js";
 
-process.env.VYRE_STORE = process.env.VYRE_STORE || "auto"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
+process.env.VYRE_STORE = process.env.VYRE_STORE || "twenty"; process.env.VYRE_SEAL_DEV = "1"; process.env.VYRE_KERNEL_PATH_RULE = "1";
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-home-"));
 const t0 = Date.now(); const lap = (s) => console.log(`${((Date.now() - t0) / 1000).toFixed(1)}s ${s}`);
 const d = await start({ root, log: lap, kernel: true });
@@ -22,7 +22,7 @@ const model = () => k.chains.fromFacts({ kind: "agent_session", vouched: true, a
 const R = k.gateway.records;
 try {
   await R.define(owner(), { add_types: [CONTACT] });
-  const c = await R.create(owner(), "contact", { name: "Pat Harlow" });
+  const c = await R.create(owner(), "contact", { name: "Pat Juniper" });
   // Roles carry no seal.put; a first-party stand-in module with that one action puts the value (the person-typed path needs a presence proof from a real device).
   await k.grants.installModule("proof", { actions: ["seal.put"] });
   const putter = k.chains.fromFacts({ kind: "module", module: "proof", first_party: true });

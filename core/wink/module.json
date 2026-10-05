@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "description": "Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.",
   "roles": [
-    "box"
+    "box",
+    "local"
   ],
   "requires": [
     "relay"
@@ -57,7 +58,8 @@
         "effect": "write"
       },
       {
-        "name": "wink.invite", "outward": true,
+        "name": "wink.invite",
+        "outward": true,
         "reach": "person",
         "effect": "write"
       },
@@ -127,7 +129,8 @@
         "effect": "read"
       },
       {
-        "name": "wink.server.status", "effect": "read",
+        "name": "wink.server.status",
+        "effect": "read",
         "reach": "person"
       },
       {
@@ -290,6 +293,14 @@
       {
         "name": "wink.device.paired",
         "reach": "modules"
+      },
+      {
+        "name": "wink.home.id",
+        "reach": "modules"
+      },
+      {
+        "name": "wink.device.call",
+        "reach": "modules"
       }
     ]
   },
@@ -319,6 +330,7 @@
       "wink.pair-answered",
       "wink.pair-failed",
       "wink.server-adopted",
+      "wink.server-paired",
       "wink.server-released",
       "wink.server-reset",
       "wink.server-release",
@@ -327,7 +339,9 @@
       "storage.removed",
       "storage.unreachable",
       "wink.relay-applied",
-      "wink.network-changed", "wink.device-needs-repair"],
+      "wink.network-changed",
+      "wink.device-needs-repair"
+    ],
     "on": [
       "relay.code-asked",
       "relay.invite-redeemed",
@@ -344,6 +358,8 @@
     "vault": [
       "per-storage"
     ],
-    "daemon": ["dataStores"]
+    "daemon": [
+      "dataStores"
+    ]
   }
 }

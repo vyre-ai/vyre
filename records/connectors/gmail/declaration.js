@@ -10,7 +10,7 @@ const H = (/** @type {string} */ n) => `payload.headers[name=${n}].value`;
 export default defineConnector({
   id: "gmail", label: "Gmail", version: 1,
   base_url: "https://gmail.googleapis.com",
-  auth: { type: "oauth", authorize_uri: "https://accounts.google.com/o/oauth2/v2/auth", token_uri: "https://oauth2.googleapis.com/token", scopes: [READ, COMPOSE], also: ["service-account"] },
+  auth: { type: "google", scopes: [READ, COMPOSE] },
   // Gmail's own cap is far above this; it is a Space-wide ceiling so one busy Flow cannot starve the others.
   rate: { per_minute: 600, retry_after: true },
   ops: {

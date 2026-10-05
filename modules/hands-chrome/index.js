@@ -1,5 +1,5 @@
 // @ts-check
-// hands-chrome: Chrome control over one long-lived CDP connection per computer (docs/work/computers.md).
+// hands-chrome: Chrome control over one long-lived CDP connection per computer (team/archive/work-journals/computers.md).
 //
 // Every tool resolves which agent's computer it means the same way core/computers does (an
 // agent's own hands call as `mcp:agent:<name>`; anyone else must say `agent`), asks

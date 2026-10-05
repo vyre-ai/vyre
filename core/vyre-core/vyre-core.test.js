@@ -1,7 +1,7 @@
 // @ts-check
 // vyre-core phase 1 (ADR 0040): only the owner's uid gets an answer, and a write proves itself to
 // core's own keys with a method core can check itself. Runs on Linux; the _vyre account and
-// LOCAL_PEERCRED are a Mac check (docs/work/vyre-core-plan.md).
+// LOCAL_PEERCRED are a Mac check (team/archive/work-journals/vyre-core-plan.md).
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

@@ -1,7 +1,7 @@
 // @ts-check
 // The REAL kernel for module tests: `createKernel` (gateway, grants store, tasks, room, rule evaluator, event log, in-memory store), nothing assembled by hand and no
 // internals of a fake to poke. People get roles through `grants.setRole` and agents through `grants.addActor` and `grants.create`, each with a presence proof the way
-// kernel/chats.test.js does it. What is still a stand-in is labelled SHIM here and counted in docs/work/assistant.md:
+// kernel/chats.test.js does it. What is still a stand-in is labelled SHIM here and counted in team/archive/work-journals/assistant.md:
 //   SHIM(model): kernel.model is the test's scripted provider (the real door needs a provider and the sealing process; a model provider stand-in is allowed).
 //   SHIM(presence): the presence verifier accepts a proof built for exactly this operation (a headless test has no hardware signer).
 // Tests only.

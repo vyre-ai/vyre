@@ -226,12 +226,14 @@ export const PERSON_ONLY = new Map([
   ["wink.storage.pair", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.pick", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
   ["wink.storage.remove", "needs the person's Face ID or presence: pairing, devices, offers and sharing"],
-  ["work.engineer.approve", "would let an assistant widen its own authority: approves the assistant's own proposal"],
   ["work.know.accept", "would let an assistant widen its own authority: approves the assistant's own proposal"],
 ]);
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  // what is connected (which services have a credential, which Google accounts are signed in) and the recipe to log one mailbox: the person's own, and the person's proven assistant under their grants; never a guest or an unproven caller
+  "connectors.declared",
+  "connectors.logging",
   "files.drive.space.list",
   "files.drive.space.read",
   "records.linked",
@@ -247,6 +249,7 @@ export const OPEN = new Set([
   "records.types",
   "records.list",
   "records.get",
+  "records.reference",
   "records.create",
   "records.update",
   "records.seal-put",
@@ -327,6 +330,7 @@ export const OPEN = new Set([
   "spaces.invites.preview",
   "spaces.list",
   "spaces.members.list",
+  "spaces.identity.devices",
   "spaces.move.plan",
   "spaces.roles.names",
   "spaces.status",
@@ -363,8 +367,6 @@ export const OPEN = new Set([
   "wink.storage.discover",
   "wink.storage.offers",
   "wink.storage.status",
-  "work.engineer.revise",
-  "work.engineer.talk",
   "work.team.add",
 ]);
 

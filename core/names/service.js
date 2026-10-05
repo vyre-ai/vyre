@@ -14,7 +14,7 @@ import tls from "node:tls";
 import path from "node:path";
 import { identifier } from "./identity.js";
 import { hostedOrigins } from "../config/index.js";
-import { verdict, codeHash, base32 } from "./rules.js";
+import { verdict, base32 } from "./rules.js";
 
 const HSTS = "max-age=31536000";
 
@@ -160,13 +160,10 @@ export function names(deps) {
     return { set: async (fqdn, value) => { const n = label(fqdn); await dir.acme(n, value); return n; }, clear: n => dir.acmeClear(n) };
   };
   const v4 = s => s.node && s.node.ips.find(a => a.includes("."));
-  /** 128 bits, in the same shape the directory hands out: abcd-efgh-... */
-  const newCode = () => base32(crypto.randomBytes(16)).slice(0, 26).replace(/(.{4})(?=.)/g, "$1-");
-
   /**
    * Reserve the name, point it at this box, get its certificate, start serving. In the background.
    * With the directory the reservation comes first and is quick: it answers before Tailscale is up
-   * ("Found and named"), with the one-time recovery code when the name is new. Run it again once
+   * ("Found and named"). Run it again once
    * the tailnet is connected and it carries on to the address and the certificate.
    * @param {string} [raw]
    */
@@ -201,16 +198,14 @@ export function names(deps) {
 
   /** @param {string} name */
   async function claimNamed(name) {
-    if (working) return { ...status(), recoveryCode: null };
+    if (working) return status();
     const fqdn = `${name}.${domain()}`;
     state.phase = "dns"; state.why = null;
-    let code = null;
     try {
       const r = await /** @type {NonNullable<typeof dir>} */ (dir).claim(name);
-      code = r.code;
       deps.save({ name, network: { via: "vyre.run" } });
-      if (code) ctx.events.emit("name.claimed", { name: fqdn });
-    } catch (e) { fail(e); return { ...status(), recoveryCode: null }; }
+      if (r.fresh) ctx.events.emit("name.claimed", { name: fqdn });
+    } catch (e) { fail(e); return status(); }
     working = (async () => {
       const s = await tailscale();
       const ip = v4(s);
@@ -227,8 +222,7 @@ export function names(deps) {
       deps.save({ network: { address: address(fqdn) } });
       state.phase = "serving";
     })().catch(fail).finally(() => { working = null; });
-    // The code is the answer to this one call. It is not in status(), an event or a log.
-    return { ...status(), recoveryCode: code };
+    return status();
   }
 
   /** The tailnet's own name, with `tailscale cert`, when there is no vyre.run name. */

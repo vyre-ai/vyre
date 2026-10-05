@@ -61,7 +61,7 @@ test("the credentials port: the vault provided it once, the launcher gets the to
   for (const [mod, name] of [["sessions", "credentialsPort"], ["agents", "credentialsPort"], ["vault", "sandbox"], ["mcp", "credentialsPort"]]) assert.throws(() => provideOnce({}, mod, name, {}), /may not provide/, `${mod} ${name}`);
   assert.equal(await port.credentials("claude"), tok); assert.equal(await port.credentials("anthropic"), key);
   assert.equal(await port.credentials("codex"), null); assert.equal(await port.credentials("../x"), null); for (const p of ["__proto__", "constructor", "toString"]) assert.equal(await port.credentials(p), null, p);
-  assert.ok(Object.isFrozen(port)); assert.equal(Object.keys(port).join(), "credentials");
+  assert.ok(Object.isFrozen(port)); assert.equal(Object.keys(port).join(), "credentials,apiKey");
   const all = await everything(reg, logs); assert.equal(all.includes(tok) || all.includes(key), false); assert.match(all, /provider-token/);
   await reg("vault.provider.remove", { provider: "claude" }, "cli"); assert.equal(await port.credentials("claude"), null, "removed means gone"); assert.equal(await port.credentials("anthropic"), key);
 });

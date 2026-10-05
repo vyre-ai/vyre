@@ -29,7 +29,7 @@ lookups and bursts.
 We already work this way. The Vyre team is a set of named teammates, one per area, each with:
 
 - a worktree and a branch (`../vyre-<team>`, `work/<team>`), so code never collides;
-- a notes file (`docs/work/<team>.md`: Scope, Done, Doing, Next, Needs from others) that is the
+- a notes file (`team/archive/work-journals/<team>.md`: Scope, Done, Doing, Next, Needs from others) that is the
   source of truth, not the chat history. A fresh session resumes from the notes alone
   (`team/ROSTER.md`'s resume prompt), which is how the team survives logouts and account switches;
 - a lead who routes work and merges, and an integrator who owns main;
@@ -127,7 +127,7 @@ teammate's memory of record:
 - **Where:** `<project home>/.vyre/team/<role>/notes.md`, in the project, so a person can read it,
   edit it and put it under git. A copy of each version is kept in `team_notes` (hash, size, at,
   by) so an edit is never lost and a surface can show the diff.
-- **Shape**, from our own `docs/work/<team>.md`: Scope, Decisions (with who made them and when),
+- **Shape**, from our own `team/archive/work-journals/<team>.md`: Scope, Decisions (with who made them and when),
   Done, Doing, Next, Waiting on (who owns each item). Capped at 8 KB when injected; older Done
   entries roll into `notes-archive.md`, which is searchable but not injected.
 - **When:** the teammate updates notes before it finishes an item. `team.done` refuses to close an

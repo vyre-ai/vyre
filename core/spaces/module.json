@@ -81,6 +81,89 @@
     "name": "spaces.list", "effect": "read",
     "reach": "person"
    },
+  {
+    "name": "spaces.brief", "effect": "read", "reach": "modules"
+  },
+   {
+    "name": "spaces.tier", "effect": "read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.time-zone.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.personal-host.set", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.receipt", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.plan", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.upgrade.run", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.pull", "effect": "write",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.pull-check-source", "effect": "read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.pull-sign", "effect": "write",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.moves.evidence", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.receive", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.receipt", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.moves.finish", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.put", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.put-if", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.get", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.list", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.delete", "effect": "write",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.usage", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.storage.set-cap", "effect": "write",
+    "reach": "person"
+   },
    {
     "name": "spaces.get", "effect": "read",
     "reach": "person"
@@ -318,11 +401,27 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.devices", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.devices.read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.unwrap-drop",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.self",
     "reach": "modules"
    },
    {
     "name": "spaces.identity.device",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.server.of",
     "reach": "modules"
    },
    {
