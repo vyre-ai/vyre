@@ -55,16 +55,16 @@ test("held page: read in full, edit, save, send exactly the edit; discard sends 
   assert.equal(fieldsOf(again)[1].value, "Hi Dana, could we do Friday?");
   assert.equal(editedOf(again, { body: "Hi Dana, could we do Friday?" }), null, "nothing left to change");
 
-  // Send: the edit goes out, to both, once.
+  // Send: the edit goes out, to both, in one message.
   const sent = (await device("gate.approve", { id: a })).data;
   assert.deepEqual(sendOutcome(sent), { ok: true });
-  assert.equal(gmail.got.length, 2, "one message per recipient");
-  assert.match(Buffer.from(JSON.parse(gmail.got[0].body).raw, "base64url").toString("utf8"), /^From: alex@example.com\r\nTo: (dana|kim)@example.com\r\n/);
+  assert.equal(gmail.got.length, 1, "one message");
+  assert.match(Buffer.from(JSON.parse(gmail.got[0].body).raw, "base64url").toString("utf8"), /^From: alex@example.com\r\nTo: dana@example.com, kim@example.com\r\n/);
   assert.equal(gmail.got[0].auth, "Bearer fixture-token");
 
   // Discard: nothing goes.
   const b = await ask("Second", "Never mind");
   assert.ok((await device("gate.reject", { id: b })).data);
   assert.equal((await device("gate.get", { id: b })).data.state, "rejected");
-  assert.equal(gmail.got.length, 2);
+  assert.equal(gmail.got.length, 1);
 });
