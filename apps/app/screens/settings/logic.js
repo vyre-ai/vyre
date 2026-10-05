@@ -71,7 +71,7 @@ function all(/** @type {string} */ space) {
       ["What my assistants can see", "Per space", "/u/settings/seeing", "eye"],
     ] },
     { title: "Devices", rows: [
-      ["Devices", "Phone, computers, servers", "/u/settings/devices", "devices"],
+      ["Devices", "Your phone and computers", "/u/settings/devices", "devices"],
       ["Access", "People, assistants, Kits and Flows", "/u/access", "shield"],
     ] },
     { title: space, rows: [
@@ -85,7 +85,7 @@ function all(/** @type {string} */ space) {
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
-      ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
+      ["Assistants", "Your assistants and agents", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
       ["Updates", "Check for a new version", "/u/settings/updates", "download"],

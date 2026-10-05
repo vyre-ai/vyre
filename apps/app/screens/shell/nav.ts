@@ -18,7 +18,6 @@ export const NAV: NavDef = {
     { id: "flows", label: "Flows", icon: "flows", href: "/u/flows" },
     { id: "assistants", label: "Assistants", icon: "assistants", href: "/u/assistants" },
     { id: "kits", label: "Kits", icon: "box", href: "/u/kits" },
-    { id: "templates", label: "Templates", icon: "file", href: "/u/records/template" },
   ],
   bottom: [
     { id: "search", label: "Search", icon: "search", href: "/u/search" },

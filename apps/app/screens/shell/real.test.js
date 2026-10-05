@@ -64,3 +64,10 @@ test("a box that cannot list spaces is an error with its code, not an empty shel
   const { shellSource } = await import("./real-source.ts");
   await assert.rejects(shellSource(/** @type {any} */ (box({ error: { code: "offline", message: "the box did not answer" } }, { data: ID }))).load(), (/** @type {any} */ e) => e.code === "offline");
 });
+
+import { spaceName as spaceNameOf } from "./real-model.ts";
+test("a space is never called by its id: its name, its label, or Home", () => {
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1" }), "Home");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "spc_x1", label: "harlow" }), "harlow");
+  assert.equal(spaceNameOf({ id: "spc_x1", name: "x", displayName: "Harlow Legal" }), "Harlow Legal");
+});

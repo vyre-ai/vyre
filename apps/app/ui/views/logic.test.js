@@ -128,3 +128,19 @@ test("a sealed field's edit goes through the store's putSealed, never update, an
   assert.equal(seen.ssn.ref, undefined);
   assert.equal(seen.ssn.sealed, "us-ssn");
 });
+
+import { actorWords, eventWhat } from "./logic.js";
+test("the timeline says what happened in words, and who did it as You or a name, never a raw id", () => {
+  assert.equal(eventWhat("walk_case.created"), "created this");
+  assert.equal(eventWhat("contact.updated"), "changed this");
+  assert.equal(eventWhat("sealed"), "sealed a field");
+  assert.equal(eventWhat("Sent the welcome email"), "Sent the welcome email", "an event's own words are kept");
+  assert.equal(eventWhat("thing.did_stuff"), "thing did stuff");
+  const world = { actors: [{ id: "per_a1b2c3", name: "per_a1b2c3", role: "owner" }, { id: "per_d4", name: "Dana Okafor" }, { id: "per_e5", name: "per_e5" }] };
+  assert.equal(actorWords("per_a1b2c3", world, "per_a1b2c3"), "You");
+  assert.equal(actorWords("per_a1b2c3", world, "per_other"), "The owner");
+  assert.equal(actorWords("per_d4", world, "per_a1b2c3"), "Dana Okafor");
+  assert.equal(actorWords("per_e5", world, "x"), "Someone");
+  assert.equal(actorWords("juno", world, "x"), "juno");
+  assert.equal(actorWords(undefined, world, "x"), "Vyre");
+});

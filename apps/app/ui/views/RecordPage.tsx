@@ -22,7 +22,7 @@ import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
 import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
-import { ago, assistantNote, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
+import { actorWords, ago, assistantNote, eventWhat, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -139,7 +139,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
       <Card title="Timeline" actions={<Text size="caption" tone="label">Every change, who and why</Text>}>
         {events.length ? events.map((e) => {
           const l = timelineLine(e);
-          return <TimelineItem key={l.id} actor={world.actors.find((a) => a.id === l.actor)?.name || l.actor || "Vyre"} what={l.what} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
+          return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
         }) : <Text tone="label">Nothing has happened yet.</Text>}
       </Card>
     </View>
