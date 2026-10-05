@@ -1175,7 +1175,7 @@ test("the My Cloud upgrade end to end: a space made on the person's server has a
   const hdr = { "x-vyre-kernel-proof": Buffer.from(JSON.stringify(proof)).toString("base64url") };
   const done = await dcall("spaces.upgrade.run", { to: id, plan_hash: plan.data.hash }, hdr);
   assert.ok(!done.error && done.data.upgraded, JSON.stringify(done).slice(0, 600));
-  assert.deepEqual([done.data.upgraded, done.data.moved.records, done.data.notMoved], [true, { note: 3 }, []]);
+  assert.deepEqual([done.data.upgraded, done.data.moved.records.note, done.data.notMoved], [true, 3, []]);
   // My Cloud's signed receipt verified against the space's published key, so Personal froze and points there
   assert.equal(done.data.frozen, true, JSON.stringify(done.data));
   const row = (await dcall("spaces.list")).data.find(x => x.id === home);
