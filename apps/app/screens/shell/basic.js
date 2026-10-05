@@ -69,3 +69,11 @@ export function storageLine(u, host) {
   const cap = typeof u.cap === "number" && u.cap > 0 ? ` of ${sizeWords(u.cap)}` : "";
   return `Using ${sizeWords(u.used)}${cap} on ${host}`;
 }
+
+/** The caps an owner may pick for every member, in bytes (0 is no cap); the current one is listed even when it is not one of these. @param {number} current @returns {[string, string][]} */
+export function capChoices(current) {
+  const GB = 1024 ** 3;
+  const base = [0, 1 * GB, 5 * GB, 10 * GB, 50 * GB, 100 * GB];
+  const all = base.includes(current) || !Number.isFinite(current) ? base : [...base, current].sort((a, b) => a - b);
+  return all.map((n) => [String(n), n === 0 ? "No cap" : sizeWords(n)]);
+}

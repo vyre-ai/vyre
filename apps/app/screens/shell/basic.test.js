@@ -2,7 +2,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sizeWords, storageLine, hostChoices, isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
+import { capChoices, sizeWords, storageLine, hostChoices, isBasicRow, gatedPath, backupLine, storedLine, NEEDS_SERVER } from "./basic.js";
 
 test("a space is Basic only when the box says tier basic; cloud and team spaces are not", () => {
   assert.equal(isBasicRow({ tier: "basic" }), true);
@@ -51,4 +51,9 @@ test("the storage line: what is used, the cap when there is one, and where", () 
   assert.equal(storageLine({ used: 12 * 1024 ** 2, cap: 1024 ** 3 }, "harlow"), "Using 12 MB of 1 GB on harlow");
   assert.equal(storageLine({ used: 2048, cap: 0 }, "harlow"), "Using 2 KB on harlow");
   assert.equal(storageLine(null, "harlow"), null);
+});
+
+test("the owner's cap choices: no cap and round sizes, with the current one kept in the list", () => {
+  assert.deepEqual(capChoices(0).map(([, l]) => l), ["No cap", "1 GB", "5 GB", "10 GB", "50 GB", "100 GB"]);
+  assert.ok(capChoices(2 * 1024 ** 3).some(([v]) => v === String(2 * 1024 ** 3)));
 });

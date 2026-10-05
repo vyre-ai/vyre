@@ -89,3 +89,12 @@ test("a Keys object is never serialised", async () => {
   keys.lock();
   assert.equal(keys.keys.size, 0);
 });
+
+import fs from "node:fs";
+test("memory's fixed vector (lib/vectors/keywrap.json): the shared secret, the unwrapped key and the holder name match byte for byte", async () => {
+  const v = JSON.parse(fs.readFileSync(new URL("./keywrap-vector.json", import.meta.url), "utf8"));
+  const ecdh = W.ecdhFrom(v.agree_private_jwk);
+  assert.equal(W.b64(await ecdh(W.unb64(v.wrap.epk))), v.shared);
+  assert.equal(W.b64(await W.unwrapWithDevice(v.wrap, ecdh, v.aad)), v.plaintext_key);
+  assert.equal(await W.fingerprint(v.agree_public_jwk), v.holder);
+});
