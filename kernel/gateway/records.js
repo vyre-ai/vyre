@@ -8,10 +8,10 @@ import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { createAggregator } from "../store/query.js";
-import { exprNames } from "../expr/expr.js";
+import { exprNames } from "../../lib/expr/expr.js";
 import { isSealedShape } from "../store/values.js";
 import { expr as defaultExpr } from "../expr/index.js";
-import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../expr/conditions.js";
+import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/expr/conditions.js";
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */

@@ -2,7 +2,7 @@
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
 import { viewDefOf } from "./view-defs.js";
-import { fieldStates, holds } from "./expr/conditions.js";
+import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
 import { eventLine } from "../../../../deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 

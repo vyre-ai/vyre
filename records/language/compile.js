@@ -6,7 +6,7 @@ import { parse, parseSafely } from "./parse.js";
 import { SDK, SDK_VERSION } from "./sdk.js";
 import { LanguageError } from "./errors.js";
 import { parseExpr, exprNames } from "./expr.js";
-import { stageNamesOf } from "../../kernel/expr/conditions.js";
+import { stageNamesOf } from "../../lib/expr/conditions.js";
 import { print } from "./print.js";
 import { compileFlow } from "../../kernel/flows/compile.js";
 import { CORE_TYPES as CORE_DEFS } from "../core-types.js";
