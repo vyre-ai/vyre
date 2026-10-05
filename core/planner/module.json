@@ -49,6 +49,27 @@
           "name": "reminder",
           "label": "Reminder",
           "icon": "IconBell",
+          "views": [
+            {
+              "name": "reminders_calendar",
+              "type": "calendar",
+              "of": "reminder",
+              "label": "Calendar",
+              "dateField": "at"
+            },
+            {
+              "name": "reminders_list",
+              "type": "list",
+              "of": "reminder",
+              "label": "List",
+              "sort": [
+                {
+                  "field": "at",
+                  "dir": "asc"
+                }
+              ]
+            }
+          ],
           "fields": [
             {
               "name": "title",
@@ -92,17 +113,20 @@
             {
               "name": "floating",
               "kind": "boolean",
-              "label": "Follows the planner's zone"
+              "label": "Follows the planner's zone",
+              "internal": true
             },
             {
               "name": "wall",
               "kind": "text",
-              "label": "Time of day (HH:MM)"
+              "label": "Time of day (HH:MM)",
+              "internal": true
             },
             {
               "name": "date",
               "kind": "text",
-              "label": "Date (YYYY-MM-DD)"
+              "label": "Date (YYYY-MM-DD)",
+              "internal": true
             },
             {
               "name": "repeat",
@@ -122,7 +146,8 @@
             {
               "name": "next_fire",
               "kind": "number",
-              "label": "Next ring (ms, the planner's own)"
+              "label": "Next ring (ms, the planner's own)",
+              "internal": true
             },
             {
               "name": "body",
@@ -162,22 +187,26 @@
             {
               "name": "source",
               "kind": "text",
-              "label": "Added by (caller)"
+              "label": "Added by (caller)",
+              "internal": true
             },
             {
               "name": "added_by",
               "kind": "text",
-              "label": "Added by (agent)"
+              "label": "Added by (agent)",
+              "internal": true
             },
             {
               "name": "created",
               "kind": "number",
-              "label": "Created (ms)"
+              "label": "Created (ms)",
+              "internal": true
             },
             {
               "name": "updated",
               "kind": "number",
-              "label": "Updated (ms)"
+              "label": "Updated (ms)",
+              "internal": true
             },
             {
               "name": "removed_at",
@@ -197,12 +226,14 @@
             {
               "name": "run_count",
               "kind": "number",
-              "label": "Times run"
+              "label": "Times run",
+              "internal": true
             },
             {
               "name": "last_result",
               "kind": "text",
-              "label": "Last result"
+              "label": "Last result",
+              "internal": true
             },
             {
               "name": "paused",
@@ -212,7 +243,8 @@
             {
               "name": "waits_on_fired",
               "kind": "number",
-              "label": "Last completion it ran for"
+              "label": "Last completion it ran for",
+              "internal": true
             }
           ]
         },
@@ -276,22 +308,26 @@
             {
               "name": "source",
               "kind": "text",
-              "label": "Added by (caller)"
+              "label": "Added by (caller)",
+              "internal": true
             },
             {
               "name": "added_by",
               "kind": "text",
-              "label": "Added by (agent)"
+              "label": "Added by (agent)",
+              "internal": true
             },
             {
               "name": "created",
               "kind": "number",
-              "label": "Created (ms)"
+              "label": "Created (ms)",
+              "internal": true
             },
             {
               "name": "updated",
               "kind": "number",
-              "label": "Updated (ms)"
+              "label": "Updated (ms)",
+              "internal": true
             },
             {
               "name": "removed_at",

@@ -242,3 +242,36 @@ test("records: a to-do names its project as a link to a Project record, or keeps
   assert.equal(moved.project, p.urn);
   assert.equal((await w.k.tasks.get(w.owner, plain.id)).project, p.urn);
 });
+
+test("records: the engine's own fields are marked internal and the reminder type offers a calendar view laid out by `at`", async t => {
+  const w = await world(t);
+  const types = await w.k.store.types();
+  const rem = types.find(/** @type {any} */ x => x.name === "reminder"), note = types.find(/** @type {any} */ x => x.name === "note");
+  const hidden = (/** @type {any} */ def) => def.fields.filter(/** @type {any} */ f => f.internal === true).map(/** @type {any} */ f => f.name).sort();
+  assert.deepEqual(hidden(rem), ["added_by", "created", "date", "floating", "last_result", "next_fire", "run_count", "source", "updated", "waits_on_fired", "wall"]);
+  assert.deepEqual(hidden(note), ["added_by", "created", "source", "updated"]);
+  for (const person of ["title", "kind", "state", "at", "snooze_until", "body", "list", "priority", "pinned", "tags"]) assert.ok(!rem.fields.find(/** @type {any} */ f => f.name === person).internal, `${person} is the person's`);
+  assert.equal(rem.fields.find(/** @type {any} */ f => f.name === "at").kind, "datetime");
+  const cal = rem.views.find(/** @type {any} */ v => v.type === "calendar");
+  assert.deepEqual([cal.of, cal.dateField], ["reminder", "at"]);
+});
+
+test("records: on a Basic personal space the planner answers that it needs a Cloud space and lists the Cloud spaces the person is in; a Cloud space, or no answer, is not refused", async t => {
+  const { forgetCloudGate } = await import("../../lib/cloud-gate.js");
+  forgetCloudGate();
+  const w = await world(t);
+  w.tier = { tier: "basic", cloud: [{ id: "spc_harlow000001", name: "harlow.example", label: "harlow" }] };
+  const r = await w.call("planner.add", { kind: "reminder", title: "Call juno", wall: "18:00" });
+  assert.equal(r.error.code, "needs_cloud");
+  assert.equal(r.error.message, "Planner needs a Cloud space");
+  assert.ok(!/pro\b|server/i.test(r.error.message), "never Pro or server");
+  assert.equal((await w.call("planner.list", {})).error.code, "needs_cloud", "reads too");
+  assert.equal((await w.call("planner.parse", { text: "alarm 7am" })).error, undefined, "parsing words needs no space");
+  forgetCloudGate();
+  w.tier = { tier: "cloud", cloud: [] };
+  assert.ok(!(await w.call("planner.add", { kind: "reminder", title: "Call juno", wall: "18:00" })).error, "a Cloud space works");
+  forgetCloudGate();
+  w.tier = null;
+  assert.ok(!(await w.call("planner.list", {})).error, "no answer from the spaces module is not Basic");
+  forgetCloudGate();
+});

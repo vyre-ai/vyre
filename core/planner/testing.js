@@ -85,14 +85,14 @@ export async function world(t, { tz = "Asia/Karachi", start = T0, google = fakeG
     log: m => logs.push(m),
     events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
     tool: (name, def) => tools.set(name, def),
-    call: async (tool, input) => (tool === "agents.list" ? { data: w.agents } : google.call(tool, input)),
+    call: async (tool, input) => (tool === "agents.list" ? { data: w.agents } : tool === "spaces.tier" && w.tier ? { data: w.tier } : google.call(tool, input)),
     remote: async () => ({ error: { code: "no_link", message: "no link" } }),
   };
   const handle = await planner.start(ctx);
   t.after(() => handle.stop());
   const R = k.gateway.records;
   const w = {
-    k, events, clock, timers, fired, acked, logs, google, handle, owner, agents: [{ name: "assistant", kind: "assistant" }, { name: "juno", kind: "agent", projects: "*" }, { name: "kit", kind: "agent", projects: "*" }],
+    k, events, clock, timers, fired, acked, logs, google, handle, owner, tier: /** @type {any} */ (null), agents: [{ name: "assistant", kind: "assistant" }, { name: "juno", kind: "agent", projects: "*" }, { name: "kit", kind: "agent", projects: "*" }],
     settled: () => handle.calendar.settled(),
     async call(name, input = {}, caller = "cli") {
       const def = tools.get(name);

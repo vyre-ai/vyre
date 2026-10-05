@@ -12,6 +12,7 @@ import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendar, shapeCal } from "./events.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
 import { callerKind, agentClaim } from "../modules/index.js";
+import { cloudGate } from "../../lib/cloud-gate.js";
 import { isPerson } from "../../lib/caller.js";
 
 /**
@@ -959,6 +960,8 @@ export default {
       run: async (i, meta) => {
         const w = await who(i, meta.caller, meta.thread || null, meta.agent || null);
         const { as: _as, ...rest } = i || {};
+        // A Basic personal space has no store for the planner: it needs a Cloud space, and the answer lists the ones the person is in.
+        if (!local) { const gate = await cloudGate(ctx, K ? K.space : undefined); if (gate) throw gate; }
         if (!K && !local && !(role === "local" && (await checkLink()))) throw fail("the planner keeps its records in the kernel, which is off here", "unavailable");
         if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name, ...(w.thread ? { thread: w.thread } : {}) } });
         // The caller's own chain, for what only the person may do (finishing a to-do is the Task's doer's act).
