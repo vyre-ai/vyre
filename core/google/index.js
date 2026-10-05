@@ -424,22 +424,27 @@ export default {
       }),
     });
 
-    // The Space's calendar sync (core/daemon/calendar-sync.js) reads and writes the account's primary calendar through this, so a connected Google account is kept in step without a second
-    // credential: the token is minted here from the vault item, as for every other call. Calendar events only (the list, one event, insert, patch, delete), by method and exact path shape; the
-    // scope is the narrowest the method needs. Vyre's own modules only: a write here is outward, and the sync holds it for the owner's yes before it ever calls.
+    // The one Google door for Vyre's own modules, by account: the Space's calendar sync (core/daemon/calendar-sync.js) reads and writes the account's Calendar events through it, and a poll
+    // watcher (the Log communications ones) reads Gmail and Calendar through it, so a connected account is kept in step without a second credential: the token is minted here from the vault
+    // item, as for every other call. Calendar events paths (the list, one event, insert, patch, delete) and Gmail read paths (profile, the message list, one message, one thread; GET only),
+    // by method and exact path shape; the scope is the narrowest the call needs. Vyre's own modules only: a Calendar write here is outward, and the sync holds it for the owner's yes before it
+    // ever calls; Gmail through here is never anything but a read.
     const CAL_PATH = /^\/calendar\/v3\/calendars\/(?:primary|[^/\s?#]{1,200})\/events(?:\/[^/\s?#]{1,200})?$/;
+    const MAIL_PATH = /^\/gmail\/v1\/users\/me\/(?:profile|messages|(?:messages|threads)\/[A-Za-z0-9_-]{1,64})$/;
     ctx.tool("google.api", {
       internal: true,
-      description: "A Calendar events call for one account, for the calendar sync: { account, method, path, query?, body?, headers? } -> { status, body }. Events paths only; the status of a refusal (404, 409, 410, 412) is returned, not thrown. Vyre's own modules only.",
+      description: "A Calendar events call (any of GET, POST, PATCH, DELETE) or a Gmail read (GET of the profile, the message list, a message or a thread) for one account: { account, method, path, query?, body?, headers? } -> { status, body }. For the calendar sync and the poll watchers. The status of a refusal (404, 409, 410, 412) is returned, not thrown. Vyre's own modules only.",
       input: obj({ account: str, method: { type: "string", enum: ["GET", "POST", "PATCH", "DELETE"] }, path: str, query: { type: "object" }, body: {}, headers: { type: "object" } }, ["account", "method", "path"]),
       run: safe(async (i, meta) => {
         if (!(meta && typeof meta.caller === "string" && meta.caller.startsWith("module:"))) throw fail("only Vyre's own modules call Google through here", "denied");
         const acct = accounts.get(String(i.account));
         if (!acct) throw fail(`no account ${String(i.account).slice(0, 40)}`, "not_found");
         const method = String(i.method).toUpperCase(), path = String(i.path);
-        if (!["GET", "POST", "PATCH", "DELETE"].includes(method) || !CAL_PATH.test(path)) throw fail("only Calendar events calls go through here", "bad_input");
-        const scope = method === "GET" ? "calendar.readonly" : "calendar.events";
-        try { return { status: 200, body: await request(acct, { api: "calendar", scope, method, path, ...(i.query ? { query: i.query } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.headers ? { headers: i.headers } : {}) }) }; }
+        if (!["GET", "POST", "PATCH", "DELETE"].includes(method)) throw fail("only Calendar events calls and Gmail reads go through here", "bad_input");
+        const mail = MAIL_PATH.test(path);
+        if (mail ? method !== "GET" : !CAL_PATH.test(path)) throw fail("only Calendar events calls and Gmail reads go through here", "bad_input");
+        const scope = mail ? "gmail.readonly" : method === "GET" ? "calendar.readonly" : "calendar.events";
+        try { return { status: 200, body: await request(acct, { api: mail ? "gmail" : "calendar", scope, method, path, ...(i.query ? { query: i.query } : {}), ...(i.body !== undefined ? { body: i.body } : {}), ...(i.headers ? { headers: i.headers } : {}) }) }; }
         catch (e) { const st = /** @type {any} */ (e)?.status; if (Number.isInteger(st)) return { status: st, body: {} }; throw e; }
       }),
     });

@@ -29,7 +29,7 @@ export const DEFAULT_TIMEOUT_S = 60;
  * payload fields that must match for it to run (hook.received needs a route).
  * @typedef {{ name: string, project: string, schedule: string, needs: string[], emits: string, timeout: number, memory?: boolean,
  *   on: string|null, where: Record<string, string|number|boolean>|null,
- *   net: Record<string, { vault?: string, credential?: string, field?: string, header: string, scheme: string }>|null,
+ *   net: Record<string, { vault?: string, credential?: string, google?: string, field?: string, header: string, scheme: string }>|null,
  *   ask: { dailyUsd: number }|null, params: Record<string, any>|null, summary: { when: string, check?: string, do: string }|null,
  *   owner: { kind: "teammate", teammate: string }|{ kind: "session", thread: string }|null, about: { session: string }|null, wake: { maxPerDay: number }|null, source: { tool: string }|null, instruction: string|null, act: boolean, when: string|null }} Spec
  */
@@ -182,7 +182,7 @@ const HEADER = /^[A-Za-z][A-Za-z0-9-]{0,40}$/;
  * `net`: the hosts a watcher reads, each optionally with the vault item the parent attaches to
  * requests for that host only: { "api.harlow.example": { "vault": "harlow-feed", "header":
  * "Authorization", "scheme": "Bearer" } }, or an api-credential the vault calls the API with
- * itself, reads only: { "gmail.googleapis.com": { "credential": "google-personal" } }. With net, a watcher reaches those hosts
+ * itself, reads only: { "api.example.com": { "credential": "example-key" } }, or a Google account connected to Vyre, read only through the google module: { "gmail.googleapis.com": { "google": "home" } }. With net, a watcher reaches those hosts
  * exact host names) and no others; without it, no network at all. The watcher's own code
  * never handles the value.
  * @returns {Spec["net"]}
@@ -198,9 +198,10 @@ function checkNet(net, problems) {
     if (h.vault !== undefined && (typeof h.vault !== "string" || !VAULT_NAME.test(h.vault))) { problems.push(`net.${host}.vault must be a vault item name`); continue; }
     if (h.header !== undefined && (typeof h.header !== "string" || !HEADER.test(h.header))) { problems.push(`net.${host}.header must be a header name like Authorization`); continue; }
     if (h.credential !== undefined && (typeof h.credential !== "string" || !VAULT_NAME.test(h.credential) || h.vault !== undefined)) { problems.push(`net.${host}.credential must be the name of an api-credential, and not together with vault`); continue; }
-    const bad = Object.keys(h).filter(k => !["vault", "credential", "field", "header", "scheme"].includes(k));
+    if (h.google !== undefined && (typeof h.google !== "string" || !/^[a-z][a-z0-9-]{0,31}$/.test(h.google) || h.vault !== undefined || h.credential !== undefined)) { problems.push(`net.${host}.google must be the name of a connected Google account, and not together with vault or credential`); continue; }
+    const bad = Object.keys(h).filter(k => !["vault", "credential", "google", "field", "header", "scheme"].includes(k));
     if (bad.length) { problems.push(`net.${host} has keys the runtime does not read: ${bad.join(", ")}`); continue; }
-    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.credential ? { credential: h.credential } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
+    out[host] = { ...(h.vault ? { vault: h.vault } : {}), ...(h.credential ? { credential: h.credential } : {}), ...(h.google ? { google: h.google } : {}), ...(h.field ? { field: String(h.field) } : {}), header: h.header || "Authorization", scheme: h.scheme === undefined ? "Bearer" : String(h.scheme) };
   }
   return out;
 }

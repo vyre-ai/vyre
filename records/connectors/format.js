@@ -5,7 +5,7 @@
 //   {
 //     id: "stripe", label: "Stripe", version: 1,
 //     base_url: "https://api.stripe.com",                              one exact host, https
-//     auth: { type: "bearer" } | { type: "api-key", header } | { type: "oauth", authorize_uri, token_uri, scopes } | { type: "service-account", scopes },
+//     auth: { type: "bearer" } | { type: "api-key", header } | { type: "oauth", authorize_uri, token_uri, scopes } | { type: "service-account", scopes } | { type: "google", scopes } (signed in through the google module, which holds the token; no vault credential),
 //     rate: { per_minute, retry_after: true },                         the provider's cap, shared by the whole Space; retry_after: honour its Retry-After
 //     idempotency: { header: "Idempotency-Key" },                      the provider takes an idempotency key in this header; left out, it does not
 //     ops: { "customers.create": { method, path: "/v1/customers/{id}", kind, label, input: { params, query, body, encoding }, output, readback, idempotent } },
@@ -73,10 +73,10 @@ export function checkDeclaration(d) {
     if (host.includes("*") || !host.includes(".")) throw new Error("x");
   } catch { out.push("base_url: one exact https host with no path, such as https://api.example.com"); }
   const a = d.auth;
-  if (!isObj(a) || !["bearer", "api-key", "oauth", "service-account"].includes(a.type)) out.push("auth.type: bearer, api-key, oauth or service-account");
+  if (!isObj(a) || !["bearer", "api-key", "oauth", "service-account", "google"].includes(a.type)) out.push("auth.type: bearer, api-key, oauth, service-account or google");
   else {
     if (a.type === "oauth" && (typeof a.authorize_uri !== "string" || !a.authorize_uri.startsWith("https://") || typeof a.token_uri !== "string" || !a.token_uri.startsWith("https://"))) out.push("auth: oauth names https authorize_uri and token_uri");
-    if ((a.type === "oauth" || a.type === "service-account") && a.scopes !== undefined && !(Array.isArray(a.scopes) && a.scopes.every((/** @type {any} */ x) => typeof x === "string"))) out.push("auth.scopes: a list of strings");
+    if ((a.type === "oauth" || a.type === "service-account" || a.type === "google") && a.scopes !== undefined && !(Array.isArray(a.scopes) && a.scopes.every((/** @type {any} */ x) => typeof x === "string"))) out.push("auth.scopes: a list of strings");
     if ((a.type === "service-account" || (a.also !== undefined && a.type === "oauth")) && !(Array.isArray(a.scopes) && a.scopes.length)) out.push("auth.scopes: a service account names the scopes it acts with");
     if (a.also !== undefined && !(Array.isArray(a.also) && a.also.every((/** @type {any} */ x) => x === "service-account"))) out.push("auth.also: [\"service-account\"], the other way a person may sign in");
     if (a.type === "api-key" && a.header !== undefined && (typeof a.header !== "string" || !/^[A-Za-z0-9-]{1,64}$/.test(a.header))) out.push("auth.header: a header name");
@@ -172,6 +172,7 @@ export function toCredentialConfig(d, o = {}) {
   if (Array.isArray(d)) return mergedCredentialConfig(d, o);
   const a = d.auth;
   /** @type {any} */ let auth;
+  if (a.type === "google") throw Object.assign(new Error(`${d.label} signs in through the Google module (vyre connect add google), not a vault credential`), { code: "bad_input" });
   if (o.as === "service-account" && !(a.type === "service-account" || (Array.isArray(a.also) && a.also.includes("service-account")))) throw Object.assign(new Error(`${d.id} does not sign in as a service account`), { code: "bad_input" });
   if (a.type === "service-account" || o.as === "service-account") {
     if (!o.subject) throw Object.assign(new Error(`${d.id} acts as a person: say which address (subject)`), { code: "bad_input" });
