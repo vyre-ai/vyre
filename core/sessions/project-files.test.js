@@ -159,3 +159,22 @@ test("Share to project: a person in the chat shares one of its files with the pr
   const u = await w.d.registry.call("work.files.unshare", { path }, "cli", meta);
   assert.equal(u.data.unshared, 1, JSON.stringify(u));
 });
+
+test("a person who is not in the chat cannot share one of its files, nor take a share back: the kernel answers not_found as for a file that is not there", { timeout: 180_000 }, async t => {
+  const { w, chat, say, drive, root, admin } = await world(t);
+  await say("look at this", { images: [{ media_type: "image/png", data: png("dropped ").toString("base64"), name: "site photo" }] });
+  const path = `${root}/chat/${chat}/site photo.png`;
+  await until(async () => (await drive()).includes(path), "the dropped image in the chat's folder");
+  // a second person in the Space, who is not in this chat (a member; the owner started the chat)
+  const DAN = "per_dan";
+  await w.d.kernel.gateway.grants.setRole(admin, { person: DAN, role: "member" }, { presence: { method: "stand-in" } });
+  const dan = w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-dan", person: DAN, path: "direct", session: "s" });
+  const danMeta = { token: (await w.d.kernel.surfaces.open(dan, {})).token };
+  const share = await w.d.registry.call("work.files.share", { path }, "cli", danMeta);
+  assert.equal(share.error?.code, "not_found", "not in the chat: " + JSON.stringify(share));
+  // the person in the chat shares it; the other still cannot take it back
+  const ownerMeta = { token: (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.d.kernel.id.owner, path: "direct", session: "s" }), {})).token };
+  assert.ok((await w.d.registry.call("work.files.share", { path }, "cli", ownerMeta)).data);
+  assert.equal((await w.d.registry.call("work.files.unshare", { path }, "cli", danMeta)).error?.code, "not_found");
+  assert.equal((await w.d.registry.call("work.files.unshare", { path }, "cli", ownerMeta)).data.unshared, 1);
+});
