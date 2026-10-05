@@ -11,7 +11,7 @@ import { createRuntime } from "../../relay/worker/fake-cf.js";
 import { fakeDns } from "../../names/worker/fake-dns.js";
 import * as C from "../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
-import { fileIdentityStore, signerOf, privateKeyOf } from "./identity.js";
+import { fileIdentityStore, privateKeyOf } from "./identity.js";
 import crypto from "node:crypto";
 import { createIdentityOps } from "./identity-ops.js";
 import { newCode, codeKey, normalizeCode, codeLooksRight } from "./recovery.js";
@@ -276,7 +276,7 @@ test("an identity made before the agreement key gets it on its own entry with on
   const priv = privateKeyOf(kp.privateKey), sign = m => crypto.sign(null, Buffer.from(m), priv);
   const g = await C.makeGenesis({ kind: "person", entry: { eid: kp.eid, kind: "device", pub: kp.publicKey }, nonce: "n-old-0001", ts: w.clock.t, sign });
   const state = await C.verifyChain([g], { now: w.clock.t });
-  await w.dir.claim("oldie", state, [g], signerOf(kp.publicKey, sign), { v: 1 });
+  await w.dir.claim("oldie", state, [g], { by: kp.eid, sign: m => sign(m) }, { v: 1 });
   old.store.join({ privateKey: kp.privateKey, publicKey: kp.publicKey }, [g], "oldie");
   old.store.setChain([g], C.pinOf(state));
   assert.equal(old.store.agree(), null);
