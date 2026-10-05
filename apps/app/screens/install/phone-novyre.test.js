@@ -50,3 +50,12 @@ test("a phone's connect step offers typing the code (not a browser), before the 
   assert.match(scan, /claimBlocked\(\) \? null : <TypeCode redeem=\{\(code, onAck\) => addDeviceToName/);
   assert.ok(scan.indexOf("<TypeCode") < scan.indexOf("offersNoVyre(dk, MOCK) ?"));
 });
+
+test("PairEntry offers the camera reader only with CAMERA_SCAN, a reader on this platform and a ticket handler, and hands the ticket on once", () => {
+  const src = read("../devices/PairParts.tsx");
+  assert.match(src, /const canDraw = CAMERA_SCAN && canReadDrawnCode && !!onTicket;/);
+  assert.match(src, /\{canDraw \? \(reading/);
+  assert.match(src, /label="Scan the code"/);
+  assert.match(src, /if \(e\.type === "ticket"\) \{ setReading\(false\); setHint\(""\); onTicket\?\.\(e\.ticket\); \}/);
+  assert.equal(CAMERA_SCAN, false, "off until a real-phone walk");
+});

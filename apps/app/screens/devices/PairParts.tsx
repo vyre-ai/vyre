@@ -6,6 +6,8 @@ import { Banner, Button, Card, Field, Text } from "@vyre/ui";
 import { ScanCamera, canScanLive, requestCamera, scanProps, type ScannedCode, type ScanSupport } from "../../src/native/scan";
 import { parseWinkCode, type WinkCode } from "../../src/api/wink-code";
 import { openPairing, wordsLine, type PairingSession } from "../../src/api/pairing-session";
+import { WinkScan, canReadDrawnCode } from "../../src/native/WinkScan";
+import { SCAN_SAY, type WinkScanEvent } from "../../src/native/wink-scan-model";
 import { COPY } from "./wink.js";
 import { serverSay } from "../install/flow.js";
 import { pairSayHere } from "../../src/real/pair-say";
@@ -16,8 +18,16 @@ const textOf = (c: ScannedCode) => (c.kind === "wink" ? `vyre://wink/2?t=${c.tic
 export type LongCode = Exclude<Extract<WinkCode, { ok: true }>, { kind: "typed" }>;
 
 /** Scan the code with the camera, or paste the long one. Both go through parseWinkCode; a short typed code is refused in plain words. */
-export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; sample?: string }) {
+export function PairEntry({ onCode, onTicket, sample }: { onCode: (c: LongCode) => void; /** The 8-byte ticket the camera read from a drawn Wink code (src/native/WinkScan): once. Without it, no camera reader is offered. */ onTicket?: (ticket: Uint8Array) => void; sample?: string }) {
   const [text, setText] = useState("");
+  const [reading, setReading] = useState(false);
+  const [hint, setHint] = useState("");
+  const canDraw = CAMERA_SCAN && canReadDrawnCode && !!onTicket;
+  const onScan = (e: WinkScanEvent) => {
+    if (e.type === "ticket") { setReading(false); setHint(""); onTicket?.(e.ticket); }
+    else if (e.type === "slow") setHint(SCAN_SAY.slow);
+    else if (e.type === "error") { setReading(false); setHint(SCAN_SAY[e.code]); }
+  };
   const [say, setSay] = useState("");
   const [cam, setCam] = useState<ScanSupport | null>(null);
   useEffect(() => { if (CAMERA_SCAN && canScanLive) requestCamera().then(setCam).catch(() => {}); }, []);
@@ -48,6 +58,9 @@ export function PairEntry({ onCode, sample }: { onCode: (c: LongCode) => void; s
       {CAMERA_SCAN && canScanLive && ScanCamera && cam?.state === "granted" ? (
         <View className="h-48 w-full overflow-hidden rounded-card"><ScanCamera style={{ flex: 1 }} {...scan} /></View>
       ) : CAMERA_SCAN && cam && cam.state !== "granted" ? <Text size="caption" tone="muted">{cam.say}</Text> : null}
+      {canDraw ? (reading
+        ? <View className="w-full gap-s2"><View className="h-72 w-full overflow-hidden rounded-card"><WinkScan onEvent={onScan} /></View>{hint ? <Text size="caption" tone="muted">{hint}</Text> : null}<Button kind="ghost" size="sm" label="Stop scanning" onPress={() => { setReading(false); setHint(""); }} /></View>
+        : <View className="w-full gap-s2"><Button kind="primary" label="Scan the code" onPress={() => { setHint(""); setReading(true); }} />{hint ? <Text size="caption" tone="muted">{hint}</Text> : null}</View>) : null}
       <Field label="Or paste the long code" name="Long code" value={text} onChangeText={(v) => { setText(v); if (say) setSay(""); }} placeholder="vyre://wink/2?..." mono error={say || undefined} />
       <View className="flex-row flex-wrap gap-s2">
         <Button kind="primary" size="sm" label="Continue" onPress={() => take(text)} />
