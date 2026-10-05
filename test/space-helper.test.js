@@ -902,3 +902,22 @@ test("space helper: a Space that a request is bringing up is left alone by the w
   const free = /** @type {any} */ (await r.run(["space-helper", "reattach"]));
   assert.match(free.out, /the Space harlow was stopped/);
 });
+
+test("space helper: a lock left by a run that is gone does not leave its Space unwatched; a lock whose run is alive, or one with no run named that is fresh, still does", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  r.ask("up harlow\n"); await r.helper();
+  const lock = path.join(r.SP, "private", "lock-harlow");
+  const again = async () => { r.flag("ctr-pid", String(9000 + Math.floor(Math.random() * 900))); fs.writeFileSync(path.join(r.F, "joined"), ""); r.flag("fw-ineffective"); fs.writeFileSync(path.join(r.F, "running-harlow"), "1"); return /** @type {any} */ (await r.run(["space-helper", "reattach"])); };
+  // a live run (this test's own process) holds it: left alone
+  fs.mkdirSync(lock); fs.writeFileSync(path.join(lock, "pid"), String(process.pid));
+  assert.ok(!/was stopped/.test((await again()).out), "a live run's lock is respected");
+  // a run that is gone (a pid nothing has): the Space is watched again, and stopped when it cannot be proved
+  fs.writeFileSync(path.join(lock, "pid"), "2147483646");
+  assert.match((await again()).out, /the Space harlow was stopped/, "a dead run's lock does not count");
+  // no run named: fresh counts, two hours old does not
+  fs.rmSync(path.join(lock, "pid"));
+  assert.ok(!/was stopped/.test((await again()).out), "a fresh lock with no pid is respected");
+  const old = new Date(Date.now() - 3 * 3600 * 1000); fs.utimesSync(lock, old, old);
+  assert.match((await again()).out, /the Space harlow was stopped/, "a lock older than two hours does not count");
+});

@@ -1737,6 +1737,15 @@ sp_wall_ready() {
 }
 # sp_wall_clear: the marker goes when the container dies or stops, so nothing is left for a later start to find.
 sp_wall_clear() { rm -f "$SP_STATE/wall-ready" "$SP_STATE/wall-ready.new" 2>/dev/null || true; }
+# sp_locked NAME: is a request running for this Space right now? Its lock folder counts only while it can: a lock that names a run (pid) counts while that run is alive, one that names none counts for two hours
+# (the same age the request path clears a lock at). A lock left by a dead run is not "busy", so the Space is not left unwatched.
+sp_locked() {
+  lk=$SP_PRIV/lock-$1
+  [ -d "$lk" ] || return 1
+  lp=$(cat "$lk/pid" 2>/dev/null || true)
+  case "$lp" in ""|*[!0-9]*) [ -z "$(find "$lk" -maxdepth 0 -mmin +120 2>/dev/null)" ]; return ;; esac
+  kill -0 "$lp" 2>/dev/null
+}
 # space_helper_reattach: after an update the vyre container is a new one with no network joins and no rules: every recorded Space whose containers still run is
 # joined and firewalled again and proved. A Space that fails is stopped (never left running unfirewalled) and said.
 space_helper_reattach() {
@@ -1747,7 +1756,7 @@ space_helper_reattach() {
     printf '%s\n' "$n" | grep -Eqx "$SP_NAME_RE" || continue
     sp_running "$n" || continue
     # a Space that a request is bringing up right now joins, is firewalled and is proved by that request: its server may not be running yet (a restore comes first), and stopping it here would end the request
-    [ ! -d "$SP_PRIV/lock-$n" ] || continue
+    sp_locked "$n" && continue
     MSG=""
     if ! { sp_attach "$n" && sp_probe "$n"; }; then
       sp_dc "$n" stop >/dev/null 2>&1 || true
