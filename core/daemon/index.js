@@ -153,8 +153,6 @@ export async function start(opts = {}) {
   const refused = kernelOffRefusal(kernelOn, opts.packageRoot);
   if (refused) throw Object.assign(new Error(refused), { code: "kernel_required" });
   const root = opts.root || config.home();
-  // Where the app's export is served from: the repo's apps/app/dist unless a test points it at its own folder, so no test depends on what a build left behind.
-  const appDir = opts.appDir || APP_DIST;
   // A test daemon never boots on the person's Mac (host-guard.js): one place, every boot passes it.
   assertDaemonHost({ root, real: isRealHome(root) });
   // A vyred on any home but ~/.vyre (a demo or dev world started in-process with `root`) raises
@@ -173,6 +171,8 @@ export async function start(opts = {}) {
  * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
  */
 async function startLocked(opts, root, p, release) {
+  // Where the app's export is served from: the repo's apps/app/dist unless a test points it at its own folder, so no test depends on what a build left behind.
+  const appDir = opts.appDir || APP_DIST;
   // Which build this process runs, read now: after an upgrade in place, build.json on disk is the
   // new one, and a vyred that read it later would claim the new commit while running old code.
   build();
