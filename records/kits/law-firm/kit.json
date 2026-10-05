@@ -283,7 +283,8 @@
         {
           "name": "client",
           "kind": "link",
-          "label": "Client"
+          "label": "Client",
+          "to": "contact"
         },
         {
           "name": "drive_path",

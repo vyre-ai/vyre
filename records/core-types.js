@@ -215,7 +215,7 @@ export const PROJECT = {
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived"]),
-    f("link", "client", "Client"),
+    f("link", "client", "Client", { to: "contact" }),
     text("drive_path", "Drive folder"),
     text("repo", "Repository"),
     text("memory_scope", "Memory scope"),

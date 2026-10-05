@@ -69,7 +69,7 @@ function fieldBuilder(kind) {
     if (f.required_if !== undefined && f.required) bad(`defineField.${kind}`, "A field is required, or required_if something, not both");
     if (f.visible_if !== undefined && f.required) bad(`defineField.${kind}`, "A field that is only sometimes shown cannot be required always: use required_if");
     if (kind === "choice" || kind === "multi_choice") { f.options = strList(main, `defineField.${kind} options`, 200); if (!f.options.length) bad(`defineField.${kind}`, "Needs at least one option"); if (new Set(f.options).size !== f.options.length) bad(`defineField.${kind}`, "Options must be different"); }
-    if (kind === "link" && opts.to !== undefined) f.to = name(opts.to, "defineField.link.to"); // no `to`: a link to any record (the core Project's client, a Task's "about")
+    if (kind === "link") f.to = name(opts.to, "defineField.link.to");
     if (kind === "sealed") {
       if (!SEAL_CLASSES.includes(opts.class)) bad("defineField.sealed.class", `Class must be one of ${SEAL_CLASSES.join(", ")}`);
       const level = opts.level ?? "ai"; if (!SEAL_LEVELS.includes(level)) bad("defineField.sealed.level", `Level must be one of ${SEAL_LEVELS.join(", ")}`);

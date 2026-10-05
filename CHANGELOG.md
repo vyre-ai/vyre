@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(records): the core Project's `client` links to a contact (`to: "contact"`, ruling R2), so a link with no target is no longer allowed in the Kit SDK or the Kit checks (undoing the allowance made for it).
+
 - feat(records): the one Task type (records/core-types.js; the kernel imports it): `status` (required), `stage` and `record` are `owned_by: "kernel"`, a `planner` text field hidden from every role holds the planner's bookkeeping, `tags` is a JSON list in a text. Contact gets `time_zone`, an IANA zone: a text field may say `format: "time_zone"`, checked by every store with the runtime's own zone list (`validZone`, kernel/store/values.js), refused at define for any other format.
 
 - feat(records): Task is a core Records type (team/0.3/DESIGN-tasks-records.md): title, note, due, status, stage, parent, project, record, contact, repeat, priority, list, tags, pinned, the planner's zone and wall-time fields and source, with a default board by status and a list and calendar by due, and the usual custom fields, stages and views. A field may say `owned_by: "kernel"`: `records.create` and `records.update` refuse a write to it unless the chain carries the kernel's own service (`field_not_allowed`), and define refuses any other owner; `status` is the first. The tasks service (platform-2) must write it under the service `kernel`.
