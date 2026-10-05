@@ -45,7 +45,7 @@ export const ALLOW = {
     why: "the kernel runs the security floor on every call's input; the floor belongs in the kernel" },
   "core/daemon -> core/names": { files: ["core/names/guests.js"], next: "ctx.call",
     why: "the router asks whether a tailnet caller is a guest before it reaches the registry" },
-  "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js"], next: "lib",
+  "core/daemon -> core/runner": { files: ["core/runner/homesandbox.js", "core/runner/sandbox.js", "core/runner/checkpoint-store.js", "core/runner/lent-home.js"], next: "lib",
     why: "the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner): the confined spawner for a Vyre-started session; and the home's checkpoint store for an own-server session's per-turn seal (core/daemon/ownserver-host.js; moves to lib with the store)" },
   "core/daemon -> core/sessions": { files: ["core/sessions/drivers/openrouter.js"], next: "lib",
     why: "the daemon hands the kernel's inference door its providers: the API-key chat drivers' door side (the door scans first, this only makes the call with the key the session passes); one-way, the drivers import nothing from the daemon" },

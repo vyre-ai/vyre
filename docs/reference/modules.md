@@ -67,7 +67,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local`, `box` | 8 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
@@ -93,7 +93,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 59 | 34 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 59 | 34 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 19 | 0 | cli |
 
 ## about
@@ -671,7 +671,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Folder: `core/runner`, version 0.1.0
 - Runs on: `local`, `box`
 - Requires: none
-- Tools: [7](tools.md#runner)
+- Tools: [8](tools.md#runner)
 - Emits: [7 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
@@ -972,7 +972,7 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.
 
 - Folder: `core/wink`, version 0.1.0
-- Runs on: `box`
+- Runs on: `box`, `local`
 - Requires: `relay`
 - Tools: [59](tools.md#wink), 9 of them only for other modules
 - Emits: [34 events](events.md#wink)

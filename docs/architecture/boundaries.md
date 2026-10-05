@@ -53,6 +53,7 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/daemon -> core/names` | guests.js | the router asks whether a tailnet caller is a guest before the registry | ctx.call |
 | `core/daemon -> core/runner` | homesandbox.js, sandbox.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
 | `core/daemon -> core/sessions` | drivers/openrouter.js | the daemon hands the kernel's inference door its providers: the API-key chat drivers' door side (the door scans first, this only makes the call with the key the session passes); one-way, the drivers import nothing from the daemon | lib |
+| `core/daemon -> core/runner` | homesandbox.js, sandbox.js, lent-home.js | the daemon composes the runner's home sandbox for the Switchboard (core/sessions cannot import core/runner) | lib |
 | `core/daemon -> core/spawner` | client.js, confine.js | a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start; it asks the root spawner, which is not a module | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/daemon -> core/wink` | node/peer-wire.js | the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js) | lib |

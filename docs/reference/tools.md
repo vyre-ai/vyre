@@ -7057,6 +7057,14 @@ Put a session on this server back to its last whole turn before it is resumed af
   - `session` string, required
 - Callers: any caller
 
+### `runner.revoke`
+
+The home says this computer's grant for a space ended: stop its sessions and delete the local work and keys.
+
+- Input:
+  - `space` string, required
+- Callers: any caller
+
 ### `runner.start`
 
 Start a session here. The space's own definition of the session decides the program, the routes and the credentials it may use; the caller names only the space and the session. Needs both grants and a held key lease.
@@ -7852,6 +7860,7 @@ Lend one of your computers to a space, or stop. The first time for a device in a
   - `device` string, required
   - `on` boolean, required
   - `space` string, required
+  - `member` string: Stopping only: the person whose computer it is, when an owner or admin of the space stops it from the space's own server (the computer is then named by the id the space gives it).
 - Callers: any caller
 - Needs a person present.
 
@@ -11669,6 +11678,7 @@ What you have added with a Wink: your devices (a phone, a computer, a server, a 
 - Input:
   - `status` "active" or "revoked"
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.approve`
 
@@ -11678,6 +11688,7 @@ Approve a person who redeemed a sensitive invitation, after reading their finger
   - `offer` string, required
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.cancel`
 
@@ -11686,6 +11697,7 @@ Close an offer that has not been used: its code or invitation stops working. Ans
 - Input:
   - `offer` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.card`
 
@@ -11695,6 +11707,7 @@ The card for an offer or a grant: four lines and two buttons, in the words of te
   - `grant` string
   - `offer` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.code.ack`
 
@@ -11705,6 +11718,7 @@ Type back the code the new device is showing. One try per code: the right one ad
   - `typed` string, required
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.code.carry`
 
@@ -11714,6 +11728,7 @@ For the spaces module: show a short typed code that carries an invitation's link
   - `link` string, required
   - `space` string
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.code.open`
 
@@ -11723,6 +11738,7 @@ Show a short typed Wink code for a new computer or server (two-sided: the new de
   - `flow` one of "W1", "W2", "W3"
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.code.redeem`
 
@@ -11737,6 +11753,7 @@ Use a typed Wink code (WINK-NNPP-PPPP). Answers { pairing, ack, expires }: show 
     - `kind` "identity" or "space"
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.code.status`
 
@@ -11744,6 +11761,7 @@ The code that is showing now, if any: { offer, code, expires, state }. The scree
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.decline`
 
@@ -11752,6 +11770,7 @@ Say no to a person who redeemed a sensitive invitation. Nothing is added. Answer
 - Input:
   - `offer` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.device.enclave-live`
 
@@ -11760,6 +11779,7 @@ For the presence module at a paired device's sign-in: does the enclave key this 
 - Input:
   - `device` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.device.key`
 
@@ -11770,6 +11790,7 @@ Register the key an owner's device signs instructions with (SPKI, base64url: Ed2
   - `key` string, required
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.device.paired`
 
@@ -11779,6 +11800,7 @@ For the spaces module: is this device (of any kind) one of this identity's, stil
   - `device` string, required
   - `identity` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.device.record`
 
@@ -11787,6 +11809,7 @@ What this module recorded when the owner confirmed a device: { id, kind, owner, 
 - Input:
   - `id` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.invite`
 
@@ -11799,6 +11822,7 @@ Invite a person into this space: a Wink with the offer sealed into it (role and 
   - `role` one of "member", "contributor", "guest", "admin"
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.network.join`
 
@@ -11807,6 +11831,7 @@ Internal, for the network module, after the owner's check and presence: bring up
 - Input:
   - `space` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.network.leave`
 
@@ -11815,6 +11840,7 @@ Internal, for the network module, after the owner's check and presence: take thi
 - Input:
   - `space` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.network.status`
 
@@ -11823,6 +11849,7 @@ Internal, for the network module: how the network looks from this machine (signe
 - Input:
   - `ping` boolean
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.network.whois`
 
@@ -11832,6 +11859,7 @@ Internal, for the network module: who is the connected device at an address or w
   - `addr` string
   - `eid` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.offer.set`
 
@@ -11845,6 +11873,7 @@ Set what a device offers. Without a space: the device's own offers (a phone: acc
   - `space` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.offers`
 
@@ -11852,6 +11881,7 @@ What is waiting on a person right now: the offers that are showing or waiting fo
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.pair.server`
 
@@ -11867,6 +11897,7 @@ Pair a new server (or storage device) from this app: give `payload`, the text of
   - `payload` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.pair.status`
 
@@ -11875,6 +11906,7 @@ Where a pairing is: { state: waiting | confirm | done | failed | expired, device
 - Input:
   - `pairing` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.pair.targets`
 
@@ -11882,6 +11914,7 @@ The "Pair to:" choices for a server or storage device: you, and each space you a
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.peer.allow`
 
@@ -11890,6 +11923,7 @@ Whether a device may open a peer stream to this space: only a live paired server
 - Input:
   - `device` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.phone.open`
 
@@ -11900,6 +11934,7 @@ Add a phone. From a computer already signed in to you: show a QR and a long code
   - `typed` boolean
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.phone.pair.answer`
 
@@ -11911,6 +11946,7 @@ On the computer: answer the phone question. { yes: false } sends it away and add
   - `words` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.phone.pairing`
 
@@ -11918,6 +11954,7 @@ On the computer showing the QR: is a phone asking to be added right now? Answers
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.phone.scan`
 
@@ -11930,6 +11967,7 @@ On the phone: read the QR the computer shows, or the long code pasted (`payload`
     - `id` string
     - `kind` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.phone.wait`
 
@@ -11944,6 +11982,7 @@ From the phone that scanned the QR, over its own paired connection: where the qu
   - `reveal` string
   - `tag` string
 - Callers: `web`
+- Registered only on the box.
 
 ### `wink.relay.apply`
 
@@ -11959,6 +11998,7 @@ Apply a signed instruction from the owner's app to turn the relay on, or point i
   - `v` number, required
   - `url` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.remove`
 
@@ -11969,6 +12009,7 @@ Take something back: a grant (a member, a share) is revoked, or a device (give `
   - `grant` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.server.adopt`
 
@@ -12004,6 +12045,7 @@ On a server that was just paired: record who it belongs to, an identity or a spa
     - `esig` string
     - `sig` string
 - Callers: `web`
+- Registered only on the box.
 
 ### `wink.server.channel`
 
@@ -12013,6 +12055,7 @@ For the spaces module: where a paired server is reached (relay, route and box id
   - `device` string, required
   - `identity` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.server.code`
 
@@ -12023,6 +12066,7 @@ On the new server: make a pairing ticket good for 5 minutes and answer { qr, art
   - `qr` boolean
   - `typed` boolean
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.server.confirm`
 
@@ -12032,6 +12076,7 @@ On the new server: type back the code the app is showing. One try per code. Answ
   - `offer` string, required
   - `typed` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.server.handover`
 
@@ -12039,6 +12084,7 @@ What this server was handed when it was adopted, to reach its home: { home, box,
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.server.owned`
 
@@ -12046,6 +12092,7 @@ Does this server have an owner yet (a device paired and was confirmed)? Answers 
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.server.owner`
 
@@ -12053,6 +12100,7 @@ For the spaces module: the identity this server's own pairing record names as it
 
 - Input: none
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.server.pair.answer`
 
@@ -12063,6 +12111,7 @@ At the server: answer the pairing question. { yes: false } refuses it. { yes: tr
   - `pick` integer
   - `words` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.server.paired`
 
@@ -12072,6 +12121,7 @@ For the spaces module: is this device a server paired to this identity, and stil
   - `device` string, required
   - `identity` string, required
 - Callers: other modules only (internal: `vyre call` answers no_such_tool)
+- Registered only on the box.
 
 ### `wink.server.pairing`
 
@@ -12079,6 +12129,7 @@ At the server: is a device asking to pair this server right now? Answers { askin
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.server.probe`
 
@@ -12087,6 +12138,7 @@ Call a server this device paired, with a read-only system.info over the channel 
 - Input:
   - `device` string, required
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.server.release`
 
@@ -12094,6 +12146,7 @@ On a server: let go of its owner. The app that adopted it calls this over the pa
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.server.reset.begin`
 
@@ -12103,6 +12156,7 @@ On the server's own console only: start a reset. The command line (vyre wink res
   - `hash` string, required
   - `salt` string, required
 - Callers: `cli`
+- Registered only on the box.
 
 ### `wink.server.reset.confirm`
 
@@ -12111,6 +12165,7 @@ On the server's own console only: finish a reset with the code that vyre wink re
 - Input:
   - `code` string, required
 - Callers: `cli`
+- Registered only on the box.
 
 ### `wink.server.retarget`
 
@@ -12147,6 +12202,7 @@ On this server, from the owner's own screen with presence: change who it belongs
     - `sig` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.server.status`
 
@@ -12154,6 +12210,7 @@ At the server: has it been paired yet? Answers { owned: false } or { owned: true
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.share`
 
@@ -12167,6 +12224,7 @@ Lend one of my own computers to my own space: it may run my sessions while it is
   - `on_power` boolean
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.storage.bridge`
 
@@ -12181,6 +12239,7 @@ A storage frame for a drive this device serves, from the space's home (a put, ge
   - `key` string
   - `nonce` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.storage.bridge.accept`
 
@@ -12195,6 +12254,7 @@ The device that has a drive accepts it from its home: step open answers a one-ti
   - `kind` string
   - `location` object
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.storage.bridge.drive`
 
@@ -12205,6 +12265,7 @@ Use a drive that only another device can reach: the home picks the drive (an off
   - `offer` string, required
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.storage.card`
 
@@ -12221,6 +12282,7 @@ The words a person reads before adding storage: pass a candidate from discover, 
   - `residency` string: Where it sits, in a few words (for example: US only, office).
   - `schedule` string
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.storage.discover`
 
@@ -12228,6 +12290,7 @@ Look for drives this device can see: file servers that announce themselves, shar
 
 - Input: none
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.storage.offers`
 
@@ -12236,6 +12299,7 @@ The storage offers: each paired drive with its room, what is used, the classes o
 - Input:
   - `owner` string or object: Who the storage belongs to: leave out for yourself, or space:<id> for a space you administer.
 - Callers: any caller
+- Registered only on the box.
 
 ### `wink.storage.pair`
 
@@ -12257,6 +12321,7 @@ Add a cloud volume or an S3-compatible bucket as storage. The access details are
   - `schedule` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.storage.pick`
 
@@ -12275,6 +12340,7 @@ Add a drive found by discover as storage for you or a space you administer. Answ
   - `username` string
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.storage.remove`
 
@@ -12285,6 +12351,7 @@ Take a storage device back. With drain, Vyre records that everything must be cop
   - `drain` boolean
 - Callers: any caller
 - Needs a person present.
+- Registered only on the box.
 
 ### `wink.storage.status`
 
@@ -12294,6 +12361,7 @@ Is each storage device there? Looks again if the last look is over a minute old.
   - `id` string
   - `refresh` boolean
 - Callers: any caller
+- Registered only on the box.
 
 ## work
 
