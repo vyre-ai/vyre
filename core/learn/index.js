@@ -525,7 +525,7 @@ export default {
         if (!rule && !d && !text) throw new Error("say the lesson: text, or rule");
         // A lesson steers every later session, so only the PERSON makes one outright. With the kernel on that is the call's chain (one person, no agent, no session-token hop); a model's
         // `/vyre lesson` (a session calling as itself) makes a PROPOSED lesson the person accepts with learn.accept from their own surface.
-        const c = await ctx.kernel.chain(extra).catch(() => null);
+        const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(extra).catch(() => null) : null;
         const person = Boolean(c && Array.isArray(c.hops) && c.hops.length === 1 && c.hops[0].actor && c.hops[0].actor.kind === "person" && c.viewer !== true && c.delegated !== true && !c.room);
         const l = create({ rule: rule || (d ? d.rule : String(text)), when: when || (d && d.when) || "always", level: level || (d ? d.level : undefined),
           scope: await slugged(scope), check: check !== undefined ? check : d ? d.check : null, source: { kind: "remember", session: session || null, text: text || rule, ...(person ? {} : { proposedBy: "session" }) } }, person ? "active" : "proposed");
