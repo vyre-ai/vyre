@@ -91,6 +91,8 @@ function all(/** @type {string} */ space) {
       ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
     ] },
     { title: "Vyre", rows: [
+      ["All settings", "Every setting, in one place", "/u/settings/all", "settings"],
+      ["This computer", "What runs here, history, shares", "/u/settings/system", "info"],
       ["Updates", "Check for a new version", "/u/settings/updates", "download"],
       ["About", "Version and open-source credits", "/u/about", "info"],
     ] },

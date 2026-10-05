@@ -4,6 +4,7 @@ import { ConnectClaude } from "./ConnectClaude";
 import { AccountsCard } from "./AccountsCard";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import { useRouter } from "expo-router";
 import { Avatar, Banner, Button, Card, Segmented, Chip, Divider, EmptyState, Meter, Text, markRef, showToast, ErrorState, LoadingState } from "@vyre/ui";
 import { Page } from "../places/Frame";
 import { TeammatesPage } from "../teammates/TeammatesPage";
@@ -13,6 +14,7 @@ import { agentResume, agentStop, agentsList, agentsUsage, providers } from "./re
 const say = (e: unknown, f = "That did not work.") => (e instanceof Error ? e.message : f);
 
 export function RealAssistants() {
+  const router = useRouter();
   const [list, setList] = useState<Agent[] | null>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -30,6 +32,7 @@ export function RealAssistants() {
       {tab === "teammates" ? null : <>
       {err ? <Card flush><ErrorState title="Assistants did not load" reason={err} retry={load} /></Card> : null}
       {list && !list.length ? <Card><EmptyState title="No assistants yet" body="Your assistant and any agents you make appear here." /></Card> : null}
+      <View className="flex-row"><Button size="sm" label="New assistant" onPress={() => router.push("/u/settings/assistants/new" as never)} /></View>
       {list === null && !err ? <LoadingState rows={3} /> : null}
       {list && list.length ? (
         <Card flush>
@@ -42,6 +45,7 @@ export function RealAssistants() {
                   <Text size="caption" tone="label">{`${roleOf(a)}. ${agentLine(a)}`}</Text>
                 </View>
                 {a.thread ? <Button kind="ghost" size="sm" label={isStopped(a) ? "Resume" : "Pause"} disabled={busy === a.name} onPress={() => flip(a)} /> : null}
+                <Button kind="secondary" size="sm" label="Open" onPress={() => router.push(`/u/settings/assistants/${encodeURIComponent(a.name)}` as never)} />
               </View>
             </View>
           ))}
