@@ -265,7 +265,8 @@ test("acp: a turn's tokens come from the prompt response (Codex's usage, Grok's 
     const s = open(w, { env: { ...w.env, FAKE_ACP_USAGE: mode } });
     s.proc.write({ type: "user", message: { role: "user", content: "hello" } });
     const r = await s.until(m => m.type === "result", "the result");
-    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, ...extra }, mode);
+    // context_used: what the context holds after the turn (the last request's whole input and its output), which a rollover reads as the window's use.
+    assert.deepEqual({ ...r.usage }, { input_tokens: 70, output_tokens: 20, cache_read_input_tokens: 30, cache_creation_input_tokens: 0, reasoning_tokens: 5, context_used: 120, ...extra }, mode);
     assert.equal(r.model, mode === "grok" ? "grok-x" : undefined, "Grok's model rides on the result, Codex's none in this fake");
     await s.proc.stop(500);
   }
