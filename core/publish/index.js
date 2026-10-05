@@ -12,8 +12,11 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import dns from "node:dns/promises";
+import { fail } from "../../lib/publish/util.js";
 import { createPublisher, PublishError } from "../../lib/publish/index.js";
 import { composeText, assertIsolated, caddyDockerfile, IMAGES } from "../../lib/publish/edge.js";
+import { edgePlan, runPlan, stopEdge } from "../../lib/publish/runner.js";
+import { execFile } from "node:child_process";
 import { joinPageHtml } from "../../lib/publish/join.js";
 import { writeSiteFiles, volumeFill, siteFolder, sweepSites } from "../../lib/publish/site-write.js";
 import { checkBuildForSealed } from "../../lib/publish/secrets.js";
@@ -22,8 +25,18 @@ import { NO_BUILDER } from "./builder-plan.js";
 
 export { buildctlArgs } from "./builder-plan.js";
 
-/** Seams for tests: the DNS resolver. Everything else a test fills is a fake module behind a tool. */
-export const seams = { dns: { resolveTxt: (/** @type {string} */ name) => dns.resolveTxt(name) } };
+/**
+ * Seams for tests: the DNS resolver and `docker`. Everything else a test fills is a fake module behind a tool.
+ * `docker` runs the host's docker CLI as an argument vector (no shell) only when the supervisor says this box may start the edge (VYRE_PUBLISH_DOCKER=1);
+ * otherwise it is null and publish.edge.up answers not_available with the plan.
+ */
+export const seams = {
+  dns: { resolveTxt: (/** @type {string} */ name) => dns.resolveTxt(name) },
+  /** @type {null | ((argv: string[]) => Promise<{ code: number }>)} */
+  docker: process.env.VYRE_PUBLISH_DOCKER === "1"
+    ? argv => new Promise(resolve => execFile("docker", argv, { timeout: 15 * 60_000, maxBuffer: 1 << 20 }, err => resolve({ code: err ? (typeof err.code === "number" ? err.code : 1) : 0 })))
+    : null,
+};
 
 export const MIGRATIONS = [
   `
@@ -457,7 +470,9 @@ export default {
       callers: PEOPLE,
       description: "Write the edge for what is live now: a compose project, a Caddyfile and the Dockerfile of its Caddy image in <home>/publish/<space>/, and the runtime secret files its sites were granted. It does not start anything.",
       input: obj({}),
-      run: async (i, meta) => {
+      run: (i, meta) => writeEdge(i, meta),
+    });
+    const writeEdge = async (/** @type {any} */ i, /** @type {any} */ meta) => {
         const b = await begin(i, meta);
         const { compose, caddyfile } = await b.pub.edge(b.chain);
         assertIsolated(compose);
@@ -494,6 +509,26 @@ export default {
         }
         sweepSites(sitesRoot, liveSiteNames(records));
         return { dir, files: written, compose, caddyfile, fills, build: { image: IMAGES.caddy, dockerfile: "caddy.Dockerfile" } };
+    };
+
+    ctx.tool("publish.edge.up", {
+      callers: PEOPLE,
+      description: "Start the edge: build its Caddy image, copy each live site into its volume and bring the compose project up. Runs publish.edge first. Without a way to start containers on this box it answers not_available and the plan to run by hand.",
+      input: obj({}),
+      run: async (i, meta) => {
+        const r = await writeEdge(i, meta);
+        const plan = edgePlan(r);
+        return { project: r.compose.name, ...(await runPlan(plan, seams.docker)) };
+      },
+    });
+    ctx.tool("publish.edge.down", {
+      callers: PEOPLE,
+      description: "Stop the edge. Sites stop answering; their files and certificates stay.",
+      input: obj({}),
+      run: async (i, meta) => {
+        const b = await begin(i, meta);
+        if (!seams.docker) fail("not_available", "this box has no way to stop containers; run `docker compose -p " + `vyre-publish-${b.space.id}` + " stop` by hand");
+        return stopEdge(`vyre-publish-${b.space.id}`, seams.docker);
       },
     });
 

@@ -201,7 +201,6 @@ export default {
     /** Reads and changes are the owner's: never a guest's, an agent's, a hook's or anonymous. */
     const owner = (caller, meta, what) => {
       const c = String(caller || "");
-      if (c.startsWith("tailnet-guest:")) throw fail("denied", `${what} is the owner's; a guest never sees the box's devices`);
       if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
       if (["anonymous", "hook"].includes(c)) throw fail("denied", `${what} is the owner's`);
       // a bare model session ("mcp", "harness") and a Vyre-owned session are not the owner either (platform-3: relay.status let a bare mcp through)

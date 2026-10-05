@@ -5,6 +5,7 @@
 // decides who a person is from a label ("mcp", "harness", "device:x"). Approving, pausing, resuming and removing a Kit are a person's own and name a person's chain, and approving also asks for the person's
 // proof. The module decides nothing about authority: every record, task and send a Flow makes goes through the kernel.
 import { bridgeWatchers } from "../../kernel/flows/watcher-bridge.js";
+import { kitLibrary, kitFromLibrary } from "../../records/kits/library.js";
 
 const str = { type: "string" };
 const open = { type: "object", additionalProperties: true, properties: { space: str } };
@@ -33,6 +34,12 @@ const WHAT = {
   "flows.kit.propose": "Propose a Kit for approval: its types, templates, roles and Flows. A person, or their assistant for them; the person is asked and nothing installs until they say yes.",
   "flows.kit.remove": "Remove a Kit. A person's own.",
   "flows.kit.list": "The Kits of a Space.",
+  "flows.kit.diff": "What updating an installed Kit to a given version would change: parts added, changed and removed, what each can now do that it could not, and the risks. Read only.",
+};
+/** The Kit library ships with the build, so these two need no Space and no chain. */
+const LIBRARY = {
+  "flows.kit.library": "The Kits this build ships, before anything is installed: id, name, version, a plain description and what each adds.",
+  "flows.kit.library.get": "One Kit from the library in the form flows.kit.card, flows.kit.diff and flows.kit.propose take.",
 };
 const PERSONAL = new Set(["flows.approve", "flows.pause", "flows.resume", "flows.kit.remove"]);
 /** The kit tools keep their names inside the assembly (kernel/flows), so a tool of this module maps to it. */
@@ -64,6 +71,14 @@ export default {
       if (!first || !first.actor || first.actor.kind !== "person") throw refuse("a Flow is changed or run under a person's own chain or an assistant's session; this call carries neither", "denied");
       return chain;
     };
+    const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "space", "agent", "mcp", "harness"];
+    for (const [name, description] of Object.entries(LIBRARY)) {
+      ctx.tool(name, { description, input: { type: "object", additionalProperties: true, properties: { id: str } }, callers: CALLERS,
+        run: async (/** @type {any} */ input) => {
+          if (name === "flows.kit.library") return { kits: kitLibrary() };
+          try { return { kit: kitFromLibrary(String(input && input.id || "")) }; } catch (e) { throw refuse(/** @type {Error} */ (e).message, "not_found"); }
+        } });
+    }
     for (const [name, description] of Object.entries(WHAT)) {
       ctx.tool(name, {
         description, input: open, callers: ["cli", "local", "deck", "capsule", "mobile", "device", "space", "agent", "mcp", "harness"],

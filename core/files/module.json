@@ -20,6 +20,9 @@
     {"name": "files.drive.restore", "effect": "write", "reach": "person"},
     {"name": "files.drive.space.list", "effect": "read", "reach": "person"},
     {"name": "files.drive.space.read", "effect": "read", "reach": "person"},
+    {"name": "files.drive.link.create", "outward": true, "effect": "write", "reach": "person"},
+    {"name": "files.drive.link.list", "effect": "read", "reach": "person"},
+    {"name": "files.drive.link.revoke", "effect": "write", "reach": "person"},
     {"name": "files.drive.search", "reach": "anyone"},
     {"name": "files.mentions.search", "effect": "read", "reach": "person"},
     {"name": "files.mentions.resolve", "reach": "modules"}

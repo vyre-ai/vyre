@@ -29,12 +29,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `local/hands-chrome-mac` | `local` | 37 | 16 | none |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
-| [`computers`](#computers) | `core/computers` | `box` | 26 | 19 | cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 31 | 21 | cli, deck |
 | [`connectors`](#connectors) | `core/connectors` | `box`, `local` | 14 | 4 | capsule, cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
-| [`files`](#files) | `core/files` | `box`, `local` | 18 | 2 | capsule, cli, deck |
-| [`flows`](#flows) | `core/flows` | `box`, `local` | 21 | 0 | none |
+| [`files`](#files) | `core/files` | `box`, `local` | 36 | 3 | capsule, cli, deck |
+| [`flows`](#flows) | `core/flows` | `box`, `local` | 24 | 0 | none |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 13 | 6 | capsule, cli, deck |
 | [`github`](#github) | `core/github` | `box`, `local` | 33 | 8 | cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -46,28 +46,28 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`import`](#import) | `core/import` | `box`, `local` | 6 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box` | 7 | 4 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 30 | 21 | capsule, cli, deck |
 | [`mail`](#mail) | `core/mail` | `box`, `local` | 9 | 4 | capsule, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 10 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 46 | 15 | capsule, cli, deck |
 | [`mentions`](#mentions) | `core/mentions` | `box`, `local` | 3 | 0 | none |
 | [`modules`](#modules) | `core/modulelist` | `box`, `local` | 5 | 0 | cli |
-| [`names`](#names) | `core/names` | `box` | 8 | 3 | cli |
-| [`network`](#network) | `core/network` | `box` | 4 | 0 | capsule, cli, deck |
+| [`names`](#names) | `core/names` | `box` | 10 | 9 | cli |
+| [`network`](#network) | `core/network` | `box` | 13 | 4 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box`, `local` | 14 | 3 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 5 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
-| [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
+| [`publish`](#publish) | `core/publish` | `box` | 19 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 14 | 5 | cli |
-| [`records`](#records) | `core/records-tools` | `box`, `local` | 22 | 0 | cli |
-| [`relay`](#relay) | `core/relay` | `box`, `local` | 39 | 23 | capsule, cli, deck |
+| [`records`](#records) | `core/records-tools` | `box`, `local` | 23 | 0 | cli |
+| [`relay`](#relay) | `core/relay` | `box`, `local` | 42 | 23 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`rules`](#rules) | `core/rules-tools` | `box`, `local` | 10 | 0 | cli |
-| [`runner`](#runner) | `core/runner` | `local`, `box` | 7 | 7 | capsule, cli, deck |
+| [`runner`](#runner) | `core/runner` | `local`, `box` | 8 | 7 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 38 | 9 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 10 | 2 | cli, deck |
@@ -84,16 +84,16 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`tasks`](#tasks) | `core/tasks-tools` | `box`, `local` | 6 | 0 | cli |
 | [`team`](#team) | `core/team` | `box`, `local` | 32 | 10 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 3 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 57 | 37 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 58 | 38 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`undo`](#undo) | `core/undo` | `box`, `local` | 3 | 3 | cli |
 | [`update`](#update) | `core/update` | `box`, `local` | 3 | 2 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 132 | 44 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 133 | 44 | capsule, cli, deck |
 | [`vitals`](#vitals) | `core/vitals` | `box`, `local` | 5 | 2 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 4 | 0 | capsule |
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
-| [`wink`](#wink) | `core/wink` | `box` | 61 | 34 | capsule, cli, deck |
+| [`wink`](#wink) | `core/wink` | `box`, `local` | 59 | 34 | capsule, cli, deck |
 | [`work`](#work) | `core/work` | `box`, `local` | 19 | 0 | cli |
 
 ## about
@@ -239,11 +239,11 @@ Every CLI verb the running modules declare, in one list any surface can draw.
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [26](tools.md#computers), 7 of them only for other modules
-- Emits: [19 events](events.md#computers)
+- Tools: [31](tools.md#computers), 8 of them only for other modules
+- Emits: [21 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
-- Needs vault: `vyre-shared-computer-member-key`
+- Needs vault: `tailscale-agent-authkey`, `vyre-shared-computer-member-key`
 
 ## connectors
 
@@ -284,10 +284,10 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#files)
-- Emits: [2 events](events.md#files)
+- Tools: [36](tools.md#files)
+- Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## flows
 
@@ -296,7 +296,7 @@ Flows and Kits: write, approve and run a Flow, with its triggers, waits and task
 - Folder: `core/flows`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [21](tools.md#flows)
+- Tools: [24](tools.md#flows)
 - Emits: no events
 - Shows on: no surface
 - Needs daemon: `flowsHost`
@@ -391,7 +391,7 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 
 ## hooks
 
-Inbound webhooks from the public internet: one route at a time, each checked by the sender's signature, stored and announced to watchers.
+Inbound webhooks from the public internet through Tailscale Funnel: one route at a time, each checked by the sender's signature, stored and announced to watchers.
 
 - Folder: `core/hooks`, version 0.1.0
 - Runs on: `box`
@@ -426,14 +426,15 @@ Discover this device's Claude Code sessions, choose what to import, and follow t
 
 ## link
 
-The companion core's side on a server: pairing a Windows PC's local core under its desktop app device and verifying its signed calls.
+Makes the Mac and the box one system: pairing, box tools from the Mac, box events on the Mac, and the Mac's sessions read from the box.
 
 - Folder: `core/link`, version 0.1.0
-- Runs on: `box`
+- Runs on: `box`, `local`
 - Requires: none
-- Tools: [7](tools.md#link), 2 of them only for other modules
-- Emits: [4 events](events.md#link)
+- Tools: [30](tools.md#link), 5 of them only for other modules
+- Emits: [21 events](events.md#link)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## mail
 
@@ -497,21 +498,23 @@ The owner's reset of the accepted first-party module list, for a deliberate down
 - Folder: `core/names`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [8](tools.md#names), 3 of them only for other modules
-- Emits: [3 events](events.md#names)
+- Tools: [10](tools.md#names), 1 of them only for other modules
+- Emits: [9 events](events.md#names)
 - Shows on: cli
-- Teaches tips: `[object Object]`, `[object Object]`
+- Needs vault: `cloudflare-vyre-token`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## network
 
-The built-in network as the person sees it: whether this machine is signed in, per space whether the link is up (direct or through the relay), and joining or leaving a space. The work is the Wink module's; this module holds the public names (network.wink.*).
+Who besides the owner the box's tailnet listener serves: guests from other tailnets, each limited to view-only tools. Also the box's Tailscale sign-in and status for setup, and publishes the artifacts share path (/s/) on Tailscale Funnel when the person turns public links on.
 
 - Folder: `core/network`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [4](tools.md#network)
-- Emits: no events
+- Tools: [13](tools.md#network)
+- Emits: [4 events](events.md#network)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## onboard
 
@@ -524,7 +527,7 @@ The built-in network as the person sees it: whether this machine is signed in, p
 
 ## planner
 
-Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut.
+Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut. Its data is the Space's records: Reminder and Note records, to-dos as Tasks, the calendar as Event records.
 
 - Folder: `core/planner`, version 0.1.0
 - Runs on: `box`, `local`
@@ -532,6 +535,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [15](tools.md#planner)
 - Emits: [7 events](events.md#planner)
 - Shows on: capsule, cli, deck
+- Needs kernel: `{"actions":["records.read","records.create","records.update","records.remove","events.read","tasks.request","tasks.read","tasks.work"],"prefixes":["reminder/*","note/*","planner_firing/*","planner_state/*","event/*","task/*"],"types":[{"name":"reminder","label":"Reminder","icon":"IconBell","fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"kind","kind":"choice","label":"Kind","options":["alarm","timer","reminder","task"],"required":true},{"name":"state","kind":"choice","label":"State","options":["open","done","cancelled"],"required":true},{"name":"at","kind":"datetime","label":"Rings at"},{"name":"tz","kind":"text","label":"Time zone"},{"name":"floating","kind":"boolean","label":"Follows the planner's zone"},{"name":"wall","kind":"text","label":"Time of day (HH:MM)"},{"name":"date","kind":"text","label":"Date (YYYY-MM-DD)"},{"name":"repeat","kind":"text","label":"Repeat rule (JSON)"},{"name":"duration_ms","kind":"number","label":"Timer length (ms)"},{"name":"snooze_until","kind":"datetime","label":"Snoozed until"},{"name":"next_fire","kind":"number","label":"Next ring (ms, the planner's own)"},{"name":"body","kind":"rich_text","label":"Notes or the instruction a task runs"},{"name":"list","kind":"text","label":"List"},{"name":"priority","kind":"number","label":"Priority (0 to 3)"},{"name":"pinned","kind":"boolean","label":"Pinned"},{"name":"tags","kind":"text","label":"Tags (a JSON list)"},{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"source","kind":"text","label":"Added by (caller)"},{"name":"added_by","kind":"text","label":"Added by (agent)"},{"name":"created","kind":"number","label":"Created (ms)"},{"name":"updated","kind":"number","label":"Updated (ms)"},{"name":"deleted_at","kind":"datetime","label":"Deleted"},{"name":"done_at","kind":"datetime","label":"Done"},{"name":"waits_on","kind":"text","label":"Runs when this item is done"},{"name":"run_count","kind":"number","label":"Times run"},{"name":"last_result","kind":"text","label":"Last result"},{"name":"paused","kind":"boolean","label":"Paused"},{"name":"waits_on_fired","kind":"number","label":"Last completion it ran for"}]},{"name":"note","label":"Note","icon":"IconNote","fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"state","kind":"choice","label":"State","options":["open","done","cancelled"],"required":true},{"name":"body","kind":"rich_text","label":"Note"},{"name":"list","kind":"text","label":"List"},{"name":"priority","kind":"number","label":"Priority (0 to 3)"},{"name":"pinned","kind":"boolean","label":"Pinned"},{"name":"tags","kind":"text","label":"Tags (a JSON list)"},{"name":"project","kind":"text","label":"Project"},{"name":"thread","kind":"text","label":"Thread"},{"name":"source","kind":"text","label":"Added by (caller)"},{"name":"added_by","kind":"text","label":"Added by (agent)"},{"name":"created","kind":"number","label":"Created (ms)"},{"name":"updated","kind":"number","label":"Updated (ms)"},{"name":"deleted_at","kind":"datetime","label":"Deleted"},{"name":"done_at","kind":"datetime","label":"Done"}]},{"name":"planner_firing","label":"Ring","icon":"IconBellRinging","fields":[{"name":"fid","kind":"text","label":"Ring id","required":true,"unique":true},{"name":"item","kind":"text","label":"Item","required":true},{"name":"kind","kind":"text","label":"Kind","required":true},{"name":"due","kind":"number","label":"Due (ms)","required":true},{"name":"ring","kind":"number","label":"Ring number"},{"name":"missed","kind":"boolean","label":"Missed"},{"name":"state","kind":"text","label":"State","required":true},{"name":"fired_at","kind":"number","label":"Fired (ms)"},{"name":"next_ring","kind":"number","label":"Next ring (ms)"},{"name":"acked_at","kind":"number","label":"Answered (ms)"},{"name":"action","kind":"text","label":"Answer"},{"name":"by","kind":"text","label":"Answered by"},{"name":"until","kind":"number","label":"Snoozed until (ms)"}]},{"name":"planner_state","label":"Planner setting","icon":"IconSettings","fields":[{"name":"key","kind":"text","label":"Key","required":true,"unique":true},{"name":"value","kind":"text","label":"Value (JSON)","required":true}]},{"name":"event","label":"Event","icon":"IconCalendarEvent","fields":[{"name":"title","kind":"text","label":"Title","required":true},{"name":"starts_at","kind":"datetime","label":"Starts","required":true},{"name":"ends_at","kind":"datetime","label":"Ends"},{"name":"all_day","kind":"boolean","label":"All day"},{"name":"time_zone","kind":"text","label":"Time zone"},{"name":"place","kind":"text","label":"Place"},{"name":"people","kind":"emails","label":"People (email addresses)"},{"name":"record","kind":"link","label":"Belongs to"},{"name":"source","kind":"choice","label":"Came from","options":["vyre","google"]},{"name":"calendar","kind":"text","label":"Outside calendar (route)"},{"name":"external_id","kind":"text","label":"Outside id"},{"name":"notes","kind":"rich_text","label":"Notes"}]}]}`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## pluginagent
@@ -584,7 +588,7 @@ Put a site or app on the internet from your space: build a private preview, appr
 - Folder: `core/publish`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [17](tools.md#publish)
+- Tools: [19](tools.md#publish)
 - Emits: [6 events](events.md#publish)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-deployment`
@@ -616,7 +620,7 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 - Folder: `core/records-tools`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [22](tools.md#records)
+- Tools: [23](tools.md#records)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `devStandIn`
@@ -624,15 +628,16 @@ The app's way into a Space's records: one tool per Store call over the kernel's 
 
 ## relay
 
-The way to reach the box that always works: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
+A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
 
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [39](tools.md#relay), 12 of them only for other modules
+- Tools: [42](tools.md#relay), 14 of them only for other modules
 - Emits: [23 events](events.md#relay)
 - Shows on: capsule, cli, deck
 - Needs daemon: `tunnelEnd`
+- Needs vault: `tailscale-mint-oauth`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## releases
@@ -666,7 +671,7 @@ Runs a space's AI sessions on this computer: sandboxed, in an encrypted workspac
 - Folder: `core/runner`, version 0.1.0
 - Runs on: `local`, `box`
 - Requires: none
-- Tools: [7](tools.md#runner)
+- Tools: [8](tools.md#runner)
 - Emits: [7 events](events.md#runner)
 - Shows on: capsule, cli, deck
 
@@ -805,10 +810,10 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 
 - Folder: `core/sync`, version 0.1.0
 - Runs on: `box`, `local`
-- Requires: none
+- Requires: `link`
 - Tools: [10](tools.md#sync)
 - Emits: [5 events](events.md#sync)
-- Listens for: `device.removed`
+- Listens for: `link.unpaired`
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
@@ -861,8 +866,8 @@ Project teammates (ADR 0031): a named, persistent agent per role per project, a 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [57](tools.md#threads), 20 of them only for other modules
-- Emits: [37 events](events.md#threads)
+- Tools: [58](tools.md#threads), 20 of them only for other modules
+- Emits: [38 events](events.md#threads)
 - Shows on: cli
 - Needs daemon: `kernelSession`, `sandbox`, `credentials`
 - Needs vault: `claude-setup-token`, `anthropic-api-key`, `per-account`
@@ -907,7 +912,7 @@ Is a newer Vyre out: one daily look at the releases, one answer every surface dr
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [132](tools.md#vault), 15 of them only for other modules
+- Tools: [133](tools.md#vault), 15 of them only for other modules
 - Emits: [44 events](events.md#vault)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -967,9 +972,9 @@ One list of what waits on the user: session asks, held drafts, ringing reminders
 Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.
 
 - Folder: `core/wink`, version 0.1.0
-- Runs on: `box`
+- Runs on: `box`, `local`
 - Requires: `relay`
-- Tools: [61](tools.md#wink), 9 of them only for other modules
+- Tools: [59](tools.md#wink), 9 of them only for other modules
 - Emits: [34 events](events.md#wink)
 - Listens for: `relay.code-asked`, `relay.invite-redeemed`, `device.paired`, `device.removed`
 - Shows on: capsule, cli, deck

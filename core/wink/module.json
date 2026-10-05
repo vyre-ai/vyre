@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "description": "Pairing as grants: every way in is a Wink (scan a code, or type two-sided codes). Devices (phone, computer, server, storage) belong to the identity, never to a space. Add a device, pair a server or a phone, invite a person, offer compute, see and remove what was given.",
   "roles": [
-    "box"
+    "box",
+    "local"
   ],
   "requires": [
     "relay"

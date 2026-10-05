@@ -497,7 +497,7 @@ async function fakeDirectory(t) {
         const msg = authMessage({ route: String(h["x-vyre-route"]), ts: String(h["x-vyre-ts"]), nonce: String(h["x-vyre-nonce"]), method: String(req.method), target: url.pathname + url.search, bodyHash: crypto.createHash("sha256").update(body).digest("hex") });
         if (!crypto.verify(null, msg, pub, Buffer.from(String(h["x-vyre-sig"]), "base64url"))) throw new Error("bad signature");
       } catch { out.unsigned++; res.writeHead(401, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { code: "denied", message: "unsigned" } })); }
-      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, code: first ? "abcd-efgh-ijkl-mnop-qrst-uv" : null }); }
+      if (url.pathname === "/v1/names/claim") { const first = out.claims.length === 0; out.claims.push(JSON.parse(body)); return send({ name: JSON.parse(body).name, mine: true, fresh: first }); }
       if (url.pathname === "/v1/names/mine") return send({ name: "alex", state: "live", pointed: false, ips: {}, pending: null, notices: [] });
       res.writeHead(404, { "content-type": "application/json" }); res.end(JSON.stringify({ error: { code: "not_found", message: url.pathname } }));
     });
@@ -529,7 +529,7 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   const claim = async () => (await a.call("names.claim", { name: "alex" }));
   const c1 = await claim();
   assert.equal(c1.status, 200, JSON.stringify(c1));
-  assert.equal(c1.data.recoveryCode, "abcd-efgh-ijkl-mnop-qrst-uv", "the first claim shows the one-time code");
+  assert.equal(c1.data.recoveryCode, undefined, "no recovery code is made");
   await settle(200);
   assert.equal((await w.d.registry.call("names.status", {}, "cli")).data.phase, "named", "the name is held and nothing is published");
   assert.equal((await a.call("sessionsfx.accounts.signin")).data.started, true, "the module's declared tool is reachable");
@@ -541,7 +541,6 @@ test("setup: modules declare setupTools in module.json and the setup channel rea
   assert.notEqual(real.error?.code, "no_such_tool", "and the tool is on the setup channel");
   const c2 = await claim();
   assert.equal(c2.status, 200, JSON.stringify(c2));
-  assert.equal(c2.data.recoveryCode, null, "the code is shown once");
   assert.equal(dirFake.claims.length, 2, "both claims went to the fake directory");
   assert.equal(dirFake.unsigned, 0, "each signed by the box's route key");
   assert.equal((await w.d.registry.call("relay.setup.status", {}, "cli")).data.state, "paired", "the session survived all of it");

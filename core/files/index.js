@@ -25,6 +25,7 @@ import { defaults, walk } from "./search.js";
 import { drop } from "./drop.js";
 import { MIGRATIONS as MENTION_MIGRATIONS } from "./mentions.js";
 import { registerSpaceDrive } from "./space-drive.js";
+import { registerSpaceLinks } from "./space-links.js";
 import { dirs } from "./dirs.js";
 
 const run = promisify(execFile);
@@ -408,6 +409,8 @@ export default {
     ctx.store.migrate(MENTION_MIGRATIONS);
     // The Space's own Drive for the app: upload, versions, restore (core/files/space-drive.js).
     registerSpaceDrive(ctx);
+    // Shared links to a file in it, read only until they expire (core/files/space-links.js).
+    registerSpaceLinks(ctx);
     // The folders, for a new session or a terminal (dirs.js).
     dirs(ctx, { role, g, target, forward });
 

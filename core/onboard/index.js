@@ -61,7 +61,6 @@ const AGENT_CLAIM = /(?:^|[\s:])agent:/;
 const joinFail = (code, message) => Object.assign(new Error(message), { code });
 const joinOwnerOnly = (caller, meta, what) => {
   const c = String(caller || "");
-  if (c.startsWith("tailnet-guest:")) throw joinFail("denied", `${what} is the owner's; a guest never sees it`);
   if ((meta && meta.agent) || AGENT_CLAIM.test(c)) throw joinFail("denied", `"${c}" is an agent; ${what} is the owner's`);
   if (["anonymous", "hook"].includes(c)) throw joinFail("denied", `${what} is the owner's`);
 };
