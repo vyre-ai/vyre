@@ -1,7 +1,7 @@
 {
   "generated": "scripts/gen-docs-reference",
   "about": "Every Vyre command, tool, event, config key, environment variable, screen and concept, where the code defines it, the docs page that explains it, and every page, line and heading anchor that mentions it.",
-  "counts": {"command":344,"tool":1241,"event":459,"config":254,"env":248,"screen":20,"concept":43},
+  "counts": {"command":344,"tool":1242,"event":459,"config":254,"env":248,"screen":20,"concept":43},
   "things": [
     {"kind":"screen","name":"/a/:id","definedIn":"deck/views/artifact.js","page":"using/deck.md#what-is-on-each-view","label":"Artifact","routes":["/a/:id"],"mentions":[]},
     {"kind":"tool","name":"about.text","definedIn":"core/about/index.js","page":"reference/tools.md#abouttext","module":"about","mentions":[]},
@@ -1405,6 +1405,7 @@
     {"kind":"tool","name":"spaces.status","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacesstatus","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.sweep","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacessweep","module":"spaces","mentions":[]},
     {"kind":"tool","name":"spaces.tier","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacestier","module":"spaces","mentions":[]},
+    {"kind":"tool","name":"spaces.time-zone.set","definedIn":"core/spaces/index.js","page":"reference/tools.md#spacestime-zoneset","module":"spaces","mentions":[]},
     {"kind":"config","name":"spend","definedIn":"core/spend/index.js","page":null,"mentions":[{"page":"concepts/box-and-mac.md","line":31,"anchor":"one-process-per-machine"}]},
     {"kind":"event","name":"spend.capped","definedIn":"core/spend/index.js","page":"reference/events.md#spend","module":"spend","mentions":[]},
     {"kind":"tool","name":"spend.check","definedIn":"core/spend/index.js","page":"reference/tools.md#spendcheck","module":"spend","mentions":[]},
