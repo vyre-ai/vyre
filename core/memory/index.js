@@ -343,16 +343,17 @@ export default {
     // unscoped" rule at all.
     const NOTHING = ["/dev/null/vyre-assistant-has-no-mapped-projects"];
     /** The user's own surfaces. Only these, modules, and a verified all-projects agent read the main graph. */
-    const owner = () => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : false; };
+    const OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const owner = caller => { const w = whoNow(); return w ? (w.ownerSurface || w.module !== null) : OWNER.has(String(caller)) || String(caller).startsWith("module:"); }; // SHIM(legacy labels): the label side runs only with the kernel off
     /**
      * The user on another of their devices: vyred's tailnet listener sets "tailnet:<login>" from
      * Tailscale's whois, and no caller can claim it. It reads as the owner does (graph, facts,
      * why, stats, corrections) but never corrects, merges or splits.
      */
     // An agent's own node ("tailnet:agent:<name>") is an agent, not the user on another device.
-    const viaTailnet = () => { const w = whoNow(); return w ? (w.device && w.signedIn) : false; }; // With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
-    /** The person at one of their own surfaces or on their own device signed in, as the kernel's Who: never a module and never a model label. */
-    const mayRebuild = () => { const w = whoNow(); return w ? (w.ownerSurface || (w.device && w.signedIn)) : false; };
+    const viaTailnet = caller => { const w = whoNow(); return w ? (w.device && w.signedIn) : /^tailnet:(?!agent:)[^\s]+$/.test(String(caller || "")); }; // SHIM(legacy labels): the label branch goes with the kernel-off path. With a chain, one of the OWNER's own devices reads as the owner only when signed in (a person session), over Wink or the relay alike (ruling, 6 Oct)
+    /** The person at one of their own surfaces or on their own device signed in, as the kernel's Who or (SHIM(legacy labels), kernel off) the surface labels: never a module and never a model label. */
+    const mayRebuild = caller => { const w = whoNow(); return w ? (w.ownerSurface || (w.device && w.signedIn)) : OWNER.has(String(caller)); };
     const reader = caller => owner(caller) || viaTailnet(caller);
     /**
      * The one plain hint, for a READ refused on the OWNER's own paired device that is not signed in: sign in once on this device (ruling 6 Oct, option B). Only for that device: the kernel
@@ -570,7 +571,7 @@ export default {
      * @param {(input: any, extra: { caller?: string }) => Promise<any>} run
      */
     /** Whether the caller is an agent: the kernel chain has an agent hop (a label naming one, `agent:<name>`, only when the kernel is off). */
-    const namesAgent = () => { const w = whoNow(); return w ? w.agent !== null : false; };
+    const namesAgent = caller => { const w = whoNow(); return w ? w.agent !== null : /(?:^|[\s:])agent:/.test(String(caller || "")); }; // SHIM(legacy labels): the label side runs only with the kernel off
     const ownerOnly = run => async (input, extra = {}) => {
       if (namesAgent(extra.caller)) throw denied("corrections are the user's: an agent proposes one as a lesson instead");
       return run(input, extra);
@@ -583,11 +584,15 @@ export default {
     const personWrites = (caller, meta) => {
       const w = whoNow();
       if (w) return w.agent === null && (w.ownerSurface || (w.device && w.signedIn));
-      return false; // no chain, no person
+      const c = String(caller || ""); // SHIM(legacy labels): the label branch goes with the kernel-off path
+      if (/(?:^|[\s:])agent:/.test(c)) return false;
+      if (OWNERS.includes(c)) return true;
+      return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
     };
     const ownerWrite = run => ownerOnly(async (input, extra = {}) => {
       if (!personWrites(extra.caller, extra)) {
-        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent() : false;
+        // SHIM(legacy labels): the label branch runs only with the kernel off
+        const device = whoNow() ? Boolean(whoNow()?.device) && !namesAgent(extra.caller) : /^(?:tailnet:|device:)/.test(String(extra.caller || "")) && !/agent:/.test(String(extra.caller));
         throw Object.assign(new Error(device ? "corrections are the person's own: sign in on this device with your passkey first"
           : `corrections are made from the user's own surfaces, not ${plain(extra.caller || "an unnamed caller", 60)}`), { code: device ? "person_session_required" : "denied" });
       }

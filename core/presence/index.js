@@ -225,6 +225,12 @@ export const NARROWABLE = new Set(["gate.approve", "vault.account.unlock"]);
  * caller reaches a HUMAN_ONLY tool only with a person session as well (ADR 0032; the registry's
  * gate runs first), so a script on that device cannot borrow the node's identity here.
  */
+// SHIM(legacy labels): the kernel-off fallback; with a kernel the registry asks `personOf` (the chain) instead.
+const vaultSessionCaller = caller => {
+  const c = String(caller || "");
+  if (/(?:^|[\s:])agent:/.test(c)) return false;
+  return c.startsWith("tailnet:") || /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule";
+};
 
 /** How long one proof covers a login's windowed calls: as long as a session. */
 const TERMINAL_WINDOW = 30 * 60_000;
@@ -931,8 +937,9 @@ export class Presence {
 
     if (method === "session") {
       if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
-      // A session proves a vault tool only for the person: the kernel's chain for the call says so (`personOf`, set by the presence module from ctx.kernel), never the caller's label.
-      if (tool.startsWith("vault.") && !(this.personOf ? await this.personOf(meta || { caller }) : false)) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
+      // A session proves a vault tool only for the person: the kernel's chain for the call says so (`personOf`, set by the presence module from ctx.kernel), never the caller's label. With no
+      // kernel (development) the old label rule stays: SHIM(legacy labels).
+      if (tool.startsWith("vault.") && !(this.personOf ? await this.personOf(meta || { caller }) : vaultSessionCaller(caller))) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
       const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
       if (ok !== true) return refuse("this item needs its own proof every time");
       const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));

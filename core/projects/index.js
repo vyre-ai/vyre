@@ -413,12 +413,14 @@ export default {
     // not the wildcard agent's own per-project door — THE assistant rule, team-lead, restated
     // twice), so it skips the projects.access.check loop entirely rather than running through it
     // with every project as its candidate set.
-    const reachOwner = c => String(c || "").startsWith("module:");
+    const REACH_OWNER = new Set(["deck", "cli", "local", "capsule"]);
+    const reachOwner = c => REACH_OWNER.has(String(c)) || String(c || "").startsWith("module:");
     // The session and the agent are what the daemon vouched (meta.thread and meta.agent, forwarded by the asking module as `thread` and `claim`), never the `:thread:<id>` or `:agent:<name>` text of a label (RC-1).
+    // SHIM (kernel off, or an asking module that does not forward meta yet): when neither `thread` nor `claim` is given, the label's own text is read as before.
     const reachOwnSession = (c, thread, claim) => (thread !== undefined || claim !== undefined)
       ? !claim && /^mcp(?:$|[\s:])/.test(String(c || "")) && (c === "mcp" || Boolean(thread))
-      : false;
-    const reachAgentOf = (_c, claim) => claim ? String(claim) : null;
+      : /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(c || ""));
+    const reachAgentOf = (c, claim) => claim !== undefined ? (claim ? String(claim) : null) : /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/.exec(String(c || ""))?.[1] || null;
     ctx.tool("projects.reach", {
       description: "Which projects (and their folders) a caller may reach: the one door core/memory, core/recall and core/files all ask instead of keeping their own copy of this check. caller is the ORIGINAL caller the asking module itself received (ctx.call always relabels the actual meta.caller \"module:<name>\", so the owner-vs-refused decision below has to be told this explicitly rather than reading it off the call the registry sees); trusted because only a first-party module can reach this tool at all, and that module is the one responsible for forwarding it faithfully. { all: true } for the true owner (its own surfaces, a module, its own session, or an owner device): no restriction. Otherwise { all: false, agent, projects: [{slug, name, folders, threads}] }, deny by default. kind \"facts\" additionally gives the assistant { all: true } too (personal facts, distilled, not raw content); kind \"content\" (the default) never does, even for the assistant, which instead gets every project that exists, unconditional and never checked against projects.access (a different privilege tier from a projects: \"*\" agent, which is checked). A model never asks this on its own behalf: it cannot, callers being module-only.",
       input: { type: "object", properties: { agent: str, caller: str, thread: str, claim: { type: ["string", "null"] }, kind: { type: "string", enum: ["facts", "content"] }, person: { type: "boolean" } } },

@@ -16,6 +16,7 @@ export const seams = new Map();
  * The caller must be the person this device belongs to: never a module, a guest, an agent (not even the person's own assistant), or a chain carrying one.
  * With the kernel on, the person comes from `ctx.kernel.chain(meta)` and nothing else (a verified token's chain, or the facts the daemon proved about the connection):
  * a chain whose only hop is a person, no viewer chain, no agent or service hop. A caller label decides nothing: a web, setup or unknown `device:` label gets no chain and is refused.
+ * SHIM(legacy labels): with the kernel off there is no chain, so the old label refusal stays until the cut-over removes it.
  */
 const AGENT = /(?:^|[\s:])agent:/;
 const denied = (c, what) => Object.assign(new Error(`"${c}" is not the person this computer belongs to; ${what} is theirs`), { code: "denied" });
@@ -32,7 +33,8 @@ const person = async (ctx, meta, what) => {
     if (!owner || String(owner) !== id) throw denied(c, what);
     return id;
   }
-  throw denied(c, what); // no kernel chain, no person
+  if ((meta && (meta.agent || meta.assistant)) || AGENT.test(c) || /^(module|hook|anonymous|onboard|mcp|harness)\b/.test(c) || c.startsWith("tailnet:guest")) throw denied(c, what);
+  return null;
 };
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const str = { type: "string" };
