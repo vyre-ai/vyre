@@ -1817,10 +1817,10 @@ export default {
       return { devices: entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").map((/** @type {any} */ e) => ({ device: String(e.eid), agree: String(e.agree) })) };
     };
     tool("spaces.identity.devices", "The devices of a person you share a space with: each one's id and its key-agreement point, for wrapping a chat key. Public data only; a person you share no space with gives nothing.", obj({ person: str }, ["person"]), async (i, meta) => devicesOf(i, meta), { effect: "read" });
-    // The same public read for the first-party modules that wrap keys server-side (memory, files): a module caller is not a person (spaces.identity.devices is reach person), so this is its own internal tool, with the same
+    // The same public read for the first-party modules that wrap keys server-side (work makes a server-started chat's ring, files): a module caller is not a person (spaces.identity.devices is reach person), so this is its own internal tool, with the same
     // share-a-space check, answered for the person the call acts for (this home's person when no token rides). Public data only: a device id and its agreement point.
     tool("spaces.identity.devices.read", "The devices of a person you share a space with: each one's id and its key-agreement point, for a first-party module that wraps a chat key. Public data only.", obj({ person: str }, ["person"]), async (i, meta) => {
-      onlyModules(meta, ["memory", "files"]);
+      onlyModules(meta, ["work", "files"]);
       return devicesOf(i, meta);
     }, { internal: true });
 
