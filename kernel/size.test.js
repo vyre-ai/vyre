@@ -18,6 +18,10 @@ const BASE_FILES = [
   "store/sqlite.js", "store/sqlite-log.js", "store/values.js", "store/query.js",
   "index.js", "boot.js", "home.js", "keys.js", "devbuild.js",
 ];
+/** Not base, single files. */
+const NOT_BASE_FILES = {
+  "bus.js": "the event bus: an adapter that reads and writes modules' activity events as marked entries of the kernel log; the log's own rules (append-only, chained) are in core and store",
+};
 /** Not base, with where each goes (team/0.3/KERNEL-size.md and CUTOVER.md). */
 const NOT_BASE_DIRS = {
   seal: "the sealing process: its own process and its own cap",
@@ -52,7 +56,7 @@ test("the trusted base stays under its cap, and every part of kernel/ is named a
     const top = rel.split("/")[0];
     if (BASE_FILES.includes(rel) || BASE_DIRS.includes(top)) { base += lines(f); continue; }
     if (rel.includes("/") && top in NOT_BASE_DIRS) continue;
-    if (!rel.includes("/") && rel === "size.test.js") continue;
+    if (!rel.includes("/") && (rel === "size.test.js" || rel in NOT_BASE_FILES)) continue;
     unnamed.push(rel);
   }
   assert.deepEqual(unnamed, [], `name these in kernel/size.test.js (base, or not-base with where it goes) and in KERNEL-size.md: ${unnamed.join(", ")}`);
