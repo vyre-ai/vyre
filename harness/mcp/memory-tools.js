@@ -8,9 +8,18 @@
 export const ALIASES = {
   memory_search: {
     tool: "memory.retrieve",
-    description: "Search past sessions by meaning: the passages themselves, each with its session, no answer written. Use memory_ask for a question you want answered.",
-    input: { type: "object", required: ["query"], properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 30 } } },
-    map: a => ({ question: String(a.query || ""), ...(a.limit ? { k: a.limit } : {}) }),
+    description: "Search past sessions by meaning: the passages themselves, each with its session and turn number (read around one with memory_turn), no answer written. file or commit keeps only turns that touched that file (a path or just its name) or made that commit. Use memory_ask for a question you want answered.",
+    input: { type: "object", required: ["query"], properties: { query: { type: "string" }, limit: { type: "integer", minimum: 1, maximum: 30 },
+      file: { type: "string", description: "only turns that changed or read this file, by path or name" }, commit: { type: "string", description: "only turns that made or named this commit, by short or full hash" } } },
+    map: a => ({ question: String(a.query || ""), ...(a.limit ? { k: a.limit } : {}), ...(a.file ? { file: String(a.file) } : {}), ...(a.commit ? { commit: String(a.commit) } : {}) }),
+  },
+  memory_turn: {
+    tool: "recall.turn",
+    description: "Read a past stretch of a session word for word, exactly as it was said: no summary. session and seq come from memory_search results (each passage names them). seq with before and after gives the turns around it; from with to or span gives a range. Each turn carries its time and what it touched (files, commits, urls). A long turn is given whole.",
+    input: { type: "object", required: ["session"], properties: { session: { type: "string", description: "a session id, or the start of one, as a memory_search result gives it" },
+      seq: { type: "integer", minimum: 0, description: "the turn number" }, before: { type: "integer", minimum: 0, maximum: 60 }, after: { type: "integer", minimum: 0, maximum: 60 },
+      from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0 }, span: { type: "integer", minimum: 1, maximum: 60 } } },
+    map: a => ({ session: String(a.session || ""), ...Object.fromEntries(["seq", "before", "after", "from", "to", "span"].filter(k => a[k] !== undefined).map(k => [k, a[k]])) }),
   },
   memory_remember: {
     tool: "memory.write",

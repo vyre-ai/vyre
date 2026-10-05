@@ -23,7 +23,7 @@ export const MIGRATIONS = [
 export const ALLOWED = Object.freeze(new Set([
   "memory.ask", "memory.answer", "memory.brief", "memory.card", "memory.context", "memory.contradictions", "memory.decisions", "memory.facts", "memory.graph", "memory.me", "memory.profile",
   "memory.read", "memory.relevant", "memory.retrieve", "memory.stats", "memory.today", "memory.why", "memory.remember",
-  "recall.search", "recall.sessions", "recall.thread", "recall.transcript", "recall.related", "recall.status",
+  "recall.search", "recall.sessions", "recall.thread", "recall.turn", "recall.links", "recall.transcript", "recall.related", "recall.status",
   "projects.list", "projects.context", "projects.catalog", "projects.of", "projects.threads", "projects.history",
   "threads.list", "threads.get", "threads.history", "threads.lineage",
   "pluginagent.ask", "pluginagent.status",

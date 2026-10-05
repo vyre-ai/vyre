@@ -59,7 +59,19 @@ export const MIGRATIONS = [
   DROP TABLE recall_turns;
   ALTER TABLE recall_turns_next RENAME TO recall_turns;
   `,
+  // What a turn touched, as plain lookup keys (core/transcripts/links.js): kind is file, read, commit or url, ref the path (relative to the session's folder), the
+  // short or full hash, or the url. Written by the indexer on the same pass as the turn, keyed on (session, seq) like vectors, never on the FTS rowid. A session's
+  // links go when its turns do (a rewrite, a forget).
+  `
+  CREATE TABLE recall_links (
+    session TEXT NOT NULL, seq INTEGER NOT NULL, kind TEXT NOT NULL, ref TEXT NOT NULL,
+    PRIMARY KEY (session, seq, kind, ref)
+  ) WITHOUT ROWID;
+  CREATE INDEX recall_links_ref ON recall_links (kind, ref);
+  `,
 ];
+
+// recall_links is the third contract table: Memory's pointer index and the memory_turn tool read it, Recall's indexer writes it.
 
 /** @typedef {{ id: string, file: string, cwd: string|null, name: string|null, title: string|null, started: number, ended: number, turns: number, human: number, parent: string|null }} SessionRow */
 /** @typedef {{ session: string, seq: number, role: "user"|"assistant", ts: number, text: string, provider: string|null, model: string|null }} TurnRow */
