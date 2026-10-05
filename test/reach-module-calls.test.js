@@ -18,8 +18,6 @@ const SKIP = new Set(["node_modules", ".git", "testing"]);
 const PERSON_PROXY = new Set([
   // A tolerated refusal: the switchboard asks mentions.search and, when a module is refused it, falls back to vault by name (core/switchboard/said.js).
   "switchboard:mentions.search",
-  // The Windows app's own page (local/capsule/native-win/app/ui/link.js) asks the box through the person's signed-in panel; it is the person calling, not a module.
-  "capsule:files.drive.address",
   // pluginagent.revoke is the person's own act (it needs presence): the agent it made is deleted with the revoking caller (ctx.call as: meta.caller), so agents.delete's person-only rule decides, not the module.
   "pluginagent:agents.delete",
   // core/wink/serverlink.js askApproval / approvalStatus: a paired device asks for its owner's yes over its own peer-wire session (sessionFor), the person's own device calling as itself, not a module.

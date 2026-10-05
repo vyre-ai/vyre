@@ -331,7 +331,6 @@ export const HUMAN_ONLY = new Set([
   "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   "presence.person.start",
-  "files.drive.share", "files.drive.unshare",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "projects.access.grant",

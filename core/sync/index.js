@@ -490,7 +490,7 @@ function allowedSessionPath(p, root) {
   return real;
 }
 
-/** A bound on how many filesystem entries one scan looks at, so a huge folder cannot make sync.scan slow (files/drive.js's SCAN_LIMIT convention). */
+/** A bound on how many filesystem entries one scan looks at, so a huge folder cannot make sync.scan slow (the same bound the Drive share scan used). */
 const SCAN_LIMIT = 50_000;
 
 /**

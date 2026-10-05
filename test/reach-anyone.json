@@ -341,37 +341,13 @@
    "module": "files",
    "reason": "read-only: names of folders inside the files roots through the guard (no dot folders, no secrets), no content"
   },
-  "files.drive.audit": {
-   "module": "files",
-   "reason": "owner check inside: reach(ctx).all is required, an agent is refused; it reports and changes nothing"
-  },
-  "files.drive.candidates": {
-   "module": "files",
-   "reason": "scope check: a scoped caller sees only granted folders; read-only"
-  },
-  "files.drive.list": {
-   "module": "files",
-   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
-  },
-  "files.drive.local": {
-   "module": "files",
-   "reason": "scope check: a named agent gets a local path only for a box path inside its grant; read-only"
-  },
-  "files.drive.measure": {
-   "module": "files",
-   "reason": "scope check: a scoped caller may measure only inside its granted folders (real path checked); read-only"
-  },
-  "files.drive.read": {
-   "module": "files",
-   "reason": "scope check: grants checked on the raw and the real path, through the files guard; a tagged file opens only for its own chat; the virtual Generated folder is reached only after the same grant check on the project's folder, and then artifacts' media for that one project is listed as this module; ASSUMES 0.2.0 has no private item inside a project (artifacts scopes every item by the project's grant; Spaces in 0.2.5 will need the asker forwarded); read-only"
-  },
   "files.drive.search": {
    "module": "files",
-   "reason": "scope check: a named agent searches only the intersection of each share and its granted folders; read-only"
+   "reason": "the Space Drive is read through the caller's own chain (gateway drive.listPage under their grants); read-only"
   },
   "files.drive.status": {
    "module": "files",
-   "reason": "scope check: a named agent sees only the shares inside its granted projects; read-only"
+   "reason": "the Space Drive state is read through the caller's own chain (the gateway drive's listPage under their grants); read-only"
   },
   "files.fetch": {
    "module": "files",

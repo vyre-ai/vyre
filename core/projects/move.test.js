@@ -16,7 +16,6 @@ import { moveProjects, RECORD } from "./move.js";
 import * as M from "./markers.js";
 import mod from "./index.js";
 import * as config from "../config/index.js";
-import { shareMap } from "../files/drive.js";
 
 /** A box's world before the move: two project homes and one plain folder in the old folder. */
 function world(t) {

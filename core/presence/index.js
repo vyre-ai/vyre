@@ -46,7 +46,6 @@ export const HUMAN_ONLY = new Set([
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
   // and the sites that leave through the owner's Mac. Switching a share the owner already made
   // between read-only and read-write is the owner's own (PERSON_ONLY below).
-  "files.drive.share", "files.drive.unshare",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   // Letting an agent reach a project's data at all (Vyre Drive step 3, federation): the same
@@ -78,7 +77,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // teammate's notes) trust the same caller label, and were first fixed here per-tool (e2e
   // review, HIGH 1, f8cbc882); the lead moved that fix into the daemon instead, for every tool at
   // once, so it is not repeated per module (2026-09-28). See core/daemon/index.js.
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "files.receive", "projects.move",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.receive", "projects.move",
   // Who watches a project's Needs without running a session in it: the owner's own list to edit.
   "projects.watchers.add", "projects.watchers.remove",
   // Taking an agent's project access away (Vyre Drive step 3): instant, no presence, so the owner
@@ -118,7 +117,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // machine-to-machine call it must still take, a paired Mac unpairing itself, is MACHINE_SELF
   // below (the reviewer's LOW for 0.1.1).
   "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
-  "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.send", "agents.delete",
+  "files.send", "agents.delete",
   "memory.correct", "memory.merge", "memory.split",
   // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
   // Touch ID prompt now"); a diagnostic bundle (paths, device names, logs) is not the model's to

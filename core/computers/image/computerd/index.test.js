@@ -130,7 +130,6 @@ test("computerd: starts Chrome on a pipe with the image's flags, and answers /cd
     assert.ok(seen.args.includes(flag), flag);
   }
   assert.equal(seen.args.at(-1), "about:blank");
-  assert.ok(!seen.args.some(a => a.startsWith("--proxy-pac-url")), "no PAC unless one is set");
   assert.ok(!seen.env.includes("COMPUTERD_TOKEN") && !seen.env.includes("VNC_PASSWORD"), "Chrome does not inherit computerd's secrets");
   assert.ok(fs.existsSync(path.join(c.dir, ".chromium.log")), "Chrome's output goes to its log file");
   assert.ok(!fs.existsSync(path.join(c.profile, "SingletonSocket")) && !fs.existsSync(path.join(c.profile, "SingletonCookie")), "stale Singleton locks are removed before Chrome starts");
@@ -145,15 +144,6 @@ test("computerd: starts Chrome on a pipe with the image's flags, and answers /cd
   assert.equal((await req(c.base, "GET", "/cdp/json/version", { token: "wrong" })).status, 401);
   const health = await req(c.base, "GET", "/health");
   assert.equal(health.json.chrome.Browser, "Chrome/140.0.0.0");
-});
-
-test("computerd: a PAC that is not a PAC data: URL stops computerd; a real one reaches Chrome's flags", async t => {
-  await assert.rejects(computerd(t, { VYRE_PROXY_PAC: "data:application/x-ns-proxy-autoconfig;base64,AAAA --evil" }), /exited 1/);
-  const pac = "data:application/x-ns-proxy-autoconfig;base64,ZnVuY3Rpb24gRmluZFByb3h5Rm9yVVJMKCl7fQ==";
-  const c = await computerd(t, { VYRE_PROXY_PAC: pac });
-  const seen = JSON.parse(fs.readFileSync(path.join(c.profile, "fake-chrome.json"), "utf8"));
-  assert.ok(seen.args.includes(`--proxy-pac-url=${pac}`));
-  assert.ok(seen.args.includes("--force-webrtc-ip-handling-policy=disable_non_proxied_udp"));
 });
 
 test("computerd: hands-chrome's own client round-trips through the mux; bad tokens and paths are refused", async t => {

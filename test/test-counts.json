@@ -159,7 +159,6 @@
  "core/files/dirs.test.js": 8,
  "core/files/drop.test.js": 17,
  "core/files/files.test.js": 26,
- "core/files/generated-real.test.js": 1,
  "core/gate/gate.test.js": 33,
  "core/gate/module.test.js": 3,
  "core/gate/said-presence.test.js": 1,

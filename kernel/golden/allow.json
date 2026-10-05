@@ -72,26 +72,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: delivers a file)"
  },
  {
-  "tool": "files.drive.address",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads where one of the box's VyreDrive shares is reached on the tailnet"
- },
- {
-  "tool": "files.drive.mount",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): mounts one of the box's shares at ~/Vyre/Box on the person's Mac, a mount of what is already shared"
- },
- {
-  "tool": "files.drive.offer",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: offers a file)"
- },
- {
-  "tool": "files.drive.open",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): opens a mounted box share, or a file in it, in Finder"
- },
- {
-  "tool": "files.drive.share",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: shares a file)"
- },
- {
   "tool": "files.drive.space.list",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists a Space drive folder the caller may read; the kernel decides"
  },
@@ -100,20 +80,8 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads a Space drive file the caller may read; the kernel decides"
  },
  {
-  "tool": "files.drive.unmount",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): unmounts a box share from the person's Mac"
- },
- {
-  "tool": "files.drive.unshare",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): stops sharing a folder over VyreDrive, which only takes access away"
- },
- {
   "tool": "files.drive.upload",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): puts a file in the Space drive under the caller's own chain; the kernel decides who may, and a version, never an overwrite"
- },
- {
-  "tool": "files.drive.url",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: makes a link)"
  },
  {
   "tool": "files.drive.versions",

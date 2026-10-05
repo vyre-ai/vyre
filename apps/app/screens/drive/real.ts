@@ -1,8 +1,3 @@
-import { call } from "../../src/api/box";
-import { driveSource } from "./source";
-
-export const { statusReal, listReal, readReal } = driveSource(call);
-
 import { tool } from "../../src/real/box";
 import { spaceDriveSource } from "./space-source";
 import type { Call } from "./source";
