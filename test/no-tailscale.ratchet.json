@@ -116,6 +116,7 @@
   "deck/test/world.js",
   "deck/views/pair.js",
   "deck/views/settings.js",
+  "docs/architecture/boundaries.md",
   "kernel/golden/matrix.js",
   "kernel/seal/uses.test.js",
   "lib/publish/edge.js",

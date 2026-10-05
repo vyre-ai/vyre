@@ -129,7 +129,7 @@ the characters said, and rolls at the earlier 50%. A conversation with an agent 
 own layout, so it is searchable like any other session.
 
 It waits for a running tool, subagent or background job for up to 3 turns, rolls at 75% whatever is running, and never rolls twice
-within 10 turns. Two settings (`vyre config`, in the Deck under Sessions; each can be set per project) change it:
+within 10 turns. Two settings (`vyre config`, in the Vyre app under Sessions; each can be set per project) change it:
 
 | Setting | Default | What it does |
 | --- | --- | --- |
