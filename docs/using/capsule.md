@@ -179,7 +179,7 @@ agent, or `glass box` for the box's files. See [Glass](glass.md).
 
 > [!SNAG] No "Open Glass" row
 > The row only shows when this Mac is paired with a box (`vyre link`) and the agent has a
-> computer. Pair the Mac first: [Connect a Mac to your box](tailscale.md).
+> computer. Pair the Mac first: [Put the Lumen on your Mac](../get-started/install.md#10-put-the-lumen-on-your-mac).
 
 ## Keys
 

@@ -19,11 +19,6 @@ and you finish setup with the server's own six screens, in [Onboarding](onboardi
 
 - Node 22.5 or newer (`node --version`).
 - Claude Code: `npm install -g @anthropic-ai/claude-code`.
-- Tailscale on the machine itself, from <https://tailscale.com/download>. On Linux it must use
-  its network interface (`tailscale0`); in userspace networking mode the onboarding stops at the
-  Tailscale step and says so. New to Tailscale? See [Tailscale, from zero](tailscale.md); MagicDNS
-  and HTTPS certificates must be on ([step 4](tailscale.md#4-turn-on-magicdns) and
-  [step 5](tailscale.md#5-turn-on-https-certificates)).
 - On Linux: systemd.
 
 ## Install the package
@@ -51,8 +46,8 @@ vyre up --box            # or: this Mac is the box
 vyre up --connect https://alex.vyre.run   # a box you already set up
 ```
 
-A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, finds your box on the
-tailnet (or asks where Vyre should run), asks the box to pair this Mac (you approve it in the
+A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, asks where Vyre should run
+(or uses the address you gave with `--connect`), asks the box to pair this Mac (you approve it in the
 Deck on your phone), offers once to add Vyre's line to Claude Code's status line, and builds and
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
 [Install, step 10](install.md#10-put-the-lumen-on-your-mac).
@@ -90,30 +85,22 @@ account that ran sudo. Add `--dry-run` to see every change without making one.
 `vyre up --system` does this, and running it again changes only what differs:
 
 1. Creates `~/.vyre` for that account, mode 0700.
-2. Writes two units in `/etc/systemd/system/`:
-   - `vyre.socket` owns port 443 on `tailscale0` only (`ListenStream=443`,
-     `BindToDevice=tailscale0`) and hands it to Vyre as fd 3. Vyre needs no capability for
-     443, and no child process can take the port first.
-   - `vyre.service` runs Vyre as the account with `Restart=always` and `NoNewPrivileges=yes`,
-     `VYRE_HOME` set to `~/.vyre`, and optional environment from `~/.vyre/env`.
-3. Runs `tailscale set --operator=alex`, so Vyre can run `tailscale up` and `tailscale cert`
-   from the onboarding page without root.
-4. Enables `vyre.socket`. If `tailscale0` does not exist yet it says so and skips this; run
-   `sudo vyre up --system --user alex` again once Tailscale is up. Until then Vyre serves only
-   its local socket.
-5. Enables and restarts `vyre.service`.
+2. Sets up what watchers run behind: bubblewrap and, where Ubuntu restricts user namespaces,
+   its AppArmor profile.
+3. Writes `vyre.service` in `/etc/systemd/system/`. It runs Vyre as the account with
+   `Restart=always` and `NoNewPrivileges=yes`, `VYRE_HOME` set to `~/.vyre`, and optional
+   environment from `~/.vyre/env`. Vyre opens no listener of its own on the network: its built-in
+   network and the relay carry every connection.
+4. Runs `systemctl daemon-reload`, `systemctl enable vyre.service` and
+   `systemctl restart vyre.service`.
 
-Then plain `vyre up`, as that account, prints the onboarding link and, over SSH, the `ssh -L`
-line to reach it from your own computer. The steps from there are in
+Then pair it from your Vyre app: `vyre call wink.server.code` on the server prints the pairing
+code, and the app shows the same three words to confirm. The steps from there are in
 [Onboarding](onboarding.md).
 
 > [!SNAG] vyre up --system says systemd is required
 > Without systemd there is no system install. Run `vyre daemon` (Vyre in the foreground) as the
 > account under your own supervisor, with `VYRE_HOME` set, and restart it when it exits.
-
-> [!SNAG] The onboarding stops at the Tailscale step
-> "Tailscale runs in userspace networking mode; Vyre needs its network interface." Run Tailscale
-> with its `tailscale0` interface (the default on Linux), not with `--tun=userspace-networking`.
 
 ### Upgrade
 

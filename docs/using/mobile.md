@@ -11,8 +11,8 @@ status: draft
 On a phone, Vyre is the [Deck](deck.md) installed as a web app. You add it to your home screen
 from the browser, it opens full screen like an app, and it can notify you when a session asks
 permission, a draft waits at the Gate, a thread you watch finishes, or Vyre proposes a lesson.
-The phone reaches your box over Tailscale, like every other device (see
-[Tailscale](tailscale.md)).
+The phone reaches your box through Vyre's own network, like every other device, and through
+the relay when a direct path is not possible.
 
 Installing the web app is the way to put Vyre on a phone in 0.2.0, and the rest of this page
 describes it. Native iPhone and Android builds of the same app exist too (see
@@ -20,14 +20,11 @@ describes it. Native iPhone and Android builds of the same app exist too (see
 
 ## Set up the phone
 
-1. Install the Tailscale app and sign in with the box owner's login. Onboarding's last step shows
-   a QR code for the Tailscale app and one for your box's `/now`. Step by step for iPhone and
-   Android: [Tailscale, from zero](../get-started/tailscale.md#2-install-tailscale-on-each-device).
-2. Open your box's address in Safari (iPhone) or Chrome (Android), for example
-   `https://vyre.tail1234.ts.net/now`.
-3. Add it to the home screen. On an iPhone: the Share button, then Add to Home Screen. On Android:
+1. Open your box's address in Safari (iPhone) or Chrome (Android), for example
+   `https://alex.vyre.run/now`. There is nothing to install or sign in to first.
+2. Add it to the home screen. On an iPhone: the Share button, then Add to Home Screen. On Android:
    the browser menu, then Install app or Add to Home screen.
-4. Open Vyre from the home screen icon. It opens at once, full screen, on the screen you
+3. Open Vyre from the home screen icon. It opens at once, full screen, on the screen you
    last had open if that was within a day, else on Now.
 
 Now then shows **Set up this phone**, three steps with what is left:
@@ -40,11 +37,6 @@ Now then shows **Set up this phone**, three steps with what is left:
   [Approving from the phone](#approving-from-the-phone)).
 
 **Not now** hides the card on that phone.
-
-> [!SNAG] The phone QR code says "After Tailscale and your address"
-> Onboarding never shows a QR code for `127.0.0.1`: until your box has its address, the phone has
-> nowhere to go. Finish the Tailscale and address steps (see [Tailscale](tailscale.md)), and the
-> QR code for your box's `/now` appears.
 
 ## What you can do from the phone
 
@@ -133,8 +125,8 @@ approved until the box answers.
 
 ## What it will not do
 
-- It will not work off your tailnet. Without Tailscale connected on the phone, the address does
-  not load ([what to check](../get-started/tailscale.md#the-phone-cannot-open-the-address-but-the-mac-can)).
+- It will not open for anyone but you. Only your own paired devices reach your box; if the
+  address does not load, run `vyre doctor` on the box and read **Path to your server** and **Relay**.
 - It will not show a draft's contents in a notification.
 
 - The native builds do not get notifications yet. Notifications on the phone are the web app's
@@ -155,6 +147,4 @@ notifies you.
 ## Next
 
 - [Deck](deck.md), every view in detail.
-- [Tailscale](tailscale.md), getting the phone onto your tailnet.
-- [Tailscale, from zero](../get-started/tailscale.md), if you have never used Tailscale.
 - [Security](../security/index.md), passkeys and what a phone may approve.

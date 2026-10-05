@@ -51,10 +51,9 @@ completely unchanged.
 2. Install Docker Desktop for Windows with the WSL2 backend enabled, or Docker Engine directly
    inside the WSL2 distribution.
 3. Inside the WSL2 shell, follow the ordinary Linux server setup at <https://vyre.run/setup>
-   ([Install](../get-started/install.md)), then [Box care](box-care.md) and
-   [Tailscale](tailscale.md), unchanged.
-4. Everything past that point, Tailscale, the Deck, other devices connecting in, behaves like
-   any other Linux server; WSL2 is invisible to them.
+   ([Install](../get-started/install.md)), then [Box care](box-care.md), unchanged.
+4. Everything past that point, the Deck and other devices connecting in, behaves like any other
+   Linux server; WSL2 is invisible to them.
 
 This path has not been run on a real Windows PC with WSL2. Its parts are tested on GitHub's
 `windows-latest` runners, which do not have WSL2.

@@ -102,8 +102,7 @@ your Claude subscription. The token is in the Vault." (or "Signed in with an API
 
 **Put this machine on your tailnet.** Press **Connect**. Tailscale's sign-in opens in a new tab:
 sign in with the same account as your Mac. No account? Signing in with Google, GitHub, Apple or
-Microsoft makes one. Vyre never sees your password. New to Tailscale? See
-[Tailscale, from zero](tailscale.md).
+Microsoft makes one. Vyre never sees your password.
 
 The three rows tick as you go: **Open Tailscale's sign-in**, **Sign in with your Tailscale
 account**, and **This machine joins your tailnet**, which then names the machine and its tailnet
@@ -145,16 +144,14 @@ in [Install](install.md#other-ways-to-install).
 > [!SNAG] "HTTPS certificates are off for your tailnet"
 > Tailscale has HTTPS off for new tailnets. Press **Turn on HTTPS**: Tailscale's DNS settings
 > open. Under HTTPS Certificates, turn it on. Come back and press **Check again**. Turning it on
-> publishes the machine's name in public Certificate Transparency logs. Step by step:
-> [Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates).
+> publishes the machine's name in public Certificate Transparency logs.
 
 > [!SNAG] "Pick your name in step 1 first."
 > The address needs your name. Press **Go to step 1**, finish it, and come back.
 
 > [!SNAG] The new address does not open in your browser
 > The browser runs on your Mac, so your Mac must be on the tailnet: open the Tailscale menu and
-> check it is connected, as the same account you used in step 3. If it is, see
-> [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+> check it is connected, as the same account you used in step 3. If it is, run `vyre doctor`.
 
 > [!SNAG] "This browser cannot create a passkey."
 > Open the link in Safari or Chrome, on a device on your tailnet. **Continue setting up** skips
@@ -165,7 +162,7 @@ in [Install](install.md#other-ways-to-install).
 > On this path the address is your tailnet's name. A `<you>.vyre.run` name comes from the setup
 > page at vyre.run/setup ([Install, step 4](install.md#4-choose-your-address)), or from the
 > terminal on the server: `vyre setup --name alex --yes` claims `alex.vyre.run` with no browser,
-> and prints a recovery code once. `vyre name ts.net` goes back to the tailnet name. Your own
+> and prints a recovery code once. Your own
 > domain is added on the setup page, as one DNS record.
 
 ## 5. Your history
@@ -221,7 +218,7 @@ Lumen." Lumen itself is in [Install, step 10](install.md#10-put-the-lumen-on-you
 1. **Install Tailscale**: a QR code for `tailscale.com/download`, and the account to sign in with.
    When Tailscale lists your phone, the step is ticked and says "Already on your tailnet:" and the
    phone's name. A phone that is offline in Tailscale is named, with "Open the Tailscale app and
-   turn it on, then scan." Phone steps: [Install Tailscale on each device](tailscale.md#2-install-tailscale-on-each-device).
+   turn it on, then scan."
 2. **Open** your address: a QR code for your address with `/now`. Before the address works it
    says "After Tailscale and your address".
 3. **Add to Home Screen**: "Share, then Add to Home Screen. It opens like an app."

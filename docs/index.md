@@ -15,10 +15,10 @@ Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out.
 The fastest path, in order:
 
 1. [Install](get-started/install.md): put Vyre on a Linux server and your Mac. From the Mac it is one command.
-2. [Onboarding](get-started/onboarding.md): six screens in the browser. Your name, Claude sign-in, Tailscale, your address, your history, your devices.
+2. [Onboarding](get-started/onboarding.md): six screens in the browser. Your name, Claude sign-in, your address, your history, your devices.
 3. [Your first day](get-started/first-day.md): open the Capsule, start a thread in a project, launch an agent, store a secret, find something from last week.
 
-On a Mac with Tailscale signed in, the install starts here (new to Tailscale? See [Tailscale, from zero](get-started/tailscale.md)):
+On a Mac, the install starts here:
 
 ```
 npm install -g https://vyre.run/box/vyre.tgz

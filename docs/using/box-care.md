@@ -50,8 +50,8 @@ is not running, waits up to a minute for Vyre, then prints the setup link or you
 > Vyre already there and carries on from where it stands.
 
 > [!SNAG] `vyre box` says "not answering from here"
-> This Mac is not on your tailnet, or the box is down. Open Tailscale on the Mac, then check the
-> box with `vyre status` on the server. See [Tailscale](tailscale.md).
+> This Mac cannot reach your box, or the box is down. Check the box with `vyre status` on the
+> server, and run `vyre doctor` on the Mac for the path and the relay.
 
 ## Read its logs
 

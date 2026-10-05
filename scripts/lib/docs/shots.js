@@ -205,7 +205,7 @@ export const SHOTS = [
     script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(600);`,
     shows: [...DECK, ...NOW, ...PAIR],
     alt: "The card on Now when a Mac asks to pair: alex-mbp, a field for the code the Mac shows, Approve and Deny.",
-    page: "using/tailscale.md", heading: "Connect your Mac to the box" },
+    page: "get-started/install.md", heading: "10. Put the Lumen on your Mac" },
 ];
 
 /** CLI output is shown as text, not pictures: these are the commands docs-shots --cli prints from the sample world. */

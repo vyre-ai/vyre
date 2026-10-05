@@ -9,8 +9,8 @@ status: draft
 # Deck
 
 The Deck is Vyre's web app. Your box serves it at its own address, usually
-`https://vyre.<tailnet>.ts.net`, and only your devices on your tailnet can open it: there is no
-separate login, because Tailscale says who is on the other end (see [Tailscale](tailscale.md)).
+`https://alex.vyre.run`, and only your own paired devices can open it, through Vyre's own network:
+there is no separate login, because your device's own key says who is on the other end.
 It shows what needs you, what is running, your projects, agents, memory and vault, and every
 setting the onboarding made or skipped. The same pages work on a phone, and it installs as an app
 there (see [Mobile](mobile.md)). The Deck reads and writes only through Vyre's API, so it never
@@ -224,8 +224,8 @@ for up to a week. Nothing you can send or approve works offline.
 
 - It never shows a vault value. There is no API for one.
 - It never renders text from a thread as HTML. Model output is untrusted.
-- It is not reachable from the public internet. Without Tailscale on a device, that device cannot
-  open it. New to Tailscale? See [Tailscale, from zero](../get-started/tailscale.md).
+- It is not reachable from the public internet. A device that is not paired with your box cannot
+  open it.
 
 ## Next
 

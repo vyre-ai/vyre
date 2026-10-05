@@ -31,7 +31,7 @@ The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A modul
 - Learning: `learn.skill-install`.
 - Machines: `link.pair.approve`.
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`, `presence.person.start`.
-- Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `network.guests.add`, `network.guests.remove`, `network.guests.enable`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`, `projects.access.grant`.
+- Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`, `projects.access.grant`.
 
 Your own actions on your own screens ask for no extra proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making, changing and resuming agents (`agents.create`, `agents.update`, `agents.resume`), changing a setting (`settings.set`), accepting, retiring and relaxing your lessons (`learn.accept`, `learn.retire`, `learn.relax`), taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`), making one of the box's VyreDrive shares (built on Tailscale's Taildrive) read-only or read-write (`files.drive.access`), and more besides. The list in `core/presence/index.js` is the full one. Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
 

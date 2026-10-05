@@ -36,7 +36,7 @@ Details: [ADR 0001](../adr/0001-vault-crypto.md), the key hierarchy in [ADR 0006
 
 - **Only your devices reach the box.** Your address resolves to the box's Tailscale address. On a Docker box the `tailscale` container is the only way in, and it publishes one port to the host: 7300, on `127.0.0.1`, for onboarding.
 - **Callers are identified by `tailscale whois` of the WireGuard source address,** never by a header. A process on the host or in another container cannot produce a tailnet source address, so it cannot pose as you.
-- **One owner.** The box serves one Tailscale login, set at onboarding (`vyre owner` changes it).
+- **One owner.** The box serves one owner, set at setup.
 - **Onboarding is loopback only.** Before an owner exists, `vyred` serves one route: the onboarding page, on loopback, behind a one-time token that expires after an hour. It checks the `Host` header, so a page on another site cannot reach it through DNS rebinding.
 - **No root.** `vyred` runs as uid 1000 in the container, or as your own login account without Docker, never root. On Linux without Docker, systemd owns port 443 on `tailscale0` and hands it to `vyred`, so `vyred` needs no capability.
 - **A Mac pairs only with your passkey.** Approving a pairing needs presence, and the box refuses the approval from the Mac that asks, since a model on that Mac can read the code it shows.

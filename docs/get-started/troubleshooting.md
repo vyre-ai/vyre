@@ -18,9 +18,9 @@ Start with `vyre doctor`, on the Mac or on the server:
 vyre doctor
 ```
 
-It checks that Vyre is running, Tailscale on both ends (signed in, the same account, MagicDNS and HTTPS on), your
-phone on the tailnet, the box's address, a passkey for that address, pairing, Claude on the box and
-Lumen, in under two seconds. Each line is a check that passed, failed (with the one thing to
+It checks that Vyre is running, that you are signed in to Vyre, the link to your space, the path to your
+server and the relay, the server's door, storage, the clock, pairing, a passkey, Claude on the box, the Lumen,
+every module and search, in under two seconds. Each line is a check that passed, failed (with the one thing to
 do next under it), or could not be checked (with why). It only reads: it never signs in, pairs or
 opens anything. `vyre doctor --json` gives the same list to a script.
 
@@ -31,7 +31,7 @@ If that does not explain it, these show more:
 ```
 vyre status                 # is Vyre running, and what is it running
 vyre logs                   # follow Vyre's output
-docker compose -p vyre ps   # are the tailscale and vyre containers up
+docker compose -p vyre ps   # is the vyre container up
 ```
 
 If your account on the server is not in the `docker` group, every `vyre` command there needs `sudo`.
@@ -77,7 +77,7 @@ Something between the server and the page altered or replayed the progress. The 
 
 ### The page says "Waiting for your server"
 
-The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Your server is ready.` If the installer stopped, the last line says why (Docker, `/dev/net/tun`, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
+The line has not finished, or never ran. Look at the terminal where you pasted it: it should end with `Your server is ready.` If the installer stopped, the last line says why (Docker, a checksum or a signature check). Fix that, then run the same line again while the hour lasts.
 
 ### "that name is reserved", or the address is not free
 
@@ -87,27 +87,19 @@ Pick another name. Service names such as `app`, `login` and `vault`, well-known 
 
 It is shown once, and only on that page, so nothing can show it again. It matters only if you reinstall: with it, a reinstall takes this address back. The address itself keeps working.
 
-### Tailscale says "Waiting for approval in your Tailscale admin"
-
-Your tailnet asks an admin to approve each new device. Open [Machines](https://login.tailscale.com/admin/machines), open the new server's menu and approve it, or ask whoever runs the tailnet.
-
 ### "The address could not be published" or "the certificate could not be made"
 
-The page shows the reason it was given. If Tailscale is connected and this stays, run `vyre name` on the server for where the address stands, and see [Tailscale, from zero](tailscale.md#when-something-is-wrong).
+The page shows the reason it was given. If it stays, run `vyre name` on the server for where the address stands.
 
 ### The link to open your server expired
 
-It works once, for two minutes. Press **Get a new link** on the setup page, and open it in the browser you will use with your server, on a computer that is on your tailnet.
+It works once, for two minutes. Press **Get a new link** on the setup page, and open it in the browser you will use with your server.
 
 ## Setting up the server from the Mac
 
-### "Tailscale is not running"
+### "... is not Linux"
 
-`vyre box add` (and `vyre up`, when it sets up a server) checks this Mac's Tailscale first and changes nothing on the server until it is up. Open Tailscale on the Mac, sign in, and run the command again. If Tailscale is not installed, the line is followed by its download link. New to Tailscale? See [Tailscale, from zero](tailscale.md).
-
-### "... is not Linux" or "this server has no /dev/net/tun"
-
-A Vyre box runs on Linux with Docker, and Tailscale needs `/dev/net/tun`. Nothing changed on the server. For the second one, run `sudo modprobe tun` on the server, or turn on TUN in your VPS provider's panel, then run `vyre box add alex@192.0.2.10` again.
+A Vyre box runs on Linux with Docker. Nothing changed on the server. Use a Linux server, then run `vyre box add alex@192.0.2.10` again.
 
 ### "nothing changed. Run it in a terminal to answer, or add --yes."
 
@@ -131,14 +123,6 @@ This matters when you set up from the server itself (`curl ... | sh`). The page 
 2. Open the link exactly as printed. Do not change the port: the page checks that it is reached on the port it listens on, and answers "Not here." otherwise.
 3. If port 7300 is busy on your Mac, stop whatever holds it rather than forwarding a different port.
 
-### "HTTPS certificates are off for your tailnet"
-
-Tailscale certificates are off for a new tailnet. On the **Your address** step, press **Turn on HTTPS**, flip the switch on the Tailscale page that opens, come back and press **Check again**. Step by step: [Turn on HTTPS certificates](tailscale.md#5-turn-on-https-certificates).
-
-### "Tailscale runs in userspace networking mode"
-
-The Tailscale step stops when Tailscale on the server has no network interface. Vyre needs `tailscale0`. Run Tailscale in its default mode, not `--tun=userspace-networking`, and press **Check again**.
-
 ### "Your address is not set up yet, so this page cannot open the Deck."
 
 You skipped **Your address**. The Deck is served only at your address, never on the loopback link. Go back to that step and finish it.
@@ -149,17 +133,17 @@ You skipped **Your address**. The Deck is served only at your address, never on 
 
 ### You want a `<you>.vyre.run` address
 
-The six screens on the SSH path give the address as your tailnet's name, `https://vyre.<tailnet>.ts.net`, which needs nothing extra but Tailscale's HTTPS certificates. To have a `<you>.vyre.run` name, run this on the server:
+To have a `<you>.vyre.run` name, run this on the server:
 
 ```
 vyre setup --name alex --yes
 ```
 
-It claims `alex.vyre.run` for good, waits for the address and its certificate, and prints a recovery code once: store it somewhere safe. `vyre name check alex` tells you first whether the name is free. To go back to the tailnet name, run `vyre name ts.net` on the server. The setup page at vyre.run/setup does the same claim in your browser.
+It claims `alex.vyre.run` for good, waits for the address and its certificate, and prints a recovery code once: store it somewhere safe. `vyre name check alex` tells you first whether the name is free. The setup page at vyre.run/setup does the same claim in your browser.
 
 ### Your address does not open
 
-Your address opens only from your own devices on your tailnet. Install Tailscale on the device and sign in with the same account as the box. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel. If the device is on the tailnet and the address still does not load, check MagicDNS: see [the address does not load](tailscale.md#the-address-does-not-load-and-no-certificate-error-either).
+Your address opens from your own devices through Vyre's own network, and through the relay when a direct path is not possible. There is nothing to install or sign in to on the device. Run `vyre doctor` on the server and read **Path to your server**, **Relay** and **Server door**: each says what failed and the one thing to do next. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel.
 
 ## The box
 
@@ -193,16 +177,7 @@ After an upgrade of a systemd install, `vyre up` asks you to rewrite the units. 
 
 The reason follows on the same line:
 
-- **"this Mac is not on the tailnet"**, followed in brackets by "Tailscale is not installed", "Tailscale is signed out: open Tailscale and sign in", or Tailscale's own state: install Tailscale on the Mac and sign in with the same account as the box.
-- **"the box is offline or unreachable"**: the Mac is on the tailnet but the box did not answer. Check the box is up (`vyre status` on the box) and that the address is right. `vyre up --connect https://vyre.tail1234.ts.net` names it directly.
-
-### "the box serves ... and this Mac is signed in to Tailscale as ..."
-
-The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tailscale as the box's owner, then run `vyre up`. See [Sign every device into the same account](tailscale.md#3-sign-every-device-into-the-same-account).
-
-### "more than one Vyre box answers on your tailnet"
-
-`vyre up` found several boxes and will not guess. In a terminal it asks which one; otherwise pick with `vyre up --connect <address>`.
+- **"the box is offline or unreachable"**: the Mac got no answer from the box. Check the box is up (`vyre status` on the box) and that the address is right. `vyre up --connect https://alex.vyre.run` names it directly. `vyre doctor` on the Mac shows the path and the relay.
 
 ### The pairing code expired
 
@@ -218,7 +193,7 @@ Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`
 
 ### A Mac's sessions show "offline" on the box
 
-The Deck on the box lists the paired Mac's sessions while the Mac is awake and on the tailnet. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check Tailscale is connected, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+The Deck on the box lists the paired Mac's sessions while the Mac is awake and reachable. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check its connection, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
 
 ## Lumen
 
@@ -274,5 +249,4 @@ A thread that needs permission stops and asks. `vyre agents` shows it as waiting
 
 - [Install](install.md) and [Onboarding](onboarding.md), the steps in order
 - [Looking after the box](../using/box-care.md): updates, backups, logs
-- [Tailscale, from zero](tailscale.md#when-something-is-wrong): tailnet snags, device by device
 - [CLI reference](../reference/cli.md)
