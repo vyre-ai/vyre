@@ -30,6 +30,7 @@ import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
+import { span, byLink, resolve as resolveSession } from "./turns.js";
 import { evaluate } from "./eval.js";
 import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { pacer, gate } from "./pace.js";
@@ -365,6 +366,8 @@ export default {
         sessions: { ...stringArray, description: "also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only" },
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
         per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
+        links: { type: "array", items: { type: "object", required: ["ref"], properties: { kind: { type: "string", enum: ["file", "read", "commit", "url"] }, ref: { type: "string" } } },
+          description: "keep only turns that touched these (a file path or name, a commit hash, a url), or sit next to one that did" },
       } },
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
@@ -458,6 +461,52 @@ export default {
         const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
         const asleep = answers.some(a => a.error && a.error.code !== "not_found" && !/^no session /.test(String(a.error.message || "")));
         throw Object.assign(new Error(answers.length && !asleep ? `no session ${q.session} (${why})` : `That session is on a Mac that isn't connected. (${why})`), { code: "not_found" });
+      },
+    });
+    /**
+     * A session id this caller may read, resolved among only what it may read: an id or prefix outside its grant never surfaces, not even as "more than one session starts with X".
+     * Thrown as "not found", so a scoped agent learns nothing about a session it may not read (recall.thread's rule, shared by the tools below).
+     * @param {{ all: boolean, folders: string[] }} r @param {string} session
+     */
+    const readableSession = (r, session) => {
+      if (r.all) return resolveSession(db, session);
+      const gone = () => Object.assign(new Error(`no session ${session}`), { code: "not_found" });
+      const exact = /** @type {any} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE id = ?").get(session));
+      if (exact) { if (!inFolders(exact.cwd, r.folders)) throw gone(); return resolveSession(db, exact.id); }
+      const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session)).filter(x => inFolders(x.cwd, r.folders));
+      if (!like.length) throw gone();
+      if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+      return resolveSession(db, like[0].id);
+    };
+    ctx.tool("recall.turn", {
+      effect: "read",
+      description: "A span of one past session, word for word: the turns themselves, no summary, each with its pointer (session:seq), its time, and what it touched (files, commits, urls). Name the turn with seq, and before and after for the turns around it, or give from with to or span. A turn the search index had to cut is read whole from the transcript. Redacted like everything Recall holds.",
+      input: { type: "object", required: ["session"], properties: {
+        session: { type: "string", description: "a session id, or an unambiguous prefix of one" },
+        seq: { type: "integer", minimum: 0 }, before: { type: "integer", minimum: 0, maximum: 60 }, after: { type: "integer", minimum: 0, maximum: 60 },
+        from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0 }, span: { type: "integer", minimum: 1, maximum: 60 },
+        full: { type: "boolean", description: "false: give a long turn as the index holds it (cut) instead of reading the transcript" }, ...agentField } },
+      callers: READERS,
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        const { agent, session, ...q } = input;
+        const r = await reach(agent, caller, meta);
+        const row = readableSession(r, String(session || ""));
+        return span(db, { ...q, session: row.id });
+      },
+    });
+    ctx.tool("recall.links", {
+      effect: "read",
+      description: "The turns that touched something, newest first: a file (ref is a path or just its name; kind file for changes, read for reads, both by default), a commit (kind commit, a short or full hash), or a url (kind url). Each is a pointer (session:seq) for recall.turn, with a snippet.",
+      input: { type: "object", required: ["ref"], properties: { ref: { type: "string" }, kind: { type: "string", enum: ["file", "read", "commit", "url"] },
+        session: { type: "string" }, since: { type: "integer", description: "ms since epoch" }, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
+      callers: READERS,
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        const { agent, session, ...q } = input;
+        const r = await reach(agent, caller, meta);
+        const id = session ? readableSession(r, String(session)).id : undefined;
+        const rows = byLink(db, { ...q, ...(id ? { session: id } : {}), limit: (q.limit || 30) * (r.all ? 1 : 4) });
+        const keep = r.all ? rows : rows.filter(x => inFolders(x.cwd, r.folders));
+        return keep.slice(0, Math.max(1, Math.min(200, q.limit || 30)));
       },
     });
     ctx.tool("recall.transcript", {

@@ -1046,6 +1046,7 @@ export default {
       description: "The turns Vyre Memory would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
         expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
+        file: { type: "string", description: "keep only turns that changed or read this file (a path or just its name), or sit next to one" }, commit: { type: "string", description: "keep only turns that made or named this commit (short or full hash), or sit next to one" },
         knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
       run: async (input, extra = {}) => {
         const { caller } = extra;
@@ -1054,7 +1055,8 @@ export default {
         try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
         const effectiveCwds = await scopedCwds(sees, input.agent, caller, project_cwds);
         const scope = await writeScope(input.agent, caller, extra, { cwds: project_cwds });
-        return withWrites(await retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees,
+        const links = [...(input.file ? [{ ref: String(input.file) }] : []), ...(input.commit ? [{ kind: "commit", ref: String(input.commit) }] : [])];
+        return withWrites(await retrieve({ question: String(input.question || ""), project_cwds: effectiveCwds, k: input.k ?? 8, personal: sees, ...(links.length ? { links } : {}),
           expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: owner(caller) ? Object.fromEntries(Object.entries(input.knobs && typeof input.knobs === "object" ? input.knobs : {}).filter(([k]) => ["hybrid", "role", "per_session", "prefix"].includes(k))) : {} }),
           String(input.question || ""), scope);
       },

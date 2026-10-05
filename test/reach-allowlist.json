@@ -538,6 +538,10 @@
    "module": "recall",
    "default": "limited by callers in code"
   },
+  "recall.links": {
+   "module": "recall",
+   "default": "callers admit a model"
+  },
   "recall.related": {
    "module": "recall",
    "default": "limited by callers in code"
@@ -565,6 +569,10 @@
   "recall.transcript": {
    "module": "recall",
    "default": "limited by callers in code"
+  },
+  "recall.turn": {
+   "module": "recall",
+   "default": "callers admit a model"
   },
   "recall.unwatch": {
    "module": "recall",
