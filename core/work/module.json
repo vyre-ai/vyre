@@ -69,6 +69,18 @@
         "effect": "write"
       },
       {
+        "name": "work.team.member",
+        "summary": "put a teammate on a Project's team as a team-member record, or take it off (the teammates module only)",
+        "reach": "modules",
+        "effect": "write"
+      },
+      {
+        "name": "work.project.ref",
+        "summary": "the Project a record id, address or short name names: its id, address, short name and name",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.project.rename",
         "summary": "rename a Project from Records: its record, Drive folder and project list follow",
         "reach": "anyone",
@@ -201,6 +213,7 @@
         "records.read",
         "records.create",
         "records.update",
+        "records.remove",
         "events.read",
         "drive.write",
         "grants.list",

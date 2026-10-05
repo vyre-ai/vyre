@@ -1973,6 +1973,10 @@
    "module": "work",
    "reason": "read-only: the plan is read under the caller's own chain in both Spaces"
   },
+  "work.project.ref": {
+   "module": "work",
+   "reason": "read-only; the record is read again under the caller's own chain, so a Project the caller may not read is not found"
+  },
   "work.project.rename": {
    "module": "work",
    "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"

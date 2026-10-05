@@ -15,7 +15,7 @@
 // Renames settle because each side compares before it writes: a side that already has the new name does nothing, so two sides that both sync names cannot ping-pong.
 
 import os from "node:os";
-import { slugify, SLUG_RE } from "../../lib/project-id.js";
+import { slugify, SLUG_RE, projectRecordIdOf } from "../../lib/project-id.js";
 
 const PROJECT = "project", CHAT = "chat-record", GENERAL = "general", UNTITLED = "New chat";
 /** Fields only the system writes: a person's edit of one is put back, so a record edit can never point the hub at another folder or session. */
@@ -186,11 +186,30 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     await kernel.drive.moveFolders(by, KINDS.map(k => [`${fromRoot}/${k}/${name}`, `${toRoot}/${k}/${name}`]));
   }
 
-  /** The Project a reference names: a short name, or a record address. @param {string} ref */
+  /** The Project a reference names: a short name, a record id, or a record address. @param {string} ref */
   async function projectOf(ref) {
     const r = String(ref || "");
     if (r.startsWith("vyre://")) { const [, , , type, id] = r.split("/"); return type === PROJECT ? kernel.records.get(chain(), PROJECT, id) : null; }
+    const id = projectRecordIdOf(r);
+    if (id) return kernel.records.get(chain(), PROJECT, id).catch(() => null);
     return find(PROJECT, "slug", r);
+  }
+
+  /**
+   * The team-member record of a teammate (core/team) on a Project: put there, or taken away. Records is where the app and the Flows read who is on a project's team; the teammates
+   * module keeps the rows that run them. A teammate with a record already is left as it is.
+   * @param {{ action: "add" | "remove", project: string, agent: string, role?: string, instructions?: string }} o
+   */
+  async function teamMember({ action, project, agent, role, instructions }) {
+    const proj = await projectOf(project);
+    if (!proj) return null;
+    const rows = (await kernel.records.query(chain(), "team-member", { filter: { field: "project", op: "eq", value: { urn: proj.urn } }, page: { limit: 200 } })).rows || [];
+    const mine = rows.find((/** @type {any} */ x) => { const d = data(x); return d && d.actor && d.actor.actor && d.actor.actor.id === agent; });
+    if (action === "remove") { if (mine) await kernel.records.remove(chain(), "team-member", mine.id, mine.version); return { removed: Boolean(mine) }; }
+    if (mine) return { id: mine.id, existed: true };
+    const made = await kernel.records.create(chain(), "team-member", { name: agent, actor: { actor: { kind: "agent", id: agent, space: kernel.space } }, kind: "assistant", ...(role ? { role } : {}),
+      project: { urn: proj.urn }, ...(instructions ? { instructions } : {}) });
+    return { id: made.id };
   }
 
   /** "Move to project": the chat's record is linked to the other Project and carries its Drive folders; its id, times and kernel membership stay exactly as they were. */
@@ -305,5 +324,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   const chatRecord = (/** @type {string} */ chat) => findChat(chat);
-  return Object.freeze({ createProject, ensureProject, generalProject, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
+  return Object.freeze({ teamMember, createProject, ensureProject, generalProject, ensureChatRecord, onChatCreated, onChatChanged, onStarted, onChatLinked, onStopped, moveChat, renameProject, renameChat, onProjectChanged, onThreadRenamed, onRecordChanged, onTurn, syncNameFromTranscript, freeSlug, projectOf, chatRecord, chatFolder: (/** @type {string} */ chat) => chat });
 }
