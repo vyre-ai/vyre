@@ -340,8 +340,10 @@ test("no frame of a kernel group chat reaches the log by any path but the reply 
       all.push(kind);
       const last = seq[seq.length - 1];
       const plainStatus = kind === "status" && !Object.keys(data).some(k => !["state", "turn", "stopping"].includes(k));
+      // a step's closing summary is derived from tool frames that already went through the handle and holds only counts and plain words for what kind of step it was
+      const stepCounts = kind === "step-summary" && !Object.keys(data).some(k => !["step", "count", "kinds", "summary", "ok"].includes(k));
       const viaHandle = last && data.rid === last.rid && (kind === "text-done" ? last.ev === "close" : last.ev === "write");
-      if (!plainStatus && !viaHandle) bypass.push({ kind, data });
+      if (!plainStatus && !stepCounts && !viaHandle) bypass.push({ kind, data });
     }
     return real(kind, data, o);
   };

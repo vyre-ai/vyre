@@ -25,6 +25,7 @@ const good = {
   "mention": { message: "m", who: ["assistant:kit"] },
   "fanout": { group: "g", message: "q", members: [{ who: "model:a", message: "a1" }, { who: "model:b", message: "a2" }] },
   "fanout-keep": { group: "g", keep: "a1" },
+  "step-summary": { step: "kit#1", count: 3, kinds: { read: 2, shell: 1 }, summary: "Read 2 files, ran a command", ok: true },
   "text-cut": { message: "m", note: "n" },
 };
 
@@ -36,7 +37,7 @@ test("protocol: every kind validates with its data and is refused without it", (
     assert.equal(f.corr, "3");
     assert.equal(validate({ ...f, data: {} }).ok, false, `${k} with empty data`);
   }
-  assert.equal(KINDS.length, 20);
+  assert.equal(KINDS.length, 21);
 });
 
 test("protocol: a hidden stub keeps a cursor and holds nothing", () => {
