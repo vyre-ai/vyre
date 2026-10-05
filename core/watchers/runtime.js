@@ -284,7 +284,7 @@ export class Runtime {
     if (f.problems.length) { fs.rmSync(dir, { recursive: true, force: true }); throw new Error(f.problems.join("; ")); }
     this.db.prepare(`INSERT INTO watchers_watchers (name, project, schedule, tested_hash, tested_at) VALUES (?,?,?,?,?)
       ON CONFLICT(name) DO UPDATE SET tested_hash = excluded.tested_hash, tested_at = excluded.tested_at`).run(p.name, p.json.project, f.spec ? f.spec.schedule : "event", f.hash, this.now());
-    return { ...this.card(p.name), ...(o.google ? { note: `reads your connected Google account ${o.google}, read only; nothing to grant` } : { grant: `vyre vault grant ${o.credential} watchers --watcher ${p.name}` }) };
+    return { ...this.card(p.name), grant: `vyre vault grant ${o.google ? (typeof this.d.googleItem === "function" ? await this.d.googleItem(o.google).catch(() => null) : null) || "<the Google account's vault item>" : o.credential} watchers --watcher ${p.name}`, ...(o.google ? { note: `reads your connected Google account ${o.google}, read only, once the person grants its vault item to this watcher` } : {}) };
   }
 
   /** Change a duty's trigger, words or act flag. It keeps its cursor and whether it is on or paused. */
@@ -569,6 +569,11 @@ export class Runtime {
           const method = String((init && init.method) || "GET").toUpperCase();
           if (method !== "GET") throw new Error(`${method} is not allowed from a watcher; only GET`);
           if (typeof this.d.google !== "function") throw new Error("the google module is not running on this machine");
+          // no grant, no read: a person grants the account's vault item to this watcher, for a dry run as for a run
+          if (typeof this.d.googleGranted !== "function" || !(await this.d.googleGranted(rule.google, spec.name))) {
+            const item = typeof this.d.googleItem === "function" ? await this.d.googleItem(rule.google).catch(() => null) : null;
+            throw new Error(`the Google account ${rule.google} is not granted to this watcher; a person runs: vyre vault grant ${item || "<the account's vault item>"} watchers --watcher ${spec.name}`);
+          }
           const query = {};
           for (const [k, v] of url.searchParams) query[k] = k in query ? [].concat(query[k], v) : v;
           const r = await this.d.google({ account: rule.google, method, path: url.pathname, ...(url.search ? { query } : {}) });

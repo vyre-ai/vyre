@@ -275,8 +275,14 @@ test("connectors: the logging recipe gives a watcher the watchers module accepts
   const card = await w.cli("watchers.preset", r.watcher);
   assert.equal(card.data?.name, r.name, JSON.stringify(card).slice(0, 600));
   assert.equal(card.data.state, "draft"); assert.deepEqual(card.data.facts.reads, ["gmail.googleapis.com"]);
-  assert.equal(card.data.grant, undefined, "a Google account needs no vault grant");
+  assert.equal(card.data.grant, `vyre vault grant work-google watchers --watcher ${r.name}`, "the person grants the account's vault item to this watcher, as for any credential");
   assert.match(card.data.note, /connected Google account work, read only/);
+  // G-1: nothing is read until the person grants it, for a dry run by a model as for a run
+  const ungranted = await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } });
+  assert.match(JSON.stringify(ungranted), /not granted to this watcher/, "a dry run reads nothing without the grant (the same check whoever runs it): " + JSON.stringify(ungranted).slice(0, 300));
+  assert.equal((await w.cli("vault.grant", { name: "work-google", module: "watchers", watcher: r.name })).data.grant.status, "active");
+  const granted = await w.cli("watchers.test", { name: r.name, since: { at: Date.now() - 3_600_000 } });
+  assert.doesNotMatch(JSON.stringify(granted), /not granted to this watcher/, "and with the grant it reads");
   assert.deepEqual(card.data.facts.credentials, [{ host: "gmail.googleapis.com", item: "google:work", how: "your connected Google account, read only" }]);
   // a calendar, with the switches
   const c = (await w.cli("connectors.logging", { connector: "google-calendar", address: "primary", project: "harlow-legal", createUnknown: true, skipInternal: "harlow.test" })).data;

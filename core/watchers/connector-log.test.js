@@ -41,7 +41,7 @@ test("mail and meetings found by the poll watchers land on the contacts' timelin
     return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
   };
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {}, google: googleApi, netOptions: () => testHooks.net, wall: () => testHooks.wall,
+    db, dir, now: () => clock.now, log: () => {}, google: googleApi, googleGranted: async () => true, netOptions: () => testHooks.net, wall: () => testHooks.wall,
     emit: (/** @type {string} */ type, /** @type {any} */ payload) => { bus.emit(type, payload); },
     call: async (/** @type {string} */ tool) => tool === "projects.list" ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/harlow-legal", workspaces: ["/work/harlow-legal"] }] } } : { error: { code: "no_such_tool" } },
     fetch: async () => "unused", teach: async () => true,

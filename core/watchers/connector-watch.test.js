@@ -46,7 +46,7 @@ function setup(/** @type {any} */ t, /** @type {{ google: any, stripe?: any }} *
     return { status: out.status, body: out.body ? JSON.parse(out.body) : {} };
   };
   const rt = new Runtime({
-    db, dir, now: () => clock.now, log: () => {}, request, google: googleApi, netOptions: () => testHooks.net, wall: () => testHooks.wall,
+    db, dir, now: () => clock.now, log: () => {}, request, google: googleApi, googleGranted: async () => true, netOptions: () => testHooks.net, wall: () => testHooks.wall,
     emit: () => {}, call: async (/** @type {string} */ tool) => tool === "projects.list" ? { data: { projects: [{ slug: "harlow-legal", name: "Harlow Legal", home: "/work/harlow-legal", workspaces: ["/work/harlow-legal"] }] } } : { error: { code: "no_such_tool" } },
     fetch: async () => "unused", teach: async (/** @type {string} */ kind, /** @type {any} */ fact) => { taught.push({ kind, ...fact }); return true; },
   });
@@ -137,4 +137,22 @@ test("a poll that is missing something it needs, or does not exist, is refused w
   await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", credential: "gmail", google: "work", vars: { mailbox: MAILBOX } }), /has no vault credential/);
   await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "stripe", poll: "payments.recent", project: "harlow-legal" }), /needs credential/);
   await assert.rejects(s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", vars: { mailbox: MAILBOX }, when: "every 1 minutes" }), /schedule|minutes/);
+});
+
+test("G-1: a Google watcher reads nothing until a person grants the account to it, for a dry run as for a run", async t => {
+  const google = fakeGoogle({ mailbox: MAILBOX });
+  const s = setup(t, { google });
+  let granted = false;
+  s.rt.d.googleGranted = async (/** @type {string} */ account, /** @type {string} */ watcher) => granted && account === "work" && watcher === "gmail-alex-harlow-test";
+  s.rt.d.googleItem = async () => "work-google";
+  const made = await s.rt.createPreset({ kind: "connector", connector: "gmail", poll: "mail.recent", project: "harlow-legal", google: "work", lookback_days: 1, vars: { mailbox: MAILBOX } });
+  assert.equal(made.grant, "vyre vault grant work-google watchers --watcher gmail-alex-harlow-test");
+  google.addMessage({ from: "jane@client.test", subject: "Hello", at: at(-5) });
+  const before = await s.rt.test(made.name);
+  assert.match(JSON.stringify(before), /not granted to this watcher/);
+  assert.equal(s.seen.length, 0, "nothing was read");
+  granted = true;
+  const after = await s.rt.test(made.name);
+  assert.doesNotMatch(JSON.stringify(after), /not granted/);
+  assert.ok(s.seen.length > 0, "with the grant it reads");
 });
