@@ -499,7 +499,7 @@ test("switchboard: a terminal resume of a live headless thread is warned about, 
 
   // A terminal `claude --resume <id>`: the brief warns and the switchboard says so to every surface.
   const term = (await tool("harness.brief", { cwd: work, session: id, headless: false }, "harness")).data;
-  assert.match(term.text, /^Warning from Vyre: this conversation is also running headless under Vyre right now \(holder: deck:1\)/);
+  assert.match(term.text, /^(Time: [^\n]*\n\n)?Warning from Vyre: this conversation is also running headless under Vyre right now \(holder: deck:1\)/);
   assert.ok(term.text.includes(`vyre threads stop ${id.slice(0, 8)}`));
   const ev = await until(() => of(s.got, id, "thread.contended")[0], "thread.contended");
   assert.deepEqual(ev.payload, { thread: id, session: id, holder: "deck:1" });
