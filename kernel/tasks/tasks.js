@@ -99,6 +99,14 @@ export function createTasks(cfg) {
     if (rule.approver.person !== undefined) return canon(h.id) === canon(rule.approver.person);
     return Boolean(cfg.members && typeof cfg.members.roleOf === "function" && cfg.members.roleOf(h) === rule.approver.role);
   };
+  /** AT-1: an approval is spent only while the person who gave it still holds the right to: still a member of the Space, and not demoted to a role that cannot decide a task (a temp). A removed approver's yes does not pass inside the day it is good for. */
+  const approverStands = (/** @type {any} */ by) => {
+    const h = by && by.approver_chain && by.approver_chain.hops && by.approver_chain.hops.length >= 1 ? by.approver_chain.hops[0].actor : null;
+    if (!h || h.kind !== "person") return false;
+    if (cfg.members && typeof cfg.members.has === "function" && !cfg.members.has(h)) return false;
+    const role = cfg.members && typeof cfg.members.roleOf === "function" ? cfg.members.roleOf(h) : null;
+    return role !== "temp";
+  };
   /** @type {Map<string, { approver_chain: any, use_proof: any }>} who approved a task and the sealed-use proof they signed with it (the sealing process verifies that proof itself) */ const approvedBy = new Map();
   /** @type {Map<string, string>} proposal id -> the task it proposes to skip */ const proposals = new Map();
   /** @type {Map<string, number>} */ const denials = new Map();
@@ -558,7 +566,7 @@ export function createTasks(cfg) {
       // which the checker was shown and which is frozen with the task. Nothing else is covered.
       const form = t && t.form && /** @type {any} */ (t.form).kind === "held_act" ? /** @type {any} */ (t.form) : null;
       const coveredAction = a && a.body.action !== undefined ? a.body.action : form && form.action, coveredResource = a && a.body.resource !== undefined ? a.body.resource : form && form.resource;
-      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && coveredAction === q.action && coveredResource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)));
+      return Boolean(a && t && !usedApprovals.has(q.id) && clock() - t.updated_at <= APPROVAL_MAX_AGE && coveredAction === q.action && coveredResource === q.resource && same(acting(q.chain), t.doer) && approverOk(q.rule, approvedBy.get(q.id)) && approverStands(approvedBy.get(q.id)));
     },
     /** The same check, and when it holds the approval is spent in the same step: what `authorize` calls, so a held act is allowed once, within a day, by its doer. */
     useApproval(q) {
