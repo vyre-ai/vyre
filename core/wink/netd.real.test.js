@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { createNetd, findBinaries, PEER_PORT } from "./netd.js";
+import { createNetd, findBinaries, nodeNameFor, PEER_PORT } from "./netd.js";
 import { createHost } from "./node/host.js";
 
 const bins = findBinaries();
@@ -22,6 +22,8 @@ const until = async (/** @type {() => any} */ f, ms = 30_000, what = "condition"
 test("real netd: the daemon's network comes up, a second node joins and a call crosses the direct path as device:<eid>", { skip, timeout: 240_000 }, async t => {
   const root = fs.mkdtempSync(path.join(SCRATCH, "netd-real-"));
   const space = "spc_realnet01", eid = "abcdefghijklmnop";
+  /** the device rows that exist: a node reaches the door only while its device has one */
+  const rows = new Set([eid]);
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ed25519");
   const pub = b64u(publicKey.export({ format: "der", type: "spki" }).subarray(-32));
   /** @type {Map<string, any>} */ const entries = new Map([[eid, { eid, kind: "device", pub }]]);
@@ -30,7 +32,7 @@ test("real netd: the daemon's network comes up, a second node joins and a call c
   const home = createNetd({
     root: path.join(root, "home"), space: async () => space, box: async () => "boxreal", entry: async x => entries.get(x) || null,
     serve: async (caller, tool, input) => { served.push({ caller, tool }); return { tool, input, caller }; },
-    retryMs: 0, reach: null, log: m => logs.push(m),
+    retryMs: 0, reach: null, devices: () => [...rows], log: m => logs.push(m),
   });
   t.after(async () => { try { await home.stop(); } catch { /* best effort */ } });
   await home.start();
@@ -44,8 +46,8 @@ test("real netd: the daemon's network comes up, a second node joins and a call c
   const dev = createHost({ root: path.join(root, "dev"), forwarderBin: /** @type {string} */ (bins.forwarder), log: m => logs.push(`dev: ${m}`), graceMs: 60_000,
     device: { id: eid, sign: m => b64u(crypto.sign(null, m, privateKey)) } });
   t.after(async () => { try { await dev.stopAll(); } catch { /* best effort */ } });
-  const key = await home.joinKey();
-  dev.addSpace({ id: space, controlUrl: /** @type {string} */ (s.controlUrl), authKey: key, hostname: "dev-real", box: "boxreal", peerAddr: `${homeIp}:${PEER_PORT}` });
+  const key = await home.joinKey(120_000, eid);
+  dev.addSpace({ id: space, controlUrl: /** @type {string} */ (s.controlUrl), authKey: key, hostname: nodeNameFor(eid), box: "boxreal", peerAddr: `${homeIp}:${PEER_PORT}` });
   await dev.start(space);
   const link = dev.connect(space);
   t.after(() => link.close());
@@ -53,6 +55,12 @@ test("real netd: the daemon's network comes up, a second node joins and a call c
   assert.equal(r.caller, `device:${eid}`);
   assert.equal(link.status().path, "direct", "the call crossed the Wink network, not the relay");
   assert.equal(served.at(-1).caller, `device:${eid}`);
+
+  // the paired device row is removed: its node is deleted and its rule goes, so the next call cannot cross
+  rows.delete(eid);
+  await home.deviceChanged();
+  // the node's session may outlive the rule for a few seconds while Headscale pushes the new map: the call must start failing soon
+  await until(async () => { try { await link.call("about.text", { q: 3 }, { timeoutMs: 5_000 }); return false; } catch { return true; } }, 60_000, "the removed device's calls to fail");
 
   // taken off the identity list: the next call is refused
   entries.delete(eid);

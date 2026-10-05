@@ -5,22 +5,24 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { createNetd, findBinaries, PEER_PORT } from "./netd.js";
+import { createNetd, findBinaries, nodeNameFor, PEER_PORT } from "./netd.js";
 
 const home = () => fs.mkdtempSync(path.join(SCRATCH, "netd-"));
 
 /** Fake engines that record what they were asked, in order. */
-function fakes({ failHsOnce = false, failNode = false } = {}) {
+function fakes({ failHsOnce = false, failNode = false, nodes = /** @type {any[] | null} */ (null) } = {}) {
   const calls = /** @type {string[]} */ ([]);
   let hsFailed = false;
   const policies = /** @type {any[]} */ ([]);
+  const deleted = /** @type {number[]} */ ([]);
   const createHeadscale = (/** @type {any} */ o) => ({
     listen: { host: "127.0.0.1", port: o.listenPort },
     async start() { calls.push(`hs.start ${o.serverUrl}`); if (failHsOnce && !hsFailed) { hsFailed = true; throw new Error("headscale did not become healthy in time"); } return {}; },
     async stop() { calls.push("hs.stop"); },
     async createPreauthKey() { calls.push("hs.key"); return { key: "hskey-fake0123456789" }; },
     prefix: "100.99.1.0/24",
-    async listNodes() { return [{ id: 1, ips: ["100.99.1.1"] }, { id: 2, ips: ["100.99.1.2"] }]; },
+    async listNodes() { return (nodes || [{ id: 1, name: "home", ips: ["100.99.1.1"] }, { id: 2, name: nodeNameFor("devB"), ips: ["100.99.1.2"] }]).filter(n => !deleted.includes(n.id)); },
+    async deleteNode(/** @type {number} */ id) { calls.push(`hs.delete ${id}`); deleted.push(id); },
     setPolicy(/** @type {string} */ t) { calls.push("hs.policy"); policies.push(JSON.parse(t)); return { changed: true }; },
   });
   const createGate = (/** @type {any} */ o) => ({
@@ -41,7 +43,7 @@ function fakes({ failHsOnce = false, failNode = false } = {}) {
 }
 const base = (/** @type {any} */ f, /** @type {any} */ extra = {}) => ({
   root: home(), space: async () => "spc_home1", box: async () => "boxid", entry: async () => ({ eid: "x", kind: "device", pub: "p" }),
-  serve: async () => ({}), binaries: { headscale: "/x/headscale", forwarder: "/x/wink-forwarder" }, deps: f.deps, retryMs: 0, reach: null, ...extra,
+  devices: () => ["devB"], serve: async () => ({}), binaries: { headscale: "/x/headscale", forwarder: "/x/wink-forwarder" }, deps: f.deps, retryMs: 0, reach: null, ...extra,
 });
 
 test("up: headscale, then the gate in front of it, then the node, then the door; the status says up", async () => {
@@ -143,4 +145,44 @@ test("findBinaries: under node --test nothing is found unless both programs are 
   const t = home(), hs = path.join(t, "hs"), fw = path.join(t, "fw");
   fs.writeFileSync(hs, "#!/bin/sh\n", { mode: 0o755 }); fs.writeFileSync(fw, "#!/bin/sh\n", { mode: 0o755 });
   assert.deepEqual(findBinaries({ VYRE_HEADSCALE_BIN: hs, VYRE_WINK_FORWARDER_BIN: fw, NODE_TEST_CONTEXT: "child" }), { headscale: hs, forwarder: fw });
+});
+
+test("join policy: a node reaches the door only while its device row exists; a node bound to no row gets no rule and is deleted", async () => {
+  const nodes = [{ id: 1, name: "home", ips: ["100.99.1.1"] }, { id: 2, name: nodeNameFor("devB"), ips: ["100.99.1.2"] }, { id: 3, name: "w-unknown", ips: ["100.99.1.3"] }];
+  const f = fakes({ nodes });
+  const n = createNetd(base(f));
+  await n.start();
+  assert.deepEqual(f.policies.at(-1).acls[0].src, ["n-d-2"], "only the node whose device has a row is a device");
+  assert.ok(f.calls.includes("hs.delete 3"), "the node bound to nothing is removed once no join key is outstanding");
+  assert.ok(!f.calls.includes("hs.delete 2"));
+});
+
+test("join policy: removing the device row takes the rule away and deletes the node on the next sync", async () => {
+  let live = ["devB"];
+  const f = fakes();
+  const n = createNetd(base(f, { devices: () => live }));
+  await n.start();
+  assert.deepEqual(f.policies.at(-1).acls[0].src, ["n-d-2"]);
+  live = [];
+  await n.deviceChanged();
+  assert.ok(f.calls.includes("hs.delete 2"));
+  assert.equal(f.policies.at(-1).acls.length, 0, "no device is left to reach the door");
+});
+
+test("join policy: a node that joined inside a key's window waits for its row, and gets no rule meanwhile", async () => {
+  let live = /** @type {string[]} */ ([]);
+  const nodes = [{ id: 1, name: "home", ips: ["100.99.1.1"] }];
+  const f = fakes({ nodes });
+  const n = createNetd(base(f, { devices: () => live, controlUrl: "https://hs.example.vyre.run" }));
+  await n.start();
+  const h = await n.handover({ device: "devB" });
+  assert.equal(h.hostname, nodeNameFor("devB"));
+  nodes.push({ id: 2, name: h.hostname, ips: ["100.99.1.2"] });   // the device used its key
+  await n.deviceChanged();
+  assert.ok(!f.calls.includes("hs.delete 2"), "inside the window a node is not deleted");
+  assert.equal(f.policies.at(-1).acls.length, 0, "no row yet, no rule");
+  live = ["devB"];
+  await n.deviceChanged();
+  assert.deepEqual(f.policies.at(-1).acls[0].src, ["n-d-2"]);
+  await n.stop();
 });

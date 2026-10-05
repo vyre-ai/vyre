@@ -839,7 +839,7 @@ export function createPairing(o) {
       if (!x || typeof x !== "object") return null;
       /** @type {Record<string, string>} */
       const out = {};
-      for (const k of ["home", "box", "controlUrl", "authKey", "relay", "space", "device"]) if (typeof x[k] === "string" && x[k] && x[k].length <= 512 && !/[\u0000-\u001f]/.test(x[k])) out[k] = x[k];
+      for (const k of ["home", "box", "controlUrl", "authKey", "relay", "space", "device", "hostname"]) if (typeof x[k] === "string" && x[k] && x[k].length <= 512 && !/[\u0000-\u001f]/.test(x[k])) out[k] = x[k];
       return Object.keys(out).length ? out : null;
     };
     /** Who an owner row names, in words. @param {any} cur */

@@ -14,6 +14,7 @@
 //
 // Every engine is a dependency, so a test passes fakes (netd.test.js) and the real one runs under VYRE_WINK_REAL=1 (netd.real.test.js).
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createHeadscale as realHeadscale, headscaleBin as realHeadscaleBin, freePort as realFreePort } from "./control/headscale.js";
@@ -23,6 +24,9 @@ import { compilePolicy } from "./control/policy.js";
 
 /** The port the home's door listens on, on its own node (the peer address a paired server dials is `<node ip>:8443`). */
 export const PEER_PORT = 8443;
+/** The name a paired device's node joins this network under: derived from the device's id, so the home can tell WHICH device row a node belongs to (Headscale names are lowercase labels). @param {string} device */
+export function nodeNameFor(device) { return "w-" + crypto.createHash("sha256").update(String(device)).digest("hex").slice(0, 20); }
+
 const SPACE_ID = /^[A-Za-z0-9_-]{1,64}$/;
 
 /** First file in `list` that is an executable file, or null. @param {string[]} list */
@@ -61,6 +65,7 @@ export function findBinaries(env = process.env) {
  *   retryMs?: number,                               how long to wait before trying again after a failure (default 30 s; 0 tries once)
  *   controlUrl?: string,                            a public https address peers can reach (config wink.controlUrl); without it only this box's own node uses the network
  *   binaries?: { headscale: string | null, forwarder: string | null },
+ *   devices?: () => Promise<string[]> | string[],   the ids of the devices that have a live paired row now (core/wink pairing devices): a node reaches the door only while its device has one
  *   relayUrl?: string,                              the relay used for the outside reachability check
  *   reach?: any,                                    createReach (core/wink/reach.js) result, or a function creating it
  *   deps?: { createHeadscale?: any, createGate?: any, createHost?: any, freePort?: () => Promise<number> },
@@ -144,25 +149,34 @@ export function createNetd(o) {
 
   const v4 = (/** @type {string[] | undefined} */ l) => (l || []).find(x => /^\d+\.\d+\.\d+\.\d+$/.test(x)) || null;
   /**
-   * The network half of the grants: this home is the hub, every other node in this Headscale is a device, and a device reaches the hub's door port and nothing else (control/policy.js,
-   * deny by default). Every node here joined with a one-time key this box minted for a device it paired; WHO the device is stays decided at the door by its identity-list key.
+   * The network half of the grants: this home is the hub, and a node is a device only while its paired device row exists. A node joined with a one-time key under the name
+   * nodeNameFor(device) the pairing handed out; it gets a rule that reaches the hub's door port (control/policy.js, deny by default) only when `o.devices()` lists that device,
+   * so removing the row takes the rule away on the next sync and the node itself is deleted. A node whose name matches no row is bound to nothing: it reaches nothing, and once no
+   * join key is outstanding it is deleted. WHO the device is stays decided at the door by its identity-list key.
    */
   async function syncPolicy() {
     if (!hs) return { changed: false };
     const nodes = await hs.listNodes();
     const homeIp = v4(ips);
     if (!homeIp) return { changed: false };
+    const live = new Set((await Promise.resolve(o.devices ? o.devices() : [])).map(nodeNameFor));
+    const others = nodes.filter((/** @type {any} */ n) => v4(n.ips) && v4(n.ips) !== homeIp);
+    const bound = others.filter((/** @type {any} */ n) => live.has(String(n.name)) || live.has(String(n.givenName)));
+    const stray = nodes.filter((/** @type {any} */ n) => !bound.includes(n) && n.ips && v4(n.ips) !== homeIp && Date.now() > joinUntil);
+    for (const n of stray) await hs.deleteNode(n.id).catch((/** @type {Error} */ e) => log(`wink net: could not delete node ${n.id}: ${e.message}`));
     const rows = [{ id: "home", kind: /** @type {const} */ ("hub"), bound: true, ip: homeIp },
-      ...nodes.filter((/** @type {any} */ n) => v4(n.ips) && v4(n.ips) !== homeIp).map((/** @type {any} */ n) => ({ id: `d-${n.id}`, kind: /** @type {const} */ ("device"), bound: true, ip: v4(n.ips) }))];
+      ...bound.map((/** @type {any} */ n) => ({ id: `d-${n.id}`, kind: /** @type {const} */ ("device"), bound: true, ip: v4(n.ips) }))];
     const text = compilePolicy({ rows, hubPort: PEER_PORT, jobPort: PEER_PORT, ...(hs.prefix ? { prefix: hs.prefix } : {}) }).text;
     return hs.setPolicy(text);
   }
+  let joinUntil = 0;
   /** @type {any} */ let watch = null;
-  /** After a join key is handed out, look for the new node every 2 s until the key's life is over, then give it its door rule. On demand only: nothing recurs once no key is outstanding. @param {number} ttlMs */
+  /** After a join key is handed out, look for the new node every 2 s until the key's life is over (the node appears when the device uses its key; nothing says when). Authorization is not the poll's: a node only gets a rule while its device row exists. Nothing recurs once no key is outstanding. @param {number} ttlMs */
   function watchJoin(ttlMs) {
     if (watch) clearInterval(watch);
     const end = Date.now() + ttlMs + 5000;
-    watch = setInterval(() => { if (stopped || Date.now() > end) { clearInterval(watch); watch = null; return; } syncPolicy().catch(e => log(`wink net: policy: ${/** @type {Error} */ (e).message}`)); }, 2000);
+    joinUntil = Math.max(joinUntil, end);
+    watch = setInterval(() => { if (stopped || Date.now() > end) { clearInterval(watch); watch = null; if (!stopped) syncPolicy().catch(() => {}); return; } syncPolicy().catch(e => log(`wink net: policy: ${/** @type {Error} */ (e).message}`)); }, 2000);
     watch.unref && watch.unref();
   }
 
@@ -209,19 +223,21 @@ export function createNetd(o) {
      * or null when the network is not up or has no address another machine can reach (the pairing then hands over only the device id and the relay carries everything).
      * @param {{ target?: any, device?: string }} [_q]
      */
-    /** A one-time join key for a node that will reach this network on `controlUrl`, in memory only, and the watch that gives the new node its door rule. For in-process callers (the pairing's hand-over, the real test); never a tool. @param {number} [ttlMs] */
-    async joinKey(ttlMs = 120_000) {
+    /** A one-time join key for a node that will reach this network on `controlUrl`, in memory only, and the watch that gives the new node its door rule. For in-process callers (the pairing's hand-over, the real test); never a tool. @param {number} [ttlMs] @param {string} [device] the paired device the key is for: its node must join as nodeNameFor(device) */
+    async joinKey(ttlMs = 120_000, device) {
       if (st.state !== "up" || !hs) throw Object.assign(new Error("the network is not up"), { code: "unavailable" });
       const key = await hs.createPreauthKey({ ttlMs });
       watchJoin(ttlMs);
       return key.key;
     },
+    /** A device row was added or removed: give or take away the node's rule now. */
+    deviceChanged() { return syncPolicy().catch(e => { log(`wink net: policy: ${/** @type {Error} */ (e).message}`); }); },
     syncPolicy,
     async handover(_q) {
       if (st.state !== "up" || !hs || !o.controlUrl) return null;
       const key = await hs.createPreauthKey({ ttlMs: 300_000 });
       watchJoin(300_000);
-      return { controlUrl: control, authKey: key.key, space, box: await o.box() };
+      return { controlUrl: control, authKey: key.key, space, box: await o.box(), ...(_q && _q.device ? { hostname: nodeNameFor(String(_q.device)) } : {}) };
     },
   };
 }

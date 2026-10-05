@@ -7686,7 +7686,6 @@ Create a space and say where it will live: a server you have (the one command, t
     - `token` string
   - `name` string, required
   - `displayName` string
-  - `headscale` boolean
   - `storeChoice` "create" or "cancel"
 - Callers: any caller
 

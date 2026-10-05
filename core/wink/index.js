@@ -698,12 +698,14 @@ export function createWink(inject = {}) {
       entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; },
       serve: ctx.peerDoor && ctx.peerDoor() && typeof ctx.peerDoor().serve === "function" ? ctx.peerDoor().serve : null,
       onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { try { holds.onSession(caller, session); } catch { /* the hold is optional */ } },
+      devices: () => { try { return /** @type {any[]} */ (db.prepare("SELECT id FROM wink_devices WHERE removed_at IS NULL").all()).map(r => String(r.id)); } catch { return []; } },
       log: m => ctx.log(m),
       relayUrl: ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "",
       enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
       ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
       ...(inject.netd || {}),
     });
+    const offNetd = netd ? [ctx.events.on("device.paired", () => netd.deviceChanged()), ctx.events.on("wink.removed", () => netd.deviceChanged())] : [];
     registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => netd.host() } : {}), ...(inject.network || {}), storage });
     netdRef = netd;
     if (netd) netd.start();
@@ -770,6 +772,7 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
+        for (const off of offNetd) { try { off(); } catch {} }
         for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
