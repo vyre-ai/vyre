@@ -142,8 +142,13 @@ export default {
         // one yes, verified in the source Space's sealing process, bound to this exact plan; the target checks it carries the same one
         const out = await k.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof });
         await k.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
-        const done = await runMove({ from, to, plan, ports: { ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
-        return { project: done.target, moved: done.moved, left_behind: done.left_behind.length };
+        // The memory room moves with it: each Space has its own memory instance, reached through that Space's handle under the mover's chain there (the target proves the source with the signed evidence).
+        // A kernel that cannot reach a Space's memory this way has no `memory` port, and the move says so instead of leaving the room behind unseen.
+        const mem = (/** @type {any} */ side, /** @type {string} */ tool) => { const h = k.for ? k.for(side.space) : null; return h && typeof h.then !== "function" && typeof h.call === "function" ? (/** @type {any} */ i) => h.call(tool, { move_id: out.move_id, plan_hash: plan.hash, project: plan.project, ...i }, side.chain) : null; };
+        const room = { offer: mem(to, "memory.room.offer"), export: mem(from, "memory.room.export"), import: mem(to, "memory.room.import"), forget: mem(from, "memory.room.forget") };
+        const memory = Object.values(room).every(Boolean) ? room : undefined;
+        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(k.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => k.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
       },
     });
     // The Project record for a short name, made if this Space has none yet: what the projects module asks before it grants an agent reach (a grant names the record).
