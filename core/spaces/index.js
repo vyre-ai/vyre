@@ -1606,6 +1606,13 @@ export default {
     };
     /** See `resealPortFor` (lib/spaces/upgrade.js): the sealed-value transfer through platform's seal ops. */
     const resealPort = (/** @type {any} */ sides, /** @type {string} */ plan_hash, /** @type {{ proof?: any }} */ approval) => resealPortFor({ local: sides.local, remote: sides.remote, sealing: sides.sealing, plan_hash, approval });
+    tool("spaces.servers", "The servers this device is paired to, for \"Set up My Cloud\": { servers: [{ id, name }] }, where `id` is what `spaces.create` takes as `home.device.id`. Empty when none is paired.", obj(), async () => {
+      let who = null; try { who = identity.status(); } catch { who = null; }
+      /** @type {any[]} */ let rows = [];
+      try { rows = db.prepare("SELECT id, name, created FROM wink_devices WHERE kind = 'server' ORDER BY created, id").all(); } catch { rows = []; }
+      void who;
+      return { servers: rows.map(r => ({ id: String(r.id), name: String(r.name) })) };
+    });
     tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
       const space = String(i.space);
       if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
