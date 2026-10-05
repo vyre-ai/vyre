@@ -4,6 +4,7 @@
 // its own layer. Fictional data only; the real daemon, the fixture corpus (Harlow's and Northwind's sessions) moved under real project folders.
 
 import "../../scripts/mac-test-guard.mjs";
+import { as } from "./identity/test-facts.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -35,7 +36,7 @@ const cwdsOf = r => (r.data.passages || r.data.hits || []).map(p => p.cwd).filte
 
 test("layers: a project agent cannot retrieve another project's memory, is not even told it exists, and cannot follow its marker; the identity assistant and the person can", async t => {
   const { d, nw: nwDir } = await world(t);
-  const ask = (tool, input, caller) => d.registry.call(tool, input, caller);
+  const ask = (tool, input, caller) => as(d, tool, input, caller);
 
   // 1. Retrieval inside the layer: kit reads Northwind and nothing of Harlow, however the question is worded.
   const own = await ask("memory.retrieve", { question: "Northwind invoices billing", project_cwds: [nwDir] }, "mcp:agent:kit");

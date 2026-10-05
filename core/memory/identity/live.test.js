@@ -15,6 +15,7 @@ import { tempHome } from "../../../test/helpers.js";
 import { newDeviceKey } from "../../../lib/keywrap.js";
 import { Phone } from "./home.js";
 import { relocate } from "./live.js";
+import { as } from "./test-facts.js";
 import { DatabaseSync } from "node:sqlite";
 import { MIGRATIONS } from "../schema.js";
 import { configureYes } from "../../../lib/one-yes.js";
@@ -53,11 +54,7 @@ async function world(t, root = fs.realpathSync(tempHome(t))) {
   /** @type {any[]} */ const shown = [];
   configureYes({ softwareOk: () => true, verify: async i => (i.proof && i.proof.signed === true && i.op === "memory.identity.unlock" && shown.some(s => s.server === i.fields.server && s.identity === i.fields.identity) ? null : "bad_signature") });
   t.after(() => configureYes({ verify: null }));
-  // The kernel is on: a call is a person's or an agent's by the facts the daemon proves, never by its label. The person at the cli is the home's owner on its own socket; an agent is a vouched session of
-  // that person (the assistant acts as them; a project agent is its own actor).
-  const factsOf = (/** @type {string} */ caller) => (caller === "cli" ? { kernelFacts: { kind: "socket", surface: "cli", uid: process.getuid ? process.getuid() : 0, pid: process.pid, inside_model_process: false, capsule_verified: true } }
-    : /^mcp:agent:/.test(caller) ? { kernelFacts: { kind: "agent_session", agent: caller.split(":")[2], session: `s-${caller.split(":")[2]}`, thread: `t-${caller.split(":")[2]}`, vouched: true, person: d.kernel.id.owner } } : {});
-  const ask = (tool, input, caller = "cli") => d.registry.call(tool, input, caller, factsOf(caller));
+  const ask = (tool, input, caller = "cli") => as(d, tool, input, caller);
   const serverKey = () => JSON.parse(fs.readFileSync(path.join(root, "identity-server-key.json"), "utf8"));
   return { d, root, serverDir, device, ask, shown, serverKey };
 }
@@ -153,11 +150,11 @@ test("a restart is answered from the phone without asking again, while the grant
   t.after(() => d2.stop());
   const asked = d2.registry.deps.db.prepare("SELECT payload FROM events WHERE type = 'memory.unlock-asked'").all();
   assert.ok(asked.length >= 1, "the phone was told");
-  assert.equal((await d2.registry.call("memory.identity.status", {}, "mcp:agent:juno")).data.unlocked, false);
-  const b = await d2.registry.call("memory.identity.unlock.begin", {}, "mcp:agent:juno");
-  const f = await d2.registry.call("memory.identity.unlock.finish", { request: b.data.ask.request, answer: phone.answer(b.data.ask) }, "mcp:agent:juno");
+  assert.equal((await as(d2, "memory.identity.status", {}, "mcp:agent:juno")).data.unlocked, false);
+  const b = await as(d2, "memory.identity.unlock.begin", {}, "mcp:agent:juno");
+  const f = await as(d2, "memory.identity.unlock.finish", { request: b.data.ask.request, answer: phone.answer(b.data.ask) }, "mcp:agent:juno");
   assert.equal(f.error, undefined, JSON.stringify(f));
-  assert.match(JSON.stringify((await d2.registry.call("memory.profile", {}, "mcp:agent:juno")).data), /Lisbon/);
+  assert.match(JSON.stringify((await as(d2, "memory.profile", {}, "mcp:agent:juno")).data), /Lisbon/);
 });
 
 test("killed while unlocked, the disk holds ciphertext only, and nothing sealed is lost", async t => {
@@ -188,10 +185,10 @@ test("a server without a sealed home behaves as it always did", async t => {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "t")], recall: { every: 0, vectors: false } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
-  assert.deepEqual((await d.registry.call("memory.identity.status", {}, "cli")).data, { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null });
-  assert.equal((await d.registry.call("memory.identity.unlock.begin", {}, "cli")).error?.code, "not_found");
-  assert.equal((await d.registry.call("memory.remember", { text: FACT }, "cli")).error, undefined);
-  assert.match(JSON.stringify((await d.registry.call("memory.profile", {}, "cli")).data), /Lisbon/);
+  assert.deepEqual((await as(d, "memory.identity.status", {}, "cli")).data, { kept: "none", unlocked: false, devices: 0, recovery_code: false, granted: [], server: null });
+  assert.equal((await as(d, "memory.identity.unlock.begin", {}, "cli")).error?.code, "not_found");
+  assert.equal((await as(d, "memory.remember", { text: FACT }, "cli")).error, undefined);
+  assert.match(JSON.stringify((await as(d, "memory.profile", {}, "cli")).data), /Lisbon/);
 });
 
 test("while the identity memory is open SQLite keeps its temporary storage in memory too, so a sort or a temporary table never spills a fact to a file", async t => {
