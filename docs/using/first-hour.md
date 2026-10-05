@@ -1,6 +1,6 @@
 ---
 title: Your first hour
-summary: A first run of Vyre, in order. Set up your server, sign in to Claude, open Vyre on your phone, put the Lumen on your Mac and ask it, send one email, and make the Deck your own colour.
+summary: A first run of Vyre, in order. Set up your server, sign in to Claude, open Vyre on your phone, put the Lumen on your Mac and ask it, send one email, and make the Vyre app your own colour.
 audience: users
 owner: docs
 status: draft
@@ -32,9 +32,10 @@ page on the provider asks you to approve, and the page shows a code to enter or 
 code the provider gives you. The token goes straight into the vault, sealed on your server: you
 never copy it into a terminal or a file.
 
-Skipped it? Deck **Settings**, **Claude Code**, **Re-connect** brings the same step back.
+Skipped it? In the Vyre app, **Settings**, **Assistants** has the Claude sign-in again (**Open the
+sign-in**).
 
-**Check:** Deck **Settings**, **Claude Code** shows you as signed in.
+**Check:** **Settings**, **AI accounts** shows Claude as connected.
 
 ## 3. Open Vyre on your phone (4 minutes)
 
@@ -85,13 +86,13 @@ It prints the answer, how sure it is, and the lines from your sessions it rests 
 
 ## 5. Send one email (3 minutes)
 
-1. Deck **Settings**, **Connections**, **Add Google account**, **Sign in with Google**. Pick your
+1. In the Vyre app, **Settings**, **Connections**, **Add Google account**, **Sign in with Google**. Pick your
    account and allow what it asks. (From a terminal: `vyre connect add google <name> --sign-in`.)
 2. In Lumen or in Chat, ask your assistant to email you a one-line note, to your own
    address.
-3. The email does not go. It waits at the Gate: Now shows it with the address it leaves from, the
-   To line, the subject and the words. Change anything you like; editing asks for nothing.
-4. Press **Send**, and confirm with Touch ID or your passkey. One proof covers the next 30
+3. The email does not go. It waits at the Gate, and Now lists it as waiting on you. Open it to
+   see what would leave.
+4. Approve it, and confirm with Face ID, Touch ID or your passkey. One proof covers the next 30
    minutes on that device.
 
 **Check:** the note is in your inbox, and Now no longer shows it.
@@ -104,22 +105,15 @@ and press Return. The first time, macOS asks for Accessibility and Screen Record
 allow both in System Settings, Privacy and Security. A pill shows while Vyre drives, each step on
 screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes still waits for you.
 
-## 7. Open Deck Settings (1 minute)
+## 7. Open Settings (1 minute)
 
-Open the Deck (your box's address, or the phone icon) and go to **Settings**. Every section has
-its own link, so `/settings#devices` jumps straight to your devices. Look at **Your devices**,
-**Notifications** (quiet hours) and **Security** (your passkeys).
+Open the Vyre app (your box's address, or the phone icon) and go to **Settings**. Look at
+**Devices**, **Notifications** (quiet hours) and **Account and recovery** (how you sign in).
 
 ## 8. Change a colour (2 minutes)
 
-**Settings**, **Appearance** switches this browser between Dark and Paper.
-
-To change a colour on every device, add a `theme` block to `config.json` on the box and reload
-the Deck. For example, a different accent in the dark theme:
-
-```json
-{ "theme": { "colors": { "dark": { "signal": "#7FD1B9" } } } }
-```
+**Settings**, **Appearance** switches the theme between Dark, Paper and System. **Brand accent**
+picks one of the accents or **Custom**, where **Custom accent** takes a colour of your own.
 
 
 ## When you are done

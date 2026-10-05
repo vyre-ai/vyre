@@ -1,6 +1,6 @@
 ---
 title: Watchers
-summary: Ask Claude to watch something and file what it finds into a project, see the dry run before it turns on, and look after running watchers from the terminal and the Deck.
+summary: Ask Claude to watch something and file what it finds into a project, see the dry run before it turns on, and look after running watchers from the terminal and the Vyre app.
 audience: users, agents
 owner: docs
 status: stable
@@ -144,19 +144,19 @@ For a `"webhook"` watcher, `vyre watchers create` prints the route (`POST
 /v1/watchers/<name>/hook`), the header (`x-vyre-token`) and the token the sender must use. The
 request body reaches the watcher as `hook`.
 
-In the Deck, an agent's board (`/agents/<name>`) lists its watchers, each with a switch that pauses
+In the Vyre app, an assistant's page (under **Assistants**) lists its watchers, each with a switch that pauses
 it and turns it back on. Filed items appear in the project and in its memory room.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Claude |
+| Task | Terminal | Vyre app | Claude |
 | --- | --- | --- | --- |
 | Write a watcher | | | the write-a-watcher skill |
 | Dry-run | `vyre watchers test` | | `watchers.test` |
 | Turn on | `vyre watchers create` | | `watchers.create`, after your yes |
-| List | `vyre watchers` | an agent's board | `watchers.list` |
+| List | `vyre watchers` | an assistant's page | `watchers.list` |
 | Pause, resume | `vyre watchers pause`, `resume` | the pause switch | `watchers.pause`, `watchers.resume` |
-| Runs and items | `vyre watchers logs`, `items` | the project | `watchers.logs`, `watchers.items` |
+| Runs and items | `vyre watchers logs`, `items` | | `watchers.logs`, `watchers.items` |
 
 ## Standing duties are watchers too
 

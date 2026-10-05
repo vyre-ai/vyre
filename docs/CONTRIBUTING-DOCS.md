@@ -191,7 +191,7 @@ world in a temp home and captures every shot listed in `scripts/lib/docs/shots.j
 dark, with `CHROME` pointing at a headless Chrome. Each entry there names the source files the
 shot shows. `docs/shots.json` records a hash of those files at capture time, and docs-check warns about a
 shot once any of them changes, and fails on it only with `--release`, which scripts/release-check.sh runs,
-so a screen that moved on gets retaken before a release. A Deck change never turns another team's suite
+so a screen that moved on gets retaken before a release. An app change never turns another team's suite
 or stage red. To add a shot, add an entry
 to `shots.js`, run `npm run docs:shots -- --only <name>`, and put it on the page. Command output
 is text, not a picture: paste it into an `output` block (`npm run docs:shots -- --cli` prints the
@@ -251,7 +251,7 @@ node scripts/gen-docs-reference --check   # exit 1 if any page is stale, write n
 ### The index
 
 `npm run docs:ref` also writes `docs/reference/index.md` and `docs/index.json` (served at
-`/index.json`): every command and subcommand, tool, event, config key, `VYRE_` variable, Deck
+`/index.json`): every command and subcommand, tool, event, config key, `VYRE_` variable, app
 screen and concept, with the code file that defines it, the page that explains it, and every page,
 line and heading anchor that mentions it. One lookup finds every instance of a thing. It reads
 every published page, so run `npm run docs:ref` after editing any page, not only after changing
@@ -333,7 +333,7 @@ true now, what to do instead, and the owning team:
 
 ```md
 > [!GAP]
-> The switch pauses but does not resume. See [known gaps](../known-gaps.md#the-decks-pause-switch-does-not-resume-a-watcher).
+> The pause switch pauses but does not resume. See [known gaps](../known-gaps.md#the-pause-switch-does-not-resume-a-watcher).
 ```
 
 The change that closes a gap removes its callouts and its section.

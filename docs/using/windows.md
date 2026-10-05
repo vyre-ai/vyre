@@ -1,6 +1,6 @@
 ---
 title: Windows
-summary: Use a Windows PC as a device on Vyre with the Windows app, the Deck in a browser, the CLI and the Claude Code plugin, pointed at your Linux server, or run that server itself inside WSL2.
+summary: Use a Windows PC as a device on Vyre with the Windows app, the Vyre app in a browser, the CLI and the Claude Code plugin, pointed at your Linux server, or run that server itself inside WSL2.
 audience: users
 owner: windows
 status: draft
@@ -9,7 +9,7 @@ status: draft
 # Windows
 
 A Windows PC is a device, the same as a Mac or a phone. Vyre has a Windows app for it (a tray icon,
-a hotkey panel, notifications, start at logon and self-update), and the Deck, the web app, the CLI
+a hotkey panel, notifications, start at logon and self-update), and the Vyre app, the web app, the CLI
 and the Claude Code plugin all work there too. The server your devices connect to is a Linux
 machine (including one inside WSL2 on a Windows PC, below) or a Mac that stays on. There is no
 native Windows server (see [ADR 0037](../adr/0037-windows.md)).
@@ -18,8 +18,8 @@ native Windows server (see [ADR 0037](../adr/0037-windows.md)).
 
 Everything that is plain web or plain Node already works on Windows with no special setup:
 
-- **The Deck**, in any browser, at your server's address, the same as on a Mac.
-- **The PWA**: open the Deck in Edge or Chrome, then "Install this site as an app" (or the
+- **The Vyre app**, in any browser, at your server's address, the same as on a Mac.
+- **The PWA**: open the Vyre app in Edge or Chrome, then "Install this site as an app" (or the
   browser's Add to Home Screen equivalent) for a windowed, app-like Vyre.
 - **The CLI**: `npm i -g vyre`, then `vyre up` to find or be told your server, exactly as on a Mac
   or Linux. `vyre` on Windows is a client only, it never sets itself up as a server (`vyre up`
@@ -30,7 +30,7 @@ Everything that is plain web or plain Node already works on Windows with no spec
 
 What is missing, and how it fails: Lumen, the Mac command bar with screen context, "do ..."
 computer use and voice, runs only on a Mac. `vyre capsule` on Windows says so plainly (`Lumen runs
-on macOS. On this machine, use vyre or the Deck.`) rather than doing nothing silently. A command
+on macOS. On this machine, use vyre or the Vyre app.`) rather than doing nothing silently. A command
 that reaches for a Mac-only tool on the server (`vyre sideview` or `vyre voice`) answers with the
 tool not being there, since those parts only start on a Mac; treat that as "not built for this
 device yet," not a bug to chase.
@@ -52,7 +52,7 @@ completely unchanged.
    inside the WSL2 distribution.
 3. Inside the WSL2 shell, follow the ordinary Linux server setup at <https://vyre.run/setup>
    ([Install](../get-started/install.md)), then [Box care](box-care.md), unchanged.
-4. Everything past that point, the Deck and other devices connecting in, behaves like any other
+4. Everything past that point, the Vyre app and other devices connecting in, behaves like any other
    Linux server; WSL2 is invisible to them.
 
 This path has not been run on a real Windows PC with WSL2. Its parts are tested on GitHub's
@@ -73,7 +73,7 @@ The app's installer, `VyreSetup.exe`, is on the latest release at
 `$env:VYRE_CODE='...'; irm https://vyre.run/w | iex`) checks it against the release's published
 checksums before it runs. The app lives in the system tray. Alt+Space opens a small panel
 anywhere in Windows; if another app already holds Alt+Space, Vyre uses Ctrl+Alt+Space and tells
-you once. The panel shows the same Deck your server
+you once. The panel shows the same Vyre app your server
 serves, at its address, and the app shows a notification for what needs you. It can start at
 logon, and it updates itself. It pairs with your server by a code shown as a QR and 13 words.
 There is no Windows version of the Mac's screen context, computer use or voice yet.

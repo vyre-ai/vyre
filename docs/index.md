@@ -31,7 +31,7 @@ Vyre is not on npm yet, so the package comes from vyre.run. `vyre up` asks where
 | Section | For | What is in it |
 | --- | --- | --- |
 | [Get started](get-started/install.md) | users | Install, onboarding, the first day, fixes for common failures. |
-| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Deck, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, your private network, the phone, looking after the box. |
+| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Vyre app, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, your private network, the phone, looking after the box. |
 | [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the box and the Mac, your private network, presence, the security floor, modules. |
 | [Build on Vyre](build/module-contract.md) | builders, agents | The module contract, tools and events, writing a module, the MCP hub. |
 | [Reference](reference/cli.md) | everyone | Generated from the code: every [command](reference/cli.md), [tool](reference/tools.md), [event](reference/events.md), [config key](reference/config.md) and [module](reference/modules.md). |

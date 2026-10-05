@@ -21,7 +21,7 @@ Anything Vyre shows you in **gold** (the Recall colour) came from memory or the 
 from a model's words: a matched quote in search results, a fact, a fact's source thread, your own
 correction. When text is gold you can ask where it came from, and Vyre can show you the turn.
 Vyre holds itself to one rule here: anything it tells you, it can show the source of. The gold appears in the
-terminal (`vyre recall`, `vyre memory`, `vyre why`), in the Deck's Memory view and Now page, in
+terminal (`vyre recall`, `vyre memory`, `vyre why`), in the Vyre app's Memory screen, in
 Chat next to a thread, and in Lumen when memory answers.
 
 ## Search past sessions
@@ -47,7 +47,7 @@ the matching words in gold:
 Resume a hit with `claude --resume <id>`, or `vyre resume <thread>` to open it with its project's
 brief.
 
-In the Deck, the search box at the top (Command-K) runs the same search:
+In the Vyre app, **Search** (Command-K on a Mac, Control-K elsewhere) runs the same search:
 
 ### Keep the index up to date
 
@@ -74,7 +74,7 @@ With no query, `vyre recall` says how much is indexed and whether search can ran
 
 Elsewhere:
 
-- **Deck**: the search box in the header searches every session; a hit opens the thread.
+- **Vyre app**: **Search** looks through every session; a hit opens the chat.
 - **Lumen**: press Control twice and ask; when memory can answer, the answer shows in gold with
   its sources.
 - **Claude**: `/vyre recall <query>` inside a session, or the `recall.search` and `recall.thread`
@@ -82,9 +82,8 @@ Elsewhere:
 
 ### Search your Mac's sessions from the box
 
-On a box with a paired Mac, your own searches (`vyre recall` on the box, the Deck's search box)
-also ask the Mac, and its hits come back in the same list. In the Deck each Mac hit carries a chip
-with the Mac's name. Opening one reads its turns from the Mac. The box does not index or store
+On a box with a paired Mac, your own searches (`vyre recall` on the box)
+also ask the Mac, and its hits come back in the same list. Opening one reads its turns from the Mac. The box does not index or store
 the Mac's sessions, and an offline Mac only means its hits are missing. Agents and MCP clients
 search the box's own sessions only. The decision is [ADR 0021](../adr/0021-box-reads-the-mac.md).
 
@@ -112,17 +111,17 @@ Each fact shows its age, a confidence and its source (`session #turn`). Facts fa
 one not said for months is marked `stale` with "last said 7 months ago", and your own or confirmed
 facts do not fade. A fact two projects disagree about is marked "two projects disagree".
 
-In the Deck, **Memory** (`/memory`) draws the graph as a floor plan, one room per project, with
-people, things and threads inside and each fact as a gold dot on its link. Choose a fact to see
-its source turns. **Now** shows **Memory learned today**, each fact with its source thread.
+In the Vyre app, **Memory** (`/u/memory`) lists facts grouped by **People**, **Projects** or
+**Spaces**. Each row shows its source and when it was learned. Open the **More about this fact**
+menu and choose **Where this came from** to see its source turns.
 
-> [!SNAG] The Deck says "Memory is not available."
-> The Memory view could not read the graph from Vyre. Choose **Try again**. If it keeps failing,
+> [!SNAG] The app says "Memory did not load".
+> The Memory screen could not read the graph from Vyre. Choose **Try again**. If it keeps failing,
 > check that Vyre runs (`vyre status`) and that the memory module started (`vyre modules`).
 
 ## See what Vyre has learned about a site
 
-When Vyre for Chrome learns how a website works, the Deck lists it under **Memory**, on the
+When Vyre for Chrome learns how a website works, the Vyre app lists it under **Memory**, on the
 **Sites** tab. Open a site to see what Vyre kept: the flows that worked, the controls it knows how
 to find, the site's own API calls and its notes. Each row has **Wrong?**, which forgets just that
 item. **Forget** on a site removes everything Vyre learned about it. Neither asks first, because
@@ -135,7 +134,7 @@ Memory is kept in **rooms**: one per project, and `unfiled` for sessions in no p
 facts come only from its own sessions and what its watchers taught. A project's brief and a
 session in that project draw only on that room, so nothing from one client's project reaches
 another's. The main graph, across every room, is visible only to you on your own surfaces (the
-terminal, the Deck, Lumen), to the assistant, and to an agent granted every project.
+terminal, the Vyre app, Lumen), to the assistant, and to an agent granted every project.
 `--project <slug>` reads one room; `--project unfiled` reads the room of no project.
 
 A [teammate's](teammates.md) notes are not part of this graph. They are a text file the teammate keeps for
@@ -145,7 +144,7 @@ search finds them and they feed the project's room like any other.
 ## Correct a fact
 
 You are the only one who can change memory: correcting, merging and splitting are open to your
-own surfaces (the CLI, the Deck, Lumen) and ask nothing more. A session's tools and an
+own surfaces (the CLI, the Vyre app, Lumen) and ask nothing more. A session's tools and an
 agent never write memory: they are refused.
 
 ```
@@ -161,8 +160,8 @@ vyre memory uncorrect <id>
 ```
 
 Each fact line in `vyre memory` prints the exact `vyre why` and `vyre memory correct` commands for
-it. In the Deck, choose a fact and edit its object in place, or choose **No longer true** or
-**Wrong**; the old fact stays above the new one, and **Undo** takes it back.
+it. In the Vyre app, open a fact's **More about this fact** menu and choose **Edit** to change it in
+place; **Undo** takes a forgotten fact back.
 
 A correction also teaches [learning](learning.md): a rule you keep correcting shows in
 `vyre learn signals`.
@@ -181,14 +180,14 @@ is known.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Lumen | Claude |
+| Task | Terminal | Vyre app | Lumen | Claude |
 | --- | --- | --- | --- | --- |
-| Search sessions | `vyre recall` | header search | ask | `/vyre recall`, `recall.search` |
-| Read one session | `vyre resume` | open the thread | | `recall.thread` |
-| See facts | `vyre memory` | `/memory`, Now | memory answers | `memory.facts` |
-| Where a fact came from | `vyre why` | a fact's sources | | `memory.why` |
-| Correct, merge, split | `vyre memory correct`, `merge`, `split` | edit in place | | never |
-| Pin or mute | `vyre memory pin`, `mute` | the fact panel | | `memory.pin`, `memory.mute` |
+| Search sessions | `vyre recall` | Search | ask | `/vyre recall`, `recall.search` |
+| Read one session | `vyre resume` | open the chat | | `recall.thread` |
+| See facts | `vyre memory` | Memory | memory answers | `memory.facts` |
+| Where a fact came from | `vyre why` | Where this came from | | `memory.why` |
+| Correct, merge, split | `vyre memory correct`, `merge`, `split` | Edit | | never |
+| Pin or mute | `vyre memory pin`, `mute` | | | `memory.pin`, `memory.mute` |
 
 ## What it will not do
 

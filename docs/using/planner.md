@@ -1,6 +1,6 @@
 ---
 title: Planner
-summary: Alarms, timers, reminders, todos and notes kept on your box, so they ring on your phone and in the Deck even when your Mac is shut, and your agents can add them too.
+summary: Alarms, timers, reminders, todos and notes kept on your box, so they ring on your phone and in the Vyre app even when your Mac is shut, and your agents can add them too.
 audience: users, agents
 owner: docs
 status: draft
@@ -10,7 +10,7 @@ status: draft
 
 The planner keeps your alarms, timers, reminders, todos and notes on your box, with one clock
 that rings them. When something is due, every surface hears it at once: a notification on each
-device that has push on, and a banner in the Deck. Answer it on one and it stops on all of them.
+device that has push on, and a banner in the Vyre app. Answer it on one and it stops on all of them.
 Your connected Google calendars are copied in too, so the agenda shows your whole day and an
 event reminds you before it starts. A Mac paired with a box sends every change to the box; a Mac
 on its own runs the planner itself.
@@ -57,15 +57,15 @@ vyre agenda 2026-10-01
 The agenda shows alarms, timers, reminders, the planner's own events and every connected
 calendar's events in time order, then the todos due by the end of the day, overdue ones included.
 
-In the Deck, open **Planner** (`/planner`). It shows today's agenda, the next five alarms and
-timers with a box to add one in words, your open todos with a checkbox to finish each, and your
-notes, pinned first.
+In the Vyre app, open **Planner** (`/u/planner`, under Settings, More places). It shows a box to add
+an item in words, today's agenda, your alarms, your open todos with **Done** to finish each, and
+your notes.
 
 ## Answer something that is ringing
 
-A ring shows as a banner in the Deck with **Done** and **Snooze**, and as a notification on each
+A ring shows as a card in the Vyre app with **Done** and **Snooze**, and as a notification on each
 device where you turned push on. The notification says only what kind of thing it is (Alarm,
-Timer finished, Reminder, Starting soon, Todo due); tap it to open the item in the Deck. From the
+Timer finished, Reminder, Starting soon, Todo due); tap it to open the item in the app. From the
 terminal:
 
 ```sh
@@ -74,7 +74,7 @@ vyre snooze <id> 15
 ```
 
 A snooze is 9 minutes unless you give a number. The first answer wins: once you press Done or
-Snooze anywhere, the banner goes from the Deck and the notification closes on your other
+Snooze anywhere, the card goes from the app and the notification closes on your other
 devices. An alarm you do not answer rings again every 5 minutes, 3 more times.
 
 Alarms and timers ring through quiet hours, since you set them. Reminders and todos wait until
@@ -101,8 +101,6 @@ itself.
 - You edit, finish, snooze and delete any item, whoever added it, with no prompt.
 - An agent changes, finishes, snoozes or deletes only the items it added. kit cannot move your
   alarm or tick off juno's todo.
-- An item added by an agent other than your assistant shows who added it, for example
-  "from kit", in the Deck and on its banner. Items from you and your assistant show nothing.
 - Agents do not add events. An event with other people is an invite, and an agent can only ask
   for one: it waits at the Gate for you (see [Connectors](connectors.md)).
 - Agents cannot change the planner's settings.

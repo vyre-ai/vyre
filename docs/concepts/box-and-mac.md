@@ -8,7 +8,7 @@ status: stable
 
 # The box and the Mac
 
-Vyre runs on two kinds of machine. The **box** is a server you own: a Linux machine, or a Mac that stays on. Your sessions, agents, watchers and the Deck live there. The **Mac** is the computer you sit at: it runs Lumen and your own terminal sessions, and reaches the box over your private [network](network.md). A Windows PC is a device in the same way as the Mac, with an app instead of Lumen (see [Windows](../using/windows.md)). Each machine runs one `vyred`, the Vyre daemon, with a different set of [modules](modules.md) switched on.
+Vyre runs on two kinds of machine. The **box** is a server you own: a Linux machine, or a Mac that stays on. Your sessions, agents and watchers live there, and the Vyre app talks to it. The **Mac** is the computer you sit at: it runs Lumen and your own terminal sessions, and reaches the box over your private [network](network.md). A Windows PC is a device in the same way as the Mac, with an app instead of Lumen (see [Windows](../using/windows.md)). Each machine runs one `vyred`, the Vyre daemon, with a different set of [modules](modules.md) switched on.
 
 ## One process per machine
 
@@ -16,7 +16,7 @@ Vyre runs on two kinds of machine. The **box** is a server you own: a Linux mach
 
 | Machine | Where | What it starts |
 |---|---|---|
-| `server` | a Linux server, or a Mac you chose as the server | the whole set, including the Deck's address and the relay |
+| `server` | a Linux server, or a Mac you chose as the server | the whole set, including the address the Vyre app connects to and the relay |
 | `solo` | a Mac with nobody else to connect (the default on macOS) | the full local set, Lumen included, and nothing that serves other devices |
 | `device` | a computer that joins a server (the default on Windows) | the local set that reaches the server |
 
@@ -135,7 +135,7 @@ Agents get their own containers ([Specification](../architecture/spec.md#79-comp
 
 ## What runs on the Mac
 
-On the Mac, `vyre up` starts vyred in the background with the local set of modules. It opens no listener for other devices. It serves its API on `~/.vyre/vyred.sock` to the CLI, the Harness hooks in your terminal sessions, and Lumen. A Mac you chose as the server is different: it also serves the Deck and keeps itself awake while it runs.
+On the Mac, `vyre up` starts vyred in the background with the local set of modules. It opens no listener for other devices. It serves its API on `~/.vyre/vyred.sock` to the CLI, the Harness hooks in your terminal sessions, and Lumen. A Mac you chose as the server is different: it also keeps itself awake while it runs.
 
 ## How the Mac finds the box
 
@@ -153,7 +153,7 @@ The Mac's vyred is a client of the box, at `network.box`. The box sees the Mac a
 
 The `link` module turns the two machines into one system:
 
-- **Pairing.** On the Mac, `vyre link pair <address>` (or `vyre up --connect <address>`, or a yes to `vyre up`'s question) asks the box and shows a code. Starting Vyre never asks a box on its own, and a home other than `~/.vyre` never talks to a real box unless `VYRE_ALLOW_REAL_BOX=1` is set. The Deck shows the request on Now, and on onboarding's **Your devices** step: type the code, press **Approve**, and confirm with your passkey (see [presence](presence.md)). You can approve from the Mac that is asking or from your phone. From the asking Mac the box asks for a fresh passkey proof and checks the typed code, so a model on the Mac cannot approve for you. The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the box's key, so a different box at that address is refused.
+- **Pairing.** On the Mac, `vyre link pair <address>` (or `vyre up --connect <address>`, or a yes to `vyre up`'s question) asks the box and shows a code. Starting Vyre never asks a box on its own, and a home other than `~/.vyre` never talks to a real box unless `VYRE_ALLOW_REAL_BOX=1` is set. Approve the request in the Vyre app and confirm with your passkey (see [presence](presence.md)). You can approve from the Mac that is asking or from your phone. From the asking Mac the box asks for a fresh passkey proof and checks the typed code, so a model on the Mac cannot approve for you. The Mac keeps a link key in `~/.vyre/link.json` (mode 0600) and pins the box's key, so a different box at that address is refused.
 - **Box tools from the Mac.** A module on the Mac calls `ctx.remote(tool, input)`; a surface calls `link.call`. Both reach `POST /v1/tools/<tool>` on the box.
 - **Box events on the Mac.** The Mac proxies the box's event stream at `/v1/link/events`, so Lumen sees box threads as they happen.
 - **The Mac's sessions on the box.** The box reads the paired Mac's sessions through the link. See the next section.
@@ -166,14 +166,14 @@ vyre link unpair          # forget the box
 
 ## The box reads the Mac's sessions
 
-Your Claude Code history stays on the Mac. The box reads it through the link when you ask, so the Deck on the box, and your phone, list the Mac's sessions beside the box's own, and you can answer one's question or send it a message from there ([ADR 0021](../adr/0021-box-reads-the-mac.md)).
+Your Claude Code history stays on the Mac. The box reads it through the link when you ask, so the Vyre app lists the Mac's sessions beside the box's own (the app reads them and does not act on them; [ADR 0021](../adr/0021-box-reads-the-mac.md)).
 
 - **No port on the Mac.** While paired, the Mac holds one request open to the box (`link.serve`). The box answers it with a question, or with nothing after 60 seconds; the Mac runs the question and sends the answer back (`link.reply`), then asks again. An idle Mac costs one request a minute.
 - **A short list of reads.** Only `projects.catalog`, `projects.list`, `recall.search`, `recall.sessions`, `recall.thread`, `recall.transcript`, `threads.list` and `threads.asks` cross, and both ends check the list (`core/link/allow.js`). The Mac runs them as `module:link`.
 - **Two writes, yours only.** `threads.send` types into a Mac session, and `threads.answer` answers one of its questions. Both cross only when you make the call from your own surface, never an agent, MCP, a guest or a module, and the Mac checks that again before it runs one. An answer also carries a one-use proof, signed by the box and tied to that question and those exact words, that the Mac checks. If a terminal or Lumen holds the session, your message waits until it is free and says so ("alex-mac is busy in your terminal").
-- **Only for you.** On the box these tools take `machines: "all"` or `"local"`. They ask the Mac when you call them from the Deck, the CLI, Lumen or your own device, or when a module passes `machines: "all"`. Agents, MCP and guests get the box's rows alone. Each row the Mac sends is labelled `source: "mac"` and `machine` (the Mac's paired name); the box's rows say `source: "box"`.
+- **Only for you.** On the box these tools take `machines: "all"` or `"local"`. They ask the Mac when you call them from the Vyre app, the CLI, Lumen or your own device, or when a module passes `machines: "all"`. Agents, MCP and guests get the box's rows alone. Each row the Mac sends is labelled `source: "mac"` and `machine` (the Mac's paired name); the box's rows say `source: "box"`.
 - **Nothing is copied.** Nothing the Mac answers is written to the box's store. Only `recall.thread` and `recall.transcript` carry a conversation, and only when you open a session the box does not have.
-- **Marked as the Mac's.** The Deck shows a Mac session with the Mac's name on a chip. You can add a Mac session to a box project; the project's thread list reads it from the Mac.
+- **Marked as the Mac's.** A Mac session carries the Mac's name. You can add a Mac session to a box project; the project's thread list reads it from the Mac.
 - **An absent Mac is an answer.** A Mac that is not polling answers `mac_offline` at once and the box shows its own rows, with an "alex-mac offline" chip read from `link.macs`, and a message to it is not sent. A slow Mac delays a read by at most 5 seconds. A Mac that dropped off in the middle of a request looks online for up to a minute, and a read in that window ends in `timeout`.
 
 The box cannot search the Mac's files: files are not on the list.
@@ -184,7 +184,7 @@ The Mac keeps working without the box (floor rule 9, see [the security floor](fl
 
 ## What it will not do
 
-- The Mac never serves the Deck. The Deck lives on the box.
+- The Mac does not serve the Vyre app. The app talks to the box.
 - The box never trusts the Mac because of a header or a shared secret alone: every connection is identified from the identity list first.
 - Link tools on the box (`link.*`) cannot be driven through `ctx.remote` or `link.call`.
 - The box never runs a tool on the Mac outside the reads and the two writes above, and never as an agent or a module.

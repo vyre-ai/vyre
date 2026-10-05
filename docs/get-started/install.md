@@ -250,17 +250,16 @@ vyre up --connect https://alex.vyre.run
 It asks the server to pair this Mac and shows a code:
 
 ```output
-  Approve this Mac on your phone at https://alex.vyre.run, or in the Deck on this Mac
-  The Deck there names this Mac (alex-mac) and asks for your passkey. Code: 482-913
+  Approve this Mac on your phone at https://alex.vyre.run, or in the Vyre app on this Mac
+  The Vyre app there names this Mac (alex-mac) and asks for your passkey. Code: 482-913
   vyre link shows when it is done.
 ```
 
 (Plain `vyre up` asks for your server's pairing code instead. It shows three words; confirm they
 match the server's screen, and approve with your passkey.)
 
-Approve it in the Deck. On your phone, Now shows a card, "A Mac wants to pair: alex-mac". Type
-the code, press **Approve**, and confirm with Face ID or your fingerprint. The same card is on Now
-in the Deck on the Mac itself, where the Mac can approve its own request only with a passkey made
+Approve it in the Vyre app. On your phone, confirm with Face ID or your fingerprint. You can also
+approve in the Vyre app on the Mac itself, where the Mac can approve its own request only with a passkey made
 on that Mac, confirmed with Touch ID. Run `vyre up` again afterwards and it ends with the block
 that says it is ready (`your assistant` names the assistant once you have made one, and says `none
 yet` before that):
@@ -344,7 +343,7 @@ vyre up
 vyre up --connect https://alex.vyre.run
 ```
 
-It asks the server to pair this Mac and shows the code to approve in the Deck, as in step 10.
+It asks the server to pair this Mac and shows the code to approve in the Vyre app, as in step 10.
 Plain `vyre up` asks for your server's pairing code. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
 session (`vyre statusline install` does it later). Pick `3` at the question `vyre up` asks, if you
 would rather type the address there.

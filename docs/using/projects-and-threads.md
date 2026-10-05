@@ -79,8 +79,8 @@ vyre new "Harlow Legal" --home ~/work/harlow --workspace ~/work/harlow-site \
 > That folder already has a `.vyre/project.json`. Open the project with `vyre open`, or pick
 > another folder.
 
-In the Deck, open **Projects** (`/projects`) and choose **New project**. Claude can call
-`projects.create`.
+In the Vyre app, open **Projects** (`/u/projects`) and use the new-item menu to make one. Claude
+can call `projects.create`.
 
 ## Find a session and pick it into a project
 
@@ -103,25 +103,22 @@ command says so:
   1 still in it: they ran in its folders
 ```
 
-In the Deck, a session in no project opens at `/threads/<thread>` with **Add to a project**. The
-tools behind these are `projects.catalog`, `projects.add-threads` and `projects.remove-threads`.
+The tools behind these are `projects.catalog`, `projects.add-threads` and `projects.remove-threads`.
 
 ## Sessions on your paired Mac
 
-On a box with a paired Mac, the catalogue, `vyre threads`, the Deck's lists and search also take
+On a box with a paired Mac, the catalogue, `vyre threads` and search also take
 in the Mac's sessions and projects, asked from the Mac as you read
-([ADR 0021](../adr/0021-box-reads-the-mac.md)). In the Deck each of them carries a chip with the
-Mac's name. The box keeps none of them: a Mac session's turns load from the Mac when you open it.
+([ADR 0021](../adr/0021-box-reads-the-mac.md)). The box keeps none of them: a Mac session's turns load from the Mac when you open it.
 
-- You can pick a Mac session into a box project (**Add to a project** offers the box's projects).
+- You can pick a Mac session into a box project (`vyre pick`).
   The pick keeps the session's id, and the project's thread list finds it on the Mac.
 - A project's brief never includes a Mac session, so a new thread on the box is not told about
   one.
 - A Mac thread is read-only on the box: "On alex-mac. Open it there to continue." Resume it on
   the Mac.
-- A Mac project is listed with its chip, but opens no board on the box.
-- When the Mac is offline, you see the box's own sessions only, and the Deck shows an offline chip
-  for the Mac.
+- A Mac project is listed, but opens no board on the box.
+- When the Mac is offline, you see the box's own sessions only.
 
 Agents, MCP clients and guests see only the box's own sessions, never the Mac's.
 
@@ -143,9 +140,8 @@ when it needs it. The tool is `projects.context`.
 > it; only when the plugin is missing do they pass the brief with `--append-system-prompt` instead.
 > Never both, or Claude would read it twice.
 
-In the Deck, `/projects/<slug>` is the project board: threads and the brief on the left, the open
-thread in the centre, and the files it touched on the right, with tabs for **Threads**, **Team**,
-**Brief**, **Files** and **Memory**.
+In the Vyre app, `/u/project/<id>` is the project's page, with a **Project** tab (its stages and
+tasks, team, linked records, chats and files) and a **Team** tab.
 
 ## Resume a thread or start a new one
 
@@ -188,7 +184,7 @@ vyre threads answer <ask> allow   # answer a permission question
 vyre threads stop 3f2a9c1e
 ```
 
-A permission question from a headless thread goes to wherever you are: the terminal, the Deck,
+A permission question from a headless thread goes to wherever you are: the terminal, the Vyre app,
 Lumen or your phone. Only a person answers it (`threads.answer`); a model never approves a
 permission. The tools are `threads.start`, `threads.send`, `threads.lease`, `threads.release`,
 `threads.asks`, `threads.answer` and `threads.stop`. For every flag, see
@@ -200,7 +196,7 @@ A **teammate** is a role in one project, like `design` or `backend`, with its ow
 that project: it is made there and works on that project's folder. Any session in the project can
 send it work, and you can too. The full page is [Teammates](teammates.md).
 
-In the Deck, the **Team** tab of a project's board lists its teammates with their state and queue.
+In the Vyre app, the **Team** tab of a project's page lists its teammates with their state and queue.
 Open one to read what it is doing now, its last result and its notes, and to set who fills the role,
 edit its charter, and see and switch its duties. **Add a teammate** takes a role and, if you like, a
 line on what work goes to it. A checkbox, **Steer new work to teammates**, controls whether Vyre
@@ -217,13 +213,8 @@ so they stay inside the project too.
 
 ## Connect GitHub to a project
 
-Connect GitHub once in the Deck, under **Connections**: **Sign in with GitHub** shows a short code,
+Connect GitHub once in the Vyre app, under **Settings**, **Connections**, **GitHub**: **Add a GitHub account**, then **Sign in with GitHub** shows a short code,
 you type it on GitHub's own page, and Vyre keeps the token in the [Vault](vault.md). Then:
-
-- **New project**, **From a GitHub repo** picks a repo, clones it fresh and makes the project. It
-  never touches an existing folder.
-- On an existing project's board, **Repos** says which of the project's folders are connected to
-  GitHub, and **Add a repo** clones another repo into a new folder of the project.
 
 In a project that is a git repo with a connected account, a session works in its own folder under the
 project's `.sessions`, and its commits are made as you: the author and committer are the connected account's name and email, or the
@@ -234,17 +225,17 @@ that runs its own shell can change them, so read a session's commits before you 
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Lumen | Chat | Claude |
+| Task | Terminal | Vyre app | Lumen | Chat | Claude |
 | --- | --- | --- | --- | --- | --- |
-| List projects | `vyre projects`, `vyre` | `/projects` | `@` a project | `/chat` | `projects.list` |
-| Make a project | `vyre new` | New project | | | `projects.create` |
-| Pick threads | `vyre pick`, `vyre unpick` | Add to a project | | | `projects.add-threads` |
-| Search sessions | `vyre threads <words>` | the search box in the header | `@` a thread | | `projects.catalog`, `recall.search` |
-| Read the brief | `vyre context` | Brief tab | | | `projects.context` |
+| List projects | `vyre projects`, `vyre` | `/u/projects` | `@` a project | | `projects.list` |
+| Make a project | `vyre new` | new-item menu | | | `projects.create` |
+| Pick threads | `vyre pick`, `vyre unpick` | | | | `projects.add-threads` |
+| Search sessions | `vyre threads <words>` | Search | `@` a thread | | `projects.catalog`, `recall.search` |
+| Read the brief | `vyre context` | | | | `projects.context` |
 | Add or ask a teammate | `vyre team add`, `vyre team ask` | Team tab | | | `team.add`, `team.ask` |
 | Resume or start in Claude Code | `vyre resume`, `vyre start` | | | | |
-| Type into a thread | `vyre threads send` | open a thread | `@` a thread | `/chat/<project>/<thread>` | `threads.send` |
-| Start a headless thread | `vyre threads start` | New thread | `@` a project | | `threads.start` |
+| Type into a thread | `vyre threads send` | open a chat | `@` a thread | `/u/chats/<id>` | `threads.send` |
+| Start a headless thread | `vyre threads start` | New chat | `@` a project | | `threads.start` |
 
 Inside a Claude Code session, `/vyre project` shows the current folder's brief.
 

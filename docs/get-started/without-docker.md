@@ -48,7 +48,7 @@ vyre up --connect https://alex.vyre.run   # a box you already set up
 
 A Mac's role is `local` by default. `vyre up` starts Vyre on this Mac, asks where Vyre should run
 (or uses the address you gave with `--connect`), asks the box to pair this Mac (you approve it in the
-Deck on your phone), offers once to add Vyre's line to Claude Code's status line, and builds and
+Vyre app on your phone), offers once to add Vyre's line to Claude Code's status line, and builds and
 opens the Lumen (`--no-capsule` skips that). The full walk-through is
 [Install, step 10](install.md#10-put-the-lumen-on-your-mac).
 

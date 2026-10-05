@@ -50,7 +50,7 @@ vyre new harlow-legal
 
 Then start a thread:
 
-- **In the Deck:** open Projects, pick `harlow-legal`, press **New thread**, and say what it should do (or leave it empty).
+- **In the Vyre app:** open Chat, press **New chat**, and pick who you want to talk to.
 - **In the terminal:** in the project's folder, `vyre start` opens Claude Code in a new thread with the brief. `vyre open harlow-legal` shows what the brief says and lists the project's threads; `vyre resume <thread>` picks up an old one where it ran.
 
 To see what a new thread will be told before you start one:
@@ -67,7 +67,7 @@ More in [Projects and threads](../using/projects-and-threads.md).
 
 An agent is a named, headless Claude Code worker that runs on the box. It uses your Claude subscription (a setup token in the vault) or an API key with a budget, and it sees only the projects you give it.
 
-- **In the Deck:** open Agents and press **New agent**. Give it a name, and say what it does and what it must ask you before doing.
+- **In the Vyre app:** open Settings, then Assistants, and press **New assistant**. Give it a name and a job, and say what it must ask you before doing.
 - **In the terminal:**
 
 ```
@@ -84,14 +84,14 @@ If an agent stops on a permission question, `vyre agents ask` prints it with the
 
 Put a credential in the vault once, and never paste it into a session again. Claude sees the item's name, never its value.
 
-- **In the Deck:** open Vault and press **Add item**.
+- **In the Vyre app:** open Vault and press **Add an item**.
 - **In the terminal:**
 
 ```
 vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
 ```
 
-It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Deck, it is your passkey.
+It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code Vyre writes to your terminal. In the Vyre app, it is your passkey.
 
 To use it from a script outside Vyre, let the vault hand it to that one process:
 
@@ -103,7 +103,7 @@ The value reaches only that process's environment, and is scrubbed from its outp
 
 ## Find something from last week
 
-Recall searches every session you have had, on this machine and indexed from your history. In the Deck on your box, the paired Mac's sessions are listed too, marked with the Mac's name.
+Recall searches every session you have had, on this machine and indexed from your history. The paired Mac's sessions are listed too, each carrying the Mac's name.
 
 ```
 vyre recall "retainer template"
@@ -121,7 +121,7 @@ Each hit shows the session's name, its id, how long ago it was, who said it (`us
 
 Until the search model is on this machine, recall matches keywords, and says so on its last line. `vyre recall --setup` fetches the model (about 130 MB) now.
 
-Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Deck: its threads are listed newest first.
+Recall has no date filter; it ranks by match. To browse by time instead, open the project in the Vyre app.
 
 You can also ask for it in words. In Lumen, ask your assistant ("what did we decide about the Northwind Bakery invoice last week?"); the answer comes from memory, marked in gold, with the turns it came from. From the terminal, `vyre why <fact>` shows the turns a fact came from. More in [Memory](../using/memory.md).
 
@@ -129,7 +129,7 @@ You can also ask for it in words. In Lumen, ask your assistant ("what did we dec
 
 - A date filter for recall, as above.
 - A phone app from an app store. Native iPhone and Android builds exist, but you build and install them yourself. On the phone, open your address in Safari or Chrome and add it to the Home Screen: it runs full screen, with notifications. See [On your phone](../using/mobile.md).
-- Replying to a Mac session from the box. The Deck shows the Mac's sessions read-only, with "Open it there to continue."; reply in the Mac's terminal or its Lumen.
+- Replying to a Mac session from the box. The Vyre app reads the Mac's sessions but does not act on them; reply in the Mac's terminal or its Lumen.
 - Updates on a Mac by themselves. Run `vyre update` on the Mac. A server updates from Settings, with `vyre update`, or by itself between 2 and 5 in the morning if you turn on **Update automatically** (off by default). Updates are signed. See [Looking after the box](../using/box-care.md).
 
 ## Where to go next

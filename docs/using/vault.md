@@ -33,7 +33,7 @@ In practice:
   passkey or a code typed in your terminal. See [presence](../concepts/presence.md). A call from
   Claude alone cannot pass it.
 
-Vyre asks you to prove you are there (Touch ID on a Mac, a passkey in the Deck or on the phone)
+Vyre asks you to prove you are there (Touch ID on a Mac, a passkey in the Vyre app or on the phone)
 for three kinds of thing: pairing a new Mac, releasing a vault secret (show, copy, fill, a
 one-time code, a backup), and anything that goes out as you, which is a send, a post, a payment or
 a delete. Reading a list of names asks for nothing. Unlocking your personal vault with its password
@@ -164,7 +164,7 @@ vyre vault codes import --from codes.txt # Google Authenticator's export, as sca
 ```
 
 To leave Google Authenticator, open it, choose Transfer accounts, then Export, and scan the QR
-codes with the Vyre phone app or the Deck's camera. A large export is split across several codes;
+codes with the Vyre phone app. A large export is split across several codes;
 the import waits until every part is scanned, in any order. A seed already in the vault is
 recognised and skipped. Counter-based (HOTP) codes are not supported. `otpauth://totp/` links
 work the same way.
@@ -177,9 +177,9 @@ vyre vault get stripe-live    # one item's metadata
 vyre vault audit stripe-live  # who used it, when, and whether it was allowed
 ```
 
-In the Deck, **Vault** (`/vault`) lists items by kind, with **Watchtower** (weak, reused, old or
-missing two-factor), **Passes**, **Shared with you** and **Devices**. Every field shows as twelve
-dots whatever its length.
+In the Vyre app, **Vault** (`/u/vault`) has the sections **Items**, **Passes**, **Shared**,
+**Devices** and **Health**. Health is the Watchtower: it flags weak or reused values and can check
+for known breaches.
 
 ## Show, copy or fill a value yourself
 
@@ -198,19 +198,18 @@ The terminal asks for Touch ID (or your Mac password). After you cancel, the nex
 30 seconds.
 ::: tab On a server
 A terminal on the box cannot prove presence: the box has no Touch ID, and it does not accept a
-terminal code. There, only a passkey from the Deck proves you are there. Use the Deck, or your
+terminal code. There, only a passkey from the Vyre app proves you are there. Use the app, or your
 Mac.
 :::
 
-- **Deck**: Copy asks Vyre to write the clipboard; the value never comes back to the page.
-  Reveal shows one field in the item pane and hides it again after 30 seconds, when the window
-  loses focus, or when you leave the item.
+- **Vyre app**: **Copy** puts the value on the clipboard of the device you are on. **Reveal**
+  shows one field and masks it again after 30 seconds.
 - **Lumen**: press Control twice, type the item's name, and choose **Fill in the front app**,
   **Copy the password or key**, **Copy username**, **Copy one-time code** or **Show the one-time
   code**. Fill types the login into the app in front through a helper; the value never returns
   to Lumen (`vault.fill.native`).
 
-The Deck, Lumen and the browser extension open a short **session** with one proof. While
+The Vyre app, Lumen and the browser extension open a short **session** with one proof. While
 it lasts, reveal, copy and one-time codes do not ask again, except for cards, which ask every
 time. A session ends after 10 minutes idle or 12 hours at most, when the Mac sleeps or its screen
 locks, or on `vyre vault lock`. Set other limits in `config.json` under `vault.lock`, for example
@@ -238,8 +237,8 @@ When Claude asks for a grant (`vault.grant`), it only creates a pending request.
      vyre vault approve <id>
    ```
 
-2. Approve one: `vyre vault approve g_4f2a`. Or approve it from **Passes** in the Deck, where
-   what waits for you is at the top.
+2. Approve one: `vyre vault approve g_4f2a`. Or approve it from **Passes** in the Vyre app, where
+   what waits for you is listed.
 
 Taking access away never needs presence; giving it does.
 
@@ -483,7 +482,7 @@ keep what is granted to them while your personal vault is locked.
 
 > [!SNAG] The vault is locked (exit code 4)
 > With the passphrase keystore, run `vyre vault unlock`. For your personal vault, run
-> `vyre vault account unlock` (add `--touchid` once you enrolled it), or unlock in the Deck.
+> `vyre vault account unlock` (add `--touchid` once you enrolled it), or unlock in the Vyre app.
 > Unlocking with Touch ID meets the `presence_required` problem above. Unlocking with the password
 > asks once, for the password itself. After five wrong passwords in a row, Vyre refuses every try
 > for 30 seconds, then 60, doubling up to 15 minutes, and a right password starts the count over.
@@ -491,10 +490,10 @@ keep what is granted to them while your personal vault is locked.
 
 ## Which surface does what
 
-| Task | Terminal | Deck | Lumen | Claude |
+| Task | Terminal | Vyre app | Lumen | Claude |
 | --- | --- | --- | --- | --- |
-| Add an item | `vyre vault put`, `import` | Add, per kind | | `vault.import` (a file path), never a value |
-| List items | `vyre vault` | `/vault` | type a name | `vault.list` (names only) |
+| Add an item | `vyre vault put`, `import` | Add an item | | `vault.import` (a file path), never a value |
+| List items | `vyre vault` | `/u/vault` | type a name | `vault.list` (names only) |
 | Copy, reveal, code | `get --copy`, `--reveal`, `--otp`, `totp` | Copy, Reveal | Copy, Show the code | never |
 | Fill a login | | | Fill in the front app | never |
 | Grant | `vyre vault grant`, `approve` | Passes | | `vault.grant` (waits as pending) |

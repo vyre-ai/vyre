@@ -278,4 +278,4 @@ where sessions run as their own user.
 `vyre resume <thread>` opens any thread in `claude` in your terminal, where it ran. A session Vyre
 is running is handed over first: if it is idle Vyre closes it, and your terminal takes it. If it
 is in the middle of a turn or waiting on a question, it is left alone and the command says so. A
-message from the Deck or Lumen after you exit brings it back to Vyre.
+message from the Vyre app or Lumen after you exit brings it back to Vyre.

@@ -44,7 +44,7 @@ unset VYRE_HOME
 | `core/` | every service inside `vyred`, one folder each, and `core/cli/commands/` for the CLI |
 | `harness/` | the Claude Code plugin: hooks, the MCP server, skills, the `/vyre` command |
 | `local/` | Mac-only modules: `capsule`, `hands-mac` |
-| `deck/` | the web app, including `deck/chat` and `deck/glass` |
+| `apps/app/` | the Vyre app (Expo): web build, iPhone and Android, including `src/chat` and `screens/glass` |
 | `modules/` | first-party optional modules |
 | `box/` | the server's Docker stack and host wrapper |
 | `site/` | vyre.run |

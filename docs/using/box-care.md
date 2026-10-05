@@ -81,8 +81,8 @@ vyre spend raise claude off     # no cap
 
 At the cap, the thread that was spending is paused with one line that says what happened and the
 command to raise the cap, and memory answers from facts and search until the next UTC day or until
-you raise it. A provider with no cap has none. The Deck shows the same list under Settings, Spend,
-with a way to change each cap.
+you raise it. A provider with no cap has none. The Vyre app shows the same list under Settings, Spending limits,
+with **Change cap** for each one.
 
 ## Upgrade
 

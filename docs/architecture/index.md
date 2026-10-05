@@ -12,7 +12,7 @@ Vyre is one small daemon, `vyred`, on each machine you own, plus a Claude Code p
 
 ## One process per machine
 
-`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the box and on the Mac, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the box (names, onboarding, agents' computers, Glass), and the Local modules run only on the Mac. The exact split is in [The box and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
+`vyred` runs every service on its machine ([Section 2 of the spec](spec.md#2-principles), principle 3). It is the same code on the box and on the Mac, with different modules enabled, chosen by `role` in `~/.vyre/config.json` (`box` or `local`). Most Core modules run on both; a few run only on the box (names, onboarding, agents' computers, Glass streaming), and the Local modules run only on the Mac. The exact split is in [The box and the Mac](../concepts/box-and-mac.md#one-process-per-machine). The `vyre` CLI is a thin client: every command is a call to `vyred`, over its unix socket (`~/.vyre/vyred.sock`) on the same machine or its HTTP API from elsewhere.
 
 Everything is a module, including the core services, and every module uses the same contract: a `module.json` manifest and an entry file that registers tools and emits events. See [Modules](../concepts/modules.md) and [The module contract](../build/module-contract.md). The loaded set on this branch is listed in the [module reference](../reference/modules.md).
 
@@ -38,10 +38,10 @@ Every surface talks to `vyred`'s API. None reads the store directly ([Section 9 
 | --- | --- | --- |
 | CLI | `vyre`: home, projects, threads, agents, vault, up, status, and `vyre call` for any tool. | `core/cli` |
 | Lumen | The command bar on the Mac: press Control twice, talk to the assistant, an agent or a session. | `local/capsule` |
-| Deck | The web app at your address: Now, Projects, Memory, Agents, Chat, Vault, Settings. | `deck/` |
-| Chat | Projects, then every Claude Code session on the machine, each shown as a readable conversation that follows the terminal live. Sending from Chat drives the same session. | `deck/chat` |
-| Glass | An agent's screen, live, with take-over. | `deck/glass` and `core/computers` |
-| Phone | The Deck added to the Home Screen as a web app: full screen, a phone tab bar (Now, Projects, Chat, Find, Agents), Web Push, and the last screen kept for when the phone is offline. A native app is not built. | `deck/` |
+| Vyre app | One Expo app that runs as a web app at your address (`/app/`), on iPhone and on Android: Now, Projects, Memory, Agents, Chat, Vault, Settings. | `apps/app` |
+| Chat | Projects, then every Claude Code session on the machine, each shown as a readable conversation that follows the terminal live. Sending from Chat drives the same session. | `apps/app/src/chat` |
+| Glass | An agent's screen, live, with take-over. | `apps/app/screens/glass` and `core/computers` |
+| Phone | The same Vyre app on iPhone and Android, or the web build added to the Home Screen. | `apps/app` |
 | Status line | Vyre's line under every Claude Code session in your terminal, such as `vyre · 2 need you · box ok · juno idle`. `vyre statusline install` adds it. | `core/statusline`, `harness/statusline` |
 
 A thread is one thing wherever it is viewed, and one screen types into it at a time (floor rules 3 and 4). Every session is a real Claude Code session, in a terminal or headless under the Switchboard; Vyre never imitates Claude Code.
@@ -55,7 +55,7 @@ bin/vyre          the CLI entry (thin: checks the Node version, calls core/cli)
 core/             services that run inside vyred, one folder each
 harness/          the Claude Code plugin: hooks, MCP server, skills, commands
 local/            Mac-only modules: capsule, hands-mac
-deck/             the web app vyred serves
+apps/app/         the Vyre app (Expo); vyred serves its web build at /app/
 modules/          first-party optional modules
 box/              the Docker stack for a server: Dockerfile, compose.yml, the host wrapper
 site/             vyre.run: the landing page (build-site.sh adds the installer)
@@ -73,7 +73,7 @@ The nine principles are in [Section 2 of the spec](spec.md#2-principles). The on
 - **Public Claude Code surfaces only.** Plugins, hooks, MCP and documented CLI flags. Reading transcript files is the one exception, kept in a single adapter, `core/transcripts`.
 - **Local first.** Nothing leaves your machines except through the Gate.
 - **Boring, readable code.** Node 22.5 or newer, ES modules, plain JavaScript with JSDoc types and `// @ts-check`, no build step for the core, `node:sqlite`, `node:test`. A dependency needs a reason in the changelog.
-- **Light by default.** Idle budgets for `vyred`, Lumen and the Deck. `scripts/perf-check` holds `vyred` to its budget in CI; Lumen and the Deck are measured by hand. See [Performance](performance.md).
+- **Light by default.** Idle budgets for `vyred`, Lumen and the Vyre app. `scripts/perf-check` holds `vyred` to its budget in CI; Lumen and the app are measured by hand. See [Performance](performance.md).
 - **The security floor cannot be configured away.** See [the floor](../concepts/floor.md) and [Security](../security/index.md).
 
 ## Decision records
@@ -94,7 +94,6 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | [0010](../adr/0010-vault-autofill.md) | Vault autofill |
 | [0011](../adr/0011-web-push.md) | Web Push for the moments you are needed |
 | [0012](../adr/0012-cdp-proxy.md) | Chrome's debugging port never leaves the container unauthenticated |
-| [0014](../adr/0014-tailnet.md) | The network ADR: using the private network fully |
 | [0016](../adr/0016-connectors.md) | Connectors, the MCP hub and native accounts (proposed) |
 | [0019](../adr/0019-docs-site.md) | This docs site: one source in `docs/`, checked and built without a framework |
 | [0020](../adr/0020-claude-code-plugin.md) | Vyre as an installable Claude Code plugin |

@@ -39,7 +39,7 @@ Claude Code itself:
   Vyre steps aside and uses theirs.
 - **Not a hosted service.** Vyre AI runs one thing: the name directory for `<you>.vyre.run`. It
   holds no user data.
-- **Not an IDE.** It uses Claude Code for coding; Chat is part of the Deck, a window onto real
+- **Not an IDE.** It uses Claude Code for coding; Chat is part of the Vyre app, a window onto real
   Claude Code sessions, not a separate assistant.
 
 ### Install and onboarding
@@ -60,7 +60,7 @@ opens the tunnel and the browser itself, and waits, so the person never opens a 
 server. On a server, `curl -fsSL https://vyre.run/install.sh | sh` does the same from the inside.
 Either way the box's `vyre up` makes one link: `http://127.0.0.1:<port>/onboard?t=<one-time
 token>` (on a headless server, reached over an SSH tunnel; the `ssh -L` line is printed). The
-onboarding is the Deck's first screen, and walks through, one step a screen:
+onboarding is the Vyre app's first screen, and walks through, one step a screen:
 
 1. **You.** Your name, and your assistant's name.
 2. **Claude Code.** Detects `claude`; signs in with your subscription (`claude setup-token`) or
@@ -102,7 +102,7 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
 5. **Boring, readable code.** Node 22.5 or newer, ES modules, plain JavaScript with JSDoc types
    and `// @ts-check`, no build step for the core. Dependencies need a reason in the changelog.
    SQLite through the built-in `node:sqlite`. Tests with the built-in `node:test`.
-6. **The terminal is first class.** Anything the Deck can do, `vyre` can do.
+6. **The terminal is first class.** Anything the Vyre app can do, `vyre` can do.
 7. **The security floor cannot be configured away** (section 11).
 8. **Light by default.** Vyre runs all day on the user's own machines, so idle must cost almost
    nothing. Budgets, checked by `scripts/perf-check` and in CI:
@@ -110,7 +110,7 @@ These are rules, not aspirations. A change that breaks one needs a spec change f
      once a minute when nothing is happening; work is driven by events and file-system notice.
    - Lumen hidden: under 0.2% CPU, no GPU use, under 250 MB resident for all its processes;
      shown and idle, under 2% CPU. It wakes in under 100 ms.
-   - Deck in a background tab: no timers faster than a minute; the event stream only.
+   - Vyre app web build in a background tab: no timers faster than a minute; the event stream only.
    - Heavy work (indexing, embedding, curation) runs at low priority, yields, pauses on battery
      and when the user is active, and never blocks a hook or Lumen.
    - Memory that grows with the corpus (search indexes, caches) is bounded and measured.
@@ -157,7 +157,7 @@ vyre/
   local/                   Mac-only modules
     capsule/               the Capsule                             (workstream: capsule)
     hands-mac/             computer use on macOS                   (workstream: capsule)
-  deck/                    the web app, served by vyred             (workstream: deck)
+  apps/app/                the Vyre app (Expo); vyred serves its web build at /app/
   modules/                 first-party optional modules (hands-desktop, hands-chrome)
   docs/                    this spec, the module guide, ADRs, workstream notes
   test/                    cross-module tests; unit tests sit beside their code
@@ -233,14 +233,14 @@ disabled and reported; it never takes `vyred` down.
 |---|---|
 | `does` | Tools this module offers. Each becomes an MCP tool for Claude, an HTTP route, and (where it makes sense) a CLI command, from one definition. |
 | `watches` | Events it emits into the event log. |
-| `shows` | Where it appears: Deck panels, Lumen actions, CLI commands. |
+| `shows` | Where it appears: app panels, Lumen actions, CLI commands. |
 | `needs` | Vault items it asks for. It never reads the vault any other way. |
 | `teaches` | Kinds of fact it hands the curator. It never writes Memory directly. |
 
 `requires` names other modules only. The store and the event log are the kernel: every module has
 them, so they are never listed. The published schema for every key, including those module API 1
 adds, is `packages/module-sdk/manifest.schema.json` ([ADR 0033](../adr/0033-hackable-vyre.md)).
-Today Lumen reads `shows.capsule`; `shows.deck` is declared for the Deck's slot registry,
+Today Lumen reads `shows.capsule`; `shows.deck` is declared for the app's slot registry,
 which does not read it yet (ADR 0033, phase 4).
 
 ### 5.2 The entry file
@@ -432,7 +432,7 @@ Tools: `threads.start`, `threads.send`, `threads.stream`, `threads.lease`, `thre
 
 Each agent gets a container with a desktop, Chrome and a terminal. Screens come from a shared
 pool and are checked out only while an agent needs to look at something; idle containers are
-frozen. Glass streams a screen to the Deck and supports take-over.
+frozen. Glass streams a screen to the Vyre app and supports take-over.
 
 ### 7.10 Names and network · workstream
 
@@ -498,10 +498,10 @@ The Harness also ships:
 |---|---|---|
 | CLI | `vyre`: home, projects, threads, context, up, status | `core/cli` |
 | Lumen | Control-Control command bar on the Mac: talk to the assistant, to any agent, or to any session | `local/capsule` |
-| Deck | The web app at `<you>.vyre.run`: Now, Projects, Memory, Agents, Vault, Settings | `deck/` |
-| Glass | An agent's screen, live, with take-over | `deck/` + `core/computers` |
-| Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `deck/chat` |
-| Phone | Now, approvals, drafts, Glass, Ask | later; a Deck view first |
+| Vyre app | One Expo app: the web build at `<you>.vyre.run/app/`, iPhone and Android. Now, Projects, Memory, Agents, Vault, Settings | `apps/app` |
+| Glass | An agent's screen, live, with take-over | `apps/app/screens/glass` + `core/computers` |
+| Chat | Vyre's own chat layer: projects, then sessions, each session the terminal mirrored as a readable conversation (tool calls folded, diffs, asks and held items inline), on phone and computer, driving the same Claude Code sessions as the terminal. No third-party chat server. | `apps/app/src/chat` |
+| Phone | Now, approvals, drafts, Glass, Ask | the Vyre app on iPhone and Android |
 
 Every surface talks to vyred's API. None reads the store directly.
 
@@ -510,7 +510,7 @@ Every surface talks to vyred's API. None reads the store directly.
 ## 10. Agents and the assistant
 
 Every Vyre session is a real Claude Code session: in a terminal, or headless under the
-Switchboard. Vyre never imitates Claude Code; every surface (the terminal, Chat, the Deck, the
+Switchboard. Vyre never imitates Claude Code; every surface (the terminal, Chat, the Vyre app, the
 Lumen, the phone) drives the same real sessions.
 
 - **The assistant.** Every install has one, made at onboarding. It is yours: its name, voice,
@@ -522,7 +522,7 @@ Lumen, the phone) drives the same real sessions.
   and can draw context from several projects, never from projects outside its list. When a
   subscription's limit is reached it falls back to the API key if one is allowed, and says so
   in its thread. Each can have its own computer (section 7.9).
-- **Talking to them.** From Lumen, the Deck, Chat or the terminal you can talk to the
+- **Talking to them.** From Lumen, the Vyre app, Chat or the terminal you can talk to the
   assistant, to any agent directly, or to any session directly. Talking to a session types
   into it (one keyboard at a time, floor rule 4).
 
@@ -576,7 +576,7 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M3** | Vault | Put, grant, fetch, revoke, offboard; relayed passes between two machines. |
 | **M4** | Watchers | The runtime plus the write-a-watcher skill; one watcher written by Claude, running, filing into a project. |
 | **M5** | Box | `vyre up` on a Linux server; paired over the built-in network; `<you>.vyre.run` resolves privately with HTTPS. |
-| **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
+| **M6** | Switchboard and app | Headless threads streamed to the Vyre app; Now and Projects working. |
 | **M7** | Lumen | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
 | **M9** | Chat, Gate, phone | Vyre Chat (projects, sessions, the terminal mirrored) on phone and computer; the Gate holding sends. |
@@ -597,10 +597,10 @@ through `ctx` or the API, never by importing its files.
 | box | `core/names/`, `vyre up` | daemon | M5 |
 | switchboard | `core/switchboard/`, `core/agents/` | projects, events | M6 |
 | learning | `core/learn/` | harness, memory | M6 |
-| deck | `deck/` | the API only | M6 |
+| app | `apps/app` | the API only | M6 |
 | capsule | `local/capsule/`, `local/hands-mac/` | the API only | M7 |
 | computers | `core/computers/`, `modules/hands-desktop/`, `modules/hands-chrome/` | switchboard | M8 |
-| gate + chat | `core/gate/`, `deck/chat/` | switchboard, vault, deck | M9 |
+| gate + chat | `core/gate/`, `apps/app/src/chat/` | switchboard, vault, app | M9 |
 
 How to start them, and the order (wave 1 now, wave 2 after the switchboard and vault merge), is
 in `docs/work/LAUNCH.md`.

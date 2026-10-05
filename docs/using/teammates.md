@@ -16,9 +16,9 @@ piece of work, where a one-off helper would forget everything when it finished.
 
 ## Add a teammate
 
-You add one from the Deck or the terminal.
+You add one from the Vyre app or the terminal.
 
-- **Deck**: open the project's board, choose the **Team** tab, then **Add a teammate**. Give a role
+- **Vyre app**: open the project's page, choose the **Team** tab, then **Add a teammate**. Give a role
   (one lowercase word, like `design`) and, if you like, a line on what work goes to it. Typing
   `@design` and a message in a project's chat also makes the role if it does not exist yet, when
   teammates are on for that project.
@@ -51,7 +51,7 @@ vyre team cancel <request>              # cancel a queued request
 vyre team notes design-harlow-legal     # read its notes
 ```
 
-In the Deck's chat for a project, `@design make the intake form calmer` sends the same request without
+In a project's chat in the Vyre app, `@design make the intake form calmer` sends the same request without
 using up the current session's turn. In a Claude Code session, the agent calls `team.ask`; the result
 comes back later as a message in that session. A teammate can ask another teammate, down to three
 teammates deep, and never in a loop.

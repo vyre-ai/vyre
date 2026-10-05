@@ -131,11 +131,11 @@ The reason follows on the same line:
 
 ### The pairing code expired
 
-The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
+The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Vyre app can give, so it says to approve in the Vyre app.
 
 ### "The Mac that is asking can approve itself only with a passkey."
 
-You approved the pairing in the Deck on the Mac you are pairing, without a passkey made on that Mac. The box takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or open Vyre on your phone: Now shows the request as "A Mac wants to pair:" and the Mac's name. Type the code the Mac shows, press **Approve**, and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
+You approved the pairing in the Vyre app on the Mac you are pairing, without a passkey made on that Mac. The box takes that approval only with a fresh passkey from the Mac. Approve again and use Touch ID. Or approve from the Vyre app on your phone and confirm with your passkey. A passkey you made on the Mac is on your iPhone when iCloud Keychain is on.
 
 ### "That code does not match. Check the code on the Mac and try again."
 
@@ -143,7 +143,7 @@ Type the code as the Mac shows it in `vyre up` or `vyre link`, such as `482-913`
 
 ### A Mac's sessions show "offline" on the box
 
-The Deck on the box lists the paired Mac's sessions while the Mac is awake and reachable. When it is not, the Deck shows the box's own sessions and a chip such as "alex-mac offline". Wake the Mac, check its connection, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
+The Vyre app on the box lists the paired Mac's sessions while the Mac is awake and reachable. When it is not, the app shows the box's own sessions. Wake the Mac, check its connection, and run `vyre link` on it. See [The box and the Mac](../concepts/box-and-mac.md#the-box-reads-the-macs-sessions).
 
 ## Lumen
 
@@ -179,7 +179,7 @@ Search by meaning needs a local model of about 130 MB. Vyre fetches it into `~/.
 
 ### The vault says it is locked, or asks for presence
 
-`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code Vyre writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Deck, it is your passkey.
+`vyre vault` exits with code 4 when the vault is locked and 3 when an action needs you to prove you are there. Human-only actions, like putting a value, ask you to prove you are there: `vyre vault` asks for Touch ID on the Mac, or for the code Vyre writes to your terminal. Without a terminal (from an agent's Bash, say) the command is refused and exits with code 3. In the Vyre app, it is your passkey.
 
 ### An agent stopped: budget
 
@@ -193,7 +193,7 @@ vyre agents update kit --budget 40
 
 ### An agent is waiting on you
 
-A thread that needs permission stops and asks. `vyre agents` shows it as waiting. Answer with the line it printed, `vyre threads answer <id> allow` or `deny`, or answer it in Lumen or the Deck.
+A thread that needs permission stops and asks. `vyre agents` shows it as waiting. Answer with the line it printed, `vyre threads answer <id> allow` or `deny`, or answer it in Lumen or the Vyre app.
 
 ## Where to go next
 

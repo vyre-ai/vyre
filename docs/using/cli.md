@@ -230,7 +230,7 @@ shows whether one does.
 `vyre sessions` shows and sets how the sessions Vyre starts run: `vyre sessions status` (driver,
 sign-in, Claude Code, Agent SDK), `vyre sessions models` (the model per kind of session) and
 `vyre sessions prompt` (the system prompt at three levels, with history and undo). Changing a
-model or a prompt is refused from inside a Claude session: do it from the Deck or a plain
+model or a prompt is refused from inside a Claude session: do it from the Vyre app or a plain
 terminal. [Sessions](sessions.md) has the rest.
 
 ## Next
