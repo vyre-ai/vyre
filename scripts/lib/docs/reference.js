@@ -81,7 +81,7 @@ export function harvest({ root = REPO, tmp = os.tmpdir() } = {}) {
     const out = path.join(home, "harvest.json");
     const none = path.join(home, "no-such-binary");
     const env = { PATH: process.env.PATH || "/usr/bin:/bin", HOME: home, TMPDIR: path.join(home, "tmp"), VYRE_HOME: path.join(home, ".vyre"),
-      VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: none, VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
+      VYRE_NO_DIALOGS: "1", VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
       VYRE_HANDS_BIN: none, VYRE_NO_OPEN: "1", VYRE_NO_UP: "1" };
     fs.mkdirSync(env.TMPDIR);
     const r = spawnSync(process.execPath, [path.join(HERE, "harvest.mjs"), root, out], { env, encoding: "utf8", timeout: 120_000 });

@@ -318,7 +318,7 @@ export function prReview(data, ctx = {}) {
 
   const trusted = new Set(n.comments.filter(c => OWN.has(String(c.by ?? "")) && c.path).map(c => c.path));
   files = fileList(n.files, { openHref: ctx.open, phone, open: phone ? [] : trusted, onToggle: () => drawComments(),
-    openFile: (/** @type {any} */ f) => ctx.open?.(f.href || `/files?path=${encodeURIComponent(f.path)}`) });
+    openFile: (/** @type {any} */ f) => f.href && ctx.open?.(f.href) });
   draw();
   return el;
 }

@@ -170,7 +170,7 @@ function totals(files) {
 export function diffFiles(data, ctx = {}) {
   ensureCss("diff-files");
   const el = /** @type {any} */ (shell("cv-diff-files", "Changes"));
-  const openFile = (/** @type {any} */ f) => ctx.open?.(f.href || `/files?path=${encodeURIComponent(f.path)}`);
+  const openFile = (/** @type {any} */ f) => f.href && ctx.open?.(f.href);
   /** @type {any} */ let list = null;
   el.update = (/** @type {any} */ d) => {
     data = d || {};

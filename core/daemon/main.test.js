@@ -13,12 +13,11 @@ import * as config from "../config/index.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const MAIN = path.join(HERE, "main.js");
-const FAKE_TAILSCALE = path.join(HERE, "..", "..", "deck", "test", "fake-tailscale.js");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** @param {string} root @param {number} after ms between "stops are handled" (a message from main.js) and the SIGTERM */
 async function stopAfter(root, after) {
-  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1", ...(fs.existsSync(FAKE_TAILSCALE) ? { VYRE_TAILSCALE_BIN: FAKE_TAILSCALE } : {}) };
+  const env = { ...process.env, VYRE_HOME: root, VYRE_NO_DIALOGS: "1" };
   const p = spawn(process.execPath, [MAIN], { env, stdio: ["ignore", "ignore", "pipe", "ipc"] });
   let err = "";
   p.stderr.on("data", d => { err += d; });

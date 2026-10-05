@@ -21,10 +21,6 @@ setPeerHosting(true);
 // person picks the right words. Tests of the relay's own pairing run with no one to confirm, so they take the one-step ring; test/wink.test.js unsets this and tests the gate.
 if (process.env.VYRE_TEST_UNGATED_RING === undefined) process.env.VYRE_TEST_UNGATED_RING = "1";
 
-// No test may run the machine's real tailscale: `vyre up` on a Mac with no box looks for one on
-// the tailnet (ADR 0008). A path that does not exist reads as "Tailscale is not installed". A test
-// that needs Tailscale sets its own fake, which replaces this.
-if (!process.env.VYRE_TAILSCALE_BIN) process.env.VYRE_TAILSCALE_BIN = path.join(os.tmpdir(), "vyre-no-tailscale", "tailscale");
 
 /**
  * @param {any} t
@@ -50,14 +46,8 @@ export function tempHome(t, { stop } = {}) {
   if (path.resolve(dir) === path.resolve(real)) throw new Error("a test tried to use the real ~/.vyre");
   const prev = process.env.VYRE_HOME;
   process.env.VYRE_HOME = dir;
-  // No test reaches the user's real Tailscale: unless a test set its own fake, point the binary at
-  // a path that does not exist, which every caller treats as "no tailnet". Child processes a test
-  // spawns inherit it.
-  const prevTs = process.env.VYRE_TAILSCALE_BIN;
-  if (!prevTs) process.env.VYRE_TAILSCALE_BIN = path.join(dir, "no-tailscale");
   t.after(async () => {
     if (prev === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = prev;
-    if (prevTs === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prevTs;
     // A test that ran `vyre up` in a child process may still have that vyred running: after-hooks
     // run in the order they were added, so this cleanup runs before the test's own `vyre down`.
     // Deleting the home under a live vyred orphaned it (fourteen of them, found running). So stop
