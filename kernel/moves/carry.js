@@ -86,7 +86,7 @@ export function createMoves(o) {
         // The file itself, not only its project folder: a chat's folders are its participants' alone at the authorizer, so a mover who is not in the chat is refused its files here (a move or an upgrade never reseals them).
         const act = async (/** @type {any} */ k, /** @type {any} */ chain, /** @type {string} */ action, /** @type {string} */ p) => (await k.gateway.authorize({ chain, action, resource: `vyre://${chain.space}/file/${p}` })).effect === "allow";
         // A file the mover may not read (a chat they are not in) is skipped, stays in the source and is named in the answer: the move carries only what the mover may read.
-        if (!(await act(src, fromChain, "drive.read", e.path))) { const c = /^Projects\/[^/]+\/chat\/([^/]+)\//.exec(e.path); skipped.push({ path: e.path, ...(c ? { chat: c[1] } : {}) }); continue; }
+        if (!(await act(src, fromChain, "drive.read", e.path))) { const c = /^Projects\/[^/]+\/(?:chat|made)\/([^/]+)\//.exec(e.path); skipped.push({ path: e.path, ...(c ? { chat: c[1] } : {}) }); continue; }
         if (!(await act(dst, toChain, "drive.write", e.dest))) throw new KernelError("not_found", "that file is not yours to move into");
         const destFolder = e.dest.split("/").slice(0, 2).join("/");
         if (!(await may(dst, toChain, destFolder))) throw new KernelError("not_found", "that folder is not yours to move into");

@@ -157,4 +157,9 @@ test("a file of a chat the mover is not in is skipped, stays in the source and i
   a.k.log.append(a.ada, { type: "space.upgrade_started", sv: 1, subject: `vyre://${A}/space/upgrade`, data: { upgrade_id: UP, to: B, plan_hash: "h".repeat(43) } });
   const u = await moves.carryFiles(a.ada, b.ada, { entries: [closedE], upgrade_id: UP });
   assert.deepEqual([u.carried, u.skipped], [[], [{ path: closedE.path, chat: closedId }]]);
+  // a model-made folder of a chat names its chat too
+  const made = `Projects/p1/made/${closedId}/out.txt`;
+  await a.D.put(a.bob, made, enc("m"));
+  const m = await moves.carryFiles(a.ada, b.ada, { entries: [{ path: made, dest: `Projects/p1/made/${closedId}/out.txt`, sha256: sha("m"), size: 1 }], upgrade_id: UP });
+  assert.deepEqual(m.skipped, [{ path: made, chat: closedId }], "a chat's made files name the chat");
 });
