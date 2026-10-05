@@ -390,6 +390,13 @@ async function startLocked(opts, root, p, release) {
     registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
     // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
     // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
+    // One Chat: the kernel's `chat.created` and `chat.changed` are visible to the Space's owner only, so the daemon reads them as the owner and says them on the module bus, for the work module's
+    // Chat record (its mirror of who is in a chat). Only the event's own facts (ids), nothing is written back.
+    try {
+      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-chats", { type: "chat.*" }, (/** @type {any} */ e) => {
+        if (e && (e.type === "chat.created" || e.type === "chat.changed")) { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } }
+      });
+    } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
     // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
     const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
       let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");

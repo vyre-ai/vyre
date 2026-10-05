@@ -510,6 +510,11 @@ export class Switchboard {
       const who = this.speaker(thread);
       payload = { ...payload, ...(payload.provider === undefined ? { provider: who.provider } : {}), ...(payload.model === undefined ? { model: who.model } : {}), ...(payload.account === undefined ? { account: who.account } : {}) };
     }
+    // The run's start, end and rename say which chat the run is in (One Chat): the Chat record is kept from these. Not on every event: a reply's deltas are many.
+    if ((type === "thread.started" || type === "thread.stopped" || type === "thread.renamed") && payload && payload.chat === undefined) {
+      const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
+      if (row && row.chat) payload = { ...payload, chat: row.chat };
+    }
     // What a one-turn provider said, kept to hand back to the session's own provider when the turn ends.
     const once = this.once.get(thread);
     if (once && type === "thread.text" && payload && payload.done && !payload.notice && payload.message !== "vyre" && payload.kind === undefined) once.reply = cut(`${once.reply}\n${payload.text || ""}`.trim(), 4000);
@@ -575,6 +580,15 @@ export class Switchboard {
       this.db.prepare("INSERT OR IGNORE INTO threads_terminal_chats (session, chat) VALUES (?,?)").run(session, chat);
       return /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(session)).chat;
     } catch (e) { this.deps.log(`threads: no chat for terminal session ${String(session).slice(0, 8)}: ${/** @type {Error} */ (e).message}`); return null; }
+  }
+
+  /** The runs of one chat (a run is one assistant or model in it): the facts a chat's participants see as its slots. @param {string} chat */
+  ofChat(chat) {
+    const live = this.sessions.live(this.ours());
+    return /** @type {any[]} */ (this.db.prepare("SELECT id FROM threads_runs WHERE chat = ? ORDER BY started_at").all(String(chat))).map(r => {
+      const t = /** @type {any} */ (this.record(String(r.id)));
+      return { thread: t.id, name: t.name, agent: t.agent, provider: t.provider, model: t.model, account: t.account, status: t.canonical_status, live: live.has(t.id), started: t.started, last: t.last, turns: t.turns };
+    });
   }
 
   record(id) {
@@ -3371,7 +3385,7 @@ export default {
     // recreate a missing one, which is real, separate work, not done here. Flagged to github/
     // reviewer-2 rather than guessed at silently.
     // One Chat: a terminal session's SessionStart (the Harness says `thread.started` with a `session` and no thread of ours) is a run in a chat of the person's.
-    const offTerminalChat = ctx.events.on("thread.started", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (e && !e.thread && typeof p.session === "string" && p.session) void sb.terminalChat(p.session); });
+    const offTerminalChat = ctx.events.on("thread.started", (/** @type {any} */ e) => { const p = (e && e.payload) || {}; if (e && !e.thread && typeof p.session === "string" && p.session) void sb.terminalChat(p.session).then(chat => { if (chat) ctx.events.emit("thread.chat", { session: p.session, chat, cwd: p.cwd || null }); }); });
     const offGithubCleanup = ctx.events.on("thread.status", e => {
       if (e.payload && e.payload.status === "finished" && e.project && e.thread) {
         ctx.call("github.project.of", { project: e.project }).then(gh => {
@@ -3976,6 +3990,12 @@ export default {
     tool("threads.archive", "Put a thread away: it stops, its session worktree is cleaned up by github (the branch and commits stay), and it leaves the default list. thread.archived is said. threads.unarchive brings it back. A person, the assistant, or an agent for its own threads and its own projects' threads.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, meta) => { guard(meta.caller, "archive sessions"); mayReach(meta, sb.must(i.thread)); return sb.archive(i.thread); });
+    tool("threads.of-chat", "The runs inside one chat (its slots): thread, agent, provider, model, account, status. A first-party module's, which has already checked that the person is in the chat (work.chat.get).",
+      { type: "object", required: ["chat"], properties: { chat: str } },
+      async (i, meta) => { guard(meta.caller, "read a chat's runs"); return { runs: sb.ofChat(i.chat) }; }, ["module"]);
+    tool("threads.chat-of", "The chat a run (or a terminal session, by its session id) is in, or null. A first-party module's.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, meta) => { guard(meta.caller, "read a run's chat"); const t = sb.record(String(i.thread)); const term = /** @type {any} */ (sb.db.prepare("SELECT chat FROM threads_terminal_chats WHERE session = ?").get(String(i.thread))); return { chat: (t && t.chat) || (term && term.chat) || null }; }, ["module"]);
     tool("threads.rename", "Give a thread a new name. The name is the session's title everywhere (the project's session list, its record in Records); thread.renamed is said, and a rename made in Records comes back here the same way.",
       { type: "object", required: ["thread", "name"], properties: { thread: str, name: str } },
       async (i, meta) => { guard(meta.caller, "rename sessions"); mayReach(meta, sb.must(i.thread)); return sb.rename(i.thread, i.name); });

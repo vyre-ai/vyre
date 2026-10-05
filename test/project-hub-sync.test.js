@@ -37,7 +37,7 @@ async function boot(/** @type {any} */ t) {
   return { d, admin, meta, work, rows, memberChain };
 }
 
-test("every session is a record with its ids, times, Drive folder and transcript address, filed in General when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
+test("every chat is a record with its id, times and Drive folders, filed in General when it has no project; Move to project files it elsewhere", { timeout: 180_000 }, async t => {
   const { d, admin, meta, work, rows } = await boot(t);
   const general = await until(async () => (await rows("project")).find((/** @type {any} */ r) => r.data.slug === "general" && r.data.drive_path), "the General project");
   assert.equal(general.data.name, "General");
@@ -45,43 +45,47 @@ test("every session is a record with its ids, times, Drive folder and transcript
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck", name: "First chat" }, "cli");
   assert.ok(r.data && r.data.id, JSON.stringify(r));
   const id = r.data.id;
-  const rec = await until(async () => (await rows("session-summary")).find((/** @type {any} */ x) => x.data.thread === id), "the session record");
-  assert.equal(rec.data.title, "First chat");
+  const chat = (await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli")).data.thread.chat;
+  assert.match(chat, /^chat_/, "every run is in a chat");
+  const rec = await until(async () => (await rows("chat-record")).find((/** @type {any} */ x) => x.data.chat === chat && x.data.title === "First chat"), "the chat record");
   assert.equal(rec.data.project.urn, general.urn, "no project: General");
   assert.equal(rec.data.drive, general.data.drive_path);
-  assert.equal(rec.data.transcript, `vyre://${d.kernel.id.space}/session/${id}`);
-  assert.ok(rec.data.started && rec.data.machine, "start time and the machine");
+  assert.equal(rec.data.location, `${general.data.drive_path}/chat/${chat}/`);
+  assert.ok(rec.data.started && rec.data.last_active, "start time and last active");
+  assert.deepEqual(Object.keys(rec.data).sort(), ["agents", "chat", "drive", "last_active", "location", "people", "project", "started", "status", "title"], "the record holds nothing but what an admin may see");
   // Move to project: its two folders go with it, by id
-  await d.kernel.gateway.drive.put(admin, `${general.data.drive_path}/chat/${id}/dropped.txt`, new TextEncoder().encode("from the person"));
-  await d.kernel.gateway.drive.put(admin, `${general.data.drive_path}/made/${id}/made.txt`, new TextEncoder().encode("from a model"));
+  await d.kernel.gateway.drive.put(admin, `${general.data.drive_path}/chat/${chat}/dropped.txt`, new TextEncoder().encode("from the person"));
+  await d.kernel.gateway.drive.put(admin, `${general.data.drive_path}/made/${chat}/made.txt`, new TextEncoder().encode("from a model"));
   const made = await d.registry.call("work.project.create", { name: "Rivera Estate" }, "cli", await meta());
-  const mv = await d.registry.call("work.session.move", { thread: id, project: made.data.slug }, "cli", await meta());
+  const mv = await d.registry.call("work.chat.move", { chat, project: made.data.slug }, "cli", await meta());
   assert.equal(mv.data.project, made.data.project, JSON.stringify(mv));
-  const moved = (await rows("session-summary")).find((/** @type {any} */ x) => x.data.thread === id);
+  const moved = (await rows("chat-record")).find((/** @type {any} */ x) => x.data.chat === chat);
   assert.equal(moved.data.project.urn, made.data.project);
   const newRoot = `Projects/${made.data.project.split("/").pop()}`;
   assert.equal(moved.data.drive, newRoot);
-  assert.equal(Buffer.from((await d.kernel.gateway.drive.get(admin, `${newRoot}/chat/${id}/dropped.txt`)).bytes || "").length > 0 || true, true);
-  await d.kernel.gateway.drive.get(admin, `${newRoot}/made/${id}/made.txt`);
-  await assert.rejects(() => d.kernel.gateway.drive.get(admin, `${general.data.drive_path}/chat/${id}/dropped.txt`));
-  assert.equal(moved.data.transcript, rec.data.transcript, "the transcript pointer stays");
+  assert.equal(Buffer.from((await d.kernel.gateway.drive.get(admin, `${newRoot}/chat/${chat}/dropped.txt`)).bytes || "").length > 0 || true, true);
+  await d.kernel.gateway.drive.get(admin, `${newRoot}/made/${chat}/made.txt`);
+  await assert.rejects(() => d.kernel.gateway.drive.get(admin, `${general.data.drive_path}/chat/${chat}/dropped.txt`));
+  assert.equal(moved.data.location, `${newRoot}/chat/${chat}/`);
+  assert.equal(moved.data.chat, rec.data.chat, "the id stays");
   assert.equal(moved.data.started, rec.data.started, "ids and times stay");
 });
 
-test("a session's name syncs both ways: a rename on the thread reaches its record, a rename in Records reaches the thread; the id stays", { timeout: 180_000 }, async t => {
+test("a chat's name syncs both ways: a rename on a run reaches the record, a rename in Records reaches the run; the id stays", { timeout: 180_000 }, async t => {
   const { d, meta, work, rows } = await boot(t);
   const r = await d.registry.call("threads.start", { cwd: work, prompt: "hello", surface: "deck", name: "Old name" }, "cli");
   const id = r.data.id;
-  const get = async () => (await rows("session-summary")).find((/** @type {any} */ x) => x.data.thread === id);
+  const chat = (await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli")).data.thread.chat;
+  const get = async () => (await rows("chat-record")).find((/** @type {any} */ x) => x.data.chat === chat);
   await until(get, "the record");
   await d.registry.call("threads.rename", { thread: id, name: "Welcome email" }, "cli", await meta());
   await until(async () => { const x = await get(); return x && x.data.title === "Welcome email" ? x : null; }, "the thread's new name in Records");
   // from Records' side
-  await d.registry.call("work.session.rename", { thread: id, title: "Engagement letter" }, "cli", await meta());
+  await d.registry.call("work.chat.rename", { chat, title: "Engagement letter" }, "cli", await meta());
   await until(async () => (await d.registry.call("threads.get", { thread: id, limit: 1 }, "cli")).data.thread.name === "Engagement letter", "the thread to take the record's title");
   const x = await get();
   assert.equal(x.data.title, "Engagement letter");
-  assert.equal(x.data.thread, id, "the id did not change");
+  assert.equal(x.data.chat, chat, "the id did not change");
 });
 
 test("a project's name syncs both ways between Records and the project list, ids unchanged, and NOTHING in Drive moves", { timeout: 180_000 }, async t => {
@@ -149,7 +153,7 @@ test("MV-1: moving a folder checks every file under the caller's own chain and a
   await d.kernel.gateway.drive.get(admin, "Projects/B/one.txt");
 });
 
-test("a session move is all or nothing: if any file of either folder is refused, neither folder moves", { timeout: 120_000 }, async t => {
+test("a chat move is all or nothing: if any file of either folder is refused, neither folder moves", { timeout: 120_000 }, async t => {
   const { d, admin, memberChain } = await boot(t);
   await d.kernel.gateway.drive.put(admin, "Projects/A/chat/s1/one.txt", new TextEncoder().encode("1"));
   await d.kernel.gateway.drive.put(admin, "Projects/A/made/s1/two.txt", new TextEncoder().encode("2"));
