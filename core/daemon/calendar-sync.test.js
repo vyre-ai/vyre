@@ -32,7 +32,7 @@ async function rig(t, { ask = false } = {}) {
   t.after(() => sync.stop());
   const owner = () => w.kernel.chainFor({ flow: "calendar-sync", approver: ALEX, tainted: false, space: SPACE });
   const chains = { forDoer: x => w.kernel.moduleChain({ module: "flows", approver: x.approver }) };
-  const h = sync.attach({ space: SPACE, gw: w.kernel, chains, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id, service });
+  const h = sync.attach({ space: SPACE, gw: w.kernel, chains, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id, service, subscribe: cb => w.kernel.onEvent(cb, "calendar-sync") });
   const events = async () => (await w.kernel.records.query(owner(), "event", { page: { limit: 100 } })).rows;
   const tasks = async () => { await w.kernel.idle(); return w.kernel.tasks.filter(x => /Calendar:/.test(x.title)); };
   return { google, w, h, sent, events, tasks, owner };
@@ -71,9 +71,7 @@ test("a write to the outside calendar is held for the owner's yes: a task, nothi
   assert.equal(out["google-calendar"].pushed.held, 1, "still waiting");
   assert.equal((await tasks()).length, 1, "and no second task");
   w.kernel.completeTask(ts[0].id, { outcome: "approved" });
-  await w.kernel.idle();
-  out = await h.runNow();
-  assert.equal(out["google-calendar"].pushed.inserted, 1, JSON.stringify(out));
+  for (let i = 0; i < 50 && google.events.size < 1; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); } // the approval itself starts the look
   assert.equal(sent.length, 1); assert.equal(sent[0].approval, ts[0].id); assert.match(sent[0].bind, /./);
   assert.equal(google.events.size, 1);
   assert.equal((await events())[0].data.calendar, "google-calendar");
@@ -111,4 +109,21 @@ test("with no calendar connector in the vault it does nothing", async t => {
   t.after(() => sync.stop());
   const h = sync.attach({ space: SPACE, gw: w.kernel, chains: {}, ownerChain: () => w.kernel.sysChain(), personChain: () => w.kernel.sysChain(), ownerId: () => ALEX.id, service: async () => { throw new Error("must not be called"); } });
   assert.deepEqual(await h.runNow(), {});
+});
+
+test("the owner's yes sends that change at once, without waiting for the next look; a no ends it at once too", async t => {
+  const { google, w, h, sent, tasks, owner } = await rig(t, { ask: true });
+  await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", source: "vyre" });
+  await w.kernel.records.create(owner(), "event", { title: "Dentist", starts_at: "2026-10-07T19:00:00.000Z", source: "vyre" });
+  await h.runNow();
+  const ts = await tasks();
+  assert.equal(ts.length, 2);
+  const yes = ts.find(x => /Closing call/.test(x.title)), no = ts.find(x => /Dentist/.test(x.title));
+  w.kernel.completeTask(yes.id, { outcome: "approved" });
+  w.kernel.completeTask(no.id, { outcome: "rejected" });
+  // no runNow() here: the approval event starts the look
+  for (let i = 0; i < 50 && google.events.size < 1; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); }
+  assert.equal(google.events.size, 1, "the approved change went out on the approval");
+  assert.equal(sent.length, 1); assert.equal(sent[0].approval, yes.id);
+  assert.match([...google.events.values()][0].summary, /Closing call/);
 });

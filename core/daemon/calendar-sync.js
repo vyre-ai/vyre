@@ -33,12 +33,14 @@ export function createCalendarSyncHost(o) {
 
   /**
    * @param {{ space: string, gw: any, chains: any, ownerChain: () => any, personChain: (id: string) => any, ownerId: () => string,
+   *   subscribe?: (cb: (e: any) => any) => any,
    *   service: (q: { chain: any, connector: string, request: any, idem?: string, approval?: string, bind?: string }) => Promise<any> }} s
    */
   function attach(s) {
     if (spaces.has(s.space)) return spaces.get(s.space);
     let busy = false, stopped = false;
     /** @type {Map<string, any>} */ const syncs = new Map();
+    /** @type {Map<string, any>} */ const states = new Map();
     const actor = (/** @type {string} */ id) => ({ kind: "person", id, space: s.space });
 
     /** One connector's sync, made once. */
@@ -91,6 +93,7 @@ export function createCalendarSyncHost(o) {
       sync = createCalendarSync({ kernel: { records: s.gw.records }, chain: () => s.ownerChain(), call, write, route: connector, calendar: "primary", state,
         report: (type, data) => { if (type === "calendar.conflict") log(`calendar sync ${s.space}: ${type} ${JSON.stringify(data).slice(0, 200)}`); } });
       syncs.set(connector, sync);
+      states.set(connector, state);
       return sync;
     }
 
@@ -110,10 +113,18 @@ export function createCalendarSyncHost(o) {
       return out;
     }
 
+    // The owner's yes (or no) on a change this sync is holding is acted on at once, not at the next look: the event of the decided task starts a look.
+    const mine = (/** @type {string} */ id) => [...states.values()].some(st => Object.values(st.get("pending") || {}).some((/** @type {any} */ n) => n && n.task === id));
+    /** @type {any} */ let unsubscribe = null;
+    if (s.subscribe) unsubscribe = s.subscribe((/** @type {any} */ e) => {
+      if (!e || (e.type !== "task.approved" && e.type !== "task.rejected")) return;
+      const id = String(e.subject || "").split("/").pop() || "";
+      if (mine(id)) void runNow();
+    });
     /** @type {NodeJS.Timeout[]} */ const timers = [];
     const first = setTimeout(() => { void runNow(); }, o.firstMs ?? FIRST_MS), every = setInterval(() => { void runNow(); }, o.everyMs ?? EVERY_MS);
     first.unref?.(); every.unref?.(); timers.push(first, every);
-    const h = { stop: () => { stopped = true; timers.forEach(t => clearTimeout(t)); }, runNow };
+    const h = { stop: () => { stopped = true; timers.forEach(t => clearTimeout(t)); if (typeof unsubscribe === "function") unsubscribe(); }, runNow };
     spaces.set(s.space, h);
     return h;
   }
