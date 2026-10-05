@@ -93,8 +93,26 @@ export async function createKernel(cfg) {
     projectExists: async (/** @type {string} */ u) => { const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(u); if (!m) return false; try { return Boolean(await store.get(m[1], m[2])); } catch { return false; } },
   });
   // The task record type is defined once, and every task the kernel already holds gets its record (idempotent: a task with a record is skipped).
-  // A space whose record store cannot start here holds no records at all (the refusing store): its kernel still boots, with no task records.
-  try { await store.define({ add_types: [TASK] }); await tasks.migrate(); } catch (e) { if (/** @type {any} */ (e).code !== "unavailable") throw e; }
+  // A store that always refuses (a device install with no Cloud: kernel/store/refusing.js) holds no records, so its kernel boots with no task records and never asks again. A real store that is
+  // only briefly unavailable at start is not that: the task type is asked for again in the background (a growing wait, `taskRetryMs` first) until it answers, and any other error stops the boot.
+  const note = typeof cfg.note === "function" ? cfg.note : (/** @type {string} */ _m) => {};
+  const defineTasks = async () => { await store.define({ add_types: [TASK] }); await tasks.migrate(); };
+  if (store.refusing !== true) {
+    try { await defineTasks(); }
+    catch (e) {
+      if (/** @type {any} */ (e).code !== "unavailable") throw e;
+      let wait = Number(cfg.taskRetryMs) > 0 ? Number(cfg.taskRetryMs) : 2000, tries = 0;
+      const again = () => {
+        const t = setTimeout(async () => {
+          try { await defineTasks(); note(`kernel: the task record type is defined now (the record store came up)`); }
+          catch (err) { if (++tries < 60 && /** @type {any} */ (err).code === "unavailable") { wait = Math.min(wait * 2, 30_000); again(); } else note(`kernel: could not define the task record type: ${/** @type {any} */ (err).message}`); }
+        }, wait);
+        if (typeof t.unref === "function") t.unref();
+      };
+      note(`kernel: the record store is not available yet (${/** @type {Error} */ (e).message}); the task record type is retried in the background`);
+      again();
+    }
+  }
   const roomPort = grantsStore ? createRoomPort({ grantsStore }) : null;
   // An approved Kit install is presence for that install (kernel/tasks/kit-apply.js); the gateway's authorizer asks `waives`, the install asks `begin`.
   const kitApply = createKitApply({ space: cfg.space, tasks, log, chains, clock, types: () => store.types() });

@@ -33,3 +33,29 @@ test("a kernel given the refusing store boots with its own parts (grants, log) a
   await dev.gateway.records.define(od, { add_types: [CONTACT] });
   assert.equal((await dev.gateway.records.create(od, "contact", { name: "Jane" })).data.name, "Jane", "a device keeps its own store");
 });
+
+test("a store that is only briefly unavailable at boot gets the task record type in the background; the refusing store is skipped and never asked again", async () => {
+  const mk = () => new DatabaseSync(path.join(fs.mkdtempSync(path.join(SCRATCH, "vyre-retry-")), "kernel.db"));
+  // A real store whose define answers "unavailable" twice (Twenty still coming up), then works.
+  const { createMemoryStore } = await import("../store/memory.js");
+  const inner = createMemoryStore();
+  let downFor = 2, asked = 0;
+  const flaky = new Proxy(inner, { get(t, k) {
+    if (k === "define") return async (/** @type {any} */ d) => { asked++; if (downFor-- > 0) throw Object.assign(new Error("Twenty is starting"), { code: "unavailable" }); return t.define(d); };
+    const v = /** @type {any} */ (t)[k]; return typeof v === "function" ? v.bind(t) : v;
+  } });
+  const notes = /** @type {string[]} */ ([]);
+  const k = await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: flaky, taskRetryMs: 10, note: (/** @type {string} */ m) => notes.push(m) });
+  assert.ok(k, "the kernel booted while the store was down");
+  const end = Date.now() + 3000;
+  while (!notes.some(n => /task record type is defined now/.test(n)) && Date.now() < end) await new Promise(r => setTimeout(r, 20));
+  assert.ok(notes.some(n => /not available yet/.test(n)) && notes.some(n => /defined now/.test(n)), notes.join(" | "));
+  assert.ok((await inner.types()).some((/** @type {any} */ t) => t.name === "task"), "the task type is defined once the store came up");
+  assert.equal(asked, 3, "asked at boot and twice more, then done");
+  // The refusing store: skipped, and nothing is retried.
+  let refuseAsked = 0;
+  const refusing = createRefusingStore("no Docker"); const was = refusing.define; refusing.define = async (/** @type {any} */ d) => { refuseAsked++; return was(d); };
+  await bootKernel({ db: mk(), space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 7), sealer, store: refusing, taskRetryMs: 10 });
+  await new Promise(r => setTimeout(r, 150));
+  assert.equal(refuseAsked, 0, "a store that always refuses is not asked, now or later");
+});
