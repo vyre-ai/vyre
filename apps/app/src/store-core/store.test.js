@@ -14,3 +14,14 @@ test("in the app there is no mock unless a dev or capture build asked for it", a
   setStore(null);
   assert.ok((await getStore().spaces()).length > 0);
 });
+
+import { eventLine, actedVia, ASSISTANT_MARK } from "./kernel-view.js";
+test("what the person's assistant did carries acted_via through to the line, and is marked after the person's name", () => {
+  const ev = { id: 1, type: "record.updated", time: 5, actor: { id: "per_a1" }, acted_via: "assistant", data: { what: "changed this" } };
+  assert.equal(eventLine(ev).via, "assistant");
+  assert.equal(eventLine({ ...ev, acted_via: undefined }).via, undefined);
+  assert.equal(actedVia({ ext: { acted_via: "assistant" } }), true);
+  assert.equal(actedVia({ data: { acted_via: "assistant" } }), true);
+  assert.equal(actedVia(null), false);
+  assert.equal(ASSISTANT_MARK, "(Sent by Vyre Assistant)");
+});

@@ -8,6 +8,8 @@
 //   rpc.write(tool, input, { proof? })    -> data, or throws Error{code,message}; `proof` is the PresenceProof of a human-only call, which the rpc turns into the header
 //   rpc.events(onEvent)                   -> stop(); calls back for every event the vyred follows (the stream)
 
+import { spaceName } from "../state/space-name.js";
+
 /** @typedef {import("./contracts.js").Store} Store */
 
 /** The tool names, one place: platform's list (team/0.2/CHAT.md, "the gateway tools for the app"). `space` is optional on each (absent = the home's own). */
@@ -48,7 +50,7 @@ export function createGatewayStore({ rpc }) {
     const d = await meAnswer();
     const listed = await rpc.read(TOOLS.spaceList, {}).catch(() => []);
     /** @type {any[]} */ const out = (Array.isArray(listed) ? listed : listed?.spaces ?? []).filter((/** @type {any} */ x) => !x.status || x.status === "done")
-      .map((/** @type {any} */ x) => ({ id: x.id, name: x.displayName || x.label || x.name, kind: x.role === "owner" ? "mine" : "team" }));
+      .map((/** @type {any} */ x) => ({ id: x.id, name: spaceName(x), kind: x.role === "owner" ? "mine" : "team" }));
     const own = d?.space ?? d?.spaces?.[0]?.id;
     if (Array.isArray(d?.spaces) && d.spaces.length) return d.spaces;
     if (own && !out.some((x) => x.id === own)) out.unshift({ id: own, name: "Home", kind: "mine" });

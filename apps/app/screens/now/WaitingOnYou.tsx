@@ -1,4 +1,5 @@
 import { View } from "react-native";
+import { ASSISTANT_MARK, actedVia } from "../../src/store-core/kernel-view.js";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Chip, Divider, Row, SectionLabel, Text } from "@vyre/ui";
 import { visibleNeeds } from "../../src/state/answers";
@@ -38,7 +39,7 @@ export function WaitingOnYou() {
       <Card flush>
         {items.map((n, i) => (
           <View key={n.id}>{i ? <Divider /> : null}
-            <Row dense title={n.title} sub={[n.agent, n.project].filter(Boolean).join(" · ") || n.detail} end={<Chip tone="accent">{n.source === "gate" && n.kind === "send" ? "Send" : "Needs you"}</Chip>} onPress={() => open(n)} />
+            <Row dense title={n.title} sub={[[n.agent, n.project].filter(Boolean).join(" · ") || n.detail, actedVia(n) ? ASSISTANT_MARK : ""].filter(Boolean).join(" ")} end={<Chip tone="accent">{n.source === "gate" && n.kind === "send" ? "Send" : "Needs you"}</Chip>} onPress={() => open(n)} />
           </View>
         ))}
       </Card>

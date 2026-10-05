@@ -4,7 +4,7 @@ import { View } from "react-native";
 import { Banner, Button, Card, Divider, ErrorState, Field, LoadingState, Row, Select, Text, showToast } from "@vyre/ui";
 import { Page, Sec } from "../places/Frame";
 import { system } from "./system";
-import { accessWord, auditLines, egressCard, flipAccess, guestsCard, handbackLabel, handbackOf, hooksCard, hostedLine, lockCard, machineRows, nameOf, recallView, sharesOf, tailnetCard, type Card as StatusCard } from "./system-model.ts";
+import { winkCard, accessWord, auditLines, egressCard, flipAccess, handbackLabel, handbackOf, hooksCard, hostedLine, machineRows, nameOf, recallView, sharesOf, type Card as StatusCard } from "./system-model.ts";
 
 const say = (e: unknown, f = "That did not go through.") => (e instanceof Error && e.message ? e.message : f);
 
@@ -99,9 +99,9 @@ function Advanced() {
   const [cards, setCards] = useState<StatusCard[] | null>(null);
   const [hb, setHb] = useState<ReturnType<typeof handbackOf> | null>(null);
   useEffect(() => {
-    Promise.all([system.hooks(), system.hooksStatus(), system.guests(), system.tailnet(), system.egress(), system.lock(), system.handback()]).then(([h, hs, g, t, e, l, b]) => {
+    Promise.all([system.hooks(), system.hooksStatus(), system.wink(), system.egress(), system.handback()]).then(([h, hs, w, e, b]) => {
       // A tool this box does not have leaves its card out.
-      setCards([h && hooksCard(h, hs), g && guestsCard(g), t && tailnetCard(t), e && egressCard(e), l && lockCard(l)].filter(Boolean) as StatusCard[]);
+      setCards([h && hooksCard(h, hs), w && winkCard(w), e && egressCard(e)].filter(Boolean) as StatusCard[]);
       setHb(b ? handbackOf(b) : null);
     });
   }, []);

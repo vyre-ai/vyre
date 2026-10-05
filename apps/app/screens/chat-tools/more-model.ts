@@ -1,3 +1,4 @@
+import { actedVia } from "../../src/store-core/kernel-view.js";
 // The rest of the chat tools as pure models: the watcher card, the spend cap, the assistant's welcome, artifact activity,
 // files and recall answers. Shapes are the ones the Deck read; every field is checked, nothing is trusted to exist.
 
@@ -58,13 +59,13 @@ export function welcomeOf(d: any): { text: string; cards: WelcomeCard[] } {
   return { text: str(d?.text), cards };
 }
 
-export type Activity = { at: number | null; kind: string; by: string; line: string };
+export type Activity = { at: number | null; kind: string; by: string; line: string; via?: "assistant" };
 const KINDS: Record<string, string> = { "navigated-away": "It tried to leave its page", opened: "Opened", shared: "Link made", unshared: "Link turned off", edited: "A new version", "version-added": "A new version" };
 /** artifacts.activity.log's rows, newest first. */
 export function activityOf(d: any): Activity[] {
   return list(d, "events").concat(Array.isArray(d?.log) ? d.log : []).filter((e: any) => e && (e.kind || e.type)).map((e: any) => {
     const kind = str(e.kind || e.type);
-    return { at: typeof e.at === "number" ? e.at : typeof e.ts === "number" ? e.ts : null, kind, by: str(e.by || e.actor), line: KINDS[kind] || kind.replace(/[-_.]/g, " ") };
+    return { ...(actedVia(e) ? { via: "assistant" as const } : {}), at: typeof e.at === "number" ? e.at : typeof e.ts === "number" ? e.ts : null, kind, by: str(e.by || e.actor), line: KINDS[kind] || kind.replace(/[-_.]/g, " ") };
   }).sort((a, b) => (b.at ?? 0) - (a.at ?? 0));
 }
 /** The box's own bytes for a version, rendered in a frame with its own CSP, or media as itself. Same-origin path; never an absolute URL from data. */

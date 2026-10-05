@@ -15,8 +15,8 @@
   },
   "scripts": {
     "web": "expo start --web",
-    "export:web": "node scripts/term-assets.mjs && node scripts/glass-assets.mjs && expo export -p web && node scripts/precache.mjs",
-    "export:web:root": "node scripts/term-assets.mjs && node scripts/glass-assets.mjs && VYRE_APP_BASE=root EXPO_PUBLIC_VYRE_APP_BASE=root expo export -p web && node scripts/precache.mjs dist /",
+    "export:web": "node scripts/term-assets.mjs && expo export -p web && node scripts/precache.mjs",
+    "export:web:root": "node scripts/term-assets.mjs && VYRE_APP_BASE=root EXPO_PUBLIC_VYRE_APP_BASE=root expo export -p web && node scripts/precache.mjs dist /",
     "typecheck": "tsc --noEmit",
     "icons": "node scripts/gen-ui-icons.mjs",
     "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\" \"ui/**/*.test.js\" \"screens/**/*.test.js\" \"modules/**/*.test.js\" \"vendor/**/*.test.js\"",

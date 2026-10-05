@@ -25,7 +25,7 @@ test("the welcome is one line and two actions", () => {
   assert.equal(WELCOME.title, "Vyre");
   assert.equal(WELCOME.start, "Get started");
   assert.equal(WELCOME.have, "I already have Vyre");
-  assert.equal(backOf("name", { welcome: true }), "welcome");
+  assert.equal(backOf("name", { welcome: true }), "question", "Get started goes to setup's one question first");
   assert.equal(backOf("have", { welcome: true }), "welcome");
   assert.equal(backOf("name"), null);
   assert.equal(backOf("welcome"), null);

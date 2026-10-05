@@ -115,3 +115,9 @@ test("the refusal lines name the method of this device: fingerprint on Android, 
   assert.doesNotMatch(answerRefusal("ERR_KEY_INVALIDATED", howWord("android")), /Face ID/);
   assert.match(answerRefusal("ERR_BIOMETRIC", howWord("ios")), /Face ID or Touch ID did not work/);
 });
+
+import { askedLine as askedLineMark } from "./phone-approve.js";
+test("a held card the person's assistant asked shows the mark in its line", () => {
+  assert.equal(askedLineMark({ asked_from: "the Mac", acted_via: "assistant", expires_in_s: 120 }), "Asked from the Mac, (Sent by Vyre Assistant), ends in 2 min");
+  assert.equal(askedLineMark({ asked_from: "the Mac" }), "Asked from the Mac");
+});

@@ -2,15 +2,19 @@
 // Publish and Sites are 0.3.1. Claiming a name in a browser is RC2, because the key lives on the phone or Mac. Flip a value to bring it back.
 import { Platform } from "react-native";
 import { macKeyAvailable } from "../../src/identity/mac-key.ts";
+import { passkeyRp } from "../../src/identity/passkey.js";
 
 export const RC = {
   sites: false,
+  // Glass, renamed Screen Share, is 0.3.1 (user ruling): no route, button or command reaches it in 0.2.9. screens/glass, src/glass and scripts/glass-assets.mjs stay for then.
+  glass: false,
   // A browser claims and recovers a name with a passkey (0.2.9). On unless a build sets EXPO_PUBLIC_VYRE_BROWSER_CLAIM=0 (a test of the phone-only path). Read as process.env.NAME exactly: Expo inlines only that form.
   browserClaim: process.env.EXPO_PUBLIC_VYRE_BROWSER_CLAIM !== "0",
 };
 
-/** True when this build is a browser and may not claim a name. The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */
-export const claimBlocked = (): boolean => Platform.OS === "web" && !RC.browserClaim && !macKeyAvailable();
+/** True when this build is a browser and may not claim a name here: the claim is switched off, or the page is not where a passkey can be made (app.vyre.run in a release build, also http://localhost in a development one). Such a browser pairs as its own device with the typed code, the one way to pair.  The Mac app's window is not a browser: it keeps the identity key in the Mac's Keychain (Host/MacIdentity.swift) and signs through the shell. */
+export const claimBlocked = (): boolean =>
+  Platform.OS === "web" && !macKeyAvailable() && (!RC.browserClaim || passkeyRp(typeof location !== "undefined" ? location.origin : undefined, { dev: process.env.NODE_ENV !== "production" }) === null);
 
 /** What the person reads in each hidden path. Specific, and it says where to go. */
 export const HIDDEN = {

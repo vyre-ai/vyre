@@ -5,6 +5,8 @@
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+import { spaceName } from "../../src/state/space-name.js";
+
 /** "12 Aug" for a time in ms, "" for none. */
 export const dayOf = (/** @type {number | null | undefined} */ ms) => {
   if (typeof ms !== "number" || !Number.isFinite(ms) || ms <= 0) return "";
@@ -56,7 +58,7 @@ export function deviceRows(data, now = Date.now()) {
 export function spaceNames(data) {
   /** @type {Record<string, string>} */ const names = {};
   if (!Array.isArray(data)) return names;
-  for (const s of data) if (s && typeof s.id === "string") names[s.id] = String(s.displayName || s.label || s.name || s.id);
+  for (const s of data) if (s && typeof s.id === "string") names[s.id] = spaceName(s);
   return names;
 }
 
