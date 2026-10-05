@@ -420,7 +420,7 @@ export function readTokens(v: string | null | undefined): Record<string, string>
 
 /**
  * The person session for one box at another origin.
- * @param o.box the box's origin, e.g. "https://harlow.example.ts.net"
+ * @param o.box the box's origin, e.g. "https://juniper.example.ts.net"
  * @param o.signIn starts the sign-in hop (person.web.ts redirects); called on a 401
  * @param o.signer the key, where it is not a WebCrypto pair in stores.key (the phone)
  * @param o.nonce a fresh proof nonce, where globalThis.crypto.getRandomValues is missing (Hermes)

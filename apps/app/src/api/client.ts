@@ -64,7 +64,7 @@ export type OutboxChange = {
 
 export type ClientDeps = {
   /**
-   * The box's http(s) address, e.g. "https://harlow.example.ts.net". Over relay/client's paths it
+   * The box's http(s) address, e.g. "https://juniper.example.ts.net". Over relay/client's paths it
    * only names the box (the relay's base, route included); requests go through `open`/`caller`.
    */
   base: string;

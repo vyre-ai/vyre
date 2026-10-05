@@ -117,7 +117,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   c.push("tool-finished", {
     tool_id: "tl5", ok: true,
     result: {
-      block: "record", urn: "urn:vyre:harlow:matter:nb-0042", type: "Matter", title: "Northwind Bakery, lease dispute",
+      block: "record", urn: "urn:vyre:juniper:matter:nb-0042", type: "Matter", title: "Northwind Bakery, lease dispute",
       fields: [
         { label: "Stage", kind: "stage", value: "Demand sent" },
         { label: "Lead", kind: "text", value: "Alex Rivera" },
@@ -138,7 +138,7 @@ export function script(o: { tps?: number } = {}): Segment[] {
   d.push("ask-answered", { ask_id: "k1", decision: "approve" });
   d.push("status", { state: "working", turn: "turn-1" }, 30);
   d.push("tool-started", { tool_id: "tl6", tool: "memory.search", kind: "answer", summary: "Northwind Bakery, last contact" }, 150);
-  d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:harlow:note:2210" }, { title: "Lease, section 4", url: "urn:vyre:harlow:file:lease" }] } }, 300);
+  d.push("tool-finished", { tool_id: "tl6", ok: true, result: { block: "answer", text: "The last contact was a call with the owner on 2 October. She asked for a written timeline.", sources: [{ title: "Call note, 2 Oct", url: "urn:vyre:juniper:note:2210" }, { title: "Lease, section 4", url: "urn:vyre:juniper:file:lease" }] } }, 300);
   d.push("tool-started", { tool_id: "tl7", tool: "draft.email", kind: "draft", summary: "Status note" }, 150);
   d.push("tool-finished", { tool_id: "tl7", ok: true, result: { block: "draft", kind: "email", to: "owner@northwind.example", subject: "Where your lease matter stands", body: "Hello,\n\nThe demand letter went out on 2 October. The landlord has until 14 October to reply. I will write again that day either way." } }, 300);
   d.push("tool-started", { tool_id: "tl8", tool: "flow.propose", kind: "flow", summary: "Follow-up on 14 Oct" }, 150);
@@ -422,7 +422,7 @@ export function historyFrames(n: number, session = "demo"): Frame[] {
   while (msg < n) {
     const k = msg % 8;
     const id = `h${msg}`;
-    if (k === 0) out.push(f("user-message", { message: id, text: `Message ${msg}: look at the intake form for Harlow Legal and tell me what is left.`, state: "sent" }));
+    if (k === 0) out.push(f("user-message", { message: id, text: `Message ${msg}: look at the intake form for Juniper Studio and tell me what is left.`, state: "sent" }));
     else if (k === 3) {
       out.push(f("tool-started", { tool_id: id, tool: "Bash", kind: "terminal", summary: "npm test" }));
       out.push(f("tool-finished", { tool_id: id, ok: true, result: { block: "terminal", command: "npm test", output: `${green("pass")} 14  fail 0\n`, exit: 0 } }));

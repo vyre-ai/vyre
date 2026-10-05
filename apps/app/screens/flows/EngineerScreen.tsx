@@ -24,7 +24,7 @@ function SampleEngineerScreen() {
       </View>
       <Segmented<"1" | "0"> label="Who is asking" value={admin} onChange={setAdmin} options={[["1", "Admin"], ["0", "Member"]]} />
       {admin === "0" ? (
-        <Card><View className="items-center gap-s2 p-s4"><Text strong>Only space admins can talk to @Engineer</Text><Text tone="muted" className="text-center">Ask an admin of Harlow Legal, or open Flows to read what it built.</Text><Button label="Open Flows" onPress={() => router.push("/u/flows" as never)} /></View></Card>
+        <Card><View className="items-center gap-s2 p-s4"><Text strong>Only space admins can talk to @Engineer</Text><Text tone="muted" className="text-center">Ask an admin of Juniper Studio, or open Flows to read what it built.</Text><Button label="Open Flows" onPress={() => router.push("/u/flows" as never)} /></View></Card>
       ) : (
         <Card>
           <View className="gap-s3">
