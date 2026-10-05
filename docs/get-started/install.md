@@ -38,20 +38,12 @@ to install are at the end, in [Other ways to install](#other-ways-to-install).
 
 Open the Vyre app on your phone, or the Lumen on your Mac. The Vyre phone apps for iPhone and
 Android are built from the repository today (see [On your phone](../using/mobile.md)). The first
-screen offers **Get started** and **I already have Vyre**. **Get started** asks one question: *Do you have your own server, or are you joining a team?*
+screen offers **Get started** and **I already have Vyre**. **Get started** asks one question: *Do you have your own server, or are you joining a team?* Either
+answer starts with your name on a device that has none.
 
-- **I am joining a team** makes your name first ("Make your name, connect this device with a code,
-  and you are in"), then takes you to **Your spaces**, where you can create a space on your own
-  server or join one. The steps below follow this path, because it is the one that starts with a
-  name.
-- **I have my own server** goes straight to **Set up My Cloud**. That page shows the install line
-  and the long-code entry together, and it is where **Add your own server** leads for a home that
-  joined a team. Pairing needs this device to have your name, so make your name first.
-
-Then the app asks you to choose your Vyre name. It is how people find you. Vyre makes a key for
-the name on this device, and the key stays here. A name needs at least three letters, and the app
-tells you as you type whether `<name>.vyre.run` is taken or yours to take. Press **Create my
-name**.
+First choose your Vyre name. It is how people find you. Vyre makes a key for the name on this
+device, and the key stays here. A name needs at least three letters, and the app tells you as you
+type whether `<name>.vyre.run` is taken or yours to take. Press **Create my name**.
 
 ![Choose your Vyre name, with alex-rivera typed and "is yours to take" under it](shots/first-run-claim.png "Your name")
 
@@ -59,36 +51,32 @@ The app then shows a **recovery code** and says it is the only way back in if yo
 device. It is shown once, and anyone who holds it can get back into your name, so keep it
 somewhere only you can reach. Press **I saved it**.
 
+- **I have my own server** carries on to **Set up My Cloud** (step 2).
+- **I am joining a team** carries on to **Your spaces**, where you can join a space or create one
+  (step 5).
+
 If you already have a name, press **I already have Vyre** and scan a code from a device that has
-it. The key on a new device cannot be rebuilt from the name alone.
+it. A device that already holds a name goes straight to **Set up My Cloud**. The key on a new
+device cannot be rebuilt from the name alone.
 
-## 2. Create a space
+## 2. Set up My Cloud
 
-Your spaces screen offers **Create a space** and **Join a space**. Create a space asks for three
-things: its name, the name to claim for it (its address is that name followed by `.vyre.run`; people
-and spaces share one set of names, so a space cannot take its owner's name), and **Who it is for**:
-**A team**, **A client** or **Just me**. A team and a client then get a step to invite people; **Just
-me** skips it.
-
-![Create a space: the name field filled in, its claimed address under it, and "A team" chosen](shots/first-run-space.png "Create a space")
-
-On a Mac the app first asks **Where should Vyre run?**: **On this Mac** (only while the Mac stays
-on) or **On a server** (it shows the one line to run there). A computer app asks **Where will it
-live?** with **On a server you have** (one command) or **On this computer** (only while it stays
-on, and unreachable while the computer sleeps or is off). A phone is never asked: it makes the
-space on the Vyre it is connected to, and a phone with no Vyre running yet offers **Send me the
-setup link**, which shares <https://vyre.run> for you to open on a computer.
+**Set up My Cloud** says My Cloud runs on a computer or a server that stays on, and that your
+phones and browsers connect to it. A computer or browser shows the install line in a box on this
+same page. A phone shows **Send me the setup link**, which shares <https://vyre.run> for you to open
+on a computer, because a phone is never shown an install line. The same page has the field for the
+server's code, under **Or paste the long code**, and the camera on a phone.
 
 ## 3. Run the line on your server
 
-Choosing a server shows **Run this on your server**. Open a terminal on the server as yourself,
-not root, and paste the line the app shows. On a Linux server it looks like this:
+Open a terminal on the server as yourself, not root, and paste the line the app shows (on the
+**Set up My Cloud** page, or on **Run this on your server** when you create a space on a server). On a Linux server it looks like this:
 
 ```sh
 curl -fsSL vyre.run/i | sh
 ```
 
-A prerelease build of the app shows a different line, one that fetches that release's own installer from GitHub; a stable build shows the line above. Press **I ran it** in the app when it has finished.
+A prerelease build of the app shows a different line, one that fetches that release's own installer from GitHub; a stable build shows the line above. On **Run this on your server**, press **I ran it** when it has finished.
 
 The installer asks for `sudo` itself, only for what needs it: Docker, the `/srv/vyre` folder and
 `/usr/local/bin/vyre`. It asks before it installs anything. If Docker is missing it asks
@@ -147,12 +135,13 @@ The steps above are the Linux path.
 
 ## 4. Pair your server
 
-The app's **Pair your server** screen says the server printed a QR code and a long code. On a phone,
-scan the QR; on a computer, paste the long code into the field.
+The server prints a QR code and a long code. On a phone, scan the QR; on a computer, paste the long
+code into the field on the **Set up My Cloud** page (or on **Pair your server**, when you create a
+space).
 
 ![Pair your server: the server's terminal shows a long code, and the phone has a field to paste it](shots/first-run-pair-code.png "Pair your server")
 
-The app then shows three words and waits. The server's terminal shows three words for each way in
+The app then shows **Pair your server**, with three words, and waits. The server's terminal shows three words for each way in
 and asks you to pick the set the app shows. Say yes at the server only if it shows the same words,
 or press **Not the same** in the app:
 
@@ -183,7 +172,22 @@ your device once it has paired.` To show the code again later, run `vyre call wi
 > [!SNAG] The app cannot reach the server
 > Check that the server is on and online. Nothing was paired. Run `vyre status` on the server.
 
-## 5. Finish setting up the space
+## 5. Create a space and finish setting it up
+
+**Your spaces** offers **Create a space** and **Join a space**. Create a space asks for three
+things: its name, the name to claim for it (its address is that name followed by `.vyre.run`; people
+and spaces share one set of names, so a space cannot take its owner's name), and **Who it is for**:
+**A team**, **A client** or **Just me**. A team and a client then get a step to invite people; **Just
+me** skips it.
+
+![Create a space: the name field filled in, its claimed address under it, and "A team" chosen](shots/first-run-space.png "Create a space")
+
+On a Mac the app first asks **Where should Vyre run?**: **On this Mac** (only while the Mac stays
+on) or **On a server** (it shows the one line to run there). A computer app asks **Where will it
+live?** with **On a server you have** (one command) or **On this computer** (only while it stays
+on, and unreachable while the computer sleeps or is off). A phone is never asked: it makes the
+space on the Vyre it is connected to. Choosing a server shows **Run this on your server** (step 3)
+and then **Pair your server** (step 4).
 
 Setup carries on by itself on the device it started on. The AI, tools and Kit screens can be skipped (**Later**, or **Start empty** for a Kit), and the
 look and members screens have only **Continue**:
