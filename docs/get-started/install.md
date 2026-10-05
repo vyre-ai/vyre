@@ -127,7 +127,7 @@ Paste the line in Terminal on that Mac, as yourself, not root. The installer ask
 password once, to set Vyre up as a service that starts when the Mac does, with nobody signed in.
 The installer downloads a Node and checks it against a pinned checksum, installs Colima (the
 small Linux machine your agents' computers run in) and the GitHub command line tool, and checks
-the Vyre release's signature before it installs anything. It ends with `Vyre is running. Pair it from your Vyre app: run <bin>/vyre call wink.server.code '{"qr":true}' here, then scan the QR or paste the long code.` Then continue at step 4.
+the Vyre release's signature before it installs anything. Near the end it prints `Vyre is running. Pair it from your Vyre app: run <bin>/vyre call wink.server.code '{"qr":true}' here, then scan the QR or paste the long code.` Then continue at step 4.
 
 After a power cut: with FileVault on, the Mac waits for someone to unlock it at the screen, and
 Vyre is off until then. With FileVault off, anyone who takes the Mac can read Vyre's files,
@@ -182,8 +182,8 @@ your device once it has paired.` To show the code again later, run `vyre call wi
 
 ## 5. Finish setting up the space
 
-Setup carries on by itself on the device it started on. Most screens have **Later**, so
-you can come back to them:
+Setup carries on by itself on the device it started on. The AI, tools and Kit screens can be skipped (**Later**, or **Start empty** for a Kit), and the
+look and members screens have only **Continue**:
 
 - **Give the space a look.** Pick a colour (Violet, Amber, Sky, Sage or Rose) for how its mark
   shows on every screen. You can change it later.
@@ -353,15 +353,6 @@ The server itself can also run without Docker, from the package: see [Without Do
 > line already got as far as starting Vyre, the installer answers `Vyre is already running in
 > /srv/vyre, so this installer leaves it alone.` and a new line does nothing. Run `vyre uninstall --keep-data`
 > on the server, then paste the fresh line. Your data stays.
-
-> [!SNAG] The setup link has expired (the SSH and loopback paths)
-> The link works once, for an hour. From the Mac, run `vyre box add alex@192.0.2.10` again. On
-> the server, run `vyre up`. Either prints a fresh link, and the page keeps every step you
-> already finished.
-
-> [!SNAG] "Almost there: your box has no address yet."
-> You skipped the address screen on the SSH path, so there is nothing for your Mac or phone to
-> reach yet. Run `vyre box add alex@192.0.2.10` again and finish **Your address** in the browser.
 
 > [!SNAG] your box https://alex.vyre.run did not answer from here
 > The reason follows on the same line. "the box is offline or unreachable": on the server, run
