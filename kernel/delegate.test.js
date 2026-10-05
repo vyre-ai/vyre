@@ -69,11 +69,10 @@ test("a Space without the default assistant (made before it existed) is told so,
   assert.ok(k && owner && forBob && decide);
 });
 
-test("the default assistant has an off switch: an owner removes it with presence, unnamed chats are then refused plainly, and an owner can add it back", async () => {
+test("the default assistant has an off switch: an owner removes it with no presence proof (user ruling 5 Oct), unnamed chats are then refused plainly, and an owner can add it back", async () => {
   const { owner, bob, forBob, decide, g } = await rig();
   const dflt = { kind: "agent", id: "assistant", space: SPACE };
   assert.equal((await decide(forBob, "records.read", contact)).effect, "allow");
-  await assert.rejects(() => g.defaultAssistant.remove(owner, {}), { code: "needs_presence" }, "needs the owner's presence");
   await assert.rejects(() => g.defaultAssistant.remove(bob, { presence: proof("grants.role", { remove_actor: dflt }, `vyre://${SPACE}/member/assistant`) }), e => ["chain_not_person", "not_found", "not_allowed", "denied"].includes(e.code), "not a member's act");
   await g.defaultAssistant.remove(owner, { presence: proof("grants.role", { remove_actor: dflt }, `vyre://${SPACE}/member/assistant`) });
   assert.equal(g.defaultAssistant.present(), false);
