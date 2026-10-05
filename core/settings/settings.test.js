@@ -3,6 +3,7 @@
 // only a person changes anything. Claude Code's files are a temp folder, never ~/.claude.
 
 import "../../scripts/mac-test-guard.mjs";
+process.env.VYRE_KERNEL_PATH_RULE ??= "1"; process.env.VYRE_SEAL_DEV ??= "1";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -15,7 +16,7 @@ import { MASK } from "./index.js";
 import { settingTo, settingIntents } from "../../lib/said/setting.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
-async function world(t, { disable = [] } = {}) {
+async function world(t, { disable = [], kernel = false } = {}) {
   const root = tempHome(t);
   const projects = path.join(root, "projects");
   const home = path.join(projects, "northwind");
@@ -24,7 +25,8 @@ async function world(t, { disable = [] } = {}) {
   const claudeDir = path.join(root, "claude");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn", ...disable] },
     projectsDir: projects, settings: { claude_dir: claudeDir } }));
-  const d = await start({ root, log: () => {} });
+  // The planner keeps its settings with its things in the Space's records, so a home that sets them runs with the kernel on.
+  const d = await start({ root, log: () => {}, ...(kernel ? { kernel: true } : {}) });
   t.after(() => d.stop());
   const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
   return { root, home, claudeDir, c, d };
@@ -184,7 +186,7 @@ test("a broken Claude Code file is never written over", { timeout: 30_000 }, asy
 });
 
 test("another module's keys go through its own tool, and a missing module reads as unavailable", { timeout: 30_000 }, async t => {
-  const { c } = await world(t);
+  const { c } = await world(t, { kernel: true });
   await c("settings.set", { key: "push.watch", value: false });
   assert.equal((await c("push.settings")).data.kinds.watch, false);
   assert.ok(!(await c("settings.set", { key: "planner.event_lead", value: 20 })).error);
