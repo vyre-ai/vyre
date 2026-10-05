@@ -73,7 +73,6 @@ test("an access-giving act: the doer makes exactly the approved grant with no st
   assert.notEqual((await azg(doer, { approval: id })).effect, "allow", "an approval that names no bind covers nothing");
   assert.notEqual((await azg(doer, { approval: id, bind: "bind-X" })).effect, "allow", "another body is another act");
   assert.notEqual((await azg(other, { approval: id, bind: "bind-G" })).effect, "allow", "another doer cannot spend it");
-  assert.notEqual((await azg(owner, { approval: id, bind: "bind-G" }, "grants.create", GR)).effect === "allow" && none.effect !== "allow" && false, true, "(the owner path is not under test here)");
   assert.notEqual((await azg(doer, { approval: id, bind: "bind-G" }, "grants.role", GR)).effect, "allow", "another action under the same approval");
   assert.notEqual((await azg(doer, { approval: id, bind: "bind-G" }, "grants.create", `vyre://${SPACE}/grant/g2`)).effect, "allow", "another resource under the same approval");
   const peek = await gw.authorizePeek({ chain: doer, action: "grants.create", resource: GR, approval: id, bind: "bind-G" });
