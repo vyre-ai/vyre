@@ -154,8 +154,8 @@ Listens for: `floor.wrote`, `thread.deleted`
 | Event | Fields |
 | --- | --- |
 | `drive.exposed` | `findings`, `unsafe` |
-| `files.received` | `bytes`, `name`, `path`; sometimes `conflict`, `note` |
-| `files.sent` | `bytes`, `name`, `to`; sometimes `mac` |
+| `files.received` | `bytes`, `name`, `path` |
+| `files.sent` | `bytes`, `name`, `to` |
 
 ## gate
 
