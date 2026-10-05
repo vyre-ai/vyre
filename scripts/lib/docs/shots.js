@@ -117,7 +117,7 @@ export function manifestText(m) {
   return JSON.stringify(out, null, 2) + "\n";
 }
 
-/** Every PNG under a shots/ folder in docs/, repo-relative, sorted. */
+/** Every PNG under a shots/ folder in docs/ (not docs/work, the unpublished notes), repo-relative, sorted. */
 export function shotFiles(root) {
   const out = [];
   const walk = rel => {
@@ -126,6 +126,7 @@ export function shotFiles(root) {
     for (const e of entries) {
       if (e.name.startsWith(".") || e.name === "node_modules") continue;
       const r = `${rel}/${e.name}`;
+      if (r === "docs/work") continue; // work notes are not published (package.json excludes docs/work) and are not docs shots
       if (e.isDirectory()) walk(r);
       else if (/\.png$/i.test(e.name) && r.split("/").slice(0, -1).includes("shots")) out.push(r);
     }

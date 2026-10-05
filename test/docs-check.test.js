@@ -246,3 +246,8 @@ test("reference: every declared tool is on the tools page, and the pages are det
     assert.ok(!text.includes(SCRATCH), `${rel} leaks the temp home`);
   }
 });
+
+test("docs-check: a picture under docs/work/shots is a work note, not a docs shot, and never warns", async t => {
+  const root = tree(t, { "work/shots/chat/old.png": "x" });
+  assert.deepEqual((await check({ root, reference: false })).filter(p => p.kind === "shots"), []);
+});
