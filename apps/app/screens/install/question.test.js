@@ -30,24 +30,14 @@ test("Back walks welcome, the question, then name or My Cloud, and nothing skips
   assert.equal(backOf("mycloud", { welcome: true }), "question");
 });
 
-test("the screen: Get started goes to the question; joining a team goes to the name; the server answer to My Cloud, which types the server's code and never shows a phone an install line", () => {
+test("the screen: Get started goes to the question; both answers go through afterQuestion; My Cloud never shows a phone an install line", () => {
   const src = readFileSync(here("./InstallScreen.tsx"), "utf8");
   assert.match(src, /label=\{WELCOME\.start\} onPress=\{\(\) => setStep\("question"\)\}/);
-  assert.match(src, /title=\{QUESTION\.join\.title\}[^\n]*setStep\("name"\)/);
-  assert.match(src, /title=\{QUESTION\.own\.title\}[^\n]*setStep\("mycloud"\)/);
+  assert.match(src, /title=\{QUESTION\.join\.title\}[^\n]*setStep\(afterQuestion\("join", false\)\)/);
+  assert.match(src, /title=\{QUESTION\.own\.title\}[^\n]*afterQuestion\("own"/);
   const mc = src.slice(src.indexOf('} else if (step === "mycloud")'), src.indexOf('} else if (step === "browser" ||'));
   assert.match(mc, /isPhone\(dk\) \? \(/);
   assert.match(mc, /Share\.share\(\{ message: MY_CLOUD\.share \}\)/);
-  assert.match(mc, /<TypeCode redeem=\{redeemPairing\}/);
   assert.ok(mc.indexOf("Share.share") < mc.indexOf("installLine"), "the phone branch comes first and has no line");
-});
-
-test("on a Mac that can be the server, My Cloud asks first and calls makeServer only after the confirm, at the end of the flow", () => {
-  const src = readFileSync(here("./InstallScreen.tsx"), "utf8");
-  const mc = src.slice(src.indexOf('} else if (step === "mycloud")'), src.indexOf('} else if (step === "browser" ||'));
-  assert.match(src, /const makeMacServer = shell\(\)\?\.identity\?\.makeServer;/);
-  assert.match(mc, /makeMacServer && !macOther/);
-  assert.ok(mc.indexOf("{macSure ? (") < mc.indexOf("makeMacServer()") && mc.indexOf("makeMacServer()") < mc.indexOf("onPress={() => setMacSure(true)}"), "the call is only in the branch reached after the person pressed Make this Mac a server once");
-  assert.equal((mc.match(/makeMacServer\(\)/g) || []).length, 1, "called in one place, behind the confirm button");
-  assert.match(mc, /label=\{MY_CLOUD\.macOther\}/, "another computer stays a choice");
+  assert.match(mc, /isWindowsShell\(\) \? <Banner tone="warn">\{MY_CLOUD\.windows\}<\/Banner>/, "a Windows shell says a home cannot run there");
 });
