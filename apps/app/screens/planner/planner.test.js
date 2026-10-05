@@ -86,3 +86,11 @@ test("calls: add, done, reopen, delete, restore and answering a ring are one pla
     ["planner.delete", { item: "t1", restore: true }], ["planner.snooze", { firing: "f1" }], ["planner.parse", { text: "alarm 7am" }], ["planner.parse", { text: "x", kind: "event" }],
   ]);
 });
+
+test("where an item opens: a todo is a task, everything else a record, and the kinds are listed in Records and the calendar", { skip: !strip }, async () => {
+  const m = await import("./model.ts");
+  assert.equal(m.hrefOf({ id: "01a1-b2", kind: "todo" }), "/u/task/01a1-b2");
+  for (const kind of ["alarm", "timer", "reminder", "note", "event", "task"]) assert.equal(m.hrefOf({ id: "01a1-b2", kind }), "/u/record/01a1-b2", kind);
+  assert.equal(m.hrefOf({ id: "a/b c", kind: "note" }), "/u/record/a%2Fb%20c", "an id is encoded");
+  assert.deepEqual(m.PLACES.map((p) => p.href), ["/u/records/reminder", "/u/records/note", "/u/calendar"]);
+});

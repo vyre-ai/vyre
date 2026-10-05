@@ -35,7 +35,7 @@ export function ArtifactScreen({ id, version }: { id: string; version?: number }
   const title = String(art?.title || art?.name || "Shared");
   const by = String(art?.agent || art?.by || "");
   return (
-    <Page title={title} back="/u/shared">
+    <Page title={title} back="/u/drive">
       {err ? <Card flush><ErrorState title="This did not load" reason={err} retry={load} /></Card> : null}
       {!art && !err ? <LoadingState rows={4} /> : null}
       {art ? (

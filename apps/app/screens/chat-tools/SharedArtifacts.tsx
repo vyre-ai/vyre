@@ -1,22 +1,21 @@
-// Shared: what the assistants made (artifacts), with its versions and a public link. A link is posting as the person: the box asks their yes.
+// What the assistants made (artifacts), with its versions and a public link: the second half of the Shared tab in Drive. A link is posting as the person: the box asks their yes.
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import { useRouter } from "expo-router";
 import { Banner, Button, Card, Divider, EmptyState, ErrorState, LoadingState, Row, SectionLabel, Text, showToast } from "@vyre/ui";
-import { Page } from "../places/Frame";
 import { chatTools } from "./instance";
 import type { Shared, Version } from "./model.ts";
 
 const say = (e: unknown, f: string) => (e instanceof Error && e.message ? e.message : f);
 
-export function SharedScreen() {
+export function SharedArtifacts() {
   const [rows, setRows] = useState<Shared[] | null>(null);
   const [err, setErr] = useState("");
   const [open, setOpen] = useState("");
   const load = useCallback(() => { setErr(""); chatTools.shared().then(setRows).catch((e) => setErr(say(e, "Shared could not be read."))); }, []);
   useEffect(load, [load]);
   return (
-    <Page title="Shared" back="/u">
+    <View className="gap-s3">
       {err ? <Card flush><ErrorState title="Shared did not load" reason={err} retry={load} /></Card> : null}
       {!rows && !err ? <LoadingState rows={4} /> : null}
       {rows && !rows.length ? <Card><EmptyState title="Nothing made yet" body="Pages, images and files an assistant makes for you show here." /></Card> : null}
@@ -31,7 +30,7 @@ export function SharedScreen() {
           ))}
         </Card>
       ) : null}
-    </Page>
+    </View>
   );
 }
 
