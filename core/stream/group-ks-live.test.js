@@ -291,7 +291,7 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
   await until(() => userMsgs(watcher.frames).length >= 3, "both words in the chat");
   assert.deepEqual(userMsgs(watcher.frames).slice(1), ["B-ONE", "A-ONE"], "both are in the chat at once, in arrival order");
   assert.equal(w.asked.length, 1, "neither has a turn yet");
-  await until(() => repliesOf(watcher.frames).length >= 3, "all three replies", 40_000).catch(e => { console.log("DBG", JSON.stringify(watcher.frames.map(f => [f.type, f.data && String(f.data.text || f.data.reason || f.data.error || f.data.message).slice(0, 30)]).slice(-30)), JSON.stringify(w.asked)); throw e; });
+  await until(() => repliesOf(watcher.frames).length >= 3, "all three replies", 40_000);
   assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB, ADA], "three turns, one per message, in arrival order");
   assert.deepEqual(opened(w), [CAROL, BOB, ADA]);
   const rs = repliesOf(watcher.frames);
