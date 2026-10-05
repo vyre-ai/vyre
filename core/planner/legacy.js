@@ -8,7 +8,7 @@
 // The connected calendars' copy is not carried: it is read again from Google within 15 minutes of the first start. Items soft-deleted in the old planner are not carried.
 //
 // A crash part way leaves the tables as they are, and the next start runs the import again. It never writes anything twice: every record it makes carries the old id
-// (a Reminder or Note's `legacy_id`, an event's `external_id` as "planner:<id>", a Task's `form.planner.legacy_id`), a ring keeps its own unique ring id and a setting its
+// (a Reminder or Note's `legacy_id`, an event's `external_id` as "planner:<id>", a Task's `planner` carrier (`legacy_id` inside it)), a ring keeps its own unique ring id and a setting its
 // unique key, and the import first reads which of those are already in the records and carries only the rest. `planner_moved` repeats that as a list, written after the records
 // are, and a run that carried everything adds one row "~complete", so every later start does nothing at all.
 
@@ -105,8 +105,12 @@ export async function importLegacy({ db, K, log }) {
   for (const type of ["reminder", "note"]) for (const rec of await pages(type)) if (rec.data && rec.data.legacy_id) carried.set(String(rec.data.legacy_id), { type, id: rec.id });
   for (const rec of await pages("event")) { const x = /^planner:(.+)$/.exec(String((rec.data && rec.data.external_id) || "")); if (x && rec.data.source === "vyre") carried.set(x[1], { type: "event", id: rec.id }); }
   const doer = { kind: "person", id: K.owner, space: K.space };
-  const tasks = K.tasks && K.tasks.list ? await K.tasks.list(chain(), { doer: K.owner }).catch(() => []) : [];
-  for (const t of tasks) { const p = t.form && t.form.planner; if (p && p.legacy_id) carried.set(String(p.legacy_id), { type: "task", id: t.id }); }
+  // A to-do is a Task record whose `planner` field is the planner's own JSON carrier; the import writes the old id into it as `legacy_id`.
+  for (const rec of await pages("task").catch(() => /** @type {any[]} */ ([]))) {
+    let p = null;
+    try { p = rec.data && rec.data.planner ? JSON.parse(String(rec.data.planner)) : null; } catch { p = null; }
+    if (p && p.legacy_id) carried.set(String(p.legacy_id), { type: "task", id: rec.id });
+  }
   const haveFid = new Set((await pages("planner_firing")).map((/** @type {any} */ r) => r.data.fid));
   const haveKey = new Set((await pages("planner_state")).map((/** @type {any} */ r) => r.data.key));
 
@@ -127,7 +131,7 @@ export async function importLegacy({ db, K, log }) {
       if (r.kind === "todo") {
         const under = r.parent ? carried.get(r.parent) : null;
         const spec = toTaskSpec({ ...r, parent: under && under.type === "task" ? under.id : null }, doer);
-        spec.form.planner.legacy_id = r.id;
+        spec.fields.planner = JSON.stringify({ ...JSON.parse(spec.fields.planner), legacy_id: r.id });
         const t = await K.tasks.request(chain(), spec);
         carried.set(r.id, { type: "task", id: t.id });
       } else if (r.kind === "event") {

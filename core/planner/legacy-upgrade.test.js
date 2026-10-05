@@ -76,7 +76,7 @@ async function inventory(/** @type {any} */ w, /** @type {any} */ K) {
   const bump = (/** @type {string} */ k) => made.set(k, (made.get(k) || 0) + 1);
   for (const type of ["reminder", "note"]) for (const r of await page(type)) { const id = idOf(r, type); if (id) bump(`item:${id}`); }
   for (const r of await page("event")) { if (r.data.source !== "vyre") continue; const id = idOf(r, "event"); if (id) bump(`item:${id}`); }
-  for (const t of await K.tasks.list(K.serviceChain(), { doer: K.owner })) { const p = t.form && t.form.planner; if (p && p.legacy_id) bump(`item:${p.legacy_id}`); }
+  for (const t of await page("task")) { let p = null; try { p = JSON.parse(t.data.planner || "null"); } catch { p = null; } if (p && p.legacy_id) bump(`item:${p.legacy_id}`); }
   for (const r of await page("planner_firing")) bump(`ring:${r.data.fid}`);
   for (const r of await page("planner_state")) bump(`key:${r.data.key}`);
   return made;
