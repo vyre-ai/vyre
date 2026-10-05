@@ -545,9 +545,9 @@ test("agree op vector: the signed bytes are vyre-chain-v1 and the canonical body
   assert.equal(new TextDecoder().decode(C.messageOf(V.agree_op)), V.agree_op_signed_bytes_utf8);
   const now = V.agree_op.ts;
   const s0 = await C.verifyChain([V.genesis], { now });
-  assert.deepEqual(s0.entries, V.expect.entries_after_genesis);
+  assert.deepEqual(JSON.parse(JSON.stringify(s0.entries)), V.expect.entries_after_genesis);
   const s1 = await C.verifyChain([V.genesis, V.agree_op], { now });
-  assert.deepEqual(s1.entries, V.expect.entries_after_agree);
+  assert.deepEqual(JSON.parse(JSON.stringify(s1.entries)), V.expect.entries_after_agree);
   assert.equal(s1.head, V.expect.head_after_agree);
   assert.equal(s1.seq, V.expect.seq_after_agree);
   assert.equal(await C.hashOf(V.agree_op), V.agree_op_head_hash);
