@@ -4,7 +4,8 @@
 // Space when VYRE_STORE is `twenty` or `auto`; nothing else changes about how the kernel is built.
 //
 //   VYRE_STORE=sqlite   (default) never Twenty
-//   VYRE_STORE=auto     Twenty if the preflight passes, else SQLite with the reasons written to <dir>/twenty-unavailable.json and logged
+//   VYRE_STORE=auto     Twenty if the preflight passes; on a box too SMALL for it, SQLite with the reasons written to <dir>/twenty-unavailable.json and logged;
+//                       on a box that cannot run it for any other reason (no Docker, another platform), the Space fails to start with the reasons
 //   VYRE_STORE=twenty   Twenty or fail to start the Space (the reasons are the error)
 //
 // A Space remembers its choice (<dir>/store.json). A Space that was made on Twenty never falls back to SQLite: that would be a
@@ -111,6 +112,10 @@ export function createStoreFor(cfg) {
     const pf = await (cfg.preflight ?? preflight)({ dir, helper: cfg.helper });
     if (!pf.ok) {
       if (chosen?.kind === "twenty" || mode === "twenty") throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${pf.reasons.join("; ")}`), { code: "unavailable", reasons: pf.reasons });
+      // Only a box too SMALL for Twenty may use the built-in store (the person was told at install, and a new Space asks first). A box that should run Twenty and cannot
+      // (no Docker, the helper missing, another platform) is broken, and a broken box never falls back to SQLite quietly: the Space does not start and says why.
+      const broken = pf.reasons.filter((/** @type {string} */ r) => !/^not enough (free memory|disk)/.test(r));
+      if (broken.length) throw Object.assign(new Error(`the Records store for ${space} cannot start here: ${broken.join("; ")}`), { code: "unavailable", reasons: broken });
       // a new Space the person has not agreed to put on the built-in store is not created: the answer comes first, never after
       if (opts.requireConfirm) throw Object.assign(new Error(SMALL_BOX_NOTE), { code: "needs_confirmation", plan: { store: "sqlite", reasons: pf.reasons, confirm: { text: SMALL_BOX_NOTE, choices: SMALL_BOX_CHOICES } } });
       fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
