@@ -122,7 +122,9 @@ test("android key attestation: each wrong piece is refused for ITS reason, not b
   assert.equal(why({ certDigest: sha("zzz") }), "bad_app");
   assert.equal(why({ noApp: true }), "no_app");
   assert.equal(why({ dates: { to: "250101000000Z" } }), "cert_dates");
-  assert.equal(why({ reversed: true }), "untrusted_root");
+  assert.equal(why({ reversed: true }), "bad_chain", "a chain out of order");
+  const other = world().attest(hash);
+  assert.throws(() => verifyAttestation({ chain: other.chain.map(c => Buffer.from(c, "base64")), clientDataHash: hash, point: other.point, now: Date.now(), appIds: APPS, roots }), /untrusted_root/);
   assert.equal(why({ leafSigner: crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" }).privateKey }), "bad_chain");
 });
 
