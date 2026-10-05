@@ -23,5 +23,7 @@ export const TASK_TYPE = Object.freeze({
     { name: "list", kind: "text", label: "List" },
     { name: "tags", kind: "text", label: "Tags (a JSON list)" },
     { name: "pinned", kind: "boolean", label: "Pinned" },
+    // Hidden from every role: the planner's own bookkeeping on a to-do (time-of-day, who added it), JSON. A person never sets it.
+    { name: "planner", kind: "text", label: "Planner (engine bookkeeping)", hidden_from: ["owner", "admin", "manager", "member", "temp"] },
   ]),
 });

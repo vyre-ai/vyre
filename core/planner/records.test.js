@@ -74,7 +74,9 @@ test("records: a to-do is a Task assigned to the person; finishing it in the pla
   assert.deepEqual([todo.list, todo.priority], ["work", 2]);
   const task = await w.k.tasks.get(w.owner, todo.id);
   assert.deepEqual([task.title, task.doer.id, task.state, task.note], ["Send the Harlow Legal engagement letter", OWNER, "ready", "Use the new template"]);
-  assert.equal(task.form.planner.list, "work", "what a Task has no field for rides in its form");
+  const trec = await w.k.gateway.records.get(w.owner, "task", todo.id);
+  assert.deepEqual([trec.data.list, trec.data.priority, trec.data.title, trec.data.status], ["work", 2, "Send the Harlow Legal engagement letter", "ready"], "list and priority are real fields of the task record");
+  assert.ok(!("planner" in trec.data), "the planner's own bookkeeping is hidden from the person");
   assert.equal((await w.k.gateway.records.query(w.owner, "reminder", { page: { limit: 5 } })).rows.length, 0, "no second to-do list");
 
   const done = await w.ok("planner.done", { item: todo.id });
@@ -154,7 +156,8 @@ test("records: a to-do is edited, reopened, restored, made a sub-item and repeat
   assert.deepEqual([e.title, e.list, e.priority, e.tags, e.body, e.at], ["Send the Harlow Legal engagement letter", "clients", 3, ["letters"], "new template", T0 + 3 * HOUR]);
   await w.handle.stop();
   const task = await w.k.tasks.get(w.owner, todo.id);
-  assert.deepEqual([task.title, task.note, task.due, task.form.planner.list, task.form.planner.priority], ["Send the Harlow Legal engagement letter", "new template", T0 + 3 * HOUR, "clients", 3], "the Task has the edit");
+  const edited = await w.k.gateway.records.get(w.owner, "task", todo.id);
+  assert.deepEqual([task.title, task.note, task.due, edited.data.list, edited.data.priority, edited.data.tags], ["Send the Harlow Legal engagement letter", "new template", T0 + 3 * HOUR, "clients", 3, '["letters"]'], "the Task has the edit");
   const w2 = await world(t, { kernel: w.k, start: w.clock.t });
   assert.equal((await w2.ok("planner.get", { item: todo.id })).item.list, "clients", "and it survives a restart");
   // Done, then reopened.
@@ -275,4 +278,17 @@ test("records: on a Basic personal space the planner answers that it needs a Clo
   w.tier = null;
   assert.ok(!(await w.call("planner.list", {})).error, "no answer from the spaces module is not Basic");
   forgetCloudGate();
+});
+
+test("records: a to-do changed on its task record in the app (words, list, priority, due time) is read back by the planner", async t => {
+  const w = await world(t);
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const todo = await w.ok("planner.add", { kind: "todo", title: "Send the letter", list: "work" });
+  const R = w.k.gateway.records;
+  const cur = await R.get(w.owner, "task", todo.id);
+  await R.update(w.owner, "task", todo.id, { title: "Send the Harlow letter", list: "clients", priority: 3, tags: '["letters"]', due: iso(T0 + 2 * HOUR), pinned: true }, cur.version);
+  const got = await until(async () => { const i = (await w.ok("planner.get", { item: todo.id })).item; return i.list === "clients" && i; });
+  assert.deepEqual([got.title, got.list, got.priority, got.tags, got.pinned], ["Send the Harlow letter", "clients", 3, ["letters"], true]);
+  assert.equal(got.at, T0 + 2 * HOUR);
+  assert.equal(got.next_fire, T0 + 2 * HOUR, "its ring follows the new due time");
 });

@@ -926,9 +926,14 @@ export default {
     /** A reminder, note or to-do the records say changed from outside: its next ring follows its time, and a finished one stops ringing. */
     const external = (row, how) => {
       if (how === "removed") { cancelRinging(row.id); scheduler.arm(); return; }
-      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null && !row._task) {
+      if (row.kind !== "note" && row.state === "open" && row.deleted_at == null) {
         const n = schedule(row, now());
-        if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
+        // A to-do's ring time is not stored (the Task has its due time): it is worked out here, in the working set only, with its date and time of day read from the due time in its zone.
+        if (row._task) {
+          row.next_fire = n.next_fire;
+          if (row.at != null) { const p = localParts(row.at, zoneOf(row, settings())); row.date = dateString(p); row.wall = wallString(p); row.due = row.date; }
+        }
+        else if (n.next_fire !== row.next_fire) st.patch(row.id, { next_fire: n.next_fire, ...(n.at != null && row.repeat ? { at: n.at } : {}) });
       }
       if (row.state !== "open" || row.deleted_at != null) cancelRinging(row.id);
       emit(how === "added" ? "planner.added" : "planner.changed", how === "added" ? { item: row.id, kind: row.kind, title: row.title, ...(row.at != null ? { at: row.at } : {}) } : { item: row.id, kind: row.kind, fields: ["records"] }, row);
