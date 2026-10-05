@@ -1320,3 +1320,29 @@ test("the device reaches the paired server over the Wink peer session when the d
   assert.equal(down.error?.code, "server_unreachable");
   void w;
 });
+
+test("spaces.identity.devices: the id and key-agreement point of a device of a person you share a space with, public data only; a stranger gets nothing", async t => {
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const casey = await claim("casey", pt()), dana = await claim("dana", pt());
+  const caseyPt = (await d.reg.call("spaces.identity.devices", { person: casey.id }, "cli")).data;
+  assert.deepEqual(caseyPt, { devices: [] }, "before they share a space: nothing, though casey has a device with a point");
+  // casey joins alex's space: now they share one
+  const added = await d.call("spaces.members.add", { space, person: casey.id, role: "member" });
+  assert.ok(!added.error, JSON.stringify(added.error));
+  await d.reg.call("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
+  const shared = (await d.ok("spaces.identity.devices", { person: casey.id }));
+  assert.equal(shared.devices.length, 1, JSON.stringify(shared));
+  assert.deepEqual(Object.keys(shared.devices[0]).sort(), ["agree", "device"], "the device id and the point, no label and no other field");
+  assert.equal(shared.devices[0].device, casey.eid);
+  assert.match(shared.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
+  // dana is known to this device but shares no space with alex: a stranger gets nothing
+  await d.reg.call("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
+  assert.deepEqual((await d.ok("spaces.identity.devices", { person: dana.id })), { devices: [] }, "a stranger");
+  assert.deepEqual((await d.ok("spaces.identity.devices", { person: "per_nobodyatall000000000000000" })), { devices: [] });
+  assert.deepEqual((await d.ok("spaces.identity.devices", { person: "not a person" })), { devices: [] });
+  void alex;
+});

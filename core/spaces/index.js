@@ -1751,7 +1751,7 @@ export default {
       try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.agree ? { agree: e.agree } : {}) })) };
     };
     // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {
@@ -1791,6 +1791,25 @@ export default {
       return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
+    // The devices of a person you share a space with, as public data only: each listed device's id and its key-agreement point (`agree`, the key a chat key is wrapped to). No label, no signing key, no other
+    // field. The caller must be that person or share a space with them (both members of one space this device knows); a stranger gets nothing, the same answer as a person with no such devices.
+    tool("spaces.identity.devices", "The devices of a person you share a space with: each one's id and its key-agreement point, for wrapping a chat key. Public data only; a person you share no space with gives nothing.", obj({ person: str }, ["person"]), async (i, meta) => {
+      const target = String(i.person || "");
+      if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(target)) return { devices: [] };
+      const caller = await callerPerson(meta);
+      if (!caller) return { devices: [] };
+      let shares = caller === target;
+      if (!shares) {
+        for (const row of spaces.all()) {
+          const [a, b] = await Promise.all([membershipOf(row.id, caller, meta).catch(() => null), membershipOf(row.id, target, meta).catch(() => null)]);
+          if (a && b) { shares = true; break; }
+        }
+      }
+      if (!shares) return { devices: [] };
+      const st = await stateOfPerson(target);
+      const entries = st && Array.isArray(st.entries) ? st.entries : [];
+      return { devices: entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").map((/** @type {any} */ e) => ({ device: String(e.eid), agree: String(e.agree) })) };
+    }, { effect: "read" });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
       if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
