@@ -2,14 +2,15 @@
 // The box lists files under a folder as paths; a folder is the first step of a path below the one you are in.
 
 export type SpaceEntry = { path?: string; name?: string; size?: number; ver?: number; version?: number; at?: number | string; mtime?: number | string; by?: string };
-export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number };
+export type Item = { name: string; dir: boolean; path: string; size: number; ver: number; at: number; /** what to show: a Project's or a session's own name over its id folder */ label?: string };
 export type Version = { ver: number; size: number; at: number; by?: string; base?: number };
 
 const ms = (v: unknown): number => { if (typeof v === "number") return v; const t = typeof v === "string" ? Date.parse(v) : NaN; return Number.isNaN(t) ? 0 : t; };
 const clean = (p: string): string => p.replace(/^\/+|\/+$/g, "");
 
 /** The files and folders directly under `prefix`, folders first. A folder is a path step with more below it. */
-export function children(entries: SpaceEntry[], prefix: string): Item[] {
+/** `names` is the box's answer for the id folders (Projects/<id>, Projects/<id>/chat/<session>): the name to show over each. */
+export function children(entries: SpaceEntry[], prefix: string, names: Record<string, string> = {}): Item[] {
   const base = clean(prefix);
   const out = new Map<string, Item>();
   for (const e of entries) {
@@ -19,10 +20,10 @@ export function children(entries: SpaceEntry[], prefix: string): Item[] {
     const [head, ...more] = rest.split("/");
     if (!head) continue;
     const path = base ? `${base}/${head}` : head;
-    if (more.length) { const cur = out.get(head); out.set(head, { name: head, dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)) }); }
+    if (more.length) { const cur = out.get(head); out.set(head, { name: head, dir: true, path, size: 0, ver: 0, at: Math.max(cur?.at ?? 0, ms(e.at ?? e.mtime)), ...(names[path] ? { label: names[path] } : {}) }); }
     else out.set(head, { name: head, dir: false, path, size: Number(e.size ?? 0), ver: Number(e.ver ?? e.version ?? 1), at: ms(e.at ?? e.mtime) });
   }
-  return [...out.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || a.name.localeCompare(b.name));
+  return [...out.values()].sort((a, b) => Number(b.dir) - Number(a.dir) || (a.label ?? a.name).localeCompare(b.label ?? b.name));
 }
 
 export const dayOf = (at: number): string => (at ? new Date(at).toLocaleDateString([], { day: "numeric", month: "short", year: "numeric" }) : "");

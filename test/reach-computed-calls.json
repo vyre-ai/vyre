@@ -141,6 +141,11 @@
    "owner": "module's own team",
    "note": "computed tool name: reviewed by the owner against the callee's reach (pending)"
   },
+  "core/work/index.js": {
+   "count": 1,
+   "owner": "flows",
+   "note": "callTool: the hub and the project files call threads.get, threads.list, projects.of/list and artifacts.media.read as module:work; each callee's reach allows modules or anyone (reviewed by connectors, 6 Oct)"
+  },
   "local/apps/index.js": {
    "count": 1,
    "owner": "module's own team",

@@ -87,7 +87,9 @@ export default {
 
     // The Project hub: a Project is one record; each session is a summary record linked to it (core/work/hub.js, team/0.3/DESIGN-project-hub.md).
     /** @type {any} */ let hub = null;
-    const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
+    /** The one computed-name call this module makes: the hub and the files read threads, projects and artifacts through it, and an answer of null means the tool is not there. */
+    const callTool = async (/** @type {string} */ tool, /** @type {any} */ input) => { try { return await ctx.call(tool, input); } catch { return null; } };
+    const hubOf = () => hub || (hub = createHub({ kernel: kernelOf(), call: callTool, ...(ctx.config && ctx.config.machine_name ? { machine: String(ctx.config.machine_name) } : {}), log: ctx.log }));
     if (ctx.kernel && ctx.events && typeof ctx.events.on === "function") {
       const hear = (/** @type {string} */ type, /** @type {(p: any, e: any) => any} */ f) => ctx.events.on(type, (/** @type {any} */ e) => { void Promise.resolve(f(e && e.payload, e)).catch(() => {}); });
       hear("thread.started", p => hubOf().onStarted(p));
@@ -139,7 +141,7 @@ export default {
     });
     // Every file of a project lands in its Drive folder (core/work/files.js). Vyre's own modules hand files over: sessions (a chat's attachments, an image a tool returned), artifacts (what a model made).
     /** @type {any} */ let files = null;
-    const filesOf = () => files || (files = createFiles({ kernel: kernelOf(), hub: hubOf(), call: async (tool, input) => { try { return await ctx.call(tool, input); } catch { return null; } }, log: ctx.log }));
+    const filesOf = () => files || (files = createFiles({ kernel: kernelOf(), hub: hubOf(), call: callTool, log: ctx.log }));
     const fromModule = (/** @type {any} */ meta) => { kernelOf(); if (!(meta && typeof meta.caller === "string" && meta.caller.startsWith("module:"))) throw fail("denied", "only Vyre's own modules put files into a project's folder"); };
     // Files follow a session when it is moved to another Project: the Drive moves its folders and says so (file.moved); the records of its files take the new place (core/work/files.js onMoved).
     if (ctx.kernel && ctx.kernel.events && typeof ctx.kernel.events.subscribe === "function" && typeof ctx.kernel.serviceChain === "function") {

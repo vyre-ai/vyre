@@ -56,3 +56,12 @@ test("an upload path is checked before the box is asked, bytes become base64, an
   assert.match(m.spaceDriveRefusal("presence_required", ""), /Approve on this device/);
   assert.match(m.versionLine({ ver: 3, size: 10, at: 0 }, 3), /^Version 3, current, 10 B$/);
 });
+
+test("the Project hub's id folders show the project's and the session's own names, the id stays the path", { skip: !strip }, async () => {
+  const m = await import("./space-model.ts");
+  const e = [{ path: "Projects/p1/chat/t9/a.png", size: 1 }, { path: "Projects/p1/made/t9/b.md", size: 2 }, { path: "Projects/p2/made/t1/c.png", size: 3 }];
+  const names = { "Projects/p1": "Rivera Estate", "Projects/p2": "General", "Projects/p1/chat/t9": "Draft the welcome email" };
+  assert.deepEqual(m.children(e, "Projects", names).map((i) => [i.name, i.label, i.path]), [["p2", "General", "Projects/p2"], ["p1", "Rivera Estate", "Projects/p1"]].sort((a, b) => a[1].localeCompare(b[1])));
+  assert.deepEqual(m.children(e, "Projects/p1/chat", names).map((i) => [i.name, i.label]), [["t9", "Draft the welcome email"]]);
+  assert.deepEqual(m.children(e, "Projects/p1/made", names).map((i) => [i.name, i.label]), [["t9", undefined]], "a name the box did not give: the id shows");
+});

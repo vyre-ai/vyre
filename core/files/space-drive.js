@@ -13,6 +13,39 @@ const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
 /** The most one upload call carries, decoded. A larger file goes through the Flow or the VyreDrive mount, not a tool call. */
 export const MAX_UPLOAD = 8 * 1024 * 1024;
 
+
+/**
+ * The Project hub names its Drive folders by id (Projects/<project id>/chat|made/<session id>/), so a screen shows the project's and the session's own names over them. Answered for the folders the
+ * entries are in, under the caller's own chain (a record the caller cannot read has no name here, and the id shows). { "Projects/<id>": "Rivera Estate", "Projects/<id>/chat/<thread>": "Draft the welcome email" }.
+ * @param {any} d @param {any[]} entries @returns {Promise<Record<string, string>>}
+ */
+async function namesOf(d, entries) {
+  /** @type {Record<string, string>} */ const names = {};
+  const seen = new Set();
+  for (const e of entries) {
+    const p = String((e && (e.path ?? e.name)) ?? e);
+    const m = /^Projects\/([^/]+)(?:\/(chat|made)\/([^/]+))?/.exec(p);
+    if (!m) continue;
+    const root = `Projects/${m[1]}`;
+    if (!seen.has(root)) {
+      seen.add(root);
+      try { const rec = await d.gateway.records.get(d.chain, "project", m[1]); if (rec && rec.data.name) names[root] = String(rec.data.name); } catch { /* not readable: the id shows */ }
+    }
+    if (m[2]) {
+      const folder = `${root}/${m[2]}/${m[3]}`;
+      if (!seen.has(folder)) {
+        seen.add(folder);
+        try {
+          const page = await d.gateway.records.query(d.chain, "session-summary", { filter: { field: "thread", op: "eq", value: m[3] }, page: { limit: 1 } });
+          const rec = page.rows[0];
+          if (rec && rec.data.title) names[folder] = String(rec.data.title);
+        } catch { /* not readable: the id shows */ }
+      }
+    }
+  }
+  return names;
+}
+
 /** @param {any} ctx */
 export function registerSpaceDrive(ctx) {
   const door = createDoor(ctx);
@@ -60,7 +93,7 @@ export function registerSpaceDrive(ctx) {
       if (i.limit !== undefined && (!Number.isInteger(i.limit) || i.limit < 1)) throw refuse("limit is a positive number", "bad_input");
       if (i.after !== undefined && typeof i.after !== "string") throw refuse("after is the cursor the last page gave", "bad_input");
       const r = await drive.listPage(d.chain, prefix, { limit: i.limit, after: i.after ?? null });
-      return { prefix, entries: r.entries, next: r.next };
+      return { prefix, entries: r.entries, next: r.next, names: await namesOf(d, r.entries) };
     });
 
   tool("files.drive.space.read", `Download one file from the Space's Drive, head or a named version, under the caller's own grants: { space?, path, version? }. Answers { path, version, size, base64 } for a file of at most ${MAX_UPLOAD / 1048576} MB (\`too_large\` beyond).`,

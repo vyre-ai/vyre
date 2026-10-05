@@ -67,6 +67,12 @@ test("an image Claude returns as a tool result, a provider's generated media, a 
   assert.deepEqual(rows.map((/** @type {any} */ r) => r.data.kind).sort(), ["chat", "made", "made", "made"]);
   const linked = await w.d.kernel.gateway.records.linked(admin, project.urn, { type: "project-file" });
   assert.equal(linked.rows.length, 4, "the Project lists its files");
+  // the Drive screen shows the Project's and the session's own names over the id folders
+  const meta = { token: (await w.d.kernel.surfaces.open(w.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: w.d.kernel.id.owner, path: "direct", session: "s" }), {})).token };
+  const listed = await w.d.registry.call("files.drive.space.list", { prefix: "Projects" }, "cli", meta);
+  assert.equal(listed.data.names[root], "Harlow Intake");
+  assert.equal(listed.data.names[`${root}/chat/${folder}`], "Draft the welcome email");
+  assert.equal(listed.data.names[`${root}/made/${folder}`], "Draft the welcome email");
 });
 
 test("only Vyre's own modules put files into a project's folder; a session without a project of its own is filed under General", { timeout: 120_000 }, async t => {
