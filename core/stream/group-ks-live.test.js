@@ -298,6 +298,20 @@ test("V2: two people's waiting messages are two turns, in arrival order, each un
   assert.deepEqual(rs.slice(1), ["echo: B-ONE", "echo: A-ONE"], "never merged into one turn");
 });
 
+test("V2b: three people queue behind a running turn, one of them twice: four turns in arrival order, each under its own asker, no reply cut", async t => {
+  const w = await world(t);
+  const b = await world0(w, t);
+  const chat = await w.C.create(w.chains.bob, { people: [CAROL, ADA], assistants: ["assistant"] });
+  const watcher = await b.watch("bob", chat.id);
+  assert.ok(!(await b.as("carol")("stream.send", { chat: chat.id, text: LONG, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => textOf(watcher.frames).includes("SECRET"), "the running turn");
+  for (const [who, text] of [["bob", "B-ONE"], ["ada", "A-ONE"], ["bob", "B-TWO"]]) assert.ok(!(await b.as(who)("stream.send", { chat: chat.id, text, to: ["assistant:assistant"], cwd: w.work })).error);
+  await until(() => repliesOf(watcher.frames).length >= 4, "all four replies", 60_000);
+  assert.deepEqual(w.asked.map(a => a.asker), [CAROL, BOB, ADA, BOB], "four turns, in arrival order, each opened under its own asker");
+  assert.deepEqual(opened(w), [CAROL, BOB, ADA, BOB]);
+  assert.deepEqual(repliesOf(watcher.frames).slice(1), ["echo: B-ONE", "echo: A-ONE", "echo: B-TWO"], "never merged, none cut");
+});
+
 test("V3: the stream does not hold, retry or queue: the Switchboard queues another person's send and answers queued with a queued_id; the message shows waiting, then picked up", async t => {
   const w = await world(t);
   const b = await world0(w, t);
