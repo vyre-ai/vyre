@@ -1949,6 +1949,10 @@
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update is records.update under the caller's chain, and the run side is threads.rename, which refuses a caller who may not reach that thread"
   },
+  "work.chat.span": {
+   "module": "work",
+   "reason": "read-only: the kernel's chats.read on the caller's own chain is the one gate (a person in the chat, or an assistant it lists); a non-member gets not_found, the same answer as for a chat that does not exist, and no word comes from a run outside the chat"
+  },
   "work.know.answer": {
    "module": "work",
    "reason": "own-scope check: every citation is a source the caller may read, authorized per source for the caller's chain at the Gate; it writes nothing; the kernel builds the chain and a tool with no kernel wired answers unavailable"

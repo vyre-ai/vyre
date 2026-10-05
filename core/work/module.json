@@ -87,6 +87,12 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.span",
+        "summary": "an exact span of a chat you are in, word for word, by line range; sealed values stay placeholders",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",
