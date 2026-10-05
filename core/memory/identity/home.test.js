@@ -40,14 +40,14 @@ test("crypto: a box opens only under its key and its binding; a wrap opens only 
   assert.deepEqual(await unwrapWithDevice(w, dev.privateJwk, "wrap"), key);
   await assert.rejects(() => unwrapWithDevice(w, other.privateJwk, "wrap"), { code: "cannot_open" });
   await assert.rejects(() => unwrapWithDevice(w, dev.privateJwk, "other"), { code: "cannot_open" });
-  const c = wrapWithCode(key, "abcd-efgh-ijkl-mnop-qrst-23", "code");
-  assert.deepEqual(unwrapWithCode(c, "abcd-efgh-ijkl-mnop-qrst-23", "code"), key);
-  assert.throws(() => unwrapWithCode(c, "abcd-efgh-ijkl-mnop-qrst-24", "code"), { code: "cannot_open" });
+  const c = wrapWithCode(key, "abcd-efgh-ijkl-mnop-qrst-uvwx-23", "code");
+  assert.deepEqual(unwrapWithCode(c, "abcd-efgh-ijkl-mnop-qrst-uvwx-23", "code"), key);
+  assert.throws(() => unwrapWithCode(c, "abcd-efgh-ijkl-mnop-qrst-uvwx-24", "code"), { code: "cannot_open" });
 });
 
 test("an admin or root on the space server cannot read the identity memory: only ciphertext and wrapped keys are there, and nothing they can do with them opens it", async t => {
   const w = world(t);
-  const lease = w.home.create({ devices: [{ label: "phone", publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-23", snapshot: SNAP });
+  const lease = w.home.create({ devices: [{ label: "phone", publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23", snapshot: SNAP });
   assert.equal(w.home.save(lease, SNAP), 2);
   // Everything the server holds, read raw as the admin and as root would: no fact, no relation, no table name.
   const raw = everything(w.server.dir);
@@ -146,9 +146,9 @@ test("on a shared server the person says yes once: the phone then answers that s
 
 test("the recovery code unlocks it on the person's own device, and only the right code", async t => {
   const w = world(t);
-  w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-23", snapshot: SNAP }).lock();
-  assert.deepEqual(w.home.load(w.home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-23")).tables, SNAP.tables);
-  assert.throws(() => w.home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-24"), { code: "cannot_open" });
+  w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23", snapshot: SNAP }).lock();
+  assert.deepEqual(w.home.load(w.home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-23")).tables, SNAP.tables);
+  assert.throws(() => w.home.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-24"), { code: "cannot_open" });
   const none = world(t);
   none.home.create({ devices: [{ publicJwk: none.phone.publicJwk }], snapshot: SNAP }).lock();
   assert.throws(() => none.home.unlockWithCode("anything"), { code: "not_found" });
@@ -156,7 +156,7 @@ test("the recovery code unlocks it on the person's own device, and only the righ
 
 test("moving the home to the person's own server keeps it: the same ciphertext arrives, still unlocks with the same phone, and the old server keeps only a marker", async t => {
   const w = world(t);
-  const lease = w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-23", snapshot: SNAP });
+  const lease = w.home.create({ devices: [{ publicJwk: w.phone.publicJwk }], recoveryCode: "abcd-efgh-ijkl-mnop-qrst-uvwx-23", snapshot: SNAP });
   w.home.save(lease, SNAP);
   const own = new FileBackend(path.join(w.root, "my-own-tiny-server"), "my server");
   const before = JSON.parse(fs.readFileSync(path.join(w.server.dir, "identity", "ident_alex", "snap-2.json"), "utf8"));
@@ -174,7 +174,7 @@ test("moving the home to the person's own server keeps it: the same ciphertext a
   const { ask, secret } = there.beginUnlock();
   const l = await there.finishUnlock(ask, secret, await approveUnlock(w.phone, ask));
   assert.deepEqual(there.load(l).tables, SNAP.tables);
-  assert.deepEqual(there.load(there.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-23")).state, SNAP.state, "and the recovery code too");
+  assert.deepEqual(there.load(there.unlockWithCode("abcd-efgh-ijkl-mnop-qrst-uvwx-23")).state, SNAP.state, "and the recovery code too");
   assert.equal(there.save(l, SNAP), 3, "it carries on there");
   // It does not move onto a server that already holds one, and a damaged object stops a move before anything changes.
   assert.throws(() => there.move(own), { code: "exists" });
