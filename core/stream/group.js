@@ -251,13 +251,13 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     for (const r of q.members.all(grp)) { const m = memberOf(r); g.bots.set(m.who, m); g.names.set(m.who, m.name); if (m.thread) byThread.set(m.thread, m); }
     for (const f of logs.get(grp).read(0)) {
       const d = f.data || {};
-      if (f.type === "session.participant-joined") {
+      if (f.type === "chat.participant-joined") {
         if (d.name) g.names.set(d.who, d.name);
         if (d.who.startsWith("person:")) g.people.add(d.who);
         if (d.role === "default") g.dflt = d.who;
         openSpan(g, d.who, f.cur);
-      } else if (f.type === "session.participant-left") { g.people.delete(d.who); g.bots.delete(d.who); closeSpan(g, d.who, f.cur); }
-      if (f.author && (f.type === "session.user-message" || f.type === "session.text-delta")) g.previous = f.author;
+      } else if (f.type === "chat.participant-left") { g.people.delete(d.who); g.bots.delete(d.who); closeSpan(g, d.who, f.cur); }
+      if (f.author && (f.type === "chat.user-message" || f.type === "chat.text-delta")) g.previous = f.author;
     }
     return g;
   }
@@ -765,7 +765,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         const message = typeof i.message === "string" && ID.test(i.message) ? i.message : crypto.randomUUID();
         const out = logs.get(grp);
         join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
-        const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
+        const had = out.read(0).find(f => f.type === "chat.user-message" && f.data.message === message);
         if (!had && kernelOn()) await append((await personSession(meta, grp, author)).token, { enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct } }, "private");
         if (!had) { out.append("user-message", { message, enc: { alg: i.enc.alg, kid: i.enc.kid, ct: i.enc.ct }, state: "sent" }, { author, message }); group(grp).previous = author; }
         return { session: grp, message, private: true, routed: [], answers: [], ...(had ? { duplicate: true } : {}) };
@@ -777,7 +777,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       const out = logs.get(grp);
       const g = group(grp);
       // A repeat of a message this group already holds: nothing is appended again; any delivery not yet taken is retried.
-      const had = out.read(0).find(f => f.type === "session.user-message" && f.data.message === message);
+      const had = out.read(0).find(f => f.type === "chat.user-message" && f.data.message === message);
       const cwd = typeof i.cwd === "string" ? i.cwd : undefined;
       join(grp, author, { name: typeof i.name === "string" ? i.name : undefined });
       // Kernel on: `default` only chooses among the assistants the kernel lists (routing, not membership).
@@ -792,7 +792,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (had) {
         const rows = q.outOpen.all().filter(r => r.grp === grp);
         for (const r of rows) void schedule(r);
-        const fo = out.read(0).find(f => f.type === "session.fanout" && f.data.message === message);
+        const fo = out.read(0).find(f => f.type === "chat.fanout" && f.data.message === message);
         const answers = rows.map(r => ({ who: String(r.who), message: String(r.answer) }));
         return { session: grp, message, duplicate: true, ...(fo ? { group: fo.data.group, answers: fo.data.members } : { answers }) };
       }
@@ -937,7 +937,7 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     keep(i, meta) {
       const grp = sessionOf(i);
       const out = logs.get(grp);
-      const fo = out.read(0).find(f => f.type === "session.fanout" && f.data.group === i.group);
+      const fo = out.read(0).find(f => f.type === "chat.fanout" && f.data.group === i.group);
       if (!fo) throw fail("not_found", "no fan-out with that group id");
       if (!fo.data.members.some((/** @type {any} */ x) => x.message === i.keep)) throw fail("bad_input", "keep is one of the group's answers");
       const author = personOf(meta, i);

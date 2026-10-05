@@ -182,8 +182,8 @@ test("adapter: transcript blocks (the rich fixture) become valid frames: users, 
   assert.ok(all.length > 10);
   for (const f of all) assert.deepEqual(validate(f), { ok: true }, f.type);
   const types = new Set(all.map(f => f.type));
-  for (const k of ["session.user-message", "session.text-delta", "session.text-done", "session.tool-started", "session.tool-finished", "session.term-command"]) assert.ok(types.has(k), k);
-  const fin = all.filter(f => f.type === "session.tool-finished");
+  for (const k of ["chat.user-message", "chat.text-delta", "chat.text-done", "chat.tool-started", "chat.tool-finished", "chat.term-command"]) assert.ok(types.has(k), k);
+  const fin = all.filter(f => f.type === "chat.tool-finished");
   assert.ok(fin.length >= 4);
   assert.ok(fin.every(f => f.data.result.block && !/^\s*[\[{]/.test(f.data.result.text || "")), "never a JSON dump");
   assert.ok(!JSON.stringify(all).includes("NorthwindBakery0000fake"), "the pasted key stayed redacted");

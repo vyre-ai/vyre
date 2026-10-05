@@ -111,7 +111,7 @@ async function world(t) {
   const crash = async (/** @type {{ stop: () => Promise<void> }} */ b) => { const snap = new Map(kept); await b.stop(); for (const [x, r] of snap) kept.set(x, r); };
   return { k, chains, tokens, kept, crash, boot, gaveUp, asked, work, seamCalls, paths: p, C: g.chats };
 }
-const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const kitThread = (/** @type {any} */ b, /** @type {string} */ chat) => String(b.stream().groups.member(chat, "assistant:assistant").thread);
 
 const LONG = "SECRET " + Array(500).fill("word").join(" "); // the fake claude says it back in six-character deltas, a few milliseconds apart: a reply that is still arriving for a couple of seconds
@@ -128,14 +128,14 @@ test("a person sends, the real Switchboard's reply streams through the seam's ha
   assert.deepEqual(b.ks.list().length, 1, "vyred holds one kernel session, for the assistant's thread");
   assert.ok((await b.reg.call("threads.get", { thread: kit, limit: 5 }, "cli")).data.thread, "the thread is the real Switchboard's own record");
   await until(() => textOf(bob.frames).includes("SECRET"), "the first delta");
-  assert.ok(!bob.frames.some(f => f.type === "session.text-done"), "the reply is still arriving");
+  assert.ok(!bob.frames.some(f => f.type === "chat.text-done"), "the reply is still arriving");
   await w.C.change(w.chains.bob, chat.id, { add_people: [ADA] });
   const ada = await b.watch("ada", chat.id);
-  await until(() => bob.frames.some(f => f.type === "session.text-done"), "the reply to finish", 20_000);
+  await until(() => bob.frames.some(f => f.type === "chat.text-done"), "the reply to finish", 20_000);
   assert.equal(textOf(bob.frames), `echo: ${LONG}`, "bob got the fake claude's own words, as they streamed");
   await sleep(150);
-  assert.ok(!ada.frames.some(f => f.type === "session.text-delta" && String(f.data.text).includes("SECRET")), "ada, who joined mid-reply, got none of it");
-  assert.ok(!ada.frames.some(f => f.type === "session.text-done"), "nor its end");
+  assert.ok(!ada.frames.some(f => f.type === "chat.text-delta" && String(f.data.text).includes("SECRET")), "ada, who joined mid-reply, got none of it");
+  assert.ok(!ada.frames.some(f => f.type === "chat.text-done"), "nor its end");
   assert.equal(w.seamCalls.filter(c => c === "BEGIN").length, 1, "the turn began at the kernel exactly once, when its session opened");
   assert.ok(w.seamCalls.indexOf("BEGIN") < w.seamCalls.indexOf(`${kit}:appendOpen`), "and before the reply opened");
   assert.ok(!w.seamCalls.includes(`${kit}:beginTurn`), "the stream does not begin it again itself");
@@ -157,7 +157,7 @@ test("a turn asked by carol is stamped with carol's session, and chat and asker 
   assert.equal(w.asked.length, 0, "nothing was asked of the Switchboard for the spoof");
   const sent = await b.as("carol")("stream.send", { chat: chat.id, text: "hello from carol", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!sent.error, sent.error && `${sent.error.code} ${sent.error.message}`);
-  await until(() => carol.frames.some(f => f.type === "session.text-done"), "the reply", 20_000);
+  await until(() => carol.frames.some(f => f.type === "chat.text-done"), "the reply", 20_000);
   assert.match(textOf(carol.frames), /hello from carol/);
   const kit = kitThread(b, chat.id);
   assert.deepEqual(w.asked.filter(a => a.thread === kit).map(a => ({ chat: a.chat, asker: a.asker })), [{ chat: chat.id, asker: CAROL }], "the Switchboard was asked to open carol's session in this chat");
@@ -209,7 +209,7 @@ test("a restart in the middle of a turn: the seam reopens the person's session, 
   const again = await b2.as("bob")("stream.send", { chat: chat.id, text: "after the restart", to: ["assistant:assistant"], cwd: w.work });
   assert.ok(!again.error, again.error && again.error.message);
   await until(() => /after the restart/.test(textOf(bob.frames)), "the reply after the restart", 20_000);
-  assert.ok(!bob.frames.some(f => f.type === "session.status" && f.data.state === "failed"), "nothing says it could not resume");
+  assert.ok(!bob.frames.some(f => f.type === "chat.status" && f.data.state === "failed"), "nothing says it could not resume");
   assert.equal(w.seamCalls.filter(c => c === "BEGIN").length >= 2, true, "each turn began at the kernel");
 });
 
@@ -225,8 +225,8 @@ test("a restart where the person can no longer be reopened: the turn is given up
   const b2 = await w.boot({ personChainFor: async () => { throw Object.assign(new Error("no longer a member"), { code: "not_found" }); } });
   t.after(() => b2.stop().catch(() => {}));
   const bob = await b2.watch("bob", chat.id);
-  await until(() => bob.frames.some(f => f.type === "session.status" && f.data.state === "failed"), "the give-up to show");
-  assert.match(String(bob.frames.find(f => f.type === "session.status" && f.data.state === "failed").data.note), /couldn't resume, ask again/);
+  await until(() => bob.frames.some(f => f.type === "chat.status" && f.data.state === "failed"), "the give-up to show");
+  assert.match(String(bob.frames.find(f => f.type === "chat.status" && f.data.state === "failed").data.note), /couldn't resume, ask again/);
   assert.equal(w.kept.has(kit), false, "the given-up turn is forgotten");
   // the thread answers anyway (a message sent to the Switchboard past the rig's session-opening wrapper, as a send the stream no longer tracks): its reply has no session to open under
   const late = await b2.realCall("threads.send", { thread: kit, text: "NEVERSHOWN", surface: "deck", uuid: "late-1" }, "module:stream", { origin: "deck" }); // a module acts for a person: the hop carries the class the call came from
@@ -240,8 +240,8 @@ test("a restart where the person can no longer be reopened: the turn is given up
 
 /** The person a live kernel session of the seam is for. @param {any} w @param {any} b @param {string} id */
 const personOfSession = async (w, b, id) => (await w.k.surfaces.verify(await b.ks.tokenFor(id)())).person;
-const userMsgs = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.user-message" && f.data.state === "sent").map(f => String(f.data.text));
-const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, string>} */ const by = new Map(); const done = new Set(); for (const f of frames) { if ((f.type !== "session.text-delta" && f.type !== "session.text-done") || f.data.reasoning) continue; const id = String(f.data.message); if (f.type === "session.text-delta") by.set(id, (by.get(id) || "") + f.data.text); else done.add(id); } return [...by].filter(([id]) => done.has(id)).map(([, t]) => t); };
+const userMsgs = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.user-message" && f.data.state === "sent").map(f => String(f.data.text));
+const repliesOf = (/** @type {any[]} */ frames) => { /** @type {Map<string, string>} */ const by = new Map(); const done = new Set(); for (const f of frames) { if ((f.type !== "chat.text-delta" && f.type !== "chat.text-done") || f.data.reasoning) continue; const id = String(f.data.message); if (f.type === "chat.text-delta") by.set(id, (by.get(id) || "") + f.data.text); else done.add(id); } return [...by].filter(([id]) => done.has(id)).map(([, t]) => t); };
 const opened = (/** @type {any} */ w) => w.k.log.read({}).filter((/** @type {any} */ e) => e.type === "message.opened" && e.data.by.agent === "assistant").map((/** @type {any} */ e) => e.data.by.person);
 
 test("V1: an admin speaks mid-turn: the member's turn keeps the member's session and stays refused, the admin's words are written at once and get their own turn under the admin after it", async t => {
@@ -263,7 +263,7 @@ test("V1: an admin speaks mid-turn: the member's turn keeps the member's session
   assert.ok(!second.error, second.error && second.error.message);
   await until(() => userMsgs(watcher.frames).includes("ok, continue"), "the admin's own words in the chat");
   assert.equal(w.asked.length, 1, "...while the admin has no turn yet");
-  const user = watcher.frames.find(f => f.type === "session.user-message" && f.data.text === LONG);
+  const user = watcher.frames.find(f => f.type === "chat.user-message" && f.data.text === LONG);
   assert.equal(user.author, `person:${CAROL}`, "carol's message is carol's, not bob's");
   await sleep(200);
   assert.equal(await personOfSession(w, b, sid), CAROL, "the running turn still holds carol's session after the admin spoke");
@@ -313,7 +313,7 @@ test("V3: the stream does not hold, retry or queue: the Switchboard queues anoth
   assert.ok(!sends[0].r.error, "the Switchboard answered, it did not refuse as busy");
   const qid = sends[0].r.data.queued_id;
   assert.equal(typeof qid, "number", "the answer carries the queued_id");
-  const states = () => watcher.frames.filter(f => f.type === "session.user-message" && f.data.text === "QUEUEDONE").map(f => [f.data.state, f.data.queued_id]);
+  const states = () => watcher.frames.filter(f => f.type === "chat.user-message" && f.data.text === "QUEUEDONE").map(f => [f.data.state, f.data.queued_id]);
   await until(() => states().some(x => x[0] === "queued"), "the waiting state");
   assert.deepEqual(states().find(x => x[0] === "queued"), ["queued", qid], "shown as waiting for the current reply, by the Switchboard's queued_id");
   await sleep(400);

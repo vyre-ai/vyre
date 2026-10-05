@@ -250,7 +250,7 @@ test("a chat started outside the stream continues in it: the existing run is ado
   const logs = d.registry.modules.get("stream").handle.logs;
   const texts = () => {
     const frames = logs.get(chat).read(0);
-    return frames.filter(f => f.type === "session.text-done").map(done => frames.filter(f => f.type === "session.text-delta" && f.data.message === done.data.message && !f.data.reasoning).map(f => String(f.data.text)).join(""));
+    return frames.filter(f => f.type === "chat.text-done").map(done => frames.filter(f => f.type === "chat.text-delta" && f.data.message === done.data.message && !f.data.reasoning).map(f => String(f.data.text)).join(""));
   };
   // before anyone speaks through the stream, the chat opens as the run's own log
   assert.equal((await owner("stream.open", { chat })).data.session, r.data.id);
@@ -259,7 +259,7 @@ test("a chat started outside the stream continues in it: the existing run is ado
   assert.ok(sent.data, JSON.stringify(sent.error));
   await until(async () => texts().length >= 2, "the chat's transcript to hold both replies", 60_000);
   assert.deepEqual(texts(), ["echo: hello", "echo: and again"], "history first, then the new reply");
-  const said = logs.get(chat).read(0).filter(f => f.type === "session.user-message").map(f => String(f.data.text));
+  const said = logs.get(chat).read(0).filter(f => f.type === "chat.user-message").map(f => String(f.data.text));
   assert.ok(said.includes("hello") && said.includes("and again"), JSON.stringify(said));
   assert.equal(((await d.registry.call("threads.of-chat", { chat }, "module:work")).data.runs || []).length, 1, "one run in the chat, not two");
   // and now the chat's own log is the transcript
@@ -284,7 +284,7 @@ test("a new chat has no run until someone speaks in it: the first stream.send st
   const opened = await owner("stream.open", { chat });
   assert.ok(opened.data, JSON.stringify(opened.error));
   const logs = d.registry.modules.get("stream").handle.logs;
-  const texts = () => { const fr = logs.get(chat).read(0); return fr.filter(f => f.type === "session.text-done").map(done => fr.filter(f => f.type === "session.text-delta" && f.data.message === done.data.message && !f.data.reasoning).map(f => String(f.data.text)).join("")); };
+  const texts = () => { const fr = logs.get(chat).read(0); return fr.filter(f => f.type === "chat.text-done").map(done => fr.filter(f => f.type === "chat.text-delta" && f.data.message === done.data.message && !f.data.reasoning).map(f => String(f.data.text)).join("")); };
   const sent = await owner("stream.send", { chat, text: "hello there" });
   assert.ok(sent.data, JSON.stringify(sent.error));
   await until(async () => texts().length >= 1, "the first reply", 60_000);

@@ -62,13 +62,13 @@ function fold(frames) {
   for (const f of frames) {
     const d = f.data;
     switch (f.type) {
-      case "session.text-delta": if (!d.reasoning) text.set(d.message, (text.get(d.message) || "") + d.text); break;
-      case "session.tool-started": tools.set(d.tool_id, { tool: d.tool }); break;
-      case "session.tool-finished": tools.set(d.tool_id, { ...tools.get(d.tool_id), ok: d.ok, block: d.result.block }); break;
-      case "session.user-message": messages.set(d.message, { text: d.text || messages.get(d.message)?.text || "", state: d.state }); break;
-      case "session.ask": asks.push(d.ask_id); break;
-      case "session.term-command": commands.push(d.command); break;
-      case "session.status": status = d.state; break;
+      case "chat.text-delta": if (!d.reasoning) text.set(d.message, (text.get(d.message) || "") + d.text); break;
+      case "chat.tool-started": tools.set(d.tool_id, { tool: d.tool }); break;
+      case "chat.tool-finished": tools.set(d.tool_id, { ...tools.get(d.tool_id), ok: d.ok, block: d.result.block }); break;
+      case "chat.user-message": messages.set(d.message, { text: d.text || messages.get(d.message)?.text || "", state: d.state }); break;
+      case "chat.ask": asks.push(d.ask_id); break;
+      case "chat.term-command": commands.push(d.command); break;
+      case "chat.status": status = d.state; break;
       default: break;
     }
   }
@@ -102,13 +102,13 @@ test("live: a running session streams, a steer is queued then picked up, and a s
 
   // The cut-off client attaches to the running session from the start of its log.
   const cut = client(t, w, port, id);
-  await until(() => cut.frames.some(f => f.type === "session.ask"), "the ask frame", 8000);
+  await until(() => cut.frames.some(f => f.type === "chat.ask"), "the ask frame", 8000);
   assert.deepEqual(cut.frames.map(f => f.cur), cut.frames.map((_, i) => i + 1), "gapless from 1 while live");
 
   // Steer while the turn is blocked: a queued frame, then the socket dies before it is picked up.
   const steer = (await w.tool("threads.send", { thread: id, text: "use the rye price too", surface: "deck" }, "deck")).data;
   assert.equal(steer.steered, true);
-  await until(() => cut.frames.some(f => f.type === "session.user-message" && f.data.state === "queued" && f.data.message === steer.uuid), "the queued frame");
+  await until(() => cut.frames.some(f => f.type === "chat.user-message" && f.data.state === "queued" && f.data.message === steer.uuid), "the queued frame");
   const before = cut.c.last;
   await until(() => count() >= 1, "a socket");
   kill();
@@ -137,7 +137,7 @@ test("live: a running session streams, a steer is queued then picked up, and a s
   const a = fold(cut.frames), b = fold(whole.frames);
   assert.deepEqual(a, b);
   assert.deepEqual(a.messages.find(([k]) => k === steer.uuid)?.[1], { text: "use the rye price too", state: "picked-up" });
-  const states = cut.frames.filter(f => f.type === "session.user-message" && f.data.message === steer.uuid).map(f => f.data.state);
+  const states = cut.frames.filter(f => f.type === "chat.user-message" && f.data.message === steer.uuid).map(f => f.data.state);
   assert.deepEqual(states, ["queued", "picked-up"]);
   assert.deepEqual(a.commands, ["ls -la"], "what was typed in the terminal is in the session");
   assert.deepEqual(a.tools.map(([, v]) => v.tool).filter(Boolean).slice(0, 3), ["Read", "Edit", "Bash"]);
@@ -155,13 +155,13 @@ test("live: a queued message taken back is a cancelled frame, and a stop says st
   const live = client(t, w, port, id);
   const queued = (await w.tool("threads.send", { thread: id, text: "check the hours", surface: "deck", mode: "queue" }, "deck")).data;
   assert.equal(queued.queued, true);
-  await until(() => live.frames.some(f => f.type === "session.user-message" && f.data.state === "queued"), "queued frame", 8000);
+  await until(() => live.frames.some(f => f.type === "chat.user-message" && f.data.state === "queued"), "queued frame", 8000);
   await w.tool("threads.unqueue", { thread: id }, "deck");
-  await until(() => live.frames.some(f => f.type === "session.user-message" && f.data.state === "cancelled"), "cancelled frame", 8000);
-  const gone = live.frames.filter(f => f.type === "session.user-message" && f.data.message === queued.uuid).map(f => f.data.state);
+  await until(() => live.frames.some(f => f.type === "chat.user-message" && f.data.state === "cancelled"), "cancelled frame", 8000);
+  const gone = live.frames.filter(f => f.type === "chat.user-message" && f.data.message === queued.uuid).map(f => f.data.state);
   assert.deepEqual(gone, ["queued", "cancelled"]);
   await w.tool("threads.stop", { thread: id });
-  await until(() => live.frames.some(f => f.type === "session.status" && f.data.stopping === true), "stopping status", 8000);
+  await until(() => live.frames.some(f => f.type === "chat.status" && f.data.stopping === true), "stopping status", 8000);
   await sleep(20);
   assert.equal(fold(live.frames).status, "stopped");
 });
@@ -202,5 +202,5 @@ test("live: term.open for a session opens in the session's folder and a typed li
   ws.send(JSON.stringify({ t: "in", d: "echo " }));
   await sleep(200);
   ws.send(JSON.stringify({ t: "in", d: "typed-in-the-pane\r" }));
-  await until(() => live.frames.some(f => f.type === "session.term-command" && f.data.command === "echo typed-in-the-pane"), "the term-command frame", 8000);
+  await until(() => live.frames.some(f => f.type === "chat.term-command" && f.data.command === "echo typed-in-the-pane"), "the term-command frame", 8000);
 });

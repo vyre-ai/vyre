@@ -17,7 +17,7 @@ import { connect, wsDuplex } from "./client.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 30_000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(20); } throw new Error(`timed out waiting for ${what}`); };
-const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const LONG = (/** @type {string} */ tag) => `${tag} ` + Array(400).fill("word").join(" ");
 
 test("SIGTERM to a real vyred mid-turn keeps the open turn; the next start reopens it", { skip: (process.env.VYRE_E2E !== "1" && "set VYRE_E2E=1 on the test box") || (!fs.existsSync(path.join(HERE, "e2e-step7-vyred.js")) && "needs chat's step 7 harness (core/stream/e2e-step7-vyred.js)"), timeout: 240_000 }, async t => {
