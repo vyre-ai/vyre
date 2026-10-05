@@ -1,0 +1,80 @@
+{
+ "note": "A device gives itself its key-agreement point with one self-signed `agree` op. Signed bytes = UTF-8 of `vyre-chain-v1\\n` + canonical(op without sig/esig/approvals) (keys sorted, no whitespace). Ed25519 seed is 32 bytes of 0x07; the agree scalar is 32 bytes of 0x09 (P-256).",
+ "signing_seed_hex": "0707070707070707070707070707070707070707070707070707070707070707",
+ "agree_scalar_hex": "0909090909090909090909090909090909090909090909090909090909090909",
+ "genesis": {
+  "v": 1,
+  "type": "genesis",
+  "kind": "person",
+  "seq": 0,
+  "prev": null,
+  "ts": 1791201600000,
+  "nonce": "n-vector-agree-1",
+  "entry": {
+   "eid": "72asyextvngonlc5w2nmguxza3",
+   "kind": "device",
+   "pub": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"
+  },
+  "by": "72asyextvngonlc5w2nmguxza3",
+  "id": "per_ho4tngsxzi7qmpfug7t6od5tfl",
+  "sig": "NPzw6CgSMrSlvLaX3-dzv0PxuQBUb76dBHuPuhYRy9mcU6aYberCvF0C-eYvxSrIh14AzPjLq02ZR36xwC_LBw"
+ },
+ "genesis_signed_bytes_utf8": "vyre-chain-v1\n{\"by\":\"72asyextvngonlc5w2nmguxza3\",\"entry\":{\"eid\":\"72asyextvngonlc5w2nmguxza3\",\"kind\":\"device\",\"pub\":\"6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw\"},\"id\":\"per_ho4tngsxzi7qmpfug7t6od5tfl\",\"kind\":\"person\",\"nonce\":\"n-vector-agree-1\",\"prev\":null,\"seq\":0,\"ts\":1791201600000,\"type\":\"genesis\",\"v\":1}",
+ "agree_op": {
+  "v": 1,
+  "id": "per_ho4tngsxzi7qmpfug7t6od5tfl",
+  "seq": 1,
+  "prev": "563ba5c674f6c343da8a48f37fc5abdb1af879eccb6d27ac1e849888e8ab1a27",
+  "ts": 1791205200000,
+  "type": "agree",
+  "target": "72asyextvngonlc5w2nmguxza3",
+  "agree": "BHE1-k_ZOgnc6Yu_aBtL_PUOfA1jVOYq-wv_KjQpYXhl7UwfAt25Aj7lalV-UV1qncZsEfIglg3llDNN9Yh3ZyQ",
+  "by": "72asyextvngonlc5w2nmguxza3",
+  "sig": "8Nf1Bxrx3TuyCC-XSC5w5bz9ln6xqiJ1tYiK0Q_0U2pah9S2dFVCRWZts5qrzdoxEZbc4Jfz66eNECcq3N1-Cg"
+ },
+ "agree_op_signed_bytes_utf8": "vyre-chain-v1\n{\"agree\":\"BHE1-k_ZOgnc6Yu_aBtL_PUOfA1jVOYq-wv_KjQpYXhl7UwfAt25Aj7lalV-UV1qncZsEfIglg3llDNN9Yh3ZyQ\",\"by\":\"72asyextvngonlc5w2nmguxza3\",\"id\":\"per_ho4tngsxzi7qmpfug7t6od5tfl\",\"prev\":\"563ba5c674f6c343da8a48f37fc5abdb1af879eccb6d27ac1e849888e8ab1a27\",\"seq\":1,\"target\":\"72asyextvngonlc5w2nmguxza3\",\"ts\":1791205200000,\"type\":\"agree\",\"v\":1}",
+ "agree_op_head_hash": "727bddd5df04067dfa118b44d74afd1fb79c10dbe8adc2191016ee0477f16320",
+ "expect": {
+  "entries_after_genesis": [
+   {
+    "eid": "72asyextvngonlc5w2nmguxza3",
+    "kind": "device",
+    "pub": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw",
+    "since": 1791201600000,
+    "addedBy": null,
+    "founder": true
+   }
+  ],
+  "entries_after_agree": [
+   {
+    "eid": "72asyextvngonlc5w2nmguxza3",
+    "kind": "device",
+    "pub": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw",
+    "since": 1791201600000,
+    "addedBy": null,
+    "founder": true,
+    "agree": "BHE1-k_ZOgnc6Yu_aBtL_PUOfA1jVOYq-wv_KjQpYXhl7UwfAt25Aj7lalV-UV1qncZsEfIglg3llDNN9Yh3ZyQ"
+   }
+  ],
+  "head_after_agree": "727bddd5df04067dfa118b44d74afd1fb79c10dbe8adc2191016ee0477f16320",
+  "seq_after_agree": 1
+ },
+ "refusals": [
+  {
+   "case": "a second agree on the same entry",
+   "code": "exists"
+  },
+  {
+   "case": "an agree whose target is not the signer",
+   "code": "not_allowed"
+  },
+  {
+   "case": "an agree point that is not 65 bytes starting 0x04",
+   "code": "bad_entry"
+  },
+  {
+   "case": "an agree on a space chain",
+   "code": "bad_op"
+  }
+ ]
+}

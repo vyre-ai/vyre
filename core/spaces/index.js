@@ -48,10 +48,12 @@ import { fileIdentityStore, signerOf, personIdOf } from "./identity.js";
 import { spaceFiles } from "./host.js";
 import fs from "node:fs";
 import path from "node:path";
+import { entryProof } from "../../kernel/seal/entry-proof.js";
 
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
+  /** @type {((entry: { publicKey: string, enclave?: string, agree?: string, attest?: string }, meta: any) => Promise<boolean> | boolean) | null} replaces the default verifier (kernel/seal/entry-proof.js): answers true only for an offered device entry it PROVED is held by the OS's key store (a platform attestation); the default is closed until a real-device fixture passes, so every enrolled entry is held "web" (KP-2) */ entryProof: null,
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
   /** @type {number | null} */ syncMs: null,
@@ -87,6 +89,9 @@ function plainDirectory(e) {
   if (e && e.code === "not_found") return "No such name.";
   return e && typeof e.message === "string" && e.message ? e.message : "The name directory could not do that. Try again in a moment.";
 }
+
+/** @type {((entry: any, meta?: any) => Promise<boolean>) | null} the default entry verifier, made on first use */
+let defaultEntryProof = null;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -1787,7 +1792,7 @@ export default {
       try { r = await dir.resolve(String(name), { pin: /** @type {any} */ (await kv.get(pinKey)) || undefined }); } catch { return { entries: [] }; }
       if (!r.ok || r.kind !== "person" || r.id !== id) return { entries: [] };
       await kv.put(pinKey, r.pin);
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.agree ? { agree: e.agree } : {}) })) };
     };
     // The one identity of this device's person, for the modules that must name it (Wink's pairing targets): the id and name only, read live. Spaces owns it; nobody makes a second.
     tool("spaces.identity.self", "This device's identity id and name, or null when none is claimed. Read live every call. For other modules, so that nothing makes a second identity.", obj(), async () => {
@@ -1811,7 +1816,7 @@ export default {
       const pin = i.pin && typeof i.pin === "object" && typeof i.pin.id === "string" && Number.isInteger(i.pin.seq) && typeof i.pin.head === "string" ? { id: i.pin.id, seq: i.pin.seq, head: i.pin.head } : undefined;
       try { r = await dir.resolve(label, pin ? { pin } : undefined); } catch (e) { throw refuse("The names directory could not be reached.", "unreachable"); }
       if (!r.ok || r.kind !== "person" || r.id !== String(i.id)) { if (process.env.WLOG) ctx.log.warn(`lookup ${label}: ok=${r.ok} kind=${r.kind} id=${r.id} want=${i.id} why=${r.why || r.code || ""}`); return { entries: [] }; }
-      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}) })) };
+      return { entries: r.state.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, ...(e.held ? { held: e.held } : {}), ...(e.alg ? { alg: e.alg } : {}), ...(e.enclave ? { enclave: e.enclave } : {}), ...(e.agree ? { agree: e.agree } : {}) })) };
     }, { internal: true });
     // The invitee's first presence key (RC1): the identity's chain and its entries as the directory shows them, for the home's own remote door. The ops go to the sealing process, which verifies them itself; each entry carries `founder` and `since` (the signed time of the add op); the door and the sealing process each apply the same rule (youngAt) against this server's clock, never a flag this tool computed. By the claimed name from the invitee's signed hello, else the name this device knows.
     tool("spaces.identity.evidence", "A person's identity chain and entries from the directory, verified, only if it is the given id's: { ops, entries }. Each entry says whether it is the founder and when it was added (signed time); the door decides what is young. For the home's invitee door.", obj({ person: str, name: str }, ["person"]), async i => {
@@ -1829,6 +1834,42 @@ export default {
       return { ops: r.ops, entries: st.entries.map((/** @type {any} */ e) => ({ eid: e.eid, kind: e.kind, pub: e.pub, founder: e.founder === true, since: e.since })) };
     }, { internal: true });
     tool("spaces.identity.state", "A person's identity list as verified now: their entry ids and kinds. Read live each call. For the transport's personOf.", obj({ person: str }, ["person"]), async i => stateOfPerson(String(i.person)), { internal: true });
+    // The devices of a person you share a space with, as public data only: each listed device's id and its key-agreement point (`agree`, the key a chat key is wrapped to). No label, no signing key, no other
+    // field. The caller must be that person or share a space with them (both members of one space this device knows); a stranger gets nothing, the same answer as a person with no such devices.
+    /** The public devices of a person the caller shares a space with (see spaces.identity.devices). @param {any} i @param {any} meta */
+    const devicesOf = async (i, meta) => {
+      const target = String(i.person || "");
+      if (!/^per_[A-Za-z0-9_-]{1,64}$/.test(target)) return { devices: [] };
+      const caller = await callerPerson(meta);
+      if (!caller) return { devices: [] };
+      let shares = caller === target;
+      if (!shares) {
+        for (const row of spaces.all()) {
+          const [a, b] = await Promise.all([membershipOf(row.id, caller, meta).catch(() => null), membershipOf(row.id, target, meta).catch(() => null)]);
+          if (a && b) { shares = true; break; }
+        }
+      }
+      if (!shares) return { devices: [] };
+      const st = await stateOfPerson(target);
+      const entries = st && Array.isArray(st.entries) ? st.entries : [];
+      return { devices: entries.filter((/** @type {any} */ e) => e && e.kind === "device" && typeof e.agree === "string").map((/** @type {any} */ e) => ({ device: String(e.eid), agree: String(e.agree) })) };
+    };
+    tool("spaces.identity.devices", "The devices of a person you share a space with: each one's id and its key-agreement point, for wrapping a chat key. Public data only; a person you share no space with gives nothing.", obj({ person: str }, ["person"]), async (i, meta) => devicesOf(i, meta), { effect: "read" });
+    // The same public read for the first-party modules that wrap keys server-side (work makes a server-started chat's ring, files): a module caller is not a person (spaces.identity.devices is reach person), so this is its own internal tool, with the same
+    // share-a-space check, answered for the person the call acts for (this home's person when no token rides). Public data only: a device id and its agreement point.
+    tool("spaces.identity.devices.read", "The devices of a person you share a space with: each one's id and its key-agreement point, for a first-party module that wraps a chat key. Public data only.", obj({ person: str }, ["person"]), async (i, meta) => {
+      onlyModules(meta, ["work", "files"]);
+      return devicesOf(i, meta);
+    }, { internal: true });
+
+    // This device's key-agreement step: ECDH between its agreement key (the `agree` point on its identity entry) and a peer's ephemeral public point. Only the 32-byte shared secret returns, never the private scalar.
+    // First-party only: `files` unwraps a chat key with it. A module that is not on the list, an agent and a surface are refused (a secret that opens a wrapped key is not for them).
+    tool("spaces.identity.ecdh", "ECDH with this device's key-agreement key: the shared secret for a peer's ephemeral public point (base64url, 65-byte uncompressed P-256). For first-party modules only.", obj({ epk: str }, ["epk"]), async (i, meta) => {
+      onlyModules(meta, ["files"]);
+      const epk = Buffer.from(String(i.epk || ""), "base64url");
+      if (epk.length !== 65 || epk[0] !== 4) throw refuse("That is not a P-256 point.", "bad_point");
+      try { return { secret: identity.ecdh(epk).toString("base64url") }; } catch (e) { throw refuse(/** @type {any} */ (e).code === "no_agree_key" ? "This device has no agreement key yet." : "That is not a P-256 point.", /** @type {any} */ (e).code || "failed"); }
+    }, { internal: true });
     /** Is this person a member of this space, by the place that decides it (the kernel's membership read when it offers one, else the local table)? @param {string} space @param {string} person */
     const isMember = async (space, person) => {
       if (K && typeof K.membership === "function" && kernelHandle(space)) { try { return (await K.membership(person, space)).member === true; } catch { return false; } }
@@ -1855,9 +1896,16 @@ export default {
       return found;
     }, { internal: true });
     // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
-    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str }, ["publicKey"]), async i => {
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str, enclave: str, held: str, attest: str }, ["publicKey"]), async (i, meta) => {
       me();
-      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label }); } catch (e) { throw idFail(e); }
+      // KP-2: the entry's `held` is decided HERE, from what this side can verify, never from the offered fields (they come from the pairing's channel, which can be a page script). An entry nobody proved is held by the OS's key store
+      // is "web" by default: it cannot change who speaks for the identity. A caller can only make it stricter (it may say held web; it cannot say "not web"). `hooks.entryProof` replaces the default verifier (tests); the
+      // default is kernel/seal/entry-proof.js, closed until a real-device fixture passes, so every enrolled entry is web until then.
+      // The proof is a platform attestation of the chip key (kernel/seal/entry-proof.js: App Attest for an iPhone, Keystore key attestation for Android), each closed by its own VERIFIED flag until a real-device fixture passes. It is checked here and not stored on the list.
+      let proven = false;
+      const proofOf = typeof hooks.entryProof === "function" ? hooks.entryProof : (defaultEntryProof ||= entryProof());
+      try { proven = (await proofOf({ publicKey: String(i.publicKey), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(typeof i.agree === "string" ? { agree: i.agree } : {}), ...(typeof i.attest === "string" ? { attest: i.attest } : {}) }, meta)) === true; } catch { proven = false; }
+      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label, ...(typeof i.agree === "string" ? { agree: i.agree } : {}), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(proven && i.held !== "web" ? {} : { held: "web" }) }); } catch (e) { throw idFail(e); }
     }, { internal: true });
     // The device's own signer for the transport's proof: only the transport's own message, never anything else.
     tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {
@@ -1935,6 +1983,12 @@ export default {
     const syncEvery = Math.max(60_000, hooks.syncMs ?? 60_000);
     const syncTimer = setInterval(() => { const s = identity.status(); if (s.exists && s.name) idops.sync().catch(e => ctx.log.warn(`the identity check failed: ${/** @type {Error} */ (e).message}`)); }, syncEvery);
     if (typeof syncTimer.unref === "function") syncTimer.unref();
+    // An identity made before the agreement key gets one on its own entry (one self-signed op), at the first start and again on every check until it has it. A failure (offline) tries again next time.
+    const completeAgree = () => { const s = identity.status(); if (s.exists && s.name) idops.completeAgree().catch(e => ctx.log.warn(`the agreement key could not be added yet: ${/** @type {Error} */ (e).message}`)); };
+    const agreeFirst = setTimeout(completeAgree, 3_000);
+    if (typeof agreeFirst.unref === "function") agreeFirst.unref();
+    const agreeTimer = setInterval(completeAgree, syncEvery);
+    if (typeof agreeTimer.unref === "function") agreeTimer.unref();
 
     // At start: an identity claimed before this start, on a home whose kernel still has its first-start owner, is adopted now, not at the first spaces call.
     adoptOwner().catch(() => {});
@@ -1962,7 +2016,7 @@ export default {
         }
       } catch (e) { ctx.log.warn(`the home space could not be added to the device lists: ${String(/** @type {any} */ (e).message || e).slice(0, 120)}`); }
     })();
-    return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); } };
+    return { async stop() { clearInterval(timer); clearTimeout(first); clearInterval(syncTimer); clearTimeout(agreeFirst); clearInterval(agreeTimer); } };
   },
 };
 

@@ -20,6 +20,7 @@ import { fakeDns } from "../../names/worker/fake-dns.js";
 import spacesModule, { hooks } from "./index.js";
 import { newKeyPair, personIdOf, fileIdentityStore, privateKeyOf } from "./identity.js";
 import { createIdentityOps } from "./identity-ops.js";
+import * as C_ from "../../kernel/identity/chain.js";
 import { idDirectory, memorySeen } from "../../lib/identity/directory.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -1319,4 +1320,174 @@ test("the device reaches the paired server over the Wink peer session when the d
   const down = await d.call("spaces.create", { name: "nowire", home: { kind: "server", device: { id: "srv_paired0000000001", name: "s", alwaysOn: true } } }, "cli", { kernel_proof: { op: "t" } });
   assert.equal(down.error?.code, "server_unreachable");
   void w;
+});
+
+test("spaces.identity.devices: the id and key-agreement point of a device of a person you share a space with, public data only; a stranger gets nothing", async t => {
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const w = world(t);
+  const { d, alex, space } = await harlow(t, w);
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const casey = await claim("casey", pt()), dana = await claim("dana", pt());
+  const caseyPt = (await d.reg.call("spaces.identity.devices", { person: casey.id }, "cli")).data;
+  assert.deepEqual(caseyPt, { devices: [] }, "before they share a space: nothing, though casey has a device with a point");
+  // casey joins alex's space: now they share one
+  const added = await d.call("spaces.members.add", { space, person: casey.id, role: "member" });
+  assert.ok(!added.error, JSON.stringify(added.error));
+  await d.reg.call("spaces.person.learn", { id: casey.id, name: "casey" }, "module:vyred");
+  const shared = (await d.ok("spaces.identity.devices", { person: casey.id }));
+  assert.equal(shared.devices.length, 1, JSON.stringify(shared));
+  assert.deepEqual(Object.keys(shared.devices[0]).sort(), ["agree", "device"], "the device id and the point, no label and no other field");
+  assert.equal(shared.devices[0].device, casey.eid);
+  assert.match(shared.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
+  // dana is known to this device but shares no space with alex: a stranger gets nothing
+  await d.reg.call("spaces.person.learn", { id: dana.id, name: "dana" }, "module:vyred");
+  assert.deepEqual((await d.ok("spaces.identity.devices", { person: dana.id })), { devices: [] }, "a stranger");
+  assert.deepEqual((await d.ok("spaces.identity.devices", { person: "per_nobodyatall000000000000000" })), { devices: [] });
+  assert.deepEqual((await d.ok("spaces.identity.devices", { person: "not a person" })), { devices: [] });
+  void alex;
+});
+
+test("a vyred device keeps a P-256 agreement key: its entry carries the point at create and at add, the private scalar is in no reply, and ecdh matches an independent ECDH", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t);
+  const made = await d.ok("spaces.identity.create", { name: "agreealex" });
+  const store = fileIdentityStore(d.space);
+  const point = store.agree();
+  assert.match(point, /^[A-Za-z0-9_-]{87}$/, "a raw uncompressed P-256 point");
+  // at create: the genesis entry (the one signed list every verifier reads) carries the point
+  const genesis = store.ops()[0];
+  assert.equal(genesis.entry.agree, point);
+  const st = (await d.ok("spaces.identity.state", { person: made.id }, "module:wink")).entries.find(e => e.eid === made.eid);
+  assert.equal(st.agree, point);
+  // at add: a device added from pairing brings its own point, and it goes onto its entry
+  const key = fileIdentityStore(d2.space).newDeviceKey();
+  w.clock.t += 2 * 3_600_000;
+  await d.ok("spaces.identity.enrol", { publicKey: key.publicKey, agree: key.agree, label: "second" }, "module:wink");
+  const after = (await d.ok("spaces.identity.state", { person: made.id }, "module:wink")).entries.find(e => e.eid === key.eid);
+  assert.equal(after.agree, key.agree);
+  // no reply and no status holds the private scalar
+  const scalar = JSON.parse(fs.readFileSync(path.join(d.space, "identity.json"), "utf8")).agreePrivate;
+  assert.ok(scalar && scalar.length >= 42);
+  assert.ok(!JSON.stringify(store.status()).includes(scalar) && !JSON.stringify(made).includes(scalar));
+  // ecdh: first-party files, an ephemeral peer point in, the raw shared secret out, equal to what the peer computes with this device's public point
+  const peer = crypto.createECDH("prime256v1"); peer.generateKeys();
+  const r = await d.ok("spaces.identity.ecdh", { epk: peer.getPublicKey().toString("base64url") }, "module:files");
+  assert.equal(r.secret, peer.computeSecret(Buffer.from(point, "base64url")).toString("base64url"));
+  assert.ok(!JSON.stringify(r).includes(scalar));
+  assert.equal((await d.call("spaces.identity.ecdh", { epk: "AAAA" }, "module:files")).error?.code, "bad_point");
+});
+
+test("spaces.identity.ecdh is for first-party files only: another module, the cli, an agent and a surface are refused", async t => {
+  world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "agreebob" });
+  const peer = crypto.createECDH("prime256v1"); peer.generateKeys();
+  const epk = peer.getPublicKey().toString("base64url");
+  for (const caller of ["module:wink", "module:memory", "module:filesx", "cli", "agent:kit", "surface:capsule"]) {
+    const r = await d.call("spaces.identity.ecdh", { epk }, caller);
+    assert.ok(r.error, `${caller} must be refused`);
+    assert.equal(r.data, undefined, caller);
+  }
+});
+
+test("an identity made before the agreement key gets one on first start without a new signing key: ensureAgree adds the scalar, is stable, and ecdh works from then on", async t => {
+  world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "agreecarl" });
+  const file = path.join(d.space, "identity.json");
+  const rec = JSON.parse(fs.readFileSync(file, "utf8"));
+  const before = rec.publicKey;
+  delete rec.agreePrivate; // an identity made before the key existed
+  fs.writeFileSync(file, JSON.stringify(rec) + "\n", { mode: 0o600 });
+  const store = fileIdentityStore(d.space);
+  assert.equal(store.agree(), null);
+  assert.throws(() => store.ecdh(crypto.createECDH("prime256v1").generateKeys()), { code: "no_agree_key" });
+  const pt = store.ensureAgree();
+  assert.match(pt, /^[A-Za-z0-9_-]{87}$/);
+  assert.equal(store.ensureAgree(), pt, "stable: asked twice, the same key");
+  assert.equal(store.agree(), pt);
+  assert.equal(store.status().publicKey, before, "the signing key is untouched");
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+});
+
+test("KP-2: spaces.identity.enrol decides held itself: an entry nobody proved is held web whatever the caller offers, a caller can only make it stricter, and a proven entry is not web", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t), d3 = await device(t), d4 = await device(t);
+  await d.ok("spaces.identity.create", { name: "kpalex" });
+  w.clock.t += 2 * 3_600_000;
+  const listHeld = async eid => (await C_.verifyChain(fileIdentityStore(d.space).ops(), { now: w.clock.t + 1 })).entries.find(e => e.eid === eid).held;
+  // the page's own offer omits held: the entry is still web
+  const k1 = fileIdentityStore(d2.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k1.publicKey, agree: k1.agree }, "module:wink");
+  assert.equal(await listHeld(k1.eid), "web", "omitting held gives web");
+  // the page offering a different spelling of "not web" changes nothing
+  const k2 = fileIdentityStore(d3.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k2.publicKey, held: "native" }, "module:wink");
+  assert.equal(await listHeld(k2.eid), "web");
+  // a proof hook that answers true makes it not web; a hook that says true cannot be overridden into looser by the caller, and a caller saying web is stricter
+  hooks.entryProof = async () => true;
+  t.after(() => { hooks.entryProof = null; });
+  const k3 = fileIdentityStore(d4.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k3.publicKey }, "module:wink");
+  assert.equal(await listHeld(k3.eid), undefined, "a proven entry is not held web");
+  const d5 = await device(t), k4 = fileIdentityStore(d5.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k4.publicKey, held: "web" }, "module:wink");
+  assert.equal(await listHeld(k4.eid), "web", "a caller can only make it stricter");
+  // a hook that throws proves nothing
+  hooks.entryProof = async () => { throw new Error("no verifier"); };
+  const d6 = await device(t), k5 = fileIdentityStore(d6.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k5.publicKey }, "module:wink");
+  assert.equal(await listHeld(k5.eid), "web");
+});
+
+// memory's key-wrap vector (lib/vectors/keywrap.json, on work/memory-noble until it merges): this device's ecdh gives the vector's shared secret, and memory's own HKDF and AES-GCM then open the wrap.
+// Skipped while the file is not in this tree; the check is real as soon as it is.
+const KEYWRAP = new URL("../../lib/vectors/keywrap.json", import.meta.url);
+test("spaces.identity.ecdh matches memory's keywrap vector: the shared secret is the vector's, and its kek opens the wrap", { skip: !fs.existsSync(KEYWRAP) && "lib/vectors/keywrap.json is not in this tree yet" }, async t => {
+  world(t);
+  const d = await device(t);
+  await d.ok("spaces.identity.create", { name: "vecalex" });
+  const V = JSON.parse(fs.readFileSync(KEYWRAP, "utf8"));
+  const file = path.join(d.space, "identity.json");
+  const rec = JSON.parse(fs.readFileSync(file, "utf8"));
+  fs.writeFileSync(file, JSON.stringify({ ...rec, agreePrivate: V.agree_private_jwk.d }) + "\n", { mode: 0o600 });
+  const r = await d.ok("spaces.identity.ecdh", { epk: V.wrap.epk }, "module:files");
+  assert.equal(r.secret, V.shared);
+  const epk = Buffer.from(V.wrap.epk, "base64url");
+  const kek = Buffer.from(crypto.hkdfSync("sha256", Buffer.from(r.secret, "base64url"), epk, Buffer.from("vyre-identity-wrap-v1"), 32));
+  assert.equal(kek.toString("base64url"), V.kek);
+  const dec = crypto.createDecipheriv("aes-256-gcm", kek, Buffer.from(V.wrap.iv, "base64url"));
+  dec.setAAD(Buffer.from(V.aad)); dec.setAuthTag(Buffer.from(V.wrap.tag, "base64url"));
+  const plain = Buffer.concat([dec.update(Buffer.from(V.wrap.ct, "base64url")), dec.final()]);
+  assert.equal(plain.toString("base64url"), V.plaintext_key);
+});
+
+test("agree key and held web: a web-held entry that carries agree at genesis or add keeps it, and its own agree op is refused (a web key changes nothing about the list)", async t => {
+  const w = world(t), d = await device(t), d2 = await device(t);
+  await d.ok("spaces.identity.create", { name: "webagree" });
+  w.clock.t += 2 * 3_600_000;
+  const k = fileIdentityStore(d2.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k.publicKey, agree: k.agree }, "module:wink"); // unproven: held web, carrying its point
+  const st = (await C_.verifyChain(fileIdentityStore(d.space).ops(), { now: w.clock.t + 1 })).entries.find(e => e.eid === k.eid);
+  assert.equal(st.held, "web");
+  assert.equal(st.agree, k.agree, "a web-held entry keeps the point it came with");
+  // the web key signs its own agree op: refused, like any list change it signs
+  const state = await C_.verifyChain(fileIdentityStore(d.space).ops(), { now: w.clock.t + 1 });
+  const op = await C_.makeOp(state, { type: "agree", target: k.eid, agree: k.agree }, { by: k.eid, ts: w.clock.t + 1, sign: m => crypto.sign(null, Buffer.from(m), privateKeyOf(k.privateKey)) });
+  await assert.rejects(C_.applyOp(state, op, { now: w.clock.t + 1 }), e => e.code === "web_key" || e.code === "exists");
+});
+
+test("spaces.identity.devices.read answers work and files (a module is not a person, so spaces.identity.devices denies it): the home person's own devices with their points, no private field, and nobody else", async t => {
+  world(t);
+  const d = await device(t);
+  const made = await d.ok("spaces.identity.create", { name: "devmod" });
+  assert.equal((await d.call("spaces.identity.devices", { person: made.id }, "module:work")).error?.code, "denied", "the person read stays for people");
+  const r = await d.call("spaces.identity.devices.read", { person: made.id }, "module:work");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.ok(!(await d.call("spaces.identity.devices.read", { person: made.id }, "module:files")).error);
+  for (const caller of ["module:memory", "module:wink", "cli", "agent:kit"]) assert.ok((await d.call("spaces.identity.devices.read", { person: made.id }, caller)).error, caller);
+  assert.equal(r.data.devices.length, 1);
+  assert.deepEqual(Object.keys(r.data.devices[0]).sort(), ["agree", "device"]);
+  assert.equal(r.data.devices[0].agree, fileIdentityStore(d.space).agree());
 });

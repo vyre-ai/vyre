@@ -318,6 +318,18 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.identity.devices", "effect": "read",
+    "reach": "person"
+   },
+   {
+    "name": "spaces.identity.devices.read",
+    "reach": "modules"
+   },
+   {
+    "name": "spaces.identity.ecdh",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.self",
     "reach": "modules"
    },
