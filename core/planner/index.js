@@ -7,7 +7,8 @@
 // and keeps its scheduler idle; an unpaired Mac runs the planner itself.
 
 import { KINDS, STATES, shape, shapeFiring, newId, ringKey, readKey } from "./items.js";
-import { openRecords, fromEvent } from "./records.js";
+import { openRecords, fromEvent, recordOf } from "./records.js";
+import { parseRule } from "./rrule.js";
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendar, shapeCal } from "./events.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
@@ -60,7 +61,7 @@ export default {
     const now = seam.now || Date.now;
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
-    const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how) });
+    const st = await openRecords({ K: K || offline, now, log: ctx.log, onExternal: (row, how) => external(row, how), zone: () => settings().timezone });
     if (K) await st.load();
 
     // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
@@ -416,6 +417,7 @@ export default {
         if (!w.person) throw fail("only the person gives a to-do to an assistant", "denied");
         if (await agentProjects(assignee) === null) throw fail(`no assistant or agent named ${assignee}`, "not_found");
       }
+      if (kind !== "event" && (input.rrule || input.url)) throw fail("rrule and url are for events: a reminder repeats with repeat");
       if (kind === "event") return addEvent({ ...input, title, at: time.at, tz: time.tz || undefined }, w, t);
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
@@ -430,13 +432,29 @@ export default {
       return shape(st.item(made.id));
     };
 
+    /** An event's rule and link as the record keeps them: undefined when not given, null to clear, else checked. */
+    const rruleOf = v => {
+      if (v === undefined) return undefined;
+      if (v === null || String(v).trim() === "") return null;
+      try { parseRule(String(v)); } catch (e) { throw fail(`rrule: ${/** @type {Error} */ (e).message}`); }
+      return String(v).trim().replace(/^RRULE:/i, "");
+    };
+    const urlOf = v => {
+      if (v === undefined) return undefined;
+      if (v === null || String(v).trim() === "") return null;
+      const u = String(v).trim().slice(0, 2000);
+      if (!/^https?:\/\/\S+$/.test(u)) throw fail("url is a web address (https://...)");
+      return u;
+    };
+
     /** An event of the planner's own: an Event record (source "vyre"), the same record a connector's sync writes for an outside event. */
     const addEvent = async (input, w, t) => {
       const tz = input.tz || settings().timezone;
       if (input.at == null) throw fail("an event needs a start");
       const end = input.end != null ? input.end : input.at + (input.duration_ms ? Number(input.duration_ms) : 3_600_000);
+      const rrule = rruleOf(input.rrule), url = urlOf(input.url);
       const row = await st.cal.create({ title: input.title, starts_at: new Date(input.at).toISOString(), ends_at: new Date(end).toISOString(), all_day: false, time_zone: tz, source: "vyre",
-        ...(input.where ? { place: clip(input.where, 500) } : {}) });
+        ...(input.where ? { place: clip(input.where, 500) } : {}), ...(rrule ? { rrule } : {}), ...(url ? { url } : {}) });
       const shown = cal.add({ ...row, own: true });
       counted(w);
       emit("planner.added", { item: row.id, kind: "event", title: input.title, at: input.at, ...(w.name ? { added_by: w.name } : {}) }, { project: input.project, thread: input.thread });
@@ -454,15 +472,18 @@ export default {
       const patch = {};
       if (i.title !== undefined) { const title = String(i.title).trim().slice(0, 500); if (!title) throw fail("the title cannot be empty"); patch.title = title; }
       if (i.where !== undefined) patch.place = clip(i.where, 500);
+      const rrule = rruleOf(i.rrule), url = urlOf(i.url);
+      if (rrule !== undefined) patch.rrule = rrule;
+      if (url !== undefined) patch.url = url;
       const timed = i.at !== undefined || i.date !== undefined || i.wall !== undefined;
       if (timed) {
         const time = resolveTime("event", { at: i.at, date: i.date, wall: i.wall, tz: i.tz }, settings(), now());
         patch.starts_at = new Date(time.at).toISOString();
         patch.ends_at = new Date(time.at + (row.end != null ? row.end - row.start : 3_600_000)).toISOString();
       }
-      const made = await st.cal.update(row.id, patch);
+      const made = await st.cal.update(row.rec ?? recordOf(row.id), patch);
       const shown = cal.add({ ...made, own: true });
-      emit("planner.changed", { item: row.id, kind: "event", fields: Object.keys(patch) }, {});
+      emit("planner.changed", { item: row.rec ?? row.id, kind: "event", fields: Object.keys(patch) }, {});
       return shapeCal(shown);
     };
 
@@ -768,7 +789,7 @@ export default {
       for (const c of await st.eventsBetween(from, to)) {
         const e = shapeCal(c);
         entries.push({ source: e.source, ...(e.account ? { account: e.account } : {}), event: e.event, item: e.id, kind: "event", title: e.title, at: e.at, start: e.start, end: e.end,
-          all_day: e.all_day, where: e.where, url: e.url });
+          all_day: e.all_day, where: e.where, url: e.url, record: e.record, ...(e.rrule ? { rrule: e.rrule } : {}), ...(e.occurrence ? { occurrence: true } : {}) });
       }
       // By start; on the same instant, all-day first, then the planner's own, then by title.
       entries.sort((a, b) => a.at - b.at || Number(b.all_day) - Number(a.all_day) || Number(b.source === "planner") - Number(a.source === "planner")
@@ -910,7 +931,7 @@ export default {
           endAt = ms(i.end);
           if (!Number.isFinite(endAt) || !(endAt > startAt)) throw fail("end must be a time after start");
         }
-        return await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread, duration_ms: endAt != null ? endAt - startAt : 3_600_000, where: i.where }, w);
+        return await add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread, duration_ms: endAt != null ? endAt - startAt : 3_600_000, where: i.where, rrule: i.rrule, url: i.url }, w);
       }
       const input = { title: String(i.title ?? ""), start: googleTime(i.start, tz), account: String(i.account), time_zone: tz,
         ...(i.end !== undefined ? { end: googleTime(i.end, tz) } : {}), ...(i.where ? { where: String(i.where) } : {}),
@@ -944,7 +965,9 @@ export default {
       pinned: bool, assignee: { type: "string", description: "give a to-do to this assistant or agent (the person only); it finishes it as its own" }, at: when, in_ms: { type: "number" }, wall: str, date: str, due: when, repeat: repeatSchema, tz: str, floating: bool,
       // /later: waits_on chains a task after another item's own done, instead of a time; paused
       // stops just this one item (rule 2) without deleting it or losing its run history.
-      waits_on: str, paused: bool };
+      waits_on: str, paused: bool,
+      // An event's own fields: how it repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO) and where it is on its calendar.
+      rrule: { anyOf: [str, { type: "null" }] }, url: { anyOf: [str, { type: "null" }] } };
     const ref = { type: "object", properties: { firing: str, item: str, key: { type: "string", description: "planner-<item>-<due in seconds>, as planner.upcoming and the push give it" } } };
 
     /**
@@ -1036,7 +1059,7 @@ export default {
 
     tool("planner.calendar.create", "Make an event. Without account it is the planner's own event. With account it is written to that Google calendar through google.calendar.create; attendees mean invites, which wait at the Gate for the user (returns { held, message }). Agents may only ask for an invite (account and attendees).",
       { type: "object", required: ["title", "start"], properties: { title: str, start: when, end: when, where: str, attendees: { anyOf: [str, { type: "array", items: str }] },
-        account: str, tz: str, why: str, project: str, thread: str } },
+        account: str, tz: str, why: str, project: str, thread: str, rrule: str, url: str } },
       async (i, w) => createEvent(i, w), { agents: true });
 
     tool("planner.parse", "Read words like \"alarm 7am\", \"timer 10 min\" or \"remind me to call the printer at 6\" into a proposed item { kind, title, at (ms), tz, duration?, repeat? }, { ambiguous, reason } when they cannot be placed, or null. kind is a hint. Answers where it is asked, never forwarded.",

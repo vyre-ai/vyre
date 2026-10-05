@@ -67,6 +67,8 @@ export const EVENT = {
     text("calendar", "Outside calendar (route)"),
     text("external_id", "Outside id"),
     f("rich_text", "notes", "Notes"),
+    f("url", "url", "Link (the event on its calendar)"),
+    text("rrule", "Repeats (an RRULE, such as FREQ=WEEKLY;BYDAY=MO)"),
   ],
 };
 

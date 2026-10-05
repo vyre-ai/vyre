@@ -7,6 +7,8 @@
 // The scheduler reads the working set, so ringing stays synchronous and exact on a fake clock; every change is queued to the gateway in order and `flush()` waits for it.
 // A record changed from outside (the app, a Flow, a connector) arrives as a kernel event and is read back in, so the records stay the truth and the planner follows them.
 import { newId } from "./items.js";
+import { occurrences, parseRule } from "./rrule.js";
+import { validZone } from "./time.js";
 
 const DAY = 86_400_000;
 const FIRING_KEEP = 60 * DAY;
@@ -80,17 +82,33 @@ export function taskEdit(r, keys) {
   return p;
 }
 
-/** An Event record as a calendar row. */
+/** An Event record as a calendar row. A repeating event is one record with its `rrule`; `expandRow` makes its occurrences. */
 export function fromEvent(/** @type {any} */ rec, /** @type {number} */ synced) {
   const d = rec.data || {};
   const start = ms(d.starts_at);
   if (start == null) return null;
-  return { id: rec.id, account: d.source === "vyre" ? null : d.calendar ?? null, event_id: d.external_id ?? rec.id, title: d.title ?? "", start, end: ms(d.ends_at), all_day: d.all_day ? 1 : 0, where_: d.place ?? null,
-    url: null, synced_at: synced, next_fire: null, rung_start: null, snooze_until: null, own: d.source === "vyre", project: null, thread: null };
+  return { id: rec.id, rec: rec.id, account: d.source === "vyre" ? null : d.calendar ?? null, event_id: d.external_id ?? rec.id, title: d.title ?? "", start, end: ms(d.ends_at), all_day: d.all_day ? 1 : 0, where_: d.place ?? null,
+    url: d.url ?? null, rrule: d.rrule || null, zone: d.time_zone ?? null, synced_at: synced, next_fire: null, rung_start: null, snooze_until: null, own: d.source === "vyre", project: null, thread: null };
+}
+
+/** The record an event row (or one of a repeating event's occurrences, `<record>~<start>`) belongs to. */
+export const recordOf = (/** @type {any} */ id) => String(id).split("~")[0];
+
+/**
+ * The rows an event row stands for between from and to: itself, or one row per occurrence of its rule (id `<record>~<start>`, so each rings and is answered on its own).
+ * A rule that cannot be read leaves the event as a single one. @param {any} row @param {number} from @param {number} to @param {string} [zone] the planner's zone, for an event with none of its own
+ */
+export function expandRow(row, from, to, zone = "UTC") {
+  if (!row.rrule) return row.start < to && (row.end ?? row.start) >= from ? [row] : [];
+  let rule;
+  try { rule = parseRule(row.rrule); } catch { return row.start < to && (row.end ?? row.start) >= from ? [{ ...row, rrule: null }] : []; }
+  const tz = row.zone && validZone(row.zone) ? row.zone : zone;
+  const span = row.end != null ? row.end - row.start : null;
+  return occurrences({ rule, start: row.start, tz, from: from - (span ?? 0), to }).map(s => ({ ...row, id: `${row.rec}~${s}`, start: s, end: span != null ? s + span : null, occ: true }));
 }
 
 /**
- * @param {{ K: any, now: () => number, log: (m: string) => void, onExternal?: (row: any, how: "added"|"changed"|"removed") => void, onEvents?: () => void }} o
+ * @param {{ K: any, now: () => number, log: (m: string) => void, onExternal?: (row: any, how: "added"|"changed"|"removed") => void, onEvents?: () => void, zone?: () => string }} o
  */
 export async function openRecords(o) {
   const { K, now, log } = o;
@@ -164,11 +182,16 @@ export async function openRecords(o) {
 
   // ---- Calendar (Event records) -----------------------------------------------------------------
   const eventSpec = (/** @type {number} */ from, /** @type {number} */ to) => ({ filter: { and: [{ field: "starts_at", op: "lt", value: iso(to) }, { field: "starts_at", op: "gte", value: iso(from - 40 * DAY) }] } });
-  /** Every Event record that starts in [from, to) or began a while before and is still going: read straight from the records, for an agenda. */
+  // The Event type is the Space's shared one (defined once for every Space); a Space that has none yet has no events.
+  const unknownTypeIsEmpty = (/** @type {any} */ e) => { if (e && e.code === "unknown_type") return []; throw e; };
+  /** Every event row that starts in [from, to) or began a while before and is still going, and each occurrence of a repeating event: read straight from the records, for an agenda. */
   async function eventsBetween(/** @type {number} */ from, /** @type {number} */ to) {
-    // The Event type is the Space's shared one (defined once for every Space); a Space that has none yet has no events.
-    const recs = await pages("event", eventSpec(from, to)).catch(e => { if (e && /** @type {any} */ (e).code === "unknown_type") return []; throw e; });
-    return recs.map(r => fromEvent(r, now())).filter(r => r && r.start < to && (r.end ?? r.start) >= from);
+    /** @type {Map<string, any>} */ const recs = new Map();
+    for (const r of await pages("event", eventSpec(from, to)).catch(unknownTypeIsEmpty)) recs.set(r.id, r);
+    // A repeating event may have begun long ago: it is found by its rule, not by its first start.
+    for (const r of await pages("event", { filter: { and: [{ not: { field: "rrule", op: "is_null" } }, { field: "starts_at", op: "lt", value: iso(to) }] } }).catch(unknownTypeIsEmpty)) recs.set(r.id, r);
+    const zone = o.zone ? o.zone() : "UTC";
+    return [...recs.values()].map(r => fromEvent(r, now())).filter(Boolean).flatMap(r => expandRow(r, from, to, zone));
   }
   /** Refresh the working set of events the planner will ring for: a day back to 14 days ahead. @returns {Promise<{ added: number, changed: number, removed: number, events: number }>} */
   async function loadEvents(/** @type {(row: any, old: any) => any} */ settle) {
