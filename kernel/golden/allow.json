@@ -500,6 +500,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads the guests from other tailnets the box serves and their tools"
  },
  {
+  "tool": "planner.bin",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; planner.bin opened to a model or a module in 49f105dbe (4 Oct 2026); the body decides: read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
+ },
+ {
   "tool": "planner.settings",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads and sets the planner's zone and escalation timing, the person's own preferences"
  },
@@ -568,10 +572,6 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain; the kernel decides"
  },
  {
-  "tool": "records.reference",
-  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
- },
- {
   "tool": "records.holders",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the holders of one role, under the caller's own chain; the kernel checks each row"
  },
@@ -594,6 +594,10 @@
  {
   "tool": "records.me",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): says who the caller is in the Space; no data"
+ },
+ {
+  "tool": "records.reference",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads one record under the caller's own chain with sealed parts as placeholders; the kernel decides"
  },
  {
   "tool": "records.roles",
@@ -662,6 +666,10 @@
  {
   "tool": "spaces.identity.contact.key",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): makes a recovery contact's approval key for someone's identity; the private half stays on this device"
+ },
+ {
+  "tool": "spaces.identity.devices",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): lists the devices of a person you share a space with: id and key-agreement point only, public data, nothing for a stranger"
  },
  {
   "tool": "spaces.identity.entries",
