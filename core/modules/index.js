@@ -1390,12 +1390,17 @@ export class Registry {
     // A human-only tool needs a proof that a person is there, whatever the caller claims
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
+    // The person's own switch (Settings > Privacy: confirm.pairing, confirm.vault, confirm.outward, on by default): with one off, that person's OWN call for that moment goes through without the yes. Only a
+    // person's own caller counts (never a model, an agent, a module or a guest: those are held or refused as before), and only the three moments; making or handing over an owner has no switch.
+    const moment = momentOf(tool, n => Boolean((this.tools.get(n) || {}).outward));
+    const switchedOff = Boolean(moment && isPerson(String(caller)) && this.deps.config && this.deps.config.confirm && this.deps.config.confirm[{ pair: "pairing", vault: "vault", outward: "outward" }[moment]] === false);
+    if (switchedOff) meta = { ...meta, presence: { method: "switch", keyId: null } };
     // A tool vyre-core answers on this Mac (def.core, ADR 0040 phase 2): core checks the proof
     // itself, over the exact input, so vyred passes it through untouched rather than checking (and
     // spending) it first. Only when core is linked; everywhere else the floor below applies.
     if (def.core && coreHolder.link) {
       meta = { ...meta, coreProof: proof ? formatProof(proof) : undefined };
-    } else if (presence && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
+    } else if (presence && !switchedOff && (this.deps.gates ? await this.deps.gates.needsPresence({ tool, def, caller, meta, input }) : callerKind(caller) !== "module" && presence.required(tool, def, input))) {
       // One yes: a floor-bearing tool that is one of the three moments (vault, pairing a device, an outward send) also takes the owner's approval of exactly this call: a card the phone answered, bound to the
       // asking device taken from the verified caller (never from input), spent once. Everything else, and everything that is not an approved card, goes on to the old proof check below.
       /** @type {{ method: string, keyId: null } | null} */ let approved = null;
