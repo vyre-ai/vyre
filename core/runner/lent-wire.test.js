@@ -34,6 +34,7 @@ function fakeSealer() {
 
 async function rig(t, o = {}) {
   const acceptCap = o.acceptCap;
+  const keyOf = o.keyIsDevice ? "dev_laptop" : "KEY_LAPTOP";
   const dir = fs.mkdtempSync(path.join(SCRATCH, "lw-")); t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const sealer = fakeSealer();
   const k = await createKernel({ space: SPACE, owner: OWNER, owner_uid: 501, key: Buffer.alloc(32, 8), sealer, presence, resolveCredential: async () => ({ secret: "v" }) });
@@ -43,7 +44,7 @@ async function rig(t, o = {}) {
   for (const p of [BOB, CAROL]) { const role = { person: p, role: "member" }; await g.setRole(owner, role, { presence: proof("grants.role", role, `vyre://${SPACE}/member/${p}`) }); }
   const mk = (chain, x) => g.offers.offer(chain, x, { presence: proof("grants.offer", x, `vyre://${SPACE}/offer/new`) });
   await mk(owner, { side: "space_allows", member: BOB });
-  const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: "KEY_LAPTOP", ...(acceptCap ? { network_cap: acceptCap } : {}) });
+  const accept = await mk(bob, { side: "member_accepts", member: BOB, device: "dev_laptop", device_key: keyOf, ...(acceptCap ? { network_cap: acceptCap } : {}) });
   const home = createLentHome({ space: SPACE, root: path.join(dir, "home"), offers: g.offers, leases: k.gateway.leases, lenderCap: () => o.cap,
     specFor: async ({ session }) => ({ command: "/usr/bin/agent", args: [session], env: {}, routes: [], readOnly: [], labels: {}, network: "internet", credentialRoutes: [{ route: "api.example.com", ref: "svc", paths: ["/v1/*"] }] }) });
   const server = createRemoteServer({ space: SPACE, kernel: k, services: { lent: home } });
@@ -173,9 +174,9 @@ test("the real runner on a lent computer, ports from the lender host over the re
   } finally { await runner.stopAll().catch(() => {}); await runner.lock().catch(() => {}); }
 });
 
-import mod from "./index.js";
+import mod, { resolveAgent } from "./index.js";
 test("the runner module on a computer whose host gives only its identity: ready, and a Space whose home is another computer is reached through ctx.kernel.for(space).call (the one remote path)", async t => {
-  const r = await rig(t);
+  const r = await rig(t, { keyIsDevice: true });
   const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
   /** @type {Map<string, any>} */ const tools = new Map(); const events = [];
   const root = path.join(r.dir, "mod"); fs.mkdirSync(root, { recursive: true });
@@ -215,4 +216,69 @@ test("the lender's cap is read from the Offer the member accepted: the home limi
   const bad = await rig(t);
   await assert.rejects(bad.g.offers.offer(bad.bob, { side: "member_accepts", member: BOB, device: "dev_x", device_key: "K", network_cap: "everything" }, { presence: proof("grants.offer", { side: "member_accepts", member: BOB, device: "dev_x", device_key: "K", network_cap: "everything" }, `vyre://${SPACE}/offer/new`) }), e => e.code === "bad_input");
   await assert.rejects(bad.g.offers.offer(bad.owner, { side: "space_allows", member: BOB, network_cap: "provider" }, { presence: proof("grants.offer", { side: "space_allows", member: BOB, network_cap: "provider" }, `vyre://${SPACE}/offer/new`) }), e => e.code === "bad_input", "the Space cannot set the lender's cap");
+});
+
+test("the home says which computer is calling, from what the transport proved; the lender runs under that id", async t => {
+  const r = await rig(t);
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "relay_dev_1", person: BOB, path: "wink" } }) });
+  assert.deepEqual(await remote.call("lent.whoami", []), { device: "relay_dev_1", person: BOB });
+});
+
+test("runner.revoke is the Wink module's alone, and answers plainly when nothing is running for that Space", async t => {
+  const r = await rig(t);
+  /** @type {Map<string, any>} */ const tools = new Map();
+  const root = path.join(r.dir, "mod3"); fs.mkdirSync(root, { recursive: true });
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const ctx = { paths: { root }, events: { emit() {}, on: () => () => {} }, tool: (n, d) => tools.set(n, d),
+    kernel: { owner: BOB, runnerHost: () => ({ identity: async () => ({ deviceId: "dev_laptop", deviceKey: "KEY" }) }), for: id => (id === SPACE ? remote : { hosted: true }), chain: async () => ({ hops: [{ actor: { kind: "person", id: BOB } }] }) } };
+  const h = await mod.start(ctx); t.after(() => h.stop());
+  await assert.rejects(tools.get("runner.revoke").run({ space: SPACE }, { caller: "cli" }), e => e.code === "denied");
+  await assert.rejects(tools.get("runner.revoke").run({ space: SPACE }, {}), e => e.code === "denied");
+  assert.equal((await tools.get("runner.revoke").run({ space: SPACE }, { caller: "module:wink" })).revoked, false);
+});
+
+test("a name with no folder is the agent this computer has: VYRE_CLAUDE_BIN for claude, else PATH; a script runs under node; a path stays as given; none is refused", () => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "ra-"));
+  const script = path.join(dir, "agent.js"); fs.writeFileSync(script, "// agent\n");
+  const was = process.env.VYRE_CLAUDE_BIN, wasPath = process.env.PATH;
+  try {
+    process.env.VYRE_CLAUDE_BIN = script;
+    const r = resolveAgent({ command: "claude", args: ["--x"], readOnly: ["/opt/ro"] });
+    assert.deepEqual([r.command, r.args], [process.execPath, [script, "--x"]]);
+    assert.ok(r.readOnly.includes(dir) && r.readOnly.includes("/opt/ro") && r.readOnly.includes(path.dirname(process.execPath)));
+    assert.deepEqual(resolveAgent({ command: "/usr/bin/agent", args: ["a"] }), { command: "/usr/bin/agent", args: ["a"], readOnly: [] });
+    delete process.env.VYRE_CLAUDE_BIN; process.env.PATH = "/nonexistent-dir";
+    assert.throws(() => resolveAgent({ command: "claude" }), /no claude to run/);
+  } finally { if (was === undefined) delete process.env.VYRE_CLAUDE_BIN; else process.env.VYRE_CLAUDE_BIN = was; process.env.PATH = wasPath; }
+});
+
+test("access ended: the session stops, the encrypted workspace and everything in it is deleted from this computer, and the home still holds the transcript, the files and the checkpoint", { skip: SKIP_RUN }, async t => {
+  const r = await rig(t, { cap: "provider" });
+  const agentDir = path.join(r.dir, "agent"); fs.mkdirSync(agentDir, { recursive: true });
+  fs.copyFileSync(new URL("./testing/fake-agent.js", import.meta.url), path.join(agentDir, "agent.js"));
+  const remote = createRemoteKernel({ space: SPACE, transport: createMemoryTransport({ servers: { [SPACE]: r.server }, peer: { device_key_id: "dev_laptop", person: BOB, path: "wink" } }) });
+  const host = createLenderHost({ invoke: remote.call, deviceId: "dev_laptop", deviceKey: "KEY_LAPTOP", lenderCap: "provider" });
+  await host.ready;
+  const base = path.join(r.dir, "lender");
+  const runner = createRunner({ base, space: "harlow", device: "dev_laptop", ...host.ports, grants: host.ports.grants, watchdog: false, retryMs: 50, verifyState: () => true, state: () => ({ onPower: true }) });
+  try {
+    await host.ports.spec({ session: "s1" });   // the home writes the session into its lent table, as runner.start does
+    const h = await runner.start({ session: "s1", command: process.execPath, args: [path.join(agentDir, "agent.js")], readOnly: [agentDir, path.dirname(process.execPath)], routes: [] });
+    h.send("turn SECRET-LINE-ONE");
+    for (let i = 0; i < 80 && !(await host.ports.sync.getCheckpoint("s1")); i++) await new Promise(res => setTimeout(res, 250));
+    assert.ok(await host.ports.sync.getCheckpoint("s1"), "the home has a checkpoint before access ends");
+    const local = () => { const out = []; const walk = d => { for (const n of fs.existsSync(d) ? fs.readdirSync(d) : []) { const p = path.join(d, n); fs.statSync(p).isDirectory() ? walk(p) : out.push(p); } }; walk(base); return out; };
+    assert.ok(local().length > 0, "there is a workspace on this computer");
+    // the Space ends the member's access: the runner is told, and nothing of the work stays here
+    await runner.revoke();
+    for (let i = 0; i < 40 && local().some(f => !f.includes(`${path.sep}run${path.sep}`)); i++) await new Promise(res => setTimeout(res, 100));
+    const left = local().filter(f => !f.includes(`${path.sep}run${path.sep}`));
+    assert.deepEqual(left, [], "no file of the workspace is left (cipher text, its config, or the plain mount)");
+    let alive = true; try { process.kill(Number(h.child.pid), 0); } catch { alive = false; }
+    assert.equal(alive, false, "the session's process is gone");
+    // the home keeps everything it was sent, and can still read it back
+    assert.ok(fs.existsSync(path.join(r.dir, "home")), "the home's store is untouched");
+    const held = []; const walkHome = d => { for (const n of fs.readdirSync(d)) { const p = path.join(d, n); fs.statSync(p).isDirectory() ? walkHome(p) : held.push(p); } }; walkHome(path.join(r.dir, "home"));
+    assert.ok(held.some(f => f.includes("transcript")) && held.some(f => f.includes(`${path.sep}cp${path.sep}`)), "the transcript and a checkpoint are still at the home");
+  } finally { await runner.stopAll().catch(() => {}); }
 });

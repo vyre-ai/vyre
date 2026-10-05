@@ -216,6 +216,10 @@ test("wink: sharing a computer is a node.host grant with limits, and only for a 
   assert.ok(g);
   assert.ok(g.resource.includes(`/node/${r.paired.device}/`));
   assert.ok(w.events.some(e => e[0] === "wink.shared"));
+  // Sharing is the two sides of the compute offer, not only a grant: the computer now offers compute and its owner accepts, so the runner may lease it for the personal space.
+  assert.equal(shared.data.allowed?.ok, true, JSON.stringify(shared.data));
+  const dev = (await w.call("wink.access")).data.devices.find(x => x.id === r.paired.device);
+  assert.equal(dev.offers.compute, true);
 });
 
 test("wink: removing a device takes it from the identity with its connections, and removing it at the relay takes it from the registry", async t => {

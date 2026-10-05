@@ -21,13 +21,6 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | --- | --- |
 | `appearance.changed` | `scheme`, `theme`, `version` |
 
-## apps
-
-| Event | Fields |
-| --- | --- |
-| `apps.acted` | `action`, `app` |
-| `apps.sent` | `action`, `app` |
-
 ## artifacts
 
 | Event | Fields |

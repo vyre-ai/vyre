@@ -26,12 +26,14 @@ import { card, removal, removed, words } from "./cards.js";
 import { registerReset } from "./reset.js";
 import { createPairing, MIGRATIONS as DEVICE_MIGRATIONS, PEER_MIGRATIONS, FLOW_KIND, ADMIN_ROLES, ownDirectory, kernelDirectory, kernelHasRoles } from "./pairing.js";
 import { createStorageDevices, registerStorageTools, MIGRATIONS as STORAGE_MIGRATIONS } from "./storage/index.js";
+import { realScanners } from "./storage/discover.js";
 import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
-import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL } from "./storage/bridge.js";
-import { createHolds } from "./storage/hold.js";
+import { createNetd } from "./netd.js";
+import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, resumeServing, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL, SCAN_TOOL } from "./storage/bridge.js";
+import { createHolds, holdDrive } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
@@ -75,7 +77,9 @@ export function createWink(inject = {}) {
   /** @type {(() => any) | null} */ let liveLinks = null;
   const mod = {
   async start(ctx) {
-    if (ctx.config.role !== "box") return { async stop() {} };
+    // A server runs all of this. A person's computer that belongs to a server (machine "device") runs it too, as the client side: it pairs a server, reaches the Spaces hosted there (winkSessionFor, remoteKernel),
+    // lends itself to them, and holds the connection a storage drive on its network is reached through. A computer on its own (machine "solo") stays out: nothing here is for it.
+    if (ctx.config.role !== "box" && ctx.config.machine !== "device") return { async stop() {} };
     const now = () => Date.now();
     ctx.store.migrate([
       `CREATE TABLE wink_offers (id TEXT PRIMARY KEY, flow TEXT NOT NULL, via TEXT NOT NULL, state TEXT NOT NULL, created INTEGER NOT NULL, expires INTEGER NOT NULL, body TEXT NOT NULL)`,
@@ -315,10 +319,14 @@ export function createWink(inject = {}) {
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : !(process.env.VYRE_WINK_TYPED_CODE === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.typedCode === false));
     const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
+    /** @type {ReturnType<typeof createNetd> | null} */ let netdRef = null;
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
+    // What this device answers when its server calls back down the connection it holds (storage frames, a drive to accept, a scan): set once the storage side below exists.
+    const serveRef = { fn: /** @type {(tool: string, input: any) => Promise<any>} */ (async () => { throw fail("denied", "This connection answers storage calls only."); }) };
     const pairing = createPairing({
+      serve: (/** @type {string} */ tool, /** @type {any} */ input) => serveRef.fn(tool, input),
       ctx, now, identity: owner1, space: spaceId, openCode, ack: ackOffer, owner, typedCode: typedCodeOn, typedDefault: typedCodeDefault,
       codeNow: () => { const o1 = codeOffer ? readOffer(codeOffer) : null; return shown && o1 && o1.state === "offered" ? { code: shown.code, expires: shown.expires, offer: codeOffer } : null; },
       cancelCode: () => { const o1 = codeOffer ? readOffer(codeOffer) : null; if (code && o1 && o1.flow === "W1" && ["offered", "found"].includes(o1.state)) { code.cancel(); writeOffer(codeOffer, "closed", { why: "used" }); } }, confirmAdopt: inject.confirmAdopt,
@@ -332,7 +340,8 @@ export function createWink(inject = {}) {
       directory,
       ports: inject.ports,
       offers: inject.offers || (ctx.kernel && typeof ctx.kernel.offersPort === "function" ? ctx.kernel.offersPort() : undefined),
-      handover: inject.handover,
+      // what a server being paired needs to reach this home: the built-in network's control address and a one-time join key when it has an address another machine can reach (netd.handover), else nothing
+      handover: inject.handover || (async (/** @type {any} */ q) => (netdRef ? netdRef.handover(q) : null)),
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
@@ -560,6 +569,13 @@ export function createWink(inject = {}) {
         const dev = /** @type {any} */ (await ctx.call("relay.device.info", { id: String(input.device) }));
         const info = dev && dev.data;
         if (!info || info.removed || info.kind !== "app") throw fail("not_found", "that computer is not paired with this server");
+        // A relay "app" row is a phone as well as a computer: the Wink device row says which. Only the person's own computer lends its compute.
+        const wd = pairing.devices.get(String(input.device));
+        const me = await owner1();
+        if (wd && !wd.removed) {
+          if (wd.kind !== "computer") throw fail("bad_input", "only a computer can be shared; a phone, a server or a storage device cannot lend its compute");
+          if (wd.identity !== me) throw fail("denied", "that computer belongs to someone else");
+        }
         const g = await grants();
         const space = await spaceId();
         const cpu = Math.min(Math.max(Number(input.cpu) || 0.5, 0.05), 1);
@@ -570,8 +586,16 @@ export function createWink(inject = {}) {
           conditions: { budget: { meter: "node.cpu-hours-day", limit: hours * cpu }, where: { nodes: [String(input.device)] } },
           source: "wink:W4", reason: `shared with limits: cpu ${cpu}, ${hours} hours a day, awake ${input.awake !== false}, on power ${input.on_power === true}`,
         }, await owner0());
+        // The grant records the limits; what the runner reads is the two sides of the compute offer (W-5). Sharing your own computer with your own space switches
+        // the computer's compute offer on and records the member's side, so computeAllowed answers yes for the personal space and the runner may lease it.
+        let allowed = null;
+        if (wd && !wd.removed) {
+          db.prepare("UPDATE wink_devices SET offers = ? WHERE id = ?").run(JSON.stringify({ ...wd.offers, compute: true }), wd.id);
+          await pairing.compute.set(wd.identity, wd.id, "member", true, { member: wd.identity, device_key: wd.nodeKey || undefined });
+          allowed = await pairing.computeAllowed({ device: wd.id, space: wd.identity });
+        }
         ctx.events.emit("wink.shared", { grant: grant.id, device: String(input.device) });
-        return { grant: grant.id };
+        return { grant: grant.id, ...(allowed ? { allowed } : {}) };
       },
     });
 
@@ -669,11 +693,43 @@ export function createWink(inject = {}) {
       },
       nameOf: async (/** @type {any} */ o) => (o.kind === "person" ? "Personal" : boxName()),
     };
-    const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId });
+    // The folders a drive may be mounted under on this computer: the usual places, and any the person lists (config wink.storageRoots).
+    const storageRoots = [...new Set(["/Volumes", "/mnt", "/media", ...(Array.isArray(ctx.config && ctx.config.wink && ctx.config.wink.storageRoots) ? ctx.config.wink.storageRoots.filter((/** @type {any} */ r) => typeof r === "string" && path.isAbsolute(r)) : [])])];
+    // Drives only another device can reach: the home asks each device that holds a connection to it what it sees from where it sits (`wink.storage.bridge.scan`, answered down that connection), and lists them with the rest.
+    const remoteCandidates = async () => {
+      /** @type {any[]} */ const found = []; /** @type {string[]} */ const notes = [];
+      for (const d of holds.devices()) {
+        try {
+          const r = /** @type {any} */ (await holds.linkTo(d).call(SCAN_TOOL, {}));
+          for (const c of (r && Array.isArray(r.candidates) ? r.candidates : []).slice(0, 64)) found.push({ name: c.name, kind: c.kind, host: c.host, share: c.share, path: c.path, size: c.size, seenFrom: String((r && r.from) || d).slice(0, 60), seenFromDevice: d });
+          for (const n of (r && Array.isArray(r.notes) ? r.notes : []).slice(0, 4)) notes.push(String(n).slice(0, 200));
+        } catch (e) { notes.push(`A device could not look for drives (${String(/** @type {any} */ (e).code || "failed")}).`); }
+      }
+      return { found, notes };
+    };
+    const storage = createStorageDevices({ ctx, grants: storageGrants({ ctx, space: () => spaceCache }), vault: storageVault, admin: storageAdmin, space: spaceId,
+      scanners: realScanners({ roots: storageRoots }), remoteCandidates, viaReach: (/** @type {string} */ d) => holds.has(d) });
     registerStorageTools(ctx, storage, "wink.storage");
     // `vyre doctor`'s Wink checks read the identity list through this port (a device on the list, by its entry id, in this home's space) and this device's own entry. The node host and the
     // relay clock stay absent here (they say "unknown", never a guess) until the daemon composes the node host (composeWinkHome).
-    registerNetwork(ctx, { identity: ports.network, ...(inject.network || {}), storage });
+    // The built-in network (core/wink/netd.js): Headscale, the gate and the Wink node, started in the background on a server home. It hands its node host to the
+    // network status above; a box with no programs installed says "no-binary" there and the relay carries everything. `inject.netd === false` is a test seam that leaves it off.
+    const netd = inject.netd === false ? null : createNetd({
+      root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"),
+      space: spaceId,
+      box: async () => { const r = /** @type {any} */ (await ctx.call("relay.route.id", {})); return String((r && r.data && (r.data.box || r.data.route)) || ""); },
+      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; },
+      serve: ctx.peerDoor && ctx.peerDoor() && typeof ctx.peerDoor().serve === "function" ? ctx.peerDoor().serve : null,
+      onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { try { holds.onSession(caller, session); } catch { /* the hold is optional */ } },
+      log: m => ctx.log(m),
+      relayUrl: ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "",
+      enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
+      ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
+      ...(inject.netd || {}),
+    });
+    registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => netd.host() } : {}), ...(inject.network || {}), storage });
+    netdRef = netd;
+    if (netd) netd.start();
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
@@ -681,15 +737,51 @@ export function createWink(inject = {}) {
     // on it: the host's `serveHome({ onSession: wink.holds.onSession })` hands each admitted session to `holds`, and `linkTo(device)` is the channel the pool's
     // backend sends frames down. The device side answers with `wink.bridgeServe` (the `serve` of `host.connect(space, { serve })`).
     const holds = createHolds({ log: m => ctx.log(m) });
+    // handed up by name (core/modules provideOnce): the daemon's peer door gives each admitted device's session to `holds`, so the home can call back down the connection a drive's device keeps
+    try { ctx.provide("winkHolds", holds); } catch { /* no registry to provide to: a test's module host */ }
     const bsecrets = createBridgeSecrets({ vault: storageVault });
-    const br = inject.bridge || null;
+    // The pool engine lives in the kernel (kernel/storage): the handle the kernel gives this module carries the Space's pool, `backendFor` and `createBridge` (kernel/index.js). A test or a composition root
+    // that passes `inject.pool` / `inject.bridge` / `inject.poolBackend` replaces them.
+    const kst = ctx.kernel && ctx.kernel.storage ? ctx.kernel.storage : null;
+    const br = inject.bridge || (kst ? { createBridge: kst.createBridge, backendFor: kst.backendFor, home: () => pairing.homeServerId() } : null);
     const noEngine = () => fail("unavailable", "This server has no storage engine to share a drive with.");
     const endpoint = createBridgeEndpoint({ createBridge: br ? br.createBridge : () => { throw noEngine(); }, secrets: bsecrets,
-      live: offer => storage.poolOffers().some((/** @type {any} */ o) => o.id === offer && o.state !== "expired" && o.state !== "removed"), log: m => ctx.log(m) });
-    const drive = acceptDrive({ endpoint, secrets: bsecrets, home: () => (br && br.home ? br.home() : null), ...(br && br.roots ? { roots: br.roots } : {}) });
-    const serveBridge = bridgeServe({ endpoint, drive, home: () => (br && br.home ? br.home() : null) });
+      // On a computer that serves a drive for its server, the offer's row is at the server, not here: the secret the server sealed to this computer and the one caller it answers are what bind a frame to the offer.
+      live: offer => ctx.config.machine === "device" || storage.poolOffers().some((/** @type {any} */ o) => o.id === offer && o.state !== "expired" && o.state !== "removed"), log: m => ctx.log(m) });
+    // The drives this computer serves are kept (wink_meta `served:<offer>`: the folder, the room and the one caller), so a restart serves them again; a record whose folder or secret is gone is dropped.
+    const servedKeep = {
+      put: (/** @type {{ offer: string, dir: string, capacity: number, caller: string }} */ r) => { db.prepare("INSERT INTO wink_meta (k, v) VALUES (?, ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").run(`served:${r.offer}`, JSON.stringify(r)); ensureHold(); },
+      all: () => /** @type {any[]} */ (db.prepare("SELECT v FROM wink_meta WHERE k LIKE 'served:%'").all()).map(x => { try { return JSON.parse(x.v); } catch { return null; } }).filter(Boolean),
+      del: (/** @type {string} */ offer) => { db.prepare("DELETE FROM wink_meta WHERE k = ?").run(`served:${offer}`); },
+    };
+    const homeId = () => (br && br.home ? br.home() : null);
+    const drive = acceptDrive({ endpoint, secrets: bsecrets, home: homeId, roots: br && br.roots ? br.roots : storageRoots, onServed: r => servedKeep.put(r) });
+    const serveBridge = bridgeServe({ endpoint, drive, home: homeId, scan: async () => { const r = await storage.discovery.discover(); return { from: String(ctx.config.name || "a computer").slice(0, 60), candidates: r.candidates.map((/** @type {any} */ c) => ({ name: c.name, kind: c.kind, host: c.host, share: c.share, path: c.path, size: c.size })), notes: r.notes }; } });
+    // The home's one message that is not storage: a grant for this computer ended, so the runner stops the Space's sessions here and deletes the local work and keys now (core/runner, runner.revoke).
+    serveRef.fn = async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      if (tool !== "wink.lent.revoked") return serveBridge(tool, input);
+      const sp = input && typeof input.space === "string" ? input.space : "";
+      if (!/^spc_[a-z0-9]{1,40}$/.test(sp)) throw fail("bad_input", "name the space");
+      ctx.log(`wink: the home says this computer's grant for ${sp} ended; its sessions stop and the local work is deleted`);
+      const r = /** @type {any} */ (await ctx.call("runner.revoke", { space: sp }));
+      return { ok: true, revoked: Boolean(r && r.data && r.data.revoked) };
+    };
+    // A computer that belongs to a server keeps one connection to it (core/wink/storage/hold.js `holdDrive`): the server asks it down that connection what drives it can see, and sends the frames of a drive it serves.
+    /** @type {{ stop(): void } | null} */ let held = null;
+    function ensureHold() {
+      if (held || ctx.config.machine !== "device") return;
+      const sid = pairing.homeServerId();
+      if (!sid) return;
+      held = holdDrive({ connect: () => pairing.serverLinks().hold(sid), serve: serveBridge, space: sid, log: m => ctx.log(m) });
+    }
+    const dropHold = () => { if (held) { try { held.stop(); } catch { /* gone */ } held = null; } };
+    const offHold = [ctx.events.on("wink.server-paired", ensureHold), ctx.events.on("wink.server-release", (/** @type {any} */ e) => { if (e && e.payload && e.payload.state === "released") dropHold(); })];
+    if (ctx.config.machine === "device") {
+      void resumeServing({ endpoint, kept: servedKeep.all(), roots: br && br.roots ? br.roots : storageRoots, forget: servedKeep.del }).catch(() => {});
+      ensureHold();
+    }
     const bridgeMake = br ? bridgeMakeBackend({ backendFor: br.backendFor, secrets: bsecrets, linkTo: d => holds.linkTo(d) }) : null;
-    const makeBackend = inject.poolBackend || bridgeMake ? async (/** @type {any} */ c, /** @type {any} */ offer) => (offer.seenFromDevice && bridgeMake ? bridgeMake(c, offer) : inject.poolBackend ? inject.poolBackend(c, offer) : null) : null;
+    const makeBackend = inject.poolBackend || bridgeMake ? async (/** @type {any} */ c, /** @type {any} */ offer) => (offer.seenFromDevice && bridgeMake ? bridgeMake(c, offer) : inject.poolBackend ? inject.poolBackend(c, offer) : kst ? kst.backendFor(c, offer) : null) : null;
     const frameOf = (/** @type {any} */ meta) => String((meta && meta.caller) || "");
     ctx.tool(BRIDGE_TOOL, {
       description: "A storage frame for a drive this device serves, from the space's home (a put, get, delete or ping of one encrypted chunk, signed with the drive's secret). Answers { status, body? }. Only the home this device is paired to may ask.",
@@ -715,10 +807,20 @@ export function createWink(inject = {}) {
         return { ok: true };
       },
     });
-    const poolLink = inject.pool && makeBackend ? attachPool({ storage, pool: inject.pool, by: owner0, makeBackend, log: m => ctx.log(m) }) : null;
+    const pool0 = inject.pool || (kst ? kst.pool : null);
+    ctx.log(pool0 && makeBackend ? "wink storage: paired drives join this Space's pool" : "wink storage: no pool engine here, so a paired drive is recorded but nothing is placed on it");
+    const poolLink = pool0 && makeBackend ? attachPool({ storage, pool: pool0, by: owner0, makeBackend, log: m => ctx.log(m) }) : null;
     const poolSyncSoon = () => poolSync();
     const poolSync = () => { if (poolLink) poolLink.sync().catch(err => ctx.log(`wink storage: pool sync failed: ${/** @type {Error} */ (err).message}`)); };
     const offStorage = [ctx.events.on("storage.paired", poolSync), ctx.events.on("storage.removed", poolSync)];
+    // A drive picked from what another device saw is handed to that device as soon as it is paired: the device is asked to open, the home seals the drive's secret to it, and the device starts serving (core/wink/storage/bridge.js
+    // pairFromHome). Until that is done the offer is recorded and the pool skips it; if it fails the person is told once and the drive stays listed as not connected.
+    const offBridge = ctx.events.on("storage.paired", async (/** @type {any} */ e) => {
+      const o = /** @type {any} */ (storage.poolOffers()).find((/** @type {any} */ x) => e && e.payload && x.id === e.payload.id);
+      if (!o || !o.seenFromDevice || !br) return;
+      try { await pairFromHome({ secrets: bsecrets, linkTo: d => holds.linkTo(d) }, { offer: o.id, device: o.seenFromDevice, kind: o.kind, location: o.location, capacity: o.storage.capacity }); poolSyncSoon(); }
+      catch (err) { ctx.log(`wink storage: ${o.id} could not be handed to the device that has it (${/** @type {any} */ (err).code || "failed"}: ${String(/** @type {any} */ (err).message).slice(0, 120)})`); }
+    });
     const poolTimer = poolLink ? setInterval(poolSync, 60_000) : null;
     poolTimer?.unref();
 
@@ -737,9 +839,13 @@ export function createWink(inject = {}) {
         try { stopStorage(); } catch {}
         if (poolTimer) clearInterval(poolTimer);
         for (const off of offStorage) { try { off(); } catch {} }
+        for (const off of offHold) { try { off(); } catch {} }
+        try { offBridge(); } catch {}
+        dropHold();
         for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
+        try { if (netd) await netd.stop(); } catch {}
       },
     };
   },
