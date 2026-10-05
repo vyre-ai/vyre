@@ -41,13 +41,13 @@ test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Pro
     const link = t(r).fields.find((f) => f.name === "contact");
     assert.deepEqual([link.kind, link.to, link.required], ["link", "contact", true]);
   }
-  for (const n of ["lead", "appointment", "client", "project"]) {
+  for (const n of ["lead", "appointment", "client"]) {
     const f = t(n).fields.find((x) => x.name === "practice_area");
     assert.equal(f.kind, "choice", `${n}.practice_area is a choice`);
     assert.ok(f.options.includes("Personal Injury") && f.options.includes("Estate Planning"));
   }
   assert.equal(t("project").kind, "project");
-  assert.deepEqual(t("project").stage_sets.map((s) => s.name), ["personal_injury", "estate_planning"]);
+  // the Project is the core Project (name, client as the Contact, owner, due, stage): its stages by practice area belong to the Law firm Kit, not the base
   assert.equal(t("project").fields.find((f) => f.name === "accident_date").required_if, 'practice_area == "Personal Injury"');
   assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["lead", ["board"]], ["appointment", ["calendar"]], ["client", ["list"]], ["project", ["board"]]]);
 });
