@@ -1,6 +1,6 @@
 // @ts-check
 // The one app (ADR 0027) at /app/: the web export of apps/app (`expo export -p web`, into
-// apps/app/dist, built by CI and packed into vyre.tgz, never committed), served beside the Deck.
+// apps/app/dist, built by CI and packed into vyre.tgz, never committed), served at / (or /app/).
 // With config app.root it is served at / instead, from the same folder built with the root base
 // (`npm run export:web:root`; precache.json names the base, appBase()). It is a single-page app, so any
 // route that is not a file gets index.html. Two files are made here rather than read from the
@@ -17,7 +17,7 @@ import { isPackaged, PKG_ROOT } from "../../kernel/devbuild.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "..", "..");
 export const APP_DIST = path.join(REPO, "apps", "app", "dist");
-const DECK_MANIFEST = path.join(REPO, "web", "manifest.webmanifest");
+const WEB_MANIFEST = path.join(REPO, "web", "manifest.webmanifest");
 const WORKER = path.join(HERE, "app-sw.js");
 const PRECACHE_MAX = 2000;
 // The signed list of the build's files (lib/app-build.js): a packaged daemon serves a file of /app/ only when it is on the release's signed list and its bytes match (MW-5).
@@ -26,7 +26,7 @@ const GATE = appGate({ root: PKG_ROOT, packaged: isPackaged() });
 export const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
   ".map": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".ttf": "font/ttf", ".woff2": "font/woff2",
   ".webmanifest": "application/manifest+json" };
-// The same policy as the Deck's files (core/daemon/index.js serveDeck).
+// The same policy as web/'s files (core/daemon/index.js serveWeb).
 export const CSP = "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'";
 const IMMUTABLE = "public, max-age=31536000, immutable";
 
@@ -71,17 +71,17 @@ export function appWorker({ dir = APP_DIST, template, build, base = appBase(dir)
   return id ? src.replace('const BUILD = "dev";', () => `const BUILD = ${JSON.stringify(id)};`) : swWithBuild(src, build);
 }
 
-/** The export's own manifest, else one for the base in the Deck's colours and icons. */
-export function appManifest({ dir = APP_DIST, deckManifest = DECK_MANIFEST, base = appBase(dir) } = {}) {
+/** The export's own manifest, else one for the base in the web pages' colours and icons. */
+export function appManifest({ dir = APP_DIST, webManifest = WEB_MANIFEST, base = appBase(dir) } = {}) {
   const own = path.join(dir, "manifest.webmanifest");
   if (isFile(own)) return fs.readFileSync(own, "utf8");
   /** @type {any} */
-  let deck = {};
-  try { deck = JSON.parse(fs.readFileSync(deckManifest, "utf8")); } catch {}
+  let web = {};
+  try { web = JSON.parse(fs.readFileSync(webManifest, "utf8")); } catch {}
   return JSON.stringify({
     id: base + "/", name: "Vyre", short_name: "Vyre", start_url: base + "/", scope: base + "/", display: "standalone",
-    background_color: deck.background_color || "#0E0D0C", theme_color: deck.theme_color || "#0E0D0C",
-    icons: (deck.icons || []).map((/** @type {any} */ i) => ({ ...i, src: new URL(i.src, "http://vyred/").pathname })),
+    background_color: web.background_color || "#0E0D0C", theme_color: web.theme_color || "#0E0D0C",
+    icons: (web.icons || []).map((/** @type {any} */ i) => ({ ...i, src: new URL(i.src, "http://vyred/").pathname })),
   }, null, 2);
 }
 
@@ -91,9 +91,9 @@ export function appManifest({ dir = APP_DIST, deckManifest = DECK_MANIFEST, base
  * the export is ever served, whatever the path says.
  * @param {import("node:http").ServerResponse} res
  * @param {string} pathname
- * @param {{ csp?: string, dir?: string, deckManifest?: string, base?: string, build?: import("./build.js").Build, gate?: { check(rel: string, bytes: Buffer): null | { code: string, message: string } } }} [opts]
+ * @param {{ csp?: string, dir?: string, webManifest?: string, base?: string, build?: import("./build.js").Build, gate?: { check(rel: string, bytes: Buffer): null | { code: string, message: string } } }} [opts]
  */
-export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, base: b, build, gate = GATE, csp = CSP } = {}) {
+export function serveApp(res, pathname, { dir: d = APP_DIST, webManifest, base: b, build, gate = GATE, csp = CSP } = {}) {
   const dir = path.resolve(d);
   const base = b ?? appBase(dir);
   if (base && pathname === base) { res.writeHead(301, { location: base + "/", "cache-control": "no-cache" }); return res.end(); }
@@ -111,7 +111,7 @@ export function serveApp(res, pathname, { dir: d = APP_DIST, deckManifest, base:
     return res.end(sw);
   }
   if (rel === "manifest.webmanifest") {
-    const mf = appManifest({ dir, deckManifest, base });
+    const mf = appManifest({ dir, webManifest, base });
     const refusedMf = gate.check("manifest.webmanifest", Buffer.from(mf));
     if (refusedMf) return send(res, 503, { error: refusedMf });
     res.writeHead(200, head(TYPES[".webmanifest"]));

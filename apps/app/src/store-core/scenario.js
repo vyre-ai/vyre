@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/scenario: "a client pays" (team/0.3/DESIGN-tasks.md, the scenario that has to feel effortless), written against the Store interface alone, so it runs on
+// store-core/scenario (moved from the old Deck's ui/scenario): "a client pays" (team/0.3/DESIGN-tasks.md, the scenario that has to feel effortless), written against the Store interface alone, so it runs on
 // the mock store now and on the real gateway later. A payment arrives; the project is made from the firm's Kit with its team; Research reads about the client and
 // writes what it found onto the record, with sources; Intake drafts the Welcome email from the Welcome template using Research's notes and leaves it for one tap.
 // The person's tap (Send with Face ID) is not part of it: it is store.decide, and the stage then moves on by itself.

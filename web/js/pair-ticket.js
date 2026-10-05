@@ -9,7 +9,7 @@
 // WITHOUT pairing - the person sees who they'd be pairing with and can say no before anything
 // happens. pairOffer() is the handshake itself, run only after they tap Pair. Hold the resolved
 // `offer` in memory only (it carries the derived pairing secret): never in storage, a URL, or a
-// log, and just let it be garbage-collected on "Not this one" - deck/js/pair-scan.js does this by
+// log, and just let it be garbage-collected on "Not this one" - the pair-scan screen does this by
 // construction (the offer lives in a local variable, never assigned anywhere more durable).
 
 import { webCrypto } from "../../relay/client/webcrypto.js";

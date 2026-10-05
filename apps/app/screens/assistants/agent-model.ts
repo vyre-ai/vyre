@@ -1,20 +1,17 @@
 import { timeOf } from "../../src/time/show.js";
 // The pure half of an assistant's page and the New assistant form (the Deck's views/agents.js and js/agent-create.js, ported): the lines the screens show and the input the box takes.
 
+import { modelChoices } from "../../src/chat/core/composer-state.js";
+
 export type AgentFull = { name: string; kind?: string; role?: string; projects?: unknown; instructions?: string | null; model?: string | null; effort?: string | null; computer?: boolean; status?: string; thread?: string | null };
 export type Watcher = { name: string; source?: string; trigger?: string; cadence?: string; schedule?: string; agent?: string; paused?: boolean; files?: unknown; project?: string };
 export type Computer = { agent?: string; state?: string; screen?: number | null; screens?: number; size?: { w?: number; h?: number }; viewers?: number; takeover?: string | null; paused?: boolean; cpus?: number; memory_gb?: number; label?: string | null };
 export type UsageFull = { agent: string | null; auth?: string; turns?: number; threads?: number; spent_usd?: number; budget_usd?: number | null; left_usd?: number | null; duration_ms?: number; last_at?: number | null; tokens?: Record<string, number>; limit?: { status?: string; kind?: string; utilization?: number; resets_at?: number } | null };
 
-export const MODELS: { id: string; name: string }[] = [
-  { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
-  { id: "claude-sonnet-5", name: "Claude Sonnet 5" },
-  { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5" },
-];
 export const EFFORT: [string, string][] = [["low", "Low"], ["medium", "Medium"], ["high", "High"]];
-export const DEFAULT_MODEL = MODELS[1].id;
-/** The model list with the agent's own model added when it is not one of ours. */
-export const modelsFor = (current?: string | null) => (!current || MODELS.some((m) => m.id === current) ? MODELS : [...MODELS, { id: current, name: current }]);
+/** The model picker's rows: the box's own list (sessions.models.get aliases), plus the agent's model when it is not on it. No list lives here (test/cohesion-drift.test.js). */
+export const modelsFor = (current?: string | null, aliases?: unknown): { id: string; name: string }[] =>
+  modelChoices({ current, aliases }).map((m) => ({ id: m.id, name: m.label }));
 
 const SOURCES: Record<string, string> = { gmail: "Gmail", slack: "Slack", schedule: "Schedule", github: "GitHub", fathom: "Fathom", files: "Files", web: "Web" };
 export const sourceName = (s?: string) => (s && SOURCES[s]) || String(s || "Watcher").replace(/^./, (c) => c.toUpperCase());

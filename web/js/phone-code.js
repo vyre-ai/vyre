@@ -11,7 +11,7 @@
 // -> {ticket, expiresAt, connected}, `ticket` a base64url encoding of TICKET_BYTES=8 random
 // bytes (core/relay/wire.js on work/tailnet). Per the lead (28 Sep), while Wink pairing is on
 // screen the ring encodes those RAW ticket bytes directly, not a hash of them: the phone decodes
-// the same 8 bytes and derives the pairing from them (pwa's deck/vyrecode/payload.js). This is
+// the same 8 bytes and derives the pairing from them (lib/wink-code/payload.js). This is
 // why `ticketLevels` no longer calls `fingerprint8` for a ticket — that one-way hash belongs only
 // on a permanent identity avatar outside pairing (not built here), never on the pairing ring
 // itself, since a hash can't be reversed back into the literal ticket the phone needs to redeem.

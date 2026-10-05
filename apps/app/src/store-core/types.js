@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/types: the sample type definitions, as the kernel's own TypeDefinition values (kernel/contracts/fields.d.ts): a name, a label, an icon, fields of the
+// store-core/types (moved from the old Deck's ui/types): the sample type definitions, as the kernel's own TypeDefinition values (kernel/contracts/fields.d.ts): a name, a label, an icon, fields of the
 // kernel's FieldKind set, and stages that carry task templates. Every list, board, calendar, dashboard and record page in the Deck is drawn from one of these plus
 // its ViewDefinition (view-defs.js), and nothing else (ui/views.js): a new type is a new entry here, never a new screen. The mock store serves them from types().
 // They follow the approved prototype (team/0.2.2/prototype-src/p3a.js) and ui-primitives.md section 5. Sample names come from the made-up world.

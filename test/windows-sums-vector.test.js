@@ -30,8 +30,12 @@ test("windows updater's shared vector is launch's, verified by verifySums too", 
 });
 
 test("windows pairing page: every relay-client name it imports exists there", async () => {
-  for (const file of ["pair.js", "seed.js"]) {
-    const src = fs.readFileSync(new URL(`../local/capsule/native-win/app/ui/${file}`, import.meta.url), "utf8");
+  // Every page script in the folder (pair.js and seed.js became first-run-pair.js, typed-pair.js, link.js and the rest).
+  const dir = new URL("../local/capsule/native-win/app/ui/", import.meta.url);
+  const pages = fs.readdirSync(dir).filter((f) => f.endsWith(".js"));
+  assert.ok(pages.length > 0, "the pairing page scripts exist");
+  for (const file of pages) {
+    const src = fs.readFileSync(new URL(file, dir), "utf8");
     for (const m of src.matchAll(/import \{([^}]+)\} from "\.\/(relay|vendor)\/([\w-]+)\.js"/g)) {
       const at = m[2] === "relay" ? `../relay/client/${m[3]}.js` : `../web/vendor/${m[3]}.js`;
       const mod = await import(new URL(at, import.meta.url).href);

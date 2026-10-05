@@ -400,7 +400,7 @@ const SCREENS = {
     col.append(body, st);
     let choice = state.live;
     // Server-decided (the lead, 28 Sep): can.relayJoin, false on a Mac until vyre-core, a
-    // missing field treated the same as false (see deck/js/join-caps.js). Not shipped by
+    // missing field treated the same as false (see web/js/join-caps.js). Not shipped by
     // anywhere yet, so this reads false today on every machine — the option stays hidden until
     // it lands, not a guess at what platform this is.
     const relay = canRelayJoin(state.status);
@@ -990,7 +990,7 @@ const SCREENS = {
   // spec not sent yet, so those stay a "coming soon" note; Settings > Connections works today
   // outside onboarding. GitHub (ADR 0041, github.connect/.accounts/.connect.cancel) is real and
   // built here: a card with its own state (connect, waiting on the device code, connected),
-  // matching Settings' own GitHub card (deck/views/connections.js) but simpler, since onboarding
+  // matching Settings' own GitHub card (the app's Connections) but simpler, since onboarding
   // has no vault-item picker to skip. Optional: Continue or Skip both move on regardless of
   // whether an account is connected.
   accounts(col, s) {
@@ -1179,7 +1179,7 @@ const SCREENS = {
     // Tailscale itself stays, but only as the relay's own auto-managed transport and an optional
     // later "Faster connection" upgrade (Settings > Devices, not built here yet) — the phone
     // path here never asks the person to touch Tailscale at all, pivot or not.
-    // Same gate as "Pair with a code" (deck/js/join-caps.js) — hidden on a Mac until vyre-core.
+    // Same gate as "Pair with a code" (web/js/join-caps.js) — hidden on a Mac until vyre-core.
     // relay.pair.ticket is built (tailnet, work/tailnet 2990a810, sent to their reviewer, "safe
     // to build against"): mint {} -> {ticket, expiresAt, connected}, HUMAN_ONLY (Touch ID at the
     // mint, matching relay.pair.start), single-use, refuses on darwin same as relay.join. Not
@@ -1190,7 +1190,7 @@ const SCREENS = {
     // and never shows a "Pair <phone>?" screen of its own (Touch ID already happened, at the
     // mint). The card itself (minting only on an explicit tap, blanking on hidden/blur/expiry/
     // redemption, the raw ticket never touching the DOM as text or persisting anywhere) is
-    // deck/js/wink-card.js, shared with Settings > Devices — see reviewer's pre-review points
+    // web/js/wink-card.js, shared with Settings > Devices — see reviewer's pre-review points
     // there.
     const relay = canRelayJoin(state.status);
     const phoneCodeCard = relay.allowed ? buildWinkCard({

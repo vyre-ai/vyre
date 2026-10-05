@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/mock-ids: the ids and urns of the made-up world, in the kernel's formats (kernel/contracts/common.d.ts). Pure, deterministic, no clock and no random,
+// store-core/mock-ids (moved from the old Deck's ui/mock-ids): the ids and urns of the made-up world, in the kernel's formats (kernel/contracts/common.d.ts). Pure, deterministic, no clock and no random,
 // so a test and a screenshot get the same id every time. Nothing here is the kernel's: when the real gateway mints ids, this file is only for the mock.
 //
 //   Uuid     "a time-prefixed UUID (v7 layout, v4 marker), lowercase canonical text": 48 bits of time, then the 4 marker, then the variant, then the rest.

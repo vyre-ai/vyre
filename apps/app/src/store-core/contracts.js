@@ -1,10 +1,10 @@
 // @ts-check
-// deck/ui/contracts: the Deck's view of the kernel's frozen contracts (kernel/contracts/*.d.ts), as JSDoc aliases and the one Store interface the generated
+// store-core/contracts (moved from the old Deck's ui/contracts): the Deck's view of the kernel's frozen contracts (kernel/contracts/*.d.ts), as JSDoc aliases and the one Store interface the generated
 // screens read. No code runs here. The kernel's types are the types: a record is a GatewayRecord, a task is a kernel Task whose doer, checker and assigned_by are
 // Actors, a field's value is a FieldValue, an event is an EventEnvelope, a sealed value is a SealedRefValue and never plaintext. This file adds only what the
 // kernel does not have, and says so ("UI-side").
 //
-// HOW A GATEWAY ADAPTER MAPS (deck/ui/gateway-adapter.js is the one file that does it; ui/store.js picks it or the mock in one place):
+// HOW A GATEWAY ADAPTER MAPS (store-core/gateway-adapter.js is the one file that does it; ui/store.js picks it or the mock in one place):
 //
 //   Store call                      kernel call(s)
 //   ------------------------------  ------------------------------------------------------------------------------------------------------------------------

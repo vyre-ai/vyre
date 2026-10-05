@@ -136,7 +136,7 @@ test("presence session: a relaunched app finds a live session in localStorage, a
 
 test("presence \"asked\": relay.join goes without proof first, and only passkeys once your server actually asks",
   async () => {
-    // deck/onboard/onboard.js's live() screen calls relay.join this way (presence:"asked"), so a
+    // web/onboard/onboard.js's live() screen calls relay.join this way (presence:"asked"), so a
     // box from before ADR 0004 (no presence_required) pairs in one round trip, and a box that
     // does require it gets exactly the retry api.js promises — never a passkey up front. This is
     // the sequence reviewer-2 flagged as uncovered: onboard-page.test.js's "pair with a code"

@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/mock-store: an in-memory Store (contracts.js) for the Deck's generated screens, the lab and the tests, until the real gateway adapter lands
+// store-core/mock-store (moved from the old Deck's ui/mock-store): an in-memory Store (contracts.js) for the Deck's generated screens, the lab and the tests, until the real gateway adapter lands
 // (ui/store.js is the one switch). It speaks the kernel's shapes and enforces the kernel's rules, so what the screens read now is what the gateway will give them:
 //
 //   records   GatewayRecord { type, id, urn, version, data, created_at, updated_at, labels }; the id is a UUID, the urn is vyre://<space>/<type>/<id>; update() takes the

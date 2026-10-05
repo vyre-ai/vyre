@@ -1,5 +1,5 @@
 // @ts-check
-// The five sample types (deck/ui/types.js) and their view definitions (deck/ui/view-defs.js) are data a view can draw: the kernel's TypeDefinition, with the stages in
+// The five sample types (store-core/types.js) and their view definitions (store-core/view-defs.js) are data a view can draw: the kernel's TypeDefinition, with the stages in
 // the stage field's options and the Kit's task templates under each stage name. Replaces the types check the old DOM views test held.
 import "../../../../scripts/mac-test-guard.mjs";
 import test from "node:test";

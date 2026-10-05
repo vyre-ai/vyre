@@ -73,6 +73,23 @@ export const renderPath = (id: string, v: number) => `/v1/artifacts/content?id=$
 export const mediaPath = (id: string, download = false) => `/v1/artifacts/content?id=${encodeURIComponent(id)}${download ? "&download=1" : ""}`;
 export const MEDIA_KINDS = new Set(["image", "video", "audio"]);
 
+/** The frame's sandbox. Scripts only: no allow-same-origin (opaque origin, no session), no allow-top-navigation, no allow-popups, no allow-forms, no allow-modals. */
+export const FRAME_SANDBOX = "allow-scripts";
+export const BLANK_FRAME_TEXT = "This page tried to open another site";
+
+/**
+ * What the frame shows. An interactive page may send itself to another address, and no header
+ * stops that (the CSP `navigate-to` directive was dropped from browsers), so the wrapper counts
+ * the iframe's load events: the first is the artifact, any later one is it leaving. The frame is
+ * then removed and replaced by a plain line; the other site is never shown. Enforced by browsers:
+ * the sandbox flags above and the CSP on the render route (Chromium, Firefox, Safari); counting
+ * loads works wherever an iframe fires `load` on navigation, including to another origin, whose
+ * address the page cannot read.
+ */
+export type FrameState = { loads: number; left: boolean };
+export const frameStart = (): FrameState => ({ loads: 0, left: false });
+export const frameLoaded = (s: FrameState): FrameState => (s.left ? s : s.loads >= 1 ? { loads: s.loads + 1, left: true } : { loads: 1, left: false });
+
 export type FileHit = { name: string; path: string; kind: string; source: "mac" | "box"; size: number | null; mtime: number | null; repo: string };
 const fileOf = (f: any): FileHit | null => (f && typeof f.path === "string" && f.path ? { name: str(f.name) || f.path.split("/").pop() || f.path, path: f.path, kind: str(f.kind) || "file", source: f.source === "mac" ? "mac" : "box", size: typeof f.size === "number" ? f.size : null, mtime: typeof f.mtime === "number" ? f.mtime : null, repo: str(f.repo) } : null);
 /** files.search's answer: hits, and a plain note for each machine that did not answer. */

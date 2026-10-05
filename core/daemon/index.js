@@ -954,7 +954,7 @@ export function isLoginServer(server) {
  * with nothing. A tmux pane counts when every client attached to its session runs in such a login
  * with no claude above it (tmux attached from a login shell); the key is then those logins. The
  * kernel says which process connected and which terminal it runs in, so no label or file can fake
- * it. This is what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the
+ * it. This is what lets one proof serve the CLI for 30 minutes, as a session serves the web app (the
  * no-nag rule; the CLI is a first-class surface).
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
@@ -1019,7 +1019,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   // A guest from another tailnet (ADR 0014 part 8) reaches only its own tools: the ones the owner
   // listed or the policy granted it, and of those only GUEST_SAFE (core/names/guests.js). Every
-  // other tool, and every other path but the Deck's files, is "no such" thing, not "denied", so
+  // other tool, and every other path but the app's and web/'s files, is "no such" thing, not "denied", so
   // a guest learns nothing about what else is here.
   if (caller.startsWith("tailnet-guest:")) {
     const mine = new Set(allowedTools(cfg.network, policy.peer));
@@ -1343,7 +1343,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
     if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
-    // A new person session for the Deck goes in the cookie, never in the body a script could read.
+    // A new person session for the web app goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
       delete result.data.token;
@@ -1360,7 +1360,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey
-  // returns WebAuthn options for the Deck (docs/adr/0004-presence.md).
+  // returns WebAuthn options for the web app (docs/adr/0004-presence.md).
   if (req.method === "POST" && url.pathname === "/v1/presence/challenge") {
     const b = await body(req);
     const result = await registry.presenceChallenge(String(b.tool || ""), b.input || {}, String(b.method || ""), { tty: b.tty, ...(policy.peer ? { peer: policy.peer } : {}) });
@@ -1393,9 +1393,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return own(req, res, { caller, url });
   }
   // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
-  // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
+  // the web app and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
   // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when
-  // nothing it paints moved. Without the appearance module, the Deck's colours from config.
+  // nothing it paints moved. Without the appearance module, the colours from config.
   if (req.method === "GET" && (url.pathname === "/theme.css" || url.pathname === "/v1/theme")) {
     const css = url.pathname === "/theme.css";
     const q = url.searchParams.get("device");
@@ -1413,27 +1413,27 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     res.writeHead(200, { ...head, "content-type": css ? "text/css" : "application/json" });
     return res.end(css ? String(r.data.css || "") : JSON.stringify({ data: r.data }));
   }
-  // The browser half of the resilience client (ADR 0029), which the Deck imports as
+  // The browser half of the resilience client (ADR 0029), which the app and web/ pages import as
   // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,
-  // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
+  // so they and their tests load the one copy. Only these five files; nothing else in core/.
   const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
   if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"), cfg);
-  // tailnet's relay client (ADR 0045/0037 "Wink"), which the Deck imports as
-  // ../../relay/client/<file>.js (web/js/pair-ticket.js, deck/js/pair-scan.js): that resolves
-  // here in a browser and to the repo file in Node, so the Deck and its tests load the one copy.
+  // tailnet's relay client (ADR 0045/0037 "Wink"), which web/ pages and the app import as
+  // ../../relay/client/<file>.js (web/js/pair-ticket.js): that resolves
+  // here in a browser and to the repo file in Node, so the pages and their tests load the one copy.
   // Only these nine files - client.js's own browser-safe closure (checked by hand: channel.js,
-  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which deck/js/add-pc-card.js
-  // (Settings, Add a Windows PC) imports - nothing else in relay/client/
-  // (nodecrypto.js is Node-only and never imported from the Deck). A real browser hitting
+  // bytes.js, response.js, sse.js, webcrypto.js, noise.js) plus seedwords.js and words.js, which the Add a Windows PC card
+  // imports - nothing else in relay/client/
+  // (nodecrypto.js is Node-only and never imported from a browser). A real browser hitting
   // /pair/scan without this fell straight through to the catch-all shell (team-lead,
   // reviewer of stage, 2026-09-28) - headless tests missed it because they never loaded the page
   // through a real vyred the way a phone does.
   const resRelay = req.method === "GET" && /^\/relay\/client\/(client|channel|bytes|response|sse|webcrypto|noise|seedwords|words)\.js$/.exec(url.pathname);
   if (resRelay) return serveFile(res, path.join(REPO, "relay", "client", resRelay[1] + ".js"), cfg);
-  // The kernel's contracts, which the Deck imports as ../../kernel/contracts/index.js (deck/ui/tasks.js, deck/ui/fields.js): constant tables only, data and no logic, so the
-  // Deck and the kernel load the one copy and nothing drifts. This file and nothing else under kernel/.
+  // The kernel's contracts, which the app imports as ../../kernel/contracts/index.js: constant tables only, data and no logic, so the
+  // app and the kernel load the one copy and nothing drifts. This file and nothing else under kernel/.
   if (req.method === "GET" && url.pathname === "/kernel/contracts/index.js") return serveFile(res, path.join(REPO, "kernel", "contracts", "index.js"), cfg);
-  // The pure libs the Deck shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
+  // The pure libs the browser shares with Node, so both load the one copy: lib/avatar-seed (ADR 0043
   // section 6, a project tile's bytes) and lib/caps-flags (PLAN.md C14b, provider capabilities).
   // Exact paths only, nothing else in lib/.
   if (req.method === "GET" && WEB_LIBS.has(url.pathname)) return serveFile(res, path.join(REPO, ...url.pathname.slice(1).split("/")), cfg);
@@ -1487,7 +1487,7 @@ function stream(req, res, url, events, streams) {
   // Flush now, before any backlog write: an empty backlog would otherwise leave the client with
   // no bytes at all until the first live event or the 15s heartbeat, so it has no way to tell
   // "connected, listening" apart from "still connecting". A caller that emits right after opening
-  // the stream (a Deck view, or a test) can then race the listener registration below and lose
+  // the stream (a screen, or a test) can then race the listener registration below and lose
   // that event to a window the client had no signal it needed to wait out.
   res.flushHeaders();
   // And one byte of body: iOS URLSession reports nothing (it sits on "connecting", up to the 15s
@@ -1535,8 +1535,8 @@ const WEB_LIBS = new Set(["/lib/wink-code/geometry.js", "/lib/wink-code/payload.
 
 /**
  * The pre-app pages (web/): the owner wizard, the device and passkey pages and the person's sign-in, with the code, styles, fonts and
- * vendor files they load. Plain files, the same address in both modes. True when this answered; false when web/ holds no such file, so the
- * Deck (or, at the root, the app) answers as before. A folder with an index.html serves it (the build stamped in), a folder without one is not a file.
+ * vendor files they load. Plain files, the same address in both modes. True when this answered; false when web/ holds no such file and the app (or its 404)
+ * answers instead. A folder with an index.html serves it (the build stamped in), a folder without one is not a file.
  * @param {any} res @param {string} pathname @param {any} cfg
  */
 export function serveWeb(res, pathname, cfg) {

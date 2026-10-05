@@ -1,5 +1,5 @@
 // @ts-check
-// deck/ui/kernel-view: small pure readers over the kernel's shapes (kernel/contracts), shared by the screens, so no screen picks a record, a task or an event
+// store-core/kernel-view (moved from the old Deck's ui/kernel-view): small pure readers over the kernel's shapes (kernel/contracts), shared by the screens, so no screen picks a record, a task or an event
 // apart in its own way. No DOM, no store, no clock.
 import { parseUrn } from "./mock-ids.js";
 
