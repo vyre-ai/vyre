@@ -429,7 +429,8 @@ export class TwentyStore {
       // links to a type are relations (a list link a junction): made once every type of this define exists, so a link may name a type defined beside it
       for (const f of p.fields) if (f.type === "RELATION" || f.type === "JUNCTION") pending.push({ p, f });
       // The Records' own copy of how the type is shown (stores/twenty/views.js): the field order of its table, and its stored views (new, changed or gone). Run after the relations exist: a view may name a link.
-      shows.push(async () => {
+      // a type that is exactly as it was needs none of it (a Space restarting finds every type unchanged: one metadata read in all)
+      if (!known || canonical(known.def) !== canonical(def)) shows.push(async () => {
         const all = await this.#t(() => this.client.gql("metadata", `query Objs { objects(paging: { first: 200 }) { edges { node { id nameSingular namePlural labelSingular icon ${audit ? "isAuditLogged " : ""}fields(paging: { first: 200 }) { edges { node { id name type options isUnique icon description } } } } } } }`));
         const o = all.objects.edges.map((/** @type {any} */ e) => e.node).find((/** @type {any} */ n) => n.nameSingular === p.singular);
         if (o) {
