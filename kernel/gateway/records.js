@@ -1258,7 +1258,15 @@ export function createRecords(cfg) {
   // its words, due time, parent or project goes through `tasks.edit` (so the same who-may rules and checks apply), its status is the kernel's, and it is skipped, never removed.
   const TASK_MAP = new Set(["title", "note", "due", "parent", "project"]);
   /** A link arrives as { urn } (the contract) or, from a module, as plain text: a task keeps its parent as an id and its project as a urn. */
-  const refOf = (/** @type {any} */ v, /** @type {boolean} */ id) => { const u = v && typeof v === "object" && typeof v.urn === "string" ? v.urn : v; return id && typeof u === "string" ? u.split("/").pop() : u; };
+  const refOf = (/** @type {any} */ v, /** @type {boolean} */ id) => {
+    const u = v && typeof v === "object" && typeof v.urn === "string" ? v.urn : v;
+    if (!id || typeof u !== "string") return u;
+    // a parent is a task of THIS Space: an id, or its urn; a urn of another Space (or another type) is refused, never cut down to a bare id that would name a task here
+    if (!u.startsWith("vyre://")) return u;
+    const m = /^vyre:\/\/([^/\s]+)\/task\/([^/\s]+)$/.exec(u);
+    if (!m || m[1] !== cfg.space) throw new KernelError("bad_input", "a parent task is a task of this Space");
+    return m[2];
+  };
   const toMs = (/** @type {any} */ v) => { if (v === null) return null; const ms = typeof v === "number" ? v : Date.parse(String(v)); if (!Number.isFinite(ms)) throw new KernelError("bad_input", "due is a date and time"); return ms; };
   async function taskCreate(/** @type {any} */ chain, /** @type {any} */ data) {
     if (!cfg.tasks) throw new KernelError("unavailable", "this Space keeps no tasks");

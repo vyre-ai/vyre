@@ -151,3 +151,15 @@ test("task records: parent and project are { urn } on the record whether the cal
   assert.deepEqual([d.parent, d.project], [{ urn: `vyre://${SPACE}/task/${top.id}` }, { urn: purn }]);
   assert.equal((await T.get(owner, later.id)).parent, top.id, "the kernel's own view keeps the id");
 });
+
+test("task records: a parent that is a task urn of another Space, or of another type, is refused, not cut down to a local id", async () => {
+  const { owner, R } = await boot();
+  const top = await R.create(owner, "task", { title: "Top" });
+  const other = `vyre://spc_bbbbbbbbbbbb/task/${top.id}`;
+  await assert.rejects(() => R.create(owner, "task", { title: "Elsewhere", parent: { urn: other } }), { code: "bad_input" });
+  await assert.rejects(() => R.create(owner, "task", { title: "Wrong type", parent: `vyre://${SPACE}/note/${top.id}` }), { code: "bad_input" });
+  const t = await R.create(owner, "task", { title: "Edited" });
+  await assert.rejects(() => R.update(owner, "task", t.id, { parent: { urn: other } }, t.version), { code: "bad_input" });
+  const ok = await R.create(owner, "task", { title: "Here", parent: { urn: `vyre://${SPACE}/task/${top.id}` } });
+  assert.deepEqual((await R.get(owner, "task", ok.id)).data.parent, { urn: `vyre://${SPACE}/task/${top.id}` });
+});
