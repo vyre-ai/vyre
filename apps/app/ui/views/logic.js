@@ -1,8 +1,8 @@
 // @vyre/ui/views/logic: the pure half of the generated views (ui-primitives.md section 5), ported from deck/ui/views.js onto the kernel's shapes
 // (TypeDefinition fields by `name`, GatewayRecord `data`). Which columns, which grouping, which month grid, what Seal-for-all
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
-import { viewDefOf, storedViewsOf } from "../../../../deck/ui/view-defs.js";
-import { fieldStates, holds } from "../../../../kernel/expr/conditions.js";
+import { viewDefOf, storedViewsOf } from "./view-defs.js";
+import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
 import { eventLine } from "../../../../deck/ui/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
@@ -49,12 +49,13 @@ export function listColumns(def, vd = viewDefOf(def)) {
   const names = vd.list?.columns || def.fields.slice(1, 5).map((/** @type {any} */ f) => f.name);
   return names.map((/** @type {string} */ n) => fieldOf(def, n)).filter(Boolean);
 }
-/** Which views a type has, in the order the switcher shows them. @param {any} def @param {any} [vd] @returns {("list"|"board"|"calendar")[]} */
+/** Which views a type has, in the order the switcher shows them. @param {any} def @param {any} [vd] @returns {("list"|"board"|"calendar"|"dashboard")[]} */
 export function viewsOf(def, vd = viewDefOf(def)) {
-  /** @type {("list"|"board"|"calendar")[]} */
+  /** @type {("list"|"board"|"calendar"|"dashboard")[]} */
   const out = ["list"];
   if (vd.board && fieldOf(def, vd.board.groupBy)) out.push("board");
   if (vd.calendar && fieldOf(def, vd.calendar.date)) out.push("calendar");
+  if (vd.dashboard?.widgets?.some((/** @type {any} */ w) => dashboardWidgetOk(def, w))) out.push("dashboard");
   return out;
 }
 
@@ -177,3 +178,56 @@ export function ago(at, now) {
 export function newFieldSpec(draft, def) {
   return { label: draft.label.trim(), kind: draft.kind, ...(draft.kind === "link" ? { to: def.name } : {}) };
 }
+
+// ------------------------------------------------------------------------------------------------------------------------------------ dashboard
+
+/** A widget the type can draw: "recent" needs nothing, the others need their field. @param {any} def @param {any} w */
+export const dashboardWidgetOk = (def, w) => w.kind === "recent" || !!(w.field && fieldOf(def, w.field));
+
+/** `field op value` (!=, >=, <=, =, >, <) as a row test, or null when the text is not one. @param {string} where @returns {((rec: any) => boolean) | null} */
+export function whereFn(where) {
+  const m = /^\s*(\w+)\s*(!=|>=|<=|=|>|<)\s*(.+?)\s*$/.exec(where || "");
+  if (!m) return null;
+  const [, name, op, rhs] = m;
+  const numeric = !Number.isNaN(Number(rhs));
+  return (rec) => {
+    const v = val(rec, name), a = numeric ? Number(v) : String(v ?? ""), b = numeric ? Number(rhs) : rhs;
+    return op === "=" ? a === b : op === "!=" ? a !== b : op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : a <= b;
+  };
+}
+/** The where text in words: "stage is not Closed". @param {string} w */
+export const saysWhere = (w) => w.replace("!=", "is not").replace(">=", "is at least").replace("<=", "is at most").replace(/ = /, " is ").replace(" > ", " is over ").replace(" < ", " is under ");
+/** A number out of a field value: money and plain numbers, anything else 0. @param {any} v */
+export const numberOf = (v) => { const n = typeof v === "object" && v ? Number(v.amount) : Number(v); return Number.isFinite(n) ? n : 0; };
+
+/**
+ * What the dashboard draws, as data. sum: the total of a number or money field over the rows that pass `where`; countBy: a bar per stage or option;
+ * funnel: a bar per stage in `where` ("From..To"), counting rows that reached that stage or later; recent: the five rows changed last.
+ * @param {any} def @param {any[]} rows @param {any} [vd] @returns {any[]}
+ */
+export function dashboardCards(def, rows, vd = viewDefOf(def)) {
+  /** @type {any[]} */
+  const out = [];
+  for (const w of vd.dashboard?.widgets || []) {
+    if (!dashboardWidgetOk(def, w)) continue;
+    const f = w.field ? fieldOf(def, w.field) : null;
+    if (w.kind === "sum" && f) {
+      const keep = whereFn(w.where || ""), use = keep ? rows.filter(keep) : rows;
+      out.push({ kind: "sum", title: `${f.label} total`, total: use.reduce((a, r) => a + numberOf(val(r, f.name)), 0), money: f.kind === "money", field: f,
+        hint: `${use.length} ${lc(use.length === 1 ? def.label || def.name : vd.plural)}${w.where ? ", " + saysWhere(w.where) : ""}` });
+    } else if (w.kind === "countBy" && f) {
+      const bars = optionsOf(f).map((/** @type {string} */ n) => [n, rows.filter((r) => String(val(r, f.name) ?? "") === n).length]);
+      out.push({ kind: "countBy", title: `${vd.plural} by ${lc(f.label)}`, bars, max: Math.max(1, ...bars.map((/** @type {any} */ b) => b[1])) });
+    } else if (w.kind === "funnel" && f) {
+      const all = optionsOf(f), [from, to] = String(w.where || "").split("..");
+      const a = Math.max(0, all.indexOf(from)), b = to ? all.indexOf(to) : all.length - 1, span = all.slice(a, (b < 0 ? all.length - 1 : b) + 1);
+      const bars = span.map((/** @type {string} */ n, /** @type {number} */ i) => [n, rows.filter((r) => all.indexOf(String(val(r, f.name))) >= a + i).length]);
+      out.push({ kind: "funnel", title: `${span[0]} to ${span[span.length - 1]} funnel`, bars, max: Math.max(1, rows.length), hint: "Reached this stage or later" });
+    } else if (w.kind === "recent") {
+      out.push({ kind: "recent", title: "Recently changed", rows: [...rows].sort((x, y) => (y.updated_at || 0) - (x.updated_at || 0)).slice(0, 5) });
+    }
+  }
+  return out;
+}
+/** The width of a bar, 0 to 100. @param {number} n @param {number} max */
+export const barPct = (n, max) => Math.round((n / Math.max(max, 1)) * 100);

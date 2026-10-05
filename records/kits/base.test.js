@@ -78,3 +78,14 @@ test("no legal words in the core types either: their names, labels, options and 
   const WORDS = /practice|attorney|lawyer|\blaw\b|legal|\bcourt|\bcase\b|\bmatter|trust|estate|injury|accident|hearing|consult|retainer|litigation|plaintiff|settle|demand|signing|immigration|criminal|family|probate|counsel/i;
   assert.equal(WORDS.test(JSON.stringify(CORE_TYPES)), false, "legal words in the core types");
 });
+
+test("re-seeding a core type that carries a person-added field is not refused, and a person's own second type with the same label is", async () => {
+  const host = createRecordsHost({ space: SPACE, owner: "per_owner", store: createMemoryStore() });
+  await host.defineCore();
+  const note = CORE_TYPES.find((t) => t.name === "template");
+  // a person adds a field to a core type; the kernel's seed of the bare core type then runs again
+  await host.defineTypes([{ ...note, fields: [...note.fields, { name: "mine", kind: "text", label: "Mine" }] }]);
+  await host.defineTypes([{ ...note }]);
+  // a person's own second type with that label is refused
+  await assert.rejects(() => host.defineTypes([{ name: `${note.name}_mine`, label: note.label, fields: note.fields }]), { code: "type_exists" });
+});

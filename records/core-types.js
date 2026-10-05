@@ -196,7 +196,6 @@ export const TASK = {
     f("date", "date", "Date"),
     choice("source", "Source", TASK_SOURCES),
   ],
-  stages: [{ name: "Backlog" }, { name: "Doing" }, { name: "Done" }],
   views: [
     { name: "tasks_board", type: "board", label: "Tasks by status", groupBy: "status", columns: ["title", "due", "priority"] },
     { name: "tasks_list", type: "list", label: "All tasks", columns: ["title", "status", "due", "project"], sort: { field: "due", dir: "asc" } },
@@ -215,7 +214,7 @@ export const PROJECT = {
     // not required: a record made by a Kit or an import has none until `work.project.create` or the hub fills it
     text("slug", "Short name used in addresses", { unique: true }),
     choice("status", "Status", ["active", "archived"]),
-    f("link", "client", "Client"),
+    f("link", "client", "Client", { to: "contact" }),
     text("drive_path", "Drive folder"),
     text("repo", "Repository"),
     text("memory_scope", "Memory scope"),

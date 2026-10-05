@@ -9,11 +9,11 @@ import { isChain, hasKind } from "../core/chain.js";
 import { KernelError } from "../core/errors.js";
 import { createGate } from "../core/gate.js";
 import { createAggregator } from "../store/query.js";
-import { exprNames } from "../expr/expr.js";
+import { exprNames } from "../../lib/expr/expr.js";
 import { isSealedShape } from "../store/values.js";
 import { actsAsPerson } from "../core/chain.js";
 import { expr as defaultExpr } from "../expr/index.js";
-import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../expr/conditions.js";
+import { fieldState, holds, isEmpty, stagesFor, stageNamesOf } from "../../lib/expr/conditions.js";
 import { createIdem } from "../core/idem.js";
 
 /** The actions the gateway registers with the authorizer (contract 6.1). */
@@ -27,6 +27,8 @@ export const RECORD_ACTIONS = Object.freeze([
   { action: "records.define", resource_type: "definition", risk: "admin", label: "change types", gloss: "Add or change the kinds of record and their fields." },
 ].map(a => Object.freeze(a)));
 
+/** The chain's acting (last) hop is the kernel's own service: the only writer of a field the kernel owns. A kernel hop earlier in the chain, with anyone acting after it, is not. @param {any} chain */
+export const actsAsKernel = (chain) => { const h = chain && chain.hops && chain.hops[chain.hops.length - 1]; return Boolean(h && h.actor.kind === "service" && h.actor.id === "kernel"); };
 const TYPE_NAME = /^[a-z][a-z0-9_-]*$/;
 /** Intents older than this are not replayed: they close as `unresolved` for a person to look at (K1 item 8b, K2-11). */
 const INTENT_MAX_AGE = 24 * 3600 * 1000;
@@ -290,22 +292,21 @@ export function createRecords(cfg) {
     }
   }
   /**
-   * A new type needs its own name and label: a second type with the label of one the Space already has (another name, same words) is refused, and so is an
-   * "add" of an existing name that would drop its fields (that is a change, made from the type itself). The same definition added again is no change at all.
+   * A person's new type needs its own label: a second type with the label of one the Space already has (another name, same words) is refused. An add of an existing name is
+   * not a new type (it is how a module or a Kit says what it needs again), and the store refuses anything that would take fields away.
    */
-  async function checkNames(/** @type {any} */ diff) {
+  async function checkNames(/** @type {any} */ diff, /** @type {any} */ chain, /** @type {any} */ o) {
     const adding = diff.add_types || [];
-    if (!adding.length) return;
+    // Only a person's own define: a seed by the kernel or a module (a service in the chain, or an approved Kit's waiver) says what it needs again and is never a second copy
+    const personal = chain.hops.length === 1 && chain.hops[0].actor.kind === "person" && o.waiver === undefined;
+    if (!adding.length || !personal) return;
     let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
     const words = (/** @type {any} */ s) => String(s ?? "").trim().replace(/\s+/g, " ").toLowerCase();
     const seen = new Map();
     for (const t of adding) {
       const label = words(t.label || t.name);
       const same = defs.find((/** @type {any} */ d) => d.name === t.name);
-      if (same) {
-        const dropped = (same.fields || []).filter((/** @type {any} */ f) => !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name));
-        if (dropped.length) throw new KernelError("type_exists", `There is already a type called ${same.label || same.name}. Open it to change it.`);
-      } else {
+      if (!same) {
         const twin = defs.find((/** @type {any} */ d) => words(d.label || d.name) === label) || (seen.has(label) ? { label: t.label } : null);
         if (twin) throw new KernelError("type_exists", `There is already a type called ${twin.label || t.label}. Pick another name, or open the one you have.`);
       }
@@ -319,6 +320,14 @@ export function createRecords(cfg) {
    * fields (never a sealed one), and a stage set is picked by the record's other fields, never by its stage.
    */
   async function checkShape(/** @type {any} */ diff) {
+    // a field the kernel owns stays the kernel's: a change to a type cannot take `owned_by` off it, or an owner could then set a task's status by hand
+    if ((diff.change_types || []).length) {
+      let defs = []; try { defs = typeof store.types === "function" ? await store.types() : []; } catch { /* the store says so when it defines */ }
+      for (const t of diff.change_types) {
+        const was = defs.find((/** @type {any} */ d) => d.name === t.name);
+        for (const f of (was && was.fields) || []) if (f.owned_by !== undefined && !(t.fields || []).some((/** @type {any} */ x) => x.name === f.name && x.owned_by === f.owned_by)) throw new KernelError("bad_input", `${t.name}.${f.name} is kept by the kernel: a change cannot take that away`);
+      }
+    }
     for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) {
       const bad = (/** @type {string} */ why) => new KernelError("bad_input", `${t.name}: ${why}`);
       const fields = t.fields || [];
@@ -581,7 +590,7 @@ export function createRecords(cfg) {
       const gone = fields.filter((/** @type {any} */ f) => f.hidden === true).map((/** @type {any} */ f) => f.name);
       for (const k of Object.keys(input || {})) if (gone.includes(k)) throw new KernelError("bad_input", `${k} was removed from ${type}`);
       // a field owned by the kernel (a task's status) is written only by the kernel's own service: the type says so, this is where it is kept to
-      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name) && !chain.hops.some((/** @type {any} */ h) => h.actor.kind === "service" && h.actor.id === "kernel")) throw new KernelError("field_not_allowed", `${f.name} is kept by Vyre itself: it changes when the work does, not by hand`);
+      for (const f of fields) if (f.owned_by === "kernel" && input && Object.prototype.hasOwnProperty.call(input, f.name) && !actsAsKernel(chain)) throw new KernelError("field_not_allowed", `${f.name} is kept by Vyre itself: it changes when the work does, not by hand`);
       for (const f of fields) if (f.computed && input && Object.prototype.hasOwnProperty.call(input, f.name)) throw new KernelError("bad_input", `${f.name} is computed: it is worked out, not set`);
       linkFields = fields;
       // a field hidden from the writer's role cannot be written either (it could not even be read back)
@@ -691,7 +700,7 @@ export function createRecords(cfg) {
       if (o.waiver !== undefined && !(cfg.kitApply && cfg.kitApply.coversDefine(o.waiver, chain, diff))) throw new KernelError("not_allowed", "the approved Kit does not cover this definition");
       const d = await gate(chain, "records.define", `vyre://${space}/definition/types`, o.waiver !== undefined ? { waiver: o.waiver } : {});
       for (const t of [...(diff.add_types || []), ...(diff.change_types || [])]) if (!TYPE_NAME.test(t.name)) throw new KernelError("bad_input", `bad type name ${t.name}`);
-      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff);
+      checkKinds(diff); await checkRoles(diff); await checkShape(diff); await checkNames(diff, chain, o);
       // A removed field is never required (new records could not be written without it); its data stays.
       await checkComputed(diff);
       // every link to a type gets its named inverse (stored on the field), and a link's target must be a type of this Space

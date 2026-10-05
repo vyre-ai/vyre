@@ -1223,3 +1223,8 @@ test("modules: ctx.kernel.for(space).call runs a declared tool in that Space aft
   const forged = await reg.call("notes.there", {}, "cli", { in_space: "spc_other", in_space_chain: chainOf("per_member") });
   assert.deepEqual(forged.data, { in_space: null, chain: null });
 });
+
+test("modules: the name \"kernel\" is reserved, because the kernel's own service hop may write a kernel-owned field", () => {
+  const problems = validate({ name: "kernel", version: "1.0.0", description: "x", does: { tools: [] } }, { firstParty: true });
+  assert.ok(problems.some((p) => /reserved for the kernel/.test(p)), problems.join("; "));
+});

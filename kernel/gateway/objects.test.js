@@ -6,6 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { bootKernel } from "../boot.js";
+import { actsAsKernel } from "./records.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 const key = Buffer.alloc(32, 7);
@@ -116,12 +117,11 @@ test("define refuses a conditional field, stage set, entry condition or view tha
   assert.equal(stored.fields.find((f) => f.name === "accident_date").required_if, `area == "${PI}"`);
 });
 
-test("a type needs its own name and label: a second type with the same label is refused, and an add that would drop an existing type's fields is a change", async () => {
+test("a type needs its own name and label: a second type with the same label is refused", async () => {
   const { o, R } = await rig();
   const dup = (name, label, fields = MATTER.fields) => ({ name, label, fields });
   await assert.rejects(() => R.define(o, { add_types: [dup("matter_2", "Matter")] }), (e) => e.code === "type_exists" && /There is already a type called Matter/.test(e.message));
   await assert.rejects(() => R.define(o, { add_types: [dup("matter_3", "  matter ")] }), { code: "type_exists" }, "case and spaces do not make it another label");
-  await assert.rejects(() => R.define(o, { add_types: [dup("matter", "Matter", [MATTER.fields[0]])] }), { code: "type_exists" }, "same name, fewer fields");
   await assert.rejects(() => R.define(o, { add_types: [dup("a1", "Alpha", [MATTER.fields[0]]), dup("a2", "alpha", [MATTER.fields[0]])] }), { code: "type_exists" }, "two new types with one label");
   assert.equal((await R.define(o, { add_types: [{ ...MATTER }] })).applied, false, "the same definition again changes nothing");
   assert.equal((await R.define(o, { add_types: [dup("alpha", "Alpha", [MATTER.fields[0]])] })).applied, true, "another label is a new type");
@@ -134,6 +134,16 @@ test("a field owned by the kernel is written only by the kernel's own service", 
   await assert.rejects(() => R.update(o, "job", j.id, { status: "done" }, j.version), { code: "field_not_allowed" });
   await assert.rejects(() => R.create(o, "job", { title: "x", status: "ready" }), { code: "field_not_allowed" });
   assert.equal((await R.update(o, "job", j.id, { title: "Call Sam back" }, j.version)).data.title, "Call Sam back", "the rest of the record is the person's");
+  // a change to the type cannot take the ownership away, nor drop the field
+  const job = { name: "job", label: "Job", fields: [{ name: "title", kind: "text", label: "Title", required: true }, { name: "status", kind: "choice", label: "Status", options: ["ready", "done"] }] };
+  await assert.rejects(() => R.define(o, { change_types: [job] }), (e) => e.code === "bad_input" && /kept by the kernel/.test(e.message));
+  await assert.rejects(() => R.define(o, { change_types: [{ ...job, fields: [job.fields[0]] }] }), { code: "bad_input" });
+  // only the acting (last) hop counts: the kernel's own service may write a kernel-owned field, a chain with the kernel earlier and anyone acting after it may not
+  const kernelChain = k.chains.appendService(o, "kernel", true), after = k.chains.appendService(kernelChain, "someone", true);
+  assert.equal(actsAsKernel(kernelChain), true);
+  assert.equal(actsAsKernel(after), false);
+  assert.equal(actsAsKernel(o), false);
+  assert.equal(actsAsKernel(undefined), false);
   await assert.rejects(() => R.define(o, { add_types: [{ name: "bad", label: "Bad", fields: [{ name: "x", kind: "text", label: "X", owned_by: "me" }] }] }), { code: "bad_input" });
 });
 
