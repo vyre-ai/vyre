@@ -404,3 +404,52 @@ test("a quoted reply stays in the chat's timeline: the frame carries reply_to an
   assert.equal(logs.get(chat).read(0).filter(f => f.type === "chat.user-message" && f.data.text === "and now?").pop().data.tz, undefined);
   assert.equal((await d.registry.call("threads.get", { thread, limit: 1 }, "cli")).data.thread.tz, "Asia/Kuala_Lumpur", "the last good zone stays");
 });
+
+test("a person outside a chat sees nothing of its runs through ANY threads tool: every tool that names a thread, an ask, a watch or a session says not_found, and the lists leave the run out", { timeout: 180_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  asOwner(d, root);
+  t.after(() => d.stop());
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const owner = d.kernel.id.owner;
+  const ownerChain = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s1" });
+  const BOB = "per_" + "b".repeat(26);
+  await d.kernel.gateway.grants.setRole(ownerChain, { person: BOB, role: "member" }, { presence: { op: "x", fields: {}, n: 2 } });
+  const bob = { token: (await d.kernel.surfaces.open(d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-b", person: BOB, path: "direct", session: "s-b" }), {})).token };
+  // a busy run in the owner's chat, with an open ask and a watch on it
+  const r = await d.registry.call("threads.start", { cwd: work, prompt: "demo", surface: "cli" }, "cli");
+  assert.ok(r.data, JSON.stringify(r.error));
+  const thread = r.data.id;
+  const ask = await until(async () => (await d.registry.call("threads.asks", { thread }, "cli")).data.find(a => a.state === "open"), "an open ask");
+  const watch = (await d.registry.call("threads.watch", { thread, until: "finished" }, "cli")).data;
+  // the lists: the owner sees the run, bob sees nothing of it
+  assert.ok((await d.registry.call("threads.list", {}, "cli")).data.some(x => x.id === thread), "the owner lists it");
+  assert.deepEqual((await d.registry.call("threads.list", {}, "cli", bob)).data.filter(x => x.id === thread), [], "threads.list leaves it out for bob");
+  assert.deepEqual((await d.registry.call("threads.asks", {}, "cli", bob)).data.filter(x => x.thread === thread), [], "threads.asks leaves its ask out for bob");
+  assert.ok((await d.registry.call("threads.asks", {}, "cli")).data.some(x => x.thread === thread), "and the owner sees the ask");
+  // every tool that names a thread, an ask, a watch or a session: not_found for bob, built from the tool's own schema
+  const NOT_A_RUN = new Set(["threads.start", "threads.launch", "threads.quick", "threads.providers.learn", "threads.usage", "threads.history", "threads.live", "threads.list", "threads.asks", "threads.pids", "threads.vouch", "threads.contend", "threads.claimed", "threads.interrupt-in", "threads.busy", "threads.of-chat", "threads.chat-of", "threads.chat-switch", "threads.chat-stop", "threads.continue-here"]);
+  const sample = (/** @type {string} */ k, /** @type {any} */ p) => (k === "thread" || k === "session" ? thread : k === "ask" ? ask.id : k === "watch" ? String(watch.watch || watch.id || "w") : p.enum ? p.enum[0] : p.type === "integer" ? 1 : p.type === "boolean" ? true : p.type === "array" ? [] : "x");
+  /** @type {string[]} */ const walked = [];
+  for (const [name, def] of d.registry.tools) {
+    if (!name.startsWith("threads.") || NOT_A_RUN.has(name)) continue;
+    const schema = (def && def.input) || {};
+    const props = schema.properties || {};
+    const want = Object.keys(props).filter(k => ["thread", "session", "ask", "watch"].includes(k));
+    if (!want.length) continue;
+    const input = Object.fromEntries((schema.required || []).map((/** @type {string} */ k) => [k, sample(k, props[k] || {})]));
+    for (const k of want) input[k] = sample(k, props[k] || {});
+    const res = await d.registry.call(name, input, "cli", bob);
+    // a tool a person's surface cannot call at all (module-only) answers no_such_tool: it is not a way in
+    assert.ok(res.error && (["not_found", "no_such_tool"].includes(res.error.code) || (res.error.code === "denied" && /not available to/.test(res.error.message))), `${name} for a member outside the chat: ${JSON.stringify(res.error || res.data).slice(0, 140)}`);
+    if (res.error.code === "not_found") walked.push(name);
+  }
+  assert.ok(walked.length >= 20, `walked ${walked.length} tools: ${walked.join(", ")}`);
+});

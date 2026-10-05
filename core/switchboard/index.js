@@ -3409,6 +3409,38 @@ export default {
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
+    // One Chat (reviewer-3 G5, reviewer-5): EVERY tool of this module a person can call is checked against the chats the person is in, at this one point (whatever it takes: a thread, an ask, a watch or a
+    // session, or nothing at all and answers a list). A run in a chat the caller is not in does not exist for them: a call naming it is not_found, and a list or an answer that would show it leaves it out.
+    // Fail closed: with the kernel on, a call with no person chain sees only runs that are in no chat. A first-party module's call is exempt (it checks its own asker).
+    {
+      const rawTool = ctx.tool.bind(ctx);
+      const kernelOn = () => Boolean(ctx.kernel && ctx.kernel.chats && typeof ctx.kernel.chats.read === "function");
+      const personChain = async (/** @type {any} */ m) => { try { const c = ctx.kernel && typeof ctx.kernel.chain === "function" ? await ctx.kernel.chain(m) : null; return c && Array.isArray(c.hops) && c.hops[0] && c.hops[0].actor && c.hops[0].actor.kind === "person" ? c : null; } catch { return null; } };
+      const targets = (/** @type {any} */ i) => {
+        /** @type {string[]} */ const out = [];
+        if (!i || typeof i !== "object") return out;
+        if (typeof i.thread === "string") out.push(i.thread);
+        if (typeof i.session === "string") out.push(i.session);
+        if (typeof i.ask === "string") { try { const a = /** @type {any} */ (sb.asks.get(i.ask)); if (a && a.thread) out.push(String(a.thread)); } catch { /* no such ask: the tool says so */ } }
+        if (typeof i.watch === "string") { const w = /** @type {any} */ (sb.db.prepare("SELECT thread FROM threads_watches WHERE id = ?").get(i.watch)); if (w && w.thread) out.push(String(w.thread)); }
+        return out;
+      };
+      const gated = (/** @type {string} */ name, /** @type {any} */ run) => async (/** @type {any} */ i, /** @type {any} */ m, /** @type {any[]} */ ...rest) => {
+        if (!kernelOn() || (m && m.firstParty) || typeof run !== "function") return run(i, m, ...rest);
+        const chain = await personChain(m);
+        const chatOk = (/** @type {string | null} */ chat) => { if (!chat) return true; if (!chain) return false; try { ctx.kernel.chats.read(chain, chat); return true; } catch (e) { if (e && /** @type {any} */ (e).code === "not_found") return false; throw e; } };
+        const threadOk = (/** @type {any} */ t) => chatOk(sb.chatOf(String(t)));
+        for (const t of targets(i)) if (!threadOk(t)) throw Object.assign(new Error(`no such thread ${t}`), { code: "not_found" });
+        const out = await run(i, m, ...rest);
+        if (name === "threads.list" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || chatOk(r.chat || null));
+        if (name === "threads.asks" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
+        if (name === "threads.live" && out && Array.isArray(out.sessions)) return { ...out, sessions: out.sessions.filter((/** @type {any} */ t) => threadOk(t)) };
+        if (name === "threads.history" && Array.isArray(out)) return out.filter((/** @type {any} */ r) => !r || !r.thread || threadOk(r.thread));
+        if (name === "threads.pids") return { pids: [] };
+        return out;
+      };
+      ctx.tool = (/** @type {string} */ name, /** @type {any} */ def) => rawTool(name, def && typeof def.run === "function" ? { ...def, run: gated(name, def.run) } : def);
+    }
     // chat messages queued behind a turn the restart cut off run now, each under its own asker (the queue is durable)
     const resumeTimer = setTimeout(() => { void sb.resumeQueuedChats().catch(() => {}); }, 1500);
     resumeTimer.unref?.();
