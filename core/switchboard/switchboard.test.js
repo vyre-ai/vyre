@@ -1,7 +1,7 @@
 // @ts-check
 // The switchboard and agents, end to end: vyred in a temp home, a fake `claude` that speaks
 // stream-json (./testing/fake-claude.js), two SSE clients watching, and every tool called the
-// way a surface calls it. The real Claude Code run is recorded in docs/work/switchboard.md.
+// way a surface calls it. The real Claude Code run is recorded in team/archive/work-journals/switchboard.md.
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";

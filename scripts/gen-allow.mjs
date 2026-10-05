@@ -151,8 +151,6 @@ export const OPEN_NOTES = Object.freeze({
   "wink.storage.discover": "looks for drives this device can see, a read of the local network and disks",
   "wink.storage.offers": "reads the paired drives with room, use, data classes and end date",
   "wink.storage.status": "reads whether each storage device is there",
-  "work.engineer.revise": "edits the Engineer's proposed definition, which is checked again and gets its own card",
-  "work.engineer.talk": "talks to the Engineer, which only admins can do; explain reads a definition back",
   "work.team.add": "adds an assistant teammate from a Kit role, with grants that are narrowings of the adder's and never widen",
 });
 

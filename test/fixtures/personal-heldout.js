@@ -1,5 +1,5 @@
 // @ts-check
-// A held-out world for memory.answer (docs/work/memory-iq.md). personal-world.js was written by
+// A held-out world for memory.answer (team/archive/work-journals/memory-iq.md). personal-world.js was written by
 // the same hands that wrote the rules, so a perfect score on it proves little. This one was
 // written before reading the rules, in the way a real person types to a coding assistant:
 // lowercase, typos, run-on asides, nicknames ("hubby", "the mazda", "robin's bday"), and the

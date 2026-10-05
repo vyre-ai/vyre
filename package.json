@@ -64,7 +64,6 @@
     "scripts/dev-enrol-software-key.mjs",
     "scripts/dev-sign-proof.mjs",
     "docs",
-    "!docs/work",
     "!docs/proposals",
     "!docs/design",
     "!docs/**/*.png",

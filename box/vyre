@@ -1178,7 +1178,7 @@ if [ "$(id -u)" = 0 ] && [ -f "$UPD_ROOT/mode" ]; then
   case "${1:-}" in updater|publish-release|update-from-request|update) ;; *) set_root_run; prepare_run ;; esac
 fi
 # ---------------------------------------------------------------------------------------------------------------------------------------------
-# The Space helper: the root side of a Space's Twenty store (docs/work/space-helper.md, Revision 2). Linux only.
+# The Space helper: the root side of a Space's Twenty store (team/archive/work-journals/space-helper.md, Revision 2). Linux only.
 #
 # vyred (uid DAEMON_UID in its container) drops one file `req-<32 hex>` holding `<verb> <space>` into SP_SPOOL, a folder it alone can write; a root path unit
 # runs `space-helper-run`. The request is data: it is CLAIMED by rename into a root-only folder, looked at with stat, parsed whole against one anchored
@@ -1525,7 +1525,7 @@ STAT
   case "$LINE" in *"
 "*) MSG="not exactly one line"; return 1 ;; esac
   v_=${LINE%% *}; n_=${LINE#* }
-  # publish-fill takes a Space's id, a site folder and a deployment, never a path (docs/work/space-helper.md, the publish-fill verb): three tokens, each from its own anchored pattern.
+  # publish-fill takes a Space's id, a site folder and a deployment, never a path (team/archive/work-journals/space-helper.md, the publish-fill verb): three tokens, each from its own anchored pattern.
   if [ "$v_" = publish-fill ]; then
     printf '%s\n' "$n_" | grep -Eqx 'spc_[a-z0-9]{12} site-[A-Za-z0-9]{6} [0-9a-f]{16}' && return 0
     MSG="not a request the helper knows"; return 1

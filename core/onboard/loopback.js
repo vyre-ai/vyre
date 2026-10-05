@@ -33,7 +33,7 @@ export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.machine"
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
 /** The Deck's shared files the onboarding page loads, theme and fonts included: static, the same
  * for everyone. `fixtures` added (launch, found while testing the "How will Vyre run?" step
- * against ?fixtures=1, docs/work/launch-surfaces.md): those files are dev-only fixture data, no
+ * against ?fixtures=1, team/archive/work-journals/launch-surfaces.md): those files are dev-only fixture data, no
  * more sensitive than css/js, and without this the onboarding page's own fixtures mechanism
  * (web/js/api.js) 403s on every fetch, silently falling back to "missing tool" instead. */
 const assetPath = p => /^\/(css|js|vendor|fonts|fixtures)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg" || p === "/theme.css"

@@ -505,8 +505,6 @@
  "core/wink/storage/s3.test.js": 4,
  "core/work/capture.test.js": 2,
  "core/work/e2e-estate.test.js": 6,
- "core/work/engineer/engineer.test.js": 17,
- "core/work/engineer/guard.test.js": 6,
  "core/work/memory/engine.test.js": 13,
  "core/work/native/components.test.js": 10,
  "core/work/native/group.test.js": 10,

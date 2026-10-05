@@ -1,5 +1,5 @@
 // @ts-check
-// The box reads the paired Mac through the link (docs/work/federation.md, design 1 to 3): the Mac
+// The box reads the paired Mac through the link (team/archive/work-journals/federation.md, design 1 to 3): the Mac
 // holds link.serve open, the box's modules ask with link.macs.call, and only the read tools in
 // core/link/allow.js cross, checked at both ends. Nothing the Mac answers is stored on the box.
 

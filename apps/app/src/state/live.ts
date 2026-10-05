@@ -16,7 +16,7 @@ import { threadsStore, toThreads, type ThreadRow } from "./threads";
 import { MOCK } from "../real/box";
 import { startUnlockAnswerer } from "../personal/answerer";
 
-/** Who the box hears typing and answering from (apps/CONTRACT.md 3.2: always the same explicit surface). */
+/** Who the box hears typing and answering from (team/archive/CONTRACT-native-apps.md 3.2: always the same explicit surface). */
 export const SURFACE: string = Platform.OS === "web" ? "web" : Platform.OS;
 
 const NEEDS_KEY = "needs";
