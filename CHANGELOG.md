@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(runner): `runner.places { space }` (reach person) answers where the caller's chats run: `[{ chat, session, computer, device, online }]`. `runner.start` takes an optional `chat` id (checked for shape, kept in the home's lent table, never on the wire); the home lists its lent sessions to the daemon only. Only chats the caller is in (kernel chats.mine) appear; no chat list means no rows. The computer's name and online state come from relay.devices.all.
+
 - fix(daemon): a home with no storage key of its own for a Space (no Drive, no pool) refuses to hold a lent computer's work, in plain words, instead of keeping the checkpoints in the clear (reviewer-5): every call of the lent service answers `unavailable` and nothing is written. Test in core/daemon/lent-service.test.js.
 
 - feat(runner,kernel): a lent session's checkpoints are encrypted at rest on the home (launch's finding: the home's store kept them in the clear). The checkpoint store takes the Space's own key (derived from its pool key, kernel/storage/keys.js, held per kernel and out of reach of modules) and seals every file, version, checkpoint record and the commit pointer with AES-256-GCM under it with its place in the associated data; each transcript line is sealed inside its JSON line (the log's shape and offsets stay); a file's folder is named by a keyed hash, not its path. A restart reads it, another Space's key and a file copied to another name open as nothing. Seen on testbox6: after a lent session the home's lent/ folder holds no readable text and no file or folder named for what is in it. Without a key (tests, a home with no sealing process) the store is plain as before.

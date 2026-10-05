@@ -313,6 +313,8 @@ async function startLocked(opts, root, p, release) {
     const runnerHost = () => ({
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
+      // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
+      lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
         if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
@@ -503,6 +505,7 @@ async function startLocked(opts, root, p, release) {
         },
         // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
+      registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
       const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }

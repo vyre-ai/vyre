@@ -316,3 +316,18 @@ test("a restart reconciles: the session that outlived the daemon is ended and th
     assert.equal(await waitFor(() => !fs.existsSync(path.join(base, dirs[0]))), true, "and the workspace, with everything in it, is deleted: access ended while the daemon was down");
   } finally { for (const m of [m1, ...later]) await m.stop().catch(() => {}); }
 });
+
+test("a lent session may name its chat: stored in the home's own table, checked for shape, never on the wire", async t => {
+  const r = await rig(t); const c = r.as(BOB, "dev_laptop"); await c.vault.lease();
+  const chat = "chat_01234567-89ab-cdef-0123-456789abcdef";
+  await c.spec({ session: "s1", chat }); await c.spec({ session: "s2" });
+  assert.deepEqual(r.home.rows().sort((a, b) => a.session.localeCompare(b.session)), [{ session: "s1", device: "dev_laptop", chat }, { session: "s2", device: "dev_laptop" }]);
+  await assert.rejects(c.spec({ session: "s3", chat: "../../x" }), e => e.code === "bad_input", "a chat is named by its id");
+  assert.equal(r.home.rows().some(x => x.session === "s3"), false, "a bad chat starts nothing");
+  assert.ok(r.home.rows().every(x => !("key" in x)), "a row carries no device key");
+});
+
+test("the lent service's rows are not a wire call", async () => {
+  const { CALLS } = await import("../../kernel/remote/wire.js");
+  assert.equal(CALLS.lent.includes("rows"), false);
+});

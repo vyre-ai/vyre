@@ -33,7 +33,8 @@ const defaultSpec = account => ({
  */
 export function lentServiceFor(o) {
   /** @type {Map<string, () => void>} */ const subs = new Map();
-  return (space, k) => {
+  /** @type {Map<string, any>} the service each Space has now, for the home's own view of what is lent */ const live = new Map();
+  const factory = (/** @type {string} */ space, /** @type {any} */ k) => {
     const g = k && k.gateway;
     if (!g || !g.grants || !g.grants.offers) return null;
     if (o.onRevoke && typeof g.grants.offers.onRevoke === "function") {
@@ -46,7 +47,12 @@ export function lentServiceFor(o) {
       const refuse = async () => { throw Object.assign(new Error("this home has no storage key of its own for that space, so it will not hold a lent computer's work"), { code: "unavailable" }); };
       return Object.freeze(Object.fromEntries(["whoami", "status", "start", "stop", "appendTranscript", "getTranscript", "putFile", "getFile", "putCheckpoint", "getCheckpoint", "usage"].map(n => [n, refuse])));
     }
-    return createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
+    const made = createLentHome({ space, root: path.join(o.root, "lent", space), key, offers: g.grants.offers, ...(g.leases ? { leases: g.leases } : {}),
       specFor: async i => (o.lentSpec ? o.lentSpec(i) : defaultSpec(o.providerAccount ? await o.providerAccount(i) : null)) });
+    live.set(space, made);
+    return made;
   };
+  /** The sessions lent for a Space and the chat each belongs to (never on the wire). @param {string} space */
+  factory.rows = space => { const l = live.get(space); return l && typeof l.rows === "function" ? l.rows() : []; };
+  return factory;
 }

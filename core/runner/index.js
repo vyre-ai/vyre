@@ -126,17 +126,36 @@ export default {
     });
     ctx.tool("runner.start", {
       description: "Start a session here. The space's own definition of the session decides the program, the routes and the credentials it may use; the caller names only the space and the session. Needs both grants and a held key lease.",
-      input: obj({ space: str, session: str, resume: { type: "boolean" } }, ["space", "session"]),
-      run: async ({ space, session, resume }, meta) => {
+      input: obj({ space: str, session: str, resume: { type: "boolean" }, chat: { ...str, description: "The chat this work belongs to (chat_<id>), so the chat can say where it runs." } }, ["space", "session"]),
+      run: async ({ space, session, resume, chat }, meta) => {
+        if (chat !== undefined && !(typeof chat === "string" && /^chat_[0-9a-f-]{36}$/.test(chat))) throw Object.assign(new Error("a chat is named by its id"), { code: "bad_input" });
         await person(ctx, meta, "starting a session here");
         const p = await portsFor(space); const r = await forSpace(space);
         // The key lease is taken first: the home binds the session's credential routes to the lease it is given, so a definition asked for before the lease would map nothing.
         await r.open();
-        const spec = await p.spec({ space, session });
+        const spec = await p.spec({ space, session, ...(chat ? { chat } : {}) });
         if (!spec || !spec.command || !Array.isArray(spec.routes)) throw Object.assign(new Error("the space has no definition for that session"), { code: "not_found" });
         const run = resolveAgent(spec);
         const h = await r.start({ session, resume: Boolean(resume), command: run.command, args: run.args, env: spec.env, routes: spec.routes, readOnly: run.readOnly, labels: spec.labels, network: spec.network });
         return { session, pid: h.pid, resumed: h.resumed ? { turn: h.resumed.turn, seq: h.resumed.seq, state: h.resumed.state } : null };
+      },
+    });
+    // Where each chat's work runs, for the chips on a chat: on this server, or on a member's own computer, with its name and whether it is connected. Rows only for chats the caller is in (the kernel's own
+    // list of a person's chats), so a chat id is never proof of anything: a caller sees where their own chats run and nothing else. A chat with no row runs on the server.
+    ctx.tool("runner.places", {
+      description: "Where the chats of a space run: the sessions lent to a computer, each with its chat, the computer's name and whether it is connected. Only your own chats.",
+      input: obj({ space: str }, ["space"]),
+      run: async ({ space }, meta) => {
+        const h = hostOf(); const rows = h && typeof h.lentRows === "function" ? h.lentRows(String(space)) : [];
+        const chain = await (typeof ctx.kernel?.chainIn === "function" ? ctx.kernel.chainIn(String(space), meta) : ctx.kernel.chain(meta));
+        // any member sees where THEIR chats run: one person in the chain, no model or assistant; the owner check of starting a session here does not apply
+        const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+        if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person") throw Object.assign(new Error("only a person sees where their chats run"), { code: "denied" });
+        if (!rows.length) return { places: [] };
+        const mine = typeof ctx.kernel?.chats?.mine === "function" ? new Set((await ctx.kernel.chats.mine(chain)).map((/** @type {any} */ c) => String(c.chat || c.id))) : new Set();   // no chat list: no row (fail closed)
+        const devs = /** @type {any} */ (await ctx.call("relay.devices.all", {}).catch(() => null));
+        const list = devs && devs.data && Array.isArray(devs.data.devices) ? devs.data.devices : [];
+        return { places: rows.filter((/** @type {any} */ r) => r.chat && mine.has(r.chat)).map((/** @type {any} */ r) => { const d = list.find((/** @type {any} */ x) => x.id === r.device); return { chat: r.chat, session: r.session, computer: d ? String(d.name) : null, device: r.device, online: d ? Boolean(d.online) : false }; }) };
       },
     });
     ctx.tool("runner.stop", { description: "Stop a session running here.", input: obj({ space: str, session: str }, ["space", "session"]),

@@ -58,6 +58,8 @@ export function createLentHome(o) {
 
   return {
     store,
+    /** The home's own view of what is lent (never on the wire: wire.js lists the calls): the session, the device it runs on and its chat if the lender named one. */
+    rows() { return [...lent].map(([session, v]) => ({ session, device: v.device, ...(v.chat ? { chat: v.chat } : {}) })); },
     /** The id this home gives the computer that is calling, and the person: read from what the transport proved, never from the request. A lender lends under this id (the Offers are made for it) and presents it when it runs a session. @param {any} chain */
     async whoami(chain) { const w = who(chain); return { device: w.device, person: w.person }; },
     /** Whether this person's computer may run the Space's work now (both Offers), and the lender's own cap: the lender's runner polls it (never faster than once a minute). @param {any} chain @param {{ device_key?: string }} [i] */
@@ -80,7 +82,8 @@ export function createLentHome(o) {
       // A session lent to someone else's computer is never taken: only the same person may continue it from another of their computers (the resume path).
       const had = lent.get(String(i.session));
       if (had && had.person !== w.person) throw err("not_found", "not found");
-      lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key });
+      if (i.chat !== undefined && !(typeof i.chat === "string" && /^chat_[0-9a-f-]{36}$/.test(i.chat))) throw err("bad_input", "a chat is named by its id");
+      lent.set(String(i.session), { person: w.person, device: w.device, key: i.device_key, ...(i.chat ? { chat: i.chat } : {}) });
       const { credentialRoutes, ...visible } = spec;
       return { ...visible, network, lenderCap: cap || null };
     },
