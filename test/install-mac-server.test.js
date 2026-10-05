@@ -229,8 +229,7 @@ test("install-mac-server.sh: without Homebrew, pinned Colima and Lima that match
   assert.ok(m.installed("bin/colima") && m.installed("lima/bin/limactl") && (hasDocker || m.installed("bin/docker")));
   assert.equal(fs.statSync(path.join(m.env.VYRE_SERVER_DIR, "bin", "colima")).mode & 0o111, 0o111);
   const plist = fs.readFileSync(m.colimaPlist, "utf8");
-  assert.match(plist, /<string>--foreground<\/string>/);
-  assert.ok(plist.includes(`<string>${m.env.VYRE_SERVER_DIR}/bin/colima</string>`));
+  assert.ok(plist.includes(`<string>${m.env.VYRE_SERVER_DIR}/bin/vyre-runtime</string><string>run</string>`));
   assert.match(plist, /<key>PATH<\/key><string>[^<]*\.vyre-server\/bin:/);
   assert.match(plist, /<key>RunAtLoad<\/key><true\/>/);
   assert.match(plist, /<key>KeepAlive<\/key><true\/>/);
@@ -452,10 +451,110 @@ test("install-mac-server.sh: the system Colima start command reaches the root in
   const progs = a.flatMap((x, i) => (x === "--colima-program" ? [a[i + 1]] : []));
   assert.equal(progs[0], "/usr/bin/env");
   assert.match(progs[1], /^PATH=.*\.vyre-server\/bin:/);
-  assert.ok(progs.includes(path.join(m.env.VYRE_SERVER_DIR, "bin", "colima")));
-  assert.deepEqual(progs.slice(progs.indexOf("start")), ["start", "--foreground", "--vm-type", "vz", "--cpu", "2", "--memory", "4", "--disk", "40"]);
-  assert.ok(progs.includes("--foreground") && progs.includes("vz"));
+  assert.equal(progs.at(-2), path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-runtime"), "the job runs the account's own helper, which sizes the VM");
+  assert.equal(progs.at(-1), "run");
+  assert.match(progs[1], new RegExp(`${path.dirname(path.join(m.env.VYRE_SERVER_DIR, "bin", "colima"))}`), "colima is on the job's PATH");
   assert.ok(!fs.existsSync(path.join(m.env.VYRE_LAUNCHAGENTS, "run.vyre.colima.plist")), "no per-user Colima agent in system mode");
+});
+
+/** The installed `vyre-runtime` helper (a system-mode install puts it in BIN), with a fake colima that logs and answers status from a file. */
+function runtimeHelper(t) {
+  const m = noBrewSys(t);
+  const r = run(m.env, ["--yes", "--system"]);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const helper = path.join(m.env.VYRE_SERVER_DIR, "bin", "vyre-runtime");
+  const fakeBin = path.join(m.base, "rt-bin"); fs.mkdirSync(fakeBin);
+  const log = path.join(m.base, "colima.log"), up = path.join(m.base, "colima.up");
+  fs.writeFileSync(path.join(fakeBin, "colima"), `#!/bin/sh
+echo "colima $*" >>"${log}"
+case "$1" in start) : >"${up}" ;; stop) rm -f "${up}"; [ -z "\${FAKE_JOB:-}" ] || : >"${up}" ;; status) [ -f "${up}" ] ;; esac
+`, { mode: 0o755 });
+  const GiB = 1024 ** 3;
+  const env = (/** @type {number} */ ramGiB, /** @type {number} */ cores) => ({ PATH: `${fakeBin}:/usr/bin:/bin`, HOME: m.home, VYRE_HOME: m.env.VYRE_HOME, VYRE_RAM_BYTES: String(ramGiB * GiB), VYRE_CORES: String(cores) });
+  const call = (/** @type {string[]} */ args, /** @type {any} */ e) => spawnSync("sh", [helper, ...args], { encoding: "utf8", env: e, timeout: 60_000 });
+  const size = () => Object.fromEntries(fs.readFileSync(path.join(m.env.VYRE_HOME, "colima-size.env"), "utf8").trim().split("\n").map(l => l.split("=")));
+  return { m, helper, env, call, size, log: () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8") : ""), up, setUp: (/** @type {boolean} */ v) => (v ? fs.writeFileSync(up, "") : fs.rmSync(up, { force: true })) };
+}
+
+test("vyre-runtime: memory is 2 GiB plus 2.5 per space, never under 4, capped at half the Mac's RAM, 4 CPUs from 8 cores, and the room answer says plainly when it is full", t => {
+  const h = runtimeHelper(t);
+  const room = (/** @type {number} */ n, /** @type {number} */ ram, /** @type {number} */ cores) => { const r = h.call(["room", String(n)], h.env(ram, cores)); return { code: r.status, ...JSON.parse(r.stdout) }; };
+  // 32 GiB Mac: cap 16
+  assert.deepEqual(["memory_gib", "cpus", "ok"].map(k => /** @type {any} */ (room(1, 32, 10))[k]), [5, 4, true], "one space: 2 + 2.5 rounded up");
+  assert.equal(room(2, 32, 8).memory_gib, 7);
+  assert.equal(room(4, 32, 4).memory_gib, 12);
+  assert.equal(room(4, 32, 4).cpus, 2);
+  assert.equal(room(5, 32, 4).memory_gib, 15);
+  // 16 GiB Mac: cap 8, so 2 spaces fit (7) and a third does not (9.5 > 8)
+  const two = room(2, 16, 8), three = room(3, 16, 8);
+  assert.equal(two.ok, true); assert.equal(two.code, 0);
+  assert.equal(three.ok, false); assert.equal(three.code, 3);
+  assert.equal(three.max_spaces, 2);
+  assert.equal(three.memory_gib, 8, "reports the cap it would stay under");
+  assert.match(three.message, /room for 2 spaces/);
+  assert.match(three.message, /your server/);
+  // never under the 4 GiB Colima had before
+  assert.equal(room(1, 8, 4).memory_gib, 4);
+});
+
+test("vyre-runtime: run writes the first size and starts Colima in the foreground at it; resize writes the new size, says what it is doing, and brings Colima back at it", t => {
+  const h = runtimeHelper(t);
+  // the job's own first start: 16 GiB, 8 cores, one space
+  const e = { ...h.env(16, 8), FAKE_JOB: "1" }; // FAKE_JOB: the fake colima comes straight back after a stop, as launchd's job does
+  const first = h.call(["run"], e);
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(h.log(), /colima start --foreground --vm-type vz --cpu 4 --memory 5 --disk 40/);
+  assert.deepEqual([h.size().SPACES, h.size().MEMORY, h.size().CPUS, h.size().JOB], ["1", "5", "4", "1"]);
+  // a second space: a launchd job supervises (JOB=1), so stopping Colima is the restart and the helper does not start a second one
+  h.setUp(true);
+  const r = h.call(["resize", "2"], e);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(r.stdout, /^Making room for a new space$/m);
+  assert.equal(h.size().MEMORY, "7");
+  assert.match(h.log(), /colima stop/);
+  assert.ok(!/colima start --cpu/.test(h.log()), "no second start next to the job's own");
+  // the same size again changes nothing and does not restart
+  const before = h.log();
+  const same = h.call(["resize", "2"], e);
+  assert.equal(same.status, 0);
+  assert.ok(!/Making room/.test(same.stdout));
+  assert.equal(h.log(), before);
+  // too many: refused, size untouched, nothing stopped
+  const full = h.call(["resize", "3"], e);
+  assert.equal(full.status, 3);
+  assert.equal(h.size().MEMORY, "7");
+  assert.equal(h.log(), before);
+});
+
+test("vyre-runtime: with no job (brew services), resize stops Colima and starts it again at the new size itself", t => {
+  const h = runtimeHelper(t);
+  const e = h.env(32, 8);
+  assert.equal(h.call(["start"], e).status, 0);
+  assert.match(h.log(), /colima start --cpu 4 --memory 5 --disk 40/);
+  assert.equal(h.size().JOB, "0");
+  const r = h.call(["resize", "3"], e);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  assert.match(h.log(), /colima stop[\s\S]*colima start --cpu 4 --memory 10 --disk 40/);
+});
+
+test("lib/mac-runtime: roomFor and makeRoom call the helper, pass the progress line on, and say plainly when there is no room", async t => {
+  const h = runtimeHelper(t);
+  const { roomFor, makeRoom, helperPath } = await import("../lib/mac-runtime.js");
+  const env = { ...h.env(16, 8), VYRE_SERVER_DIR: h.m.env.VYRE_SERVER_DIR };
+  assert.equal(helperPath(env), h.helper);
+  assert.equal((await roomFor(2, { env })).ok, true);
+  const full = await roomFor(3, { env });
+  assert.equal(full.ok, false);
+  assert.match(full.message, /your server/);
+  h.setUp(true);
+  const lines = /** @type {string[]} */ ([]);
+  const made = await makeRoom(2, { env, onProgress: l => lines.push(l) });
+  assert.equal(made.ok, true, made.message);
+  assert.deepEqual(lines, ["Making room for a new space"]);
+  const refused = await makeRoom(3, { env, onProgress: l => lines.push(l) });
+  assert.equal(refused.ok, false);
+  assert.equal(lines.length, 1);
+  assert.match((await roomFor(2, { env: { ...env, VYRE_SERVER_DIR: "/nonexistent" } })).message, /could not be asked/);
 });
 
 test("install-mac-server.sh: a Colima that does not match its pin is not handed to the root installer", t => {
