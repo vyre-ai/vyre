@@ -7,7 +7,7 @@ import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 import { isUuid, timeOf, mintUuid } from "../core/ids.js";
 import { CONTACT } from "../conformance/suite.js";
-import { CONTACT as CONTACT_CORE, ORGANIZATION as ORG_CORE, PARTICIPANT as PARTICIPANT_CORE, COMMUNICATION as COMM_CORE } from "../../records/core-types.js";
+import { CONTACT as CONTACT_CORE, ORGANIZATION as ORG_CORE, COMMUNICATION as COMM_CORE } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;
@@ -555,13 +555,12 @@ test("roles: roles of a contact and holders of a role at a stage, current first,
 
 test("merge: two contacts that are one person become one, everything moves, the log says so, and unmerge puts it all back", async () => {
   const { r, log } = await rig();
-  await r.define(owner(), { add_types: [CONTACT_CORE, ORG_CORE, COMM_CORE, PARTICIPANT_CORE, roleType("client")] });
+  await r.define(owner(), { add_types: [CONTACT_CORE, ORG_CORE, COMM_CORE, roleType("client")] });
   const org = await r.create(owner(), "organization", { name: "Harlow Legal", domain: "harlow.test" });
   const a = await r.create(owner(), "contact", { name: "Jane Doe", email: "jane@harlow.test", other_emails: ["j@old.test"] });
   const b = await r.create(owner(), "contact", { name: "J. Doe", email: "jane@gmail.test", phone: "+15550100", organization: { urn: org.urn }, other_emails: ["j@old.test", "jd@x.test"], notes: "second" });
   const role = await r.create(owner(), "client", { contact: { urn: b.urn }, stage: "Active" });
-  const comm = await r.create(owner(), "communication", { kind: "email", at: "2026-10-05T10:00:00Z", source_key: "gmail:merge1" });
-  const part = await r.create(owner(), "participant", { communication: { urn: comm.urn }, contact: { urn: b.urn }, how: "to" });
+  const comm = await r.create(owner(), "communication", { kind: "email", at: "2026-10-05T10:00:00Z", source_key: "gmail:merge1", to: "jane@gmail.test", contacts: [{ urn: b.urn }] });
   await assert.rejects(() => r.merge(owner(), "contact", a.id, a.id), { code: "bad_input" });
   const res = await r.merge(owner(), "contact", a.id, b.id);
   assert.equal(res.relinked, 2);
@@ -572,7 +571,7 @@ test("merge: two contacts that are one person become one, everything moves, the 
   assert.deepEqual(m.other_emails.sort(), ["j@old.test", "jane@gmail.test", "jd@x.test"], "lists join and the other main email is kept");
   assert.equal(await r.get(owner(), "contact", b.id), null, "the dropped record is in the bin");
   assert.equal((await r.get(owner(), "client", role.id)).data.contact.urn, a.urn);
-  assert.equal((await r.get(owner(), "participant", part.id)).data.contact.urn, a.urn);
+  assert.deepEqual((await r.get(owner(), "communication", comm.id)).data.contacts.map(x => x.urn), [a.urn], "a many to many link follows the merge too");
   assert.deepEqual((await r.roles(owner(), a.urn)).map(x => x.role), ["client"]);
   assert.equal(log.read({ type: "records.merged" }).length, 1);
   assert.equal(log.read({ type: "records.merged" })[0].data.drop, b.id);

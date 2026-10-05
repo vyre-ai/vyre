@@ -7,7 +7,7 @@ import { createEventLog } from "../core/events.js";
 import { createChainBuilder } from "../core/chain.js";
 import { isUuid, timeOf, mintUuid } from "../core/ids.js";
 import { CONTACT } from "../conformance/suite.js";
-import { CONTACT as CONTACT_CORE, ORGANIZATION as ORG_CORE, PARTICIPANT as PARTICIPANT_CORE } from "../../records/core-types.js";
+import { CONTACT as CONTACT_CORE, ORGANIZATION as ORG_CORE } from "../../records/core-types.js";
 
 const SPACE = "spc_aaaaaaaaaaaa", OWNER = "per_owner";
 let T = 1_800_000_000_000;

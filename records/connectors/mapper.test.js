@@ -35,7 +35,8 @@ test("mapItem: a Gmail message becomes the item the logging Flow files; fields w
   };
   const a = mapItem(msg, map, { mailbox: "alex@harlow.test" });
   assert.deepEqual(a, { kind: "email", source_key: "gmail:alex@harlow.test:m1", mailbox: "alex@harlow.test", direction: "inbound", at: "2026-10-03T04:01:00.000Z", subject: "Trust", excerpt: "Hello there",
-    people: [{ address: "jane.doe@harlow.test", how: "from" }, { address: "alex@harlow.test", how: "to" }, { address: "bob@y.test", how: "to" }] });
+    people: [{ address: "jane.doe@harlow.test", how: "from" }, { address: "alex@harlow.test", how: "to" }, { address: "bob@y.test", how: "to" }],
+    from: "jane.doe@harlow.test", to: "alex@harlow.test, bob@y.test" }, "who was on it, as written, by role (the Communication's own text fields)");
   assert.equal(mapItem(msg, map, { mailbox: "jane.doe@harlow.test" }).direction, "outbound", "from the mailbox's own address is outbound");
   assert.equal(mapItem(msg, { source_key: { template: "x:{$mailbox}" } }, {}).source_key, undefined, "a template with a missing part is not made up");
   assert.equal(mapItem({ start: { date: "2026-10-09" } }, { at: "start.dateTime ?? start.date|iso" }).at, "2026-10-09T00:00:00.000Z", "?? takes the first path that has a value");

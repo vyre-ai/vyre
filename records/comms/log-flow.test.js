@@ -33,7 +33,7 @@ async function rig(o = {}) {
 const msg = (google, m) => google.handle({ method: "GET", url: new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${google.addMessage(m).id}?format=metadata`), headers: { authorization: "Bearer ya29.fake-connector-token" } }).body;
 const rawOf = (google, m) => JSON.parse(msg(google, m));
 
-test("an email is filed once as a Communication, with a participant for each person, linked to the contact by main email, by a further address, or kept bare", async () => {
+test("an email is filed once as a Communication, with who was on it as written and its contacts by main email or by a further address; a stranger is only in the text", async () => {
   const { host, R, chain, all, feed, google } = await rig();
   const jane = await R.create(chain(), "contact", { name: "Jane Doe", email: "jane@client.test" });
   const bob = await R.create(chain(), "contact", { name: "Bob Firm", email: "bob@firm.test" });
@@ -48,16 +48,10 @@ test("an email is filed once as a Communication, with a participant for each per
   assert.equal(comms[0].data.source_key, `gmail:${MAILBOX}:${raw.id}`);
   assert.equal(comms[0].data.at, item.occurred);
   assert.match(comms[0].data.original_url, /mail\.google\.com/);
-  const parts = await all("participant");
-  const byAddr = Object.fromEntries(parts.map(p => [`${p.data.how}:${p.data.address}`, p.data.contact && p.data.contact.urn]));
-  assert.deepEqual(byAddr, {
-    "from:jane@client.test": jane.urn,
-    [`to:${MAILBOX}`]: undefined,
-    "to:bob.personal@home.test": bob.urn,
-    "cc:stranger@elsewhere.test": undefined,
-  }, "main email, a further address (contact point), and bare addresses with no contact");
+  // who was on it, as written, whether or not anyone matches: nothing is lost with the Participant type gone
+  assert.deepEqual([comms[0].data.from, comms[0].data.to, comms[0].data.cc], ["jane@client.test", `${MAILBOX}, bob.personal@home.test`, "stranger@elsewhere.test"]);
   assert.equal((await all("contact")).length, 2, "no contact was made for a stranger: off to start");
-  // the Communication links straight to each Contact on it (many to many), beside the Participants; a stranger with no contact adds nothing
+  // the Communication links straight to each Contact on it (many to many), by main email or a further address; a stranger and the mailbox itself add nothing
   assert.deepEqual(comms[0].data.contacts.map((/** @type {any} */ c) => c.urn).sort(), [bob.urn, jane.urn].sort());
   // and the Contact shows it as "Communications" (the named reverse)
   const via = async (/** @type {string} */ urn) => (await R.linked(chain(), urn, { type: "communication" })).rows.filter((/** @type {any} */ r) => r.field === "contacts");
@@ -70,7 +64,7 @@ test("an email is filed once as a Communication, with a participant for each per
   assert.equal((await timelineOf(host.kernel, chain(), bob.urn)).length, 1);
   // the same item again (the watcher saw it twice, or the run was retried): nothing doubles
   await feed(item);
-  assert.equal((await all("communication")).length, 1); assert.equal((await all("participant")).length, 4);
+  assert.equal((await all("communication")).length, 1);
   assert.equal((await all("communication"))[0].data.contacts.length, 2, "and the links are not doubled");
 });
 
@@ -80,7 +74,7 @@ test("a reply from the mailbox is outbound and files on the contact it was sent 
   const reply = filed(rawOf(google, { from: `Alex <${MAILBOX}>`, to: "jane@client.test", subject: "Re: Trust signing", snippet: "Yes." }), mailMap, { mailbox: MAILBOX }, r => r.id);
   await feed(reply);
   assert.equal((await all("communication"))[0].data.direction, "outbound");
-  assert.equal((await all("participant")).find(p => p.data.how === "to").data.contact.urn, jane.urn);
+  assert.equal((await all("communication"))[0].data.to, "jane@client.test"); assert.deepEqual((await all("communication"))[0].data.contacts.map((/** @type {any} */ c) => c.urn), [jane.urn]);
   // a meeting: kind meeting, no direction, attendees by address
   const ev = google.putEvent({ id: "sign1", summary: "Signing: Rivera trust", start: { dateTime: "2026-10-08T16:00:00Z" }, end: { dateTime: "2026-10-08T17:00:00Z" }, organizer: { email: MAILBOX }, attendees: [{ email: "jane@client.test" }] });
   const meet = filed(ev, calMap, { calendar: MAILBOX }, r => `${r.id}:${r.updated}`);
@@ -91,8 +85,8 @@ test("a reply from the mailbox is outbound and files on the contact it was sent 
   await feed(filed(moved, calMap, { calendar: MAILBOX }, r => `${r.id}:${r.updated}`));
   comms = (await all("communication")).filter(c => c.data.kind === "meeting");
   assert.equal(comms.length, 1, "the same event is the same communication"); assert.equal(comms[0].data.subject, "Signing: Rivera trust (moved)");
-  const mp = (await all("participant")).filter(p => p.data.communication.urn === comms[0].urn);
-  assert.deepEqual(mp.map(p => `${p.data.how}:${p.data.address}`).sort(), [`attendee:jane@client.test`, "attendee:sam@rivera.test", `organizer:${MAILBOX}`]);
+  assert.deepEqual([comms[0].data.organizer, comms[0].data.attendees], [MAILBOX, "jane@client.test, sam@rivera.test"], "organizer and attendees, as written");
+  assert.deepEqual(comms[0].data.contacts.map((/** @type {any} */ c) => c.urn), [jane.urn], "only Jane is a contact");
   assert.equal((await timelineOf({ records: R }, chain(), jane.urn)).length, 2, "an email and a meeting on one timeline, newest first");
 });
 
@@ -102,15 +96,17 @@ test("the switches: createUnknown makes the contact once; skipInternal leaves co
   await a.feed(filed(raw, mailMap, { mailbox: MAILBOX }, r => r.id));
   const made = (await a.all("contact")).filter(c => c.data.email === "new@person.test");
   assert.equal(made.length, 1);
-  const p = (await a.all("participant")).find(x => x.data.address === "new@person.test");
-  assert.equal(p.data.contact.urn, made[0].urn);
+  const c1 = (await a.all("communication")).find(x => x.data.from === "new@person.test");
+  assert.deepEqual(c1.data.contacts.map((/** @type {any} */ c) => c.urn), [made[0].urn]);
   const raw2 = rawOf(a.google, { from: "new@person.test", subject: "Again", snippet: "" });
   await a.feed(filed(raw2, mailMap, { mailbox: MAILBOX }, r => r.id));
   assert.equal((await a.all("contact")).filter(c => c.data.email === "new@person.test").length, 1, "found, not made again");
 
   const b = await rig({ skipInternal: "harlow.test" });
   await b.feed(filed(rawOf(b.google, { from: "jane@client.test", to: `${MAILBOX}, colleague@harlow.test`, subject: "Hi" }), mailMap, { mailbox: MAILBOX }, r => r.id));
-  assert.deepEqual((await b.all("participant")).map(x => x.data.address), ["jane@client.test"], "mail to colleagues is not filed as a person");
+  const mailB = (await b.all("communication"))[0];
+  assert.equal(mailB.data.to, `${MAILBOX}, colleague@harlow.test`, "colleagues stay in the text as written");
+  assert.deepEqual((mailB.data.contacts || []).length, 0, "but are not matched to contacts (and jane has none here)");
 });
 
 test("the Flow's name and trigger come from the watcher; a bad watcher name is refused", () => {

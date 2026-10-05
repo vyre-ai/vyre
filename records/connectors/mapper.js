@@ -94,6 +94,11 @@ export function makeMapper() {
   function mapItem(raw, map, vars = {}) {
     const out = {};
     for (const [k, f] of Object.entries(map)) { if (FORBIDDEN.has(k)) continue; const v = field(raw, f, vars); if (v !== undefined && v !== null && !(Array.isArray(v) && v.length === 0 && k !== "people")) out[k] = v; }
+    // who was on it, as written: the addresses of each role, comma separated (the Communication's from, to, cc, bcc, organizer and attendees); `people` stays for matching them to contacts
+    if (Array.isArray(out.people)) {
+      const FIELD = { from: "from", to: "to", cc: "cc", bcc: "bcc", organizer: "organizer", attendee: "attendees" };
+      for (const p of out.people) { const k = FIELD[p.how]; if (k && !(k in map)) out[k] = out[k] ? out[k] + ", " + p.address : p.address; }
+    }
     return out;
   }
   return { get, addresses, transform, mapItem, field };

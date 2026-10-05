@@ -31,13 +31,15 @@ test("normalize: addresses and numbers are stored one way", () => {
   assert.equal(normalizePhone("555 0100"), "5550100");
 });
 
-test("logging: one communication per source item, a participant per person, contacts found by main email or phone, unknown people kept by address", async () => {
+test("logging: one communication per source item, who was on it as written, contacts found by main email or phone, unknown people only in the text", async () => {
   const { kernel } = await rig(), R = kernel.records;
   const jane = await R.create(owner(), "contact", { name: "Jane Doe", email: "jane@harlow.test", phone: "+15550100" });
   const item = { kind: "email", direction: "inbound", at: "2026-10-01T09:00:00.000Z", subject: "Hello", excerpt: "Hi there", source_key: "gmail:abc", mailbox: "alex@harlow.test",
     people: [{ address: "Jane@Harlow.Test", how: "from" }, { address: "alex@harlow.test", how: "to" }, { address: "+1 555 0100", how: "cc" }] };
   const first = await logCommunication(kernel, owner(), item);
   assert.equal(first.created, true);
+  assert.deepEqual([first.communication.data.from, first.communication.data.to, first.communication.data.cc], ["jane@harlow.test", "alex@harlow.test", "+15550100"], "who was on it, as written, one way");
+  assert.deepEqual(first.communication.data.contacts.map((/** @type {any} */ c) => c.urn), [jane.urn], "Jane once, by her email and her phone; the mailbox matches no contact");
   assert.deepEqual(first.participants.map(p => [p.address, p.contact === jane.urn]), [["jane@harlow.test", true], ["alex@harlow.test", false], ["+15550100", true]], "a handle is matched by its main email or phone, written one way; a stranger keeps the address");
 });
 
@@ -50,7 +52,7 @@ test("logging twice makes one communication and fills in what was missing; creat
   assert.equal(b.created, false);
   assert.equal(b.communication.id, a.communication.id);
   assert.equal((await R.query(owner(), "communication", { page: { limit: 10 } })).rows.length, 1);
-  assert.equal((await R.query(owner(), "participant", { page: { limit: 10 } })).rows.length, 2, "Jane was not logged twice");
+  assert.equal((await R.get(owner(), "communication", a.communication.id)).data.contacts.length, 2, "Jane was linked once, and the new contact was added");
   const made = await findContact(kernel, owner(), "new@person.test");
   assert.ok(made, "a contact was made for the unknown person");
   assert.equal((await R.get(owner(), "contact", made.id)).data.name, "New Person");
@@ -74,7 +76,6 @@ test("who may see a communication follows the attributes it was logged with: a g
   await logCommunication(kernel, owner(), { kind: "email", at: "2026-10-01T10:00:00.000Z", source_key: "gmail:private", mailbox: "alex@harlow.test", attrs: { project: "alex" }, people: [{ address: "a@x.test", how: "from" }] });
   const bobChain = chains.fromFacts({ kind: "device", device_key_id: "d-bob", person: "per_bob", path: "direct" });
   assert.deepEqual((await kernel.records.query(bobChain, "communication", { page: { limit: 10 } })).rows.map(r => r.data.source_key), ["gmail:shared"]);
-  assert.equal((await kernel.records.query(bobChain, "participant", { page: { limit: 10 } })).rows.length, 1, "and only that one's participants");
 });
 
 test("contact points: a further address is found, unique across main addresses and points, and a message to it logs on that contact", async () => {

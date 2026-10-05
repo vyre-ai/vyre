@@ -127,13 +127,13 @@ export const CONTACT_POINT = {
 };
 
 export const COMMUNICATION_KINDS = ["email", "meeting", "call", "text", "letter", "chat"];
-export const PARTICIPANT_AS = ["from", "to", "cc", "bcc", "attendee", "organizer", "caller", "callee"];
 
 /**
  * Everything said to or by someone: an email, a meeting, a call, a text, a letter, a chat. `source_key` is the connector and its own id for the item
  * ("gmail:18f3a..."), unique, so logging the same message twice makes one record. `mailbox` says whose inbox or calendar it came through (who may see it
- * follows that). `body` is kept only where the Space chose to keep full text; `excerpt` and `original_url` (back to the original) are the default. Who was on it:
- * the `participant` records. What it concerns: `record`.
+ * follows that). `body` is kept only where the Space chose to keep full text; `excerpt` and `original_url` (back to the original) are the default. Who was on it: the bare addresses in
+ * `from`, `to`, `cc`, `bcc`, `organizer` and `attendees` (comma separated, as the message said them, whether or not anyone matches), and `contacts`, the one relation, to the Contacts those addresses
+ * belong to (many to many, "Communications" on the Contact). What it concerns: `record`.
  */
 export const COMMUNICATION = {
   name: "communication", label: "Communication", icon: "IconMessage",
@@ -149,21 +149,13 @@ export const COMMUNICATION = {
     text("source_key", "Connector and its id", { unique: true }),
     text("mailbox", "Mailbox or calendar"),
     f("link", "record", "Concerns"),
-    // the Contacts on it, many to many: a Contact's page shows its Communications (the reverse); the Participant beside it keeps how each was on it and the address as written
+    // who was on it, as written: addresses (or numbers), comma separated; an event has an organizer and attendees, a message from, to and cc
+    text("from", "From"), text("to", "To"), text("cc", "Cc"), text("bcc", "Bcc"), text("organizer", "Organizer"), text("attendees", "Attendees"),
+    // the Contacts those addresses belong to, many to many: a Contact's page shows its Communications (the reverse)
     f("link", "contacts", "Contacts", { to: "contact", many: true, inverse: { name: "communications", label: "Communications" } }),
   ],
 };
 
-/** One person on one communication, and how they were on it. Many contacts per communication and many communications per contact. `address` is what the message said (the email or number), kept when no contact matched. */
-export const PARTICIPANT = {
-  name: "participant", label: "Participant", icon: "IconUsers",
-  fields: [
-    f("link", "communication", "Communication", { to: "communication", required: true, inverse: { name: "participants", label: "Participants" } }),
-    f("link", "contact", "Contact", { to: "contact", inverse: { name: "participations", label: "Participations" } }),
-    text("address", "Address as written"),
-    choice("how", "How", PARTICIPANT_AS, { required: true }),
-  ],
-};
 
 
 export const TASK_STATUS = ["waiting", "ready", "working", "needs_check", "stuck", "done", "skipped"];
@@ -259,4 +251,4 @@ export const FILE_SHARE = {
   fields: [text("path", "File path", { required: true })],
 };
 
-export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, PARTICIPANT, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, TASK].map((t) => Object.freeze(t)));
+export const CORE_TYPES = Object.freeze([CONTACT, CONTACT_POINT, ORGANIZATION, COMMUNICATION, EVENT, TEMPLATE, PLAYBOOK, TEAM_MEMBER, PROJECT, CHAT, TASK].map((t) => Object.freeze(t)));
