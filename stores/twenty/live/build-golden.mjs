@@ -35,9 +35,9 @@ try {
   fs.mkdirSync(out, { recursive: true, mode: 0o700 });
   const tag = tagOfRef(image);
   sh(["cp", `${db}:/tmp/golden.dump`, path.join(out, `${tag}.dump`)]);
-  fs.chmodSync(path.join(out, `${tag}.dump`), 0o600);
+  fs.chmodSync(path.join(out, `${tag}.dump`), 0o644); // read by the unprivileged generator in the image: not a secret (no password in it)
   const admin = JSON.parse(fs.readFileSync(path.join(spaceDir(home, space), "admin.secret"), "utf8"));
-  fs.writeFileSync(path.join(out, `${tag}.json`), JSON.stringify({ image, email: admin.email, password: admin.password, workspaceId: p.workspaceId, builtAt: new Date().toISOString(), state }, null, 2), { mode: 0o600 });
+  fs.writeFileSync(path.join(out, `${tag}.json`), JSON.stringify({ image, email: admin.email, password: admin.password, workspaceId: p.workspaceId, builtAt: new Date().toISOString(), state }, null, 2), { mode: 0o644 });
   lap(`saved ${path.join(out, `${tag}.dump`)} (${(fs.statSync(path.join(out, `${tag}.dump`)).size / 1e6).toFixed(1)} MB)`);
   ok = true;
 } finally {
