@@ -16,7 +16,7 @@ import { RealAdd } from "./RealAdd";
 const KINDS: { id: DeviceKind; icon: IconName; title: string; body: string }[] = [
   { id: "phone", icon: "phone", title: "A phone", body: "Open Vyre on it and scan." },
   { id: "computer", icon: "laptop", title: "A computer", body: "Scan its code, then confirm three words." },
-  { id: "server", icon: "box", title: "A server", body: "One you own, to take heavy work." },
+  { id: "server", icon: "box", title: "Another computer", body: "One that stays on, to take heavy work." },
 ];
 const FP = "7KQM 4P2X";
 
