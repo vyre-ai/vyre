@@ -7,8 +7,9 @@
 // Times a person reads (`at`, `snooze_until`, `done_at`, `removed_at`) are datetimes. The engine's own moments (`next_fire`, `created`, `updated`) are numbers in ms.
 
 const text = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "text", label, ...more });
-/** The engine's own bookkeeping: a field a person never sets. `internal: true` tells a client not to list it on a record page, in a table or in a form; the planner reads and writes it. */
-const hide = (/** @type {any} */ f) => ({ ...f, internal: true });
+/** The engine's own bookkeeping: a field no role sees or writes (`hidden_from`, the contract's one way to hide a field from people), so a record page, table or form lists only what a person sets. The planner's own chain has no role and reads and writes it. */
+const ALL_ROLES = ["owner", "admin", "manager", "member", "temp"];
+const hide = (/** @type {any} */ f) => ({ ...f, hidden_from: ALL_ROLES });
 const num = (/** @type {string} */ name, /** @type {string} */ label, /** @type {object} */ more = {}) => ({ name, kind: "number", label, ...more });
 const bool = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, kind: "boolean", label });
 const when = (/** @type {string} */ name, /** @type {string} */ label) => ({ name, kind: "datetime", label });

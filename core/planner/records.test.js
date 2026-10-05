@@ -22,7 +22,8 @@ test("records: alarms, timers and reminders are Reminder records, notes are Note
   const r = await w.ok("planner.add", { kind: "reminder", title: "Call juno", at: iso(T0 + HOUR) });
   const n = await w.ok("planner.add", { kind: "note", title: "juno prefers mornings", body: "Mornings for calls", list: "people" });
   const rec = await R.get(w.owner, "reminder", a.id);
-  assert.deepEqual([rec.data.kind, rec.data.title, rec.data.state, rec.data.list, rec.data.priority, rec.data.pinned, rec.data.tags, rec.data.wall, rec.data.source], ["alarm", "Northwind Bakery opens", "open", "work", 2, true, '["bakery"]', "07:00", "cli"]);
+  assert.deepEqual([rec.data.kind, rec.data.title, rec.data.state, rec.data.list, rec.data.priority, rec.data.pinned, rec.data.tags], ["alarm", "Northwind Bakery opens", "open", "work", 2, true, '["bakery"]']);
+  assert.ok(!("wall" in rec.data) && !("source" in rec.data) && !("next_fire" in rec.data), "a person's read leaves out the engine's fields");
   assert.equal(rec.data.at, iso(a.at), "the time a person reads is a datetime");
   assert.equal((await R.get(w.owner, "reminder", r.id)).data.title, "Call juno");
   const note = await R.get(w.owner, "note", n.id);
@@ -46,7 +47,7 @@ test("records: a reminder made or changed in the app is read back in, rings at i
   const w = await world(t);
   const R = w.k.gateway.records;
   // Made in the app: no planner involved, nothing but the record.
-  const made = await R.create(w.owner, "reminder", { title: "Renew licence", kind: "reminder", state: "open", at: iso(T0 + 2 * HOUR), created: T0, updated: T0 });
+  const made = await R.create(w.owner, "reminder", { title: "Renew licence", kind: "reminder", state: "open", at: iso(T0 + 2 * HOUR) });
   const seen = await until(async () => (await w.ok("planner.list", {})).find(x => x.id === made.id));
   assert.ok(seen, "the planner follows the records");
   assert.equal(seen.next_fire, T0 + 2 * HOUR);
@@ -243,14 +244,14 @@ test("records: a to-do names its project as a link to a Project record, or keeps
   assert.equal((await w.k.tasks.get(w.owner, plain.id)).project, p.urn);
 });
 
-test("records: the engine's own fields are marked internal and the reminder type offers a calendar view laid out by `at`", async t => {
+test("records: the engine's own fields are hidden from every role and the reminder type offers a calendar view laid out by `at`", async t => {
   const w = await world(t);
   const types = await w.k.store.types();
   const rem = types.find(/** @type {any} */ x => x.name === "reminder"), note = types.find(/** @type {any} */ x => x.name === "note");
-  const hidden = (/** @type {any} */ def) => def.fields.filter(/** @type {any} */ f => f.internal === true).map(/** @type {any} */ f => f.name).sort();
+  const hidden = (/** @type {any} */ def) => def.fields.filter(/** @type {any} */ f => Array.isArray(f.hidden_from) && f.hidden_from.length === 5).map(/** @type {any} */ f => f.name).sort();
   assert.deepEqual(hidden(rem), ["added_by", "created", "date", "floating", "last_result", "next_fire", "run_count", "source", "updated", "waits_on_fired", "wall"]);
   assert.deepEqual(hidden(note), ["added_by", "created", "source", "updated"]);
-  for (const person of ["title", "kind", "state", "at", "snooze_until", "body", "list", "priority", "pinned", "tags"]) assert.ok(!rem.fields.find(/** @type {any} */ f => f.name === person).internal, `${person} is the person's`);
+  for (const person of ["title", "kind", "state", "at", "snooze_until", "body", "list", "priority", "pinned", "tags"]) assert.ok(!rem.fields.find(/** @type {any} */ f => f.name === person).hidden_from, `${person} is the person's`);
   assert.equal(rem.fields.find(/** @type {any} */ f => f.name === "at").kind, "datetime");
   const cal = rem.views.find(/** @type {any} */ v => v.type === "calendar");
   assert.deepEqual([cal.of, cal.dateField], ["reminder", "at"]);
