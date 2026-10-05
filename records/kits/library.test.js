@@ -29,7 +29,7 @@ test("a Kit's views are stored with the type they show", () => {
   assert.equal(k.includes.views.length, 1, "the Kit's own view list stays for the install card");
 });
 
-test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Project, with roles linked to the contact and practice area a choice", () => {
+test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Project, with roles linked to the contact and no legal-only field", () => {
   const lib = kitLibrary();
   const base = lib.find((k) => k.id === "base");
   assert.ok(base, "the base Kit is on offer");
@@ -41,11 +41,8 @@ test("the base Kit ships: Contact, Lead, Appointment, Client, Subscriber and Pro
     const link = t(r).fields.find((f) => f.name === "contact");
     assert.deepEqual([link.kind, link.to, link.required], ["link", "contact", true]);
   }
-  for (const n of ["lead", "appointment", "client"]) {
-    const f = t(n).fields.find((x) => x.name === "practice_area");
-    assert.equal(f.kind, "choice", `${n}.practice_area is a choice`);
-    assert.ok(f.options.includes("Personal Injury") && f.options.includes("Estate Planning"));
-  }
+  // the base setup has no legal-only terms: no practice area on any of its types (the Law firm Kit adds it)
+  for (const n of ["lead", "appointment", "client", "project"]) assert.equal(t(n).fields.find((x) => x.name === "practice_area"), undefined, `${n} has no practice area`);
   assert.equal(t("project").kind, "project");
   // the Project is the core Project (name, client as the Contact, owner, due, stage): its stages by practice area belong to the Law firm Kit, not the base
   assert.deepEqual(k.includes.types.filter((x) => x.views).map((x) => [x.name, x.views.map((v) => v.type)]), [["lead", ["board"]], ["appointment", ["calendar"]], ["client", ["list"]], ["project", ["board"]]]);

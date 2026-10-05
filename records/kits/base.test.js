@@ -26,12 +26,12 @@ test("the base Kit installs on a Space and the types are there with their views 
 test("one Contact, many roles: a person who is a Lead and then a Client is still one Contact", async () => {
   const { R, o } = await rig();
   const c = await R.create(o, "contact", { name: "Jordan Reyes", email: "jordan@example.com" });
-  const lead = await R.create(o, "lead", { contact: { urn: c.urn }, practice_area: "Estate Planning", stage: "New" });
-  const client = await R.create(o, "client", { contact: { urn: c.urn }, practice_area: "Estate Planning", stage: "Onboarding" });
+  const lead = await R.create(o, "lead", { contact: { urn: c.urn }, stage: "New" });
+  const client = await R.create(o, "client", { contact: { urn: c.urn }, stage: "Onboarding" });
   const roles = await R.roles(o, c.urn);
   assert.deepEqual(roles.map((r) => r.role).sort(), ["client", "lead"]);
   assert.ok(lead.urn && client.urn);
-  await assert.rejects(() => R.create(o, "lead", { practice_area: "Estate Planning" }), "a lead without a contact is refused");
+  await assert.rejects(() => R.create(o, "lead", { stage: "New" }), "a lead without a contact is refused");
 });
 
 // (a Project's stages by practice area moved to the Law firm Kit with the practice area itself: objects' base Kit has no legal words)
