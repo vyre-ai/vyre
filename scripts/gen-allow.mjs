@@ -184,6 +184,7 @@ export const DECLARED = Object.freeze({
   "work.project.rename": "f990f0d36",
   "work.session.rename": "f990f0d36",
   "presence.remove": "235da322d",
+  "planner.bin": "49f105dbe",
 });
 
 /** The guard of a DECLARED tool test/reach-anyone.json has no line for. */
