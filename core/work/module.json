@@ -40,7 +40,8 @@
         "name": "work.project.move",
         "summary": "move a Project to another Space as a new project there, with one yes",
         "reach": "anyone",
-        "effect": "write"
+        "effect": "write",
+        "outward": true
       },
       {
         "name": "work.know.move-export",

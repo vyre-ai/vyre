@@ -72,8 +72,10 @@ export async function planMove({ from, to, project, client = "leave" }) {
   if (install.length && typeof to.install !== "function") for (const t of install) blockers.push(`the target Space has no record type ${t}`);
   const counts = { records: byType, files: files.length, bytes: files.reduce((n, f) => n + f.size, 0), sealed_fields: sealed, ...(chatFiles ? { chat_files: chatFiles, chat_bytes: chatBytes } : {}) };
   const ids = [...found.keys()].sort();
+  // the versions too: a record edited after the approval is not the record that was approved
+  const versions = [`${root.urn}@${root.version}`, ...[...found.values()].map(r => `${r.urn}@${r.version}`)].sort();
   // base64url, 43 characters: the form the kernel's moves and memory's room move both require of a plan hash
-  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, install })).digest("base64url");
+  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, versions, install })).digest("base64url");
   return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
 }
 
@@ -97,6 +99,8 @@ export async function runMove({ from, to, plan, ports = {} }) {
   if (again.hash !== plan.hash) throw Object.assign(new Error("the project changed since it was approved; plan the move again"), { code: "stale_plan" });
   if (plan.counts.sealed_fields > 0 && typeof ports.reseal !== "function") throw Object.assign(new Error("sealed fields move only through the sealing process, which this build does not offer yet; nothing was moved"), { code: "unavailable" });
   state.map ||= {};
+  // a move that stopped half way resumes from what it saved (the id map above all), so a retry never makes a second target project or copies a record twice
+  const persist = async () => { if (typeof ports.save === "function") await ports.save(state); };
   const step = (/** @type {string} */ n) => { if (ports.onStep) ports.onStep(n); };
   const { type, id } = urnParts(plan.project);
   const root = await from.records.get(from.chain, type, id);
@@ -106,12 +110,16 @@ export async function runMove({ from, to, plan, ports = {} }) {
   // 1. the new project in the target: new id, new folder, the name and repo, a pointer back
   step("create");
   let target = state.target ? await to.records.get(to.chain, PROJECT, urnParts(state.target).id) : null;
+  const pointer = `${from.space}:${root.urn}`;
+  // a retry with no saved state finds the project an earlier attempt made (it carries the pointer back) rather than making a second one
+  if (!target) { const prior = await to.records.query(to.chain, PROJECT, { filter: { field: "moved_from", op: "eq", value: pointer }, page: { limit: 1 } }); if (prior.rows && prior.rows[0]) target = prior.rows[0]; }
   if (!target) {
     const slug = await freeSlug(to, root.data.slug || "project");
-    const made = await to.records.create(to.chain, PROJECT, { name: root.data.name, slug, status: "active", memory_scope: `project:${slug}`, ...(root.data.repo ? { repo: root.data.repo } : {}) });
+    const made = await to.records.create(to.chain, PROJECT, { name: root.data.name, slug, status: "active", memory_scope: `project:${slug}`, moved_from: pointer, ...(root.data.repo ? { repo: root.data.repo } : {}) });
     target = await to.records.update(to.chain, PROJECT, made.id, { drive_path: `Projects/${made.id}` }, made.version);
-    state.target = target.urn;
   }
+  state.target = target.urn;
+  await persist();
   state.map[root.urn] = target.urn;
 
   // 2. records: created without their links first, then the links set through the map (a link to a record that did not move is dropped)
@@ -126,6 +134,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
     for (const [k, v] of Object.entries(src.data || {})) { if (isSealedValue(v)) continue; if (v && typeof v === "object" && !Array.isArray(v) && typeof /** @type {any} */ (v).urn === "string") continue; data[k] = v; }
     const made = await to.records.create(to.chain, r.type, data);
     state.map[r.urn] = made.urn;
+    await persist();
   }
   step("links");
   for (const r of [{ urn: root.urn, type: PROJECT }, ...wanted]) {
@@ -155,6 +164,7 @@ export async function runMove({ from, to, plan, ports = {} }) {
   const oldRoot = root.data.drive_path, newRoot = target.data.drive_path;
   /** @type {Record<string, string>} */ const hashes = {};
   if (!removing) for (const f of plan.files) {
+    if (!f.startsWith(`${oldRoot}/`) || f.split("/").some((/** @type {string} */ x) => x === ".." || x === ".")) throw Object.assign(new Error(`a file outside the project's folder was listed (${f}); nothing was copied`), { code: "bad_input" });
     const dest = `${newRoot}${f.slice(oldRoot.length)}`;
     const bytes = bytesOf(await from.drive.get(from.chain, f));
     hashes[f] = sha(bytes);
@@ -168,7 +178,6 @@ export async function runMove({ from, to, plan, ports = {} }) {
     const got = bytesOf(await to.drive.get(to.chain, dest));
     if (sha(got) !== hashes[f]) throw Object.assign(new Error(`a file did not arrive intact (${f}); nothing was removed from the old Space`), { code: "verify_failed" });
   }
-  state.verified = plan.hash;
   // chat folders: sealed bytes carried by the Space service (`from.carry`, pool to pool inside the sealing processes), listed by the move's own event, each hash checked on what arrives. The mover reads no plaintext.
   if (plan.counts.chat_files && !removing && !state.chat_carried) {
     step("chat-files");
@@ -180,6 +189,18 @@ export async function runMove({ from, to, plan, ports = {} }) {
     for (const e of entries) if (e.sha256 && byPath.get(e.dest) !== e.sha256) throw Object.assign(new Error(`a chat file did not arrive intact (${e.path}); nothing was removed from the old Space`), { code: "verify_failed" });
     state.chat_carried = entries.map((/** @type {any} */ e) => e.path);
   }
+  // every copied record is read back and compared by content (its own fields, not its links and not a sealed value) before anything is removed
+  if (!removing) {
+    for (const r of wanted) {
+      const m = state.map[r.urn]; if (!m) continue;
+      const sp = urnParts(r.urn), tp = urnParts(m);
+      const a = await from.records.get(from.chain, sp.type, sp.id), b = await to.records.get(to.chain, tp.type, tp.id);
+      const plain = (/** @type {any} */ d) => canonical(Object.fromEntries(Object.entries(d || {}).filter(([, v]) => !isSealedValue(v) && !(v && typeof v === "object" && !Array.isArray(v) && typeof /** @type {any} */ (v).urn === "string"))));
+      if (!a || !b || plain(a.data) !== plain(b.data)) throw Object.assign(new Error(`a record did not arrive intact (${r.urn}); nothing was removed from the old Space`), { code: "verify_failed" });
+    }
+  }
+  state.verified = plan.hash;
+  await persist();
   const mapped = Object.keys(state.map).length - 1;
   if (mapped !== wanted.filter((/** @type {any} */ r) => state.map[r.urn]).length) throw Object.assign(new Error("the records that arrived do not match the plan; nothing was removed"), { code: "verify_failed" });
 
@@ -213,7 +234,21 @@ export async function runMove({ from, to, plan, ports = {} }) {
     if (!left.length) state.cleaned = true;
   }
   if (ports.know && state.know_receipt && !state.know_forgotten) { step("forget-know"); await ports.know.forget({ records: knowRecords, receipt: state.know_receipt }); state.know_forgotten = true; }
-  if (ports.memory && state.memory_receipt && !state.memory_forgotten) { step("forget"); const f = await ports.memory.forget({ receipt: state.memory_receipt }); state.memory_forgotten = true; state.memory_counts = f && f.forgotten; }
+  if (ports.memory && state.memory_receipt && !state.memory_forgotten) {
+    step("forget");
+    /** @type {any} */ let f;
+    try { f = await ports.memory.forget({ receipt: state.memory_receipt }); }
+    catch (e) {
+      // the room changed between the export and now (a write filed while the move ran): carry it again, then forget against the new receipt, once
+      if (/** @type {any} */ (e).code !== "conflict") throw e;
+      const offer = await ports.memory.offer({ target: state.target });
+      const exp = await ports.memory.export({ to_key: offer.to_key });
+      state.memory_receipt = await ports.memory.import({ package: exp.package, into: state.target });
+      await persist();
+      f = await ports.memory.forget({ receipt: state.memory_receipt });
+    }
+    state.memory_forgotten = true; state.memory_counts = f && f.forgotten;
+  }
   const cur = await from.records.get(from.chain, PROJECT, id);
   await from.records.update(from.chain, PROJECT, id, { status: "moved", moved_to: `${to.space}:${target.urn}`, repo: null, client: null, drive_path: null, memory_scope: null }, cur.version);
   const out = { target: target.urn, moved: { records: wanted.length, files: plan.files.length, ...(state.memory_receipt ? { memory: state.memory_receipt.counts } : {}), ...(state.know_receipt ? { know: state.know_receipt.count } : {}) }, left_behind: left, map: state.map };

@@ -205,3 +205,60 @@ test("a chat file that does not arrive with the hash it left with stops the move
   assert.equal(a.files.has(chatPath), true);
   assert.ok([...a.rows.values()].some(r => r.type === "chat"), "the source records are still there");
 });
+
+test("MV-2: a retry with no saved state finds the project an earlier attempt made and does not make a second", async () => {
+  const { a, b, proj } = await seed();
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  await assert.rejects(() => runMove({ from: a, to: b, plan, ports: { onStep: (/** @type {string} */ n) => { if (n === "links") throw new Error("crash"); } } }), /crash/);
+  assert.equal([...b.rows.values()].filter(r => r.type === "project").length, 1);
+  // the retry has no state (a new process): the pointer back on the project is how it finds its way
+  /** @type {any} */ const again = await runMove({ from: a, to: b, plan, ports: {} }).catch(e => e);
+  assert.equal([...b.rows.values()].filter(r => r.type === "project").length, 1, "still one project in the target");
+  void again;
+});
+
+test("MV-2: a saved state resumes a move without copying a record twice", async () => {
+  const { a, b, proj } = await seed();
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  /** @type {any} */ let saved = null;
+  const save = async (/** @type {any} */ st) => { saved = JSON.parse(JSON.stringify(st)); };
+  await assert.rejects(() => runMove({ from: a, to: b, plan, ports: { save, onStep: (/** @type {string} */ n) => { if (n === "files") throw new Error("crash"); } } }), /crash/);
+  await runMove({ from: a, to: b, plan, ports: { state: saved, save } });
+  assert.equal([...b.rows.values()].filter(r => r.type === "chat").length, 1);
+  assert.equal([...b.rows.values()].filter(r => r.type === "project").length, 1);
+});
+
+test("MV-3: a copied record is read back and compared by content before the source records go", async () => {
+  const { a, b, proj } = await seed();
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  const create = b.records.create;
+  /** @type {any} */ (b.records).create = async (/** @type {any} */ c, /** @type {string} */ type, /** @type {any} */ data) => create(c, type, type === "chat" ? { ...data, title: "tampered" } : data);
+  await assert.rejects(() => runMove({ from: a, to: b, plan }), /did not arrive intact/);
+  assert.ok([...a.rows.values()].some(r => r.type === "chat"), "the source records are still there");
+});
+
+test("MV-4: a record edited after the approval is not the record that was approved, and a listed path outside the project's folder is refused", async () => {
+  const { a, b, proj, chat } = await seed();
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  await a.records.update(null, "chat", chat.id, { title: "Edited after approval" });
+  await assert.rejects(() => runMove({ from: a, to: b, plan }), /changed since/);
+  const s2 = await seed();
+  const plan2 = await planMove({ from: s2.a, to: s2.b, project: s2.proj.urn });
+  plan2.files = ["Projects/elsewhere/secret.txt"];
+  await assert.rejects(() => runMove({ from: s2.a, to: s2.b, plan: plan2 }), /outside the project's folder/);
+});
+
+test("a memory room that changed during the move is carried again and forgotten against the new receipt", async () => {
+  const { a, b, proj } = await seed();
+  /** @type {string[]} */ const order = [];
+  let first = true;
+  const memory = {
+    offer: async () => { order.push("offer"); return { to_key: "k" }; },
+    export: async () => { order.push("export"); return { package: "p" }; },
+    import: async () => { order.push("import"); return { digest: first ? "old" : "new", counts: { writes: 1 } }; },
+    forget: async (/** @type {any} */ i) => { order.push(`forget:${i.receipt.digest}`); if (first) { first = false; throw Object.assign(new Error("changed since export"), { code: "conflict" }); } return { forgotten: { writes: 1 } }; },
+  };
+  const plan = await planMove({ from: a, to: b, project: proj.urn });
+  await runMove({ from: a, to: b, plan, ports: { memory } });
+  assert.deepEqual(order, ["offer", "export", "import", "forget:old", "offer", "export", "import", "forget:new"]);
+});

@@ -152,11 +152,21 @@ export default {
         const k = kernelOf();
         const to = await sideOf(String(input.to_space), extra), from = withCarry(await sideOf(k.space, extra), to);
         if (!from.gw.moves || typeof from.gw.moves.out !== "function" || !to.gw.moves || typeof to.gw.moves.in !== "function") throw Object.assign(new Error("moving a project to another Space is not built into this kernel yet, so nothing was moved"), { code: "unavailable" });
-        const plan = await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
+        // A move is saved as it goes (the id map, the move id, what is done), so a crash or a retry resumes it: no second target project, no second approval, no record copied twice.
+        const db = ctx.store.db;
+        db.exec("CREATE TABLE IF NOT EXISTS work_moves (key TEXT PRIMARY KEY, state TEXT NOT NULL, at INTEGER NOT NULL)");
+        const key = `${from.space}|${to.space}|${String(input.project)}`;
+        const row = /** @type {any} */ (db.prepare("SELECT state FROM work_moves WHERE key = ?").get(key));
+        /** @type {any} */ const state = row ? JSON.parse(String(row.state)) : {};
+        const save = (/** @type {any} */ st) => { db.prepare("INSERT INTO work_moves (key, state, at) VALUES (?,?,?) ON CONFLICT(key) DO UPDATE SET state = excluded.state, at = excluded.at").run(key, JSON.stringify(st), Date.now()); };
+        // a resumed move that already emptied part of the source continues under the plan it was approved with; anything else is planned afresh and must be what the person saw
+        const plan = state.plan && state.plan.hash === input.plan_hash ? state.plan : await planMove({ from, to, project: String(input.project), client: input.client === "move" ? "move" : "leave" });
         if (plan.hash !== input.plan_hash) throw Object.assign(new Error("the project is not what you were shown; plan the move again"), { code: "stale_plan" });
+        state.plan = plan; save(state);
         // one yes, verified in the source Space's sealing process, bound to this exact plan; the target checks it carries the same one
-        const out = await from.gw.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof });
-        await to.gw.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id });
+        if (!state.move_id) { const o = await from.gw.moves.out(from.chain, { to: to.space, project: plan.project, plan_hash: plan.hash }, { presence: extra && extra.kernel_proof }); state.move_id = o.move_id; save(state); }
+        const out = { move_id: String(state.move_id) };
+        if (!state.move_in) { await to.gw.moves.in(to.chain, { from: from.space, project: plan.project, plan_hash: plan.hash, move_id: out.move_id }); state.move_in = true; save(state); }
         // The memory room moves with it: each Space has its own memory instance, reached through that Space's handle under the mover's chain there (the target proves the source with the signed evidence).
         // A kernel that cannot reach a Space's memory this way has no `memory` port, and the move says so instead of leaving the room behind unseen.
         const mem = (/** @type {any} */ side, /** @type {string} */ tool) => {
@@ -174,7 +184,8 @@ export default {
         // the Work engine's own lines: this module's tools, in each Space (the own Space through ctx.call, the other through its handle)
         const kn = { export: mem(from, "work.know.move-export"), import: mem(to, "work.know.move-import"), forget: mem(from, "work.know.move-forget") };
         const know = Object.values(kn).every(Boolean) ? kn : undefined;
-        const done = await runMove({ from, to, plan, ports: { move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(from.gw.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => from.gw.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        const done = await runMove({ from, to, plan, ports: { state, save, move_id: out.move_id, ...(memory ? { memory } : {}), ...(know ? { know } : {}), ...(from.gw.moves.reseal ? { reseal: (/** @type {any} */ ref, /** @type {string} */ urn, /** @type {string} */ field) => from.gw.moves.reseal(from.chain, to.chain, { ref, to: urn, field, move_id: out.move_id }) } : {}) } });
+        if (!done.left_behind.length) db.prepare("DELETE FROM work_moves WHERE key = ?").run(key);
         return { project: done.target, moved: done.moved, left_behind: done.left_behind.length, memory: memory ? "moved" : "not moved: this kernel cannot reach the other Space's memory yet" };
       },
     });
