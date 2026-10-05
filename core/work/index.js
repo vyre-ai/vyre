@@ -111,7 +111,8 @@ export default {
       if (k0.events && typeof k0.events.subscribe === "function" && typeof k0.serviceChain === "function") {
         try { k0.events.subscribe(k0.serviceChain("work"), "work-hub", {}, async (/** @type {any} */ e) => { if (e && (e.type === "project.updated" || e.type === "chat-record.updated")) await hubOf().onRecordChanged(e); }); } catch { /* no event feed in this kernel: the records are written from the switchboard's events alone */ }
       }
-      // The Space's General project is made when a chat first needs it (hub.generalProject), not at start: a fresh Space holds no data of the person's until there is some.
+      // every Space has a General project, made with it
+      void hubOf().generalProject().catch(() => {});
     }
     ctx.tool("work.project.create", {
       description: "Make a Project: one record that holds the work's sessions, Drive folder (Projects/<short name>), repository and memory. Give a name, and optionally a repo (a git remote) and a client record.",
