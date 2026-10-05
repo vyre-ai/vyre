@@ -8296,7 +8296,7 @@ Create a space and say where it will live: a server you have (the one command, t
   - `name` string, required
   - `displayName` string
   - `headscale` boolean
-  - `storeChoice` one of "server", "create", "cancel"
+  - `storeChoice` "server" or "cancel"
 - Callers: any caller
 
 ### `spaces.devices.enrol`
