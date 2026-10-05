@@ -14,6 +14,7 @@ import { sandboxDoor } from "./sandbox-ctx.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { OPEN as AGENT_OPEN, ASK_FIRST as AGENT_ASK_FIRST, WEB_REACH, SETUP_REACH } from "./agent-reach.js";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
@@ -769,7 +770,7 @@ export class Registry {
       if (this.deps.moduleHost && !this.isFirstParty(f.dir)) {
         const ctx = this.context(m);
         // The module's ctx is this host-side one; the sandbox reaches each door by message (core/modules/sandbox-ctx.js), so an added module runs the same contract as a built-in one.
-        const door = sandboxDoor({ name: m.name, ctx, dataDir: path.join(this.deps.paths.root, "data", m.name) });
+        const door = sandboxDoor({ name: m.name, ctx, dataDir: path.join((this.deps.paths && this.deps.paths.root) || os.tmpdir(), "data", m.name) });
         await this.deps.moduleHost.install({ name: m.name, dir: f.dir, entry: m.main || "index.js", manifest: m }, { approved_hosts: this.deps.moduleApprovals ? this.deps.moduleApprovals(m.name) : [], ctx: door });
         for (const e of toolEntries(m)) ctx.tool(e.name, { description: e.description || "", run: (/** @type {any} */ input, /** @type {any} */ meta) => this.deps.moduleHost.call(m.name, e.name, input, meta ? { caller: meta.caller, who: meta.who, agent: meta.agent, thread: meta.thread, project: meta.project } : undefined) });
         rec.handle = { stop: async () => { door.close(); await this.deps.moduleHost.uninstall(m.name); } };
