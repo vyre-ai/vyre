@@ -9,3 +9,4 @@ modules/*/android/.gradle/
 expo-env.d.ts
 public/term/
 /dist-android/
+/dist-ios/
