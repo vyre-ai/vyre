@@ -6,6 +6,7 @@
 //   answer  on memory.unlock-asked (only while a grant stands) the phone asks the server for the request, checks it, answers with its agree key, and finishes.
 //   revoke  the grant is removed on the server and the pin is forgotten here: nothing is answered again.
 import { fingerprint } from "../../../../lib/keywrap.js";
+import { signOf } from "../../../../lib/one-yes-sign.js";
 import { payloadHash } from "../real/payload-hash.js";
 import { answerUnlock } from "./unlock.js";
 
@@ -15,11 +16,8 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
 export const grantLine = (space) => `Let ${space} keep your planner running`;
 export const GRANT_BODY = "It keeps your reminders and notes ringing when your computer is off. It can read them only while this yes stands, and you can take it back here any time.";
 
-/**
- * What the person's key signs for this yes: the vault moment over the identity memory's unlock, for this identity and this server. It is lib/one-yes.js signOf("vault", request) written out here, because that file
- * pulls the server's caller code in with it (grant.test.js holds the two equal). @param {{ id: string, server: string }} status
- */
-export const yesRequest = (status) => ({ op: "task.vault_use", fields: { what: "memory.identity.unlock", fields: { identity: String(status.id), server: String(status.server) } } });
+/** What the person's key signs for this yes: the vault moment over the identity memory's unlock, for this identity and this server (lib/one-yes-sign.js: the one copy the server's verifier uses too). @param {{ id: string, server: string }} status */
+export const yesRequest = (status) => signOf("vault", { op: "memory.identity.unlock", fields: { identity: String(status.id), server: String(status.server) } });
 
 /**
  * The person's one yes for this server.
