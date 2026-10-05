@@ -130,7 +130,7 @@ export class Share {
   async myCard() {
     const id = await this.vault.identity();
     const card = relay.encodeCard({ acct: await this.accountId(), name: this.vault.name, sign: id.sign.public, box: id.box.public,
-      relay: this.vault.relayUrl || "", ...(this.vault.login ? { login: this.vault.login } : {}), devices: [] }, id.sign.private);
+      relay: this.vault.relayUrl || "", devices: [] }, id.sign.private);
     return { card, name: this.vault.name, relay: this.vault.relayUrl || null, fingerprint: fingerprint({ sign: id.sign.public, box: id.box.public }) };
   }
 
@@ -157,7 +157,7 @@ export class Share {
 
   personOut(r) {
     return { name: r.name, fingerprint: this.fp(r), version: Number(r.version) || 1, verified: Boolean(r.verified),
-      ...(r.relay ? { relay: r.relay } : {}), ...(r.login ? { login: r.login } : {}),
+      ...(r.relay ? { relay: r.relay } : {}),
       firstSeen: r.first_seen ?? r.added, ...(r.changed ? { changed: r.changed } : {}), blocked: Boolean(this.blockedWhy(r)) };
   }
 
@@ -179,20 +179,20 @@ export class Share {
     const fp = fingerprint(c);
     const old = this.row(who);
     if (old && this.fp(old) === fp) {
-      if (c.v === 2) this.db.prepare("UPDATE vault_people SET card=?, version=2, relay=?, login=?, fingerprint=? WHERE name=?").run(String(card).trim(), c.relay || null, c.login || null, fp, who);
+      if (c.v === 2) this.db.prepare("UPDATE vault_people SET card=?, version=2, relay=?, fingerprint=? WHERE name=?").run(String(card).trim(), c.relay || null, fp, who);
       return { person: this.personOut(this.row(who)), pinned: false };
     }
     if (callerKind(caller) === "mcp") return this.request("person", who, String(card).trim(), caller, { fingerprint: fp });
     const t = now();
     if (old) {
-      this.db.prepare("UPDATE vault_people SET sign=?, box=?, relay=?, login=?, card=?, version=?, fingerprint=?, verified=0, changed=? WHERE name=?")
-        .run(c.sign, c.box, c.relay || null, c.login || null, String(card).trim(), c.v, fp, t, who);
+      this.db.prepare("UPDATE vault_people SET sign=?, box=?, relay=?, card=?, version=?, fingerprint=?, verified=0, changed=? WHERE name=?")
+        .run(c.sign, c.box, c.relay || null, String(card).trim(), c.v, fp, t, who);
       this.vault.audit("person-changed", null, caller, true, `${who}: was ${this.fp(old)}, now ${fp}`);
       this.vault.emit("vault.card-changed", { name: who, fingerprint: fp, was: this.fp(old) });
       return { person: this.personOut(this.row(who)), changed: true };
     }
-    this.db.prepare("INSERT INTO vault_people (name, sign, box, relay, login, card, version, fingerprint, verified, first_seen, added) VALUES (?,?,?,?,?,?,?,?,0,?,?)")
-      .run(who, c.sign, c.box, c.relay || null, c.login || null, String(card).trim(), c.v, fp, t, t);
+    this.db.prepare("INSERT INTO vault_people (name, sign, box, relay, card, version, fingerprint, verified, first_seen, added) VALUES (?,?,?,?,?,?,?,0,?,?)")
+      .run(who, c.sign, c.box, c.relay || null, String(card).trim(), c.v, fp, t, t);
     this.vault.audit("person-add", null, caller, true, `${who}: ${fp}`);
     return { person: this.personOut(this.row(who)), pinned: true };
   }

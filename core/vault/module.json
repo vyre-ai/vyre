@@ -36,7 +36,6 @@
       { "name": "vault.identity", "effect": "read", "reach": "anyone" },
       { "name": "vault.pass.create", "outward": true, "effect": "write", "reach": "anyone" },
       { "name": "vault.pass.list", "reach": "anyone" },
-      { "name": "vault.grants.status", "effect": "read", "reach": "anyone" },
       { "name": "vault.pass.revoke", "effect": "write", "reach": "person" },
       { "name": "vault.pass.accept", "effect": "write", "reach": "anyone" },
       { "name": "vault.relay", "effect": "write", "reach": "anyone" },

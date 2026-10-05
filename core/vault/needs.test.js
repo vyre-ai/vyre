@@ -18,7 +18,7 @@ import { KINDS, SPEC, cleanDetails } from "../../lib/vault-kinds/kinds.js";
 const hex = n => crypto.randomBytes(n).toString("hex");
 
 test("providers: every entry has the catalog's shape, and fits its kinds", () => {
-  const needed = ["deepgram", "openai", "elevenlabs", "anthropic", "claude-setup-token", "github", "cloudflare", "tailscale",
+  const needed = ["deepgram", "openai", "elevenlabs", "anthropic", "claude-setup-token", "github", "cloudflare",
     "telegram", "google-oauth", "google-dwd", "google-apps-script", "imap-smtp", "mcp-bearer"];
   for (const n of needed) assert.ok(provider(n), `${n} is missing from the catalog`);
   assert.equal(provider("constructor"), null);

@@ -364,9 +364,9 @@ test("vault: behind tailscale serve, a relayed pass answers only its holder's Ta
   t.after(() => serve.close());
   const serveUrl = `http://127.0.0.1:${/** @type {any} */ (serve.address()).port}`;
 
-  const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, url: serveUrl, identity: "tailscale" } });
+  const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, url: serveUrl } });
   t.after(() => owner.d.stop());
-  const mate = await boot(t, { keystore: "file", login: "mate@example.com" });
+  const mate = await boot(t, { keystore: "file" });
   t.after(() => mate.d.stop());
   const o = owner.as("cli"), m = mate.as("cli");
 
@@ -391,7 +391,7 @@ test("vault: on the box (identity whois), a relay ignores the identity header an
   // The relay is on loopback here, so every peer is off the tailnet and whois is never asked.
   const owner = await boot(t, { keystore: "file", relay: { host: "127.0.0.1", port: free, identity: "whois" } });
   t.after(() => owner.d.stop());
-  const mate = await boot(t, { keystore: "file", login: "mate@example.com" });
+  const mate = await boot(t, { keystore: "file" });
   t.after(() => mate.d.stop());
   const o = owner.as("cli"), m = mate.as("cli");
   await o("vault.put", { name: "api-token", kind: "api-key", value: token, hosts: ["https://api.example.com"] });

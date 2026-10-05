@@ -84,8 +84,6 @@ export const PROVIDERS = {
     steps: "Add a new API token in your account settings with the same scope and store it here. Then remove the old token." },
   huggingface: { auto: false, url: "https://huggingface.co/settings/tokens",
     steps: "Use Invalidate and refresh on this token, or create a new one. Store the new value here." },
-  tailscale: { auto: false, url: "https://login.tailscale.com/admin/settings/keys",
-    steps: "Generate a new key on the Keys page with the same settings and store it here. Then revoke the old key." },
   deepgram: { auto: false, url: "https://console.deepgram.com/",
     steps: "Open the project's API Keys, create a new key and store it here. Then delete the old key." },
   elevenlabs: { auto: false, url: "https://elevenlabs.io/app/settings/api-keys",

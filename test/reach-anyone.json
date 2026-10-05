@@ -1621,10 +1621,6 @@
    "module": "vault",
    "reason": "callers list in code (surfaces and mcp) with a presence proof; from Claude it only queues a request a person approves"
   },
-  "vault.grants.status": {
-   "module": "vault",
-   "reason": "read-only: tailnet policy status per pass holder, never a value"
-  },
   "vault.health": {
    "module": "vault",
    "reason": "read-only: names and states, never a value"
