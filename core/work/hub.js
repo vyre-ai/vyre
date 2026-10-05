@@ -57,15 +57,17 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     if (slug !== undefined && (await find(PROJECT, "slug", slug))) throw Object.assign(new Error("a project already has that short name"), { code: "conflict" });
     const s = slug || await freeSlug(nm);
     const rec = await kernel.records.create(caller || chain(), PROJECT, { name: nm, slug: s, status: "active", drive_path: await freeFolder(nm), memory_scope: `project:${s}`, ...(repo ? { repo: String(repo).slice(0, 300) } : {}), ...(client ? { client: { urn: String(client) } } : {}) });
-    await folderMarker(rec);
+    // The marker is the CALLER's own write (drive.write on its chain): a person who cannot write Drive cannot make a project, and the record is taken back so none is left half made.
+    try { await folderMarker(rec, caller || chain(), true); }
+    catch (e) { await kernel.records.remove(caller || chain(), PROJECT, rec.id).catch(() => {}); throw e; }
     return rec;
   }
 
   /** Drive has path prefixes, not folders: a folder exists when a file does. The marker is the record's own address, so the folder is there and says what it is for. @param {any} rec */
-  async function folderMarker(rec) {
+  async function folderMarker(rec, by = chain(), strict = false) {
     if (!kernel.drive || typeof kernel.drive.put !== "function") return;
-    try { await kernel.drive.put(chain(), `${rec.data.drive_path}/.project`, new TextEncoder().encode(`${rec.urn}\n`)); }
-    catch (e) { log(`project hub: no Drive folder marker for ${rec.data.slug} (${/** @type {Error} */ (e).message})`); }
+    try { await kernel.drive.put(by, `${rec.data.drive_path}/.project`, new TextEncoder().encode(`${rec.urn}\n`)); }
+    catch (e) { if (strict) throw e; log(`project hub: no Drive folder marker for ${rec.data.slug} (${/** @type {Error} */ (e).message})`); }
   }
 
   /** The Project for a slug an older part of the system still names; made from the folder project's name on first sight. @param {string} slug @param {string} [name] */
@@ -133,6 +135,15 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     } catch (e) { log(`project hub: could not close the session record for ${p.thread}: ${/** @type {Error} */ (e).message}`); return null; }
   }
 
+  /** The folder a session's files live in under its project: its title's short form plus the first 6 characters of its id (stable even when the title is empty). The two kinds: what the person dropped in (`chat`) and what a model made (`made`). */
+  const sessionFolder = (/** @type {any} */ rec) => `${slugify(rec.data.title || "") || "session"}-${String(rec.data.thread).replace(/-/g, "").slice(0, 6)}`;
+  const KINDS = ["chat", "made"];
+  /** Move a session's two folders from one place to another; a missing folder moves nothing. */
+  async function moveSessionFolders(by, /** @type {string} */ fromRoot, /** @type {string} */ fromName, /** @type {string} */ toRoot, /** @type {string} */ toName) {
+    if (!kernel.drive || typeof kernel.drive.moveFolder !== "function" || (fromRoot === toRoot && fromName === toName)) return;
+    for (const k of KINDS) { try { await kernel.drive.moveFolder(by, `${fromRoot}/${k}/${fromName}`, `${toRoot}/${k}/${toName}`); } catch (e) { log(`project hub: could not move ${fromRoot}/${k}/${fromName}: ${/** @type {Error} */ (e).message}`); } }
+  }
+
   /** The Project a reference names: a short name, or a record address. @param {string} ref */
   async function projectOf(ref) {
     const r = String(ref || "");
@@ -141,13 +152,15 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   /** "Move to project": the session's record is linked to the other Project and carries its Drive folder; its ids, times and transcript pointer stay exactly as they were. */
-  async function moveSession(thread, projectRef) {
+  async function moveSession(thread, projectRef, by = chain()) {
     const rec = await find(SUMMARY, "thread", thread);
     if (!rec) throw Object.assign(new Error("no record of that session"), { code: "not_found" });
     const proj = await projectOf(projectRef);
     if (!proj) throw Object.assign(new Error("no such project"), { code: "not_found" });
     if (rec.data.project && rec.data.project.urn === proj.urn) return rec;
-    const moved = await kernel.records.update(chain(), SUMMARY, rec.id, { project: { urn: proj.urn }, drive: proj.data.drive_path }, rec.version);
+    const moved = await kernel.records.update(by, SUMMARY, rec.id, { project: { urn: proj.urn }, drive: proj.data.drive_path }, rec.version);
+    // the session's files go with it: its chat and made folders under the old project move under the new one
+    if (rec.data.drive && rec.data.drive !== proj.data.drive_path) await moveSessionFolders(by, rec.data.drive, sessionFolder(rec), proj.data.drive_path, sessionFolder(rec));
     // the old folder list still counts the session as picked into the project it was in
     const oldSlug = rec.data.project && rec.data.project.urn ? (await projectOf(rec.data.project.urn).catch(() => null)) : null;
     await tool("projects.remove-threads", { project: oldSlug && oldSlug.data.slug, threads: [thread] });
@@ -160,19 +173,19 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
    * (the record address, the short name) never change. `from` says where the change came from, so that place is not written back to.
    * @param {any} rec the Project record @param {string} name @param {"record" | "list"} from
    */
-  async function renameProject(rec, name, from) {
+  async function renameProject(rec, name, from, by = chain()) {
     const nm = String(name || "").trim();
     if (!nm || nm.length > 120) return rec;
     let cur = rec;
-    if (cur.data.name !== nm) cur = await kernel.records.update(chain(), PROJECT, cur.id, { name: nm }, cur.version);
+    if (cur.data.name !== nm) cur = await kernel.records.update(by, PROJECT, cur.id, { name: nm }, cur.version);
     const wantPath = await freeFolder(nm, cur.id);
     if (cur.data.drive_path !== wantPath) {
       if (kernel.drive && typeof kernel.drive.moveFolder === "function") {
-        try { if (cur.data.drive_path) await kernel.drive.moveFolder(chain(), cur.data.drive_path, wantPath); } catch (e) { log(`project hub: could not move the Drive folder of ${cur.data.slug}: ${/** @type {Error} */ (e).message}`); }
+        try { if (cur.data.drive_path) await kernel.drive.moveFolder(by, cur.data.drive_path, wantPath); } catch (e) { log(`project hub: could not move the Drive folder of ${cur.data.slug}: ${/** @type {Error} */ (e).message}`); }
       }
       const old = cur.data.drive_path;
-      cur = await kernel.records.update(chain(), PROJECT, cur.id, { drive_path: wantPath }, cur.version);
-      await folderMarker(cur);
+      cur = await kernel.records.update(by, PROJECT, cur.id, { drive_path: wantPath }, cur.version);
+      await folderMarker(cur, by);
       // every session of this project names the new folder
       const rows = (await kernel.records.query(chain(), SUMMARY, { filter: { field: "project", op: "eq", value: { urn: cur.urn } }, page: { limit: 200 } })).rows;
       for (const r of rows) if (r.data.drive !== wantPath) await kernel.records.update(chain(), SUMMARY, r.id, { drive: wantPath }, r.version).catch(() => {});
@@ -183,11 +196,15 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
   }
 
   /** A session's name changed somewhere: the record's title and the thread's name agree. @param {any} rec the session record @param {string} title @param {"record" | "thread"} from */
-  async function renameSession(rec, title, from) {
+  async function renameSession(rec, title, from, by = chain()) {
     const t = String(title || "").trim().slice(0, 120);
     if (!t) return rec;
     let cur = rec;
-    if (cur.data.title !== t) cur = await kernel.records.update(chain(), SUMMARY, cur.id, { title: t }, cur.version);
+    if (cur.data.title !== t) {
+      cur = await kernel.records.update(by, SUMMARY, cur.id, { title: t }, cur.version);
+      // the session's folders are named after its title: they are renamed with it
+      if (cur.data.drive) await moveSessionFolders(by, cur.data.drive, sessionFolder(rec), cur.data.drive, sessionFolder(cur));
+    }
     if (from !== "thread" && cur.data.thread) await tool("threads.rename", { thread: cur.data.thread, name: t });
     return cur;
   }
@@ -212,5 +229,5 @@ export function createHub({ kernel, call, now = Date.now, machine = os.hostname(
     return null;
   }
 
-  return Object.freeze({ createProject, ensureProject, generalProject, onStarted, onStopped, moveSession, renameProject, renameSession, onProjectChanged, onThreadRenamed, onRecordChanged, freeSlug, projectOf, sessionRecord: (/** @type {string} */ thread) => find(SUMMARY, "thread", thread) });
+  return Object.freeze({ createProject, ensureProject, generalProject, onStarted, onStopped, moveSession, renameProject, renameSession, onProjectChanged, onThreadRenamed, onRecordChanged, freeSlug, projectOf, sessionFolder, sessionRecord: (/** @type {string} */ thread) => find(SUMMARY, "thread", thread) });
 }

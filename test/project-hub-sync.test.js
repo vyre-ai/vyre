@@ -89,7 +89,7 @@ test("a project's name syncs both ways and the Drive folder follows, files and a
   const l0 = (await d.registry.call("projects.list", {}, "cli")).data.projects.find((/** @type {any} */ p) => p.name === "Rivera Estate");
   await d.registry.call("projects.rename", { project: l0.slug, name: "Rivera Family Trust" }, "cli");
   const rec = async () => (await rows("project")).find((/** @type {any} */ p) => p.urn === urn);
-  const r1 = await until(async () => { const x = await rec(); return x && x.data.name === "Rivera Family Trust" ? x : null; }, "Records to take the new name");
+  const r1 = await until(async () => { const x = await rec(); return x && x.data.name === "Rivera Family Trust" && x.data.drive_path === "Projects/Rivera Family Trust" ? x : null; }, "Records to take the new name and folder");
   assert.equal(r1.data.slug, slug, "the short name did not change");
   assert.equal(r1.data.drive_path, "Projects/Rivera Family Trust");
   const moved = await d.kernel.gateway.drive.get(admin, "Projects/Rivera Family Trust/retainer.txt");
@@ -98,7 +98,7 @@ test("a project's name syncs both ways and the Drive folder follows, files and a
   // from Records' side: the record renames, the old list and the folder follow
   await d.registry.call("work.project.rename", { project: slug, name: "Rivera Trust and Estate" }, "cli", await meta());
   await until(async () => (await d.registry.call("projects.list", {}, "cli")).data.projects.some((/** @type {any} */ p) => p.name === "Rivera Trust and Estate"), "the project list to take Records' name");
-  const r2 = await rec();
+  const r2 = await until(async () => { const x = await rec(); return x && x.data.drive_path === "Projects/Rivera Trust and Estate" ? x : null; }, "the folder to follow");
   assert.equal(r2.data.drive_path, "Projects/Rivera Trust and Estate");
   assert.equal(r2.urn, urn);
   await d.kernel.gateway.drive.get(admin, "Projects/Rivera Trust and Estate/retainer.txt");

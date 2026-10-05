@@ -112,27 +112,27 @@ export default {
     ctx.tool("work.project.rename", {
       description: "Rename a Project, from Records' side: the record, its Drive folder (files and all) and the project list all take the new name; its ids stay.",
       input: obj({ project: { type: "string" }, name: { type: "string" } }, ["project", "name"]),
-      run: async (input) => {
+      run: async (input, extra) => {
         const rec = await hubOf().projectOf(input.project);
         if (!rec) throw Object.assign(new Error("no such project"), { code: "not_found" });
-        const r = await hubOf().renameProject(rec, input.name, "record");
+        const r = await hubOf().renameProject(rec, input.name, "record", await chainOf(extra));
         return { project: r.urn, slug: r.data.slug, name: r.data.name, drive_path: r.data.drive_path };
       },
     });
     ctx.tool("work.session.rename", {
       description: "Rename a session, from Records' side: the record's title and the thread's name agree, the session's id does not change.",
       input: obj({ thread: { type: "string" }, title: { type: "string" } }, ["thread", "title"]),
-      run: async (input) => {
+      run: async (input, extra) => {
         const rec = await hubOf().sessionRecord(input.thread);
         if (!rec) throw Object.assign(new Error("no record of that session"), { code: "not_found" });
-        const r = await hubOf().renameSession(rec, input.title, "record");
+        const r = await hubOf().renameSession(rec, input.title, "record", await chainOf(extra));
         return { thread: r.data.thread, title: r.data.title };
       },
     });
     ctx.tool("work.session.move", {
       description: "Move to project: file a session under another Project (a short name or a record address). Its record, Drive folder and the project's session list follow; its id, times and transcript pointer stay.",
       input: obj({ thread: { type: "string" }, project: { type: "string" } }, ["thread", "project"]),
-      run: async (input) => { const r = await hubOf().moveSession(input.thread, input.project); return { thread: r.data.thread, project: r.data.project && r.data.project.urn, drive: r.data.drive }; },
+      run: async (input, extra) => { const r = await hubOf().moveSession(input.thread, input.project, await chainOf(extra)); return { thread: r.data.thread, project: r.data.project && r.data.project.urn, drive: r.data.drive }; },
     });
     ctx.tool("work.tools", {
       description: "The tools this caller may use in this Space, generated from its record definitions and the action registry and cut by what the caller may do. A tool the caller cannot use is not listed.",
