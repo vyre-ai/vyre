@@ -447,67 +447,20 @@
           "label": "Moved from (Space and project) when it came from another"
         },
         {
-          "name": "title",
-          "kind": "text",
-          "label": "Title",
-          "required": true
-        },
-        {
-          "name": "practice_area",
-          "kind": "choice",
-          "label": "Practice area",
-          "options": [
-            "Personal Injury",
-            "Estate Planning",
-            "Family Law",
-            "Immigration",
-            "Business",
-            "Criminal Defense",
-            "Other"
-          ]
-        },
-        {
-          "name": "accident_date",
-          "kind": "date",
-          "label": "Accident date",
-          "required_if": "practice_area == \"Personal Injury\"",
-          "visible_if": "practice_area == \"Personal Injury\""
-        },
-        {
-          "name": "trust_name",
-          "kind": "text",
-          "label": "Trust or plan name",
-          "visible_if": "practice_area == \"Estate Planning\""
-        },
-        {
-          "name": "hearing_date",
-          "kind": "date",
-          "label": "Next hearing",
-          "visible_if": "practice_area == \"Family Law\" or practice_area == \"Criminal Defense\""
-        },
-        {
           "name": "stage",
           "kind": "stage",
           "label": "Stage",
           "options": [
-            "Intake",
+            "New",
             "Active",
             "Review",
-            "Done",
-            "Treating",
-            "Demand",
-            "Negotiation",
-            "Settled",
-            "Closed",
-            "Drafting",
-            "Signing",
-            "Funding"
+            "Done"
           ]
         }
       ],
       "stages": [
         {
-          "name": "Intake"
+          "name": "New"
         },
         {
           "name": "Active"
@@ -517,58 +470,6 @@
         },
         {
           "name": "Done"
-        }
-      ],
-      "stage_sets": [
-        {
-          "name": "personal_injury",
-          "when": "practice_area == \"Personal Injury\"",
-          "stages": [
-            {
-              "name": "Intake"
-            },
-            {
-              "name": "Treating"
-            },
-            {
-              "name": "Demand"
-            },
-            {
-              "name": "Negotiation",
-              "enter_if": "not empty(accident_date)"
-            },
-            {
-              "name": "Settled"
-            },
-            {
-              "name": "Closed"
-            }
-          ]
-        },
-        {
-          "name": "estate_planning",
-          "when": "practice_area == \"Estate Planning\"",
-          "stages": [
-            {
-              "name": "Intake"
-            },
-            {
-              "name": "Drafting"
-            },
-            {
-              "name": "Review"
-            },
-            {
-              "name": "Signing",
-              "enter_if": "not empty(trust_name)"
-            },
-            {
-              "name": "Funding"
-            },
-            {
-              "name": "Closed"
-            }
-          ]
         }
       ]
     }
@@ -620,9 +521,8 @@
       "label": "Projects by stage",
       "groupBy": "stage",
       "columns": [
-        "title",
+        "name",
         "client",
-        "practice_area",
         "owner",
         "due"
       ]
