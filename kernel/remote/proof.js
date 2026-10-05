@@ -57,16 +57,17 @@ export const opOf = action => (String(action).startsWith("rules.") ? `grant.rule
  */
 export const proofNameOf = (call) => {
   const c = String(call);
-  if (c === "moves.out") return "moveOut";
-  if (c === "moves.outMany") return "moveOutMany";
+  const named = /** @type {Record<string, string>} */ (WIRE_TO_PROOF)[c];
+  if (named) return named;
   if (!c.startsWith("grants.")) return null;
-  const alias = /** @type {Record<string, string>} */ ({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm" })[c];
-  const short = alias || c.split(".").slice(1).join(".");
+  const short = c.split(".").slice(1).join(".");
   return Object.hasOwn(CALLS, short) ? short : null;
 };
 
 /** The names `proofRequest` knows. */
 export const PROOF_CALLS = Object.freeze(Object.keys(CALLS));
+/** Gateway paths whose proof request has another name (the wire says `grants.offers.lend`, the request is `lend`). */
+export const WIRE_TO_PROOF = Object.freeze({ "grants.invites.create": "inviteCreate", "grants.invites.confirm": "inviteConfirm", "moves.out": "moveOut", "moves.outMany": "moveOutMany", "grants.offers.offer": "offer", "grants.offers.unoffer": "unoffer", "grants.offers.lend": "lend", "grants.offers.unlend": "unlend" });
 
 /**
  * What a surface shows and signs for one grants call: `{ op, space, fields, payload_hash }`. The signer signs `payload_hash` (and the rest of the PresenceProof

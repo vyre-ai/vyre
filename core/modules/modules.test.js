@@ -1224,6 +1224,11 @@ test("modules: ctx.kernel.for(space).call runs a declared tool in that Space aft
   assert.deepEqual(forged.data, { in_space: null, chain: null });
 });
 
+test("modules: the name \"kernel\" is reserved, because the kernel's own service hop may write a kernel-owned field", () => {
+  const problems = validate({ name: "kernel", version: "1.0.0", description: "x", does: { tools: [] } }, { firstParty: true });
+  assert.ok(problems.some((p) => /reserved for the kernel/.test(p)), problems.join("; "));
+});
+
 test("modules: each hosted Space gets the module its own database, data folder and kernel handle, so two Spaces' module rows never touch", async t => {
   const home = tempHome(t);
   const root = path.join(home, "mods");

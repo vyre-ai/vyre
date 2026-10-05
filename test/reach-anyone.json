@@ -393,6 +393,10 @@
    "module": "files",
    "reason": "scope check: reach() limits an agent to its granted projects' folders, through the files guard; read-only"
   },
+  "flows.budget": {
+   "module": "flows",
+   "reason": "read: anyone in the Space reads the AI allowance; setting it (tokens_per_day, context_tokens) is refused in the tool unless the caller is an owner or an admin of the Space"
+  },
   "flows.card": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
@@ -420,6 +424,18 @@
   "flows.kit.card": {
    "module": "flows",
    "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.diff": {
+   "module": "flows",
+   "reason": "runs under the caller's own chain, never the module's: a person on their own surface acts as the Space owner, an assistant only through a daemon-bound session token, and anything else is refused; every record, task and send a Flow makes then goes through the kernel's authorize (ask-first for anything that leaves the Space); the person-only acts (approve, pause, resume, remove a Kit) are reach person"
+  },
+  "flows.kit.library": {
+   "module": "flows",
+   "reason": "read only: the Kits this build ships are static files in the repository (records/kits), listed or fetched by id with no Space, no chain and no write; nothing installs from here, installing is flows.kit.propose under the caller's chain and a person's yes"
+  },
+  "flows.kit.library.get": {
+   "module": "flows",
+   "reason": "read only: the Kits this build ships are static files in the repository (records/kits), listed or fetched by id with no Space, no chain and no write; nothing installs from here, installing is flows.kit.propose under the caller's chain and a person's yes"
   },
   "flows.kit.list": {
    "module": "flows",
@@ -725,6 +741,10 @@
    "module": "harness",
    "reason": "own-session check (own(), core/harness): a verified hook names only its own session; an unverified SessionStart brief only informs (it warns a terminal resuming a live headless thread), so it may name any session; it reads and says, never drains"
   },
+  "harness.end": {
+   "module": "harness",
+   "reason": "a mutating verb, guarded as every Harness hook: HOOK_CALLERS and own() refuse a caller that is not the session's own hook; it only says thread.stopped once for that session"
+  },
   "harness.enrich": {
    "module": "harness",
    "reason": "own-session check (own(), core/harness): a mcp or harness caller names only the session vyred verified for it (meta.thread); with none verified it may not name a live headless thread of Vyre's or a bound terminal session (each has its own verified channel); person and module callers are not hooks"
@@ -905,6 +925,10 @@
    "module": "planner",
    "reason": "guard: the item's source is stamped from the verified caller, an agent's task needs its own thread or a project it can reach (agentProjects), and an agent later changes only what it added (owns())"
   },
+  "planner.bin": {
+   "module": "planner",
+   "reason": "read-only; read under the CALLER's own chain, so the gateway's include_deleted rules decide: an owner or admin sees all, anyone else only the events made for the person on their chain (created_for), and a chain with no person (the shared assistant agent id alone) sees none"
+  },
   "planner.agenda": {
    "module": "planner",
    "reason": "read-only; an agent sees what the planner holds, with its project scope checked in code (agentProjects)"
@@ -1082,6 +1106,14 @@
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
   "publish.edge": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.down": {
+   "module": "publish",
+   "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
+  },
+  "publish.edge.up": {
    "module": "publish",
    "reason": "gate: the caller must be an active member whose role holds the ability (checked through spaces.membership in code), a model's production act is held for a person (publish.decide), and secrets reach a site only by an owner's grant"
   },
@@ -1464,6 +1496,10 @@
   "threads.release": {
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
+  },
+  "threads.rename": {
+   "module": "threads",
+   "reason": "guarded: guard() refuses callers that may not rename sessions and mayReach() refuses a thread outside the caller's reach, as for threads.archive"
   },
   "threads.rewind": {
    "module": "threads",
@@ -1912,6 +1948,22 @@
   "work.know.suggestions": {
    "module": "work",
    "reason": "read-only: proposals only, nothing is written until a person accepts; the kernel: every call is authorized with the chain the kernel builds for the caller, a model-facing read carries placeholders for sealed fields, and a tool with no kernel wired answers unavailable"
+  },
+  "work.project.create": {
+   "module": "work",
+   "reason": "a mutating verb, guarded: the record is made under the CALLER's own chain (records.create), and the Drive folder marker under the caller's own chain too (drive.write), so a caller without either cannot make a project"
+  },
+  "work.project.rename": {
+   "module": "work",
+   "reason": "guarded: the record update and the Drive folder move run under the CALLER's own chain (records.update, drive.write), so a caller without them is refused"
+  },
+  "work.session.move": {
+   "module": "work",
+   "reason": "guarded: the record update and the Drive folders move under the CALLER's own chain (records.update, drive.write)"
+  },
+  "work.session.rename": {
+   "module": "work",
+   "reason": "guarded: the record update runs under the CALLER's own chain (records.update); the thread side is threads.rename, which refuses a caller who may not reach that thread"
   },
   "work.situation": {
    "module": "work",

@@ -38,6 +38,11 @@ test("records.*: a signed-in device creates and queries records in its Space und
   assert.equal(page.rows.length, 1);
   const got = (await ok("records.get", { urn: made.urn })).record;
   assert.equal(got.data.name, "Jane");
+  // #contact: the same record put in front of the AI, with the reference as a tool; a bad urn is refused like records.get
+  const refd = (await ok("records.reference", { urn: made.urn })).reference;
+  assert.equal(refd.title, "Jane");
+  assert.ok(refd.text.includes("Name: Jane") && Array.isArray(refd.placeholders));
+  assert.equal((await call("records.reference", { urn: "nonsense" }, { root, caller: "cli" })).error.code, "bad_input");
   const upd = (await ok("records.update", { urn: made.urn, patch: { age: 41 }, base_version: got.version })).record;
   assert.equal(upd.data.age, 41);
   const stale = await call("records.update", { urn: made.urn, patch: { age: 42 }, base_version: got.version }, { root, caller: "cli" });

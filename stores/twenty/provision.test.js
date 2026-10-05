@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { TWENTY_TESTED_REF, isPinnedRef, composeFile, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG, autoProfile, memoryOf, MEMORY_PROFILES } from "./provision.js";
+import { TWENTY_TESTED_REF, isPinnedRef, composeFile, findGolden, tagOfRef, firewallRules, names, provisionSpace, upgradeSpace, spaceDir, TWENTY_TESTED_TAG, autoProfile, memoryOf, MEMORY_PROFILES } from "./provision.js";
 import { FakeTwenty } from "./testing/fake-twenty.js";
 
 const dirs = [];
@@ -216,4 +216,36 @@ test("tiny and auto: the machine picks the profile (tiny under about 6 GB), the 
   const s = composeFile({ space: "harlow", memory: "auto", totalMb: 16000 });
   assert.match(s, /mem_limit: 1536m\n    memswap_limit: 1536m/, "small has none");
   assert.deepEqual(memoryOf("auto", 4096), MEMORY_PROFILES.tiny);
+
+test("a Space made from the saved database: its compose file restores it once, skips the migration steps and puts this Space's own password on the saved user; a plain Space has none of that", () => {
+  const g = composeFile({ space: "harlow", golden: true });
+  assert.match(g, /\n  restore:\n/);
+  assert.match(g, /restore: \{ condition: service_completed_successfully \}/);
+  assert.match(g, /\.\/golden\.dump:\/golden\.dump:ro/);
+  assert.match(g, /pg_restore -h db -U postgres -d default --no-owner --no-acl --exit-on-error/);
+  assert.match(g, /printenv ADMIN_PASSWORD/, "the new password comes from the Space's own env file, never from the saved file");
+  assert.ok(!/-c .*ADMIN_PASSWORD|\$\$?ADMIN_PASSWORD/.test(g), "and is read inside psql from its environment, never put on a command line that a process list shows");
+  assert.match(g, /DELETE FROM core\.\\"signingKey\\"/, "the saved signing key is dropped: it is sealed with another Space's secrets");
+  assert.equal((g.match(/DISABLE_DB_MIGRATIONS: "true"/g) ?? []).length, 2, "the server skips the migration steps as the worker does");
+  for (const m of g.matchAll(/^\s+image: (.*)$/gm)) assert.match(m[1], /@sha256:[0-9a-f]{64}/, "every image pinned");
+  const after = composeFile({ space: "harlow", migrated: true });
+  assert.ok(!/restore/.test(after), "the restore step is gone after the first start");
+  assert.match(after, /DISABLE_DB_MIGRATIONS: "true"/);
+  const plain = composeFile({ space: "harlow" });
+  assert.ok(!/restore|golden/.test(plain));
+  assert.equal((plain.match(/DISABLE_DB_MIGRATIONS/g) ?? []).length, 1, "an upgrade or a plain Space still migrates on the server");
+});
+
+test("findGolden returns a saved database only for exactly the image the Space will run, from the folders it is given", () => {
+  const dir = tmp(), tag = tagOfRef(TWENTY_TESTED_REF);
+  assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "none saved");
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "x");
+  fs.writeFileSync(path.join(dir, `${tag}.json`), JSON.stringify({ image: TWENTY_TESTED_REF, email: "service@x.vyre.invalid", workspaceId: "w", builtAt: "t", state: { "types.json": [] } }));
+  const g = findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] });
+  assert.equal(g?.dump, path.join(dir, `${tag}.dump`));
+  assert.equal(g?.meta.email, "service@x.vyre.invalid");
+  const other = TWENTY_TESTED_REF.replace(/sha256:[0-9a-f]{64}/, `sha256:${"a".repeat(64)}`);
+  assert.equal(findGolden({ image: other, dirs: [dir] }), null, "a different image (same tag, another digest) is not used");
+  fs.writeFileSync(path.join(dir, `${tag}.dump`), "");
+  assert.equal(findGolden({ image: TWENTY_TESTED_REF, dirs: [dir] }), null, "an empty dump is not a saved database");
 });

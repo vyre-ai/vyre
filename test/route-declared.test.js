@@ -24,7 +24,7 @@ test("a route with no declaration is refused at registration, and a writing rout
     return {};
   } };`);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
-  const d = await start({ root, log: () => {} });
+  const d = await start({ root, log: () => {}, firstPartyRoots: [path.join(root, "modules")] });
   t.after(() => d.stop());
   const r = await d.registry.call("probe.refused", {}, "cli");
   assert.match(String(r.data && r.data.refused), /undeclared must say \{ readOnly: true \}/);
