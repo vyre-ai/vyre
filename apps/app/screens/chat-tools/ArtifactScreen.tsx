@@ -1,5 +1,6 @@
 // One artifact full screen (the Deck's /a/<id>?v=N): the version, who made it, its versions, what happened to it, and a public link.
 // The page it made is untrusted: it runs in a sealed frame and sits under a line that says so. A link is posting as the person, so the box asks their yes.
+import { dayTimeOf } from "../../src/time/show.js";
 import { ASSISTANT_MARK } from "../../src/store-core/kernel-view.js";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
@@ -12,7 +13,7 @@ import type { Activity } from "./more-model.ts";
 import type { Version } from "./model.ts";
 
 const say = (e: unknown, f: string) => (e instanceof Error && e.message ? e.message : f);
-const when = (at: number | null) => (at ? new Date(at).toLocaleString() : "");
+const when = (at: number | null) => (at ? dayTimeOf(at) : "");
 
 export function ArtifactScreen({ id, version }: { id: string; version?: number }) {
   const [art, setArt] = useState<any>(null);

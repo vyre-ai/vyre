@@ -1,6 +1,7 @@
 // GitHub accounts. "Sign in with GitHub" is a device code: the box returns a short code and GitHub's own page, the person types the code there (or opens the link that fills it in),
 // and Vyre waits on its own. Or paste a token made at GitHub (a password field, sent once, never shown). Removing an account removes Vyre's copy only; it never revokes the token at GitHub.
 // RepoPicker is the shared "pick a repo" sheet (search, paging, a private badge) for Projects to use.
+import { dayOf } from "../../src/time/show.js";
 import { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
 import * as Clipboard from "expo-clipboard";
@@ -126,7 +127,7 @@ export function RepoPicker({ open, accounts, onClose, onPick }: { open: boolean;
           {state !== "loading" && !repos.length && state !== "error" ? <Text tone="muted">{q ? "No repos match that search." : "No repos found."}</Text> : null}
           {repos.length ? <Card flush>{repos.map((r, i) => (
             <View key={r.full}>{i ? <Divider /> : null}
-              <Row dense title={r.full} sub={[r.private ? "Private" : "", r.description, r.updated ? `Updated ${new Date(r.updated).toLocaleDateString()}` : ""].filter(Boolean).join(". ")} onPress={() => onPick(r, account)} />
+              <Row dense title={r.full} sub={[r.private ? "Private" : "", r.description, r.updated ? `Updated ${dayOf(new Date(r.updated).getTime())}` : ""].filter(Boolean).join(". ")} onPress={() => onPick(r, account)} />
             </View>))}</Card> : null}
           {more ? <View className="self-start"><Button kind="ghost" size="sm" label="Show more" disabled={state === "loading"} onPress={() => run(account, q.trim(), page + 1, true)} /></View> : null}
         </View>

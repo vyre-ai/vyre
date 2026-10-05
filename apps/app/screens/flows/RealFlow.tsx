@@ -1,4 +1,5 @@
 // One Flow from the real vyred: its canvas, the version waiting for approval (with the kernel's card and a real Face ID or fingerprint), and its runs painted over the canvas.
+import { dayTimeOf } from "../../src/time/show.js";
 import { useEffect, useState } from "react";
 import { presenceText } from "../shell/FaceIdSheet";
 import { View } from "react-native";
@@ -11,7 +12,7 @@ import { retryReal, startReal } from "./run";
 import { canRetry, recordLines, startRefusal } from "./run-model";
 import { approveReal, cardReal, getReal, graphReal, runReal, runsReal, type Card as FlowCard, type Graph, type RunRow } from "./real";
 
-const when = (ms: number | null) => (ms ? new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+const when = (ms: number | null) => (ms ? dayTimeOf(ms) : "");
 const STATE: Record<string, { note: string; tone: "accent" | "ok" | "warn" | "plain" }> = {
   waiting: { note: "Waiting on someone", tone: "accent" }, running: { note: "Running", tone: "accent" }, done: { note: "Done", tone: "ok" }, failed: { note: "Failed", tone: "warn" },
 };
