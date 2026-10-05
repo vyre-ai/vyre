@@ -21,10 +21,10 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "grants.create", resource_type: "grant", risk: "grant", label: "give access", gloss: "Give a person or an assistant access to something." },
   { action: "grants.revoke", resource_type: "grant", risk: "grant", label: "take access away", gloss: "Remove access, and everything given from it." },
   { action: "grants.narrow", resource_type: "grant", risk: "grant", label: "reduce access", gloss: "Make an existing access smaller." },
-  { action: "grants.role", resource_type: "grant", risk: "grant", label: "set a role", gloss: "Make someone an owner, hand ownership over, or take a member or an actor out." },
+  { action: "grants.role", resource_type: "grant", risk: "grant", label: "set the owner", gloss: "Make someone an owner, or hand ownership over." },
   // Giving a role below owner and registering an actor ride on the person's own authenticated call: Touch ID is for pairing, the vault and outward acts, not for who is in the Space (lead ruling 5 Oct).
   // Only an owner or an admin does either, and an admin sets only the roles below admin (MAY_SET); making an owner stays a presence act.
-  { action: "grants.member", resource_type: "grant", risk: "admin", label: "set a role or add an assistant", gloss: "Make someone an admin, manager, member or temp, add an assistant or service to the Space, or give one access." },
+  { action: "grants.member", resource_type: "grant", risk: "admin", label: "change who is in the Space", gloss: "Make someone an admin, manager, member or temp, take a member or an assistant out, add an assistant or service, or give one access." },
   { action: "grants.offer", resource_type: "offer", risk: "grant", label: "offer a computer for work", gloss: "Let a Space's work run on a member's computer, or accept that on your own." },
   // Taking access away asks for no fresh proof, only the person's live session (risk "admin" = session presence): withdrawing can only reduce what a computer may do.
   { action: "grants.unoffer", resource_type: "offer", risk: "admin", label: "stop sharing a computer", gloss: "Withdraw an offer of a computer for work." },
@@ -430,7 +430,7 @@ export function createGrantsStore(cfg) {
     async removeMember(chain, m, o = {}) {
       const issuer = person(chain);
       if (!m || typeof m.person !== "string") throw new KernelError("bad_input", "name the person to remove");
-      const d = await gate(chain, "grants.role", urn("member", m.person), { remove: m.person }, o.presence);
+      const d = await gate(chain, "grants.member", urn("member", m.person), { remove: m.person }, o.presence);
       const prior = memberships.get(m.person);
       if (!prior) throw new KernelError("not_found", "no such member");
       const mine = roleOf(issuer);
@@ -473,7 +473,7 @@ export function createGrantsStore(cfg) {
     async removeActor(chain, actor, o = {}) {
       const issuer = person(chain);
       if (!actor || !["agent", "service", "automation"].includes(actor.kind) || actor.space !== cfg.space || typeof actor.id !== "string") throw new KernelError("bad_input", "an actor needs a kind, an id and this Space");
-      const d = await gate(chain, "grants.role", urn("member", actor.id), { remove_actor: actor }, o.presence);
+      const d = await gate(chain, "grants.member", urn("member", actor.id), { remove_actor: actor }, o.presence);
       if (!isAdmin(issuer)) throw new KernelError("not_allowed", "only an owner or an admin removes an actor");
       if (!actors.has(actorKey(actor))) throw new KernelError("not_found", "no such actor");
       actors.delete(actorKey(actor));

@@ -39,9 +39,15 @@ test("an owner gives a role below owner and adds an assistant with no presence p
   await assert.rejects(() => g.addActor(asst, { kind: "agent", id: "y", space: SPACE }), { code: "chain_not_person" });
 });
 
-test("making an owner, handing ownership over and taking a member or an actor out still need a presence proof", async () => {
+test("only making an owner and handing ownership over still need a presence proof; taking a member or an actor out needs none (user ruling 5 Oct)", async () => {
   const { g, owner } = await rig();
   await g.setRole(owner, { person: ADA, role: "admin" });
+  await g.setRole(owner, { person: BOB, role: "member" });
+  const kit = { kind: "agent", id: "kit", space: SPACE };
+  await g.addActor(owner, kit);
   await assert.rejects(() => g.setRole(owner, { person: ADA, role: "owner" }), e => e.code === "needs_presence" || /presence/i.test(e.message));
-  await assert.rejects(() => g.removeMember(owner, { person: ADA }), e => e.code === "needs_presence" || /presence/i.test(e.message));
+  await assert.rejects(() => g.transferOwner(owner, { to: ADA }), e => e.code === "needs_presence" || /presence/i.test(e.message));
+  await g.removeMember(owner, { person: BOB });
+  await g.removeActor(owner, kit);
+  await assert.rejects(() => g.removeActor(owner, kit), e => e.code === "not_found", "it is gone");
 });
