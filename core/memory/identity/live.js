@@ -117,7 +117,7 @@ export class IdentityLive {
     const m = this.home.manifest();
     return { kept: m && !m.moved_to ? "here" : this.home.movedTo() ? "moved" : "none", ...(this.home.movedTo() ? { moved_to: this.home.movedTo() } : {}), rev: m ? m.rev : null, unlocked: this.unlocked,
       devices: m ? m.wraps.filter((/** @type {any} */ w) => w.kind === "device").length : 0, recovery_code: Boolean(m && m.wraps.some((/** @type {any} */ w) => w.kind === "code")),
-      granted: this.home.grants().map(g => ({ server: g.server, fp: g.fp, at: g.at })), server: this.serverFp };
+      granted: this.home.grants().map(g => ({ server: g.server, fp: g.fp, at: g.at })), server: this.serverFp, server_key: this.server ? this.server.publicJwk : null, id: this.home.id };
   }
 
   /**
