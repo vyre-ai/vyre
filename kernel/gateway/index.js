@@ -48,7 +48,7 @@ export function createGateway(cfg) {
     sharedRead: (/** @type {string} */ resource, /** @type {string} */ person) => sharedRead(resource, person, { space: cfg.space, chains: cfg.chains, gs, records }),
   }) : roomed;
   if (gs) gs.bind({ enforce, authorizer, registry: () => authorizer.actions });
-  records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush , ...(cfg.basic ? { basic: cfg.basic } : {}) });
+  records = createRecords({ tasks: cfg.tasks, isMoved: () => (upgrade ? upgrade.movedTo() : null), room: cfg.room, expr: cfg.expr, stageTasks: cfg.stageTasks, onStageEnter: cfg.onStageEnter, enforce, members: wiring.members || cfg.members, space: cfg.space, store: cfg.store, authorizer, log: cfg.log, chains: cfg.chains, clock: cfg.clock, sinks: cfg.sinks, unit: cfg.unit, kitApply: cfg.kitApply, attrPush: cfg.attrPush, basic: cfg.basic });
   const { allowed, gate } = createGate({ authorizer, log: cfg.log, enforce });
 
   /** May this chain see this event? `events.read` on the subject, then the event's own `vis` (contract 7.4). Anything unknown is no. */

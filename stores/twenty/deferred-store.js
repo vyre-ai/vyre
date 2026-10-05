@@ -20,8 +20,12 @@ export function createDeferredStore(o) {
   /** @type {any[]} */ const defs = [];
   let attaching = false;
   const refuse = () => unavailable(o.reason());
+  /** @type {Array<() => any>} work the kernel could not do while the store was away (its task records), run once the real store is attached */
+  const ready = [];
   const own = {
     kind: "twenty",
+    /** Run `f` when the real store is attached (now, if it already is). @param {() => any} f */
+    whenReady: (f) => { if (real) return f(); ready.push(f); },
     attached: () => real !== null,
     bootDone: () => { booting = false; },
     /** The real store is ready: play the definitions the kernel made at start onto it, then forward everything. @param {any} store */
@@ -33,6 +37,7 @@ export function createDeferredStore(o) {
         defs.length = 0;
         real = store;
         log("the record store is ready; the definitions made while it was away were applied");
+        for (const f of ready.splice(0)) { try { await f(); } catch (e) { log(`something waiting for the record store failed: ${/** @type {Error} */ (e).message}`); } }
       } finally { attaching = false; }
     },
     features: () => ({ aggregate: true, search: true, changes: true, cursor_paging: true, attr_filter: true }),
