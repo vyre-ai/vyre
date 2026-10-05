@@ -877,6 +877,42 @@
    "module": "mail",
    "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
+  "memory.identity.grant": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; granting also needs the person's yes (lib/one-yes, the vault moment) over exactly this identity and server"
+  },
+  "memory.identity.lock": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.revoke": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess) and the person's own surface only (reader): an agent cannot revoke or grant; revoking only locks"
+  },
+  "memory.identity.status": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.begin": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.finish": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; accepted only while the person's grant for this server stands and for a request this process made, once; the key never leaves the process"
+  },
+  "memory.space.file": {
+   "module": "memory",
+   "reason": "the kernel's memory.file grant on the caller's chain decides (kernel/gateway/memory.js): a member holds none by default and an agent only by an explicit grant; the facts' source must be one the filer may read"
+  },
+  "memory.space.recall": {
+   "module": "memory",
+   "reason": "the kernel's memory.read grant on the caller's chain decides, asked again for each fact (kernel/gateway/memory.js): a fact the chain may not read is absent"
+  },
+  "memory.space.retire": {
+   "module": "memory",
+   "reason": "the kernel's memory.retire grant decides (kernel/gateway/memory.js): the filer or a person with the right"
+  },
   "names.check": {
    "module": "names",
    "reason": "read-only: whether a name is free; no side effect"

@@ -18,6 +18,9 @@ import { REDACTIONS, REDACT_VERSION, redact, redactLinks } from "../../lib/secre
 import { chunks, encode } from "./embed.js";
 import { scrubText } from "./sealed.js";
 
+/** Bumped when what the indexer links changes: every session is then read once more for its links (turns are not touched). */
+export const LINKS_VERSION = "1";
+
 /** Credentials, then values shaped like a sealed class (core/recall/sealed.js): the one cleaning every turn and title gets on the way in. @param {string} text */
 const clean = text => scrubText(redact(text)).text;
 
@@ -69,6 +72,8 @@ export class Indexer {
     /** @type {Promise<void> | null} the capture calls so far, chained: a test awaits it */
     this.captured = null;
     this.accountsHome = hooks.accountsHome === undefined ? defaultAccountsHome() : hooks.accountsHome;
+    /** False until every session already indexed has been read once for its links (the first pass after the table appears); then true for the life of the process. */
+    this.linked = this.linksDone();
     /** @type {Map<string, { at: number, human: boolean }>} */
     this.origins = new Map();
     this.q = {
@@ -80,6 +85,8 @@ export class Indexer {
       delTurns: db.prepare("DELETE FROM recall_turns WHERE session = ?"),
       delVectors: db.prepare("DELETE FROM recall_vectors WHERE session = ?"),
       addTurn: db.prepare("INSERT INTO recall_turns (session, seq, role, ts, text, provider, model) VALUES (?,?,?,?,?,?,?)"),
+      addLink: db.prepare("INSERT OR IGNORE INTO recall_links (session, seq, kind, ref) VALUES (?,?,?,?)"),
+      delLinks: db.prepare("DELETE FROM recall_links WHERE session = ?"),
       put: db.prepare(`INSERT INTO recall_sessions (id, file, cwd, name, title, started, ended, turns, human, parent, bytes, mtime)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
         ON CONFLICT(id) DO UPDATE SET file=excluded.file, cwd=COALESCE(excluded.cwd, cwd),
@@ -120,8 +127,16 @@ export class Indexer {
       if (pace && spent > 2) await pace(spent); else await breathe();
     }
     s.ms = Date.now() - t0;
+    // A whole pass that read every session (not stopped, none failed) has linked them all: from here an unchanged file is skipped again.
+    if (!this.linked && !stopped() && s.failed === 0) { this.q.meta.run("links", LINKS_VERSION); this.linked = true; }
     this.q.meta.run("last_index", JSON.stringify({ at: Date.now(), ...s }));
     return s;
+  }
+
+  /** True when every session indexed so far has been read for its links (this version's rules). */
+  linksDone() {
+    const r = /** @type {any} */ (this.db.prepare("SELECT v FROM recall_meta WHERE k = 'links'").get());
+    return Boolean(r && r.v === LINKS_VERSION);
   }
 
   /**
@@ -219,7 +234,7 @@ export class Indexer {
    */
   one(entry, s, human = null) {
     const prev = /** @type {any} */ (this.q.get.get(entry.id));
-    if (prev && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
+    if (prev && this.linked && prev.bytes === entry.size && prev.mtime === entry.mtime && !(human === true && Number(prev.human) === 0)) {
       // Same bytes somewhere else (an archived folder): note where it lives now, read nothing.
       if (prev.file !== entry.file) this.q.moved.run(entry.file, entry.id);
       s.skipped++;
@@ -250,6 +265,10 @@ export class Indexer {
         this.q.generation.run();
       }
       for (const turn of t.turns.slice(from)) this.q.addTurn.run(entry.id, turn.seq, turn.role, turn.ts, turn.text, turn.provider || "claude", turn.model || null);
+      // Links for every turn, not only the new ones: a tool call after the last turn indexed hangs on that turn once the exchange has ended, and a pass that finds the table new
+      // links the whole session. INSERT OR IGNORE, so what is there stays.
+      if (rewritten) this.q.delLinks.run(entry.id);
+      for (const turn of t.turns) for (const l of turn.links || []) this.q.addLink.run(entry.id, turn.seq, l.kind, l.ref);
       this.q.put.run(entry.id, entry.file, t.cwd, t.name == null ? t.name : clean(t.name), t.title == null ? t.title : clean(t.title), t.started || null, t.ended || null,
         t.turns.length, human === null ? t.human : (human ? 1 : 0), t.parent, entry.size, entry.mtime);
       this.db.exec("COMMIT");
@@ -307,7 +326,7 @@ export class Indexer {
     let n = 0;
     this.db.exec("BEGIN");
     try {
-      for (const id of ids) { this.q.delVectors.run(id); this.q.delTurns.run(id); n += Number(del.run(id).changes); }
+      for (const id of ids) { this.q.delVectors.run(id); this.q.delLinks.run(id); this.q.delTurns.run(id); n += Number(del.run(id).changes); }
       if (n) this.q.generation.run();
       this.db.exec("COMMIT");
     } catch (e) { this.db.exec("ROLLBACK"); throw e; }
