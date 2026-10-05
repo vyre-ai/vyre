@@ -24,6 +24,10 @@ The whole path takes about fifteen minutes. Other ways to install are at the end
 
 - [ ] A Linux server you can open a terminal on, with an account that can use `sudo`. Docker is
       installed for you if it is missing, after you say yes. Or a Mac that stays on and plugged in.
+- [ ] Size: run one space per server. A space's Records need about 3 GB of memory (3,212 MB is what
+      `REQUIRE` in `stores/twenty/space-store.js` checks), so an 8 GB server is comfortable for one
+      space with automations. You can host more spaces on one server if it is big enough; Vyre checks
+      before it adds one.
 - [ ] A Claude, ChatGPT (Codex) or Grok account. One is enough to go on, and you can add the
       others later.
 - [ ] A current browser for the setup page: Chrome 133 or newer, Safari 17 or newer, Edge 133 or newer, or Firefox 130 or newer.

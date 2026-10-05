@@ -77,7 +77,7 @@
 <section class="sec" aria-labelledby="need-h">
   <div class="wrap">
     <div class="sec-head rv"><span class="lbl" id="need-h">What it needs</span></div>
-    <div class="need-list rv"><div><b>Server</b>A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.</div><div><b>AI</b>One of Claude, Codex, Grok or OpenRouter</div><div><b>Where</b>Installs in /srv/vyre</div></div>
+    <div class="need-list rv"><div><b>Server</b>A Linux machine with sudo and Docker Compose 2.24 or newer. The installer asks before adding Docker.</div><div><b>Size</b>Run one space per server. A space's Records need about 3 GB of memory, so an 8 GB server is comfortable for one space with automations. You can host more spaces on one server if it's big enough; Vyre checks before it adds one.</div><div><b>AI</b>One of Claude, Codex, Grok or OpenRouter</div><div><b>Where</b>Installs in /srv/vyre</div></div>
     
     <div class="rv" style="margin-top:36px"><div class="note"><p class="lbl" style="margin-bottom:8px">Known gaps in 0.2.9</p><ul class="plain" style="margin:0;padding-left:1.1em"><li style="margin:.3em 0">The first Windows install is not signature-checked; the server install is.</li><li style="margin:.3em 0">Idle sessions do not sleep under memory pressure yet, and there is no fair-share scheduler for many sessions on one server.</li><li style="margin:.3em 0">Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.</li><li style="margin:.3em 0">The Mac server installer has not run on a real Mac yet.</li></ul></div></div>
   </div>
