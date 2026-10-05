@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): Settings has Spending limits (spend.summary, spend.raise: a daily cap per provider, No cap) and Standing permissions (gate.said.list, add, revoke: what Vyre may send, post or pay without asking, Take back in one tap, a payment or a blanket allow asks for the person's proof). The Deck's settings-spend and settings-permissions, ported (screens/settings/limits-*.ts, LimitsScreens.tsx, routes /u/settings/spend and /u/settings/permissions; 4 tests).
+
 - feat(app): Settings, AI accounts lists every account sessions can run on (Codex, Grok, ...) from sessions.accounts.list with who is signed in, Make default, Remove and Grok's privacy note, and adds one through the provider's own sign-in (link, code, a pasted code, followed to done or failed). The Deck's settings-accounts, ported (screens/settings/accounts-model.ts, accounts-source.ts, AccountsCard.tsx; 4 tests).
 
 - test(app): `apps/app/src/theme/raw-colours.test.js` fails any hex, rgb( or hsl( literal in the Expo app outside the generated token file, with two named exceptions (the terminal's ANSI palettes in `src/terminal/palettes.ts`, the avatar art in `ui/marks/source.js`) and a check that an exception still holds a colour. The literals it found are now token roles: the chat terminal block and its borders (`src/chat/Blocks.tsx`, whose ANSI map moved to palettes.ts), the xterm fallbacks, the perf badge, the keycheck page, the Android shadow colour, and the custom-accent field's starting value in Appearance.
