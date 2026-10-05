@@ -55,8 +55,11 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/daemon -> core/spawner` | client.js, confine.js | a session in the packaged box is confined by its own uid, and the daemon composes the self-test that proves it before every start; it asks the root spawner, which is not a module | lib |
 | `core/daemon -> core/switchboard` | sessions.js | the router resolves which Claude Code session a call comes from | ctx.call |
 | `core/daemon -> core/wink` | node/peer-wire.js | the daemon composes the home's peer door for a paired device's relay stream (core/daemon/peer-door.js) | lib |
-| `core/files -> core/link` | transport.js | Mac to box file transfer over the link transport | lib |
-| `core/onboard -> core/names` | service.js | onboarding reserves the name in-process | ctx.call |
+| `core/hooks -> core/names` | tailscale.js | runs the tailscale CLI | lib |
+| `core/link -> core/names` | tailscale.js | finds the box on the tailnet | lib |
+| `core/names -> core/link` | transport.js | names and link import each other; the transport belongs in a lib both use | lib |
+| `core/network -> core/names` | guests.js, identity.js, tailscale.js | the listeners identify tailnet peers (ADR 0002) | lib |
+| `core/onboard -> core/names` | service.js, tailscale.js | onboarding reserves the name and starts the tailnet listener in-process | ctx.call |
 | `core/recall -> core/transcripts` | index.js | transcripts is the one reader of Claude Code's files | lib |
 | `core/watchers -> core/spawner` | client.js | the box's watcher wall is the root spawner's; loaded only when a spawner socket exists | lib |
 | `core/sessions -> core/spawner` | client.js | sessions/switchboard split (ADR 0030), cleanup owed by sessions after 0.1.0 | ctx.call |
@@ -68,13 +71,22 @@ their wider imports). "Becomes" says where each remaining one should go:
 | `core/term -> core/files` | safety.js | the path gate every file path passes through | ctx.call |
 | `core/vyre-core -> core/vault` | vault.js | vyre-core hosts the vault's store and crypto in its own process and db (ADR 0040 phase 2) | host |
 | `core/vault -> core/link` | transport.js | the vault relay between the Mac and the box | lib |
+| `core/vault -> core/names` | identity.js, tailscale.js | who is on the other end of a vault relay, and the tailscale CLI | lib |
 | `local/capsule -> core/cli` | commands/capsule-native.js | where the native Lumen app is built, shared with `vyre capsule` | lib |
 | `local/hands-mac -> local/screen-mac` | floor.js | the floor for Vyre's hands and eyes on the Mac (SPEC section 11) | lib |
 | `local/sideview -> local/screen-mac` | floor.js, runner.js | drives the sight helper and its floor directly | ctx.call |
 
 ## What the list says
 
-`core/link/transport.js` is shared plumbing, not a feature: a small lib beside the kernel would hold
-it for the parts that import it. The ctx.call cases are places where a part reaches into
-another's state and should ask its tools instead. `lib/connectors` (auth.js, message.js, behalf.js)
-is the same move already done for the connectors' own shared helpers.
+Two files carry most of the rest. `core/names/tailscale.js` (6 edges) and
+`core/link/transport.js` (3) are shared plumbing, not features: the first move is a small tailnet
+lib beside the kernel that both names and link use, which also ends the `names` and `link` cycle.
+The ctx.call cases (8) are places where a part reaches into another's state and should ask its
+tools instead. `lib/connectors` (auth.js, message.js, behalf.js) is the same move already done for
+the connectors' own shared helpers.
+
+## First cleanup: a tailnet lib
+
+Scheduled after the native-core milestone. `core/names/tailscale.js` and
+`core/link/transport.js` move into one small tailnet lib beside the kernel, with no feature state.
+That removes about 10 edges from the list above and ends the `names` and `link` cycle.

@@ -31,6 +31,7 @@ In the order `vyre help` lists them.
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
 | [`vyre open`](#vyre-open) | a project: what its threads are told, and its threads |
+| [`vyre roll`](#vyre-roll) | continue a long Claude Code session in a fresh window, with nothing lost |
 | [`vyre threads`](#vyre-threads) | sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions) |
 | [`vyre sessions`](#vyre-sessions) | how the sessions Vyre starts run: driver, sign-in, the model per purpose, the system prompt |
 | [`vyre threads`](#vyre-threads-1) | every session on this machine, searched by what was said |
@@ -65,7 +66,7 @@ In the order `vyre help` lists them.
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code |
-| [`vyre send`](#vyre-send) | send files from this Mac to your server (not available yet) |
+| [`vyre send`](#vyre-send) | send files to another of your computers through your server |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre wink`](#vyre-wink) | free a server that still belongs to an app you no longer have |
@@ -127,7 +128,7 @@ vyre down [--json]
 Put Vyre on a server from this Mac, and look after it.
 
 ```
-vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
+vyre box [status|add <user@host> [--yes] [--version <v>|latest]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
 ```
 
 ### vyre doctor
@@ -201,6 +202,20 @@ A project: what its threads are told, and its threads.
 ```
 vyre open <project> [--json]
 ```
+
+### vyre roll
+
+Continue a long Claude Code session in a fresh window, with nothing lost.
+
+```
+vyre roll [--session <id>] [--thread <id>] [--print] [--no-start] [--json]
+```
+
+Run it in the folder, after /exit. It builds a seed from what you decided, an index of what came before and the last turns word for word, then starts claude here under a fresh session with the seed as its first message. Every earlier turn stays stored: memory_search finds it and memory_turn reads it back exactly.
+--session <id>: roll this session (the start of its id is enough), not the newest one in this folder
+--thread <id>: a session Vyre runs: ask it to roll its window over now (it does this by itself when the window fills)
+--print: print the seed and start nothing, for any agent to use
+--no-start: build the seed and a fresh session id, write the seed to a file, and start nothing
 
 ### vyre threads
 
@@ -637,10 +652,10 @@ vyre relay on|off, pin <release>|unpin: the relay itself, and which web app buil
 
 ### vyre send
 
-Send files from this Mac to your server (not available yet).
+Send files to another of your computers through your server.
 
 ```
-vyre send <file...> [--json]
+vyre send <file...> [--to <computer>] [--json]
 ```
 
 ### vyre vitals

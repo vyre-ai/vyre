@@ -21,14 +21,29 @@ const SENSITIVE = [
   /\b(?:diagnos\w*|cancer|diabet\w*|depress\w*|anxiety|adhd|hiv|pregnan\w*|therap\w*|medicat\w*|prescri\w*|surgery|illness|disease|disorder)\b/i,
   /\b(?:password|passcode|pin|ssn|social security|salary|debt|loan)\b/i,
 ];
+/**
+ * The class of a line in the person's identity memory (team/0.3/DESIGN-memory-layers.md): how they work, how they write, how they run projects, what they build with, or their life.
+ * By rule, from the relation and the words: no model. The identity layer is the person's own, so these are facts about them, never about a Space's work.
+ * @param {string} rel @param {string} text
+ */
+export function classOf(rel, text) {
+  if (rel === "uses") return "stack";
+  if (rel === "prefers") {
+    const t = String(text).toLowerCase();
+    if (/\b(?:meetings?|stand-?ups?|sprints?|kanban|deadlines?|roadmaps?|planning|plans?|async|reviews?|milestones?|tickets?|backlog|status updates?)\b/.test(t)) return "pm_style";
+    if (/\b(?:writ\w*|email\w*|tone|concise|brief|short(?:er)?|bullets?|sentences?|paragraphs?|formal|casual|prose|wording|reply|replies)\b/.test(t)) return "writing_style";
+    return "working_style";
+  }
+  return "life";
+}
 const article = s => (/^[aeiou]/i.test(s) ? "an " : "a ") + s;
 
 /**
  * @param {import("./store.js").Personal} personal
- * @param {{ limit?: number }} [opts]
- * @returns {{ facts: { text: string, kind: string, weight: number, id: string, rel: string, from: number }[] }}
+ * @param {{ limit?: number, class?: string }} [opts]
+ * @returns {{ facts: { text: string, kind: string, class: string, weight: number, id: string, rel: string, from: number }[] }}
  */
-export function profile(personal, { limit = 12 } = {}) {
+export function profile(personal, { limit = 12, class: only } = {}) {
   const n = Math.max(1, Math.min(50, Math.floor(Number(limit) || 12)));
   const now = f => f.current && f.confidence >= SURE;
   const one = (subj, rel) => personal.lookup({ subj, rel }).filter(now)[0] || null;
@@ -37,7 +52,7 @@ export function profile(personal, { limit = 12 } = {}) {
   const push = (f, text, kind, weight = f.confidence) => {
     if (seen.has(text) || !safe(text)) return;
     seen.add(text);
-    out.push({ text, kind, weight: Math.round(weight * 1000) / 1000, id: f.id, rel: f.rel, from: f.sessions });
+    out.push({ text, kind, class: classOf(f.rel, text), weight: Math.round(weight * 1000) / 1000, id: f.id, rel: f.rel, from: f.sessions });
   };
   const mine = personal.lookup({ subj: "me" }).filter(now);
   const drives = mine.find(f => f.rel === "drives") || null;
@@ -73,5 +88,5 @@ export function profile(personal, { limit = 12 } = {}) {
     }
   }
   out.sort((a, b) => b.weight - a.weight || b.from - a.from || a.text.localeCompare(b.text));
-  return { facts: out.slice(0, n) };
+  return { facts: (only ? out.filter(f => f.class === only) : out).slice(0, n) };
 }

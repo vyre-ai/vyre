@@ -228,6 +228,9 @@ export const PERSON_ONLY = new Map([
 
 /** @type {ReadonlySet<string>} */
 export const OPEN = new Set([
+  // what is connected (which services have a credential, which Google accounts are signed in) and the recipe to log one mailbox: the person's own, and the person's proven assistant under their grants; never a guest or an unproven caller
+  "connectors.declared",
+  "connectors.logging",
   "files.drive.space.list",
   "files.drive.space.read",
   "records.linked",
@@ -321,6 +324,7 @@ export const OPEN = new Set([
   "spaces.invites.preview",
   "spaces.list",
   "spaces.members.list",
+  "spaces.identity.devices",
   "spaces.move.plan",
   "spaces.roles.names",
   "spaces.status",

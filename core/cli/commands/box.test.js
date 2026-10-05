@@ -176,12 +176,43 @@ test("box add --yes: installs, saves the box, and says it is not paired yet and 
   const r = rig(t);
   const { code, text } = await capture(() => add("alex@203.0.113.9", { yes: true }));
   assert.equal(code, 0, text);
-  assert.match(r.read("installer.log"), /^--yes$/m, "the installer was copied over and run with --yes");
+  assert.match(r.read("installer.log"), /^--yes --version \S+$/m, "the installer was copied over and run with --yes and the version");
   assert.match(text, /installed and not paired yet/);
   assert.match(text, /vyre call wink\.server\.code/);
   assert.equal(r.read("opened"), "", "no browser is opened: a server has no first-run page");
   assert.doesNotMatch(ssh(r), /-O forward/, "no tunnel to a loopback page");
   assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9");
+});
+
+test("box add --yes: the server gets this Mac's own version by default, the version asked for with --version, and latest on request", async t => {
+  const r = rig(t);
+  let { code, text } = await capture(() => add("alex@203.0.113.9", { yes: true }));
+  assert.equal(code, 0, text);
+  assert.match(r.read("installer.log"), new RegExp(`^--yes --version ${VERSION.replace(/\./g, "\\.")}$`, "m"), "the installer is told this Mac's version");
+  assert.match(text, new RegExp(`Vyre will install ${VERSION.replace(/\./g, "\\.")}, the version of this Mac`));
+
+  const r2 = rig(t);
+  ({ code, text } = await capture(() => add("alex@203.0.113.9", { yes: true, version: "0.9.1" })));
+  assert.equal(code, 0, text);
+  assert.match(r2.read("installer.log"), /^--yes --version 0\.9\.1$/m);
+  assert.match(text, /0\.9\.1.*you asked for/);
+
+  const r3 = rig(t);
+  ({ code, text } = await capture(() => add("alex@203.0.113.9", { yes: true, version: "latest" })));
+  assert.equal(code, 0, text);
+  assert.match(r3.read("installer.log"), /^--yes --version latest$/m);
+  assert.match(text, /latest published release/);
+});
+
+test("box add: --version through the command line reaches the installer; a malformed one is a usage error and changes nothing", async t => {
+  const r = rig(t);
+  let { code } = await capture(() => box[0].run(["add", "alex@203.0.113.9", "--yes", "--version", "0.9.1"]));
+  assert.equal(code, 0);
+  assert.match(r.read("installer.log"), /^--yes --version 0\.9\.1$/m);
+  const r2 = rig(t);
+  ({ code } = await capture(() => box[0].run(["add", "alex@203.0.113.9", "--yes", "--version=nope"])));
+  assert.notEqual(code, 0);
+  assert.equal(r2.read("installer.log"), "", "the installer never ran");
 });
 
 test("box add: a box already installed and paired skips the installer and says so", async t => {
@@ -211,7 +242,7 @@ test("box add: sudo with a password adds the account to the docker group in the 
   const { code, text } = await capture(() => add(OLD, { yes: true }));
   assert.equal(code, 0, text);
   assert.match(text, new RegExp(`add ${user} to the docker group \\(root-equivalent on this server; lets Vyre manage the stack without your password\\)`));
-  assert.match(ssh(r), /sh \/\S+ --yes && sudo usermod -aG docker "\$\(id -un\)"/);
+  assert.match(ssh(r), /sh \/\S+ --yes --version \S+ && sudo usermod -aG docker "\$\(id -un\)"/);
   assert.match(r.read("usermod.log"), new RegExp(`^-aG docker ${user}$`, "m"));
   assert.equal(ssh(r).match(/ControlMaster=auto/g)?.length, 2, "the master is opened again so the group applies");
 });

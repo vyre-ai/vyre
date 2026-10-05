@@ -33,6 +33,30 @@ export interface RecordReference {
   readonly text: string;
 }
 
+export interface MemoryFact {
+  readonly id: string;
+  readonly urn: Urn;
+  readonly text: string;
+  /** A record, task or file of this Space the filer could read, or `session:<id>`, `thread:<id>`, `chat:<id>`. Never another Space. */
+  readonly source: string;
+  readonly kind: 'fact' | 'decision' | 'policy' | 'note';
+  readonly topics: readonly string[];
+  /** `kind:id` of the actor that filed it, taken from the chain. */
+  readonly by: string;
+  readonly filed_at: Ms;
+  readonly state: 'active' | 'retired';
+  /** The labels of the chain that filed it: an assistant that read outside text files a fact labelled external. */
+  readonly labels: Labels;
+}
+
+/** A Space's own memory (kernel/gateway/memory.js). Who may file and read is a grant (`memory.file`, `memory.read`, `memory.retire`); nothing crosses Spaces. */
+export interface MemoryApi {
+  file(chain: Chain, fact: { readonly text: string; readonly source: string; readonly kind?: MemoryFact['kind']; readonly topics?: readonly string[] }): Promise<MemoryFact & { readonly existing: boolean }>;
+  /** The facts the chain may read, newest first (an empty list when it may read none). Each fact is asked about on its own reference. */
+  recall(chain: Chain, o?: { readonly q?: string; readonly topic?: string; readonly kind?: MemoryFact['kind']; readonly source?: string; readonly limit?: number }): Promise<readonly MemoryFact[]>;
+  retire(chain: Chain, id: string): Promise<MemoryFact>;
+}
+
 export interface RecordsApi {
   define(chain: Chain, diff: DefineDiff): Promise<DefineResult>;
   get(chain: Chain, type: string, id: RecordId): Promise<GatewayRecord | null>;

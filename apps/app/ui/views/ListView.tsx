@@ -25,9 +25,9 @@ const TABULAR = { fontVariant: ["tabular-nums" as const] };
  * A phone row is the title (17), a line "Jane Doe, Engagement" (links, stage and choices), and at the end the money field in 17 tabular with the calendar
  * date under it ("closing 28 Oct"); the owner is a column on a wide screen and not on the phone.
  */
-export function ListView({ def, rows, env, onOpen, lead }: { def: any; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; lead?: ReactNode }) {
+export function ListView({ def, rows, env, onOpen, lead, view, noFilter }: { def: any; view?: string; noFilter?: boolean; rows: any[]; env: FieldEnv; onOpen?: (rec: any) => void; lead?: ReactNode }) {
   const { phone } = useUiTheme();
-  const vd = viewDefOf(def);
+  const vd = viewDefOf(def, undefined, view);
   const cols = listColumns(def, vd);
   const [sort, setSort] = useState<string>(vd.list?.sort || vd.titleField);
   const [desc, setDesc] = useState(vd.list?.sortDir === "desc");
@@ -35,10 +35,10 @@ export function ListView({ def, rows, env, onOpen, lead }: { def: any; rows: any
   const chipFields = cols.filter((f: any) => f.kind === "choice" || f.kind === "stage");
   const sortable = [fieldOf(def, vd.titleField), ...cols, fieldOf(def, vd.list?.sort ?? "")].filter((f: any, i: number, a: any[]) => f && a.indexOf(f) === i);
   const shown = useMemo(() => {
-    const kept = filterRows(viewRows(rows, vd.list?.filter), filters);
+    const kept = filterRows(viewRows(rows, noFilter ? undefined : vd.list?.filter), filters);
     const sf = fieldOf(def, sort);
     return sf ? sortRows(kept, (r: any) => val(r, sf.name), sf.kind, { def: sf, actors: env.actors, links: env.links }, desc) : kept;
-  }, [rows, filters, sort, desc, def, vd.list?.filter, env.actors, env.links]);
+  }, [rows, filters, sort, desc, def, vd.list?.filter, noFilter, env.actors, env.links]);
   const flip = (name: string, opt: string) => {
     const next = new Set(filters[name] || []);
     if (next.has(opt)) next.delete(opt); else next.add(opt);

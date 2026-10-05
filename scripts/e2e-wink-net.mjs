@@ -65,8 +65,10 @@ const leftoverBlocks = () => { try { return sh(HOSTS.home, `sudo -n iptables -t 
 const leftoverRules = host => { try { return sh(host, `sudo -n ufw status | grep -c ${TAG} || true`, { quiet: true }).trim(); } catch { return "unknown (ssh failed)"; } };
 
 function stage(host) {
-  sh(host, `mkdir -p ${DIR}/bin ${DIR}/vyre`);
-  execFileSync("rsync", ["-a", "--delete", "--exclude", ".git", "--exclude", "node_modules", "--exclude", "/site", "--exclude", "/packaging", "--exclude", "/release", `${REPO}/`, `${host}:${DIR}/vyre/`], { stdio: ["ignore", "ignore", "inherit"] });
+  // No rsync from the Mac (slow link): the commit under test is pushed, and each box fetches it into a persistent clone (E2E_REF, default this checkout's HEAD).
+  const ref = process.env.E2E_REF || execFileSync("git", ["rev-parse", "HEAD"], { cwd: REPO, encoding: "utf8" }).trim();
+  const branch = process.env.E2E_BRANCH || "work/network";
+  sh(host, `mkdir -p ${DIR}/bin; [ -d ${DIR}/vyre/.git ] || { rm -rf ${DIR}/vyre; git clone -q https://github.com/vyre-ai/vyre.git ${DIR}/vyre; }; cd ${DIR}/vyre && git fetch -q origin ${branch} && git checkout -qf ${ref} && { [ -d node_modules ] || npm ci --ignore-scripts --silent; }`, { timeout: 600_000 });
 }
 function ensureBins(host) {
   for (const n of ["headscale", "wink-forwarder"]) {

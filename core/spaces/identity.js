@@ -33,6 +33,16 @@ export function newKeyPair() {
   return { publicKey: b64u(pub), privateKey: b64u(privateKey.export({ format: "der", type: "pkcs8" })) };
 }
 
+/**
+ * A fresh P-256 key-agreement pair (ECDH): the raw uncompressed 65-byte point that goes on the device's entry as `agree`, and the 32-byte private scalar, both base64url. The scalar stays in the store.
+ * Node has no non-exportable OS key, so this device keeps it where it keeps its signing key: the 0600 identity file.
+ */
+export function newAgreeKey() {
+  const e = crypto.createECDH("prime256v1");
+  e.generateKeys();
+  return { agree: b64u(e.getPublicKey()), agreePrivate: b64u(e.getPrivateKey()) };
+}
+
 /** The key object of a stored private key. @param {string} privateKey */
 export const privateKeyOf = privateKey => crypto.createPrivateKey({ key: Buffer.from(privateKey, "base64url"), format: "der", type: "pkcs8" });
 
@@ -54,6 +64,9 @@ export function writePrivate(file, text) {
   fs.renameSync(tmp, file);
 }
 
+/** The public point of a stored agreement scalar. @param {string} scalar base64url */
+const agreePoint = scalar => { const e = crypto.createECDH("prime256v1"); e.setPrivateKey(Buffer.from(scalar, "base64url")); return b64u(e.getPublicKey()); };
+
 /** @param {string} dir the `<home>/spaces` folder */
 export function fileIdentityStore(dir) {
   const file = path.join(dir, "identity.json");
@@ -67,21 +80,21 @@ export function fileIdentityStore(dir) {
     status: () => view(read()),
     async generate(/** @type {{ code?: { eid: string, pub: string }, label?: string, ts?: number }} */ o = {}) {
       if (read()) throw Object.assign(new Error("this device already has a Vyre identity"), { code: "exists" });
-      const kp = newKeyPair();
+      const kp = { ...newKeyPair(), ...newAgreeKey() };
       const priv = privateKeyOf(kp.privateKey);
       const eid = keyId(Buffer.from(kp.publicKey, "base64url"));
       const ts = o.ts ?? Date.now();
-      const g = await C.makeGenesis({ kind: "person", entry: { eid, kind: "device", pub: kp.publicKey }, ...(o.code ? { code: { eid: o.code.eid, kind: "code", pub: o.code.pub } } : {}),
+      const g = await C.makeGenesis({ kind: "person", entry: { eid, kind: "device", pub: kp.publicKey, agree: kp.agree }, ...(o.code ? { code: { eid: o.code.eid, kind: "code", pub: o.code.pub } } : {}),
         nonce: crypto.randomBytes(12).toString("base64url"), ts, sign: m => crypto.sign(null, Buffer.from(m), priv) });
       const state = await C.verifyChain([g], { now: ts + 1 });
-      write({ v: 2, name: null, id: state.id, publicKey: kp.publicKey, privateKey: kp.privateKey, ops: [g], pin: C.pinOf(state), createdAt: ts, ...(o.label ? { labels: { [eid]: String(o.label).replace(/[\u0000-\u001f]/g, " ").slice(0, 60) } } : {}) });
+      write({ v: 2, name: null, id: state.id, publicKey: kp.publicKey, privateKey: kp.privateKey, agreePrivate: kp.agreePrivate, ops: [g], pin: C.pinOf(state), createdAt: ts, ...(o.label ? { labels: { [eid]: String(o.label).replace(/[\u0000-\u001f]/g, " ").slice(0, 60) } } : {}) });
       return view(read());
     },
     /** A key for a device that another entry will add to an existing identity. Nothing is on the list until that entry signs. */
-    newDeviceKey() { const kp = newKeyPair(); return { publicKey: kp.publicKey, eid: keyId(Buffer.from(kp.publicKey, "base64url")), privateKey: kp.privateKey }; },
-    join(/** @type {{ privateKey: string, publicKey: string }} */ key, /** @type {any[]} */ ops, /** @type {string} */ name) {
+    newDeviceKey() { const kp = { ...newKeyPair(), ...newAgreeKey() }; return { publicKey: kp.publicKey, eid: keyId(Buffer.from(kp.publicKey, "base64url")), privateKey: kp.privateKey, agree: kp.agree, agreePrivate: kp.agreePrivate }; },
+    join(/** @type {{ privateKey: string, publicKey: string, agreePrivate?: string }} */ key, /** @type {any[]} */ ops, /** @type {string} */ name) {
       if (read()) throw Object.assign(new Error("this device already has a Vyre identity"), { code: "exists" });
-      write({ v: 2, name, id: ops[0].id, publicKey: key.publicKey, privateKey: key.privateKey, ops, pin: null, createdAt: Date.now() });
+      write({ v: 2, name, id: ops[0].id, publicKey: key.publicKey, privateKey: key.privateKey, ...(key.agreePrivate ? { agreePrivate: key.agreePrivate } : {}), ops, pin: null, createdAt: Date.now() });
       return view(read());
     },
     setName(/** @type {string} */ name) {
@@ -94,6 +107,25 @@ export function fileIdentityStore(dir) {
       const r = read();
       if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" });
       return crypto.sign(null, message, privateKeyOf(r.privateKey));
+    },
+    /** The key-agreement point this device keeps (its own `agree`), or null for an identity made before the key existed. */
+    agree() { const r = read(); return r && r.agreePrivate ? agreePoint(r.agreePrivate) : null; },
+    /** Make this device's key-agreement key if it has none (the migration of an identity made before it); returns the point. The private scalar never leaves the store. */
+    ensureAgree() {
+      const r = read();
+      if (!r) throw Object.assign(new Error("no identity"), { code: "no_identity" });
+      if (r.agreePrivate) return agreePoint(r.agreePrivate);
+      const k = newAgreeKey();
+      write({ ...r, agreePrivate: k.agreePrivate });
+      return k.agree;
+    },
+    /** ECDH with this device's agreement key: the raw 32-byte shared secret for a peer's ephemeral public point (65-byte uncompressed P-256). Only the secret leaves, never the private scalar. */
+    ecdh(/** @type {Buffer|Uint8Array} */ epk) {
+      const r = read();
+      if (!r || !r.agreePrivate) throw Object.assign(new Error("this device has no agreement key"), { code: "no_agree_key" });
+      const e = crypto.createECDH("prime256v1");
+      e.setPrivateKey(Buffer.from(r.agreePrivate, "base64url"));
+      try { return e.computeSecret(Buffer.from(epk)); } catch { throw Object.assign(new Error("not a P-256 point"), { code: "bad_point" }); }
     },
     ops() { const r = read(); return r && Array.isArray(r.ops) ? r.ops : []; },
     pin() { const r = read(); return r ? r.pin || null : null; },

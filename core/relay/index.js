@@ -1011,6 +1011,15 @@ export default {
       },
     });
 
+    // The paired devices for other modules (VyreDrop asks which of the person's computers exist and which are connected): id, name, kind and whether connected now. Nothing else, and no web browser's row.
+    ctx.tool("relay.devices.all", {
+      description: "The paired computers and phones, for a module: id, name, kind and whether each is connected now.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        if (!String((meta && meta.caller) || "").startsWith("module:")) throw Object.assign(new Error("for modules"), { code: "denied" });
+        return { devices: active().filter((/** @type {any} */ d) => d.kind !== "web").map((/** @type {any} */ d) => { const v = view(d, null, false); return { id: v.id, name: v.name, kind: d.kind, online: Boolean(v.online) }; }) };
+      },
+    });
     ctx.tool("relay.devices.list", {
       callers: ["web"],
       description: "Devices paired through the relay: id, name, when paired and last seen, whether presence is enrolled, and whether it is connected now.",

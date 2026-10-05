@@ -57,14 +57,15 @@ const runAsync = (env, args) => new Promise(resolve => {
 const run = (env, args) => spawnSync("sh", [SCRIPT, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env });
 
 /** A file:// release site: the box files, a SHA256SUMS over them, and release.json. */
-function site(base, { images = true, pin = true } = {}) {
+function site(base, { images = true, pin = true, extra = /** @type {Record<string,string>} */ ({}) } = {}) {
   const dir = path.join(base, "site");
   fs.mkdirSync(dir, { recursive: true });
   const compose = pin ? `services:\n  vyre:\n    image: ${DIGEST}\n    environment:\n      - VYRE_COMPUTERS_IMAGE=\${VYRE_COMPUTERS_IMAGE:-${COMPUTER}}\n` : "image: ghcr.io/vyre-ai/vyre:latest\n";
   const files = {
-    "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n[ \"$1\" = status ] && echo \"  3 modules running\"\nexit 0\n",
+    VERSION: "0.2.0\n", "compose.yml": compose, "compose.build.yml": "# build\n", "vyre.env.example": "# env\n", vyre: "#!/bin/sh\n# vyre on a Docker box\n[ \"$1\" = status ] && echo \"  3 modules running\"\nexit 0\n",
     "release.json": JSON.stringify({ version: "0.2.0", channel: "stable", ...(images ? { images: { box: { ref: DIGEST, platforms: ["linux/amd64"] }, computer: { ref: COMPUTER, platforms: ["linux/amd64"] } } } : {}) }, null, 2),
   };
+  Object.assign(files, extra);
   for (const [n, c] of Object.entries(files)) fs.writeFileSync(path.join(dir, n), c);
   const sums = Object.entries(files).map(([n, c]) => `${crypto.createHash("sha256").update(c).digest("hex")}  ${n}`).join("\n") + "\n";
   fs.writeFileSync(path.join(dir, "SHA256SUMS"), sums);
@@ -140,7 +141,8 @@ test("install-box.sh v2: --from as an account outside the docker group stops ear
 });
 
 test("install-box.sh v2: the preflight says how many spaces fit, its memory number is the larger store's, and the kernel settings land once in vyre.env", async t => {
-  const { REQUIRE } = await import("../stores/twenty/space-store.js");
+  const { REQUIRE, requireFor } = await import("../stores/twenty/space-store.js");
+  assert.equal(Number(/^SPACE_MEM_TINY_MB=(\d+)/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), requireFor(4096).memoryMb, "the installer's small-server number is requireFor(4096): change both together");
   assert.equal(Number(/^SPACE_MEM_MB=\$\{VYRE_SPACE_MEM_MB:-(\d+)\}/m.exec(fs.readFileSync(SCRIPT, "utf8"))?.[1]), REQUIRE.memoryMb, "the installer's per-space memory is stores/twenty REQUIRE.memoryMb: change both together");
   const b = box(t);
   fs.mkdirSync(b.dir, { recursive: true });
@@ -480,3 +482,59 @@ test("install-box.sh v2: on a Mac it fetches install-mac-server.sh, checks it ag
   assert.ok(!fs.existsSync(out));
 });
 
+
+test("install-box.sh: --version names what the release site must serve; another version stops the install and names both", t => {
+  const b = box(t);
+  const url = site(b.base);
+  let r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.9"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /asked for Vyre 0\.2\.9, but .* serves 0\.2\.0\. Nothing was installed/);
+  assert.match(r.stderr, /--version 0\.2\.0/);
+  assert.ok(!fs.existsSync(b.dir), "nothing laid out");
+  assert.ok(!b.calls().includes("docker pull"), "no image is pulled");
+
+  // the same version, and latest, and no version at all, go through to the next step (the stub docker stops it later, never at the version check)
+  for (const args of [["--version", "0.2.0"], ["--version=0.2.0"], ["--version", "latest"], []]) {
+    const c = box(t);
+    r = run({ ...c.env, VYRE_BOX_URL: site(c.base) }, ["--yes", ...args]);
+    assert.doesNotMatch(r.stderr, /asked for Vyre|cannot be checked|not a version/, args.join(" "));
+  }
+  const d = box(t);
+  r = run({ ...d.env, VYRE_BOX_URL: site(d.base) }, ["--yes", "--version", "0.2.9; rm"]);
+  assert.match(r.stderr, /not a version like 0\.2\.9/);
+  const e = box(t);
+  r = run({ ...e.env, VYRE_BOX_URL: site(e.base), VYRE_VERSION: "0.2.5" }, ["--yes"]);
+  assert.match(r.stderr, /asked for Vyre 0\.2\.5/, "VYRE_VERSION is the same as --version");
+});
+
+test("install-box.sh on a Mac: the version is checked on this path too, and the other arguments reach the Mac script one by one", t => {
+  const b = box(t);
+  fs.writeFileSync(path.join(b.base, "bin", "uname"), "#!/bin/sh\necho Darwin\n", { mode: 0o755 });
+  const out = path.join(b.base, "args.txt");
+  const mac = `#!/bin/sh\nfor a in "$@"; do printf '%s\\n' "[$a]"; done >"${out}"\n`;
+  const url = site(b.base, { extra: { "install-mac-server.sh": mac } });
+  // another version than the site serves: refused before the Mac script runs, saying how to install a build that is not published
+  let r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.9"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /asked for Vyre 0\.2\.9, but .* serves 0\.2\.0\. Nothing was installed/);
+  assert.match(r.stderr, /--from <folder>/);
+  assert.ok(!fs.existsSync(out), "the Mac script did not run");
+  // the served version: the script runs, never sees --version, and an argument with a space stays one argument
+  r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.0", "--name", "my mac"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(out, "utf8"), "[--yes]\n[--name]\n[my mac]\n");
+  // --version=V form, and --version given last, are taken out the same way
+  r = run({ ...b.env, VYRE_BOX_URL: url }, ["--version=0.2.0", "a  b"]);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(fs.readFileSync(out, "utf8"), "[a  b]\n");
+});
+
+test("install-box.sh: a site that does not list VERSION cannot confirm a named version, and says so", t => {
+  const b = box(t);
+  const url = site(b.base);
+  const dir = url.replace("file://", "");
+  fs.writeFileSync(path.join(dir, "SHA256SUMS"), fs.readFileSync(path.join(dir, "SHA256SUMS"), "utf8").split("\n").filter(l => !l.endsWith("  VERSION")).join("\n"));
+  const r = run({ ...b.env, VYRE_BOX_URL: url }, ["--yes", "--version", "0.2.0"]);
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /does not say which version it serves/);
+});
