@@ -76,8 +76,8 @@ test("legacy: a planner with its own tables starts, carries what it held into re
   assert.ok(got);
   const settings = await w.ok("planner.settings");
   assert.equal(settings.escalate_after, 7, "the settings came across");
-  // the next start finds nothing to carry
-  assert.equal(await importLegacy({ db, K, log: () => {} }), null);
+  // the next start finds everything already carried and makes nothing (a database run through the migration list also says so in planner_moved: legacy-upgrade.test.js)
+  assert.deepEqual(await importLegacy({ db, K, log: () => {} }), { items: 0, firings: 0, settings: 0, already: 7 });
 });
 
 test("legacy: a crash at any write is safe: the tables stay, the re-run carries the rest, and nothing is made twice", async t => {
