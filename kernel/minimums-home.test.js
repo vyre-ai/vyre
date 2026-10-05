@@ -70,7 +70,7 @@ test("M-1: the accepted minimums live in the sealed log; deleting or rolling bac
   await forge({ counter: 9997, minimums: { email: "0.0.1" }, doc: real });
   await k.stop();
   const logs = [];
-  k = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: release.publicKey });
+  k = live = await bootHomeKernel({ db: new DatabaseSync(dbFile), root, log: m => logs.push(m), isFirstParty: () => false, releaseKey: release.publicKey, pathRule: false });
   assert.equal(k.firstPartyCheck(ok), false, "the forged weak minimums did not outrank the real one");
   assert.equal(k.firstPartyCheck(newer), true);
   assert.equal(logs.filter(m => /does not carry a document the release key signed/.test(m)).length, 2, "the two unsigned events are named");
