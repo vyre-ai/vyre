@@ -877,6 +877,42 @@
    "module": "mail",
    "reason": "callers list in code (cli, deck, local, module): no model caller"
   },
+  "memory.identity.grant": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; granting also needs the person's yes (lib/one-yes, the vault moment) over exactly this identity and server"
+  },
+  "memory.identity.lock": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.revoke": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess) and the person's own surface only (reader): an agent cannot revoke or grant; revoking only locks"
+  },
+  "memory.identity.status": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.begin": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; any other agent, a guest or a bare caller is refused; unlocking also needs the person's yes (lib/one-yes) over the exact request, and the key never leaves the process that asked"
+  },
+  "memory.identity.unlock.finish": {
+   "module": "memory",
+   "reason": "own-scope check (personalAccess, core/memory): only the person's own surfaces, their own session and the identity-level assistant pass; accepted only while the person's grant for this server stands and for a request this process made, once; the key never leaves the process"
+  },
+  "memory.space.file": {
+   "module": "memory",
+   "reason": "the kernel's memory.file grant on the caller's chain decides (kernel/gateway/memory.js): a member holds none by default and an agent only by an explicit grant; the facts' source must be one the filer may read"
+  },
+  "memory.space.recall": {
+   "module": "memory",
+   "reason": "the kernel's memory.read grant on the caller's chain decides, asked again for each fact (kernel/gateway/memory.js): a fact the chain may not read is absent"
+  },
+  "memory.space.retire": {
+   "module": "memory",
+   "reason": "the kernel's memory.retire grant decides (kernel/gateway/memory.js): the filer or a person with the right"
+  },
   "names.check": {
    "module": "names",
    "reason": "read-only: whether a name is free; no side effect"
@@ -1329,6 +1365,14 @@
    "module": "spaces",
    "reason": "the signed invite token, the person's own signature checked against the directory's current list for their name, and the use count are the authority; a forged, used or revoked invite is refused"
   },
+  "stream.export-chat": {
+   "module": "stream",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
+  "stream.import-chat": {
+   "module": "stream",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
   "sync.consent": {
    "module": "sync",
    "reason": "callers limited in code to capsule, cli, deck, local"
@@ -1477,6 +1521,10 @@
    "module": "threads",
    "reason": "own-scope check (sessionMay, core/switchboard): a plain mcp or harness caller with no verified thread or agent (the person's own Claude Code) starts threads and stops, archives or sends into only those it started (starter = its claude process and start time, read by vyred from the socket peer), never deletes or rewinds; a session mutates only its own thread and the threads it started; a non-assistant agent hits guard() and mayReach; the verified assistant (meta.agent) and the person are not narrowed"
   },
+  "threads.export-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
+  },
   "threads.fork": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
@@ -1484,6 +1532,10 @@
   "threads.get": {
    "module": "threads",
    "reason": "own-scope check (sessionMay): a session reads its own thread, its children and its own project's threads, never another project's; a non-assistant agent hits guard(); a plain mcp caller reads its folder's project (the claude ancestor's cwd, read by vyred from the socket peer) and the threads it started, nothing when the folder cannot be read"
+  },
+  "threads.import-chat": {
+   "module": "threads",
+   "reason": "guarded: callable by first-party modules only (callers: module), never a person's surface or a model; the work module has already checked that the person is in the chat, under the caller's own chain"
   },
   "threads.interrupt": {
    "module": "threads",
@@ -1969,6 +2021,10 @@
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; read-only"
   },
+  "work.chat.history-import": {
+   "module": "work",
+   "reason": "guarded: the caller must be in the chat (the kernel's chat read on their own chain), the file is read under their own chain (drive.read), and the writes go to the stream's and the switchboard's module-only import tools"
+  },
   "work.chat.list": {
    "module": "work",
    "reason": "read-only: the chat rows the caller may read through Records (title, project, who, when, status, where it lives); `open` comes from the kernel's chat read, never from the record's people; the kernel: every call is authorized with the chain the kernel builds for the caller"
@@ -1980,6 +2036,14 @@
   "work.chat.rename": {
    "module": "work",
    "reason": "guarded: runs under the CALLER's own chain; the kernel's chat read decides whether the caller is in the chat, and a chat the caller is not in answers not_found; the record update is records.update under the caller's chain, and the run side is threads.rename, which refuses a caller who may not reach that thread"
+  },
+  "work.chat.upgrade-move": {
+   "module": "work",
+   "reason": "guarded: runs under the CALLER's own chain in both Spaces (records, chats and Drive under it); only the chats the kernel's chat read says the caller is in move"
+  },
+  "work.chat.upgrade-plan": {
+   "module": "work",
+   "reason": "read-only: counts of the caller's own chats, from the chats the kernel says the caller is in, under the caller's own chain; the kernel: every call is authorized with the chain the kernel builds for the caller"
   },
   "work.know.answer": {
    "module": "work",

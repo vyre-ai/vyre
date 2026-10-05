@@ -4,14 +4,16 @@ import "../scripts/mac-test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { start } from "../core/daemon/index.js";
-import { tempHome, present } from "./helpers.js";
+import { asOwner, tempHome, present } from "./helpers.js";
 
 process.env.VYRE_SEAL_DEV = "1";
 process.env.VYRE_KERNEL_PATH_RULE = "1";
 const until = async (/** @type {() => Promise<any>} */ f, what, ms = 15_000) => { const t0 = Date.now(); for (;;) { const v = await f(); if (v) return v; if (Date.now() - t0 > ms) assert.fail(`timed out waiting for ${what}`); await new Promise(r => setTimeout(r, 100)); } };
 
 async function boot(/** @type {any} */ t) {
-  const d = await start({ root: tempHome(t), presence: present, log: () => {}, kernel: true });
+  const root = tempHome(t);
+  const d = await start({ root, presence: present, log: () => {}, kernel: true });
+  asOwner(d, root);
   t.after(() => d.stop());
   const owner = d.kernel.id.owner;
   const admin = d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-o", person: owner, path: "direct", session: "s" });
@@ -54,6 +56,11 @@ test("a chat's record is made by the kernel's chat.created, filled by a run's st
   d.events.emit("threads", "thread.stopped", { thread, chat: chat.id, code: 0, reason: "done" });
   const done = await until(async () => { const r = await q(); return r && r.data.status === "idle" ? r : null; }, "the chat to go idle");
   assert.ok(done.data.last_active);
+  // a turn ending is not the run stopping: the run's status says working, then waiting, and the chat follows
+  d.events.emit("threads", "thread.status", { thread, chat: chat.id, status: "working" });
+  await until(async () => { const r = await q(); return r && r.data.status === "working" ? r : null; }, "the chat to be working");
+  d.events.emit("threads", "thread.status", { thread, chat: chat.id, status: "waiting" });
+  await until(async () => { const r = await q(); return r && r.data.status === "idle" ? r : null; }, "the chat to be idle again after the turn");
   // a person added to the chat shows in the mirror
   await d.kernel.gateway.grants.chats.change(admin, chat.id, { add_assistants: [] }).catch(() => {});
   // the same run starting again is the same record, working again
@@ -81,7 +88,7 @@ test("a terminal session (the Harness's SessionStart and SessionEnd hooks) gets 
   const session = "2f0e0d0c-0b0a-4908-8706-050403020100";
   const brief = await d.registry.call("harness.brief", { session, cwd: process.cwd(), source: "startup" }, "cli", await meta());
   assert.ok(!brief.error || true);
-  const chatId = await until(async () => { const r = await d.registry.call("threads.chat-of", { thread: session }, "module"); return r.data && r.data.chat; }, "the terminal session's chat");
+  const chatId = await until(async () => { const r = await d.registry.call("threads.chat-of", { thread: session }, "module:work"); return r.data && r.data.chat; }, "the terminal session's chat");
   const q = async () => (await d.kernel.gateway.records.query(admin, "chat-record", { page: { limit: 10 } })).rows.find((/** @type {any} */ r) => r.data.chat === chatId) || null;
   const row = await until(async () => { const r = await q(); return r && r.data.status === "working" ? r : null; }, "the terminal session's chat record");
   assert.equal(row.data.status, "working");
@@ -106,10 +113,13 @@ test("moving a Project between two real Spaces: the engine over both gateways, a
   const side = (/** @type {any} */ space, /** @type {any} */ gw, /** @type {any} */ chain) => ({ space, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) });
   const from = side(d.kernel.id.space, d.kernel.gateway, admin);
   const to = side(firm.space, firm.gateway, firmAdmin);
-  // the work module's types exist in the home Space only; the firm Space has none, so the plan says so
+  // every Space has the core record types now (the firm Space too), so nothing blocks the plan and the move runs: a new id in the target, the chat's record and both files moved
   const plan = await planMove({ from, to, project: urn });
+  assert.deepEqual(plan.blockers, []);
   assert.equal(plan.counts.files, 2);
-  assert.ok(plan.blockers.some((/** @type {string} */ b) => /no record type/.test(b) || /no Drive/.test(b)), JSON.stringify(plan.blockers));
-  await assert.rejects(() => runMove({ from, to, plan }), /cannot run/);
+  const out = await runMove({ from, to, plan });
+  assert.ok(out.target && out.target !== urn, "a new id in the target Space");
+  assert.deepEqual(out.moved, { records: 1, files: 2 });
+  assert.ok(out.map[urn] === out.target, "the map says where the project went");
   void d;
 });

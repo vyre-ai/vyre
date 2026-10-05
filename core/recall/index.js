@@ -30,6 +30,7 @@ import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
 import { search, thread, sessions } from "./search.js";
+import { span, byLink, resolve as resolveSession, rolloverOf } from "./turns.js";
 import { evaluate } from "./eval.js";
 import { spawnEmbedder, cached, installed, DOWNLOAD_MB } from "./embed.js";
 import { pacer, gate } from "./pace.js";
@@ -86,10 +87,12 @@ export default {
     // <home>/synced holds one folder per device that sent its sessions (ADR 0008, amendment), each
     // in Claude Code's own layout: read afresh each time, since a device can be added or revoked.
     const syncedRoot = ctx.paths?.root ? path.join(ctx.paths.root, "synced") : null;
-    const folders = () => configured.flatMap(f => {
+    // <home>/mirror holds the conversation of every thread a provider other than Claude ran (core/switchboard mirror()), in Claude Code's own layout: Recall indexes it like any session.
+    const mirrorRoot = ctx.paths?.root ? path.join(ctx.paths.root, "mirror") : null;
+    const folders = () => [...configured.flatMap(f => {
       if (!syncedRoot || path.resolve(f) !== path.resolve(syncedRoot)) return [f];
       try { return fs.readdirSync(f, { withFileTypes: true }).filter(e => e.isDirectory() && /^[A-Za-z0-9._-]{1,80}$/.test(e.name)).map(e => path.join(f, e.name)).sort(); } catch { return []; }
-    });
+    }), ...(mirrorRoot ? [mirrorRoot] : [])];
     // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
     // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
     const dense = new Dense(db, { maxChunks: opts.maxChunks });
@@ -365,6 +368,8 @@ export default {
         sessions: { ...stringArray, description: "also these sessions wherever they ran (a project's attached sessions); from modules and the person's surfaces only" },
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
         per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines, ...agentField,
+        links: { type: "array", items: { type: "object", required: ["ref"], properties: { kind: { type: "string", enum: ["file", "read", "commit", "url"] }, ref: { type: "string" } } },
+          description: "keep only turns that touched these (a file path or name, a commit hash, a url), or sit next to one that did" },
       } },
       callers: READERS,
       run: async (input, meta = {}) => { const caller = meta.caller;
@@ -458,6 +463,65 @@ export default {
         const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
         const asleep = answers.some(a => a.error && a.error.code !== "not_found" && !/^no session /.test(String(a.error.message || "")));
         throw Object.assign(new Error(answers.length && !asleep ? `no session ${q.session} (${why})` : `That session is on a Mac that isn't connected. (${why})`), { code: "not_found" });
+      },
+    });
+    /**
+     * A session id this caller may read, resolved among only what it may read: an id or prefix outside its grant never surfaces, not even as "more than one session starts with X".
+     * Thrown as "not found", so a scoped agent learns nothing about a session it may not read (recall.thread's rule, shared by the tools below).
+     * @param {{ all: boolean, folders: string[] }} r @param {string} session
+     */
+    const readableSession = (r, session) => {
+      if (r.all) return resolveSession(db, session);
+      const gone = () => Object.assign(new Error(`no session ${session}`), { code: "not_found" });
+      const exact = /** @type {any} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE id = ?").get(session));
+      if (exact) { if (!inFolders(exact.cwd, r.folders)) throw gone(); return resolveSession(db, exact.id); }
+      const like = /** @type {any[]} */ (db.prepare("SELECT id, cwd FROM recall_sessions WHERE substr(id, 1, ?) = ?").all(session.length, session)).filter(x => inFolders(x.cwd, r.folders));
+      if (!like.length) throw gone();
+      if (like.length > 1) throw new Error(`more than one session starts with ${session}`);
+      return resolveSession(db, like[0].id);
+    };
+    ctx.tool("recall.turn", {
+      effect: "read",
+      description: "A span of one past session, word for word: the turns themselves, no summary, each with its pointer (session:seq), its time, and what it touched (files, commits, urls). Name the turn with seq, and before and after for the turns around it, or give from with to or span. A turn the search index had to cut is read whole from the transcript. Redacted like everything Recall holds.",
+      input: { type: "object", required: ["session"], properties: {
+        session: { type: "string", description: "a session id, or an unambiguous prefix of one" },
+        seq: { type: "integer", minimum: 0 }, before: { type: "integer", minimum: 0, maximum: 60 }, after: { type: "integer", minimum: 0, maximum: 60 },
+        from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0 }, span: { type: "integer", minimum: 1, maximum: 60 },
+        full: { type: "boolean", description: "false: give a long turn as the index holds it (cut) instead of reading the transcript" }, ...agentField } },
+      callers: READERS,
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        const { agent, session, ...q } = input;
+        const r = await reach(agent, caller, meta);
+        const row = readableSession(r, String(session || ""));
+        return span(db, { ...q, session: row.id });
+      },
+    });
+    ctx.tool("recall.links", {
+      effect: "read",
+      description: "The turns that touched something, newest first: a file (ref is a path or just its name; kind file for changes, read for reads, both by default), a commit (kind commit, a short or full hash), or a url (kind url). Each is a pointer (session:seq) for recall.turn, with a snippet.",
+      input: { type: "object", required: ["ref"], properties: { ref: { type: "string" }, kind: { type: "string", enum: ["file", "read", "commit", "url"] },
+        session: { type: "string" }, since: { type: "integer", description: "ms since epoch" }, limit: { type: "integer", minimum: 1, maximum: 200 }, ...agentField } },
+      callers: READERS,
+      run: async (input, meta = {}) => { const caller = meta.caller;
+        const { agent, session, ...q } = input;
+        const r = await reach(agent, caller, meta);
+        const id = session ? readableSession(r, String(session)).id : undefined;
+        const rows = byLink(db, { ...q, ...(id ? { session: id } : {}), limit: (q.limit || 30) * (r.all ? 1 : 4) });
+        const keep = r.all ? rows : rows.filter(x => inFolders(x.cwd, r.folders));
+        return keep.slice(0, Math.max(1, Math.min(200, q.limit || 30)));
+      },
+    });
+    ctx.tool("recall.pointers", {
+      effect: "read",
+      description: "For a rollover (Vyre's own, when a session's window fills): the windows of one thread (session ids, oldest first) indexed now, then the one split Vyre's seed makes of them: the last turns, newest window first, whose text adds up to tail_chars, word for word (a long turn cut, with the pointer that reads it whole), and, for every turn before them, an index of pointers: the person's own requests as lines (session:turn, who, when, the start of what was said), the files touched and the commits made. Pointers read back with recall.turn. A person's surface or a module asks, for the sessions of a thread it runs; never an agent.",
+      input: { type: "object", required: ["sessions"], properties: { sessions: { ...stringArray, maxItems: 24 }, tail_chars: { type: "integer", minimum: 0, maximum: 400000 }, lines: { type: "integer", minimum: 1, maximum: 60 } } },
+      callers: OWNERS_ONLY,
+      run: async input => {
+        const ids = [...new Set((input.sessions || []).map(String))].slice(0, 24);
+        for (const id of ids) await indexNow(id);
+        const have = ids.filter(id => db.prepare("SELECT 1 FROM recall_sessions WHERE id = ?").get(id));
+        const out = rolloverOf(db, have, { tailChars: Math.max(0, Number(input.tail_chars) || 0), cap: Math.max(1, Math.min(60, Number(input.lines) || 30)) });
+        return { ...out, indexed: have, missing: ids.filter(id => !have.includes(id)) };
       },
     });
     ctx.tool("recall.transcript", {
@@ -654,7 +718,23 @@ export default {
         chain = chain.then(() => (stopped ? null : indexer.session(folders(), id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
       }, SOON_MS));
     };
-    const offs = [ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
+    /** Index one session now, on the pass chain, and wait for it. @param {string} id */
+    const indexNow = id => {
+      chain = chain.then(() => (stopped ? null : indexer.session(folders(), id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+      return chain;
+    };
+    // A thread another provider runs has no Claude Code Stop hook: when one of its turns finishes, its mirror (core/switchboard mirror()) is indexed, from the mirror folder alone.
+    const indexMirror = (/** @type {any} */ e) => {
+      const thread = e && e.thread;
+      if (stopped || !mirrorRoot || typeof thread !== "string" || !thread) return;
+      const id = `m-${thread}`;
+      clearTimeout(soon.get(id));
+      soon.set(id, setTimeout(() => {
+        soon.delete(id);
+        chain = chain.then(() => (stopped ? null : indexer.session([mirrorRoot], id))).catch(err => ctx.log(`could not index ${id}: ${err.message}`));
+      }, SOON_MS));
+    };
+    const offs = [ctx.events.on("thread.finished", indexMirror), ctx.events.on("turn.completed", indexSoon), ctx.events.on("thread.started", indexSoon),
       ctx.events.on("turn.completed", (/** @type {any} */ e) => { const id = e?.payload?.session; if (typeof id === "string" && id) watches.stopped(id); }),
       // A deleted session is erased from the Space's memory too (work.know.forget); Recall's own rows follow the transcript file, which a provider keeps.
       ctx.events.on("thread.deleted", (/** @type {any} */ e) => { const id = e?.payload?.thread; if (typeof id === "string" && id) Promise.resolve(ctx.call("work.know.forget", { session: id })).catch(() => {}); })];

@@ -48,6 +48,16 @@
         "effect": "write"
       },
       {
+        "name": "threads.export-chat",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "threads.import-chat",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "threads.chat-of",
         "reach": "anyone",
         "effect": "read"
@@ -110,6 +120,21 @@
       {
         "name": "threads.switch",
         "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "threads.roll",
+        "reach": "person",
+        "effect": "write"
+      },
+      {
+        "name": "threads.rolls",
+        "reach": "person",
+        "effect": "read"
+      },
+      {
+        "name": "threads.roll-session",
+        "reach": "person",
         "effect": "write"
       },
       {
@@ -333,6 +358,7 @@
       "thread.rewound",
       "model.switched",
       "thread.provider",
+      "thread.rolled",
       "thread.deleted",
       "turn.said",
       "thread.mentioned",

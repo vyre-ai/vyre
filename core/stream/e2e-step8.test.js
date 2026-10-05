@@ -18,7 +18,7 @@ import { connect, wsDuplex } from "./client.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const sleep = (/** @type {number} */ ms) => new Promise(r => setTimeout(r, ms));
 const until = async (/** @type {() => any} */ f, /** @type {string} */ what, ms = 30_000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await f()) return; await sleep(20); } throw new Error(`timed out waiting for ${what}`); };
-const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "session.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
+const textOf = (/** @type {any[]} */ frames) => frames.filter(f => f.type === "chat.text-delta" && !f.data.reasoning).map(f => f.data.text).join("");
 const LONG = (/** @type {string} */ tag) => `${tag} ` + Array(400).fill("word").join(" ");
 
 test("step 8: the assistant reads a record with a sealed ssn inside a chat turn and its transcript holds the placeholder, never the value or the reference", { skip: (process.env.VYRE_E2E !== "1" && "set VYRE_E2E=1 on the test box") || false, timeout: 150_000 }, async t => {
@@ -46,7 +46,7 @@ test("step 8: the assistant reads a record with a sealed ssn inside a chat turn 
   const ask = `vyre-sock work.call ${JSON.stringify({ tool: "contacts.find", input: {} })}`;
   const sent = await call("alex", "stream.send", { chat: info.chat, text: ask, to: ["assistant:assistant"], cwd: work });
   assert.ok(!sent.error, JSON.stringify(sent.error));
-  await until(() => frames.some(f => f.type === "session.text-done"), "the assistant's reply", 90_000);
+  await until(() => frames.some(f => f.type === "chat.text-done"), "the assistant's reply", 90_000);
   const reply = textOf(frames);
   console.log("STEP8 reply the model produced from the tool result:\n" + reply.slice(0, 1500));
   // the transcript the model received: every recorded event of its thread, as the thread stored them

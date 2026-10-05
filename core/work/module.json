@@ -113,6 +113,24 @@
         "effect": "read"
       },
       {
+        "name": "work.chat.upgrade-plan",
+        "summary": "what moving your chats to your other Space would carry (counts and blockers)",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "work.chat.upgrade-move",
+        "summary": "move your chats to your other Space (Personal to My Cloud), ids kept",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
+        "name": "work.chat.history-import",
+        "summary": "put back the history of a chat that came with the chat upgrade",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "work.chat.create",
         "summary": "start a chat: who is in it and which Project",
         "reach": "anyone",
@@ -145,6 +163,11 @@
         "summary": "where the caller is: the Space, role, record, team, open tasks, what waits and what is sealed",
         "reach": "anyone",
         "effect": "read"
+      },
+      {
+        "name": "work.space-brief",
+        "effect": "read",
+        "reach": "modules"
       },
       {
         "name": "work.team.context",
@@ -327,6 +350,7 @@
             { "name": "chat", "kind": "text", "label": "Chat id", "unique": true },
             { "name": "people", "kind": "text", "label": "People" },
             { "name": "agents", "kind": "text", "label": "Agents" },
+            { "name": "former", "kind": "text", "label": "Former participants (people and agents who could not move with it)" },
             { "name": "started", "kind": "datetime", "label": "Started" },
             { "name": "last_active", "kind": "datetime", "label": "Last active" },
             { "name": "status", "kind": "choice", "label": "Status", "options": ["working", "idle", "stopped", "failed"] },

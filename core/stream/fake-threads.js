@@ -14,13 +14,15 @@ export function fakeThreads(dir) {
   fs.writeFileSync(path.join(d, "index.js"), `
 export default { async start(ctx) {
   ctx.tool("threads.get", {
-    description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers: ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness"],
+    description: "fake", input: { type: "object", properties: { thread: { type: "string" }, limit: { type: "integer" } }, required: ["thread"] }, callers: ["cli", "local", "deck", "capsule", "tailnet", "mcp", "harness", "module"],
     run: async (i, meta) => {
+      // only the term module's relayed call is admitted among modules (the others are refused before anything is recorded, as the real caller list does)
+      if (/^module:/.test(String(meta.caller)) && meta.caller !== "module:term") throw Object.assign(new Error("denied"), { code: "denied" });
       (globalThis.__fakeThreadsCalls ||= []).push({ thread: i.thread, caller: meta.caller });
       const e = (code) => Object.assign(new Error(code), { code });
       const known = globalThis.__fakeThreadsKnown && globalThis.__fakeThreadsKnown.get(i.thread);
-      if (known) { if (known.deny && new RegExp(known.deny).test(String(meta.caller))) throw e("denied"); return { thread: { id: i.thread, cwd: known.cwd }, events: [] }; }
-      if (/^locked_/.test(i.thread)) { if (/bob/.test(String(meta.caller))) throw e("denied"); return { thread: { id: i.thread, cwd: "/tmp" }, events: [] }; }
+      if (known) { if (known.deny && new RegExp(known.deny).test(String(meta.caller) + JSON.stringify(meta.kernelFacts || {}))) throw e("denied"); return { thread: { id: i.thread, cwd: known.cwd }, events: [] }; }
+      if (/^locked_/.test(i.thread)) { if (/bob/.test(String(meta.caller) + JSON.stringify(meta.kernelFacts || {}))) throw e("denied"); return { thread: { id: i.thread, cwd: "/tmp" }, events: [] }; }
       if (/^thr_/.test(i.thread)) return { thread: { id: i.thread, cwd: "/tmp" }, events: [] };
       throw e("not_found");
     },

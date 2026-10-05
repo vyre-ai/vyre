@@ -24,7 +24,7 @@ function conn() {
   return { got, send: (/** @type {any} */ f) => got.push(JSON.parse(JSON.stringify(f))), onClose: () => {}, close: () => {} };
 }
 const wire = (/** @type {any[]} */ got) => JSON.stringify(got);
-const real = (/** @type {any[]} */ got) => got.filter(f => f.type !== "session.heartbeat");
+const real = (/** @type {any[]} */ got) => got.filter(f => f.type !== "chat.heartbeat");
 
 function filled() {
   const log = new SessionLog("s1", { flushMs: 0 });
@@ -56,9 +56,9 @@ test("C-3: a viewer who is not cleared for a record gets no frame for it, only i
   const a = conn(), m = conn();
   serve(log, a, { from: 0, viewer: ADMIN });
   serve(log, m, { from: 0, viewer: MEMBER });
-  assert.equal(real(a.got).find(f => f.cur === 3).type, "session.tool-finished");
+  assert.equal(real(a.got).find(f => f.cur === 3).type, "chat.tool-finished");
   const stub = real(m.got).find(f => f.cur === 3);
-  assert.equal(stub.type, "session.hidden");
+  assert.equal(stub.type, "chat.hidden");
   assert.deepEqual(stub.data, {});
   assert.ok(!wire(m.got).includes("Admin only matter") && !wire(m.got).includes("settlement floor") && !wire(m.got).includes("urn:vyre:rec:2"));
   assert.deepEqual(real(m.got).map(f => f.cur), [1, 2, 3, 4], "gapless: the client's own gap check holds");
@@ -93,14 +93,14 @@ test("C-3: the SSE form is drawn per viewer too", async t => {
     const r = http.get({ port, host: "127.0.0.1", path: "/" }, res => { res.on("data", d => { text += d; if ((text.match(/^data:/gm) || []).length >= 5) { r.destroy(); resolve(text); } }); });
     r.on("error", () => resolve(text));
   });
-  assert.ok(String(body).includes("session.hidden"));
+  assert.ok(String(body).includes("chat.hidden"));
   assert.ok(!String(body).includes(SECRET_REF) && !String(body).includes("settlement floor") && !String(body).includes("4200"));
 });
 
 test("C-3: forViewer leaves control frames, and other frames, alone", () => {
-  const hb = { v: 1, id: "x", cur: 0, session: "s", type: "session.heartbeat", time: 1, data: { head: 3 } };
+  const hb = { v: 1, id: "x", cur: 0, session: "s", type: "chat.heartbeat", time: 1, data: { head: 3 } };
   assert.equal(forViewer(hb, MEMBER), hb);
-  const t = { v: 1, id: "y", cur: 2, session: "s", type: "session.text-delta", time: 1, turn: null, data: { message: "m", index: 0, text: "hi" } };
+  const t = { v: 1, id: "y", cur: 2, session: "s", type: "chat.text-delta", time: 1, turn: null, data: { message: "m", index: 0, text: "hi" } };
   assert.equal(forViewer(t, MEMBER), t);
 });
 
@@ -111,7 +111,7 @@ test("C-3: thread.shell output and its command are redacted before they are logg
   pipe(log, ad, { type: "thread.shell", payload: { command: `echo token=${key}`, output: `token=${key}\nGITHUB_TOKEN=${key}\nok\n` } });
   const c = conn();
   serve(log, c, { from: 0, viewer: MEMBER });
-  const chunks = real(c.got).filter(f => f.type === "session.term-chunk");
+  const chunks = real(c.got).filter(f => f.type === "chat.term-chunk");
   assert.ok(chunks.length >= 1);
   const text = chunks.map(f => Buffer.from(f.data.b64, "base64").toString("utf8")).join("");
   assert.ok(text.includes("ok"));

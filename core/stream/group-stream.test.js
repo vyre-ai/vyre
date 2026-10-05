@@ -69,10 +69,10 @@ function rig(t, which, now = () => Date.now(), extra = /** @type {any} */ ({})) 
 /** The text a viewer received per message id, and what else it saw of a message (any frame naming it). @param {any[]} frames */
 const textsOf = frames => {
   /** @type {Record<string, string>} */ const out = {};
-  for (const f of frames) if (f.type === "session.text-delta" && !f.data.reasoning) out[f.data.message] = (out[f.data.message] || "") + f.data.text;
+  for (const f of frames) if (f.type === "chat.text-delta" && !f.data.reasoning) out[f.data.message] = (out[f.data.message] || "") + f.data.text;
   return out;
 };
-const nonHidden = (/** @type {any[]} */ frames) => frames.filter(f => f.type !== "session.hidden" && f.cur > 0);
+const nonHidden = (/** @type {any[]} */ frames) => frames.filter(f => f.type !== "chat.hidden" && f.cur > 0);
 
 for (const which of PORTS) {
   test(`[${which}] someone who joins mid-reply gets no frame of that reply, sees the chat from their join, and gets the next message in full`, async t => {
@@ -98,16 +98,16 @@ for (const which of PORTS) {
 
     const first = textsOf(bob.frames);
     assert.equal(first["m1"] ?? first["q1.kit"] ?? Object.values(first)[0], "SECRET-ONE streaming SECRET-TWO the rest", "bob, who was there, got the whole first reply as it streamed");
-    assert.ok(bob.frames.filter(f => f.type === "session.text-delta").length >= 3, "it streamed delta by delta, not as one held message");
+    assert.ok(bob.frames.filter(f => f.type === "chat.text-delta").length >= 3, "it streamed delta by delta, not as one held message");
     const seen = JSON.stringify(dave.frames);
     assert.ok(!seen.includes("SECRET"), "dave gets nothing of the reply that streamed while he joined, not even the later deltas");
     assert.ok(!seen.includes("what is the fee"), "and nothing said before he joined");
     const mine = nonHidden(dave.frames);
-    assert.ok(mine.some(f => f.type === "session.participant-joined" && f.data.who === "person:dave" && !f.data.quiet), "his own join is the marker");
-    assert.ok(mine.filter(f => f.type === "session.participant-joined" && f.data.who !== "person:dave").every(f => f.data.quiet), "who was there before him is roster only");
+    assert.ok(mine.some(f => f.type === "chat.participant-joined" && f.data.who === "person:dave" && !f.data.quiet), "his own join is the marker");
+    assert.ok(mine.filter(f => f.type === "chat.participant-joined" && f.data.who !== "person:dave").every(f => f.data.quiet), "who was there before him is roster only");
     const tail = Object.values(textsOf(dave.frames));
     assert.deepEqual(tail, ["Second reply."], "he sees the next message in full");
-    assert.ok(mine.some(f => f.type === "session.user-message" && f.data.text === "and the retainer?"));
+    assert.ok(mine.some(f => f.type === "chat.user-message" && f.data.text === "and the retainer?"));
     // cursors stay gapless for him: every cursor from 1 to head is accounted for once
     const cover = dave.frames.filter(f => f.cur > 0).flatMap(f => { const n = f.span || 1; return Array.from({ length: n }, (_, i) => f.cur - n + 1 + i); });
     assert.deepEqual(cover, Array.from({ length: r.logs.get("c1").head }, (_, i) => i + 1));
@@ -136,7 +136,7 @@ for (const which of PORTS) {
     await r.groups.idle();
     assert.equal(Object.values(textsOf(bob.frames))[0], "one two three");
     assert.equal(Object.values(textsOf(carol.frames))[0], "one ", "carol had the words before she left and none after");
-    assert.ok(!carol.frames.some(f => f.type === "session.text-done"));
+    assert.ok(!carol.frames.some(f => f.type === "chat.text-done"));
   });
 }
 
@@ -160,7 +160,7 @@ test("a reply the kernel refuses at open is shown nowhere, one it takes back mid
   r.say(kit, "m2", { done: true });
   await r.groups.idle();
   const types = bob.frames.filter(f => f.data && f.data.message && String(f.data.message).includes("q2")).map(f => f.type);
-  assert.ok(types.includes("session.text-cut"), "taken back mid-reply: the people who had it see it cut");
+  assert.ok(types.includes("chat.text-cut"), "taken back mid-reply: the people who had it see it cut");
   assert.ok(!JSON.stringify(bob.frames).includes("more"));
 });
 
@@ -182,7 +182,7 @@ for (const which of PORTS) {
         const client = connect({
           open: makeLink({ log: r.logs.get(grp), sched, rnd, relay: it % 2 === 0, stats, serveOpts: { viewer } }), timers: sched, random: rnd,
           snapshot: () => ({ cur: r.logs.get(grp).head }),
-          onFrame: f => { state.seen.push(f.cur); if (f.type === "session.text-delta" && !f.data.reasoning) state.text[f.data.message] = (state.text[f.data.message] || "") + f.data.text; else if (f.type === "session.user-message") state.nonText.push(f.data.message); },
+          onFrame: f => { state.seen.push(f.cur); if (f.type === "chat.text-delta" && !f.data.reasoning) state.text[f.data.message] = (state.text[f.data.message] || "") + f.data.text; else if (f.type === "chat.user-message") state.nonText.push(f.data.message); },
         });
         return { state, client };
       };
@@ -261,7 +261,7 @@ for (const which of PORTS) {
 // ---- task Q: everything an assistant puts into a room goes through the reply handle ----------------------------------
 
 /** The frames an assistant wrote into a room, in order, as [type, rid?, message?]. @param {any[]} frames */
-const shape = frames => frames.filter(f => f.author === "assistant:kit").map(f => [f.type.replace("session.", ""), f.data.rid || null, f.data.state || f.data.text || f.data.note || null]);
+const shape = frames => frames.filter(f => f.author === "assistant:kit").map(f => [f.type.replace("chat.", ""), f.data.rid || null, f.data.state || f.data.text || f.data.note || null]);
 
 test("a reasoning-only turn in a two-person room writes nothing to it (no frame, no handle, no kernel message); thinking that goes with a reply is written through the handle, stamped, to the people entitled at its version", async t => {
   const r = rig(t, PORTS[0]);
@@ -322,7 +322,7 @@ test("a field value in what an assistant thinks, runs or says is dropped in a ro
   await r.groups.idle();
   assert.ok(!JSON.stringify(ada.frames).includes("4200"));
   assert.ok(!JSON.stringify(r.fk.replies).includes("4200"), "and it never reached the handle");
-  assert.ok(JSON.stringify(ada.frames).includes("progress") || ada.frames.some(f => f.type === "session.tool-progress"), "the rest of the turn is shown");
+  assert.ok(JSON.stringify(ada.frames).includes("progress") || ada.frames.some(f => f.type === "chat.tool-progress"), "the rest of the turn is shown");
 });
 
 test("no frame of a kernel group chat reaches the log by any path but the reply handle (a content-free status aside)", async t => {
@@ -340,8 +340,10 @@ test("no frame of a kernel group chat reaches the log by any path but the reply 
       all.push(kind);
       const last = seq[seq.length - 1];
       const plainStatus = kind === "status" && !Object.keys(data).some(k => !["state", "turn", "stopping"].includes(k));
+      // a step's closing summary is derived from tool frames that already went through the handle and holds only counts and plain words for what kind of step it was
+      const stepCounts = kind === "step-summary" && !Object.keys(data).some(k => !["step", "count", "kinds", "summary", "ok"].includes(k));
       const viaHandle = last && data.rid === last.rid && (kind === "text-done" ? last.ev === "close" : last.ev === "write");
-      if (!plainStatus && !viaHandle) bypass.push({ kind, data });
+      if (!plainStatus && !stepCounts && !viaHandle) bypass.push({ kind, data });
     }
     return real(kind, data, o);
   };
@@ -377,7 +379,7 @@ test("the room says its blocks are public: a terminal, diff or files block in a 
     r.ev(kit, "thread.tool", { call: "c3", tool: "Edit", input: { file_path: "/tmp/x", old_string: "a", new_string: "b" }, phase: "done", output: "ok" });
     await r.groups.idle();
   }
-  const results = (/** @type {any[]} */ fs) => fs.filter(f => f.type === "session.tool-finished").map(f => f.data.result);
+  const results = (/** @type {any[]} */ fs) => fs.filter(f => f.type === "chat.tool-finished").map(f => f.data.result);
   const room = results(ada.frames);
   assert.deepEqual(room.map(b => b.block), ["terminal", "files", "diff"]);
   assert.ok(room.every(b => b.note === "visible to everyone in this chat"), "every one carries the line, as the viewer receives it");
@@ -407,7 +409,7 @@ test("no assistant session within the deadline: the pending reply is dropped, th
   await r.groups.idle(); // would hang if anything still waited
   const mine = shape(ada.frames);
   assert.deepEqual(mine, [["status", null, "failed"]]);
-  assert.equal(ada.frames.find(f => f.type === "session.status").data.note, "couldn't resume, ask again");
+  assert.equal(ada.frames.find(f => f.type === "chat.status").data.note, "couldn't resume, ask again");
   assert.equal(r.fk.replies.length, 0, "no handle was opened");
   // the asker acts: a session arrives, late. The dropped reply stays dropped.
   await r.call("d1", "bob");
@@ -421,7 +423,7 @@ test("no assistant session within the deadline: the pending reply is dropped, th
   r.say(kit, "mb", { delta: "fresh" });
   r.say(kit, "mb", { done: true });
   await r.groups.idle();
-  assert.ok(ada.frames.some(f => f.type === "session.text-done" && f.author === "assistant:kit"));
+  assert.ok(ada.frames.some(f => f.type === "chat.text-done" && f.author === "assistant:kit"));
 });
 
 test("the wait for an assistant session is stream.resumeWaitSeconds", async t => {

@@ -10,6 +10,8 @@
 import { createToolSurface } from "../../kernel/tools/surface.js";
 import { buildSituation } from "./native/situation.js";
 import { createHub } from "./hub.js";
+import { planUpgrade, runUpgrade, manifestPath } from "./chat-upgrade.js";
+import crypto from "node:crypto";
 import { planMove, runMove, linkedClosure } from "./project-move.js";
 import { toComponent } from "./native/components.js";
 import { teammateContext } from "./team/context.js";
@@ -97,6 +99,7 @@ export default {
       hear("project.created", p => (p && typeof p.project === "string" ? hubOf().ensureProject(p.project, p.name) : null));
       hear("thread.started", p => hubOf().onStarted(p));
       hear("thread.stopped", p => hubOf().onStopped(p));
+      hear("thread.status", p => hubOf().onStatus(p));
       // a terminal session's chat was made (the switchboard, from the Harness's SessionStart)
       hear("thread.chat", p => hubOf().onChatLinked(p));
       // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
@@ -150,14 +153,15 @@ export default {
       const chain = await k.chainIn(space, extra);
       // every Space, this one included, through its own gateway: its records, its Drive, its definitions and its moves
       const gw = (await k.for(space)).gateway;
-      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []) };
+      // the chats and members of that Space too, for a chat that moves with its project (core/work/chat-carry.js): the target's own, under the mover's own chain there
+      return { space, gw, records: gw.records, drive: gw.drive, chain, types: async (/** @type {any} */ c) => (gw.definitions ? gw.definitions(c) : []), ...(gw.grants && gw.grants.chats ? { chats: gw.grants.chats } : {}), ...(gw.members ? { members: gw.members } : {}) };
     };
     // The sealed carry of a chat's files from one Space to the other (pool to pool inside the sealing processes), when the source's gateway has it: `moves.carryFiles(fromChain, toChain, { entries, move_id })`.
     // The record types a target lacks are installed from the source's own definitions, under the same approval (a plan that needs them says so in its hash).
     const withCarry = (/** @type {any} */ from, /** @type {any} */ to) => {
       // the kernel gives the work module `moves.carryFiles` on its own handle (network-2, kernel/moves/carry.js: bytes go pool to pool inside the kernel, never to a module)
       const mv = kernelOf().moves || (from.gw && from.gw.moves);
-      if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id });
+      if (mv && typeof mv.carryFiles === "function") from.carry = (/** @type {any[]} */ entries, /** @type {any} */ o) => mv.carryFiles(from.chain, to.chain, { entries, move_id: o.move_id, ...(o.upgrade_id ? { upgrade_id: o.upgrade_id } : {}) });
       if (to.gw && to.gw.records && typeof to.gw.records.define === "function") to.install = async (/** @type {any} */ c, /** @type {string[]} */ names) => {
         const defs = (await from.types(from.chain)).filter((/** @type {any} */ t) => names.includes(t.name));
         if (defs.length !== names.length) throw Object.assign(new Error("a record type of this project is not defined here, so it cannot be installed in the other Space"), { code: "blocked" });
@@ -371,6 +375,12 @@ export default {
     // A person reads a chat's row through Records (title, who, when, project, where it lives) if they may read the project; the chat itself (its messages, its runs) only if they are in it: the kernel's own
     // chat read decides, never the record's `people`.
     const inChat = (/** @type {any} */ chain, /** @type {string} */ chat) => { try { kernelOf().chats.read(chain, chat); return true; } catch { return false; } };
+    // A person acting for themselves: a chain of exactly one person hop (their own device or their own session), never a model's or an agent's session (an agent hop), a viewer or a delegate chain. A
+    // cross-Space move or a history import is the person's own act; the spaces module relays the person (core/modules RELAY_ALLOWED) after the person's one approval.
+    const mustBeThePerson = (/** @type {any} */ chain, /** @type {string} */ what) => {
+      const hops = chain && Array.isArray(chain.hops) ? chain.hops : [];
+      if (hops.length !== 1 || !hops[0].actor || hops[0].actor.kind !== "person" || chain.viewer === true) throw Object.assign(new Error(`${what} is the person's own act: an assistant or a model session cannot do it`), { code: "denied" });
+    };
     const rowOf = (/** @type {any} */ r) => ({ id: r.id, urn: r.urn, ...r.data });
     ctx.tool("work.chat.list", {
       description: "The chats you may see in this Space: title, project (and its name), who, when, status and where it lives. `open: true` on the ones you are in, which also carry the providers of their runs and the last line; the others show only that the chat exists. Filter by project (short name) or a word in the title; mine: true lists only your own.",
@@ -383,13 +393,25 @@ export default {
         const q = typeof input.q === "string" ? input.q.toLowerCase() : "";
         let rows = (res.rows || []).filter((/** @type {any} */ r) => (!proj || (r.data.project && r.data.project.urn === proj.urn)) && (!q || String(r.data.title || "").toLowerCase().includes(q)));
         // the project's name, read under the caller's own chain; for the chats the caller is in, what the engine knows: the providers of its runs and the last line (never on the record)
+        const mine = new Set((await k.chats.mine(chain)).map((/** @type {any} */ m) => m.chat));
+        // unread: the messages (people's words and whole replies) others made in a chat after this person's read marker (stream.mark-read), counted from the stream's own tables, read only. 0 when there is none.
+        const personId = String((chain.hops && chain.hops[0] && chain.hops[0].actor && chain.hops[0].actor.id) || "");
+        const db = ctx.store && ctx.store.db;
+        const unreadOf = (/** @type {string} */ who, /** @type {string} */ chat) => {
+          if (!db || !who) return 0;
+          try {
+            const mark = /** @type {any} */ (db.prepare("SELECT upto FROM stream_groups_marks WHERE person = ? AND session = ?").get(`person:${who}`, chat));
+            const row = /** @type {any} */ (db.prepare("SELECT COUNT(DISTINCT json_extract(json, '$.data.message')) AS n FROM stream_frames WHERE session = ? AND cur > ? AND json_extract(json, '$.type') IN ('chat.user-message', 'chat.text-done') AND json_extract(json, '$.data.history') IS NULL AND COALESCE(json_extract(json, '$.author'), '') != ?").get(chat, mark ? Number(mark.upto) : 0, `person:${who}`));
+            return row ? Number(row.n) || 0 : 0;
+          } catch { return 0; }
+        };
         const projects = new Map(((await k.records.query(chain, "project", { page: { limit: 500 } })).rows || []).map((/** @type {any} */ p) => [p.urn, p.data.name]));
         rows = await Promise.all(rows.map(async (/** @type {any} */ r) => {
           const base = { ...rowOf(r), project_name: (r.data.project && projects.get(r.data.project.urn)) || null };
-          if (!inChat(chain, r.data.chat)) return base;
+          if (!mine.has(r.data.chat)) return base;
           const runs = ((await ctx.call("threads.of-chat", { chat: r.data.chat }).then((/** @type {any} */ x) => (x && x.data) || {}).catch(() => ({}))).runs) || [];
           const line = runs.filter((/** @type {any} */ x) => x.last_line).sort((/** @type {any} */ a, /** @type {any} */ b) => (b.last || 0) - (a.last || 0))[0];
-          return { ...base, open: true, providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
+          return { ...base, open: true, unread: unreadOf(personId, r.data.chat), providers: [...new Set(runs.map((/** @type {any} */ x) => x.provider).filter(Boolean))], ...(line ? { last_line: line.last_line } : {}) };
         }));
         if (input.mine) rows = rows.filter((/** @type {any} */ r) => r.open);
         rows.sort((/** @type {any} */ a, /** @type {any} */ b) => String(b.last_active || "").localeCompare(String(a.last_active || "")));
@@ -406,8 +428,84 @@ export default {
         if (!c) throw Object.assign(new Error("no such chat"), { code: "not_found" });
         const rec = await hubOf().chatRecord(chat);
         const runs = ((await ctx.call("threads.of-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || {}).catch(() => ({}))).runs) || [];
-        const slots = runs.map((/** @type {any} */ r) => ({ slot: r.agent ? `agent:${r.agent}` : `model:${r.provider || "claude"}/${r.model || ""}#${r.thread.slice(0, 6)}`, thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
+        const slots = runs.map((/** @type {any} */ r) => ({ slot: r.slot || (r.agent ? `agent:${r.agent}` : null), thread: r.thread, provider: r.provider, model: r.model, account: r.account, status: r.status, live: r.live }));
         return { chat: rec ? rowOf(rec) : { chat }, open: true, people: [...c.people], agents: [...c.assistants], slots, transcript: `vyre://${kernelOf().space}/chat/${chat}` };
+      },
+    });
+    // Personal to My Cloud (windows' upgrade, one approval for the whole move): the person's chats move to their other Space under their own chain in both, ids kept (core/work/chat-upgrade.js).
+    // The spaces module calls these on the person's behalf (it relays the person to exactly these two tools).
+    const upgradeRows = async (/** @type {any} */ from) => {
+      const k = kernelOf();
+      const mine = new Set((await k.chats.mine(from.chain)).map((/** @type {any} */ m) => m.chat));
+      return ((await from.records.query(from.chain, "chat-record", { page: { limit: 500 } })).rows || []).filter((/** @type {any} */ r) => mine.has(r.data.chat));
+    };
+    ctx.tool("work.chat.upgrade-plan", {
+      description: "What moving your chats from this Space to your other Space (Personal to My Cloud) would carry: how many chats, files and bytes, and anything that blocks it (a chat that is working). Reads only; the counts are what you approve.",
+      input: obj({ to: { type: "string" } }, ["to"]),
+      run: async (input, extra) => {
+        const k = kernelOf();
+        const here = await sideOf(k.space, extra);
+        mustBeThePerson(here.chain, "planning to move your chats to another Space");
+        const to = await sideOf(String(input.to), extra);
+        mustBeThePerson(to.chain, "planning to move your chats to another Space");
+        const from = withCarry(here, to);
+        return planUpgrade({ from, rows: await upgradeRows(from) });
+      },
+    });
+    ctx.tool("work.chat.upgrade-move", {
+      description: "Move your chats from this Space to your other Space (Personal to My Cloud): each keeps its id, title and people, is filed under General there, and its files go sealed. A chat that cannot move is named in `left` and the others still do.",
+      input: obj({ to: { type: "string" }, move_id: { type: "string" }, upgrade_id: { type: "string" } }, ["to"]),
+      run: async (input, extra) => {
+        const k = kernelOf();
+        const here = await sideOf(k.space, extra);
+        mustBeThePerson(here.chain, "moving your chats to another Space"); // before anything else is looked at
+        const to = await sideOf(String(input.to), extra);
+        mustBeThePerson(to.chain, "moving your chats to another Space");
+        const from = withCarry(here, to);
+        const history = async (/** @type {string} */ chat) => {
+          const st = await ctx.call("stream.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { frames: [], members: [] });
+          const th = await ctx.call("threads.export-chat", { chat }).then((/** @type {any} */ r) => (r && r.data) || { runs: [], events: [] });
+          return { frames: st.frames, members: st.members, runs: th.runs, events: th.events };
+        };
+        return runUpgrade({ from, to, rows: await upgradeRows(from), ports: { history, ...(input.move_id ? { move_id: String(input.move_id) } : {}), ...(input.upgrade_id ? { upgrade_id: String(input.upgrade_id) } : {}) } });
+      },
+    });
+    ctx.tool("work.chat.history-import", {
+      description: "Put back the history of a chat that came here with the chat upgrade: its frames, its runs (stopped) and their events, read in order from the numbered chunks the move carried in the chat's own folder, each checked against its hash. You must be in the chat. It resumes where it stopped; a chat that already had its own frames here is left as it is.",
+      input: obj({ chat: { type: "string" } }, ["chat"]),
+      run: async (input, extra) => {
+        const chain = await chainOf(extra);
+        mustBeThePerson(chain, "putting back a chat's history");
+        const chat = String(input.chat);
+        if (!inChat(chain, chat)) throw Object.assign(new Error("no such chat"), { code: "not_found" });
+        const rec = await hubOf().chatRecord(chat);
+        if (!rec || !rec.data.drive) throw Object.assign(new Error("this chat has no folder here"), { code: "not_found" });
+        const folder = `${rec.data.drive}/chat/${chat}`;
+        const read = async (/** @type {string} */ path) => { const got = await kernelOf().drive.get(chain, path); return Buffer.from(/** @type {any} */ (got && (got.bytes || got.data || got))); };
+        /** @type {any} */ let manifest;
+        try { manifest = JSON.parse((await read(manifestPath(folder))).toString("utf8")); } catch { throw Object.assign(new Error("this chat carried no history"), { code: "not_found" }); }
+        if (!manifest || manifest.v !== 1 || manifest.chat !== chat || !Array.isArray(manifest.chunks)) throw Object.assign(new Error("that history is not this chat's"), { code: "bad_input" });
+        // which chunks are already back, so a stopped import carries on instead of putting anything twice
+        const db = ctx.store && ctx.store.db;
+        if (!db) throw Object.assign(new Error("this module has no store here"), { code: "unavailable" });
+        db.exec("CREATE TABLE IF NOT EXISTS work_history_imports (chat TEXT NOT NULL, n INTEGER NOT NULL, sha256 TEXT NOT NULL, PRIMARY KEY (chat, n))");
+        const done = new Set(/** @type {any[]} */ (db.prepare("SELECT n FROM work_history_imports WHERE chat = ?").all(chat)).map(r => Number(r.n)));
+        const total = { frames: 0, members: 0, runs: 0, events: 0, chunks: 0 };
+        let first = done.size === 0;
+        for (const c of [...manifest.chunks].sort((x, y) => x.n - y.n)) {
+          if (done.has(c.n)) continue;
+          const bytes = await read(String(c.path));
+          if (crypto.createHash("sha256").update(bytes).digest("hex") !== c.sha256) throw Object.assign(new Error(`a chunk of this chat's history did not arrive intact (${c.n}); nothing after it was put back`), { code: "verify_failed" });
+          const part = JSON.parse(bytes.toString("utf8"));
+          if (part.chat !== chat || part.n !== c.n) throw Object.assign(new Error(`chunk ${c.n} is not this chat's`), { code: "bad_input" });
+          const st = await ctx.call("stream.import-chat", { chat, frames: part.frames || [], members: part.members || [], fresh: first }).then((/** @type {any} */ r) => (r && r.data) || {});
+          if (st.note) { db.prepare("INSERT OR IGNORE INTO work_history_imports (chat, n, sha256) VALUES (?,?,?)").run(chat, c.n, "skipped"); return { chat, ...total, note: st.note }; }
+          const th = await ctx.call("threads.import-chat", { chat, runs: part.runs || [], events: part.events || [] }).then((/** @type {any} */ r) => (r && r.data) || {});
+          db.prepare("INSERT OR IGNORE INTO work_history_imports (chat, n, sha256) VALUES (?,?,?)").run(chat, c.n, c.sha256);
+          first = false;
+          total.frames += st.frames || 0; total.members += st.members || 0; total.runs += th.runs || 0; total.events += th.events || 0; total.chunks++;
+        }
+        return { chat, ...total };
       },
     });
     ctx.tool("work.chat.create", {
@@ -492,6 +590,19 @@ export default {
         }
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
         return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), memory: agentOf(chain) ? async (/** @type {string} */ slug) => { const r = await ctx.call("memory.brief", { project: slug, agent: agentOf(chain) }); const d = r && (r.data !== undefined ? r.data : r); return d && typeof d.text === "string" ? d.text : null; } : null, context: (input.context === true || typeof input.task === "string") ? { budget: Math.max(200, Math.min(8000, Math.trunc(asked ?? await spaceContextTokens(k, chain)))) } : false });
+      },
+    });
+
+    // What an agent is told about the Space it starts in (core/sessions/environment.js): the Space's id and the record types with their field names, from the kernel's own definitions read as
+    // this module's service. Definitions only, never a record or a value. Modules only.
+    ctx.tool("work.space-brief", {
+      description: "The Space this install is and its record types with their field names, for an agent's environment brief. Definitions only, never a record. Modules only.",
+      input: obj(),
+      callers: ["module"],
+      run: async () => {
+        const k = kernelOf();
+        const defs = (k.definitions ? await k.definitions(typeof k.serviceChain === "function" ? k.serviceChain("work") : undefined) : []) || [];
+        return { space: k.space, types: (Array.isArray(defs) ? defs : []).filter((/** @type {any} */ t) => t && t.name && !String(t.name).startsWith("_")).map((/** @type {any} */ t) => ({ name: String(t.name), ...(t.kind ? { kind: String(t.kind) } : {}), fields: (Array.isArray(t.fields) ? t.fields : []).map((/** @type {any} */ f) => String((f && f.name) || f)).slice(0, 40) })).slice(0, 60) };
       },
     });
 

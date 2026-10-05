@@ -67,7 +67,7 @@ test("stream module: thread events become frames a ticketed client reads, replay
   say("thread.tool", { call: "t1", phase: "done", output: "a.txt\n" });
   say("ask.raised", { ask: "a1", tool: "Bash", summary: "rm x" });
   await until(() => got.length >= 6);
-  assert.deepEqual(got.map(f => f.type), ["session.status", "session.text-delta", "session.text-delta", "session.tool-started", "session.tool-finished", "session.ask"]);
+  assert.deepEqual(got.map(f => f.type), ["chat.status", "chat.text-delta", "chat.text-delta", "chat.tool-started", "chat.tool-finished", "chat.ask"]);
   assert.deepEqual(got.map(f => f.cur), got.map((_, i) => i + 1));
   assert.equal(got[4].data.result.block, "terminal");
 });
@@ -93,7 +93,7 @@ test("stream module: a reconnecting client resumes from its cursor across a drop
   let text = "";
   const c = connect({
     open: async ({ from }) => { const o = await call(reg, "stream.open", { chat: "thr_3", from }); return wsDuplex(`ws://127.0.0.1:${port}${o.path}`); },
-    onFrame: f => { if (f.type === "session.text-delta") text += f.data.text; },
+    onFrame: f => { if (f.type === "chat.text-delta") text += f.data.text; },
     backoff: { base: 5, cap: 20 },
   });
   t.after(() => c.close());

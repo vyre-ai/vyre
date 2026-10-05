@@ -78,13 +78,13 @@ const GROUP = "grp-harlow";
 function answers(frames) {
   const m = new Map();
   for (const f of frames) {
-    if (f.type !== "session.text-delta" || f.data.reasoning || !f.author) continue;
+    if (f.type !== "chat.text-delta" || f.data.reasoning || !f.author) continue;
     const a = m.get(f.data.message) || { author: f.author, acts_for: f.acts_for, text: "" };
     a.text += f.data.text; m.set(f.data.message, a);
   }
   return m;
 }
-const done = frames => new Set(frames.filter(f => f.type === "session.text-done").map(f => f.data.message));
+const done = frames => new Set(frames.filter(f => f.type === "chat.text-done").map(f => f.data.message));
 
 async function world(t) {
   const w = await own(t);
@@ -108,9 +108,9 @@ test("group: a mention routes to one assistant; its reply is authored by it and 
   assert.equal(mine.author, JUNO);
   assert.equal(mine.acts_for, ALEX);
   assert.match(mine.text, /rye price/);
-  const first = view.frames.find(f => f.type === "session.user-message");
+  const first = view.frames.find(f => f.type === "chat.user-message");
   assert.equal(first.author, ALEX);
-  assert.ok(view.frames.some(f => f.type === "session.mention" && f.data.who.includes(JUNO)));
+  assert.ok(view.frames.some(f => f.type === "chat.mention" && f.data.who.includes(JUNO)));
   assert.deepEqual(view.frames.map(f => f.cur), view.frames.map((_, i) => i + 1));
 });
 
@@ -132,8 +132,8 @@ test("group: a fan-out to two assistants returns two answer blocks, and keep mar
   const r = (await say(ALEX, "compare the bakery menus", { ...members(w), to: [KIT, JUNO] })).data;
   assert.equal(r.answers.length, 2);
   assert.ok(r.group);
-  await until(() => view.frames.some(f => f.type === "session.fanout"), "the fan-out frame");
-  const fo = view.frames.find(f => f.type === "session.fanout");
+  await until(() => view.frames.some(f => f.type === "chat.fanout"), "the fan-out frame");
+  const fo = view.frames.find(f => f.type === "chat.fanout");
   assert.deepEqual(fo.data.members.map(m => m.who), [KIT, JUNO]);
   await until(() => r.answers.every(a => done(view.frames).has(a.message)), "both answers", 20000);
   const a = answers(view.frames);
@@ -142,15 +142,15 @@ test("group: a fan-out to two assistants returns two answer blocks, and keep mar
   for (const x of r.answers) { assert.equal(a.get(x.message).acts_for, ALEX); assert.match(a.get(x.message).text, /bakery menus/); }
   const kept = (await as(ALEX)("stream.keep", { group: r.group, keep: r.answers[1].message })).data;
   assert.equal(kept.keep, r.answers[1].message);
-  await until(() => view.frames.some(f => f.type === "session.fanout-keep"), "the keep frame");
-  assert.equal(view.frames.find(f => f.type === "session.fanout-keep").data.keep, r.answers[1].message);
+  await until(() => view.frames.some(f => f.type === "chat.fanout-keep"), "the keep frame");
+  assert.equal(view.frames.find(f => f.type === "chat.fanout-keep").data.keep, r.answers[1].message);
   const bad = await as(ALEX)("stream.keep", { group: r.group, keep: "nope" });
   assert.equal(bad.error.code, "bad_input");
   // react and pin go through as the caller
   await as(CHRIS)("stream.react", { message: r.answers[0].message, emoji: "👍" });
   await as(CHRIS)("stream.pin", { message: r.answers[0].message });
-  await until(() => view.frames.some(f => f.type === "session.pin"), "the pin");
-  const re = view.frames.find(f => f.type === "session.reaction");
+  await until(() => view.frames.some(f => f.type === "chat.pin"), "the pin");
+  const re = view.frames.find(f => f.type === "chat.reaction");
   assert.deepEqual([re.author, re.data.on], [CHRIS, true]);
 });
 
@@ -201,8 +201,8 @@ test("group: a read marker reaches the same person's other connection and nobody
   const phone = await open(ALEX), laptop = await open(ALEX), chris = await open(CHRIS);
   const r = (await as(ALEX)("stream.mark-read", { upto: 7 })).data;
   assert.deepEqual([r.upto, r.moved], [7, true]);
-  await until(() => phone.some(f => f.type === "session.read-marker") && laptop.some(f => f.type === "session.read-marker"), "both of alex's connections");
-  assert.equal(laptop.find(f => f.type === "session.read-marker").data.upto, 7);
-  assert.equal(chris.some(f => f.type === "session.read-marker"), false, "chris never hears alex's marker");
+  await until(() => phone.some(f => f.type === "chat.read-marker") && laptop.some(f => f.type === "chat.read-marker"), "both of alex's connections");
+  assert.equal(laptop.find(f => f.type === "chat.read-marker").data.upto, 7);
+  assert.equal(chris.some(f => f.type === "chat.read-marker"), false, "chris never hears alex's marker");
   assert.equal((await as(ALEX)("stream.mark-read", { upto: 3 })).data.moved, false, "a marker only moves forward");
 });

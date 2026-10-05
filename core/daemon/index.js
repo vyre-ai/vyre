@@ -324,6 +324,8 @@ async function startLocked(opts, root, p, release) {
     const runnerHost = () => ({
       get ownServer() { return kernel ? (ownServerHost || (ownServerHost = createOwnServerHost({ kernel, registry, root, log }))) : null; },
       get member() { return kernel && kernel.owner; },
+      // the sessions lent for a Space and which chat each belongs to (the home's own view; runner.places)
+      lentRows: (/** @type {string} */ space) => { const f = /** @type {any} */ (registry.deps).lentRows; return typeof f === "function" ? f(space) : []; },
       identity: async () => {
         const id = opts.deviceIdentity ? await opts.deviceIdentity() : null;
         if (!id || typeof id.deviceId !== "string" || !id.deviceId || typeof id.deviceKey !== "string" || !id.deviceKey) throw Object.assign(new Error("this computer has no device identity yet"), { code: "unavailable" });
@@ -345,6 +347,15 @@ async function startLocked(opts, root, p, release) {
     const modelDrivers = { openrouter: openrouterDoorDriver(), "openai-compatible": openrouterDoorDriver() };
     kernel = await bootHomeKernel({ db, root, log, deviceEnrolled, ...(basic ? { basic } : {}), modelDrivers, emitModel: (/** @type {string} */ type, /** @type {any} */ payload) => { try { events.emit("kernel", type, payload); } catch { /* a notice, never a stop */ } }, onOwnerAdopted: (/** @type {string} */ owner, /** @type {string} */ previous) => events.emit("kernel", "owner.adopted", { owner, previous }), runnerHost, remote: remoteFor, standIn: devStandIn, ...(opts.kernelPresence ? { presence: opts.kernelPresence } : {}), ...(opts.kernelSealer ? { sealer: opts.kernelSealer } : {}), ...(opts.kernelDoor ? { door: opts.kernelDoor } : {}), isFirstParty: dir => registry.isFirstParty(dir), ...(storeFor ? { storeFor } : {}),
       // A credentialed request run at the home: the vault's own forward (an internal tool only the lease module may call), under the Space's credential; the kernel has already authorized it.
+      // A lent computer's request for a credential at the point of use (kernel leases.use): the member's provider key, by the vault item the Space's definition names, for one request. The vault's credentials port is the
+      // one way to it, and it answers only the key of an API-key account (what `sessions.accounts.key` stores): any other item is not resolved here and the caller gets not_found.
+      resolveCredential: async (/** @type {any} */ q) => {
+        const port = /** @type {any} */ (registry.deps).credentialsPort;
+        // a subscription sign-in token (the claude setup-token item) or an API-key account's key: nothing else is resolved here
+        const v = q && typeof q.ref === "string" && port ? (q.ref === "claude-setup-token" ? await port.credentials("claude") : typeof port.apiKey === "function" ? await port.apiKey(q.ref) : null) : null;
+        if (typeof v !== "string" || !v) throw Object.assign(new Error("that credential is not open to this session"), { code: "not_found" });
+        return v;
+      },
       forwardCredential: async (/** @type {any} */ q) => {
         const r = q.request;
         // A Flow's named connector: the vault holds the connector's route rules and host (vault.service.forward); the kernel has authorized the chain.
@@ -446,8 +457,15 @@ async function startLocked(opts, root, p, release) {
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
-      const kernelAgent = await kernelAgentOf(q);
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
+      // A run with no agent is a model slot in its chat (team/0.3/DESIGN-one-chat.md): its token's agent hop is the slot id the switchboard minted, narrowed to the run's Project. It acts on the person's own
+      // chain, holds nothing of its own, and ends with its person's place in the chat. A run in no chat is as before.
+      let kernelAgent = await kernelAgentOf(q);
+      let project;
+      if (!kernelAgent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) {
+        kernelAgent = q.rec.slot;
+        if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project;
+      }
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), ...(project ? { project } : {}), ...(kernelAgent && kernelAgent.startsWith("model:") ? { slotOpen: true } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -521,9 +539,22 @@ async function startLocked(opts, root, p, release) {
       };
       const boxId = async () => { const r = /** @type {any} */ (await registry.call("relay.route.id", {}, "module:vyred", { door: true })); return r && r.data && r.data.box ? String(r.data.box) : null; };
       const lent = lentServiceFor({ root, lentSpec: opts.lentSpec,
+        // the member's provider account: the vault item that holds its key and its endpoint (a name, never a value); none means the session gets no model route
+        providerAccount: async (/** @type {any} */ i) => {
+          // the credential is the owner of this home's own: a member who is not that person gets no model route from it
+          if (!i || String(i.person) !== String(kernel.id.owner)) return null;
+          try {
+            const r = /** @type {any} */ (await registry.call("sessions.accounts.resolve", { provider: "claude" }, "module:vyred")); const a = r && r.data;
+            if (!a || typeof a.vault_item !== "string" || !a.vault_item) return null;
+            if (a.kind === "api-key") return { item: a.vault_item, base_url: a.base_url || null };
+            if (a.kind === "setup-token") return { item: a.vault_item, base_url: null, oauth: true };
+            return null;
+          } catch { return null; }
+        },
         // an Offer for a computer ended: that computer is told at once, down the connection it holds to this home, and stops its sessions and deletes the local work (core/wink/index.js, runner.revoke)
         onRevoke: (/** @type {string} */ space, /** @type {any} */ info) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (!h) return; Promise.resolve().then(() => h.linkTo(String(info.device)).call("wink.lent.revoked", { space })).catch((/** @type {any} */ e) => log(`lent: could not tell ${String(info.device).slice(0, 8)} its grant ended (${String(e && e.code || "failed")}); it finds out at its next poll`)); } });
-      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) h.onSession(caller, session); } });
+      registry.deps.lentRows = (/** @type {string} */ space) => lent.rows(space);
+      const door = createPeerDoor({ kernel, registry, events, people, callerFacts, log, identityEntry, boxId, lent, onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { const h = /** @type {any} */ (registry.deps).winkHolds; if (h) { h.onSession(caller, session); const dev = /^device:([A-Za-z0-9_-]{1,64})$/.exec(caller); if (dev) void registry.call("files.drop.push", { device: dev[1] }, "module:vyred").catch(() => {}); } } });
       registry.deps.peerDoor = () => door;
     }
     // The gate's presence check asks the kernel whether a call is the person's own (exactly one person hop in the chain the daemon's proven facts build), never the caller's label.
@@ -903,15 +934,17 @@ export async function asTaken(caller, socket, registry, thread, deps) {
       outside: Boolean(!w.inside && !w.unreadable && !w.unknown && !w.nopid && !w.server && canReadPeers),
       server: !w.inside && w.server ? w.server : null,
       couldNotTell: Boolean((w.nopid && canReadPeers) || w.unreadable),
+      // which half failed, for the log and the refusal: the kernel gave no pid for the socket, or the pid's ancestry could not be read
+      why: w.nopid && canReadPeers ? "peer_pid_unread" : w.unreadable ? "process_chain_unreadable" : undefined,
     }));
     v = mine;
     taken.set(socket, mine);
     // A measurement that did not come out definite (a slow or failed peer read, an unreadable table) is "unknown": never a person, asked again on the next call, and logged ONCE per connection (a model's
     // shell must not be able to fill the log by calling again and again).
-    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log("ancestry: unknown for a socket call (not a person; asked again next call)"); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
+    mine.then(a => { if (!a.definite) { if (!told.has(socket)) { told.add(socket); try { registry.deps && typeof registry.deps.log === "function" && registry.deps.log(`ancestry: unknown for a socket call (${a.why || "not definite"}; not a person; asked again next call)`); } catch { /* logging never decides */ } } if (taken.get(socket) === mine) taken.delete(socket); } }, () => { if (taken.get(socket) === mine) taken.delete(socket); });
   }
   const a = await v;
-  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell };
+  return a.model ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true, outside: false, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) } : { caller, model: false, outside: a.outside, server: a.server, couldNotTell: a.couldNotTell, ...(a.why ? { why: a.why } : {}) };
 }
 const PEER_RETRIES = 3;
 /** Sockets whose unknown ancestry was already logged. @type {WeakSet<object>} */
@@ -1347,7 +1380,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     let result = await registry.call(name, input, caller, { ...via, ...(deviceZone ? { zone: deviceZone } : {}), ...(facts ? { kernelFacts: facts } : {}), proof, ...(draft ? { draft } : {}), ...(terminal ? { terminal } : {}), ...(call ? { call } : {}), ...(signed !== undefined ? { codeSignature: signed } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req), ...(kernelProof(req) ? { kernel_proof: kernelProof(req) } : {}), ...(typeof req.headers["x-vyre-approval"] === "string" ? { approval: req.headers["x-vyre-approval"].slice(0, 60) } : {}), ...(sessionToken ? { token: sessionToken } : {}) });
     // The caller said cli or local, the daemon could not read who was on the socket (a busy box, an unreadable table) and so did not take the label: say that, not "not a signed-in person".
-    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again" } };
+    if (socket && !policy.caller && shell.couldNotTell && /^(cli|local)$/.test(String(req.headers["x-vyre-caller"] || "")) && result.error && ["denied", "no_such_tool"].includes(result.error.code)) result = { error: { code: "caller_unknown", message: "Vyre could not tell who is calling; try again", ...(shell.why ? { reason: shell.why } : {}) } };
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);

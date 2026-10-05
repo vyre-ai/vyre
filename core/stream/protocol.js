@@ -2,7 +2,7 @@
 // protocol: the one typed frame a session stream carries (ADR 0052, docs/work/chat.md "0.3").
 //
 // A frame is a projection of the kernel EventEnvelope (kernel/contracts/event.d.ts):
-//   { v:1, id, cur, session, turn, type: "session.<kind>", time, corr, data }
+//   { v:1, id, cur, session, turn, type: "chat.<kind>", time, corr, data }
 // `cur` is the per-session cursor, gapless from 1, assigned by the log (log.js). A frame is not
 // hash-chained (deltas are too frequent); toEnvelope() lifts one into a real envelope when it must
 // be logged (a finished tool, an ask, a file change, a typed terminal command).
@@ -28,6 +28,8 @@ export const KINDS = Object.freeze([
   "file-changed", "ask", "ask-answered", "user-message", "status",
   // group chat (0.3): who is in it, what people do with a message, and a set of answers to one question
   "participant-joined", "participant-left", "reaction", "pin", "mention", "fanout", "fanout-keep", "text-cut",
+  // One Chat: a run step (the tool calls between two of the assistant's messages), summarised once it closes
+  "step-summary",
 ]);
 /** Never logged: what the home sends a viewer in place of a frame they may not see (viewer.js forViewer). It keeps the cursor and holds nothing. */
 export const STUBS = Object.freeze(["hidden"]);
@@ -76,16 +78,17 @@ const CHECK = {
   "file-changed": d => (isStr(d.path) && ["create", "edit", "delete"].includes(d.op) ? null : "file-changed needs path and op create, edit or delete"),
   "ask": d => (idStr(d.ask_id) && ["permission", "question", "approval"].includes(d.kind) ? null : "ask needs ask_id and kind permission, question or approval"),
   "ask-answered": d => (idStr(d.ask_id) ? null : "ask-answered needs ask_id"),
-  "user-message": d => (idStr(d.message) && (d.parent === undefined || idStr(d.parent)) && ["sent", "queued", "picked-up", "cancelled"].includes(d.state) && (d.enc !== undefined ? d.text === undefined && validEnc(d.enc) : isStr(d.text)) ? null : "user-message needs message and state sent, queued, picked-up or cancelled, and text (or, in private mode, enc { alg, kid, ct } and no text)"),
+  "user-message": d => (idStr(d.message) && (d.parent === undefined || idStr(d.parent)) && (d.tz === undefined || (isStr(d.tz) && d.tz.length <= 64)) && (d.reply_to === undefined || (idStr(d.reply_to) && isObj(d.quote) && idStr(d.quote.message) && isAuthor(d.quote.author) && isStr(d.quote.text) && d.quote.text.length <= 200)) && ["sent", "queued", "picked-up", "cancelled"].includes(d.state) && (d.enc !== undefined ? d.text === undefined && validEnc(d.enc) : isStr(d.text)) ? null : "user-message needs message and state sent, queued, picked-up or cancelled, and text (or, in private mode, enc { alg, kid, ct } and no text)"),
   "status": d => (STATES.includes(d.state) ? null : `status needs state, one of ${STATES.join(", ")}`),
   "participant-joined": d => (isAuthor(d.who) && (d.role === undefined || isStr(d.role)) ? null : "participant-joined needs who, person:<id>, assistant:<id> or model:<id>"),
   "participant-left": d => (isAuthor(d.who) ? null : "participant-left needs who"),
-  "presence": d => (isAuthor(d.who) && ["typing", "doing"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing or doing, and doing (up to 120 characters) when doing"),
+  "presence": d => (isAuthor(d.who) && ["typing", "doing", "idle"].includes(d.state) && (d.doing === undefined || (isStr(d.doing) && d.doing.length <= 120)) ? null : "presence needs who, state typing, doing or idle, and doing (up to 120 characters) when doing"),
   "reaction": d => (idStr(d.message) && isStr(d.emoji) && d.emoji.length > 0 && d.emoji.length <= 32 && typeof d.on === "boolean" ? null : "reaction needs message, emoji and on (true or false)"),
   "pin": d => (idStr(d.message) && typeof d.on === "boolean" ? null : "pin needs message and on (true or false)"),
   "mention": d => (idStr(d.message) && Array.isArray(d.who) && d.who.length > 0 && d.who.length <= 50 && d.who.every(isAuthor) ? null : "mention needs message and who, a list of authors"),
   "read-marker": d => (isInt(d.upto) ? null : "read-marker needs upto, a cursor"),
   "fanout": d => (idStr(d.group) && idStr(d.message) && Array.isArray(d.members) && d.members.length >= 2 && d.members.length <= 8 && d.members.every((/** @type {any} */ m) => isObj(m) && isAuthor(m.who) && idStr(m.message)) ? null : "fanout needs group, message and members, two or more of { who, message }"),
+  "step-summary": d => (idStr(d.step) && isInt(d.count) && isObj(d.kinds) && isStr(d.summary) && d.summary.length <= 200 && typeof d.ok === "boolean" ? null : "step-summary needs step, count, kinds, summary and ok"),
   "fanout-keep": d => (idStr(d.group) && idStr(d.keep) ? null : "fanout-keep needs group and keep, a message id"),
   "hidden": d => (Object.keys(d).length === 0 ? null : "hidden holds nothing"),
   "text-cut": d => (idStr(d.message) && isStr(d.note) ? null : "text-cut needs message and note"),
@@ -122,8 +125,8 @@ export function validate(f) {
   if (!isObj(f)) return { ok: false, error: "a frame is an object" };
   const o = /** @type {any} */ (f);
   if (o.v !== V) return { ok: false, error: `v must be ${V}` };
-  if (!isStr(o.type) || !o.type.startsWith("session.")) return { ok: false, error: "type must be session.<kind>" };
-  const kind = o.type.slice(8);
+  if (!isStr(o.type) || !o.type.startsWith("chat.")) return { ok: false, error: "type must be chat.<kind>" };
+  const kind = o.type.slice(5);
   const control = CONTROL.includes(kind) || EPHEMERAL.includes(kind);
   if (!control && !KINDS.includes(kind) && !STUBS.includes(kind)) return { ok: false, error: `unknown kind ${kind}` };
   if (!idStr(o.id)) return { ok: false, error: "id is required" };
@@ -163,7 +166,7 @@ export function frame(kind, data, ctx) {
     cur: ctx.cur ?? 0,
     session: ctx.session,
     turn,
-    type: `session.${kind}`,
+    type: `chat.${kind}`,
     time: ctx.time ?? Date.now(),
     corr: turn,
     ...(ctx.author ? { author: ctx.author } : {}),

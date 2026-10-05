@@ -44,3 +44,21 @@ test("a server or a development build has no such limit", async () => {
   await k.gateway.records.define(o, { add_types: [CONTACT] });
   assert.equal((await k.gateway.records.create(o, "contact", { name: "Jane" })).data.name, "Jane");
 });
+
+test("a module's own types are held to the same list on Basic: not made, and its calls answer the Cloud line", async () => {
+  const GOAL = { name: "goal", label: "Goal", fields: [{ name: "title", kind: "text", label: "Title" }] };
+  const PROJ = { name: "project", label: "Project", fields: [{ name: "body", kind: "text", label: "Body" }] };
+  const mod = { name: "goals", needs: { kernel: { actions: [], types: [GOAL, PROJ] } } };
+  const basic = await boot({ basic: { allow: basicAllow(), refusal: BASIC_REFUSAL } });
+  const kb = basic.kernelFor(mod);
+  await new Promise(r => setTimeout(r, 50));
+  const o = owner(basic);
+  const names = (await basic.store.types()).map(t => t.name);
+  assert.deepEqual(names.filter(n => n === "goal" || n === "project").sort(), ["project"], "only the allowed type of the module exists");
+  await assert.rejects(() => basic.gateway.records.create(o, "goal", { title: "x" }), e => e.code === "cloud_required" && e.message === "Custom types need a Cloud space.");
+  void kb;
+  const dev = await boot();
+  dev.kernelFor(mod);
+  await new Promise(r => setTimeout(r, 50));
+  assert.ok((await dev.store.types()).some(t => t.name === "goal"), "a server or a development build makes every declared type");
+});

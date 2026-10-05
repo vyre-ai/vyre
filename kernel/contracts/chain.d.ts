@@ -60,12 +60,14 @@ export interface Chain {
   readonly via?: 'assistant';
   /** A model slot's `provider/model#n` (the Switchboard's): the person's chain plus an agent hop `model:<that>`. */
   readonly model?: string;
+  /** A model slot's Project: it reads and acts on nothing that belongs to another Project. Set from the session's token, written by the kernel's Surfaces door. */
+  readonly project?: string;
 }
 
 /** What the Surfaces door verified about a connection. The chain builder takes only this. */
 export type SurfaceFacts =
   | { readonly kind: 'socket'; readonly surface: Surface; readonly uid: number; readonly pid: number | null; readonly inside_model_process: boolean; readonly capsule_verified: boolean }
-  | { readonly kind: 'model_slot'; readonly person?: string; readonly session: string; readonly model: string; readonly vouched: true }
+  | { readonly kind: 'model_slot'; readonly person?: string; readonly session: string; readonly model: string; readonly chat?: string; readonly project?: string; readonly from_token?: true; readonly vouched: true }
   | { readonly kind: 'device'; readonly device_key_id: string; readonly person: string; readonly session?: string; readonly path: 'direct' | 'relay' | 'wink' }
   | { readonly kind: 'agent_session'; readonly agent: string; readonly session: string; readonly thread: string; readonly vouched: boolean }
   | { readonly kind: 'module'; readonly module: string; readonly first_party: boolean; readonly inbound?: Chain }

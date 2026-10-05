@@ -103,7 +103,7 @@ test("one store: the group's people are the kernel's; a speaker outside the chat
   ok(await w.as("ada")("stream.send", { chat: chat.id, text: "now me", to: [] }));
   assert.deepEqual([...grp.people(chat.id)].sort(), [`person:${ADA}`, `person:${BOB}`]);
   assert.equal(codeOf(await w.as("carol")("stream.send", { chat: chat.id, text: "still here?", to: [] })), "not_found");
-  assert.ok(w.stream().logs.get(chat.id).read(0).some((/** @type {any} */ f) => f.type === "session.participant-left" && f.data.who === `person:${CAROL}`));
+  assert.ok(w.stream().logs.get(chat.id).read(0).some((/** @type {any} */ f) => f.type === "chat.participant-left" && f.data.who === `person:${CAROL}`));
   // a session the kernel does not hold as a chat cannot be founded by a send
   assert.equal(codeOf(await w.as("bob")("stream.send", { chat: "chat_founded_here", text: "x", to: [] })), "not_found");
 });
@@ -124,12 +124,12 @@ test("per-role filtering through the real stream: a manager and a member in one 
     const c = connect({ open: async ({ from }) => { const o = ok(await w.as(who)("stream.open", { chat: chat.id, from })); return wsDuplex(`ws://127.0.0.1:${w.port}${o.path}`); }, onFrame: f => got.push(f), backoff: { base: 5, cap: 10 } });
     t.after(() => c.close());
     const end = Date.now() + 5000;
-    while (!got.some(f => f.type === "session.text-delta" && f.data.message === "m10") && Date.now() < end) await new Promise(r => setTimeout(r, 5));
-    assert.ok(got.some(f => f.type === "session.text-delta" && f.data.message === "m10"), "the later frame arrives after the cited one, in order");
+    while (!got.some(f => f.type === "chat.text-delta" && f.data.message === "m10") && Date.now() < end) await new Promise(r => setTimeout(r, 5));
+    assert.ok(got.some(f => f.type === "chat.text-delta" && f.data.message === "m10"), "the later frame arrives after the cited one, in order");
     return got;
   };
   const mgr = await watch("bob"), mem = await watch("carol");
-  const cite = (/** @type {any[]} */ g) => g.find(f => f.type === "session.text-done" && f.data.message === "m9").data.blocks[0];
+  const cite = (/** @type {any[]} */ g) => g.find(f => f.type === "chat.text-done" && f.data.message === "m9").data.blocks[0];
   assert.deepEqual([cite(mgr).block, cite(mgr).label, cite(mgr).value], ["field", "Fee", { amount: 4200, currency: "USD" }], "the manager sees the value");
   assert.equal(cite(mem).block, "field");
   assert.equal(cite(mem).placeholder, true, "the member sees the chip");
@@ -138,7 +138,7 @@ test("per-role filtering through the real stream: a manager and a member in one 
   assert.deepEqual(seen.map(s => [s.viewer.id, s.viewer.roles]).sort(), [[`person:${BOB}`, ["manager"]], [`person:${CAROL}`, ["member"]]], "roles come from the kernel's members");
   assert.deepEqual(mem.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), mgr.map((/** @type {any} */ f) => f.cur).filter((/** @type {number} */ c) => c > 0), "same cursors for both");
   // the shared frame in the log is never mutated: a late viewer still gets the ref resolved for them
-  assert.equal(log.read(0).find((/** @type {any} */ f) => f.type === "session.text-done" && f.data.message === "m9").data.blocks[0].block, "field-ref");
+  assert.equal(log.read(0).find((/** @type {any} */ f) => f.type === "chat.text-done" && f.data.message === "m9").data.blocks[0].block, "field-ref");
 });
 
 test("an assistant reads what its person reads and nothing else (the user's rule: only the kernel's chats.read decides)", async t => {

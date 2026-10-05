@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { asOwner, tempHome, present } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { FAKE } from "../sessions/testing/boot.js";
 
@@ -35,6 +35,7 @@ test("sessions survive adoption: a thread started before is still listed, a kern
   await d.stop();
   d = await start({ root, presence: present, log: () => {}, kernel: true });
   t.after(() => d.stop());
+  asOwner(d, root);
   assert.equal(d.kernel.id.owner, A, "the next start reads the adoption");
   const listed = (await d.registry.call("threads.list", {}, "cli")).data;
   assert.ok(listed.some((/** @type {any} */ x) => x.id === r.data.id), "the thread started before adoption is still listed");
