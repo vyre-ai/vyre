@@ -69,7 +69,7 @@ export const ADMIN_ROLES = Object.freeze(["owner", "admin"]);
  * @param {any} e @returns {{ agree?: string, enclave?: string, held?: "web", attest?: string }}
  */
 export const entryExtras = e => ({
-  ...(e && typeof e.agree === "string" && e.agree ? { agree: e.agree.slice(0, 200) } : {}),
+  ...(e && agreeOf(e.agree) ? { agree: e.agree } : {}), // only a 65-byte uncompressed P-256 point is passed on: a malformed one is dropped here, not left to the chain to refuse
   ...(e && typeof e.enclave === "string" && e.enclave ? { enclave: e.enclave.slice(0, 200) } : {}),
   ...(e && (e.held === "web" || e.held === true) ? { held: /** @type {"web"} */ ("web") } : {}),
   ...(e && typeof e.attest === "string" && e.attest && e.attest.length <= 16384 ? { attest: e.attest } : {}),
