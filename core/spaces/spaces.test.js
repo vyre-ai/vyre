@@ -1409,3 +1409,33 @@ test("an identity made before the agreement key gets one on first start without 
   assert.equal(store.status().publicKey, before, "the signing key is untouched");
   assert.equal(fs.statSync(file).mode & 0o777, 0o600);
 });
+
+test("KP-2: spaces.identity.enrol decides held itself: an entry nobody proved is held web whatever the caller offers, a caller can only make it stricter, and a proven entry is not web", async t => {
+  const w = world(t);
+  const d = await device(t), d2 = await device(t), d3 = await device(t), d4 = await device(t);
+  await d.ok("spaces.identity.create", { name: "kpalex" });
+  w.clock.t += 2 * 3_600_000;
+  const listHeld = async eid => (await C_.verifyChain(fileIdentityStore(d.space).ops(), { now: w.clock.t + 1 })).entries.find(e => e.eid === eid).held;
+  // the page's own offer omits held: the entry is still web
+  const k1 = fileIdentityStore(d2.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k1.publicKey, agree: k1.agree }, "module:wink");
+  assert.equal(await listHeld(k1.eid), "web", "omitting held gives web");
+  // the page offering a different spelling of "not web" changes nothing
+  const k2 = fileIdentityStore(d3.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k2.publicKey, held: "native" }, "module:wink");
+  assert.equal(await listHeld(k2.eid), "web");
+  // a proof hook that answers true makes it not web; a hook that says true cannot be overridden into looser by the caller, and a caller saying web is stricter
+  hooks.entryProof = async () => true;
+  t.after(() => { hooks.entryProof = null; });
+  const k3 = fileIdentityStore(d4.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k3.publicKey }, "module:wink");
+  assert.equal(await listHeld(k3.eid), undefined, "a proven entry is not held web");
+  const d5 = await device(t), k4 = fileIdentityStore(d5.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k4.publicKey, held: "web" }, "module:wink");
+  assert.equal(await listHeld(k4.eid), "web", "a caller can only make it stricter");
+  // a hook that throws proves nothing
+  hooks.entryProof = async () => { throw new Error("no verifier"); };
+  const d6 = await device(t), k5 = fileIdentityStore(d6.space).newDeviceKey();
+  await d.ok("spaces.identity.enrol", { publicKey: k5.publicKey }, "module:wink");
+  assert.equal(await listHeld(k5.eid), "web");
+});

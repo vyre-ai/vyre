@@ -52,6 +52,7 @@ import path from "node:path";
 /** Test seams. Nothing here is a setting: a test sets them before the module starts. */
 export const hooks = {
   /** @type {typeof globalThis.fetch | null} */ fetch: null,
+  /** @type {((entry: { publicKey: string, enclave?: string, agree?: string }, meta: any) => Promise<boolean> | boolean) | null} answers true only for an offered device entry it PROVED is held by the OS's key store (a platform attestation); none is wired, so every enrolled entry is held "web" (KP-2) */ entryProof: null,
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
   /** @type {number | null} */ syncMs: null,
@@ -1844,9 +1845,14 @@ export default {
       return found;
     }, { internal: true });
     // Pairing's last step: the device that was just confirmed (three words on both sides) becomes an entry on the person's list, signed by an entry already on it.
-    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str }, ["publicKey"]), async i => {
+    tool("spaces.identity.enrol", "Put a newly paired device on this person's identity list. Signed by this device's entry; the device is a newcomer for 24 hours. For pairing.", obj({ publicKey: str, label: str, agree: str, enclave: str, held: str }, ["publicKey"]), async (i, meta) => {
       me();
-      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label, ...(i.agree ? { agree: String(i.agree) } : {}) }); } catch (e) { throw idFail(e); }
+      // KP-2: the entry's `held` is decided HERE, from what this side can verify, never from the offered fields (they come from the pairing's channel, which can be a page script). An entry nobody proved is held by the OS's key store
+      // is "web" by default: it cannot change who speaks for the identity. A caller can only make it stricter (it may say held web; it cannot say "not web"). `hooks.entryProof` is where a verifier of a platform
+      // attestation plugs in (it answers true only for an entry it proved is held by the OS's key store); none is wired yet, so every enrolled entry is web until one is.
+      let proven = false;
+      if (typeof hooks.entryProof === "function") { try { proven = (await hooks.entryProof({ publicKey: String(i.publicKey), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(typeof i.agree === "string" ? { agree: i.agree } : {}) }, meta)) === true; } catch { proven = false; } }
+      try { return await idops.addEntry({ kind: "device", publicKey: String(i.publicKey), label: i.label, ...(typeof i.agree === "string" ? { agree: i.agree } : {}), ...(typeof i.enclave === "string" ? { enclave: i.enclave } : {}), ...(proven && i.held !== "web" ? {} : { held: "web" }) }); } catch (e) { throw idFail(e); }
     }, { internal: true });
     // The device's own signer for the transport's proof: only the transport's own message, never anything else.
     tool("spaces.identity.sign", "Sign the transport's device proof (a message that starts with vyre-wink-peer-v2) with this device's key. Refuses anything else.", obj({ message: str }, ["message"]), async i => {

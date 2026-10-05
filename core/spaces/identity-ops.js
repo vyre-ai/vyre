@@ -114,12 +114,13 @@ export function createIdentityOps({ store, dir, seen, now, emit = () => {}, stre
     },
     entries: async () => view(await stateNow()),
     /** Add a device (its public key came from pairing) or a recovery contact (its approval key came from the contact). */
-    async addEntry({ kind = "device", publicKey, label, agree }) {
+    async addEntry({ kind = "device", publicKey, label, agree, enclave, held }) {
       if (kind !== "device" && kind !== "contact") throw refuse("Add a device or a recovery contact.", "bad_kind");
       const pub = Buffer.from(String(publicKey), "base64url");
       if (pub.length !== 32) throw refuse("That is not a device key.", "bad_key");
       const eid = keyId(pub);
-      const r = await change({ type: "add", entry: { eid, kind, pub: String(publicKey), ...(kind === "device" && agree ? { agree: String(agree) } : {}) } });
+      // an offered device may carry its key-agreement point, its chip key and `held: "web"`: signed with the entry, so a key a page script can reach cannot change who speaks for the identity
+      const r = await change({ type: "add", entry: { eid, kind, pub: String(publicKey), ...(kind === "device" && typeof agree === "string" ? { agree } : {}), ...(kind === "device" && typeof enclave === "string" ? { enclave } : {}), ...(kind === "device" && held === "web" ? { held: "web" } : {}) } });
       if (label && typeof store.setLabel === "function") store.setLabel(eid, String(label)); // the name stays on this device: the public list holds keys only
       emit("identity.entry-added", { name: nameOf(), eid, kind, seq: r.state.seq, at: now() });
       return { eid, seq: r.state.seq };
