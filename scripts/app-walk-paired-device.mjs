@@ -142,6 +142,24 @@ await check("records.define from the paired device (a relabel of one of the pers
   const back = await dev("records.define", { diff: { change_types: [own] } });
   return `accepted without a prompt${back.error ? `; put back: ${back.error.code}` : "; put back"}`;
 });
+await check("define a type with a link, a stage and a sealed field, then add a record (from the paired device)", async () => {
+  const contacts = await dev("records.list", { type: "contact" });
+  const row = contacts.data?.rows?.[0];
+  const me = await dev("records.me", {});
+  const contact = row ? (row.urn ?? `vyre://${me.data?.space}/contact/${row.id}`) : null;
+  assert(contact, `no contact to link to: ${JSON.stringify(contacts).slice(0, 200)}`);
+  const type = { name: "walk_matter", label: "Walk matter", fields: [
+    { name: "title", kind: "text", label: "Title", required: true },
+    { name: "client", kind: "link", label: "Client", to: "contact" },
+    { name: "status", kind: "stage", label: "Status", options: ["New", "Open", "Done"] },
+    { name: "ssn", kind: "sealed", label: "Client SSN", seal: { level: "ai", class: "free" } },
+  ], stages: [{ name: "New" }, { name: "Open" }, { name: "Done" }] };
+  const def = await dev("records.define", { diff: { add_types: [type] } });
+  assert(!def.error || /exists|already/i.test(`${def.error.code} ${def.error.message}`), `define refused: ${def.error ? JSON.stringify(def.error).slice(0, 240) : ""}`);
+  const rec = await dev("records.create", { type: "walk_matter", data: { title: `Walk matter ${Date.now().toString(36).slice(-4)}`, client: { urn: contact }, status: "Open" } });
+  assert(!rec.error, `create refused: ${rec.error ? JSON.stringify(rec.error).slice(0, 240) : ""}`);
+  return `type ${def.error ? "already there" : "defined"}; record ${JSON.stringify(rec.data).slice(0, 100)}`;
+});
 try { conn?.close(); } catch {}
 const failed = results.filter((r) => !r.ok);
 console.log(`${results.length - failed.length} pass, ${failed.length} fail`);
