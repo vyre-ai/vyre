@@ -36,7 +36,7 @@ const LOADER_FEATURES = ["modules.status"];
 // relay.devices.path is a device reporting its own connection path (it names no one but its caller), made on every connect, before any sign-in.
 // presence.person.status is how a surface learns whether anyone is signed in at all, so it must answer before sign-in.
 // relay.setup.claim is the browser's first claim at the box's address, made before any sign-in exists: the one-time claim token the setup page minted is its proof.
-const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
+export const PERSON_FREE = new Set(["presence.person.start", "presence.enroll", "wink.server.adopt", "wink.server.release", "wink.phone.wait", "relay.setup.claim", "relay.devices.path", "presence.person.status"]);
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -1288,9 +1288,27 @@ export class Registry {
           // a `person` tool is open to the person's classes only; the one class a tool may add by name is `web` (a browser, `web:<id>`: BR-2), never `device`, `space` or `agent`
           callers: reach === "person" ? [...PERSON_CALLERS, ...(Array.isArray(def.callers) ? def.callers.filter(c => c === "web") : [])] : Array.isArray(def.callers) ? def.callers : defaulted ? [...ORIGIN_PERSON] : null,
           hook: Boolean(def.hook) || reach === "hook", presence: def.presence || false, core: Boolean(def.core),
-          reach, outward: (e && e.outward) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
+          reach, outward: (e && e.outward) || null, flowAction: (e && e.flowAction) || null, asks: Boolean(e && e.asks), target: (e && e.target) || null, projectArg: (e && e.projectArg) || null, cwdArg: (e && e.cwdArg) || null, declaredReach: objectForm.has(name), crossSpace: e && typeof e.crossSpace === "string" && /^[a-z][a-z0-9_.]{1,63}$/.test(e.crossSpace) ? e.crossSpace : null });
       },
     };
+  }
+
+  /** The tools a Flow's call step may run, with their risk: `[{ name, risk: "read" | "outward", summary }]`. Declared by the module (`flowAction`), never by a Flow. */
+  flowTools() {
+    return [...this.tools.entries()].filter(([, d]) => d.flowAction && !d.internal).map(([name, d]) => ({ name, risk: d.flowAction.risk, summary: d.description || "" }));
+  }
+
+  /**
+   * Run a flowAction tool for a Flow, as the person whose Flow it is (`token` is their kernel session, so the module's own `ctx.kernel.chain(meta)` is that person). The host calls this
+   * only for a read tool or after it spent the Flow's one approval for exactly this act (the kernel's task approval, bound to the input): the tool's own outward hold is the same yes, never a second.
+   * Nothing a tool or a client sends can reach this: only the daemon's flows host holds the registry. @param {string} tool @param {any} input @param {{ token: string }} o
+   */
+  async callFlow(tool, input, o) {
+    const def = this.tools.get(tool);
+    if (!def || !def.flowAction) return { error: { code: "no_such_tool", message: `${tool} is not a step a Flow can run` } };
+    if (def.flowAction.risk === "outward" && !def.outward) return { error: { code: "denied", message: `${tool} says it is an outward step but is not marked outward` } };
+    if (!o || typeof o.token !== "string" || !o.token) return { error: { code: "denied", message: "a Flow step runs as a person: it needs that person's session" } };
+    return this.call(tool, input, "module:flows", { origin: "deck", token: o.token });
   }
 
   /**

@@ -201,7 +201,7 @@ export function createRoom(cfg) {
     async appendOpen(token, message = {}) {
       const t = await ofToken(token, "not_found");
       if (!message || typeof message !== "object" || (message.chat !== undefined && message.chat !== t.chat)) throw new KernelError("not_found", "no such chat");
-      if (t.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(t.agent)) throw new KernelError("not_found", "no such chat"); }
+      if (t.agent && !gs.chatAssistantOk(t.chat, t.agent)) throw new KernelError("not_found", "no such chat");
       const cur = gs.chatVersion(t.chat);
       if (!cur) throw new KernelError("not_found", "no such chat");
       // CH-10: a reply built from reads made when the room was smaller belongs to that smaller room, however late it is opened.
@@ -226,7 +226,7 @@ export function createRoom(cfg) {
         if (!open) throw new KernelError("closed", "this reply is closed");
         try {
           const now = await ofToken(token, "not_found");
-          if (now.agent) { const a = gs.chatAssistants(t.chat); if (!a || !a.includes(now.agent)) throw new KernelError("not_found", "the assistant is no longer in the chat"); }
+          if (now.agent && !gs.chatAssistantOk(t.chat, now.agent)) throw new KernelError("not_found", "the assistant is no longer in the chat");
         } catch (e) { stop(e instanceof KernelError ? "no_longer_allowed" : "failed"); throw e; }
       };
       return Object.freeze({
@@ -274,7 +274,7 @@ export function createRoom(cfg) {
       const hops = chain.hops, who = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
       const agent = hops.length === 2 && hops[1].actor.kind === "agent" ? hops[1].actor : null;
       if (!who || !(hops.length === 1 || agent)) return false;
-      if (agent && !(gs.chatAssistants(m.chat) || []).includes(agent.id)) return false;
+      if (agent && !gs.chatAssistantOk(m.chat, agent.id)) return false;
       const then = gs.chatPeopleAt(m.chat, m.ver), now = gs.chatPeople(m.chat);
       return Boolean(then && now && then.includes(who.id) && now.includes(who.id));
     },

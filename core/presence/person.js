@@ -121,7 +121,7 @@ export class PersonSessions {
    * @param {{ node: string, kind?: "cookie"|"bearer", label?: string|null, key?: any, keyId?: string|null, paired?: boolean, software?: boolean, strength?: string|null }} o
    */
   start({ node, kind = "cookie", label = null, key = null, keyId = null, paired = false, software = false, strength = null }) {
-    if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
+    if (!node) throw Object.assign(new Error("a person session is made on a paired device, and this request has none"), { code: "denied" });
     const now = this.now();
     this.prune();
     const id = b64url(12), secret = b64url(32);
@@ -138,7 +138,7 @@ export class PersonSessions {
    * @param {{ node: string, cc: string, origin: string, label?: string|null }} o
    */
   code({ node, cc, origin, label = null }) {
-    if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
+    if (!node) throw Object.assign(new Error("a person session is made on a paired device, and this request has none"), { code: "denied" });
     if (!/^[A-Za-z0-9_-]{43}$/.test(String(cc))) throw Object.assign(new Error("cc must be a base64url SHA-256 (PKCE S256)"), { code: "bad_input" });
     const code = b64url(24);
     this.db.prepare("DELETE FROM presence_person_codes WHERE expires <= ?").run(this.now());

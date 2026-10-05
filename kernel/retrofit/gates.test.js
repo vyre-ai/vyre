@@ -24,9 +24,9 @@ test("parseCaller: person surfaces, devices, agent claims, models, modules and s
 });
 
 test("gates: callers, visibility, hook, internal and outward refuse with the registry's own codes", async () => {
-  const g = createLegacyGates({ registry: fake({ "a.open": def(), "a.cli": def({ callers: ["cli"] }), "a.internal": def({ internal: true }), "a.hook": def({ hook: true }), "a.out": def({ outward: true }) }) });
+  const g = createLegacyGates({ registry: fake({ "a.open": def(), "a.cli": def({ callers: ["cli"] }), "a.internal": def({ internal: true }), "a.hook": def({ hook: true }), "a.out": def({ outward: "send" }), "a.yes": def({ outward: true }) }) });
   const t = (name, d, c, m) => call(g, name, d, c, m).then(r => (r ? r.error.code : "pass"));
-  const tools = Object.fromEntries([["a.open", def()], ["a.cli", def({ callers: ["cli"] })], ["a.internal", def({ internal: true })], ["a.hook", def({ hook: true })], ["a.out", def({ outward: true })]]);
+  const tools = Object.fromEntries([["a.open", def()], ["a.cli", def({ callers: ["cli"] })], ["a.internal", def({ internal: true })], ["a.hook", def({ hook: true })], ["a.out", def({ outward: "send" })], ["a.yes", def({ outward: true })]]);
   assert.equal(await t("a.open", tools["a.open"], "anonymous"), "pass");
   assert.equal(await t("a.cli", tools["a.cli"], "cli"), "pass");
   assert.equal(await t("a.cli", tools["a.cli"], "mcp"), "denied");
@@ -38,6 +38,9 @@ test("gates: callers, visibility, hook, internal and outward refuse with the reg
   assert.equal(await t("a.out", tools["a.out"], "deck"), "pass");
   assert.equal(await t("a.out", tools["a.out"], "mcp"), "held_unavailable");
   assert.equal(await t("a.out", tools["a.out"], "cli:agent:kit"), "held_unavailable");
+  // a plain `outward: true` goes on to the one yes's hold in the approvals queue (the registry, after the gates), exactly as the inline rule does: the gates do not hold it
+  assert.equal(await t("a.yes", tools["a.yes"], "mcp"), "pass");
+  assert.equal(await t("a.yes", tools["a.yes"], "deck"), "pass");
 });
 
 test("gates: a device acts as the person only with the person's session, for a person-only or proof-needing tool", async () => {

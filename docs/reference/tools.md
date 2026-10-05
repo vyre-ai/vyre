@@ -281,7 +281,7 @@ Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it
 - Input:
   - `limit` integer: Most rows, default 20, at most 100.
   - `q` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `apps.route`
 
@@ -321,7 +321,7 @@ Things inside one app a person can pick: notes in Notes, lists in Reminders. Eac
   - `app` string, required
   - `limit` integer: Most rows, default 20.
   - `q` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ## artifacts
 
@@ -912,7 +912,7 @@ Open the Capsule on this Mac (or hide or toggle it). It opens ready to type; it 
 Whether the Capsule can run on this machine: macOS, the native app's source, whether it is built, and autostart.
 
 - Input: none
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `capsule.view`
 
@@ -1754,7 +1754,7 @@ The connectors this build ships as declarations (Stripe, Gmail, Google Calendar 
 
 - Input:
   - `id` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `connectors.disconnect`
 
@@ -1782,7 +1782,7 @@ The recipe for logging a mailbox or calendar to contacts: { connector: gmail | g
   - `createUnknown` boolean
   - `google` string
   - `skipInternal` string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `device`, `harness`, `local`, `mcp`, `mobile`, `module`, `tailnet`
 
 ### `connectors.mention.resolve`
 

@@ -780,11 +780,10 @@ test("kernel mode: roles and members are the Space kernel's, through the tools, 
   const s = await d.ok("spaces.create", { name: "harlow", displayName: "Harlow Legal", home: { kind: "this-computer", confirmed: true } });
   const space = s.space;
   const KIT = "per_" + "k".repeat(26);
-  // no proof: the kernel says the change needs the person's approval, in the module's words
-  const bare = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
-  assert.equal(bare.error?.code, "needs_presence", JSON.stringify(bare.error));
-  // with the kernel's proof it goes through, and the list is the kernel's
-  const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token, kernel_proof: sign("setRole", { person: KIT, role: "member" }) });
+  // making an owner with no proof: the kernel says the change needs the person's approval, in the module's words; a role below owner needs none (user ruling 5 Oct)
+  const bare = await d.call("spaces.members.add", { space, person: "per_" + "z".repeat(26), role: "owner" }, "cli", { token });
+  assert.ok(["needs_presence", "presence_required"].includes(bare.error?.code), JSON.stringify(bare.error)); // the registry asks first for an owner, the kernel would otherwise
+  const added = await d.call("spaces.members.add", { space, person: KIT, role: "member" }, "cli", { token });
   assert.ok(!added.error, JSON.stringify(added.error));
   const listed = await d.ok("spaces.members.list", { space }, "cli", { token });
   assert.deepEqual(listed.members.map(m => [m.person, m.role]).sort(), [[alex.id, "owner"], [KIT, "member"]].sort());
@@ -1607,6 +1606,30 @@ test("spaces.storage.*: a member keeps ciphertext in their own folder on a hoste
   assert.deepEqual(await d.ok("spaces.storage.delete", { space: HOME, name: "personal/a", expected: sha("v2") }, "cli", as(MEM)), { ok: true, deleted: true });
   assert.equal((await d.ok("spaces.storage.usage", { space: HOME }, "cli", as(MEM))).used, 0);
   void w;
+
+test("spaces.identity.devices.read on a SERVER (no identity of its own): the paired owner is the person the call acts for, and nobody else; with no owner claimed the answer is empty", async t => {
+  const { claimIdentity } = await import("../../apps/app/src/identity/claim.js");
+  const w = world(t);
+  const pt = () => Buffer.from(crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).subarray(-65)).toString("base64url");
+  const device0 = await device(t); // a home that makes the directory's `hooks` live
+  void device0;
+  const claim = (name, agree) => claimIdentity({ name, password: "four plain words here", base: "http://127.0.0.1:1", fetch: /** @type {any} */ (hooks.fetch), now: () => /** @type {any} */ (hooks.now)(), params: { memoryKiB: 64, passes: 1 }, forceSoftware: true, agree });
+  const owner = await claim("srvowner", pt()), stranger = await claim("srvstranger", pt());
+  let claimed = /** @type {string | null} */ (owner.id);
+  const kernelFor = () => ({ for: () => null, ownerClaimed: () => claimed });
+  const server = await device(t, { kernelFor: /** @type {any} */ (kernelFor) });
+  assert.equal(fileIdentityStore(server.space).status().exists, false, "a server has no identity of its own");
+  for (const p of [owner, stranger]) await server.reg.call("spaces.person.learn", { id: p.id, name: p === owner ? "srvowner" : "srvstranger" }, "module:vyred");
+  const read = person => server.call("spaces.identity.devices.read", { person }, "module:work");
+  const mine = await read(owner.id);
+  assert.ok(!mine.error, JSON.stringify(mine.error));
+  assert.equal(mine.data.devices.length, 1, "the owner's device and its point");
+  assert.equal(mine.data.devices[0].device, owner.eid);
+  assert.match(mine.data.devices[0].agree, /^[A-Za-z0-9_-]{87}$/);
+  assert.deepEqual((await read(stranger.id)).data, { devices: [] }, "a person the owner shares no space with is not 'anyone'");
+  assert.deepEqual((await server.call("spaces.identity.devices.read", { person: owner.id }, "module:memory")).error?.code, "denied", "callers are still work and files");
+  claimed = null;
+  assert.deepEqual((await read(owner.id)).data, { devices: [] }, "no owner claimed: nothing");
 });
 
 test("spaces.identity.devices.read on a SERVER (no identity of its own): the paired owner is the person the call acts for, and nobody else; with no owner claimed the answer is empty", async t => {

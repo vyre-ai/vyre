@@ -177,6 +177,10 @@
    "class": "hook",
    "why": "the harness's own hook"
   },
+  "harness.end": {
+   "class": "own",
+   "why": "a terminal session ends its own hub row: the body checks the claim names that session (own(meta, session)); it only says thread.stopped"
+  },
   "harness.enrich": {
    "class": "hook",
    "why": "the harness's own hook"
@@ -408,6 +412,10 @@
   "threads.model": {
    "class": "refused",
    "why": "refused in the body for a plain session: only a person's surface switches a session's model"
+  },
+  "threads.rename": {
+   "class": "own",
+   "why": "its own thread's title (and the threads it started): scoped by sessionMay like stop and archive"
   },
   "threads.rewind": {
    "class": "refused",

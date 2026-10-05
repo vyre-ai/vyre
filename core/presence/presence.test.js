@@ -367,15 +367,16 @@ test("presence: the box never takes a terminal code; its first passkey comes fro
   assert.equal((await p.challenge({ ...APPROVE, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.challenge({ tool: "presence.enroll", input: {}, method: "tty", tty: "/dev/pts/3" })).error.code, "denied");
   assert.equal((await p.verify({ ...APPROVE, caller: "cli", proof: { method: "tty", id: "x", code: "y" } })).ok, false);
-  p.network = () => ({ owner: "Me@example.com", address: "https://me.vyre.run" });
+  // the owner's own device is a paired Wink device the owner confirmed (the presence module reads wink.device.record); nothing else is, whatever label it names
+  p.ownerDevice = async caller => caller === "device:ownerphone0001";
   const { code } = p.mintCode();
-  for (const caller of ["cli", "local", "capsule", "tailnet:other@example.com", "mcp"]) {
+  for (const caller of ["cli", "local", "capsule", "tailnet:me@example.com", "device:strangerphone01", "mcp"]) {
     assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller, proof: { method: "code", code } })).ok, false, caller);
   }
-  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code } })).ok, true, "the owner's device");
+  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "device:ownerphone0001", proof: { method: "code", code } })).ok, true, "the owner's paired device");
   const other = p.mintCode();
-  p.network = () => ({});
-  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code: other.code } })).ok, false, "no owner yet, no enrolment");
+  p.ownerDevice = async () => false;
+  assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "device:ownerphone0001", proof: { method: "code", code: other.code } })).ok, false, "no confirmed owner device (a removed or unconfirmed one), no enrolment");
 });
 
 test("presence: a session proves reveal, copy, TOTP and sends for a while, on one device, for items that allow it", async t => {
@@ -662,15 +663,16 @@ test("presence: a passkey with no device binding proves for no relayed device, a
 test("presence: a grant enrolls the first passkey and nothing else, once, for five minutes, from the node it was made for", async t => {
   const { p, tick } = setup(t);
   p.role = "box";
-  p.network = () => ({ owner: "me@example.com" });
+  p.ownerDevice = async caller => caller === "device:ownerlaptop001";
   const peer = { stableId: "n-laptop", node: "laptop" };
-  const enroll = (grant, extra = {}) => p.verify({ tool: "presence.enroll", input: { kind: "passkey", rp_id: "alex.vyre.run" }, caller: "tailnet:me@example.com", peer, proof: { method: "grant", grant }, ...extra });
+  const enroll = (grant, extra = {}) => p.verify({ tool: "presence.enroll", input: { kind: "passkey", rp_id: "alex.vyre.run" }, caller: "device:ownerlaptop001", peer, proof: { method: "grant", grant }, ...extra });
   const { grant, expires } = p.mintGrant(peer, "alex.vyre.run");
   assert.ok(expires > 0 && grant.length >= 40);
-  assert.equal((await p.verify({ ...APPROVE, caller: "tailnet:me@example.com", peer, proof: { method: "grant", grant } })).ok, false, "a grant approved a gate item");
+  assert.equal((await p.verify({ ...APPROVE, caller: "device:ownerlaptop001", peer, proof: { method: "grant", grant } })).ok, false, "a grant approved a gate item");
   assert.equal((await enroll("WRONG")).ok, false);
   assert.equal((await enroll(grant, { peer: { stableId: "n-other" } })).ok, false, "another node's browser");
-  assert.equal((await enroll(grant, { caller: "tailnet:other@example.com" })).ok, false, "not the owner's login");
+  assert.equal((await enroll(grant, { caller: "device:strangerphone01" })).ok, false, "not the owner's paired device");
+  assert.equal((await enroll(grant, { caller: "tailnet:me@example.com" })).ok, false, "a tailnet login is no longer who the owner is");
   assert.equal((await enroll(grant, { caller: "cli" })).ok, false);
   assert.equal((await enroll(grant, { input: { kind: "device", rp_id: "alex.vyre.run" } })).ok, false, "only a passkey");
   assert.equal((await enroll(grant, { input: { kind: "passkey", rp_id: "evil.vyre.run" } })).ok, false, "only for the address it was claimed at");
@@ -1003,4 +1005,15 @@ test("paired sign-in: a signature by the identity entry's enclave key over the c
   assert.equal(run("d2", other), "software", "a signature by a key that is not the entry's enclave key");
   assert.equal(run("d3", enc), "real", "the entry's enclave key signed this sign-in");
   assert.equal(run("d4", enc, null), "software", "no enclave key on record: nothing to verify against");
+});
+
+test("presence: the owner's own device is a confirmed paired Wink device: a stranger, another member's confirmed device, an unconfirmed or removed device, a malformed id and a tailnet label are not", async () => {
+  const { ownerDeviceOf } = await import("./module.js");
+  const records = { ownerphone0001: { id: "ownerphone0001", confirmed: true, owner: "per_alex", homeOwner: true }, unconfirmed0001: { id: "unconfirmed0001", confirmed: false, owner: "per_alex", homeOwner: true }, memberphone0001: { id: "memberphone0001", confirmed: true, owner: "per_member", homeOwner: false } };
+  const calls = [];
+  const ok = ownerDeviceOf(async (tool, input) => { calls.push([tool, input.id]); return { data: records[input.id] || null }; });
+  assert.equal(await ok("device:ownerphone0001"), true);
+  for (const caller of ["device:memberphone0001", "device:unconfirmed0001", "device:removedphone01", "device:", "device:../x", "tailnet:alex@example.com", "cli", "mcp:agent:kit", "", undefined]) assert.equal(await ok(/** @type {any} */ (caller)), false, String(caller));
+  assert.equal(await ownerDeviceOf(async () => { throw new Error("wink is off"); })("device:ownerphone0001"), false, "no wink module, no owner device");
+  assert.deepEqual(calls.map(c => c[0]), ["wink.device.record", "wink.device.record", "wink.device.record", "wink.device.record"], "only well-formed device ids are looked up");
 });

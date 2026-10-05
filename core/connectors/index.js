@@ -127,6 +127,7 @@ export default {
     // what can be asked of it and which asks are outward; the credential carries that to the vault, which is where a Flow, a watcher and an assistant meet it.
     ctx.tool("connectors.declared", {
       effect: "read",
+      callers: ["cli", "local", "deck", "capsule", "mobile", "tailnet", "device", "module", "mcp", "harness"], // the person's surfaces, modules and a model: never a guest or an unknown caller (which services are connected is the person's)
       description: "The connectors this build ships as declarations (Stripe, Gmail, Google Calendar ...), each: id, label, how it signs in, its operations (name, label, kind, outward) and the polls a watcher can run on it, plus whether a credential of that name is already in the vault. Holds no value.",
       input: obj({ id: str }),
       run: async ({ id } = {}) => {

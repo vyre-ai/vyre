@@ -27,7 +27,7 @@
       {
         "name": "work.project.create",
         "summary": "make a Project: one record with its Drive folder, repository and memory scope",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {
@@ -45,7 +45,7 @@
       {
         "name": "work.session.move",
         "summary": "move a session to another Project",
-        "reach": "anyone",
+        "reach": "person",
         "effect": "write"
       },
       {

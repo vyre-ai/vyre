@@ -4,7 +4,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { OPEN, ASK_FIRST, PERSON_ONLY } from "../../core/modules/agent-reach.js";
-import { generate, render, flowsAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES } from "../../scripts/gen-allow.mjs";
+import { generate, render, flowsAnyone, ALLOW_FILE, OPEN_NOTES, FLOWS_NOTES, DECLARED, DECLARED_NOTES } from "../../scripts/gen-allow.mjs";
 
 const committed = () => JSON.parse(fs.readFileSync(ALLOW_FILE, "utf8"));
 
@@ -12,11 +12,11 @@ test("the committed allow file is exactly the generator's output: nothing hand-w
   assert.equal(fs.readFileSync(ALLOW_FILE, "utf8"), render(generate()), "run: npm run golden:allow");
 });
 
-test("every allow entry is a tool in OPEN or ASK_FIRST, or a reach anyone flows tool whose module authenticates the chain", () => {
+test("every allow entry is a tool in OPEN, ASK_FIRST or DECLARED, or a reach anyone flows tool whose module authenticates the chain", () => {
   const flows = new Set(flowsAnyone());
   for (const e of committed()) {
     assert.deepEqual(Object.keys(e).sort(), ["reason", "tool"], `${e.tool}: only tool and reason`);
-    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool), `${e.tool} is in neither OPEN nor ASK_FIRST nor the flows manifest`);
+    assert.ok(OPEN.has(e.tool) || ASK_FIRST.has(e.tool) || flows.has(e.tool) || e.tool in DECLARED, `${e.tool} is in none of OPEN, ASK_FIRST, the flows manifest or DECLARED`);
     if (flows.has(e.tool)) assert.match(e.reason, /module authenticates the caller's chain/, `${e.tool}: a flows entry says the module authenticates the chain`);
   }
 });
@@ -48,4 +48,43 @@ test("the generator refuses a person-only tool and an open tool with no note", (
   // generate() throws on both; the exported lists prove the tools it walks are all covered today
   for (const t of OPEN) assert.ok(t in OPEN_NOTES, `${t} has no note`);
   for (const t of flowsAnyone()) assert.ok(t in FLOWS_NOTES, `${t} has no flows note`);
+});
+
+test("every DECLARED tool has its own entry naming the commit, none is person only or ask first, and a note exists only for a declared tool", () => {
+  const have = new Map(committed().map(e => [e.tool, e.reason]));
+  for (const [t, c] of Object.entries(DECLARED)) {
+    assert.ok(have.has(t), `${t} has no allow entry`);
+    assert.ok(have.get(t).includes(c), `${t}: the reason names ${c}`);
+    assert.equal(PERSON_ONLY.has(t) || ASK_FIRST.has(t), false, `${t} is person only or ask first, so it is not declared here`);
+  }
+  for (const t of Object.keys(DECLARED_NOTES)) assert.ok(t in DECLARED, `${t} has a note but is not declared`);
+  for (const t of ["threads.delete", "threads.rewind"]) assert.ok(ASK_FIRST.has(t) && have.has(t), `${t} is ask first and has an entry`);
+});
+
+// A ruled presence removal on a tool a person does (kernel/golden/presence.json, generated from PRESENCE_RULINGS): narrow, and never a way to open a tool to a model.
+import { generatePresence, PRESENCE_FILE, PRESENCE_RULINGS } from "../../scripts/gen-allow.mjs";
+import { weakened, presenceAllow, risky } from "./index.js";
+
+test("the committed presence file is exactly the generator's output, and every entry names a CHAT.md ruling, one refusal (presence_required) and person callers only", () => {
+  assert.equal(fs.readFileSync(PRESENCE_FILE, "utf8"), render(generatePresence()), "run: npm run golden:allow");
+  for (const e of JSON.parse(fs.readFileSync(PRESENCE_FILE, "utf8"))) {
+    assert.match(e.ruling, /CHAT\.md/);
+    assert.equal(e.was, "presence_required");
+    assert.ok(e.callers.length > 0 && !e.callers.some(risky), `${e.tool}: no model, guest, MCP or harness caller`);
+  }
+});
+
+test("the gate lets a ruled presence removal through only for its tool, its person callers and the refusal it replaced", () => {
+  const mk = (tool, caller, was, now = "would run") => ({ a: { roles: { box: { rows: { [tool]: "A" }, emptyBad: {} } }, callers: [caller], worlds: ["w"], legend: { A: was } }, b: { roles: { box: { rows: { [tool]: "B" }, emptyBad: {} } }, callers: [caller], worlds: ["w"], legend: { B: now } } });
+  const allow = presenceAllow();
+  const { a, b } = mk("spaces.host-here", "deck", "presence_required");
+  assert.deepEqual(weakened(a, b, allow), [], "the ruled cell passes");
+  assert.equal(weakened(a, b, []).length, 1, "and without the ruling it is refused");
+  const other = mk("spaces.host-here", "deck", "not_a_member");
+  assert.equal(weakened(other.a, other.b, allow).length, 1, "another refusal of the same tool is not excused");
+  const agent = mk("spaces.host-here", "cli:agent:kit", "presence_required");
+  assert.equal(weakened(agent.a, agent.b, allow).length, 1, "a model caller is not excused");
+  const tool2 = mk("spaces.members.add", "deck", "presence_required");
+  assert.equal(weakened(tool2.a, tool2.b, allow).length, 1, "another tool is not excused");
+  assert.ok(Object.keys(PRESENCE_RULINGS).every(t => PERSON_ONLY.has(t)), "today only person-only tools are named here");
 });
