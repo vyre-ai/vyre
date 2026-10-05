@@ -88,7 +88,12 @@ export async function boot(t, { driver = "cli", sessions = {}, vault = {}, role 
   const said = async id => (await events(id)).filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice).map(e => e.payload.text);
   /** Every prompt an ACP agent received, as the blocks it arrived in (the fake agent logs them when FAKE_ACP_LOG is set). */
   const acpPrompts = () => { try { return fs.readFileSync(process.env.FAKE_ACP_LOG || "", "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)).filter(x => x.prompt).map(x => x.prompt); } catch { return []; } };
-  const internal = (name, input = {}) => d.registry.call(name, input, "module:vyred");
+  // Bounded like `tool` (20s): a direct registry call that never answers fails the test by name instead of leaving the whole file hanging until node's file timeout.
+  const internal = (name, input = {}) => {
+    let timer;
+    const stuck = new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`${name} did not answer in 20s`)), 20_000); timer.unref?.(); });
+    return Promise.race([d.registry.call(name, input, "module:vyred"), stuck]).finally(() => clearTimeout(timer));
+  };
   return { root, d, work, tool, internal, launches, events, finished, said, acpPrompts, transcripts };
 }
 

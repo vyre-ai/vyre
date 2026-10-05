@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- test(sessions): the session test harness's direct registry calls (`internal`) are bounded at 20 seconds like its HTTP calls, so a call that never answers fails the test by name instead of hanging core/sessions/sessions.test.js until the file timeout.
 - feat(memory): `memory.identity.status` also returns `space`, the id of the Space whose kernel chain the grant's proof is verified in (the Space the phone signs the payload over). Public data.
 - fix(work,memory): `work.space-brief` (modules only: the Space and its record types, definitions only; the environment brief reads it) is in this branch's work module, where the sessions side and its test already were; the memory.space.* tests give the kernel handle a `memory` with `Object.create(handle, { memory })` (the handle's own `memory` is read only now).
 - fix(memory)!: an unlock ask is signed over sorted-key canonical JSON (kernel/core/canonical.js), not plain `JSON.stringify`: field order never decides validity. `finish` now checks on the server that a standing grant matches the asking server's fingerprint (before, any grant let any ask finish); a grant for server A cannot finish an ask from server B. Test: core/memory/identity/grant-server.test.js.
