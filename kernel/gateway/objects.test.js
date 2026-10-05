@@ -136,3 +136,12 @@ test("a field owned by the kernel is written only by the kernel's own service", 
   assert.equal((await R.update(o, "job", j.id, { title: "Call Sam back" }, j.version)).data.title, "Call Sam back", "the rest of the record is the person's");
   await assert.rejects(() => R.define(o, { add_types: [{ name: "bad", label: "Bad", fields: [{ name: "x", kind: "text", label: "X", owned_by: "me" }] }] }), { code: "bad_input" });
 });
+
+test("a time_zone field holds an IANA zone and nothing else", async () => {
+  const k = await boot(), o = ownerChain(k), R = k.gateway.records;
+  await R.define(o, { add_types: [{ name: "person_x", label: "Person x", fields: [{ name: "name", kind: "text", label: "Name", required: true }, { name: "time_zone", kind: "text", label: "Time zone", format: "time_zone" }] }] });
+  assert.equal((await R.create(o, "person_x", { name: "Sam", time_zone: "America/Los_Angeles" })).data.time_zone, "America/Los_Angeles");
+  assert.ok(await R.create(o, "person_x", { name: "No zone" }));
+  for (const bad of ["Pacific", "not/a/zone", "", "America/"]) await assert.rejects(() => R.create(o, "person_x", { name: "x", time_zone: bad }), (e) => /time zone/.test(e.message) || e.code === "bad_input", bad);
+  await assert.rejects(() => R.define(o, { add_types: [{ name: "bad_f", label: "Bad f", fields: [{ name: "x", kind: "text", label: "X", format: "nope" }] }] }), { code: "bad_input" });
+});

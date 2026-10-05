@@ -86,6 +86,8 @@ export const CONTACT = {
     f("emails", "other_emails", "Other emails"),
     f("phones", "other_phones", "Other phones"),
     text("job_title", "Job title"),
+    // IANA, e.g. America/Los_Angeles: what their local time is (the assistant's brief and the contact card read it)
+    text("time_zone", "Time zone", { format: "time_zone" }),
     f("link", "organization", "Organization", { to: "organization" }),
     f("address", "address", "Address"),
     f("rich_text", "notes", "Notes"),
@@ -166,7 +168,7 @@ export const TASK_SOURCES = ["gate_hold", "grant_request", "pairing", "kit_insta
 /**
  * A task: a to-do, a step a person or an agent does, a thing waiting on a check. The record id is the task id. `status` is owned by the kernel (`owned_by: "kernel"`: written only
  * by the tasks service, which keeps it in step with the task's state); `stage` is the Space's own pipeline, separate from status, so a Kit or a person can add stages without touching it.
- * `tags` is one text of comma-separated tags. The default views are a board by status, a list and a calendar by due; like any type it takes custom fields, stages and views.
+ * `tags` is one text (a JSON list for now). `stage`, `status` and `record` are written only by the kernel (`owned_by`). The default views are a board by status, a list and a calendar by due; like any type it takes custom fields, stages and views.
  */
 export const TASK = {
   name: "task", label: "Task", icon: "IconChecklist",
@@ -174,17 +176,19 @@ export const TASK = {
     text("title", "Title", { required: true }),
     f("rich_text", "note", "Note"),
     f("datetime", "due", "Due"),
-    choice("status", "Status", TASK_STATUS, { owned_by: "kernel" }),
-    { name: "stage", kind: "stage", label: "Stage", options: ["Backlog", "Doing", "Done"] },
+    choice("status", "Status", TASK_STATUS, { required: true, owned_by: "kernel" }),
+    { name: "stage", kind: "stage", label: "Stage", options: ["Backlog", "Doing", "Done"], owned_by: "kernel" },
     f("link", "parent", "Part of", { to: "task" }),
     f("link", "project", "Project", { to: "project" }),
-    f("link", "record", "About"),
+    f("link", "record", "About", { owned_by: "kernel" }),
     f("link", "contact", "Contact", { to: "contact" }),
     text("repeat", "Repeats"),
     f("datetime", "repeat_until", "Repeats until"),
     f("number", "priority", "Priority"),
     text("list", "List"),
     text("tags", "Tags"),
+    // the planner's own bookkeeping, hidden from every role (the contract's own hiding); only the kernel service reads it
+    text("planner", "Planner (engine bookkeeping)", { hidden_from: ["owner", "admin", "manager", "member", "temp"] }),
     f("boolean", "pinned", "Pinned"),
     text("tz", "Time zone"),
     f("boolean", "floating", "Same wall time in every zone"),

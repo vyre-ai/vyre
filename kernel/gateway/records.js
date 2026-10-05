@@ -318,6 +318,7 @@ export function createRecords(cfg) {
         }
       };
       for (const f of fields) {
+        if (f.format !== undefined && f.format !== "time_zone") throw bad(`${f.name}: format is "time_zone" or left out`);
         if (f.owned_by !== undefined && f.owned_by !== "kernel") throw bad(`${f.name}: owned_by is "kernel" or left out`);
         if (f.visible_if !== undefined) reads(`${f.name}.visible_if`, f.visible_if, [f.name]);
         if (f.required_if !== undefined) { reads(`${f.name}.required_if`, f.required_if, [f.name]); if (f.required === true) throw bad(`${f.name} is required or required_if, not both`); }
