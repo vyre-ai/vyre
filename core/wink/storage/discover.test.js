@@ -2,7 +2,7 @@
 import "../../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseAvahi, parseDnsSd, parseSmbShares, parseExports, mdnsScanner, smbScanner, nfsScanner, localDiskScanner, createDiscovery, candidateId } from "./discover.js";
+import { parseAvahi, parseDnsSd, parseSmbShares, parseExports, mdnsScanner, smbScanner, nfsScanner, localDiskScanner, parseMountinfo, createDiscovery, candidateId } from "./discover.js";
 
 const AVAHI = [
   "+;eth0;IPv4;Office\\032NAS;_smb._tcp;local",
@@ -109,4 +109,20 @@ test("a device that cannot look is a note, not a failed search", async () => {
   const r = await d.discover();
   assert.deepEqual(r.candidates, []);
   assert.match(r.notes[0], /another device could not look: no answer/);
+});
+
+test("mountinfo: an attached cloud volume is a candidate, the system's own partitions and loop devices are not", async () => {
+  const text = [
+    "29 1 252:1 / / rw,relatime shared:1 - ext4 /dev/vda1 rw",
+    "40 29 252:15 / /boot/efi rw - vfat /dev/vda15 rw",
+    "41 29 252:16 / /boot rw - ext4 /dev/vda16 rw",
+    "50 29 7:0 / /snap/core/1 ro - squashfs /dev/loop0 ro",
+    "60 29 8:16 / /mnt/volume_nyc1_01 rw,noatime - ext4 /dev/sdb rw",
+    "61 29 8:32 / /mnt/my\\040disk rw - xfs /dev/sdc rw",
+    "62 29 0:50 / /run/user/0 rw - tmpfs tmpfs rw",
+  ].join("\n");
+  assert.deepEqual(parseMountinfo(text).map(m => m.path), ["/mnt/volume_nyc1_01", "/mnt/my disk"]);
+  const fake = { readFileSync: () => text, readdirSync: () => { throw new Error("none"); }, statSync: () => ({ isDirectory: () => true }), statfsSync: () => ({ blocks: 1000, bsize: 4096 }) };
+  const r = await localDiskScanner({ fs: /** @type {any} */ (fake), roots: ["/mnt"] }).scan();
+  assert.deepEqual(r.found.map(x => [x.name, x.kind, x.path, x.size]), [["volume_nyc1_01", "usb-disk", "/mnt/volume_nyc1_01", 4096000], ["my disk", "usb-disk", "/mnt/my disk", 4096000]]);
 });

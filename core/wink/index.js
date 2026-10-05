@@ -31,6 +31,7 @@ import { storageGrants } from "./storage/grants.js";
 import { attachPool } from "./storage/pool.js";
 import { registerNetwork } from "./network.js";
 import { identityPorts } from "./identity-ports.js";
+import { createNetd } from "./netd.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, resumeServing, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL, SCAN_TOOL } from "./storage/bridge.js";
 import { createHolds, holdDrive } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
@@ -318,6 +319,7 @@ export function createWink(inject = {}) {
     const typedCodeOn = () => inject.typedCode !== undefined ? Boolean(inject.typedCode) : !(process.env.VYRE_WINK_TYPED_CODE === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.typedCode === false));
     const typedCodeDefault = () => inject.typedCodeDefault !== undefined ? Boolean(inject.typedCodeDefault) : (process.env.VYRE_WINK_TYPED_CODE === "1" || Boolean(ctx.config && ctx.config.wink && ctx.config.wink.typedCode === true));
     // The home's identity list and this device's signer, by the spaces module's own internal tools (read live every call, never cached). Given by `inject` first, so a test can pass fakes.
+    /** @type {ReturnType<typeof createNetd> | null} */ let netdRef = null;
     const ports = identityPorts({ call: ctx.call.bind(ctx), space: spaceId });
     const identityEntry = inject.identityEntry || ports.identityEntry;
     const signIdentity = inject.signIdentity || ports.signIdentity;
@@ -338,7 +340,8 @@ export function createWink(inject = {}) {
       directory,
       ports: inject.ports,
       offers: inject.offers || (ctx.kernel && typeof ctx.kernel.offersPort === "function" ? ctx.kernel.offersPort() : undefined),
-      handover: inject.handover,
+      // what a server being paired needs to reach this home: the built-in network's control address and a one-time join key when it has an address another machine can reach (netd.handover), else nothing
+      handover: inject.handover || (async (/** @type {any} */ q) => (netdRef ? netdRef.handover(q) : null)),
       keyFile: path.join(ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"), "wink-keys.json"),
       spaceNow: () => spaceCache,
       relayUrl: async () => { const r = /** @type {any} */ (await ctx.call("relay.status", {})); return String((r && r.data && r.data.url) || (ctx.config.relay && ctx.config.relay.url) || ""); },
@@ -566,6 +569,13 @@ export function createWink(inject = {}) {
         const dev = /** @type {any} */ (await ctx.call("relay.device.info", { id: String(input.device) }));
         const info = dev && dev.data;
         if (!info || info.removed || info.kind !== "app") throw fail("not_found", "that computer is not paired with this server");
+        // A relay "app" row is a phone as well as a computer: the Wink device row says which. Only the person's own computer lends its compute.
+        const wd = pairing.devices.get(String(input.device));
+        const me = await owner1();
+        if (wd && !wd.removed) {
+          if (wd.kind !== "computer") throw fail("bad_input", "only a computer can be shared; a phone, a server or a storage device cannot lend its compute");
+          if (wd.identity !== me) throw fail("denied", "that computer belongs to someone else");
+        }
         const g = await grants();
         const space = await spaceId();
         const cpu = Math.min(Math.max(Number(input.cpu) || 0.5, 0.05), 1);
@@ -576,8 +586,16 @@ export function createWink(inject = {}) {
           conditions: { budget: { meter: "node.cpu-hours-day", limit: hours * cpu }, where: { nodes: [String(input.device)] } },
           source: "wink:W4", reason: `shared with limits: cpu ${cpu}, ${hours} hours a day, awake ${input.awake !== false}, on power ${input.on_power === true}`,
         }, await owner0());
+        // The grant records the limits; what the runner reads is the two sides of the compute offer (W-5). Sharing your own computer with your own space switches
+        // the computer's compute offer on and records the member's side, so computeAllowed answers yes for the personal space and the runner may lease it.
+        let allowed = null;
+        if (wd && !wd.removed) {
+          db.prepare("UPDATE wink_devices SET offers = ? WHERE id = ?").run(JSON.stringify({ ...wd.offers, compute: true }), wd.id);
+          await pairing.compute.set(wd.identity, wd.id, "member", true, { member: wd.identity, device_key: wd.nodeKey || undefined });
+          allowed = await pairing.computeAllowed({ device: wd.id, space: wd.identity });
+        }
         ctx.events.emit("wink.shared", { grant: grant.id, device: String(input.device) });
-        return { grant: grant.id };
+        return { grant: grant.id, ...(allowed ? { allowed } : {}) };
       },
     });
 
@@ -694,7 +712,24 @@ export function createWink(inject = {}) {
     registerStorageTools(ctx, storage, "wink.storage");
     // `vyre doctor`'s Wink checks read the identity list through this port (a device on the list, by its entry id, in this home's space) and this device's own entry. The node host and the
     // relay clock stay absent here (they say "unknown", never a guess) until the daemon composes the node host (composeWinkHome).
-    registerNetwork(ctx, { identity: ports.network, ...(inject.network || {}), storage });
+    // The built-in network (core/wink/netd.js): Headscale, the gate and the Wink node, started in the background on a server home. It hands its node host to the
+    // network status above; a box with no programs installed says "no-binary" there and the relay carries everything. `inject.netd === false` is a test seam that leaves it off.
+    const netd = inject.netd === false ? null : createNetd({
+      root: ctx.paths && ctx.paths.root ? ctx.paths.root : path.join(os.homedir(), ".vyre"),
+      space: spaceId,
+      box: async () => { const r = /** @type {any} */ (await ctx.call("relay.route.id", {})); return String((r && r.data && (r.data.box || r.data.route)) || ""); },
+      entry: async (/** @type {string} */ eid) => { const r = /** @type {any} */ (await ctx.call("spaces.identity.entry", { space: await spaceId(), eid })); return r && !r.error ? (r.data !== undefined ? r.data : r) : null; },
+      serve: ctx.peerDoor && ctx.peerDoor() && typeof ctx.peerDoor().serve === "function" ? ctx.peerDoor().serve : null,
+      onSession: (/** @type {string} */ caller, /** @type {any} */ session) => { try { holds.onSession(caller, session); } catch { /* the hold is optional */ } },
+      log: m => ctx.log(m),
+      relayUrl: ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "",
+      enabled: !(process.env.VYRE_WINK_NET === "0" || (ctx.config && ctx.config.wink && ctx.config.wink.network === false)),
+      ...(ctx.config && ctx.config.wink && typeof ctx.config.wink.controlUrl === "string" ? { controlUrl: ctx.config.wink.controlUrl } : {}),
+      ...(inject.netd || {}),
+    });
+    registerNetwork(ctx, { identity: ports.network, ...(netd ? { host: () => netd.host() } : {}), ...(inject.network || {}), storage });
+    netdRef = netd;
+    if (netd) netd.start();
     const stopStorage = storage.startTimer();
     // The pool engine (work/sealing kernel/storage) is a library, not a module: a box that runs it passes the Pool and a backend factory (inject.pool,
     // inject.poolBackend; PORT until it is merged). Devices join the pool, usage and drains flow back, on every pairing and removal and once a minute.
@@ -802,6 +837,7 @@ export function createWink(inject = {}) {
         for (const off of [offCode, offPaired, offRemoved, offInvite, offPending, offAbandoned]) { try { off(); } catch {} }
         try { code?.cancel(); } catch {}
         try { pairing.stop(); } catch {}
+        try { if (netd) await netd.stop(); } catch {}
       },
     };
   },

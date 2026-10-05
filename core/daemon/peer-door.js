@@ -150,6 +150,16 @@ export function createPeerDoor(o) {
     space: PEER_HOME,
     allow: (/** @type {string} */ d) => DEVICE.test(String(d)),
     /**
+     * The direct path's dispatcher (core/wink/netd.js, node host serveHome): the same call a relay stream makes, for a device that has just proved its identity-list key at the node door.
+     * The device's relay row is read on every call, so a removed device is refused at its next call; the kernel's chain records the path as "wink".
+     * @param {string} caller @param {string} tool @param {any} input
+     */
+    serve: async (caller, tool, input) => {
+      const id = String(caller || "").slice(7);
+      if (!String(caller).startsWith("device:") || !DEVICE.test(id) || !(await rowOf(id))) throw err("denied", "this device is not paired here any more");
+      return withKernelCall((/** @type {string} */ c, /** @type {string} */ t, /** @type {any} */ i) => asDevice(c, t, i, null), { serverFor, personOf: (/** @type {string} */ d) => personOf(d), pathOf: () => "wink" })(caller, tool, input);
+    },
+    /**
      * An invitee's stream (see above). `head` is the hello the peer stream carried. @param {any} stream @param {{ inviteeId: string }} who @param {any} head
      */
     acceptInvitee(stream, who, head) {
