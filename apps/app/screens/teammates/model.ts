@@ -87,10 +87,8 @@ export function byProject(rows: Teammate[]): { project: string; rows: Teammate[]
   return [...m.entries()].sort(([a], [b]) => (a === "" ? 1 : b === "" ? -1 : a.localeCompare(b))).map(([project, r]) => ({ project, rows: r.sort((a, b) => a.role.localeCompare(b.role)) }));
 }
 
-/** The box project a record project's team belongs to: the record's own `slug` field when it has one, else its title as a slug (the way the box names a project's folder). Empty when neither makes a slug. */
-export function slugOf(row: { id?: string; data?: Record<string, unknown> } | null | undefined, title = ""): string {
+/** The box project a Project record's team belongs to: the record's own `slug` (core type `project`, unique, the key every box tool that names a project takes). Empty when the record has none yet; the title is never guessed into a slug. */
+export function projectSlug(row: { id?: string; data?: Record<string, unknown> } | null | undefined): string {
   const own = row?.data?.slug;
-  if (typeof own === "string" && SLUG.test(own)) return own;
-  const s = title.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
-  return SLUG.test(s) ? s : "";
+  return typeof own === "string" && SLUG.test(own) ? own : "";
 }

@@ -34,14 +34,14 @@ test("teammates: rows keep what is drawn and say the state in words", { skip: !s
   assert.equal(m.plural(1, "teammate"), "1 teammate");
 });
 
-test("teammates: a role is one lowercase word and a slug is made from a title", { skip: !strip }, async () => {
+test("teammates: a role is one lowercase word and a project\u2019s slug is its own field and never guessed from the title", { skip: !strip }, async () => {
   const m = await import("./model.ts");
   assert.ok(m.ROLE.test("design") && m.ROLE.test("back-end"));
   for (const bad of ["Design", "two words", "", "1x", "a".repeat(40)]) assert.equal(m.ROLE.test(bad), false, bad);
-  assert.equal(m.slugOf({ id: "x", data: { slug: "dana-wine" } }, "Whatever"), "dana-wine");
-  assert.equal(m.slugOf({ id: "x", data: {} }, "Dana Wine intake!"), "dana-wine-intake");
-  assert.equal(m.slugOf(null, "Étude"), "etude");
-  assert.equal(m.slugOf(null, "!!!"), "");
+  assert.equal(m.projectSlug({ id: "x", data: { slug: "dana-wine" } }), "dana-wine");
+  assert.equal(m.projectSlug({ id: "x", data: { name: "Dana Wine intake", slug: "Bad Slug" } }), "", "a slug the box would refuse is empty, not repaired");
+  assert.equal(m.projectSlug({ id: "x", data: { name: "Dana Wine intake" } }), "", "no slug field, no team: the title is not turned into one");
+  assert.equal(m.projectSlug(null), "");
 });
 
 test("assign to: people and agents together, the project's teammates first, services never", { skip: !strip }, async () => {
