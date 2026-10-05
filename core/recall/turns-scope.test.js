@@ -4,6 +4,7 @@
 // The MCP tool memory_turn is a name for recall.turn.
 
 import "../../scripts/mac-test-guard.mjs";
+import { as } from "../memory/identity/test-facts.js";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -87,14 +88,14 @@ test("memory_turn is recall.turn, and memory_search's file and commit narrow mem
 
 test("memory.retrieve: file narrows the passages to turns that touched it", async t => {
   const { d } = await world(t);
-  const plain = await d.registry.call("memory.retrieve", { question: "intake form above the fold", project_cwds: [] }, "cli");
+  const plain = await as(d, "memory.retrieve", { question: "intake form above the fold", project_cwds: [] }, "cli");
   assert.equal(plain.error, undefined, JSON.stringify(plain));
   assert.ok(plain.data.passages.length > 1);
-  const narrow = await d.registry.call("memory.retrieve", { question: "intake form above the fold", project_cwds: [], file: "intake.tsx" }, "cli");
+  const narrow = await as(d, "memory.retrieve", { question: "intake form above the fold", project_cwds: [], file: "intake.tsx" }, "cli");
   assert.equal(narrow.error, undefined, JSON.stringify(narrow));
   assert.ok(narrow.data.passages.length > 0 && narrow.data.passages.length < plain.data.passages.length, `${narrow.data.passages.length} of ${plain.data.passages.length}`);
   const linked = new Set((await d.registry.call("recall.links", { ref: "intake.tsx" }, "cli")).data.map(x => x.session));
   for (const p of narrow.data.passages) assert.ok(linked.has(p.session), p.session);
-  const none = await d.registry.call("memory.retrieve", { question: "intake form above the fold", project_cwds: [], file: "nothing-here.ts" }, "cli");
+  const none = await as(d, "memory.retrieve", { question: "intake form above the fold", project_cwds: [], file: "nothing-here.ts" }, "cli");
   assert.equal(none.data.passages.length, 0);
 });
