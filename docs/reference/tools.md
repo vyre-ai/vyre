@@ -12469,7 +12469,7 @@ For the spaces module: show a short typed code that carries an invitation's link
 
 ### `wink.code.open`
 
-Show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). Switched off in a release build: it is refused unless VYRE_WINK_TYPED_CODE=1 or the config wink.typedCode is set; scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.
+Show a short typed Wink code for a new computer or server (two-sided: the new device then shows a code to type back here, wink.code.ack). On in a release build too: the code lives 10 minutes, three wrong tries close it, and it is used once; it is refused only when the kill switch is set (VYRE_WINK_TYPED_CODE=0 or the config wink.typedCode: false), then scan the QR or paste the long code instead. Answers { offer, code, expires }. The code is a secret: it is returned here and never put on the event bus.
 
 - Input:
   - `flow` one of "W1", "W2", "W3"
@@ -12641,7 +12641,7 @@ What is waiting on a person right now: the offers that are showing or waiting fo
 
 ### `wink.pair.server`
 
-Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. A short typed code is switched off in this release (`code` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).
+Pair a new server (or storage device) from this app: give `payload`, the text of the QR the server printed (a scan, or the long code pasted), and choose where it goes. Answers { pairing, ack: null, expires }. The person at the server is then asked to confirm, and this app shows the same three words: wink.pair.status answers state `confirm` with `words` until they say yes there; no answer in 5 minutes pairs nothing. The short typed code works too (`code`: type the one the server shows, then the server asks for the code this app shows); it is refused only when the kill switch is set on this computer (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).
 
 - Input:
   - `target` object, required
@@ -12683,7 +12683,7 @@ Whether a device may open a peer stream to this space: only a live paired server
 
 ### `wink.phone.open`
 
-Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. A short typed code is switched off in this release (`typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set).
+Add a phone. From a computer already signed in to you: show a QR and a long code (the same text, to scan or to paste on the phone), a long secret good for one phone and 5 minutes. Answers { qr, link, art, expires }: `art` is the QR drawn for the screen. The phone then shows three words and this computer asks you the same (wink.phone.pairing); say yes only if they match (wink.phone.pair.answer). A phone pairs to you only, never to a space. The short typed code works too (`typed: true` asks for it) unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).
 
 - Input:
   - `space` string
@@ -12714,7 +12714,7 @@ On the computer showing the QR: is a phone asking to be added right now? Answers
 
 ### `wink.phone.scan`
 
-On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.
+On the phone: read the QR the computer shows, or the long code pasted (`payload`). Answers { pairing, ack: null, expires }: wink.pair.status then says `confirm` with `words`: show them, and the person says yes on the computer only if they match. No yes in 5 minutes adds nothing. A phone only pairs to the person's own identity. A short typed code works too unless the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).
 
 - Input:
   - `code` string
@@ -12819,7 +12819,7 @@ For the spaces module: where a paired server is reached (relay, route and box id
 
 ### `wink.server.code`
 
-On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires }: `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). A short typed code is switched off in this release; `typed: true` is refused unless the development flag VYRE_WINK_TYPED_CODE=1 is set.
+On the new server: make a pairing ticket good for 5 minutes and answer { qr, art, expires, code?, code_expires?, code_tries? }: `code` (with `code_expires`, ten minutes, and `code_tries`, the wrong tries that close it) is the short typed code when it is on and `qr: true` was asked for; `qr` is the text to paste into the Vyre app on a computer (the long code), and the same text drawn as a QR for a phone to scan is `art`; qr is null when the relay could not take the ticket. Scanning or pasting only gets the app talking to this server. The person at the server then confirms who is asking (wink.server.pairing shows it and the three words, wink.server.pair.answer says yes or no); no answer pairs nothing. `pairTo` (an identity id or name) is for an unattended install and is set only from this server's own command line (cli or local) at install time: only that identity can complete the pairing, no yes is asked, and the app must PROVE it is that identity with a signature by a key on that identity's list (naming it is not enough). The server also offers a short typed code (WINK-XXXX-XXXX, 10 minutes, three wrong tries, one use) beside the QR when `qr: true` is asked for: the app types it, shows a code, and the person types that back at the server (wink.server.confirm). `typed: true` is refused only when the kill switch is set (VYRE_WINK_TYPED_CODE=0 or config wink.typedCode: false).
 
 - Input:
   - `pairTo` string
