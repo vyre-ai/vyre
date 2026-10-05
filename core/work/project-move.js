@@ -51,8 +51,12 @@ export async function planMove({ from, to, project, client = "leave" }) {
   if (client === "move" && root.data.client && root.data.client.urn) { const p = urnParts(root.data.client.urn); clientRec = await from.records.get(from.chain, p.type, p.id); if (clientRec) found.set(clientRec.urn, clientRec); }
   /** @type {Record<string, number>} */ const byType = {};
   let sealed = 0;
-  for (const r of found.values()) { byType[r.type] = (byType[r.type] || 0) + 1; for (const v of Object.values(r.data || {})) if (isSealedValue(v)) sealed++; }
-  for (const v of Object.values(root.data || {})) if (isSealedValue(v)) sealed++;
+  /** @type {Set<string>} every sealed reference the move carries (never a value): the remote pull serves only what the plan names */
+  const sealedRefs = new Set();
+  const seal = (/** @type {any} */ v) => { sealed++; if (v && typeof v.ref === "string" && v.ref) sealedRefs.add(v.ref); };
+  for (const r of found.values()) { byType[r.type] = (byType[r.type] || 0) + 1; for (const v of Object.values(r.data || {})) if (isSealedValue(v)) seal(v); }
+  for (const v of Object.values(root.data || {})) if (isSealedValue(v)) seal(v);
+  const sealedList = [...sealedRefs].sort();
   /** @type {{ path: string, size: number }[]} */ let files = [];
   const folder = root.data.drive_path;
   if (folder && from.drive) files = (await from.drive.list(from.chain, folder)).map((/** @type {any} */ e) => ({ path: String(e.path ?? e.name ?? e), size: Number(e.size) || 0 }));
@@ -79,9 +83,9 @@ export async function planMove({ from, to, project, client = "leave" }) {
   // the versions too: a record edited after the approval is not the record that was approved
   const versions = [`${root.urn}@${root.version}`, ...[...found.values()].map(r => `${r.urn}@${r.version}`)].sort();
   // base64url, 43 characters: the form the kernel's moves and memory's room move both require of a plan hash
-  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, versions, install, hashes: Object.entries(hashes).sort(([a], [b]) => (a < b ? -1 : 1)), chat_hashes: chatHashes })).digest("base64url");
+  const hash = crypto.createHash("sha256").update(canonical({ from: from.space, to: to.space, project: root.urn, client, counts, ids, versions, install, sealed: sealedList, hashes: Object.entries(hashes).sort(([a], [b]) => (a < b ? -1 : 1)), chat_hashes: chatHashes })).digest("base64url");
   /** @type {Record<string, number>} */ const sizes = Object.fromEntries(files.map(f => [f.path, f.size]));
-  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, hashes, sizes, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
+  return { from: from.space, to: to.space, project: root.urn, client, counts, ids, install, sealed: sealedList, hashes, sizes, hash, blockers, files: files.map(f => f.path), records: [...found.values()].map(r => ({ urn: r.urn, type: r.type })) };
 }
 
 /** A slug free in the target. @param {any} to @param {string} base */

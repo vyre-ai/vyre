@@ -241,7 +241,7 @@ export default {
           const plan = await planMove({ from: side, to: { space: String(i.to_space), remote: true }, project: String(i.project), client: i.client === "move" ? "move" : "leave" });
           if (plan.hash !== i.plan_hash) throw fail("stale_plan", "the project is not what was approved");
           if (plan.blockers.length) throw fail("blocked", plan.blockers.join("; "));
-          return { hash: plan.hash, ids: plan.ids, counts: plan.counts, files: plan.files.map((/** @type {string} */ p) => ({ path: p, size: plan.sizes[p] || 0, sha256: plan.hashes[p] || null })) };
+          return { hash: plan.hash, ids: plan.ids, counts: plan.counts, sealed: plan.sealed, files: plan.files.map((/** @type {string} */ p) => ({ path: p, size: plan.sizes[p] || 0, sha256: plan.hashes[p] || null })) };
         }
         if (i.op === "record") {
           if (!(await closure()).has(String(i.urn))) throw fail("denied", "that record is not part of this project");

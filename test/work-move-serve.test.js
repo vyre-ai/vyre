@@ -37,6 +37,7 @@ test("work.move.serve answers plan, record and file for a move this Space starte
   assert.equal(plan.data.hash, approved.hash, "recomputed here, and the approved one");
   assert.ok(plan.data.files.some((/** @type {any} */ f) => f.path === `${folder}/retainer.txt` && f.size === 15), JSON.stringify(plan.data.files));
   assert.ok(plan.data.ids.includes(chatRec.urn));
+  assert.deepEqual(plan.data.sealed, [], "the plan names every sealed reference it moves (none here)");
   const rec = await serve({ op: "record", urn: chatRec.urn });
   assert.equal(rec.data.data.title, "Intake");
   assert.equal((await serve({ op: "record", urn: `vyre://${space}/project/someone-elses` })).error?.code, "denied", "only this project's records");
