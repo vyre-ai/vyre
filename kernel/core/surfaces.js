@@ -33,6 +33,7 @@ export function createSurfaces(cfg) {
       }
       // A model slot (`model:<provider>/<model>#<n>`, minted by the Switchboard) lives in one chat and acts as the person who opened it, narrowed to a Project the opener names. The Project can only NARROW what the
       // person already holds, so it is taken from the opener (the Switchboard reads it from the chat's record); a caller picks nothing wider by naming one.
+      // SL-1 (windows): a `model:` agent is allowed here and nowhere else (fromFacts' agent_session refuses it): only a correctly shaped slot, in a chat, opened by an exactly-one-person, non-delegated chain (checked above).
       const slot = typeof o.agent === "string" && o.agent.startsWith("model:");
       if (slot && !SLOT.test(o.agent)) throw new KernelError("bad_input", "a model slot names model:provider/model#n");
       if (slot && chat === null) throw new KernelError("bad_input", "a model slot lives in a chat");

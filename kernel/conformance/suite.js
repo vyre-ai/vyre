@@ -5,7 +5,7 @@
 import { mintUuid } from "../core/ids.js";
 import { canonical, sha256 } from "../core/canonical.js";
 
-export const SUITE_REVISION = 6;
+export const SUITE_REVISION = 7;
 
 export const CONTACT = Object.freeze({
   name: "contact", label: "Contact",
@@ -383,7 +383,9 @@ export function conformance(make, { test, assert }, label = "store") {
     const p1 = await s.query("lead", { filter: f, page: { limit: 2 } });
     assert.equal(p1.rows.length, 2); assert.ok(p1.next_cursor);
     const seen = [...p1.rows];
-    for (let cursor = p1.next_cursor; cursor;) { const p = await s.query("lead", { filter: f, page: { limit: 2, cursor } }); seen.push(...p.rows); cursor = p.next_cursor; }
+    // bounded: a store whose cursor repeats the first page forever must fail here, not grow without end (the "teeth" test with a repeating pager once ran a 4 GB heap out)
+    let pages = 1;
+    for (let cursor = p1.next_cursor; cursor;) { assert.ok(++pages <= 10, "paging did not finish: the cursor never advances"); const p = await s.query("lead", { filter: f, page: { limit: 2, cursor } }); seen.push(...p.rows); cursor = p.next_cursor; }
     assert.deepEqual(ids(seen), mine.slice().sort(), "every linked record once");
     assert.equal(ids((await s.query("lead", { filter: { field: "referrers", op: "contains", value: link(b.id) }, page: { limit: 20 } })).rows).length, 5, "the many side lists the same way");
     const total = await s.aggregate("lead", { group_by: [], measures: [{ fn: "count" }], filter: f });
@@ -400,6 +402,18 @@ export function conformance(make, { test, assert }, label = "store") {
     assert.deepEqual(back.contact, link(a.id));
     assert.deepEqual(urns(back.referrers), urns([link(a.id), link(b.id)]));
     assert.deepEqual(ids((await s.query("lead", { filter: { field: "contact", op: "eq", value: link(a.id) }, page: { limit: 10 } })).rows), [l.id]);
+  });
+
+  T("kernel attributes given at create are there on the first read, with no later write", async s => {
+    // a store that offers attr_filter takes the record's attributes with its create (`opts.attrs`, `opts.urn`): the very first query by attribute finds it. A store without the feature has nothing to check.
+    if (!s.features().attr_filter) return;
+    const id = mintUuid();
+    const u = `${SPACE_URN}/contact/${id}`;
+    await s.create("contact", id, { name: "Attr" }, { attrs: { space: SUITE_SPACE, created_by: "person:per_a", owner: "per_o" }, urn: u });
+    const mine = await s.query("contact", { attr_filter: { urn_prefix: `${SPACE_URN}/contact/`, any: [{ created_by: "person:per_a" }] }, page: { limit: 10 } });
+    assert.deepEqual(ids(mine.rows), [id], "the record is found by its created_by on the first read");
+    const other = await s.query("contact", { attr_filter: { urn_prefix: `${SPACE_URN}/contact/`, any: [{ created_by: "person:per_b" }] }, page: { limit: 10 } });
+    assert.deepEqual(ids(other.rows), [], "and by nobody else's");
   });
 
   T("links: the definition keeps many and the named inverse as given", async s => {

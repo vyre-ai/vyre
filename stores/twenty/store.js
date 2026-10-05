@@ -25,13 +25,16 @@ import { twentyGet } from "./client.js";
 import { planType, pascal, selection, checkData, toInput, fromRow, toFilter, toOrderBy, ATTR_COLUMNS, PlanError, VERSION_FIELD, HELD_FIELD, uniqueFields, fromTwenty, idOfLink, camel } from "./plan.js";
 
 /** The conformance suite revision this store last passed (kernel/conformance/suite.js SUITE_REVISION). */
-export const CONFORMANCE_REVISION = 6;
+export const CONFORMANCE_REVISION = 7;
 const MAX_PAGE = 200;
 const MAX_SCAN = 50_000;
 /** A search ranks the first this many matching rows of each type per tier (one request): scanning every match cost minutes at 20,000 records, and 1,000 still held Twenty for about half a second a search (testbox4, 5 Oct). */
 const SEARCH_SCAN = 200;
 const SEARCH_KEEP_MS = 10_000;
 const EITHER = { or: [{ deletedAt: { is: "NULL" } }, { deletedAt: { is: "NOT_NULL" } }] };
+
+/** The four mirrored attributes of an attribute set, as one comparable string. @param {any} a */
+const attrSig = (a) => JSON.stringify(Object.keys(ATTR_COLUMNS).map((k) => (a && typeof a[k] === "string" && a[k] ? a[k] : null)));
 
 export class StoreError extends Error {
   /** @param {string} code @param {string} message */
@@ -66,6 +69,7 @@ export class TwentyStore {
     this.metaQueue = Promise.resolve(); this.metaFailed = false;
     const store = this;
     /** The gateway keeps each record's attributes in this map (`store.meta`); setting one also writes it to the record's mirror columns, in order, and a failed write is remembered (the filter refuses until it is repaired). */
+    /** @type {Map<string, string>} urn -> signature of the attributes its create wrote */ this.mirrored = new Map();
     this.meta = new (class AttrMap extends Map { /** @param {string} u @param {any} a */ set(u, a) { super.set(u, a); store.mirrorAttrs(u, a); return this; } })();
     /** @type {Map<string, import("./plan.js").TypePlan>} */ this.plans = new Map();
     this.snaps = new SnapshotStore(o.dir ? path.join(o.dir, "snapshots.jsonl") : null);
@@ -237,6 +241,8 @@ export class TwentyStore {
     const m = /^vyre:\/\/[^/]+\/([^/]+)\/([^/]+)$/.exec(String(urn));
     if (!m || !attrs || typeof attrs !== "object" || !this.plans.has(m[1])) return;
     const [, type, id] = m;
+    // written with the create already (create's `attrs`): nothing to send again
+    if (this.mirrored.get(String(urn)) === attrSig(attrs)) { this.mirrored.delete(String(urn)); return; }
     this.metaQueue = this.metaQueue.then(async () => {
       try {
         const p = this.#plan(type);
@@ -660,19 +666,24 @@ export class TwentyStore {
 
   // ---- writes ----------------------------------------------------------------------------------
   /** @param {string} type @param {string} id @param {Record<string, any>} data */
-  async create(type, id, data) {
+  async create(type, id, data, opts = undefined) {
     this.searchKept.clear();
     const p = this.#plan(type);
     if (!isUuid(id)) throw new StoreError("invalid", "id must be a time-prefixed uuid");
     const bad = checkData(p, data); if (bad) throw new StoreError(bad.code, bad.message);
     const P = pascal(p.singular);
+    // the record's kernel attributes ride in the same Create (the mirror columns), so it never exists without them and no follow-up write is queued
+    const attrs = opts && opts.attrs && typeof opts.attrs === "object" ? opts.attrs : null;
+    /** @type {Record<string, any>} */ let mirror = {};
+    if (attrs && await this.#attrColumns(p)) mirror = Object.fromEntries(Object.entries(ATTR_COLUMNS).map(([k, col]) => [col, typeof attrs[k] === "string" && attrs[k] ? attrs[k] : null]));
     return this.#t(async () => {
       if (await this.#row(p, id, "any")) throw new StoreError("invalid", `${type} ${id} already exists`);
-      const d = await this.client.gql("graphql", `mutation Create_${p.singular}($d: ${P}CreateInput!) { create${P}(data: $d) { ${selection(p)} } }`, { d: { id, ...toInput(p, data), [VERSION_FIELD]: 1 } });
+      const d = await this.client.gql("graphql", `mutation Create_${p.singular}($d: ${P}CreateInput!) { create${P}(data: $d) { ${selection(p)} } }`, { d: { id, ...toInput(p, data), ...mirror, [VERSION_FIELD]: 1 } });
       let row = d[`create${P}`];
       if (row.id !== id) throw new StoreError("invalid", `Twenty replaced our id: sent ${id}, got ${row.id}`);
       this.#mine(id, row.updatedAt);
       if (this.#junctionFields(p).length) { await this.#syncMany(p, id, data); row = await this.#hydrate(p, row); }
+      if (Object.keys(mirror).length) this.mirrored.set(`vyre://${this.space}/${type}/${id}`, attrSig(attrs));
       const rec = this.#snap(p, row);
       this.#note({ type, id, kind: "created", version: 1, at: rec.updated_at, after: rec.data, source: "gateway" });
       return rec;
