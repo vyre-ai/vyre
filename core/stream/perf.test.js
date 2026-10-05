@@ -35,7 +35,7 @@ test("perf: emit to client onFrame latency over a loopback WebSocket (text-delta
   /** @type {number[]} */ const lat = [];
   const client = connect({
     open: () => wsDuplex(`ws://127.0.0.1:${port}/`),
-    onFrame: f => { const t = now(); if (f.type === "session.text-delta" && emitAt[f.cur]) lat.push(t - emitAt[f.cur]); },
+    onFrame: f => { const t = now(); if (f.type === "chat.text-delta" && emitAt[f.cur]) lat.push(t - emitAt[f.cur]); },
   });
   try {
     await until(() => client.state === "live");
@@ -65,7 +65,7 @@ test("perf: kill to first resumed frame", async () => {
     open: () => wsDuplex(`ws://127.0.0.1:${port}/`),
     onState: s => { if (s === "reconnecting") reconnecting = true; else if (s === "live" && reconnecting) liveAgain = true; },
     onFrame: f => {
-      if (f.type === "session.text-delta") text += f.data.text;
+      if (f.type === "chat.text-delta") text += f.data.text;
       if (killedAt !== null && liveAgain) { resume.push(now() - killedAt); killedAt = null; reconnecting = false; liveAgain = false; }
     },
   });

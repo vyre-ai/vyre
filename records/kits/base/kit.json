@@ -359,7 +359,8 @@
           "label": "Status",
           "options": [
             "active",
-            "archived"
+            "archived",
+            "moved"
           ]
         },
         {
@@ -367,6 +368,16 @@
           "kind": "link",
           "label": "Client",
           "to": "contact"
+        },
+        {
+          "name": "owner",
+          "kind": "actor",
+          "label": "Owner"
+        },
+        {
+          "name": "due",
+          "kind": "date",
+          "label": "Due"
         },
         {
           "name": "drive_path",
@@ -389,14 +400,14 @@
           "label": "Archived"
         },
         {
-          "name": "owner",
-          "kind": "actor",
-          "label": "Owner"
+          "name": "moved_to",
+          "kind": "text",
+          "label": "Moved to (Space and project) when it left this Space"
         },
         {
-          "name": "due",
-          "kind": "date",
-          "label": "Due"
+          "name": "moved_from",
+          "kind": "text",
+          "label": "Moved from (Space and project) when it came from another"
         },
         {
           "name": "stage",

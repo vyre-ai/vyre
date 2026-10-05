@@ -12,7 +12,7 @@ import { open } from "../store/index.js";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
-import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { tempHome, writeModule, present, kernelCaller } from "../../test/helpers.js";
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
@@ -37,12 +37,13 @@ test("RV2-MS1: which model labels may pin, mute or curate the MAIN graph or anot
   const moved = [...SESSIONS, CROSSOVER].map(s => ({ ...s, cwd: s.cwd.replace(W, work) }));
   const db = open(path.join(root, "vyre.db")); seedRecall(db, moved); db.close();
   const d = await start({ root, log: () => {} }); t.after(() => d.stop());
+  const kcall = kernelCaller(d, root);
   const opts = { root };
   await call("projects.create", { name: "Northwind", home: path.join(work, "northwind") }, opts);
   await call("projects.create", { name: "Harlow", home: path.join(work, "harlow-site"), workspaces: [path.join(work, "harlow-intake")] }, opts);
-  await call("agents.create", { name: "juno", kind: "assistant" }, opts);
-  await call("agents.create", { name: "kit", projects: ["northwind"] }, opts);
-  await call("projects.access.migrate", {}, opts); await call("memory.curate", {}, opts);
+  await kcall("agents.create", { name: "juno", kind: "assistant" }, opts);
+  await kcall("agents.create", { name: "kit", projects: ["northwind"] }, opts);
+  await call("memory.curate", {}, opts);
   const out = {};
   const cases = [
     ["pin main", "memory.pin", { node: "Dana Reyes" }],

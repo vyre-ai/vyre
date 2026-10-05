@@ -14,6 +14,7 @@ import { KernelError } from "../core/errors.js";
 import { segments, containedPrefix, spaceOf } from "../core/urn.js";
 import { contains, containsDims, clampTo, patternCovers } from "../core/authorize.js";
 import { ROLE_IDS } from "../contracts/index.js";
+import { chatFolderOf } from "../core/folders.js";
 import { ROLE_ACTIONS, MAY_SET } from "./roles.js";
 
 /** The actions the grants calls register with the authorizer. All but `list` are risk `grant`. */
@@ -47,6 +48,9 @@ export const GRANT_ACTIONS = Object.freeze([
   { action: "kits.remove", resource_type: "kit", risk: "admin", label: "remove a Kit", gloss: "Take a Kit's parts out. Records stay." },
   // What a Flow's steps do (kernel/flows/runner.js, compile.js STEP_ACTIONS): run a Flow by hand, give someone a task, run a Code step in the sandbox, send text to a model through the door. Registered
   // here so the real authorizer knows them (an unregistered action answers unknown_action, which the Flow harness hid by registering its own).
+  // Which agents may reach a Project's data (its files, sessions, memory). A person holds it by role; an AGENT holds it only by a grant of its own on that Project record. This replaces the
+  // projects module's own access table: one permission system, the kernel's.
+  { action: "project.reach", resource_type: "project", risk: "read", label: "reach a project", gloss: "Read a project's files, sessions and memory." },
   { action: "flows.run", resource_type: "flow", risk: "write", label: "run a Flow", gloss: "Start a Flow by hand." },
   { action: "ask.request", resource_type: "task", risk: "write", label: "ask someone", gloss: "Give a person or an assistant a task from a Flow." },
   { action: "fn.run", resource_type: "fn", risk: "write", label: "run a Code step", gloss: "Run a small piece of code a Flow carries, confined, with no network and no files." },
@@ -306,6 +310,41 @@ export function createGrantsStore(cfg) {
       grants.set(g.id, g);
       await note(chain, "grant.created", urn("grant", g.id), { grant: g }, d.decision);
       return g;
+    },
+
+    /**
+     * Share one file of a chat's folders with the project: a participant's own act (no presence: it is their chat and their file), made as a grant of `drive.read` on exactly that file to the Space's
+     * members (the project's readers), so it reads one file, never the folder, another file or a write. Sharing twice is the same grant. @param {any} chain @param {string} path
+     */
+    async shareFile(chain, path) {
+      const who = person(chain);
+      const res = `vyre://${cfg.space}/file/${path}`;
+      const where = chatFolderOf(res, cfg.space);
+      if (!where || where.rest === null) throw new KernelError("bad_input", "only a file in a chat's folders is shared");
+      const c = chats.get(where.chat);
+      if (!c || !c.people.includes(who.id) || !memberOk(who)) throw new KernelError("not_found", "no such file");
+      const have = [...grants.values()].find(g => g.status === "active" && g.source === "chat:share" && g.resource.prefix === res);
+      if (have) return have;
+      const g = freeze({ id: `gr_${mintUuid(clock())}`, space: cfg.space, subject: { kind: "role", name: "member" }, actions: ["drive.read"], action_set_version: version, resource: { prefix: res }, conditions: {}, source: "chat:share", issuer: { ...who }, reason: "shared to the project from a chat", status: "active", created_at: clock() });
+      grants.set(g.id, g);
+      await note(chain, "grant.created", urn("grant", g.id), { grant: g }, null);
+      return g;
+    },
+    /** Take a share back: a participant of that chat, or an admin. @param {any} chain @param {string} path */
+    async unshareFile(chain, path) {
+      const who = person(chain);
+      const res = `vyre://${cfg.space}/file/${path}`;
+      const where = chatFolderOf(res, cfg.space);
+      const c = where ? chats.get(where.chat) : null;
+      if (!where || !c || !((c.people.includes(who.id) && memberOk(who)) || isAdmin(who))) throw new KernelError("not_found", "no such file");
+      let n = 0;
+      for (const g of [...grants.values()]) {
+        if (g.status !== "active" || g.source !== "chat:share" || g.resource.prefix !== res) continue;
+        const r = freeze({ ...g, status: "revoked", revoked_at: clock(), reason: "unshared" });
+        grants.set(r.id, r); n++;
+        await note(chain, "grant.revoked", urn("grant", r.id), { id: r.id, reason: "unshared" }, null);
+      }
+      return { unshared: n };
     },
 
     /** Revoke in place; everything delegated from it goes too. */
@@ -991,11 +1030,20 @@ export function createGrantsStore(cfg) {
       const who = hops[0] && hops[0].actor.kind === "person" ? hops[0].actor : null;
       const agent = hops.length === 2 && hops[1].actor.kind === "agent" ? hops[1].actor : null;
       const shape = !(chain && chain.viewer === true) && (hops.length === 1 ? Boolean(who) : Boolean(who && agent));
-      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
+      if (!c || !shape || !memberOk(who) || !c.people.includes(who.id) || (agent && agent.id !== DEFAULT_ASSISTANT && !String(agent.id).startsWith("model:") && !c.assistants.includes(agent.id))) throw new KernelError("not_found", "no such chat");
       return c;
     },
     /** Does this Space have the default assistant as an actor? A Space made before it existed does not, and gets it only by an owner's approval with presence (`addActor`), never silently. */
     hasDefaultAssistant() { return memberOk({ kind: "agent", id: DEFAULT_ASSISTANT, space: cfg.space }); },
+    /**
+     * The chats this chain may read, by the same rule as chatRead (a person in it; an assistant or a model slot acting for such a person): their ids, newest first. The one place that answers "which chats am I in",
+     * so nothing else keeps a copy of the rule. @param {any} chain @returns {string[]}
+     */
+    chatMine(chain) {
+      const out = [];
+      for (const c of [...chats.values()].reverse()) { try { api.chatRead(chain, c.id); out.push(c.id); } catch (e) { if (!(e instanceof KernelError) || e.code !== "not_found") throw e; } }
+      return out;
+    },
     /** Is this person in this chat (and still a member)? Sync, for the Surfaces door's check when it opens a session for a chat, and for every later room or append decision. @param {string} person @param {string} id */
     chatHas(person, id) {
       const c = chats.get(String(id));
@@ -1019,6 +1067,8 @@ export function createGrantsStore(cfg) {
     },
     /** The chat's assistants, for the append check. @param {string} id @returns {string[] | null} */
     chatAssistants(id) { const c = chats.get(String(id)); return c ? [...c.assistants] : null; },
+    /** May this assistant act in this chat? The person's default assistant acts as the person it is for and is never listed, so only the person's own membership decides (the caller checks that); any other assistant must be listed. @param {string} id @param {string} agent */
+    chatAssistantOk(id, agent) { const c = chats.get(String(id)); return Boolean(c) && (agent === DEFAULT_ASSISTANT || String(agent).startsWith("model:") || c.assistants.includes(String(agent))); },
     /**
      * Check every stored delegated grant against its parent on every dimension, and cut down any that is wider (made before containment compared every dimension, or by a bug): it keeps
      * what it was inside, the cut is written to the log as a `grant.narrowed` event saying why, and one that cannot be brought inside is revoked. Never trusts what is on disk. Run at

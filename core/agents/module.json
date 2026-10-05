@@ -52,6 +52,12 @@
         "effect": "read"
       },
       {
+        "name": "agents.uid",
+        "summary": "an agent's stable id for the grants made for it (the projects and plugin-agent modules only)",
+        "reach": "modules",
+        "effect": "read"
+      },
+      {
         "name": "agents.stop",
         "reach": "anyone",
         "effect": "write"
@@ -91,7 +97,8 @@
     ],
     "daemon": [
       "credentials"
-    ]
+    ],
+    "kernel": {}
   },
   "teaches": {
     "tips": [

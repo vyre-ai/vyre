@@ -207,7 +207,7 @@ function mayReceive(frame, viewer) {
  * @param {string} session @param {number} cur @param {number} span @param {number} time @param {string} [id]
  */
 export function hiddenFrame(session, cur, span, time, id) {
-  return { v: 1, id: id || `hidden-${session}-${cur}`, cur, ...(span > 1 ? { span } : {}), session, turn: null, type: "session.hidden", time, corr: null, data: {} };
+  return { v: 1, id: id || `hidden-${session}-${cur}`, cur, ...(span > 1 ? { span } : {}), session, turn: null, type: "chat.hidden", time, corr: null, data: {} };
 }
 
 /**

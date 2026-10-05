@@ -1,7 +1,7 @@
 // @ts-check
 // Projects against the shared fictional corpus. The corpus lives under /home/alex, which no test
 // machine has, so each test moves it into its own temp folder: project homes have to be real
-// folders for their markers to be written.
+// folders for a project's home to be made.
 
 import "../../scripts/mac-test-guard.mjs";
 import { test } from "node:test";
@@ -13,7 +13,7 @@ import { open, migrate } from "../store/index.js";
 import { SESSIONS, HOME, seedRecall } from "../../test/fixtures/corpus.js";
 import { tempHome } from "../../test/helpers.js";
 import { Projects, MIGRATIONS } from "./projects.js";
-import * as M from "./markers.js";
+import * as M from "./folders.js";
 import { compose, LIMIT } from "./brief.js";
 
 const ID = { site: SESSIONS[0].id, intake: SESSIONS[1].id, northwind: SESSIONS[2].id, hub: SESSIONS[3].id, agent: SESSIONS[4].id, headless: SESSIONS[5].id };
@@ -59,8 +59,8 @@ test("projects: Harlow Legal gets its folder's thread and the picks; the hub is 
   // The subagent folds under its parent rather than appearing as a thread of its own.
   assert.equal(site.agents, 1);
   assert.ok(!ids("harlow-legal").some(id => id.includes("/agent-")));
-  // The marker is the record.
-  assert.deepEqual(M.load(harlow.home).threads, [ID.intake, ID.hub]);
+  // The picks are kept with the project.
+  assert.deepEqual(w.P.resolve(harlow.slug).threads, [ID.intake, ID.hub]);
   assert.deepEqual(w.events.map(e => e.type), ["project.created", "thread.picked", "thread.picked", "project.created", "thread.picked"]);
 });
 
@@ -147,9 +147,8 @@ test("projects: picks are added once, removed only by hand, and folder membershi
   // Picking a subagent picks its parent.
   assert.deepEqual(w.P.addThreads(p.slug, [ID.agent]).added, [ID.site]);
   assert.deepEqual(w.events.filter(e => e.type === "thread.picked").map(e => e.thread), [ID.hub, ID.site]);
-  // A rebuild of the cache keeps every pick: the marker holds them.
-  w.db.exec("DELETE FROM projects_projects");
-  w.P.refresh({ walk: true });
+  // A re-read keeps every pick.
+  w.P.refresh();
   assert.deepEqual(w.P.resolve(p.slug).threads, [ID.hub, ID.site]);
   const r = w.P.removeThreads(p.slug, [ID.hub, ID.site]);
   assert.deepEqual(r.removed, [ID.hub, ID.site]);
@@ -158,7 +157,7 @@ test("projects: picks are added once, removed only by hand, and folder membershi
   assert.ok(!w.P.threadsOf(w.P.resolve(p.slug)).some(x => x.id === ID.hub));
 });
 
-test("projects: watchers are added once, removed only by hand, and survive a rebuild of the cache", async t => {
+test("projects: watchers are added once, removed only by hand, and survive a re-read", async t => {
   const w = world(t);
   const p = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
   w.events.length = 0;
@@ -166,9 +165,8 @@ test("projects: watchers are added once, removed only by hand, and survive a reb
   assert.deepEqual(w.P.addWatchers(p.slug, ["alex"]).added, []);
   assert.deepEqual(w.P.addWatchers(p.slug, ["kit"]).watchers, ["alex", "kit"]);
   assert.deepEqual(w.events.filter(e => e.type === "project.changed").map(e => e.fields), [["watchers"], ["watchers"]]);
-  // A rebuild of the cache keeps every watcher: the marker holds them.
-  w.db.exec("DELETE FROM projects_projects");
-  w.P.refresh({ walk: true });
+  // A re-read keeps every watcher.
+  w.P.refresh();
   assert.deepEqual(w.P.resolve(p.slug).watchers, ["alex", "kit"]);
   const r = w.P.removeWatchers(p.slug, ["alex", "someone-not-watching"]);
   assert.deepEqual(r.removed, ["alex"]);
@@ -181,8 +179,8 @@ test("projects: list carries each project's picked thread ids, subagents folded,
   const harlow = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site"), threads: [ID.intake, ID.hub, ID.agent] });
   w.P.create({ name: "Northwind", home: path.join(w.work, "northwind"), threads: [ID.hub] });
   w.P.create({ name: "Keel", home: path.join(w.work, "keel") });
-  // A hand-edited marker that names a subagent still lists its parent, once.
-  M.write(harlow.home, { threads: [ID.intake, ID.hub, ID.site, ID.agent] });
+  // A pick that names a subagent still lists its parent, once.
+  w.P.save(harlow.slug, { threads: [ID.intake, ID.hub, ID.site, ID.agent] });
   const rows = new Map(w.P.list().projects.map(p => [p.slug, p]));
   assert.deepEqual(rows.get("harlow-legal").picks, [ID.intake, ID.hub, ID.site]);
   assert.deepEqual(rows.get("northwind").picks, [ID.hub]);
@@ -193,16 +191,17 @@ test("projects: list carries each project's picked thread ids, subagents folded,
   assert.equal(rows.get("harlow-legal").threads, 3);
 });
 
-test("projects: a marker edited by hand is followed; a folder added to it brings its sessions", async t => {
+test("projects: a folder added to a project brings its sessions, and what the project keeps is not lost by a change that does not name it", async t => {
   const w = world(t);
   const p = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
   assert.ok(!w.P.threadsOf(p).some(x => x.id === ID.intake));
-  M.write(p.home, { workspaces: ["../harlow-intake"], people: [{ name: "Dana Reyes" }] });
+  w.P.addWorkspace(p.slug, path.join(w.work, "harlow-intake"));
+  w.P.save(p.slug, { people: [{ name: "Dana Reyes" }] });
   w.P.refresh();
   const again = w.P.resolve("harlow-legal");
   assert.ok(w.P.threadsOf(again).some(x => x.id === ID.intake && x.how.includes("folder")));
   assert.equal(again.people[0].name, "Dana Reyes");
-  assert.equal(M.load(p.home).name, "Harlow Legal", "a write dropped a field it did not name");
+  assert.equal(again.name, "Harlow Legal", "a save dropped a field it did not name");
 });
 
 test("projects: addWorkspace attaches an existing folder once, and a folder that is the home itself is a no-op (Vyre Drive step 4)", async t => {
@@ -213,8 +212,7 @@ test("projects: addWorkspace attaches an existing folder once, and a folder that
   w.events.length = 0;
   const r = w.P.addWorkspace(p.slug, intake);
   assert.equal(r.added, "../harlow-intake");
-  // .workspaces is loaded, home-prefixed and absolute (markers.js's own load() shape); "added" is
-  // the relative form, the same shape create()'s own workspaces takes.
+  // .workspaces is the home first and then the other folders, absolute; "added" is the relative form.
   assert.deepEqual(r.workspaces, [p.home, fs.realpathSync(intake)]);
   assert.deepEqual(w.events.filter(e => e.type === "project.changed").map(e => e.fields), [["workspaces"]]);
   // The folder now brings its sessions, the same as one listed at create time.
@@ -228,7 +226,7 @@ test("projects: addWorkspace attaches an existing folder once, and a folder that
   assert.deepEqual(r2.workspaces, [p.home, fs.realpathSync(intake)]);
   assert.equal(w.events.length, 0, "no project.changed for a no-op");
 
-  // The project's own home resolves to "." (M.relative), filtered out: nothing to add.
+  // The project's own home is already one of its folders: nothing to add.
   const r3 = w.P.addWorkspace(p.slug, p.home);
   assert.equal(r3.added, null);
   assert.deepEqual(r3.workspaces, [p.home, fs.realpathSync(intake)]);
@@ -236,15 +234,16 @@ test("projects: addWorkspace attaches an existing folder once, and a folder that
   assert.throws(() => w.P.addWorkspace("no-such-project", intake), /no project/);
 });
 
-test("projects: a project outside the roots is remembered; one under them is discovered; a removed marker ends it", async t => {
+test("projects: a project is remembered wherever its home is, and a project this computer is told of gets a home of its own", async t => {
   const w = world(t);
   const away = path.join(w.root, "elsewhere", "harlow");
   w.P.create({ name: "Harlow Legal", home: away });
-  M.write(path.join(w.work, "northwind"), { name: "Northwind" });
+  const told = w.P.adopt({ slug: "northwind", name: "Northwind" });
+  assert.equal(told.home, fs.realpathSync(path.join(w.config.projectsDir, "northwind")));
+  assert.equal(w.P.adopt({ slug: "northwind", name: "Other" }).name, "Northwind", "told twice: nothing changes");
+  assert.throws(() => w.P.adopt({ slug: "Bad Slug!", name: "x" }), /lower case/);
   const names = () => w.P.list().projects.map(p => p.name).sort();
   assert.deepEqual(names(), ["Harlow Legal", "Northwind"]);
-  fs.rmSync(path.join(away, M.MARKER));
-  assert.deepEqual(names(), ["Northwind"]);
 });
 
 test("projects: create refuses a second project with the same name, or a folder that is already a home", async t => {
@@ -255,16 +254,6 @@ test("projects: create refuses a second project with the same name, or a folder 
   assert.throws(() => w.P.create({ name: "  " }), /needs a name/);
   const d = w.P.create({ name: "Rivera Studio" });
   assert.equal(d.home, fs.realpathSync(path.join(w.config.projectsDir, "rivera-studio")));
-});
-
-test("projects: two markers claiming one slug are refused, not merged", async t => {
-  const w = world(t);
-  M.write(path.join(w.work, "harlow-site"), { name: "Harlow" });
-  M.write(path.join(w.work, "harlow-intake"), { name: "Harlow" });
-  const { projects, problems } = w.P.list();
-  assert.equal(projects.length, 1);
-  assert.equal(problems.length, 1);
-  assert.match(problems[0].error, /also used by/);
 });
 
 test("projects: with no Recall index yet, the catalogue is empty and says why", async t => {
@@ -279,7 +268,7 @@ test("projects: with no Recall index yet, the catalogue is empty and says why", 
   assert.equal(P.threadsOf(p)[0].missing, true, "a pick the index has not seen was dropped");
 });
 
-test("markers: projectOf matches on a path boundary and prefers the deepest folder", () => {
+test("folders: projectOf matches on a path boundary and prefers the deepest folder", () => {
   const outer = /** @type {any} */ ({ slug: "outer", workspaces: ["/w/x"] });
   const inner = /** @type {any} */ ({ slug: "inner", workspaces: ["/w/x/y"] });
   assert.equal(M.projectOf("/w/x/y/z", [outer, inner])?.slug, "inner");
@@ -301,12 +290,12 @@ test("brief: says the user's words win, trims long labels, and never passes its 
   assert.match(text, /…$/);
 });
 
-test("markers: a home reached through a symlink matches the folder as a shell reports it", t => {
+test("folders: a home reached through a symlink matches the folder as a shell reports it", t => {
   const root = tempHome(t);
   const realHome = path.join(root, "real", "harlow-site");
   fs.mkdirSync(path.join(realHome, "src"), { recursive: true });
   fs.symlinkSync(path.join(root, "real"), path.join(root, "link"));
-  const p = M.write(path.join(root, "link", "harlow-site"), { name: "Harlow Legal" });
+  const p = /** @type {any} */ ({ slug: "harlow-legal", workspaces: [M.real(path.join(root, "link", "harlow-site"))] });
   assert.equal(M.projectOf(fs.realpathSync(path.join(realHome, "src")), [p])?.slug, "harlow-legal");
   assert.equal(M.projectOf(path.join(root, "link", "harlow-site", "src"), [p])?.slug, "harlow-legal");
 });
@@ -435,19 +424,15 @@ test("projects: avatar_seed is stored at create (the slug, or the chat a project
   const fromChat = w.P.create({ name: "Northwind", home: path.join(w.work, "northwind"), from_thread: ID.hub });
   assert.equal(fromChat.avatar_seed, ID.hub, "made from a chat: the chat's id, so its draft tile carries over");
   assert.ok(fromChat.threads.includes(ID.hub), "and the chat is picked into it");
-  const marker = JSON.parse(fs.readFileSync(path.join(fromChat.home, M.MARKER), "utf8"));
-  assert.equal(marker.avatar_seed, ID.hub, "stored in the marker, not worked out on read");
-  // A rename (a person editing the marker's name) never reseeds the tile.
-  M.write(plain.home, { name: "Harlow Legal Group" });
+  assert.equal(JSON.parse(String(w.db.prepare("SELECT spec FROM projects_projects WHERE slug = ?").get(fromChat.slug).spec)).avatar_seed, ID.hub, "stored with the project, not worked out on read");
+  // A rename never reseeds the tile.
+  w.P.rename(plain.slug, "Harlow Legal Group");
   const listed = w.P.list().projects;
   assert.equal(listed.find(p => p.home === plain.home)?.avatar_seed, "harlow-legal");
   assert.equal(listed.find(p => p.home === fromChat.home)?.avatar_seed, ID.hub);
-  // A marker from before the field: defaults to the slug, and reading it writes nothing.
-  const old = path.join(w.work, "old-one");
-  fs.mkdirSync(path.join(old, ".vyre"), { recursive: true });
-  fs.writeFileSync(path.join(old, M.MARKER), JSON.stringify({ name: "Old One" }));
-  assert.equal(M.load(old)?.avatar_seed, "old-one");
-  assert.equal(JSON.parse(fs.readFileSync(path.join(old, M.MARKER), "utf8")).avatar_seed, undefined);
+  // A project saved with no seed defaults to its slug.
+  w.db.prepare("INSERT INTO projects_projects (slug, name, spec, at) VALUES (?,?,?,?)").run("old-one", "Old One", "{}", Date.now());
+  assert.equal(w.P.refresh().find(x => x.slug === "old-one")?.avatar_seed, "old-one");
 });
 
 test("projects: from_thread must look like a chat's session id (reviewer LOW)", async t => {
@@ -475,7 +460,7 @@ test("tools: projects.create refuses a from_thread chat that does not exist, and
     const home = path.join(work, "northwind");
     const r = await d.registry.call("projects.create", { name: "Northwind", home, from_thread: "0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0" }, "cli");
     assert.match(String(r.error?.message), /no chat 0f1e2d3c-4b5a-4978-8796-a5b4c3d2e1f0/);
-    assert.ok(!fs.existsSync(path.join(home, M.MARKER)), "no project was made");
+    assert.equal((await d.registry.call("projects.list", {}, "cli")).data.projects.length, 0, "no project was made");
     const shape = await d.registry.call("projects.create", { name: "Northwind", home, from_thread: "not-a-chat" }, "cli");
     assert.match(String(shape.error?.message), /from_thread must be a chat's session id/);
   } finally { await d.stop(); }
