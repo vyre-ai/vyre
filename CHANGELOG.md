@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(daemon): the home serves the lent-computer wire. A Space's home now registers the `lent` service (core/runner/lent-home.js, built by core/daemon/lent-service.js) on its remote server, so a member's computer can start a lent session, checkpoint it and resume it over the peer wire; until now only tests built it and every `lent.*` call answered no_such_call. The Space's definition of a session comes from the daemon option `lentSpec`; with none the home answers not_found rather than inventing a program. Boundaries: `core/daemon -> core/runner` gains lent-home.js.
+
 - feat(stores/twenty,spaces): every image of a Space's Twenty and of the home unit is pinned by tag and digest (twenty v2.44.0, postgres 16.4-alpine, redis 7.4-alpine, headscale v0.23.0); the Space compose and an upgrade take a full `name:tag@sha256:...` reference (`TWENTY_IMAGE_REF`), never a bare tag. Only vyred's own image stays on its release tag.
 
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
