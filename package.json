@@ -47,6 +47,7 @@
     "modules",
     "names/worker/id-messages.js",
     "stores",
+    "stores/twenty/golden",
     "records",
     "box",
     "apps/app/dist",
