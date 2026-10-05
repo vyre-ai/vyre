@@ -265,3 +265,38 @@ test("a chat started outside the stream continues in it: the existing run is ado
   // and now the chat's own log is the transcript
   assert.equal((await owner("stream.open", { chat })).data.session, chat);
 });
+
+test("a new chat has no run until someone speaks in it: the first stream.send starts the default model slot in the chat's own folder, and a chat of several people starts nobody", { timeout: 120_000 }, async t => {
+  const root = tempHome(t);
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_TRANSCRIPTS: transcripts });
+  t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
+  fs.mkdirSync(transcripts);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [transcripts], sessions: { install: false, thread_socket: "on" } }));
+  const d = await start({ root, presence: present, log: () => {}, kernel: true, kernelPresence: { check: async () => null } });
+  t.after(() => d.stop());
+  const owner = kernelCaller(d, root);
+  const made = await owner("work.chat.create", { title: "Fresh" });
+  assert.ok(made.data, JSON.stringify(made.error));
+  const chat = made.data.chat;
+  assert.equal((await owner("work.chat.get", { chat })).data.slots.length, 0, "no run yet");
+  const opened = await owner("stream.open", { chat });
+  assert.ok(opened.data, JSON.stringify(opened.error));
+  const logs = d.registry.modules.get("stream").handle.logs;
+  const texts = () => { const fr = logs.get(chat).read(0); return fr.filter(f => f.type === "session.text-done").map(done => fr.filter(f => f.type === "session.text-delta" && f.data.message === done.data.message && !f.data.reasoning).map(f => String(f.data.text)).join("")); };
+  const sent = await owner("stream.send", { chat, text: "hello there" });
+  assert.ok(sent.data, JSON.stringify(sent.error));
+  await until(async () => texts().length >= 1, "the first reply", 60_000);
+  assert.deepEqual(texts(), ["echo: hello there"]);
+  const got = (await owner("work.chat.get", { chat })).data;
+  assert.equal(got.slots.length, 1, "one run, started by the first send");
+  assert.ok(fs.existsSync(path.join(root, "chats", chat, "work")), "in the chat's own folder");
+  const again = await owner("stream.send", { chat, text: "and more" });
+  assert.ok(again.data, JSON.stringify(again.error));
+  await until(async () => texts().length >= 2, "the second reply", 60_000);
+  assert.equal((await owner("work.chat.get", { chat })).data.slots.length, 1, "still one run");
+  // the chat's status follows its run: not "working" once the turn is over
+  await until(async () => { const row = (await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat); return row && row.status === "idle"; }, "the chat to be idle after the turn", 30_000);
+  assert.ok(((await owner("work.chat.list", {})).data.chats.find(r => r.chat === chat) || {}).last_active, "and last active is kept");
+});

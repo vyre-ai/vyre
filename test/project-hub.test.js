@@ -54,6 +54,11 @@ test("a chat's record is made by the kernel's chat.created, filled by a run's st
   d.events.emit("threads", "thread.stopped", { thread, chat: chat.id, code: 0, reason: "done" });
   const done = await until(async () => { const r = await q(); return r && r.data.status === "idle" ? r : null; }, "the chat to go idle");
   assert.ok(done.data.last_active);
+  // a turn ending is not the run stopping: the run's status says working, then waiting, and the chat follows
+  d.events.emit("threads", "thread.status", { thread, chat: chat.id, status: "working" });
+  await until(async () => { const r = await q(); return r && r.data.status === "working" ? r : null; }, "the chat to be working");
+  d.events.emit("threads", "thread.status", { thread, chat: chat.id, status: "waiting" });
+  await until(async () => { const r = await q(); return r && r.data.status === "idle" ? r : null; }, "the chat to be idle again after the turn");
   // a person added to the chat shows in the mirror
   await d.kernel.gateway.grants.chats.change(admin, chat.id, { add_assistants: [] }).catch(() => {});
   // the same run starting again is the same record, working again

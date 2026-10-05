@@ -510,11 +510,6 @@ export class Switchboard {
       const who = this.speaker(thread);
       payload = { ...payload, ...(payload.provider === undefined ? { provider: who.provider } : {}), ...(payload.model === undefined ? { model: who.model } : {}), ...(payload.account === undefined ? { account: who.account } : {}) };
     }
-    // The run's start, end and rename say which chat the run is in (One Chat): the Chat record is kept from these. Not on every event: a reply's deltas are many.
-    if ((type === "thread.started" || type === "thread.stopped" || type === "thread.renamed") && payload && payload.chat === undefined) {
-      const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
-      if (row && row.chat) payload = { ...payload, chat: row.chat };
-    }
     // What a one-turn provider said, kept to hand back to the session's own provider when the turn ends.
     const once = this.once.get(thread);
     if (once && type === "thread.text" && payload && payload.done && !payload.notice && payload.message !== "vyre" && payload.kind === undefined) once.reply = cut(`${once.reply}\n${payload.text || ""}`.trim(), 4000);
@@ -537,6 +532,11 @@ export class Switchboard {
   }
 
   emitRaw(type, payload, thread, project) {
+    // The run's start, end, status and rename say which chat the run is in (One Chat): the Chat record is kept from these. Not on every event: a reply's deltas are many.
+    if ((type === "thread.started" || type === "thread.stopped" || type === "thread.renamed" || type === "thread.status") && payload && payload.chat === undefined) {
+      const row = /** @type {any} */ (this.db.prepare("SELECT chat FROM threads_runs WHERE id = ?").get(thread));
+      if (row && row.chat) payload = { ...payload, chat: row.chat };
+    }
     const where = { thread, project: project || undefined };
     try { return this.deps.emit(type, { thread, ...payload }, where); }
     catch (e) {

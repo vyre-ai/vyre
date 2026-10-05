@@ -25,6 +25,8 @@
 // module was down is lost (a hard crash may repeat the last 100 ms of one thread; a stop is exact).
 
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { migrate } from "../store/index.js";
 import { createAdapter } from "./adapter.js";
 import { whoAnswers, mentionedIn } from "./routing.js";
@@ -596,6 +598,9 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
     if (m.held) m.held.push(e); else project(m, e);
   }
 
+  /** A chat's own working folder, where a run with no folder of its own works: `<home>/chats/<chat id>/work`. @param {string} grp */
+  const chatFolder = grp => { const root = ctx.paths && ctx.paths.root; if (!root) throw fail("bad_input", "this chat has no folder to work in: name its cwd"); const d = path.join(String(root), "chats", grp, "work"); fs.mkdirSync(d, { recursive: true }); return d; };
+
   // ---- runs started outside the stream (One Chat) -----------------------------------------------------
 
   /**
@@ -792,6 +797,14 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
         return { session: grp, message, duplicate: true, ...(fo ? { group: fo.data.group, answers: fo.data.members } : { answers }) };
       }
       await adoptRuns(grp, author);
+      // One Chat: a chat of one person with nobody in it who answers yet (a new chat) gets the default model slot, and this send starts its run in the chat. A chat of several people never does: an assistant
+      // does not jump into a conversation between people.
+      if (kernelOn() && g.bots.size === 0 && g.people.size === 1 && !(Array.isArray(i.to) && i.to.length)) {
+        const who = `model:claude/default#${crypto.randomBytes(3).toString("hex")}`;
+        join(grp, who, { role: "default", cwd: chatFolder(grp) });
+        const slot = g.bots.get(who);
+        if (slot) { slot.kind = "run"; save(slot); g.dflt = who; }
+      }
       const parts = participants(g);
       const mentions = mentionedIn({ participants: parts, text, mentions: i.mentions });
       /** @type {string[]} */ let to;
@@ -806,7 +819,8 @@ export function createGroups({ ctx, logs, db, now = Date.now, replyPort, standIn
       if (to.length > 8) throw fail("bad_input", "at most 8 assistants answer one message");
       for (const id of to) {
         const m = g.bots.get(id);
-        if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
+        if (m && !m.thread && !m.cwd && !cwd && kernelOn()) { m.cwd = chatFolder(grp); save(m); } // a run with no folder of its own works in the chat's
+        else if (m && !m.thread && !m.cwd && !cwd) throw fail("bad_input", `${id} has no folder to work in: pass cwd`);
       }
 
       // Kernel on: the kernel takes the words first (a person's own token, with the chat in it), and a session token for each assistant that will answer

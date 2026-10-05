@@ -94,6 +94,7 @@ export default {
       hear("project.created", p => (p && typeof p.project === "string" ? hubOf().ensureProject(p.project, p.name) : null));
       hear("thread.started", p => hubOf().onStarted(p));
       hear("thread.stopped", p => hubOf().onStopped(p));
+      hear("thread.status", p => hubOf().onStatus(p));
       // a terminal session's chat was made (the switchboard, from the Harness's SessionStart)
       hear("thread.chat", p => hubOf().onChatLinked(p));
       // the kernel's own chat.created and chat.changed, passed on by the daemon (they are visible to the Space's owner only, which the daemon speaks as)
