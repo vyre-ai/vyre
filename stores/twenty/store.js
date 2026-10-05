@@ -91,6 +91,8 @@ export class TwentyStore {
     fs.mkdirSync(this.dir, { recursive: true, mode: 0o700 });
     fs.writeFileSync(path.join(this.dir, "types.json"), JSON.stringify([...this.plans.values()].map((p) => ({ def: p.def, plural: p.plural }))), { mode: 0o600 });
   }
+  /** Make everything a first use would make, now: the mirror columns of every type. Used when a database is saved for new Spaces, so none of them pays for it at its first record. */
+  async prepare() { for (const p of this.plans.values()) await this.#attrColumns(p); }
   /** @param {string} type */
   #plan(type) { const p = this.plans.get(type); if (!p) throw new StoreError("unknown_type", `no type ${type}`); return p; }
   /** @param {string} singular */ planBySingular(singular) { for (const p of this.plans.values()) if (p.singular === singular) return p; return null; }

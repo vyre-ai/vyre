@@ -36,7 +36,9 @@ test("the plan has one entry per view the Records can hold, with deterministic i
   const plan = viewsPlan(p, "spc_a");
   assert.deepEqual(plan.map((v) => [v.name, v.view.type]), [["all", "TABLE"], ["board", "KANBAN"], ["cal", "CALENDAR"]], "a dashboard has no Records form");
   assert.equal(plan[0].id, viewId("spc_a", "matter", "all"));
-  assert.notEqual(viewId("spc_a", "matter", "all"), viewId("spc_b", "matter", "all"));
+  assert.equal(viewId("spc_a", "matter", "all"), viewId("spc_b", "matter", "all"), "the Space is not part of it: a Space has its own Twenty, and one made from the saved database keeps its views");
+  assert.notEqual(viewId("spc_a", "matter", "all"), viewId("spc_a", "matter", "board"));
+  assert.notEqual(viewId("spc_a", "matter", "all"), viewId("spc_a", "lead", "all"));
   assert.match(plan[0].id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/);
   assert.deepEqual(plan[0].fields, [{ field: "area", position: 0 }, { field: "fee", position: 1 }]);
   assert.deepEqual(plan[0].sort, { field: "fee", direction: "DESC" });

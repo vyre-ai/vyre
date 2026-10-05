@@ -145,18 +145,8 @@ export function createStoreFor(cfg) {
     fs.mkdirSync(sdir, { recursive: true, mode: 0o700 });
     const store = createTwentyStore({ space, client: new TwentyClient({ url: p.url, key: () => fs.readFileSync(p.keyFile, "utf8").trim() }), dir: sdir, webhookSecret: fs.readFileSync(p.webhookSecretFile, "utf8").trim() });
     // the kernel's own types are a kernel act at start (idempotent), like a module's `needs.types`
-    // Only the ones this Space does not have yet: a core type a Kit extended (contact with its own fields) is never put back to its bare shape on a restart.
     const tc = Date.now();
-    const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
-    const fresh = CORE_TYPES.filter((t) => !known.has(t.name));
-    if (fresh.length) await store.define({ add_types: [...fresh] });
-    // A new Space starts with the base Kit (Contact, Lead, Appointment, Client, Subscriber, Project): once, when its core types are made, never on a restart or on an older Space.
-    if (fresh.length === CORE_TYPES.length) {
-      const base = kitFromLibrary("base").includes.types;
-      await store.define({ add_types: base.filter((/** @type {any} */ t) => !known.has(t.name) && !CORE_TYPES.some((c) => c.name === t.name)), change_types: base.filter((/** @type {any} */ t) => CORE_TYPES.some((c) => c.name === t.name)) });
-    }
-    // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
-    { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
+    await defineCore(store, log);
     log(`phase core types: ${((Date.now() - tc) / 1000).toFixed(1)}s`);
     // the firewall rules are the root helper's to derive from the Space's real network (docs/work/records.md, "Root helper"); a guessed subnet written here would be wrong
     fs.writeFileSync(choiceFile, JSON.stringify({ kind: "twenty", name, ...(/** @type {any} */ (p).port ? { host: "127.0.0.1", port: /** @type {any} */ (p).port } : {}) }), { mode: 0o600 });
@@ -167,4 +157,23 @@ export function createStoreFor(cfg) {
   };
   storeFor.plan = () => planStore({ dir: path.join(cfg.home, "kernel"), mode, server: cfg.server, ...(cfg.preflight ? { preflight: cfg.preflight } : {}) });
   return storeFor;
+}
+
+/**
+ * A Space's own types at start: the core types it does not have yet, then (only when it had none) the base Kit, then links moved onto relations if the Space is older. Idempotent. Also what the saved
+ * database for new Spaces is built with (stores/twenty/live/build-golden.mjs), so a Space made from it has already done all of this.
+ * @param {any} store @param {(line: string) => void} [log]
+ */
+export async function defineCore(store, log = () => {}) {
+  // Only the ones this Space does not have yet: a core type a Kit extended (contact with its own fields) is never put back to its bare shape on a restart.
+  const known = new Set((await store.types()).map((/** @type {any} */ t) => t.name));
+  const fresh = CORE_TYPES.filter((t) => !known.has(t.name));
+  if (fresh.length) await store.define({ add_types: [...fresh] });
+  // A new Space starts with the base Kit (Contact, Lead, Appointment, Client, Subscriber, Project): once, when its core types are made, never on a restart or on an older Space.
+  if (fresh.length === CORE_TYPES.length) {
+    const base = kitFromLibrary("base").includes.types;
+    await store.define({ add_types: base.filter((/** @type {any} */ t) => !known.has(t.name) && !CORE_TYPES.some((c) => c.name === t.name)), change_types: base.filter((/** @type {any} */ t) => CORE_TYPES.some((c) => c.name === t.name)) });
+  }
+  // a Space made when links were urn text is moved onto relations once, here (a Space already on relations: one metadata read)
+  { const up = await store.upgradeLinks(); if (up.applied) log(`links moved to relations: ${up.changes.join("; ")}`); }
 }

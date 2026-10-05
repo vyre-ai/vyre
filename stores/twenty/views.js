@@ -14,9 +14,9 @@ import { optionValue } from "./plan.js";
 const KIND = { list: "TABLE", board: "KANBAN", calendar: "CALENDAR" };
 const ICON = { list: "IconTable", board: "IconLayoutKanban", calendar: "IconCalendar" };
 
-/** One id per view of one type of one Space: a UUID made from the three, so the same view is always the same row. @param {string} space @param {string} type @param {string} name */
-export function viewId(space, type, name) {
-  const h = createHash("sha256").update(`vyre-view\0${space}\0${type}\0${name}`).digest("hex");
+/** One id per view of one type: a UUID made from the type and the view's name, so the same view is always the same row. A Space has its own Twenty, so the Space's name is not part of it: a Space started from the saved database (provision.js findGolden) keeps the views that database made. @param {string} _space @param {string} type @param {string} name */
+export function viewId(_space, type, name) {
+  const h = createHash("sha256").update(`vyre-view\0${type}\0${name}`).digest("hex");
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
 }
 
