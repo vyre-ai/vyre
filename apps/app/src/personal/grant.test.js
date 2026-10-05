@@ -10,6 +10,7 @@ import path from "node:path";
 import { IdentityHome, FileBackend, newServerKey } from "../../../../core/memory/identity/home.js";
 import { newDeviceKey, ecdhFrom, fingerprint } from "../../../../lib/keywrap.js";
 import { payloadHash } from "../real/payload-hash.js";
+import { signOf } from "../../../../lib/one-yes.js";
 import { grantServer, answerAsk, revokeServer, yesRequest, grantLine } from "./grant.js";
 
 function world(/** @type {any} */ t) {
@@ -81,4 +82,9 @@ test("revoke: the server locks, the pin goes, and nothing is answered again", as
   assert.equal(w.pinned.size, 0);
   assert.equal(w.home.grants().length, 0);
   await assert.rejects(() => answerAsk({ call: w.call, agree: w.agree, granted: w.pinned }), { code: "needs_yes" });
+});
+
+test("grant: the request this phone signs is exactly what the server's one-yes verifier expects", () => {
+  const status = { id: "per_alex", server: "0123456789abcdef" };
+  assert.deepEqual(yesRequest(status), signOf("vault", { op: "memory.identity.unlock", fields: { identity: status.id, server: status.server } }));
 });
