@@ -122,8 +122,9 @@ export default {
           dbh.exec("CREATE TABLE IF NOT EXISTS work_flags (key TEXT PRIMARY KEY, at INTEGER NOT NULL)");
           if (dbh.prepare("SELECT 1 FROM work_flags WHERE key = 'access-restore'").get()) return;
           const k = kernelOf();
+          const general = await hubOf().generalProject();
           await k.ask.request(k.serviceChain("work"), {
-            title: "Restore who could see your projects", record: `vyre://${k.space}/project/access`,
+            title: "Restore who could see your projects", record: general.urn,
             doer: { kind: "person", id: String(k.owner), space: k.space }, output: { kind: "decision" }, source: "manual",
             note: `Before this update ${n} project access row${n === 1 ? "" : "s"} said which of your agents could reach which project. They are kept, and nothing reaches a project until you restore them: run projects.access.restore, which turns each into the grant it was, in your own call. What you had revoked stays revoked.`,
           });
