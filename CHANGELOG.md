@@ -4,6 +4,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- fix(work,memory): `work.space-brief` (modules only: the Space and its record types, definitions only; the environment brief reads it) is in this branch's work module, where the sessions side and its test already were; the memory.space.* tests give the kernel handle a `memory` with `Object.create(handle, { memory })` (the handle's own `memory` is read only now).
 - fix(memory)!: an unlock ask is signed over sorted-key canonical JSON (kernel/core/canonical.js), not plain `JSON.stringify`: field order never decides validity. `finish` now checks on the server that a standing grant matches the asking server's fingerprint (before, any grant let any ask finish); a grant for server A cannot finish an ask from server B. Test: core/memory/identity/grant-server.test.js.
 - feat(memory): `memory.identity.status` also returns `server_key` (this server's public JWK, which the phone pins when the person says yes to the grant) and `id` (the identity id the grant proof is over). Public data only.
 - fix(memory): `memory.upgrade.plan` and `memory.upgrade.move` answer only the spaces module (`module:spaces`), not any module caller (reviewer-5 LOW).
