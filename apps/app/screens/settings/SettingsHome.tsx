@@ -9,6 +9,7 @@ import { showingName } from "../shell/real-model";
 import { useDevices } from "../devices/state";
 import { settingsGroups } from "./logic.js";
 import { backupLine } from "../shell/basic.js";
+import { MakeServer } from "./MakeServer";
 import { VERSION } from "./data";
 import { MOCK, tool } from "../../src/real/box";
 import { useMembers } from "../spaces/state";
@@ -34,13 +35,16 @@ export function SettingsHome() {
   return (
     <Frame title="Settings" top>
       {settingsGroups(name, MOCK ? undefined : role).map((g) => (
-        <Sec key={g.title} title={g.title}>
+        <View key={g.title} className="gap-s4">
+        <Sec title={g.title}>
           <Card flush>
             {g.rows.map(([t, sub, href, icon], i) => (
               <View key={href}>{i ? <Divider inset={60} /> : null}<Row dense chevron state={state(href)} lead={<IconTile name={icon as IconName} />} title={t} sub={sub} onPress={() => router.push(href as never)} /></View>
             ))}
           </Card>
         </Sec>
+        {g.title === "Devices" ? <MakeServer /> : null}
+        </View>
       ))}
       {backup ? <Sec title="Backup"><Card flush><Row dense lead={<IconTile name="shield" />} title={backup} /></Card></Sec> : null}
       <View className="items-center pt-s6"><Text size="secondary" tone="faint">{`Vyre ${VERSION}`}</Text></View>

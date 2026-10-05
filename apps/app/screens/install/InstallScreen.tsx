@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { spaceName as spaceNameOf } from "../../src/state/space-name.js";
 import { Linking, Platform, ScrollView, Share, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useRouter } from "expo-router";
@@ -222,7 +223,7 @@ export function InstallScreen({ start, link: linkIn, external }: { start?: "crea
         setOwned(all.length);
         // A Mac with a name and no space yet (closed after the name) carries on at where Vyre runs.
         if (first && dk === "mac" && all.length === 0) setStep((s) => (s === "spaces" ? "macwhere" : s));
-        const mine = kept ? all.find((r) => r.setup && (r.displayName || r.label) === kept.spaceName)?.id ?? null : null;
+        const mine = kept ? all.find((r) => r.setup && spaceNameOf(r) === kept.spaceName)?.id ?? null : null;
         if (mine) setSpaceId(mine);
         setElsewhere(setupElsewhere(all, mine));
       } catch (e) {

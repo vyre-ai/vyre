@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(app): one function names a space (src/state/space-name.js): the switcher, Settings, Spaces, Devices, Install, tasks and the store all call it, and a test fails if a screen builds a name by hand. The "pro" tier value is gone (basic and cloud only). feat(app): in the Mac app, Settings has "Make this Mac a server" under the devices section: one line (it must stay on and will run Records for My Cloud), pressed by the person, then the same setup as /u/setup/server. Hidden everywhere else.
+
 - fix(app): Drive reads files.drive.space.list's real extras (core/files/space-drive.js): `names` shows a folder by its name (a project's name, a chat's title) and `folders` lists a project's chat folders with `open`, greyed and not opened when false (the guessed entry fields are gone). "Set up My Cloud" goes to /u/setup/server (native-core's setup question). Merged work/ui f4fde8fdc.
 
 - feat(app): the user's names for spaces. A personal space with no server (the box's tier "basic") is "Personal"; a personal space on the person's own server (tier "cloud") is "My Cloud"; a team space keeps its own name with a small "Cloud" tag in the switcher. The Basic gate reads only the box's tier field. Gated places say "This needs a Cloud space" with a "Set up My Cloud" button; the backup line reads "Not backed up: join a team or set up My Cloud" and takes the destination from memory.backup.status ({ to, last, state }). The Spaces screen and Devices use the same names.

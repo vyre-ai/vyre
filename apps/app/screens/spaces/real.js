@@ -14,7 +14,7 @@ export function homeWords(/** @type {any} */ home) {
   return k === "this-computer" ? "this computer" : k === "server" || k === "vps" ? "your server" : k ? String(k) : "an unknown home";
 }
 
-import { spaceName } from "../shell/real-model.ts";
+import { spaceName } from "../../src/state/space-name.js";
 
 /** @param {any} data spaces.list: an array, only spaces that have their home. */
 export function shapeSpaces(data) {

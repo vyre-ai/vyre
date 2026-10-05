@@ -1,7 +1,7 @@
 // @ts-check
 // A device's spaces on the real box (UX-17, UX-18): spaces.devices.list rows as the lines the Device screen shows, and the words for each refusal. Pure.
 
-import { spaceName } from "../shell/real-model.ts";
+import { spaceName } from "../../src/state/space-name.js";
 
 /** @typedef {{ space: string, name?: string, label?: string, displayName?: string, role?: string, enrolled?: boolean, removed?: boolean, lent?: boolean }} SpaceRow */
 
