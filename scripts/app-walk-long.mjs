@@ -122,7 +122,7 @@ await scenario("L: the browser start screen pairs with the long code and three w
   await c.pg.getByText("Continue", { exact: true }).first().click();
   await c.pg.waitForFunction(() => /same three words|three words/i.test(document.body.innerText), null, { timeout: 40000 });
   // the page shows its three words (the add-device step) once the relay has carried its request to the owner
-  const words = async () => { const t = await c.pg.locator("body").innerText(); const m = t.match(/\n([a-z]+ [a-z]+ [a-z]+)\n/i); return m ? m[1].toLowerCase() : null; };
+  const words = async () => { const t = await c.pg.locator("body").innerText(); const lines = t.split("\n").map((x) => x.trim()).filter(Boolean); const m = lines.reverse().find((x) => /^[a-z]+ [a-z]+ [a-z]+$/i.test(x)); return m ? m.toLowerCase() : null; };
   let pageWords = null;
   for (let i = 0; i < 40 && !pageWords; i++) { pageWords = await words(); if (!pageWords) await new Promise((r) => setTimeout(r, 1000)); }
   await c.shot("words");
