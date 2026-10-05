@@ -16,7 +16,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 import { createTwentyStore } from "./store.js";
 import { TwentyClient } from "./client.js";
-import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
+import { provisionSpace, spaceDir, realRunner, MEMORY_PROFILES, autoProfile, keyHealth, rotateApiKey, KEY_WARN_DAYS } from "./provision.js";
 import { CORE_TYPES } from "../../records/core-types.js";
 import { helperPresent, helperRunner } from "./helper.js";
 import { isPackaged } from "../../kernel/devbuild.js";
@@ -41,8 +41,15 @@ export const SMALL_BOX_NOTE = "This machine cannot run the record store for a ne
 /** What the person may do about it: host the space on their server, or stop. ("create", the built-in store, is accepted when the owner asks for it by name, and is not offered.) */
 export const SMALL_BOX_CHOICES = Object.freeze(["server", "cancel"]);
 
+/** What one Space's Twenty has been MEASURED to hold at its peak, in MB, per profile (stores/twenty/live/measure-live.mjs on a real box). `small` is its caps (not measured). */
+export const MEASURED = Object.freeze({ tiny: 2221 });
+/** What a Space's Twenty needs now on a machine with `totalMb` of memory: the profile the machine gets (tiny under about 6 GB) with its measured peak plus headroom for the gateway and the OS. @param {number} [totalMb] */
+export const requireFor = (totalMb = os.totalmem() / 1048576) => (autoProfile(totalMb) === "tiny" ? Object.freeze({ memoryMb: MEASURED.tiny + 300, diskMb: REQUIRE.diskMb }) : REQUIRE);
+/** The one plain line a person reads when a server has no room for another Space's store. */
+export const SERVER_FULL = "This server is full. Use a bigger server for another space.";
+
 /** How many more Spaces' Twenty this box can take now: what is free beyond one Space's measured need, plus headroom, divided by the need. @param {number} availableMb */
-export const spacesThatFit = (availableMb) => Math.max(0, Math.floor((availableMb - 300) / (REQUIRE.memoryMb - 300)));
+export const spacesThatFit = (availableMb, totalMb = os.totalmem() / 1048576) => { const need = requireFor(totalMb).memoryMb; return Math.max(0, Math.floor((availableMb - 300) / (need - 300))); };
 
 /** `spc_abcdefghijkl` -> `spc-abcdefghijkl` (a compose project name has no underscore). @param {string} space */
 export const nameOf = (space) => space.replace(/_/g, "-");
@@ -53,7 +60,7 @@ const sh = (/** @type {string} */ cmd, /** @type {string[]} */ args) => new Prom
  * Can this box run a Space's Twenty? Never throws. `memoryMb` is what is available now (free plus reclaimable), not what is installed.
  * On a box the daemon runs in a container with no Docker of its own: the capability is the Space helper (a root helper on the host, reached through a spool), so the check asks for IT, not for `docker`.
  * On a Mac, Docker is Colima's, reached through the docker context the install set.
- * @param {{ dir: string, readMeminfo?: () => string, docker?: () => Promise<boolean>, helper?: { spool?: string, state?: string } | false, statfs?: (p: string) => { bavail: number, bsize: number } }} o
+ * @param {{ dir: string, totalMb?: number, readMeminfo?: () => string, docker?: () => Promise<boolean>, helper?: { spool?: string, state?: string } | false, statfs?: (p: string) => { bavail: number, bsize: number } }} o
  * @returns {Promise<{ ok: boolean, reasons: string[], facts: { memoryAvailableMb: number | null, diskFreeMb: number | null, docker: boolean, helper: boolean, root: boolean, platform: string } }>}
  */
 export async function preflight(o) {
@@ -66,7 +73,8 @@ export async function preflight(o) {
   const docker = helper || await (o.docker ?? (async () => (await sh("docker", ["info", "--format", "{{.ServerVersion}}"])) !== null))();
   const root = typeof process.getuid === "function" && process.getuid() === 0;
   if (!docker) reasons.push(process.platform === "darwin" ? "Docker is not running on this Mac (Twenty runs in Colima)" : "this machine cannot run Docker for the space's store (no Space helper here and no Docker for this user)");
-  if (mem !== null && mem < REQUIRE.memoryMb) reasons.push(`not enough free memory: ${mem} MB available, a Space's Twenty needs about ${REQUIRE.memoryMb} MB`);
+  const need = requireFor(o.totalMb);
+  if (mem !== null && mem < need.memoryMb) reasons.push(`${SERVER_FULL} (${mem} MB of memory free, a Space's Twenty needs about ${need.memoryMb} MB)`);
   if (disk !== null && disk < REQUIRE.diskMb) reasons.push(`not enough disk: ${disk} MB free, a Space's Twenty needs about ${REQUIRE.diskMb} MB`);
   return { ok: reasons.length === 0, reasons, facts: { memoryAvailableMb: mem, diskFreeMb: disk, docker, helper, root, platform: process.platform } };
 }
@@ -125,7 +133,7 @@ export function createStoreFor(cfg) {
     const runner = cfg.runner ?? (viaHelper ? helperRunner(name, { ...(cfg.helper || {}), log }) : realRunner());
     const reach = cfg.reach ?? (viaHelper || cfg.gatewayContainer ? "alias" : "ip");
     log(`store for ${space}: provisioning Twenty`);
-    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner, reach, memory: cfg.memory ?? "small", gatewayContainer: cfg.gatewayContainer ?? null, log });
+    const p = await (cfg.provision ?? provisionSpace)({ home: twentyHome, space: name, runner, reach, memory: cfg.memory ?? "auto", gatewayContainer: cfg.gatewayContainer ?? null, log });
     // the Space's key lives a year: checked now and every day, rotated well before the end, and a failure to rotate is loud (never a quiet countdown)
     const checkKey = async () => {
       const h = keyHealth({ home: twentyHome, space: name });
