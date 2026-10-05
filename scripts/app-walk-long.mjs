@@ -125,8 +125,9 @@ await scenario("L: the browser start screen pairs with the long code and three w
   const pageWords = await c.text();
   // the owner's side: it is asked the same question; the script answers with the words the page shows
   let asking = null;
-  for (let i = 0; i < 40 && !asking; i++) { const p = await box("wink.phone.pairing", {}); if (p.data?.asking) asking = p.data; else await new Promise((r) => setTimeout(r, 1000)); }
-  need(asking, "the owner was never asked (wink.phone.pairing)");
+  let last = null;
+  for (let i = 0; i < 40 && !asking; i++) { const p = await box("wink.phone.pairing", {}); last = p; if (p.data?.asking) asking = p.data; else await new Promise((r) => setTimeout(r, 1000)); }
+  need(asking, `the owner was never asked (wink.phone.pairing): ${JSON.stringify(last).slice(0, 300)}`);
   console.log("OWNER ASKED", JSON.stringify(asking).slice(0, 400));
   console.log("PAGE", pageWords.slice(0, 500));
   return "words step reached";
