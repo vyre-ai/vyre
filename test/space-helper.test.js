@@ -302,6 +302,31 @@ test("space helper: the Space cap, the up rate and one-at-a-time answer busy or 
   assert.equal(r.status(held).state, "busy");
 });
 
+test("space helper: a lock whose run is gone is taken over at once, and a fresh install clears what an earlier install left (locks, claims, the up-rate window, old answers) and keeps every Space", opts, async t => {
+  const r = rig(t);
+  await r.prime();
+  const first = r.ask("up aa\n"); await r.helper();
+  assert.equal(r.status(first).state, "ok");
+  const priv = path.join(r.SP, "private");
+  // a lock left by a run that no longer exists: not busy
+  fs.mkdirSync(path.join(priv, "lock-aa")); fs.writeFileSync(path.join(priv, "lock-aa", "pid"), "999999\n");
+  const again = r.ask("stop aa\n"); await r.helper();
+  assert.equal(r.status(again).state, "ok", JSON.stringify(r.status(again)));
+  assert.equal(fs.existsSync(path.join(priv, "lock-aa")), false, "the lock is released at the end of the request");
+  // what an earlier install left: a lock with no owner, a claim, a full rate window, an old answer
+  fs.mkdirSync(path.join(priv, "lock-bb")); fs.mkdirSync(path.join(priv, "claim"), { recursive: true }); fs.writeFileSync(path.join(priv, "claim", "req-" + "a".repeat(32)), "up bb\n");
+  fs.writeFileSync(path.join(priv, "rate-up"), `${Math.floor(Date.now() / 60000)} 1000\n`);
+  const old = path.join(r.SP, "status", "status-" + "b".repeat(32)); fs.writeFileSync(old, "{}"); const past = new Date(Date.now() - 3600_000); fs.utimesSync(old, past, past);
+  const recent = path.join(r.SP, "status", "status-" + "c".repeat(32)); fs.writeFileSync(recent, "{}");
+  const inst = /** @type {any} */ (await r.run(["space-helper", "install"]));
+  assert.equal(inst.code, 0, inst.out);
+  for (const gone of ["lock-bb", "rate-up", path.join("claim", "req-" + "a".repeat(32))]) assert.equal(fs.existsSync(path.join(priv, gone)), false, `${gone} was cleared`);
+  assert.equal(fs.existsSync(old), false, "an answer nobody waits for is cleared"); assert.equal(fs.existsSync(recent), true, "a recent answer is kept");
+  assert.ok(fs.existsSync(path.join(priv, "spaces", "aa", "record")), "the Space is kept");
+  const up = r.ask("up bb\n"); await r.helper();
+  assert.equal(r.status(up).state, "ok", JSON.stringify(r.status(up)));
+});
+
 test("space helper: a flood is cut at the spool cap, and a stop still runs afterwards", opts, async t => {
   const r = rig(t);
   await r.prime();
