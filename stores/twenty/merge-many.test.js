@@ -38,6 +38,7 @@ async function world(kind) {
 for (const kind of ["sqlite", "twenty"]) {
   test(`merge over a many-to-many link moves the link rows onto the surviving record (${kind})`, async () => {
     const { r, chain } = await world(kind);
+    if (kind === "sqlite") await r.define(chain, { add_types: [...CORE_TYPES] });
     await r.define(chain, { add_types: [MATTER] });
     const a = await r.create(chain, "contact", { name: "Jane Doe", email: "jane@x.test" });
     const b = await r.create(chain, "contact", { name: "J. Doe", email: "jd@x.test" });
@@ -45,7 +46,7 @@ for (const kind of ["sqlite", "twenty"]) {
     const m1 = await r.create(chain, "matter", { title: "one", contacts: [{ urn: b.urn }] });
     const m2 = await r.create(chain, "matter", { title: "two", contacts: [{ urn: b.urn }, { urn: c.urn }] });
     const m3 = await r.create(chain, "matter", { title: "three", contacts: [{ urn: a.urn }, { urn: b.urn }] });
-    const res = await r.merge(chain, "contact", a.id, b.id);
+    const res = await r.merge(chain, "contact", a.id, b.id).catch(e => { console.log("MERGE FAIL", kind, e.code, e.message, e.stack.split("\n").slice(1,4).join(" | ")); throw e; });
     assert.equal(res.relinked, 3);
     const urns = async m => (await r.get(chain, "matter", m.id)).data.contacts.map(x => x.urn).sort();
     assert.deepEqual(await urns(m1), [a.urn]);
