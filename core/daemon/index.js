@@ -265,6 +265,9 @@ async function startLocked(opts, root, p, release) {
       // The connectors a Flow may call, with their route rules (no host, no secret): the vault's own list.
       connectors: async () => { const r = await registry.call("vault.service.catalog", {}, "module:leases"); return r.error ? {} : r.data.connectors; } });
     registry.deps.flowsHost = flowsHost;
+    // Every tool's static gates, its presence requirement and its asked requirement are decided by the kernel's one check (`authorize`) over the compiled rules (kernel/retrofit/gates.js; the golden set proves it changes no decision), not by the registry's inline predicates.
+    const { createLegacyGates } = await import("../../kernel/retrofit/gates.js");
+    registry.deps.gates = createLegacyGates({ registry });
     // `{{field:...}}` in an outward action: resolved from the record under the person the session's turn is for (their own grants, not the room's view), by the kernel's resolveFields.
     const { resolveFields } = await import("../../kernel/core/fields.js");
     registry.deps.resolveFields = async (/** @type {{ input: any, meta: any }} */ q) => {
