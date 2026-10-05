@@ -39,6 +39,8 @@ import { relayUrlProblem } from "../../lib/relay-url.js";
 import { createBridgeSecrets, createBridgeEndpoint, acceptDrive, bridgeServe, bridgeMakeBackend, pairFromHome, resumeServing, BRIDGE_TOOL, ACCEPT_TOOL, DRIVE_TOOL, SCAN_TOOL } from "./storage/bridge.js";
 import { createHolds, holdDrive } from "./storage/hold.js";
 import { seedFromKey } from "../../relay/client/join.js";
+import { createHomeMoves } from "./homemove.js";
+import { registerHomeMove } from "./homecall.js";
 
 const fail = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 const OFFER_TTL = 5 * 60_000;
@@ -884,10 +886,14 @@ export function createWink(inject = {}) {
     const poolTimer = poolLink ? setInterval(poolSync, 60_000) : null;
     poolTimer?.unref();
 
+    // Another home's pull of a project move (core/wink/homecall.js): the door admits a stranger home only while a move is open here.
+    const homeMoves = createHomeMoves();
+    registerHomeMove(ctx, { moves: homeMoves, relayUrl: () => (ctx.config && ctx.config.relay && typeof ctx.config.relay.url === "string" ? ctx.config.relay.url : "") });
     const timer = setInterval(sweep, 60_000);
     timer.unref();
     return {
       peers: pairing.peers,
+      homeMoves,
       holds,
       bridgeServe: serveBridge,
       homeServe: (/** @type {any} */ inner) => homeServe(pairing.peers, inner),

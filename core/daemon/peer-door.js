@@ -14,6 +14,7 @@ import { INVITEE_CALLS, WIRE_VERSION, PRESENCE_CODES } from "../../kernel/remote
 import { youngAt } from "../../kernel/identity/chain.js";
 import { verifyDevice } from "../wink/node/peer-wire.js";
 import crypto from "node:crypto";
+import { HOME_TOOL, HOME_LIMITS } from "../wink/homemove.js";
 
 /** The stream's `space` head: this home, not one of its hosted Spaces (a kernel call names its Space in the request). */
 export const PEER_HOME = "home";
@@ -24,7 +25,7 @@ const STREAM_ID = /^[A-Za-z0-9_-]{8,64}$/;
 const err = (/** @type {string} */ code, /** @type {string} */ message) => Object.assign(new Error(message), { code });
 
 /**
- * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, isServer?: (id: string) => boolean, lent?: (space: string, kernel: any) => any, onSession?: (caller: string, session: any) => void, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
+ * @param {{ kernel: any, registry: any, people?: { list(): any[] } | null, events?: { on(type: string, f: (e: any) => void): (() => void) | void } | null, now?: () => number, identityEntry?: (identity: string, eid: string, name?: string) => Promise<{ pub: string, alg?: string, held?: string, since?: number, founder?: boolean } | null>, boxId?: () => Promise<string | null>, isServer?: (id: string) => boolean, homeMoves?: { isOpen(space: string): boolean, any(): boolean, arrive(): void, begin(space: string): () => void } | (() => any), lent?: (space: string, kernel: any) => any, onSession?: (caller: string, session: any) => void, serverFor?: (space: string) => { serve(request: any, peer: any): Promise<any> } | null, memberWatchMs?: number, inviteeLimits?: { perInvite?: number, perIdentity?: number, perMinute?: number, perChannel?: number, perBox?: number, nonceMax?: number, idleMs?: number, presenceMs?: number }, callerFacts: (caller: string, policy: any, via: any, k: any, capsule: boolean, device: any) => any, log?: (m: string) => void }} o
  */
 export function createPeerDoor(o) {
   const log = o.log || (() => {});
@@ -348,6 +349,34 @@ export function createPeerDoor(o) {
       return door.serve(`device:${id}`, tool, input);
     } });
     log(`peer door: server ${id} opened a peer stream through the relay`);
+  };
+  // The home door: ANOTHER HOME (the target of a project move) reaching this one through the relay with no row of any kind. It may call exactly one tool, spaces.moves.pull, for the one Space the head
+  // names, and only while this home has a move open for that Space (wink.homeMove.open; closed or expired, the next request is refused and the stream ends). The protocol inside authenticates both
+  // Spaces with their own keys, so this door asks nothing of the caller beyond the move. The tool runs as the daemon on the stranger's behalf; an answer over the cap is refused, one request runs at a time.
+  const moves = () => (typeof o.homeMoves === "function" ? o.homeMoves() : o.homeMoves) || null;
+  door.homeArrive = () => { const m = moves(); if (m) m.arrive(); };
+  door.homeOpen = () => { const m = moves(); return Boolean(m && m.any()); };
+  door.acceptHome = (/** @type {any} */ stream, /** @type {{ homeId: string }} */ who, /** @type {any} */ head) => {
+    const id = String(who.homeId);
+    const space = head && head.pull && typeof head.pull.space === "string" ? head.pull.space : "";
+    /** @type {any} */ let session = null;
+    const closeSoon = (/** @type {string} */ why) => { const t = setTimeout(() => { try { session.close(why); } catch { /* closed */ } }, 200); if (t.unref) t.unref(); };
+    session = peerSession(streamPipe(stream), { first: 2, serve: async (/** @type {string} */ tool, /** @type {any} */ input) => {
+      const m = moves();
+      if (!m || !/^[A-Za-z0-9_-]{1,64}$/.test(space)) { closeSoon("no move"); throw err("denied", "no move is open here"); }
+      if (tool !== HOME_TOOL) throw err("denied", "another home may only ask for a move's pull");
+      if (!input || typeof input !== "object" || input.space !== space || typeof input.request !== "object" || input.request === null) throw err("bad_input", "a pull is { space, request } for the space this stream named");
+      let end;
+      try { end = m.begin(space); } catch (e) { if (/** @type {any} */ (e).code === "denied") closeSoon("move closed"); throw e; }
+      try {
+        const r = await o.registry.call(HOME_TOOL, { space, request: input.request }, "module:vyred", { door: true, onBehalfOf: `home:${id}` });
+        if (r && r.error) throw Object.assign(err(String(r.error.code || "internal"), String(r.error.message || "the call failed")), r.error.detail ? { detail: r.error.detail } : {});
+        const data = r ? r.data : null;
+        if (JSON.stringify(data === undefined ? null : data).length > HOME_LIMITS.answerChars) throw err("too_large", "that answer is over the limit; ask for less");
+        return data;
+      } finally { end(); }
+    } });
+    log(`peer door: a home (${id.slice(0, 8)}) opened a pull stream for ${space || "no space"}`);
   };
   return door;
 }
