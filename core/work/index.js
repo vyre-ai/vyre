@@ -19,6 +19,8 @@ import { delegateGrants } from "./team/delegate.js";
 import { createDoingLine } from "./team/doing.js";
 import { createMemoryEngine } from "./memory/index.js";
 import { exportKnow, importKnow, forgetKnow } from "./memory/move.js";
+import crypto from "node:crypto";
+import { holdersOf, createRing } from "../../lib/chat-keys.js";
 
 const obj = (properties = {}, required = []) => ({ type: "object", properties, required });
 const unavailable = () => Object.assign(new Error("the kernel is not wired on this box yet"), { code: "unavailable" });
@@ -507,7 +509,27 @@ export default {
       run: async (input, extra) => {
         if (Array.isArray(input.models) && input.models.length) throw Object.assign(new Error("a model joins a chat when it is first asked in it; start the chat and ask it there"), { code: "bad_input" });
         const chain = await chainOf(extra);
-        const made = await kernelOf().chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(input.id ? { id: String(input.id) } : {}), ...(input.ring ? { ring: input.ring } : {}) });
+        // A chat with a person in it is never in the clear on disk. When no device made the ring (a chat started by the CLI, a Flow), the server makes it: a chat key wrapped to each participant device's
+        // public agree point, kept only as the session lease. A participant with no agree point stops the start, by name.
+        let ring = input.ring, id = input.id ? String(input.id) : undefined, keys = null;
+        const k0 = kernelOf();
+        if (!ring && k0.chats && k0.chats.keys && typeof k0.chats.keys.adopt === "function") {
+          const me = chain.hops[0].actor.id;
+          const people = [...new Set([me, ...(Array.isArray(input.people) ? input.people.map(String) : [])])];
+          /** @type {Record<string, any>} */ let holders = {};
+          const missing = [];
+          for (const p of people) {
+            const r = await ctx.call("spaces.identity.devices", { person: p }).then((/** @type {any} */ x) => (x && x.data) || x).catch(() => null);
+            const devs = r && Array.isArray(r.devices) ? r.devices : [];
+            if (!devs.length) missing.push(p); else holders = { ...holders, ...holdersOf(devs) };
+          }
+          if (missing.length) throw fail("no_agree_point", `this chat cannot start: no key-agreement point for ${missing.join(", ")}. Their device must be updated and opened once.`);
+          id = id || `chat_${crypto.randomUUID()}`;
+          const made = createRing(id, holders);
+          ring = made.doc; keys = made.keys;
+        }
+        let made; try { made = await k0.chats.create(chain, { people: input.people || [], assistants: input.agents || [], ...(id ? { id } : {}), ...(ring ? { ring } : {}) }); } catch (e) { if (keys) keys.lock(); throw e; }
+        if (keys) k0.chats.keys.adopt(chain, keys);
         const rec = await hubOf().ensureChatRecord(made.id, { title: input.title || null, project: input.project || null, people: made.people, agents: made.assistants });
         return { chat: made.id, title: rec && rec.data.title, project: rec && rec.data.project && rec.data.project.urn, people: [...made.people], agents: [...made.assistants] };
       },
