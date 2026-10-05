@@ -859,7 +859,7 @@ test("space helper #90: a first start cut off midway leaves a database with an e
   const b = r.ask("up harlow\n"); await r.helper();
   assert.equal(r.status(b).state, "ok", JSON.stringify(r.status(b)));
   assert.match(fs.readFileSync(path.join(r.F, "purged"), "utf8"), /harlow/, "the empty database's volumes were removed");
-  assert.match(fs.readFileSync(path.join(r.SP, "private", "log"), "utf8"), /repair: this Space's database has an empty core schema/, "the log says what was repaired");
+  assert.match(fs.readFileSync(path.join(r.SP, "private", "log"), "utf8"), /repair: empty core schema from a cut off first start/, "the log says what was repaired");
   assert.ok(fs.existsSync(path.join(d, "ready")), "and the Space has its mark now");
   assert.ok(!fs.existsSync(path.join(r.F, "core-empty-harlow")));
 });
