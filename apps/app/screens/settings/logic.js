@@ -84,6 +84,7 @@ function all(/** @type {string} */ space) {
     { title: "More places", rows: [
       ["Memory", "What Vyre knows", "/u/memory", "memory"],
       ["Vault", "Logins, keys, cards", "/u/vault", "vault"],
+      ["Connections", "Services, servers and accounts", "/u/connections", "link"],
       ["Flows", "What runs by itself", "/u/flows", "flows"],
       ["Assistants", "juno, kit and @Engineer", "/u/settings/assistants", "assistants"],
     ] },
