@@ -596,6 +596,8 @@ const RELAY_ALLOWED = Object.freeze({
   spaces: ["work.chat.upgrade-plan", "work.chat.upgrade-move", "memory.upgrade.plan", "memory.upgrade.move"],
   memory: ["spaces.storage."],
   work: ["spaces.storage."],
+  // a terminal opened on a session resolves the thread as the person at it (threads.get answers for the chats that person is in)
+  term: ["threads.get"],
 });
 
 export class Registry {

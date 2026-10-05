@@ -189,7 +189,7 @@ test("live: a session that began before the stream (an empty log) is seeded from
   assert.deepEqual(seen.frames.map(x => x.cur), seen.frames.map((_, i) => i + 1));
 });
 
-test("live: term.open for a session opens in the session's folder and a typed line reaches the session's stream", { skip: process.platform !== "linux" && "the pty runs on the box", todo: "term.open reads the thread as the caller (ctx.call as), which carries no person; it needs the person relay (RELAY_ALLOWED term to threads.get, windows' work/spaces) once trunk has it" }, async t => {
+test("live: term.open for a session opens in the session's folder and a typed line reaches the session's stream", { skip: process.platform !== "linux" && "the pty runs on the box" }, async t => {
   const w = await own(t);
   const { port } = await serve(t, w);
   const id = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data.id;
