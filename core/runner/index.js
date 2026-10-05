@@ -196,6 +196,36 @@ export default {
       },
     });
 
-    return { async stop() { try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
+    // After a restart: the workspaces on this computer. Each names its Space (`space.id` beside the encrypted folder); the Space's home is asked whether this computer still has access. Access ended (an Offer
+    // withdrawn, the member removed or gone, while this computer was off or the daemon was down) deletes the workspace now, as a pushed revoke would; access that stands leaves it locked and encrypted, and a
+    // session on it is resumed from its last checkpoint with runner.start. A home that cannot be reached leaves it be and is asked again each minute (never faster).
+    let sweepTimer = null, stoppedSweep = false;
+    const sweepSpaces = async () => {
+      sweepTimer = null;
+      if (stoppedSweep || (ctx.config && ctx.config.role === "box")) return;
+      const root = path.join(ctx.paths.root, "runner", "spaces");
+      let dirs = []; try { dirs = fs.readdirSync(root); } catch { return; }
+      let unsure = 0;
+      for (const d of dirs) {
+        let id = ""; try { id = fs.readFileSync(path.join(root, d, "space.id"), "utf8").trim(); } catch { continue; }
+        if (!/^spc_[a-z0-9]{1,40}$/.test(id) || runners.has(id)) continue;
+        try {
+          const h = hostOf(); const k = ctx.kernel?.for?.(id);
+          if (!h || typeof h.identity !== "function" || !k || typeof k.call !== "function") { unsure++; continue; }
+          await h.identity();
+          const me = await k.call("lent.whoami", []);
+          const st = await k.call("lent.status", [{ device_key: me.device }]);
+          if (st && st.spaceAllows && st.memberAccepts) continue;   // access stands: the workspace stays locked and encrypted until runner.start
+          const r = await forSpace(id); await r.revoke(); runners.delete(id);
+        } catch (e) {
+          const code = String(/** @type {any} */ (e) && /** @type {any} */ (e).code || "");
+          if (code === "not_a_member" || code === "not_found" || code === "no_lease") { try { const r = await forSpace(id); await r.revoke(); runners.delete(id); } catch { unsure++; } }
+          else unsure++;
+        }
+      }
+      if (unsure && !stoppedSweep) { sweepTimer = setTimeout(() => { sweepSpaces().catch(() => {}); }, 60_000); sweepTimer.unref?.(); }
+    };
+    void sweepSpaces().catch(() => {});
+    return { async stop() { stoppedSweep = true; if (sweepTimer) clearTimeout(sweepTimer); try { off?.(); } catch {} try { offTurns?.(); } catch {} for (const l of lenders.values()) { try { l.stop(); } catch {} } for (const r of runners.values()) { try { await r.stopAll(); await r.lock(); } catch {} } runners.clear(); } };
   },
 };

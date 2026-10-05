@@ -48,9 +48,39 @@ const mergeLabels = (a, b) => ({ trust: weakest(a?.trust ?? "untrusted", b?.trus
  * must not leave a space's files mounted and readable (reviewer-2 R2).
  * @param {{ base: string, platform?: any, driver?: any }} o @returns {Promise<string[]>} the folders it closed
  */
+const spaceHash = (/** @type {string} */ space) => crypto.createHash("sha256").update(space).digest("hex").slice(0, 16);
+
+/**
+ * Sessions a runner that died left running: each session's process group is recorded (run/<space>.<session>.pid) when it starts and forgotten when it ends, so a restarted runner finds the ones that
+ * outlived it and ends them (only when the process is still the sandboxed agent that was recorded: a pid reused by something else is left alone). Returns how many it ended.
+ * @param {string} base @returns {number}
+ */
+export function endOrphans(base) {
+  let n = 0;
+  const run = path.join(base, "run");
+  let names = []; try { names = fs.readdirSync(run).filter(f => f.endsWith(".pid")); } catch { return 0; }
+  for (const f of names) {
+    const file = path.join(run, f);
+    try {
+      const rec = JSON.parse(fs.readFileSync(file, "utf8"));
+      const pid = Number(rec.pid); if (!Number.isInteger(pid) || pid < 2) throw new Error("bad");
+      let cmd = ""; try { cmd = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8"); } catch { cmd = ""; }
+      const stat = (() => { try { return fs.readFileSync(`/proc/${pid}/stat`, "utf8"); } catch { return ""; } })();
+      const started = stat ? stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19] : "";
+      // still the process we recorded: alive, and (where /proc says) the same start time
+      const same = process.platform === "linux" ? Boolean(stat) && (!rec.started || String(rec.started) === started) : (() => { try { process.kill(pid, 0); return true; } catch { return false; } })();
+      void cmd;
+      if (same) { for (const sig of ["SIGTERM", "SIGKILL"]) { try { process.kill(-pid, sig); } catch { try { process.kill(pid, sig); } catch {} } } n++; }
+    } catch { /* not a record we can read */ }
+    try { fs.rmSync(file, { force: true }); } catch {}
+  }
+  return n;
+}
+
 export async function reconcile(o) {
   const platform = o.platform || process.platform;
   const drivers = o.driver ? [o.driver] : platform === "linux" ? [driverFor(platform, { prefer: "fscrypt" }), driverFor(platform, { prefer: "gocryptfs" })] : [driverFor(platform)];
+  endOrphans(o.base);
   const root = path.join(o.base, "spaces"), closed = [];
   let ents = []; try { ents = fs.readdirSync(root); } catch {}
   for (const e of ents) {
@@ -150,6 +180,8 @@ export function createRunner(o) {
     const key = lease.key();
     if (!key) throw new Error("the key lease did not hold");
     if (!driver.exists(dir)) await driver.create(dir, key);
+    // which Space this folder is for, in the clear (the folder's own name is a hash): a restarted runner asks that Space's home whether this computer still has access (module start, core/runner/index.js)
+    try { fs.writeFileSync(path.join(dir, "space.id"), o.space, { mode: 0o600 }); } catch {}
     // A mount left by a runner that died is closed first, so this runner owns the one that is open.
     if (driver.isMounted(dir)) { try { await driver.unmount(dir); } catch {} }
     mnt = await driver.mount(dir, key);
@@ -209,8 +241,10 @@ export function createRunner(o) {
     const p = plan({ platform, space: o.space, launcher, internet, workspace: work, command: s.command, args: s.args, readOnly: s.readOnly,
       proxy: where, env: { ...(s.env || {}), ANTHROPIC_API_KEY: token, VYRE_SPACE_TOKEN: token, VYRE_SESSION: s.session, ...(resumed ? { VYRE_RESUME_TURN: String(resumed.turn) } : {}) } });
     const child = launch(p, { detached: true });
+    const pidFile = path.join(runDir, `${spaceHash(o.space)}.${crypto.createHash("sha256").update(s.session).digest("hex").slice(0, 12)}.pid`);
+    try { const stat = fs.readFileSync(`/proc/${child.pid}/stat`, "utf8"); fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, started: stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19], session: s.session }), { mode: 0o600 }); } catch { try { fs.writeFileSync(pidFile, JSON.stringify({ pid: child.pid, session: s.session }), { mode: 0o600 }); } catch {} }
     child.stdin.on("error", () => {});   // a session that already exited must not turn a late write into an unhandled error
-    const h = { session: s.session, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null };
+    const h = { session: s.session, child, eg, sock, sy, labels, routes, queue: Promise.resolve(), stopped: false, exit: null, done: null, pidFile };
     live.set(s.session, h);
     const group = sig => { if (process.platform === "win32") return; try { process.kill(-Number(child.pid), sig); } catch {} };
     let buf = "";
@@ -255,6 +289,7 @@ export function createRunner(o) {
     try { await h.queue; if (mnt) await h.sy.flush(); } catch {}
     try { await h.eg.close(); } catch {}
     if (h.sock) { try { fs.unlinkSync(h.sock); } catch {} }
+    if (h.pidFile) { try { fs.rmSync(h.pidFile, { force: true }); } catch {} }
     emit({ type: "stopped", session: h.session });
   }
 
