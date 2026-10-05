@@ -1,4 +1,4 @@
-// A chat's files in Drive search, on a real kernel-on daemon with the real work module: the chats come from the kernel the way `work.chat.list` gets them (the chat records the caller may read, kept where the kernel's chat read says they are in it), and every folder is read
+// A chat's files in Drive search, on a real kernel-on daemon with the real work module: the chats come from the kernel's `chats.mine(chain)` (the rule `work.chat.list` uses), and every folder is read
 // under the caller's own chain. A person in the chat finds its file names; a member who is not in it, though they see the chat exist in the list, finds nothing.
 import "../../scripts/mac-test-guard.mjs";
 import test from "node:test";

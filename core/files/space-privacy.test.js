@@ -57,10 +57,11 @@ async function rig() {
   const ctx = {
     tool: (/** @type {string} */ n, /** @type {any} */ d) => tools.set(n, d), route: (/** @type {string} */ n, /** @type {any} */ f) => routes.set(n, f),
     store: { db, migrate: (/** @type {string[]} */ steps) => migrate(db, "files", steps) },
-    // the chat records the caller may read (rows with `chat` and `location`, as the work module keeps them); a test can list a chat the caller is NOT in to prove the kernel's own chat read is what decides
+    // what chats.mine would answer (rows with `chat` and `location`); a test can list a chat the caller is NOT in to show the Drive's own check still refuses the read
     call: async () => ({}),
     kernel: { space: SPACE, owner: OWNER, for: async () => ({ gateway: k.gateway, surfaces: {} }), chainIn: async () => cur.chain, proofFrom: () => undefined,
-      records: { query: async () => ({ rows: (cur.list || []).filter(Boolean).map((/** @type {any} */ x) => ({ data: x })) }) }, chats: { read: (/** @type {any} */ chain, /** @type {string} */ id) => g.chats.read(chain, id) } },
+      // the kernel's chats.mine(chain), stood in for here by the listed rows kept where the kernel's own chat read says the caller is in the chat (the live test uses the real one)
+      chats: { mine: async (/** @type {any} */ chain) => (cur.list || []).filter((/** @type {any} */ x) => { try { g.chats.read(chain, x && x.chat); return true; } catch { return false; } }) } },
   };
   registerSpaceDrive(ctx);
   registerSpaceLinks(ctx);
