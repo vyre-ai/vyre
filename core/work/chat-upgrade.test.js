@@ -51,8 +51,13 @@ test("the plan counts chats, files and bytes, and a chat that is working blocks 
 
 test("the chats move with their ids under General in the target, files sealed under the same ids, people who are no member there and agents that are missing listed as former, and the source emptied", async () => {
   const { a, b, c1, c2, carried, removed } = await seed();
-  const out = await runUpgrade({ from: a, to: b, rows: [c1, c2], ports: { move_id: "up1" } });
+  /** @type {any[]} */ const puts = [];
+  /** @type {any} */ (a.drive).put = async (/** @type {any} */ _c, /** @type {string} */ p, /** @type {Uint8Array} */ b) => { puts.push([p, JSON.parse(new TextDecoder().decode(b))]); return { version: 1 }; };
+  const history = async (/** @type {string} */ chat) => (chat === "chat_one" ? { frames: [{ cur: 1, first: 1, json: "{}" }], members: [], runs: [], events: [] } : { frames: [], members: [], runs: [], events: [] });
+  const out = await runUpgrade({ from: a, to: b, rows: [c1, c2], ports: { move_id: "up1", history } });
   assert.deepEqual([out.moved, out.files, out.left], [2, 1, []]);
+  assert.deepEqual(puts.map(x => x[0]), ["Projects/gp/chat/chat_one/.history.json"], "a chat with history gets its history file beside its files; one with none does not");
+  assert.equal(puts[0][1].chat, "chat_one");
   const there = [...b.rows.values()].filter(r => r.type === "chat-record").sort((x, y) => x.data.chat.localeCompare(y.data.chat));
   assert.deepEqual(there.map(r => r.data.chat), ["chat_one", "chat_two"], "the ids are kept");
   assert.equal(there[0].data.title, "Docket");

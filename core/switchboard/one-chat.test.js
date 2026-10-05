@@ -519,4 +519,17 @@ test("a chat's history leaves one device and comes back on another: its logged f
   const twice = await B.d.registry.call("stream.import-chat", { chat, frames: st.frames, members: st.members }, "module:work");
   assert.equal(twice.data.frames, 0);
   assert.equal((await B.d.registry.call("threads.import-chat", { chat, runs: th.runs, events: th.events }, "module:work")).data.runs, 0);
+  // the tool the other end calls: it reads the history file the move carried in the chat's own folder, as the person, and puts it back
+  const C = await boot();
+  const cOwner = C.d.kernel.id.owner;
+  const cChain = C.d.kernel.chains.fromFacts({ kind: "device", device_key_id: "d-c", person: cOwner, path: "direct", session: "s1" });
+  await C.d.kernel.gateway.grants.chats.create(cChain, { id: chat });
+  const cCaller = kernelCaller(C.d, C.root);
+  const rec = await until(async () => (await cCaller("work.chat.list", {})).data.chats.find(r => r.chat === chat), "the chat's record on the other device");
+  await C.d.kernel.gateway.drive.put(cChain, `${rec.drive}/chat/${chat}/.history.json`, new TextEncoder().encode(JSON.stringify({ v: 1, chat, frames: st.frames, members: st.members, runs: th.runs, events: th.events })));
+  const imported = await cCaller("work.chat.history-import", { chat });
+  assert.ok(imported.data, JSON.stringify(imported.error));
+  assert.deepEqual([imported.data.frames, imported.data.runs], [st.frames.length, 1]);
+  assert.ok(C.d.registry.modules.get("stream").handle.logs.get(chat).read(0).some(f => f.type === "chat.text-done"));
+  assert.equal((await cCaller("work.chat.history-import", { chat: "chat_nonesuch" })).error.code, "not_found");
 });
