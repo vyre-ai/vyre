@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(relay): a self-hosted relay and name directory as one container. `relay/Dockerfile` (base pinned by digest, non-root, healthcheck, `/data` volume for the directory's one state file), `relay/compose.yml` (loopback ports, read-only root, caps dropped), `relay/README.md` (TLS in front), `relay/node/main.js` and `relay/node/directory.js` (names/worker's real code, no DNS published), `scripts/relay-roundtrip.mjs` (box registers a sealed pairing ticket, a device resolves it once). test/box-init.test.js now checks relay/Dockerfile's pin too.
+- feat(wink): `core/wink/reach.js`, a reachability fallback for a home server behind NAT. The relay stays the first working path; in the background it tries a global IPv6 address, UPnP (SSDP and SOAP, lease, delete on stop) and NAT-PMP, refuses a router behind carrier-grade NAT, and calls the state "direct" only after an outside check reached the port. `relay/node/server.js` gains `POST /v1/reach/check` (dials only the caller's own public address, ports from 1024, rate limited) and `relayVerifier` calls it. Not yet called by the daemon (netd), and the hosted Cloudflare relay has no such endpoint.
+
+- fix(wink): wink.share (Share a computer) now does what the runner reads. A relay `app` row is a phone as well as a computer, so it also checks the Wink device row (only your own computer is shared; a phone, server or storage device is refused), switches the computer's compute offer on and records the member's side, so computeAllowed answers yes for your personal space (the old call only wrote a node.host grant nothing read). test/wink.test.js asserts it.
+- fix(storage): discover finds an attached cloud volume or any real disk mounted anywhere (reads /proc/self/mountinfo, skipping the system's own partitions, loop and tmpfs mounts), not only folders under /Volumes, /media and /mnt. So a droplet with a volume attached shows it as a candidate.
+- fix(files): files.drive.* no longer answers `no_tailscale` or names Tailscale; folders-as-a-disk sharing says plainly it is not available on this device yet (code `unavailable`), and the Space's own Drive does not depend on it.
+
 - fix(spaces): the home unit pins Twenty by tag and digest (v2.44.0, the release stores/twenty's live suite runs against) instead of the placeholder.
 
 - test(wink): the owner's-phone card test asks its outward card for mail.send, a tool marked `outward: true`, in place of the made-up email.send that only the old verb pattern accepted.

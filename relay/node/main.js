@@ -20,7 +20,8 @@ const log = (/** @type {string} */ m) => console.log(`${new Date().toISOString()
 const stops = [];
 const relayPort = num(env.VYRE_RELAY_PORT, 8080), dirPort = num(env.VYRE_DIRECTORY_PORT, 8081);
 if (relayPort > 0) {
-  const relay = createRelay({ log });
+  const trust = env.VYRE_TRUST_PROXY === "1";
+  const relay = createRelay({ log, clientAddress: req => (trust && String(req.headers["x-forwarded-for"] || "").split(",").pop()?.trim()) || String(req.socket.remoteAddress || "") });
   log(`relay on ${await relay.listen(relayPort, host)}`);
   stops.push(() => relay.close());
 }
