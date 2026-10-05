@@ -36,7 +36,7 @@ function run(o = {}) {
   const swapfile = path.join(F, "swapfile");
   if (o.fileMode) { fs.writeFileSync(swapfile, ""); fs.chmodSync(swapfile, parseInt(o.fileMode, 8)); }
   const script = `sp_log() { echo "$*" >>"${F}/log"; }\nSP_SWAPFILE="${swapfile}"; SP_DM="${dm}"; SP_MEMINFO="${F}/meminfo"; SP_CRYPTTAB="${F}/crypttab"; SP_FSTAB="${F}/fstab"\n${FN}\nsp_swap\n`;
-  const r = spawnSync("sh", ["-c", script], { env: { PATH: bin }, encoding: "utf8" });
+  const r = spawnSync("/bin/sh", ["-c", script], { env: { PATH: bin }, encoding: "utf8" });
   const rd = (/** @type {string} */ n) => (fs.existsSync(path.join(F, n)) ? fs.readFileSync(path.join(F, n), "utf8") : "");
   return { status: r.status, stderr: r.stderr, calls: rd("calls"), log: rd("log"), crypttab: rd("crypttab"), fstab: rd("fstab"), mapped: fs.existsSync(path.join(dm, "vyre-swap")), file: fs.existsSync(swapfile) ? fs.statSync(swapfile) : null, dir };
 }
