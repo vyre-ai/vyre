@@ -55,7 +55,7 @@ export const hooks = {
   /** @type {(() => number) | null} */ now: null,
   /** @type {number | null} */ sweepMs: null,
   /** @type {number | null} */ syncMs: null,
-  /** @type {((person: string, space: string) => Promise<{ member: boolean }>) | null} the kernel's membership answer, replaced by a test that needs a home whose grants do not name the owner */ membership: null,
+  /** @type {((person: string, space: string) => Promise<{ member: boolean }>) | null} the kernel's membership answer, replaced by a test that needs a home whose grants do not name the owner (honoured on a development build only) */ membership: null,
   /** @type {{ memoryKiB: number, passes: number } | null} the recovery stretch, lowered by tests only */ stretch: null,
   /** @type {any} */ vpsDeps: null,
   /** @type {((channel: { relay: string, route: string, box: string }, hello: any) => Promise<{ call(tool: string, input: any): Promise<any> }> | { call(tool: string, input: any): Promise<any> }) | null} an invitee's peer session to the home a space's record names (the daemon wires it); a test sets it */ inviteeSessionFor: null,
@@ -160,7 +160,7 @@ export default {
     /** Is the acting person an active member who may do `action`? Returns the person. @param {string} spaceId @param {string} [action] */
     /** The spaces a device is enrolled in: an explicit list per device (the device's entry id on the person's list). A device with no list yet is enrolled in every space (nothing was ever chosen); the list is made the first time it is changed or at pairing. */
     /** The kernel's answer to "is this person a member of this Space"; a test may replace it (hooks.membership). */
-    const kernelMembership = (/** @type {string} */ person, /** @type {string} */ space) => (hooks.membership ? hooks.membership(person, space) : K.membership(person, space));
+    const kernelMembership = (/** @type {string} */ person, /** @type {string} */ space) => (hooks.membership && devSwitch(process.env.VYRE_SEAL_DEV, hooks.buildRoot) ? hooks.membership(person, space) : K.membership(person, space));
     const enrolledList = async (/** @type {string} */ eid) => /** @type {string[]|null} */ ((await kv.get(`device-spaces/${eid}`)) || null);
     const isEnrolled = async (/** @type {string} */ eid, /** @type {string} */ spaceId) => { const l = await enrolledList(eid); return l === null || l.includes(spaceId); };
     /** Refuse a call that comes from a device that is not enrolled in this space. @param {string} spaceId @param {any} meta */
