@@ -91,7 +91,7 @@ export function createCalendarSyncHost(o) {
         const t = await s.gw.ask.get(chain, note.task);
         if (t && t.state === "done" && t.outcome === "approved") {
           // Google is not called through the vault's forward, so the approval is checked here, for this act and no other.
-          const ok = await s.gw.authorize({ chain, action: "service.call", resource, approval: note.task });
+          const ok = await s.gw.authorize({ chain, action: "service.call", resource, approval: note.task, bind });
           if (ok.effect !== "allow") { setPending(change.key, { refused: true }); return { done: false, refused: true }; }
           const value = await perform({ approval: note.task, idem: change.key });
           setPending(change.key, undefined);

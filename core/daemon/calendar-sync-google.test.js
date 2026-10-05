@@ -69,8 +69,12 @@ test("google.api is for Vyre's own modules, Calendar events and Gmail reads only
   assert.ok((await as("mcp")).error, "a model is refused");
   assert.ok((await cli("google.api", { account: "work", method: "GET", path: "/calendar/v3/calendars/primary/events" })).error, "so is a person's surface: the tool is not theirs");
   assert.equal((await as("module:leases")).data.status, 200);
-  for (const path of ["/calendar/v3/users/me/calendarList", "/gmail/v1/users/me/drafts", "/gmail/v1/users/me/messages/a/b", "/calendar/v3/calendars/primary/acl", "/calendar/v3/calendars/primary/events/a/b"]) assert.equal((await as("module:leases", { path })).error?.code, "bad_input", path);
+  for (const path of ["/calendar/v3/users/me/calendarList", "/gmail/v1/users/me/drafts", "/calendar/v3/calendars/x/events/..", "/calendar/v3/calendars/x/events/%2e%2e", "/calendar/v3/calendars/x/events/a%2Fb", "/gmail/v1/users/me/messages/a/b", "/calendar/v3/calendars/primary/acl", "/calendar/v3/calendars/primary/events/a/b"]) assert.equal((await as("module:leases", { path })).error?.code, "bad_input", path);
   for (const path of ["/gmail/v1/users/me/messages", "/gmail/v1/users/me/messages/send", "/gmail/v1/users/me/drafts/send"]) for (const method of ["POST", "PATCH", "DELETE"]) assert.equal((await as("module:leases", { path, method })).error?.code, "bad_input", `${method} ${path}: Gmail through here is a read, never a write`);
   assert.equal((await as("module:leases", { path: "/gmail/v1/users/me/messages" })).data.status, 200, "a Gmail read is let through");
+  assert.equal((await as("module:leases", { path: "/calendar/v3/calendars/alex%40example.com/events" })).data.status, 200, "an address as the calendar id is fine");
+  assert.equal((await as("module:watchers", { method: "POST", body: {} })).error?.code, "denied", "a watcher only reads");
+  assert.equal((await as("module:watchers")).data.status, 200, "and may read");
+  assert.equal((await as("module:gate", { path: "/calendar/v3/calendars/primary/events" })).error?.code, "denied", "no other module calls it");
   assert.equal((await as("module:leases", { account: "nope" })).error?.code, "not_found");
 });

@@ -20,10 +20,10 @@ async function rig(t, { ask = false } = {}) {
   t.after(() => w.stopListening());
   // a write to an outside service is outward: the kernel asks, unless a standing yes covers it. An act the owner approved (a task, by id) satisfies the ask for that act only: the stand-in for
   // the kernel's approvedAct, recording each approval it is shown.
-  const checked = [];
+  const checked = [], binds = [];
   if (ask) {
     w.kernel.rules.push({ match: i => i.action === "service.call" && !i.approval, effect: "ask", reason: "outward" });
-    w.kernel.rules.push({ match: i => { if (i.action === "service.call" && i.approval) { checked.push(i.approval); return true; } return false; }, effect: "allow", reason: "approved" });
+    w.kernel.rules.push({ match: i => { if (i.action === "service.call" && i.approval) { checked.push(i.approval); binds.push(i.bind); return true; } return false; }, effect: "allow", reason: "approved" });
   } else w.kernel.rules.push({ match: i => i.action === "service.call", effect: "allow", reason: "a standing yes" });
   const sent = [];
   const api = async (account, req) => {
@@ -40,7 +40,7 @@ async function rig(t, { ask = false } = {}) {
   const h = sync.attach({ space: SPACE, gw: w.kernel, chains, ownerChain: owner, personChain: owner, ownerId: () => ALEX.id, subscribe: cb => w.kernel.onEvent(cb, "calendar-sync"), google: { accounts: async () => [{ name: "home" }], api } });
   const events = async () => (await w.kernel.records.query(owner(), "event", { page: { limit: 100 } })).rows;
   const tasks = async () => { await w.kernel.idle(); return w.kernel.tasks.filter(x => /Calendar:/.test(x.title)); };
-  return { google, w, h, sent, checked, events, tasks, owner };
+  return { google, w, h, sent, checked, binds, events, tasks, owner };
 }
 
 test("by default it finds the connected Google account, pulls the outside calendar in, and an outside change comes in on the next look", async t => {
@@ -64,7 +64,7 @@ test("with a standing yes a Vyre event goes out at once, tied to its outside id"
 });
 
 test("a write to the outside calendar is held for the owner's yes: a task, nothing sent, and once approved it goes out once with the approval", async t => {
-  const { google, w, h, sent, checked, events, tasks, owner } = await rig(t, { ask: true });
+  const { google, w, h, sent, checked, binds, events, tasks, owner } = await rig(t, { ask: true });
   await w.kernel.records.create(owner(), "event", { title: "Closing call", starts_at: "2026-10-07T17:00:00.000Z", ends_at: "2026-10-07T18:00:00.000Z", people: ["sam@rivera.test"], source: "vyre" });
   let out = await h.runNow();
   assert.equal(out["google-home"].pushed.held, 1, JSON.stringify(out));
@@ -82,6 +82,7 @@ test("a write to the outside calendar is held for the owner's yes: a task, nothi
   w.kernel.completeTask(ts[0].id, { outcome: "approved" });
   for (let i = 0; i < 50 && google.events.size < 1; i++) { await w.kernel.idle(); await new Promise(r => setTimeout(r, 20)); } // the approval itself starts the look
   assert.equal(sent.length, 1); assert.deepEqual(checked, [ts[0].id], "the approval was checked for this act before the write");
+  assert.deepEqual(binds, [ts[0].form.bind], "and tied to the exact request that was asked about");
   assert.equal(google.events.size, 1);
   assert.equal((await events())[0].data.calendar, "google-home");
   out = await h.runNow();
