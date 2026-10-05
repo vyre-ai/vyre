@@ -94,6 +94,10 @@
     "reach": "person"
    },
    {
+    "name": "spaces.upgrade.receipt", "effect": "read",
+    "reach": "person"
+   },
+   {
     "name": "spaces.upgrade.plan", "effect": "read",
     "reach": "person"
    },

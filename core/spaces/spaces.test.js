@@ -1460,11 +1460,12 @@ test("spaces.upgrade.*: the plan, one approval, what moved and what did not, and
   assert.equal(ask.needs_proof, true, "no proof: the device is asked for the person's approval of exactly this plan");
   const proof = { payload_hash: ask.request.payload_hash, nonce: "n1" };
   const done = await d.ok("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { ...person, kernel_proof: proof });
-  assert.deepEqual([done.upgraded, done.to, done.moved.records, done.notMoved, done.frozen], [true, CLOUD, { contact: 3 }, [], true]);
+  assert.deepEqual([done.upgraded, done.to, done.moved.records, done.notMoved, done.frozen], [true, CLOUD, { contact: 3 }, [], false]);
+  assert.match(done.not_frozen_because, /My Cloud has not confirmed/, "without My Cloud's signed receipt this space is not frozen");
+  assert.ok(done.notes.some(n => n.what === "My Cloud's receipt"), "and the answer says why no receipt was asked for");
   assert.equal((await ck.gateway.records.query(chainOf(ck), "contact", { page: { limit: 10 } })).rows.length, 3, "the records are in My Cloud's Twenty");
   await d.ok("spaces.identity.create", { name: "upgrader" });
   const row = (await d.ok("spaces.list")).find(x => x.id === PERSONAL);
-  assert.equal(row.upgraded_to, CLOUD, "the Personal row points to My Cloud");
-  assert.equal((await d.call("spaces.upgrade.run", { to: CLOUD, plan_hash: plan.hash }, "cli", { kernel_proof: proof })).error?.code != null, true, "a moved space is not upgraded again");
+  assert.equal(row.upgraded_to, undefined, "the Personal row does not point to My Cloud until My Cloud has confirmed");
   void w;
 });

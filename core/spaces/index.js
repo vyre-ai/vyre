@@ -21,7 +21,7 @@ import * as config from "../config/index.js";
 import { validZone, systemZone } from "../../lib/time/index.js";
 import { createMemberStorage } from "../../lib/spaces/member-storage.js";
 import { canonical as canonicalOf } from "../../kernel/core/canonical.js";
-import { planUpgrade, runUpgrade } from "../../lib/spaces/upgrade.js";
+import { planUpgrade, runUpgrade, fingerprint } from "../../lib/spaces/upgrade.js";
 import { createPullSource, pullMessage, srcMessage, SESSION_CAP_MS } from "../../lib/spaces/move-pull.js";
 import { ROLE_IDS } from "../../kernel/contracts/index.js";
 import { createMembers, abilitiesOf, SpacesError } from "../../lib/spaces/members.js";
@@ -1399,7 +1399,7 @@ export default {
     // ---- moving a project to a Space on ANOTHER home (kernel/gateway/moves.js, reviewer-3's team/0.3/reviews/remote-move-design.md). The mover's own device is the courier between the two homes; each side
     // signs only what its own log says, with its Space key (the one whose public half is the Space's published `rootPublic`), and the other side checks that signature against the DIRECTORY's key for
     // that Space id, resolved under the pin the mover's device holds (RM-6), never against a key it is handed. ----
-    const MOVE_EVIDENCE_TAG = "vyre-move-evidence-v1", MOVE_RECEIPT_TAG = "vyre-move-receipt-v1";
+    const MOVE_EVIDENCE_TAG = "vyre-move-evidence-v1", MOVE_RECEIPT_TAG = "vyre-move-receipt-v1", MOVE_UPGRADE_RECEIPT_TAG = "vyre-upgrade-receipt-v1";
     const EVIDENCE_KEYS = ["v", "from", "to", "project", "plan_hash", "move_id", "person", "at"];
     const RECEIPT_KEYS = ["v", "move_id", "from", "to", "counts", "files_root", "at"];
     const exactKeys = (/** @type {any} */ o, /** @type {string[]} */ keys) => o && typeof o === "object" && !Array.isArray(o) && Object.keys(o).length === keys.length && keys.every(k => Object.hasOwn(o, k));
@@ -1429,6 +1429,15 @@ export default {
           const published = await publishedKeyOf(ev.from, ctx);
           if (!published || published !== bundle.pub) return null;
           return (await verifySigned(bundle.pub, MOVE_EVIDENCE_TAG, ev, bundle.sig)) ? ev : null;
+        },
+        /** The Personal kernel checks My Cloud's signed upgrade receipt against My Cloud's published key (name and pin from the device that is upgrading). */
+        verifyUpgradeReceipt: async (/** @type {any} */ receipt, /** @type {{ from: string, to: string, upgrade_id: string }} */ c) => {
+          if (!receipt || typeof receipt.sig !== "string" || !receipt.body || typeof receipt.body !== "object") return null;
+          const b = receipt.body;
+          if (b.v !== 1 || b.from !== c.from || b.to !== c.to || b.upgrade_id !== c.upgrade_id) return null;
+          const published = await publishedKeyOf(c.to, moveContext.get(`${c.from}/${c.to}/${c.upgrade_id}`));
+          if (!published) return null;
+          return (await verifySigned(published, MOVE_UPGRADE_RECEIPT_TAG, b, receipt.sig)) ? b : null;
         },
         /** The source checks the target's signed receipt the same way, against the TARGET Space's published key. */
         verifyReceipt: async (/** @type {any} */ receipt, /** @type {{ from: string, to: string }} */ c) => {
@@ -1555,7 +1564,7 @@ export default {
           const r = await ctx.call(t.plan, { to }, { relay: true });
           if (r && r.error) { if (r.error.code === "no_such_tool") continue; plan = { blockers: [`could not be read: ${String(r.error.message || r.error.code).slice(0, 80)}`], counts: null }; } else plan = r.data;
         } catch (e) { if (String(/** @type {any} */ (e).code) === "no_such_tool") continue; plan = { blockers: ["could not be read"], counts: null }; }
-        ports[k] = { plan: async () => plan, move: async (/** @type {{ to: string }} */ a) => { const r = await ctx.call(t.move, a, { relay: true }); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; } };
+        ports[k] = { items: plan && Array.isArray(plan.chats) ? plan.chats : [], plan: async () => plan, move: async (/** @type {{ to: string }} */ a) => { const r = await ctx.call(t.move, a, { relay: true }); if (r && r.error) throw Object.assign(new Error(String(r.error.message || "not moved")), { code: String(r.error.code || "unavailable") }); return r.data; } };
       }
       return ports;
     };
@@ -1571,13 +1580,24 @@ export default {
         gateway: lh.gateway, proof: lk.proof,
       };
     };
+    tool("spaces.upgrade.receipt", "In MY CLOUD's home: say what this space holds of the objects an upgrade carried, signed with this space's key. It reads its OWN records under your chain and answers { body, pub, sig }: the count and the root of the per-object hashes. The Personal space freezes only on this.", obj({ space: str, upgrade_id: str, from: str, objects: { type: "array" } }, ["space", "upgrade_id", "from", "objects"]), async (i, meta) => {
+      const space = String(i.space);
+      if (!K || typeof K.chainIn !== "function" || !K.spaces || K.spaces.hosts(space) !== true) throw refuse("This home does not host that space.", "not_found");
+      if (!Array.isArray(i.objects) || i.objects.length > 5000) throw refuse("An upgrade receipt covers at most 5000 objects.", "bad_input");
+      let chain; try { chain = await K.chainIn(space, meta); } catch { throw refuse("You are not a member of that space.", "forbidden"); }
+      const h = K.spaces.hosted(space);
+      const objects = i.objects.map((/** @type {any} */ o) => ({ type: String(o.type), id: String(o.id), keys: Array.isArray(o.keys) ? o.keys.map(String) : [] }));
+      const fp = await fingerprint({ space, records: h.gateway.records, chain }, objects);
+      const body = { v: 1, upgrade_id: String(i.upgrade_id), from: String(i.from), to: space, count: fp.count, objects_root: fp.root, at: now() };
+      return { body, ...(await signMove(space, MOVE_UPGRADE_RECEIPT_TAG, body)) };
+    });
     tool("spaces.upgrade.plan", "What moving your Personal space to My Cloud would carry: records by type, what cannot be carried, and the hash your one approval is bound to. Reads only.", obj({ to: str }, ["to"]), async (i, meta) => {
       const { local, remote } = await upgradeSides(i.to, meta);
       const ports = await upgradePorts(String(i.to));
       try { const p = await planUpgrade({ local, remote, to: String(i.to), ports }); return { ...p, ports: Object.keys(ports) }; }
       catch (e) { throw plainKernelError(e); }
     });
-    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. Afterwards this space points to My Cloud.", obj({ to: str, plan_hash: str }, ["to", "plan_hash"]), async (i, meta) => {
+    tool("spaces.upgrade.run", "Move your Personal space to My Cloud with one approval: `plan_hash` is the plan you were shown. Answers what moved and, by name, anything that did not. `toName` and `pin` (My Cloud's published name and the pinned version of its list) and `server` (the paired server's device id) let it ask My Cloud for its signed receipt: only then does this space point to My Cloud and stop taking new records.", obj({ to: str, plan_hash: str, toName: str, pin: str, server: str }, ["to", "plan_hash"]), async (i, meta) => {
       const { local, remote, gateway, proof } = await upgradeSides(i.to, meta);
       const ports = await upgradePorts(String(i.to));
       let plan; try { plan = await planUpgrade({ local, remote, to: String(i.to), ports }); } catch (e) { throw plainKernelError(e); }
@@ -1587,8 +1607,29 @@ export default {
       try { started = await gateway.upgrade.start(local.chain, { to: String(i.to), plan_hash: plan.hash }, proof); }
       catch (e) { if (String(/** @type {any} */ (e).code) === "needs_presence") return { needs_proof: true, request: K.proofRequest("upgrade", { to: String(i.to), plan_hash: plan.hash }) }; throw plainKernelError(e); }
       let report; try { report = await runUpgrade({ plan, local, remote, ports }); } catch (e) { throw plainKernelError(e); }
-      const fin = await gateway.upgrade.finish(local.chain, { upgrade_id: started.upgrade_id, counts: { records: report.moved.records, chats: report.moved.chats ?? null, memory: report.moved.memory ?? null }, failed: report.notMoved.map((/** @type {any} */ n) => `${n.what}: ${n.why}`), freeze: report.recordsComplete });
-      return { upgraded: true, to: fin.to, moved: report.moved, notMoved: report.notMoved, frozen: fin.frozen };
+      const server = typeof i.server === "string" && i.server ? i.server : await serverOf(String(i.to));
+      /** @type {{ what: string, why: string }[]} */ const notes = [];
+      // each moved chat's history (its frames, members and runs) comes back to life in My Cloud once its files have landed: chat's own tool, run there
+      if (ports.chats && server) {
+        for (const chat of ports.chats.items || []) {
+          try { await remoteCall(server, "work.chat.history-import", { chat }, meta); }
+          catch (e) { const c = String(/** @type {any} */ (e).code || ""); if (c !== "not_found") report.notMoved.push({ what: `chats: ${chat} history`, why: String(/** @type {Error} */ (e).message).slice(0, 120) }); }
+        }
+      } else if (ports.chats && (ports.chats.items || []).length) report.notMoved.push({ what: "chats: history", why: "no paired server to bring it back on" });
+      // My Cloud says what it holds, signed with its own key; only that lets this space point there and freeze
+      let receipt = null;
+      const pin = parsePin(i.pin);
+      if (report.notMoved.length === 0 && server && pin && typeof i.toName === "string" && i.toName) {
+        try {
+          receipt = await remoteCall(server, "spaces.upgrade.receipt", { space: String(i.to), upgrade_id: started.upgrade_id, from: K.space, objects: plan.objects.map((/** @type {any} */ o) => ({ type: o.type, id: o.id, keys: o.keys })) }, meta);
+        } catch (e) { notes.push({ what: "My Cloud's receipt", why: String(/** @type {Error} */ (e).message).slice(0, 120) }); }
+      } else if (report.notMoved.length === 0) notes.push({ what: "My Cloud's receipt", why: "not asked for: this needs My Cloud's published name, the pin and the paired server" });
+      const ctxKey = `${K.space}/${String(i.to)}/${started.upgrade_id}`;
+      if (pin && typeof i.toName === "string") moveContext.set(ctxKey, { name: String(i.toName), pin });
+      let fin;
+      try { fin = await gateway.upgrade.finish(local.chain, { upgrade_id: started.upgrade_id, counts: { records: report.moved.records, chats: report.moved.chats ?? null, memory: report.moved.memory ?? null }, failed: report.notMoved.map((/** @type {any} */ n) => `${n.what}: ${n.why}`), freeze: report.recordsComplete && report.notMoved.length === 0, ...(receipt ? { receipt } : {}) }); }
+      finally { moveContext.delete(ctxKey); }
+      return { upgraded: true, to: fin.to, moved: report.moved, notMoved: report.notMoved, frozen: fin.frozen, ...(fin.not_frozen_because ? { not_frozen_because: fin.not_frozen_because } : {}), ...(notes.length ? { notes } : {}) };
     });
     tool("spaces.personal-host.set", "Choose which Cloud space keeps your encrypted personal items (Settings). It must be one you are in.", obj({ space: str }, ["space"]), async (i, meta) => {
       let rows = []; try { rows = await listSpaces({}, meta); } catch { rows = []; }
