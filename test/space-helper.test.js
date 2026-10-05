@@ -45,9 +45,9 @@ if (a[0] === "events") { if (has("events")) { const lines = rd("events"); fs.rmS
 if (a[0] === "pull") {
   const ref = a[a.length - 1];
   // as the real docker: a reference that still holds a compose variable is not an image name
-  if (ref.includes("\${")) { process.stderr.write("invalid reference format\n"); process.exit(1); }
-  fs.appendFileSync(F + "/pulled", ref + "\n");
-  if (has("pull-fails")) { process.stderr.write("Error response from daemon: pull access denied for " + ref + "\n"); process.exit(1); }
+  if (ref.includes("\${")) { process.stderr.write("invalid reference format\\n"); process.exit(1); }
+  fs.appendFileSync(F + "/pulled", ref + "\\n");
+  if (has("pull-fails")) { process.stderr.write("Error response from daemon: pull access denied for " + ref + "\\n"); process.exit(1); }
   process.exit(0);
 }
 if (a[0] === "image" && a[1] === "inspect") { const nm = a[a.length - 1].split(":")[0]; out(nm + "@sha256:" + require("crypto").createHash("sha256").update(rd("digest-salt", "x") + nm).digest("hex")); }
