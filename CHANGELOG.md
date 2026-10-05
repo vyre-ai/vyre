@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- refactor(app): a chat frame's type is read and written in one place (src/chat/frame-type.js): the engine's later session. to chat. rename is one edit to its prefix, and reading accepts both.
+
 - feat(app): one Chat, A2 to A4 (CONTRACT-one-chat.md). The chat opens at /u/chats/<id> for solo and group alike; the old session store, rows and composer (threads.get / threads.send) are deleted. The header sheet is "In this chat" with Add a teammate (chats.change, a person by id to add_people, an assistant to add_assistants). A chat with several assistants or models has a composer chip per slot to switch that slot's model (chats.switch, with the older threads.* call as the fallback on a box without it), and "Ask both" for two. The sample world's three chats run on mock streams (solo, three models each with its provider, people only); render-check draws them.
 
 - feat(app): one Chat, first slice (CONTRACT-one-chat.md A1, A2 route, A5). The Chats list is one row type for solo, group and people-only chats (faces, title, project, last line, provider icons), read from work.chat.list and, until a box has it, made from the older list; a chat you are not in is greyed and does not open; the sample world has the three scripted chats. A chat opens at /u/chats/<id> (the old /session path still works). Words sweep: no screen reads session, thread or room to a person.

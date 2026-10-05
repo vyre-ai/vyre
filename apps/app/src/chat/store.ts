@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { createPacer } from "@vyre/chat-core/pace.js";
 import { createReveal } from "../session/reveal.js";
+import { isKind } from "./frame-type.js";
 import { createFolder, headerState, type Frame as FoldFrame, type Item, type LayoutRow } from "./frames.js";
 import { createMockStream, type Frame, type StreamSource, type StreamState } from "./mock-stream";
 import { boxStream, type GroupActions, type SessionActions } from "./box-stream";
@@ -133,8 +134,8 @@ export function createChatStore(session: string, source: StreamSource, opts: { p
         if (!wasReplay) pending.push({ key: r.appended.key, end: r.appended.length, t: f.t ?? nowMs(), first: !seenFirst.has(r.appended.key) });
         seenFirst.add(r.appended.key);
       }
-      if (f.type === "session.text-done") finished.add("a:" + f.data.message);
-      if (f.type === "session.status" || f.type === "session.user-message") meta = true;
+      if (isKind(f, "text-done")) finished.add("a:" + f.data.message);
+      if (isKind(f, "status") || isKind(f, "user-message")) meta = true;
       for (const k of r.touched) touched.add(k);
     }
     if (reset) { for (const k of seenFirst) reveal.drop(k); seenFirst.clear(); pending.length = 0; }

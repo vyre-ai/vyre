@@ -14,6 +14,8 @@
  * @typedef {{ type: "item", key: string, kind: string }} LayoutRow
  */
 
+import { kindOf } from "./frame-type.js";
+
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
 /** A failed status whose note is one of these says it in the app's own words (the stream's plain frame for a reply that could not resume after a restart). */
@@ -106,7 +108,7 @@ export function createFolder() {
     const out = { dup: false, gap: false, layout: false, touched: /** @type {string[]} */ ([]), appended: /** @type {{ key: string, length: number } | null} */ (null) };
     if (!f || typeof f.cur !== "number" || typeof f.type !== "string") return { ...out, dup: true };
     const d = f.data ?? {};
-    const kind = f.type.replace(/^session\./, "");
+    const kind = kindOf(f.type);
     // Ephemeral frames have no cursor: they never move `last`, and a repeat is harmless.
     if (EPHEMERAL.includes(kind)) {
       if (kind === "presence") { presence.set(String(d.who), { state: d.state, ...(d.doing ? { doing: d.doing } : {}), at: f.time ?? 0 }); bump("@presence"); }

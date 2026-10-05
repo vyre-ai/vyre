@@ -7,6 +7,8 @@
 // Same plug as the real client: `connect({ from, onFrame })` replays what the log holds after `from`,
 // then goes live, so the screen cannot tell it from core/stream.
 
+import { typeOf } from "./frame-type.js";
+
 export type Frame = {
   v: 1; id: string; cur: number; session: string; turn: string; type: string; time: number; corr: string;
   /** performance.now() at emit; the perf script reads it. Not part of the wire frame. */
