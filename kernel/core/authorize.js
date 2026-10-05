@@ -18,6 +18,8 @@ const KNOWN_OBLIGATIONS = new Set(["audit", "presence", "ask", "meter", "rate", 
 const REASON_RANK = ["no_grant", "wrong_node", "pattern_not_covered", "not_contained", "revoked", "expired"];
 
 /** Does an action pattern (`crm.update`, `crm.*`, `*.read`, `*`) cover `action`, for a grant made against action-set `version`? */
+/** Actions only a Flow run may ask (see `byRunner`). */
+const RUNNER_ONLY = new Set(["fn.run", "model.call"]);
 export function patternCovers(pattern, action, since = 0, version = undefined, risk = undefined) {
   const a = action.split("."), p = pattern.split(".");
   const ok = pattern === "*" || (p.length === 2 && a.length === 2 && p.every((s, i) => s === "*" || s === a[i]));
@@ -196,6 +198,11 @@ export function createAuthorizer(cfg) {
       const { chain, action, resource } = input;
       const def = reg.get(action);
       if (!def) return deny("unknown_action");
+      // Running a Code step and asking a model are what a Flow RUN does, never what a person does directly: only a chain that carries a run's automation hop may ask, and what it needs from its
+      // approver is the right to run Flows (so a member cannot run arbitrary code or spend AI by calling these themselves).
+      const byRunner = typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "automation");
+      if (RUNNER_ONLY.has(action) && !byRunner) return deny("runner_only");
+      const grantAction = RUNNER_ONLY.has(action) ? "flows.run" : action;
       // 1. Space check.
       if (chain.space !== cfg.space || spaceOf(resource) !== cfg.space || !segments(resource)) return deny("wrong_space");
       for (const h of chain.hops) if (h.actor.space !== cfg.space) return deny("wrong_space");
@@ -256,7 +263,7 @@ export function createAuthorizer(cfg) {
         const candidates = (await cfg.grants.forSubject(actor, h, input)).filter(g => g.status === "active" && g.space === cfg.space).sort((a, b) => (a.id < b.id ? -1 : 1));
         let best = "no_grant", chosen = null, chosenObs = [];
         for (const g of candidates) {
-          const r = await evaluate(g, h, ms, chain, action, resource, attrs, now, 0, input.probe === true);
+          const r = await evaluate(g, h, ms, chain, grantAction, resource, attrs, now, 0, input.probe === true);
           if (r.ok) { chosen = g; chosenObs = r.obligations; break; }
           if (REASON_RANK.indexOf(r.reason) > REASON_RANK.indexOf(best)) best = r.reason;
         }

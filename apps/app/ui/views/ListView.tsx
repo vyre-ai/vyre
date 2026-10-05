@@ -12,7 +12,7 @@ import { Stagger } from "../motion/Appear";
 import { useUiTheme } from "../theme";
 import { fmtMoney, sortKey, sortRows, toDate } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
-import { fieldOf, filterRows, listColumns, optionsOf, titleOf, val, viewDefOf } from "./logic.js";
+import { fieldOf, filterRows, listColumns, optionsOf, titleOf, val, viewDefOf, viewRows } from "./logic.js";
 import { TitleCell, fieldNode } from "./shared";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -30,15 +30,15 @@ export function ListView({ def, rows, env, onOpen, lead }: { def: any; rows: any
   const vd = viewDefOf(def);
   const cols = listColumns(def, vd);
   const [sort, setSort] = useState<string>(vd.list?.sort || vd.titleField);
-  const [desc, setDesc] = useState(false);
+  const [desc, setDesc] = useState(vd.list?.sortDir === "desc");
   const [filters, setFilters] = useState<Record<string, Set<string>>>({});
   const chipFields = cols.filter((f: any) => f.kind === "choice" || f.kind === "stage");
   const sortable = [fieldOf(def, vd.titleField), ...cols, fieldOf(def, vd.list?.sort ?? "")].filter((f: any, i: number, a: any[]) => f && a.indexOf(f) === i);
   const shown = useMemo(() => {
-    const kept = filterRows(rows, filters);
+    const kept = filterRows(viewRows(rows, vd.list?.filter), filters);
     const sf = fieldOf(def, sort);
     return sf ? sortRows(kept, (r: any) => val(r, sf.name), sf.kind, { def: sf, actors: env.actors, links: env.links }, desc) : kept;
-  }, [rows, filters, sort, desc, def, env.actors, env.links]);
+  }, [rows, filters, sort, desc, def, vd.list?.filter, env.actors, env.links]);
   const flip = (name: string, opt: string) => {
     const next = new Set(filters[name] || []);
     if (next.has(opt)) next.delete(opt); else next.add(opt);

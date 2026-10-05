@@ -212,3 +212,11 @@ export function foldersFor(into: string, rels: string[]): string[] {
 export const uploadedLine = (names: string[], bytes: number, into: string, root: string): string => `Uploaded ${names.length === 1 ? names[0] : `${names.length} files`} (${size(bytes)}) to ${into || root}.`;
 export const rootLabel = (target: string, name: string): string => (target === "box" ? "Your server" : `${name}'s home`);
 export const NO_PREVIEW = "No preview for this kind of file. Download it to open it.";
+
+/** The banner after a hand-back. A note is claimed to be in the thread only when the box says it was told; otherwise it says plainly that the agent has no thread open and the note went nowhere. */
+export function handedBackBanner(name: string, heldMs: number | null, note: string, noted: boolean): string {
+  const held = heldMs ? ` after ${Math.floor(heldMs / 60000)}:${String(Math.floor(heldMs / 1000) % 60).padStart(2, "0")}` : "";
+  const base = `You handed the keyboard back to ${name}${held}.`;
+  if (!note.trim()) return base;
+  return noted ? `${base} Your note is in its thread.` : `${base} ${name} has no thread open, so your note did not go anywhere.`;
+}
