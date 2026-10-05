@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): the app reports the P-256 presence key when it pairs a device by typed code (add this device to a name, the browser's Type the code, the Mac's boxless server): platform-3's paired session signs with it. test: scripts/app-walk-paired-device.mjs pairs a device by typed code on awbox and walks the whole approval (6 of 6): person session, ask, stand-in phone approves, spend once, second spend refused, no.
+
 - fix(app): no fixed "5 minutes" about a code: the Mac's type-the-code help says the server shows how long it has left, and "Add your device" counts down from the box's own `code_expires`. The line to run on a server (Install, Add a device) is the release candidate's own `install-box.sh` line only when the bridge gives a version with a hyphen (`window.__vyreShell.version`, "0.3.0-rc.1"); a plain "0.3.0", no version, or anything that is not a version gets the stable `curl -fsSL vyre.run/i | sh` (first-run.js installLine).
 
 - feat(app): the Mac window's boxless "On a server" (rows 4e and 4f of the prototype). When the bridge says `boxless` (`window.__vyreShell.boxless`, native-core), setup goes name > "Type the code your server shows" > "Type this on your server" (the ack, typing it there is the yes) > "Connected to your server" > "Add your phone". Three wrong tries end the code; an expired code and an unreachable server have their own sentences (screens/install/MacServer.tsx, copy and rules in first-run.js, over `joinWithCode`).
