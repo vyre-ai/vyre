@@ -1141,5 +1141,6 @@ test("wink.server.home / call / health / events over the REAL relay: a paired de
   // a server the relay no longer reaches is server_unreachable, not a hang
   await f.w.d.stop();
   await assert.rejects(run("wink.server.call", { tool: "records.me" }), e => e.code === "server_unreachable");
+  assert.equal((await run("wink.server.health", { fresh: true })).reach, "none", "a fresh health read sees it gone");
   assert.equal((await run("wink.server.home")).reachable, false);
 });
