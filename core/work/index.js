@@ -103,19 +103,22 @@ export default {
     });
     ctx.tool("work.situation", {
       description: "Where the caller is, in a few hundred tokens: the Space, their role, the project or record in scope, the team, open tasks, what waits on them, and what is sealed and why. With `context: true`, or a `task`, also the record's world: the records it links to and that link to it, recent communications with the people on it, and what happened to it lately.",
-      input: obj({ project: { type: "string" }, record: { type: "string" }, context: { type: "boolean" }, task: { type: "string" } }),
+      input: obj({ project: { type: "string" }, record: { type: "string" }, context: { type: "boolean" }, task: { type: "string" }, context_tokens: { type: "number" } }),
       run: async (input, extra) => {
         const k = kernelOf();
         const ref = (/** @type {any} */ u) => { if (!urnOk(u)) return undefined; const [, , , type, id] = u.split("/"); return { type, id }; };
         let project = ref(input.project), record = ref(input.record);
         const chain = await chainOf(extra);
+        let asked = Number.isFinite(input.context_tokens) ? input.context_tokens : undefined;
         // A task names the record it is about: an agent doing it gets that record's world as well
         if (typeof input.task === "string" && input.task && !record) {
           const t = await k.ask.get(chain, input.task).catch(() => null);
           if (t && typeof t.record === "string") record = ref(t.record);
+          // a task may ask for more of the record's world (form.context_tokens), within the ceiling
+          if (asked === undefined && t && t.form && Number.isFinite(t.form.context_tokens)) asked = t.form.context_tokens;
         }
         const lines = Object.fromEntries([...doing.values()].flatMap(d => [...(d.lines || [])]));
-        return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), context: input.context === true || typeof input.task === "string" });
+        return buildSituation(k, chain, { space: k.space, ...(project ? { project } : {}), ...(record ? { record } : {}), doing: lines, room: await audienceOf(extra), context: (input.context === true || typeof input.task === "string") ? { budget: Math.max(200, Math.min(8000, Math.trunc(asked ?? await ctx.settings.get("work.context.tokens").catch(() => 1200) ?? 1200))) } : false });
       },
     });
 

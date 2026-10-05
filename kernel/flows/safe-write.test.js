@@ -213,3 +213,29 @@ test("resume after a crash between the write and its read-back: only the read-ba
   assert.equal(run.state, "done", JSON.stringify(run.error));
   assert.deepEqual(second.map(q => q.request.method), ["GET"], "only the missing step ran");
 });
+
+test("SW-1: a 503 on a write with no idempotency key is sent ONCE and ends outcome_unknown with a card; with a key, or on a read, it waits and goes again", async () => {
+  /** @type {any[]} */ const seen = [];
+  const w = await world({ ports: { service: async (/** @type {any} */ q) => { seen.push(q); return seen.length === 1 ? json({}, 503, { "retry-after": "5" }) : json({ id: "m-1" }); } } });
+  declare(w, { ops: [{ name: "create_matter", ...WRITE, read: false }] });
+  const { id } = await install(w, svcFlow(matter));
+  w.kernel.inbound("payment.received", { n: "Rivera" });
+  await settle(w);
+  w.advance(10_000); await w.runner.tick(); await settle(w);
+  assert.equal(seen.filter(q => q.request.method === "POST").length, 1, "one POST, never two");
+  const run = await lastRun(w, id);
+  assert.equal(run.state, "failed");
+  assert.equal(run.error.code, "outcome_unknown");
+  await w.kernel.idle();
+  assert.ok(w.kernel.tasks.find((/** @type {any} */ t) => t.form && t.form.kind === "outcome_unknown"), "the owner is told");
+  // with a key the provider dedupes, so the resend is safe
+  /** @type {any[]} */ const seen2 = [];
+  const w2 = await world({ ports: { service: async (/** @type {any} */ q) => { seen2.push(q); return seen2.length === 1 ? json({}, 503, { "retry-after": "5" }) : q.request.method === "POST" ? json({ id: "m-1" }) : json({ id: "m-1", client: "Rivera" }); } } });
+  declare(w2, { ...KEY, ops: [IDEM_OP] });
+  const f2 = await install(w2, svcFlow(matter));
+  w2.kernel.inbound("payment.received", { n: "Rivera" });
+  await settle(w2);
+  w2.advance(10_000); await w2.runner.tick(); await settle(w2);
+  assert.equal((await lastRun(w2, f2.id)).state, "done");
+  assert.equal(seen2.filter(q => q.request.method === "POST").length, 2);
+});

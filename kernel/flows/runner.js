@@ -645,6 +645,12 @@ export class FlowRunner {
           throw e;
         }
         if (r && r.held) throw new StepFail("held", `the vault is holding the call to ${s.connector} for a person's yes${r.summary ? ` (${String(r.summary).slice(0, 120)})` : ""}`);
+        // A 503 can come AFTER the provider did the work, so a write that cannot be repeated safely (no idempotency key) is never sent again on one: it stops and tells the owner, as after a crash.
+        // A 429 is a refusal before anything happened, and a read has nothing to duplicate, so those wait and go again.
+        if (declared && write && r && r.status === 503 && !takesKey(conn, op)) {
+          await this.#alert(ctx, `${ctx.view.flow.label || ctx.view.flow.name}: check ${s.connector} before this goes again`, { kind: "outcome_unknown", flow: run.flow, run: run.id, step: s.id, connector: s.connector, method, path: req.path }, `${run.id}:${key}:unknown`);
+          throw new StepFail("outcome_unknown", `${s.connector} answered 503 to ${method} ${req.path}, which may have been done already, and ${s.connector} takes no idempotency key, so it was not sent again; check it, then retry the run`);
+        }
         if (declared && r && (r.status === 429 || r.status === 503) && (led.attempts || 0) + 1 < 6) {
           const lower = Object.fromEntries(Object.entries(r.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
           const wait = retryAfterMs(lower, this.now()) ?? (r.status === 429 ? 5000 * ((led.attempts || 0) + 1) : null);

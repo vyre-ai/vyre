@@ -57,3 +57,12 @@ test("the context has its own budget: a small one says how many items it left ou
   const s = await buildSituation(w.rig.kernel, w.chain, { space: w.rig.space, record: at(w.matter), context: { budget: 12 } });
   assert.match(s.text, /not shown\./);
 });
+
+test("the context budget is asked for by number: more room shows more, and the default is 1,200", async () => {
+  const w = await world();
+  const small = await buildSituation(w.rig.kernel, w.chain, { space: w.rig.space, record: at(w.matter), context: { budget: 30 } });
+  const big = await buildSituation(w.rig.kernel, w.chain, { space: w.rig.space, record: at(w.matter), context: { budget: 3000 } });
+  assert.ok(big.text.length > small.text.length);
+  const def = await buildSituation(w.rig.kernel, w.chain, { space: w.rig.space, record: at(w.matter), context: true });
+  assert.match(def.text, /Recent communications:/);
+});
