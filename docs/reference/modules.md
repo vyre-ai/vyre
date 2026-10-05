@@ -18,7 +18,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
-| [`agents`](#agents) | `core/agents` | `box`, `local` | 13 | 0 | cli |
+| [`agents`](#agents) | `core/agents` | `box`, `local` | 14 | 0 | cli |
 | [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`approvals`](#approvals) | `core/approvals` | `box`, `local` | 6 | 0 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
@@ -58,7 +58,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 7 | capsule, cli, deck |
 | [`pluginagent`](#pluginagent) | `core/pluginagent` | `box`, `local` | 9 | 4 | cli |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 21 | 6 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 22 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 24 | 4 | cli |
 | [`providers`](#providers) | `core/providers` | `box`, `local` | 1 | 0 | cli |
 | [`publish`](#publish) | `core/publish` | `box` | 17 | 6 | capsule, cli, deck |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 4 | capsule, cli, deck |
@@ -74,7 +74,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`signin`](#signin) | `core/signin` | `box`, `local` | 6 | 0 | cli |
-| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 84 | 34 | capsule, cli, deck |
+| [`spaces`](#spaces) | `core/spaces` | `box`, `local` | 86 | 34 | capsule, cli, deck |
 | [`spend`](#spend) | `core/spend` | `box`, `local` | 4 | 2 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`stream`](#stream) | `core/stream` | `box`, `local` | 7 | 0 | none |
@@ -94,7 +94,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 20 | 7 | capsule, cli, deck |
 | [`wink`](#wink) | `core/wink` | `box` | 59 | 34 | capsule, cli, deck |
-| [`work`](#work) | `core/work` | `box`, `local` | 26 | 0 | cli |
+| [`work`](#work) | `core/work` | `box`, `local` | 32 | 0 | cli |
 
 ## about
 
@@ -112,7 +112,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [13](tools.md#agents), 2 of them only for other modules
+- Tools: [14](tools.md#agents), 2 of them only for other modules
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `credentials`
@@ -565,7 +565,7 @@ Claude Code on this computer, as a named agent the person grants once: the plugi
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [22](tools.md#projects)
+- Tools: [24](tools.md#projects)
 - Emits: [4 events](events.md#projects)
 - Shows on: cli
 - Needs kernel: `{"reach":true,"actions":["records.read"]}`
@@ -755,7 +755,7 @@ Identity, spaces, members and invites: your Vyre name, a space with a home you c
 - Folder: `core/spaces`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [84](tools.md#spaces), 25 of them only for other modules
+- Tools: [86](tools.md#spaces), 26 of them only for other modules
 - Emits: [34 events](events.md#spaces)
 - Shows on: capsule, cli, deck
 - Needs kernel: `{"membership":true,"spaces":true}`
@@ -989,8 +989,8 @@ The work layer on the kernel: the native assistant's tool surface and situation,
 - Folder: `core/work`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [26](tools.md#work)
+- Tools: [32](tools.md#work)
 - Emits: no events
 - Shows on: cli
 - Needs daemon: `flowsHost`
-- Needs kernel: `{"work":true,"attrs":true,"actions":["records.read","records.create","records.update","events.read","drive.write","grants.list","drive.read"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client","to":"contact"},{"name":"owner","kind":"actor","label":"Owner"},{"name":"due","kind":"date","label":"Due"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"}]},{"name":"chat-record","label":"Chat","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project"},{"name":"chat","kind":"text","label":"Chat id","unique":true},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"started","kind":"datetime","label":"Started"},{"name":"last_active","kind":"datetime","label":"Last active"},{"name":"status","kind":"choice","label":"Status","options":["working","idle","stopped","failed"]},{"name":"drive","kind":"text","label":"Project Drive folder"},{"name":"location","kind":"text","label":"This chat's Drive folder"}]}]}`
+- Needs kernel: `{"work":true,"attrs":true,"actions":["tasks.request","records.read","records.create","records.update","records.remove","events.read","drive.write","grants.list","drive.read"],"types":[{"name":"project","label":"Project","icon":"IconFolder","kind":"project","fields":[{"name":"name","kind":"text","label":"Name","required":true},{"name":"slug","kind":"text","label":"Short name used in addresses","unique":true},{"name":"status","kind":"choice","label":"Status","options":["active","archived","moved"]},{"name":"client","kind":"link","label":"Client","to":"contact"},{"name":"owner","kind":"actor","label":"Owner"},{"name":"due","kind":"date","label":"Due"},{"name":"drive_path","kind":"text","label":"Drive folder"},{"name":"repo","kind":"text","label":"Repository"},{"name":"memory_scope","kind":"text","label":"Memory scope"},{"name":"archived_at","kind":"datetime","label":"Archived"},{"name":"moved_to","kind":"text","label":"Moved to (Space and project) when it left this Space"},{"name":"moved_from","kind":"text","label":"Moved from (Space and project) when it came from another"}]},{"name":"chat-record","label":"Chat","icon":"IconMessage","fields":[{"name":"title","kind":"text","label":"Title"},{"name":"project","kind":"link","label":"Project","to":"project"},{"name":"chat","kind":"text","label":"Chat id","unique":true},{"name":"people","kind":"text","label":"People"},{"name":"agents","kind":"text","label":"Agents"},{"name":"started","kind":"datetime","label":"Started"},{"name":"last_active","kind":"datetime","label":"Last active"},{"name":"status","kind":"choice","label":"Status","options":["working","idle","stopped","failed"]},{"name":"drive","kind":"text","label":"Project Drive folder"},{"name":"location","kind":"text","label":"This chat's Drive folder"}]}]}`
