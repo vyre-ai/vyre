@@ -63,44 +63,6 @@ const SEARCH = `const s = document.querySelector("header input[type=search], hea
 
 /** @type {any[]} */
 export const SHOTS = [
-  // ---- Onboarding: a fresh box, one screen per step ----
-  { name: "onboarding-you", dir: "get-started", world: "onboard", url: "#you", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    script: `type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`,
-    alt: "Step 1 of the onboarding: your name and your assistant's name, with the note that the address will be on your tailnet.",
-    page: "get-started/onboarding.md", heading: "1. You" },
-  { name: "onboarding-claude", dir: "get-started", world: "onboard", url: "#claude", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    script: `await until('document.querySelector(".choice")');`,
-    alt: "Step 2: Claude Code is found on the machine, and Vyre offers to sign in with your Claude subscription or an API key.",
-    page: "get-started/onboarding.md", heading: "2. Claude Code" },
-  { name: "onboarding-tailscale", dir: "get-started", world: "onboard", url: "#tailscale", width: 1280, height: 800, themes: ["dark"], shows: [...ONBOARD, "core/names/tailscale.js"],
-    script: `await until('document.querySelector("#primary")');
-      if (/connect/i.test(document.querySelector("#primary").innerText)) click("#primary");
-      await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`,
-    alt: "Step 3: the machine has joined the tailnet as alex-box, with each sign-in step ticked.",
-    page: "get-started/onboarding.md", heading: "3. Tailscale" },
-  { name: "onboarding-name", dir: "get-started", world: "onboard", url: "#name", width: 1280, height: 800, themes: ["dark"], shows: [...ONBOARD, "core/names/service.js"],
-    script: `await until('document.querySelector("#primary")'); click("#primary");
-      await until('document.querySelector("#primary") && /switch to/i.test(document.querySelector("#primary").innerText)', 30000);`,
-    alt: "Step 4: the address https://alex-box.tail0000.ts.net is reserved, pointed at the machine and has its certificate.",
-    page: "get-started/onboarding.md", heading: "4. Your address" },
-  { name: "onboarding-history", dir: "get-started", world: "onboard", url: "#history", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    // The step lists the folders it found, "N sessions" each; the sample world's transcripts live in a temp folder, whose path must not
-    // be in a picture, so it is written as a folder in the sample person's own Claude Code folder (keeping its last segment, so rows stay different) before the shot.
-    script: `await until('/[0-9]+ sessions?/.test(document.body.innerText) && !document.querySelector(".bar.moving")', 20000);
-      const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); const bad = []; while (w.nextNode()) bad.push(w.currentNode);
-      for (const n of bad) n.textContent = n.textContent.replace(/\\/(?:private\\/)?(?:tmp|var\\/folders)\\/[^\\s|]*/g, m => "/home/alex/.claude/projects/" + (m.replace(/\\/+$/, "").split("/").pop() || "sessions")).replace(/a temporary folder/g, "Claude Code");
-      await wait(800);`,
-    alt: "Step 5: Vyre has read the Claude Code sessions on the machine and offers to group them into first projects.",
-    page: "get-started/onboarding.md", heading: "5. Your history" },
-  { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: "fit", maxHeight: 1300, themes: ["dark"], shows: [...ONBOARD, ...PAIR],
-    script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(800);`,
-    fit: ".ob-main",
-    alt: "Step 6: the Pair this Mac card with alex-mbp asking to pair and a field for its code, and the Open Vyre on your phone card with a code for Tailscale and one for this box's address.",
-    page: "get-started/onboarding.md", heading: "6. Your devices" },
-  { name: "onboarding-ready", dir: "get-started", world: "onboard", url: "#ready", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    alt: "The last screen of the setup: Vyre is ready, with your Mac, your phone and your history ticked or still to do, and Open Vyre.",
-    page: "get-started/onboarding.md", heading: "The last screen" },
-
   // ---- The Deck ----
   { name: "deck-now", dir: "using", world: "deck", url: "/now", width: 1280, height: 900, themes: BOTH,
     shows: [...DECK, ...NOW],

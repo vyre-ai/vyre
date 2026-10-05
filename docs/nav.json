@@ -4,7 +4,6 @@
     { "title": "Start here", "pages": ["index.md"] },
     { "title": "Get started", "pages": [
       "get-started/install.md",
-      "get-started/onboarding.md",
       "using/first-hour.md", "get-started/first-day.md",
       "get-started/without-docker.md",
       "get-started/troubleshooting.md"
@@ -34,7 +33,7 @@
     ]},
     { "title": "Concepts", "pages": [
       "concepts/box-and-mac.md",
-      "concepts/tailnet.md",
+      "concepts/network.md",
       "concepts/presence.md",
       "concepts/floor.md",
       "concepts/modules.md"

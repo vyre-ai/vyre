@@ -25,17 +25,16 @@ Run `vyre up` on the box, or on your Mac once it is paired. It prints the addres
 ```output
   Vyre is ready.
 
-    your box        https://vyre.tail1234.ts.net
+    your box        https://alex.vyre.run
     your assistant  juno
     next            vyre      (your projects and threads)
 ```
 
-Open that address in a browser on any device signed in to your tailnet as the box's owner. A
-device signed in as anyone else gets `403 not_owner` ("This Vyre serves only its owner.").
+Open that address in a browser on one of your devices.
 
 > [!SNAG] The last line reads "Almost there: your box has no address yet."
 > The address step of the onboarding is not done, and the Deck is served only at the address.
-> Finish that step: see [Onboarding](../get-started/onboarding.md).
+> Finish that step: see [Install](../get-started/install.md).
 
 ## What is on each view
 
@@ -124,13 +123,13 @@ stored, the same as onboarding would have made it.
 
 ## Finish setup, or change it
 
-Settings starts with Setup: every onboarding step (you, Claude Code, Tailscale, your address,
+Settings starts with Setup: every onboarding step (you, Claude Code, your network, your address,
 your history, your devices) and whether it is done. **Finish** beside a skipped step opens the
 onboarding at that step. `vyre index` does the history step from a terminal.
 
 ![Settings in the Deck: the six setup steps, each marked To do or Done with a Finish or Open button, then your name and address](shots/deck-settings.png)
 
-![Settings, Your devices: the iPhone alex-iphone, offline in Tailscale with how to turn it back on, and the Mac alex-mbp online, with Add a device.](shots/settings-devices.png)
+![Settings, Your devices: the iPhone alex-iphone, and the Mac alex-mbp, with Add a device.](shots/settings-devices.png)
 
 Beside each step is the command that does the same from a terminal: `vyre up` (it picks up at
 the first step not finished) or, for history, `vyre index`.
@@ -142,10 +141,8 @@ History and memory, Spend (today's spend per provider and its daily cap; see
 [Mobile](mobile.md#turn-on-notifications)), Security (add a passkey), Modules, Appearance, This
 machine, and Update, export and uninstall. `/settings#devices` or `/settings?section=devices` jumps to a section.
 
-**Your devices** lists your devices on the tailnet as Tailscale reports them, phones and tablets
-first, each Online or Offline. The Mac paired with this box says "Paired with this box". A phone
-that is offline says so in plain words: "Your iPhone is offline in Tailscale. Open the Tailscale
-app and turn it on." **Add a device** opens the onboarding's devices step.
+**Your devices** lists your devices, phones and tablets first. The Mac paired with this box says
+"Paired with this box". **Add a device** opens the onboarding's devices step.
 
 ## Change the colours
 
@@ -174,7 +171,7 @@ you have one, Now shows **Make your first passkey** with the two commands that p
 - on your Mac, `vyre box add`;
 - or on the box, `vyre up`.
 
-Open the link on the device you want the passkey on, from your tailnet. It works once, for 10
+Open the link on the device you want the passkey on, on one of your devices. It works once, for 10
 minutes. A passkey made in Safari syncs to your other Apple devices through iCloud Keychain, so
 your iPhone can use it too.
 
@@ -194,7 +191,7 @@ A code works only where it was made. The box never takes a terminal as proof, so
 Mac's own Vyre, not the box's.
 
 > [!SNAG] "This browser cannot create or use a passkey."
-> The browser must reach the Deck at its real address over your tailnet, in Safari or Chrome. A
+> The browser must reach the Deck at its real address, in Safari or Chrome. A
 > passkey cannot be made on `127.0.0.1` or through an SSH tunnel.
 
 ## Your Mac's sessions on the box

@@ -1,6 +1,6 @@
 ---
 title: Known gaps
-summary: What Vyre 0.2.0 does not do yet, what to do today instead, and which release is coming next.
+summary: What Vyre 0.2.9 does not do yet, what to do today instead, and what comes next.
 audience: users, builders, operators, agents
 owner: docs
 status: draft
@@ -8,9 +8,21 @@ status: draft
 
 # Known gaps
 
-These docs describe what the code does today. This page lists where Vyre 0.2.0 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, which release is coming next. A gap leaves this page in the same change that closes it.
+These docs describe what the code does today. This page lists where Vyre 0.2.9 stops short of what you might expect: what is true now, what to do instead, and, for the things that are planned, what comes next.
 
-## Coming next in 0.2.1
+## Next, in 0.3.1
+
+Glass in the phone and Mac apps.
+
+## Known gaps in 0.2.9
+
+### Real devices
+
+Nothing has been walked on a real iPhone or Android yet, including Face ID pairing and the removed-phone wipe. Glass is in the web app only. The Mac server installer has not run on a real Mac yet. Home-router NAT is untested: a direct path through a home router has not been tried, and the relay carries the connection when there is none.
+
+### Notifications when the phone app is closed
+
+Only web push works today. Native push needs Apple and Google push accounts, which are not set up.
 
 ### No hold on risky pages and apps
 
@@ -18,45 +30,19 @@ An interactive artifact made by a session that read outside content and touched 
 
 What to do today: open an interactive artifact from a session like that only when you trust what it read.
 
-### Vyre for Chrome: faster routing and several tabs
+### Vyre for Chrome: one Chrome, reads in parallel
 
-Vyre for Chrome learns a site's own API calls, but it does not yet choose them for you: it works through the page, in one tab at a time. 0.2.1 adds picking a known API call first and falling back to the page, and working in several tabs at once.
+Vyre for Chrome tries a site's own API call first for a read, and falls back to the page. It reads several tabs at once (at most six) within your one Chrome. A tab for each agent is not built, and a write goes through the page, asked first.
 
-What to do today: ask for one job at a time.
+What to do today: ask for one job at a time when several agents need Chrome.
 
-### Give it to two
+### Models side by side
 
-You cannot yet hand one message to two models and see both replies side by side, then keep one or merge them.
+You can hand one message to several models and see each answer in its own block, then keep one. Only that answer fan-out across models is proven. Per-model plan and diff blocks are not: each reply carries the provider's logo, and plans, diffs, terminals and reasoning look the same for every provider.
 
-What to do today: put `@codex` or `@grok` at the start of a message to run that one turn on that account, and use the session's model picker to move the session. Or open two sessions.
+What to do today: use the fan-out for answers, and read plans and diffs as they come.
 
-### Per-provider blocks in Chat
-
-Chat has no plan, diff, terminal or reasoning blocks made for Codex and Grok replies yet. Each reply carries the provider's logo.
-
-### Smaller 0.2.1 items
-
-- **Account identity.** The account card for Grok, and for Claude on a Mac, says "account not identified".
-- **No accounts screen in Chat.** You add and sign in a Codex or Grok account by asking your assistant to start the sign-in. A screen for it comes later.
-- **Images from Claude's own tools.** Images that Claude's own image tools or an MCP tool return are not saved as artifacts yet. Codex and Grok images and Grok video are.
-- **Generated media polish.** There are no thumbnails, no gallery view, no audio previews and no per-person quotas for generated media yet, and images, video and audio have no public link.
-- **Chrome extension install.** Vyre for Chrome loads unpacked in Chrome, Brave, Edge, Chromium, Arc and Dia, so Chrome shows its developer-extensions bar on every start. A Chrome Web Store listing is planned for 0.3.
-
-## Coming next in 0.2.5
-
-### Spaces
-
-One Vyre is one person's server today. Shared servers, a team space, sharing vault items with others, and choosing where a project lives come in 0.2.5.
-
-What to do today: run one server per person.
-
-### Memory rollover
-
-Vyre does not yet carry a long session across a fresh start with its own summary of your decisions, the plan and the recent turns. Each agent compacts its own context the way it always has, and Vyre's memory keeps the facts in Memory and recall.
-
-What to do today: start a new session for a new piece of work, and ask Vyre what it remembers with `vyre memory ask`.
-
-### Putting idle sessions to sleep when the server runs short of memory
+### Idle sessions do not sleep under memory pressure, and there is no fair-share scheduler
 
 Today Vyre closes a session nobody is using after `idle_minutes` (10 by default) and brings it back on your next message, and `max_live` (6 on a server) limits how many run at once, closing the one idle longest to make room. See [Sessions](using/sessions.md). What is still to come in 0.2.5 is putting sessions to sleep because the server is short of memory, together with memory rollover. Until then a busy session holds its memory on the server until it ends or goes idle.
 
@@ -73,8 +59,8 @@ What to do today: stop sessions you are done with, or lower `idle_minutes` or `m
 
 ## The first Windows install checks a checksum, not a signature
 
-`irm https://vyre.run/w | iex` downloads `VyreSetup.exe` and checks its SHA-256 against the line in the release's `SHA256SUMS`, both fetched over https from GitHub. It does not verify `SHA256SUMS.sig`: Windows PowerShell 5.1 cannot check an Ed25519 signature, and the installer is not code-signed yet, so Windows shows its "unrecognized app" warning (choose More info, then Run anyway). Every later update is different: the app verifies it against Vyre's release key and refuses anything unsigned.
+`irm https://vyre.run/w | iex` downloads `VyreSetup.exe` and checks its SHA-256 against the line in the release's `SHA256SUMS`, both fetched over https from GitHub. It does not verify `SHA256SUMS.sig`: Windows PowerShell 5.1 cannot check an Ed25519 signature.
 
-What to do: install only from `vyre.run/w` or the release page on GitHub. A signature-verified first install (a PowerShell Ed25519 check, or code-signing the installer) is planned for 0.2.1.
+What to do: install only from `vyre.run/w` or the release page on GitHub.
 
 Owner: windows with launch.

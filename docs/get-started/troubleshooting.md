@@ -95,56 +95,6 @@ The page shows the reason it was given. If it stays, run `vyre name` on the serv
 
 It works once, for two minutes. Press **Get a new link** on the setup page, and open it in the browser you will use with your server.
 
-## Setting up the server from the Mac
-
-### "... is not Linux"
-
-A Vyre box runs on Linux with Docker. Nothing changed on the server. Use a Linux server, then run `vyre box add alex@192.0.2.10` again.
-
-### "nothing changed. Run it in a terminal to answer, or add --yes."
-
-`vyre box add` shows its plan and asks before it changes anything. Without a terminal to ask on (in a script, say), it stops. Run it in a terminal, or add `--yes` once you have read the plan.
-
-### "The setup link has expired."
-
-The Mac waited more than an hour for the browser steps. Your box is as you left it: run `vyre box add alex@192.0.2.10` again for a fresh link. The page keeps every step you already finished.
-
-## Onboarding in the browser
-
-### "This onboarding link has already been used or has expired"
-
-The link works once, for an hour. Run `vyre up` on the box for a new one, or `vyre box add` again from the Mac. The page keeps what you already did and resumes from there.
-
-### The onboarding page will not load
-
-This matters when you set up from the server itself (`curl ... | sh`). The page listens only on the box's loopback, so from your Mac you reach it through an SSH tunnel.
-
-1. Check that the `ssh -N -L 7300:127.0.0.1:7300 alex@192.0.2.10` line `vyre up` printed is still running in a Terminal tab. It prints nothing while it works.
-2. Open the link exactly as printed. Do not change the port: the page checks that it is reached on the port it listens on, and answers "Not here." otherwise.
-3. If port 7300 is busy on your Mac, stop whatever holds it rather than forwarding a different port.
-
-### "Your address is not set up yet, so this page cannot open the Deck."
-
-You skipped **Your address**. The Deck is served only at your address, never on the loopback link. Go back to that step and finish it.
-
-### Step 1 will not take your name
-
-"Lowercase letters, numbers and hyphens, 3 to 32 long, starting with a letter." A display name such as `Alex Rivera` is refused. Type a short name such as `alex`.
-
-### You want a `<you>.vyre.run` address
-
-To have a `<you>.vyre.run` name, run this on the server:
-
-```
-vyre setup --name alex --yes
-```
-
-It claims `alex.vyre.run` for good, waits for the address and its certificate, and prints a recovery code once: store it somewhere safe. `vyre name check alex` tells you first whether the name is free. The setup page at vyre.run/setup does the same claim in your browser.
-
-### Your address does not open
-
-Your address opens from your own devices through Vyre's own network, and through the relay when a direct path is not possible. There is nothing to install or sign in to on the device. Run `vyre doctor` on the server and read **Path to your server**, **Relay** and **Server door**: each says what failed and the one thing to do next. On the SSH path, once the address works the `127.0.0.1:7300` link stops working; that is expected, and you can close the tunnel.
-
 ## The box
 
 ### "vyre: no box in /srv/vyre (set VYRE_DIR)"
@@ -247,6 +197,6 @@ A thread that needs permission stops and asks. `vyre agents` shows it as waiting
 
 ## Where to go next
 
-- [Install](install.md) and [Onboarding](onboarding.md), the steps in order
+- [Install](install.md), the steps in order
 - [Looking after the box](../using/box-care.md): updates, backups, logs
 - [CLI reference](../reference/cli.md)

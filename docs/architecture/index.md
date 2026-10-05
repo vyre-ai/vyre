@@ -83,7 +83,7 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | ADR | Decision |
 | --- | --- |
 | [0001](../adr/0001-vault-crypto.md) | How the vault seals, releases and shares credentials |
-| [0002](../adr/0002-network-and-identity.md) | Network and identity: tailnet listeners, callers identified by `tailscale whois` |
+| [0002](../adr/0002-network-and-identity.md) | Network and identity: how a caller is identified at the server's door |
 | [0003](../adr/0003-glass-stream.md) | How Glass streams an agent's screen, and who may type into it |
 | [0004](../adr/0004-presence.md) | Presence: proving a person is there before a human-only action |
 | [0005](../adr/0005-glass.md) | Glass: a remote computer you can watch, take over, sign in on and browse |
@@ -94,7 +94,7 @@ Architecture decision records live in `docs/adr/`. Each states the problem, the 
 | [0010](../adr/0010-vault-autofill.md) | Vault autofill |
 | [0011](../adr/0011-web-push.md) | Web Push for the moments you are needed |
 | [0012](../adr/0012-cdp-proxy.md) | Chrome's debugging port never leaves the container unauthenticated |
-| [0014](../adr/0014-tailnet.md) | Using the tailnet fully |
+| [0014](../adr/0014-tailnet.md) | The network ADR: using the private network fully |
 | [0016](../adr/0016-connectors.md) | Connectors, the MCP hub and native accounts (proposed) |
 | [0019](../adr/0019-docs-site.md) | This docs site: one source in `docs/`, checked and built without a framework |
 | [0020](../adr/0020-claude-code-plugin.md) | Vyre as an installable Claude Code plugin |

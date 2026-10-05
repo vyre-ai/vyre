@@ -13,7 +13,7 @@ background process, running as your own login account (never root), with its dat
 in that account's home. Vyre's history reads the same `~/.claude/` as your own `claude`. The
 setup page at vyre.run/setup installs a Linux server with Docker, or a Mac that stays on as a
 service, as in [Install](install.md); this page is for running Vyre from the package instead,
-and you finish setup with the server's own six screens, in [Onboarding](onboarding.md).
+and you pair it from your Vyre app.
 
 ## What you need
 
@@ -95,8 +95,8 @@ account that ran sudo. Add `--dry-run` to see every change without making one.
    `systemctl restart vyre.service`.
 
 Then pair it from your Vyre app: `vyre call wink.server.code` on the server prints the pairing
-code, and the app shows the same three words to confirm. The steps from there are in
-[Onboarding](onboarding.md).
+code, and the app shows the same three words to confirm. Pairing is described in
+[Your private network](../concepts/network.md#pairing-a-device).
 
 > [!SNAG] vyre up --system says systemd is required
 > Without systemd there is no system install. Run `vyre daemon` (Vyre in the foreground) as the
@@ -144,6 +144,6 @@ passphrase you typed. Keep the file somewhere only you can read, and the passphr
 
 ## Where to go next
 
-- [Onboarding](onboarding.md): the browser steps, your Mac and your phone.
+- [Your private network](../concepts/network.md): pairing, direct or relay, and your address.
 - [CLI reference](../reference/cli.md): every `vyre` command.
 - [Configuration reference](../reference/config.md): `role`, `network.port` and the rest.

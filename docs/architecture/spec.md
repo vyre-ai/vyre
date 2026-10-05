@@ -26,8 +26,9 @@ Claude Code itself:
    from memory rather than a model.
 4. **Agents on your own quota.** Launch agents that use your own Claude subscription (a setup
    token) or an API key with a budget. Each agent has its own computer.
-5. **Tailscale, made simple.** Your Claude Code is on your phone as easily as your laptop, at
-   your own address, reachable only by your devices.
+5. **A private network, built in.** Your Claude Code is on your phone as easily as your laptop, at
+   your own address, reachable only by your devices. Nothing to install or sign in to
+   ([the network](../concepts/network.md)).
 6. **A built-in vault.** Agents use credentials without anyone seeing them; single items can be
    shared with other people's Vyre, relayed by default so one revoke ends access.
 
@@ -46,14 +47,14 @@ Claude Code itself:
 Installed like a self-hosted server app (n8n, a media server): one line from the landing page,
 then a visual onboarding in the browser. The terminal does as little as possible. The whole
 journey, and why, is [ADR 0008](../adr/0008-install-journey.md); the one page for users is
-[Onboarding](../get-started/onboarding.md).
+[Install](../get-started/install.md).
 
 ```
 npm install -g vyre
 vyre up
 ```
 
-On a Mac, `vyre up` finds the box on the tailnet, or asks where Vyre should run. The recommended
+On a Mac, `vyre up` asks for your server's pairing code, or asks where Vyre should run. The recommended
 answer is a server, which is `vyre box add user@host`: it installs Docker and the box over SSH,
 opens the tunnel and the browser itself, and waits, so the person never opens a shell on the
 server. On a server, `curl -fsSL https://vyre.run/install.sh | sh` does the same from the inside.
@@ -64,14 +65,11 @@ onboarding is the Deck's first screen, and walks through, one step a screen:
 1. **You.** Your name, and your assistant's name.
 2. **Claude Code.** Detects `claude`; signs in with your subscription (`claude setup-token`) or
    an API key, stored in the Vault. Nothing is typed into a terminal.
-3. **Tailscale.** Detects it, or shows the one install command for this OS; then "Connect" opens
-   Tailscale's own sign-in and waits until this machine is on your tailnet.
-4. **Your address.** Gets the certificate for `https://vyre.<tailnet>.ts.net` (asking the person
-   to turn on HTTPS for their tailnet the first time), then switches the page to it. Your own
-   domain is an option; `<you>.vyre.run` waits for the name directory ([ADR 0008](../adr/0008-install-journey.md), section 4).
-5. **Your history.** Finds existing Claude Code sessions, indexes them in the background with a
+3. **Your address.** Claims `<you>.vyre.run`, or takes your own domain, gets the certificate by DNS
+   challenge, then switches the page to it ([the network](../concepts/network.md)).
+4. **Your history.** Finds existing Claude Code sessions, indexes them in the background with a
    progress bar, and lets you make your first projects by picking sessions from the catalogue.
-6. **Your devices.** QR codes for the phone (Tailscale, then the address), and the Mac.
+5. **Your devices.** A QR code to pair the phone, and the pairing code for the Mac.
 
 Finishing creates the assistant, which greets you on the last screen. The Mac's terminal ends
 with the same words: "Vyre is ready." and the address.
@@ -144,7 +142,7 @@ vyre/
     switchboard/           headless sessions, streaming, lease    (workstream: switchboard)
     ship/                  preview, repo, live                     (later)
     computers/             agents' containers and the screen pool  (workstream: computers)
-    names/                 <you>.vyre.run, Tailscale, certificates (workstream: box)
+    names/                 <you>.vyre.run, certificates (workstream: box)
     link/                  the Mac and the box as one system: pairing, ctx.remote, box events (workstream: link)
     files/                 search, preview and fetch files on both machines, inside their roots (workstream: link)
     planner/               alarms, timers, reminders, todos, notes, a calendar; one scheduler (workstream: planner)
@@ -200,7 +198,7 @@ A project folder carries `.vyre/project.json` (section 7.2).
   "me": { "domains": ["example.com"], "emails": ["alex@example.com"] },
   "transcripts": ["~/.claude/projects", "~/.claude/projects-archive"],
   "modules": { "enable": ["watchers", "vault"], "disable": [] },
-  "network": { "tailscale": true, "address": "alex.vyre.run" }
+  "network": { "address": "alex.vyre.run" }
 }
 ```
 
@@ -315,9 +313,9 @@ Each is a module under `core/`. Their public tools are listed; everything else i
 The plumbing every module uses. The store opens SQLite with WAL and a 10-second busy timeout on
 every connection; migrations are numbered SQL files per module.
 
-`vyred` listens on `~/.vyre/vyred.sock` for local clients and, when networking is on, on the
-box's tailnet addresses with its own TLS certificate, identifying each connection by its source
-address ([ADR 0002](../adr/0002-network-and-identity.md)). HTTP API: `/v1/...`, JSON, responses are
+`vyred` listens on `~/.vyre/vyred.sock` for local clients and, when networking is on, over the
+built-in network and the relay, identifying each caller from its entry on the identity list
+([the network](../concepts/network.md)); it opens no listener of its own on the network. HTTP API: `/v1/...`, JSON, responses are
 `{ "data": ... }` or `{ "error": { "code", "message" } }`.
 
 ### 7.2 Projects
@@ -378,7 +376,7 @@ Port from: `the prototype's bin/curator.cjs`, `graph.cjs`.
 Credentials, sealed at rest, released one item at a time to a module or agent that declared it.
 No screen, log or event ever shows a value. Passes share an item with another person's Vyre:
 **relayed** by default (the value never leaves your box; their calls go through your Gate over
-Tailscale; revoke ends it at once) or **sealed** (an encrypted copy; revoking means rotating).
+the network; revoke ends it at once) or **sealed** (an encrypted copy; revoking means rotating).
 Offboarding is one action: revoke everything a person holds and list what must be rotated.
 
 The Vault is meant to replace 1Password entirely, for a person and for their agents: logins
@@ -438,12 +436,11 @@ frozen. Glass streams a screen to the Deck and supports take-over.
 
 ### 7.10 Names and network · workstream
 
-`<you>.vyre.run` points at your box's Tailscale address, so only your devices can reach it.
-Certificates are issued by DNS challenge, which works for a private address. vyred serves the
-Deck itself on the tailnet interface and identifies the person by `tailscale whois` of the
-connection's source address, never by a header, so there is no separate login and no local
-process can pose as the owner ([ADR 0002](../adr/0002-network-and-identity.md); `tailscale serve`
-cannot present a vyre.run certificate). The name directory at vyre.run holds only the DNS record.
+`<you>.vyre.run` points at your box's address on the private network, so only your devices can
+reach it. Certificates are issued by DNS challenge, which works for a private address. A device
+that reaches the box arrives as `device:<id>`, identified from its entry on the identity list and
+never by a header, so there is no separate login ([the network](../concepts/network.md)). The
+name directory at vyre.run holds only the DNS record.
 
 ### 7.11 Learning · workstream
 
@@ -576,9 +573,9 @@ Enforced outside the model, in the Rules and the Gate. None can be switched off.
 | **M0** | Skeleton | `npm install -g .` then `vyre status` shows vyred running; module loader, store, events, config, API, test runner, CI. |
 | **M1** | Projects and memory | Projects, catalogue, recall, curator and brief ported with their tests; `vyre` works as it does today, on anyone's machine. |
 | **M2** | Harness | The plugin loads with `--plugin-dir`; Brief, Rules and the MCP server work in a real Claude Code session. |
-| **M3** | Vault | Put, grant, fetch, revoke, offboard; relayed passes between two machines on a tailnet. |
+| **M3** | Vault | Put, grant, fetch, revoke, offboard; relayed passes between two machines. |
 | **M4** | Watchers | The runtime plus the write-a-watcher skill; one watcher written by Claude, running, filing into a project. |
-| **M5** | Box | `vyre up` on a Linux server; Tailscale joined; `<you>.vyre.run` resolves privately with HTTPS. |
+| **M5** | Box | `vyre up` on a Linux server; paired over the built-in network; `<you>.vyre.run` resolves privately with HTTPS. |
 | **M6** | Switchboard and Deck | Headless threads streamed to the Deck; Now and Projects working. |
 | **M7** | Lumen | Ported from the current Mac app onto vyred's API. |
 | **M8** | Computers and Glass | An agent's desktop, live, with take-over. |
@@ -618,7 +615,7 @@ from others. A workstream merges to `main` only with its tests passing and the f
 - **Tests beside the code**, `node --test`. A bug fix comes with the test that would have caught
   it. Tests never touch the user's real `~/.vyre` or real transcripts; they get a temp
   `VYRE_HOME`.
-- **Real data before merge.** Anything that talks to Claude Code, Tailscale or a network is
+- **Real data before merge.** Anything that talks to Claude Code or a network is
   exercised for real once before it merges, not only against a mock.
 - **CHANGELOG.md** is updated with every change, in plain sentences that say why.
 - **Commits** are conventional (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`), one concern each,

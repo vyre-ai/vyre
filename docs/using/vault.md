@@ -378,7 +378,7 @@ own Vyre.
 A pass is one of two kinds:
 
 - **Relayed** (the default): the value never leaves your box. Dana's calls go through your Vyre
-  over Tailscale with `vyre vault relay` (`vault.relay`), your Vyre adds the value, and revoking
+  with `vyre vault relay` (`vault.relay`), your Vyre adds the value, and revoking
   ends her access at once. `--host`, `--method` and `--path` on `vyre vault pass create` narrow
   what her calls may reach.
 - **Sealed** (`--sealed`): Dana gets an encrypted copy, for offline use. Revoking a sealed pass

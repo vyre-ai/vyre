@@ -42,7 +42,7 @@ address it prints instead, which always works.
 
 Recommended path for someone who wants their own Windows PC to be the server, not just a device
 against one elsewhere: run the Linux server **inside WSL2**, not as native Windows. The server is
-a Docker Compose stack (`box/compose.yml`, two containers: `tailscale` and `vyre`); Docker Desktop
+a Docker Compose stack (`box/compose.yml`, the `vyre` container); Docker Desktop
 targets WSL2 as its backend already, so this is the same server image every Linux install uses,
 completely unchanged.
 
@@ -60,7 +60,7 @@ This path has not been run on a real Windows PC with WSL2. Its parts are tested 
 
 ## Multiple Windows PCs, one person
 
-Same story as multiple Macs: each device pairs into your tailnet and gets its own device identity,
+Same story as multiple Macs: each device pairs with a Wink and gets its own device identity,
 so "which device is mine" and pushing an answer to "this PC" work the same way federation between
 a Mac and a server already does (see [ADR 0021](../adr/0021-box-reads-the-mac.md) and
 [ADR 0032](../adr/0032-person-and-device.md)), the Windows app is one more

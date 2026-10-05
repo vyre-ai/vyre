@@ -18,8 +18,7 @@ The whole path takes about fifteen minutes. Other ways to install are at the end
 > [!WHY] Why a server, and not just my Mac?
 > Your assistant and agents keep working when your Mac is asleep or closed, and your phone can
 > reach them from anywhere. A small VPS is enough. A Mac that stays on can be the server too
-> (step 2), and on a Mac you can also try Vyre with no server at all, in
-> [Other ways to install](#other-ways-to-install).
+> (step 2).
 
 ## Before you start
 
@@ -332,61 +331,6 @@ that passphrase: keep the two apart. The steps are in [Box care](../using/box-ca
 
 ## Other ways to install
 
-::: tabs
-::: tab From my Mac over SSH
-Use this when you would rather start on the Mac than at vyre.run/setup. It needs the `vyre`
-command on the Mac ([step 10](#10-put-the-lumen-on-your-mac)). It sets the server up over SSH and holds the SSH tunnel to the server's own setup page for
-you.
-
-```sh
-vyre box add alex@192.0.2.10
-```
-
-```output
-  reaching alex@192.0.2.10
-  alex@192.0.2.10: Ubuntu 24.04 LTS, no Docker yet
-
-  Vyre will, on alex@192.0.2.10:
-    install Docker with get.docker.com
-    create /srv/vyre and put Vyre's stack in it
-    add /usr/local/bin/vyre
-    start Vyre, which waits for you to finish setting it up in your browser
-
-  Go ahead? [y/N]
-```
-
-Plain `vyre up` on a Mac that knows no server asks where Vyre should run: pick `1` and type the
-account and address you use with `ssh`. The plan is what Vyre found on your server, so yours may
-differ. Type `y`. Vyre copies its installer to the server and runs it there, then prints:
-
-```output
-  Finish in your browser. I'll wait here.
-
-    http://127.0.0.1:7300/onboard?t=...
-```
-
-Your browser opens that link. Leave the terminal open: it holds the tunnel the page runs
-through. The page here is the server's own setup, six screens that name you and your assistant,
-sign in to Claude, read your Claude Code history and put Vyre on your devices. Each screen is
-described in [Onboarding](onboarding.md).
-
-When the address works, the terminal opens a tab to make your passkey, asks the server to pair
-with this Mac, and prints the ready block. Approve the Mac in the Deck, as in
-[step 10](#10-put-the-lumen-on-your-mac).
-
-> [!SNAG] could not reach alex@192.0.2.10
-> Vyre uses your Mac's own `ssh`. Check that `ssh alex@192.0.2.10` works in a terminal first. If
-> the server has no SSH key for you, Vyre asks for the password once and reuses the connection.
-
-> [!SNAG] The plan says "add alex to the docker group"
-> Your account cannot use Docker without sudo, and sudo needs a password, which later steps over
-> SSH cannot type. Joining the `docker` group fixes that. It makes the account root-equivalent on
-> that server. Say no and nothing changes.
-
-> [!SNAG] You pressed Ctrl-C, or the terminal closed
-> Nothing is lost. Run `vyre box add alex@192.0.2.10` again. It looks at what the server has and
-> carries on from there.
-::: tab I already have a server
 Your server is set up (at vyre.run/setup, or from another Mac) and this is a new Mac. Install
 Vyre as in [step 10](#10-put-the-lumen-on-your-mac), then:
 
@@ -402,51 +346,8 @@ It asks the server to pair this Mac and shows the code to approve in the Deck, a
 Plain `vyre up` asks for your server's pairing code. On your own terminal it also offers, once, to show Vyre's line under every Claude Code
 session (`vyre statusline install` does it later). Pick `3` at the question `vyre up` asks, if you
 would rather type the address there.
-::: tab Only on this Mac
-No server: this Mac is the server. Your phone reaches it only while the Mac is awake. Pick `2`
-at the question `vyre up` asks, or run:
 
-```sh
-vyre up --box
-```
-
-```output
-  Open this link to set up Vyre (it works once, for an hour):
-
-    http://127.0.0.1:7300/onboard?t=...
-```
-
-The link opens in your browser. Follow the six screens in [Onboarding](onboarding.md). With this
-Mac as the server there is no other Mac to pair: on **Your devices**, use only the phone card.
-Running without Docker, and under systemd on Linux, is in [Without Docker](without-docker.md).
-::: tab Without the setup page
-You are already in a shell on the server and want the server's own setup instead of
-vyre.run/setup. Run the installer there without a code:
-
-```sh
-curl -fsSL https://vyre.run/install.sh | sh
-```
-
-On a terminal it asks `Paste the setup code from your browser (Enter to skip):`. Press Enter. It
-ends with the server's own setup link:
-
-```output
-  Open this link to set up Vyre (it works once, for an hour):
-
-    http://127.0.0.1:7300/onboard?t=...
-
-  This box is headless. On your own computer, run this first, then open the link there:
-    ssh -N -L 7300:127.0.0.1:7300 alex@192.0.2.10
-```
-
-On your computer, run the `ssh -N -L` line and leave it running (it prints nothing), then open
-the link in that computer's browser. The six screens are in [Onboarding](onboarding.md). Then
-install Vyre on the Mac as in [step 10](#10-put-the-lumen-on-your-mac).
-
-> [!SNAG] The setup page will not load
-> Check the `ssh -N -L` line is still running, and open the link exactly as printed, with
-> `127.0.0.1:7300`. Do not change the port: the page answers "Not here." on any other.
-:::
+The server itself can also run without Docker, from the package: see [Without Docker](without-docker.md).
 
 ## If setup stops partway
 

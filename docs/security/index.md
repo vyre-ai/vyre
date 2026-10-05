@@ -12,11 +12,11 @@ Vyre runs Claude Code, and agents, on a machine you own, with your credentials w
 
 ## The floor
 
-Nine rules, enforced by the Harness's Rules hook, the same rules in `vyred` for every tool call that is not you at your own surface (an agent, a module, MCP, a device on the tailnet), presence checks in `vyred`, the Gate and the event log, not by asking the model. None can be configured away. The one that matters most for credentials is rule 8: no vault value appears on any screen, log or event, except to a person who has just proved presence on their own device, for that one value. Never to a model, an agent, a log or an event.
+Nine rules, enforced by the Harness's Rules hook, the same rules in `vyred` for every tool call that is not you at your own surface (an agent, a module, MCP, a device that reaches the box), presence checks in `vyred`, the Gate and the event log, not by asking the model. None can be configured away. The one that matters most for credentials is rule 8: no vault value appears on any screen, log or event, except to a person who has just proved presence on their own device, for that one value. Never to a model, an agent, a log or an event.
 
 Read them all, with what each means in practice, in [The security floor](../concepts/floor.md). The source is [Section 11 of the spec](../architecture/spec.md#11-the-security-floor).
 
-Presence is how Vyre knows a person, not a process, is asking: a passkey or Touch ID check, made by `vyred`, before a human-only action such as revealing a value. A tailnet identity is not presence. See [Presence](../concepts/presence.md) and [ADR 0004](../adr/0004-presence.md).
+Presence is how Vyre knows a person, not a process, is asking: a passkey or Touch ID check, made by `vyred`, before a human-only action such as revealing a value. A device identity is not presence. See [Presence](../concepts/presence.md) and [ADR 0004](../adr/0004-presence.md).
 
 ## The vault
 
@@ -34,16 +34,16 @@ Details: [ADR 0001](../adr/0001-vault-crypto.md), the key hierarchy in [ADR 0006
 
 ## Network and identity
 
-- **Only your devices reach the box.** Your address resolves to the box's Tailscale address. On a Docker box the `tailscale` container is the only way in, and it publishes one port to the host: 7300, on `127.0.0.1`, for onboarding.
-- **Callers are identified by `tailscale whois` of the WireGuard source address,** never by a header. A process on the host or in another container cannot produce a tailnet source address, so it cannot pose as you.
-- **One owner.** The box serves one owner, set at setup.
+- **Only your devices reach the box.** The built-in private network and the relay carry every connection, and the only port a Docker box publishes to the host is 7300, on `127.0.0.1`, for onboarding.
+- **Callers are identified from your identity list,** never by a header. A device that reaches the box arrives as `device:<id>`, and the entry on the list says who it is, so a process that sets its own headers cannot pose as you.
+- **Owners and roles.** A space has owners, and a role decides what each person may do: owner, admin, manager, member or temp.
 - **Onboarding is loopback only.** Before an owner exists, `vyred` serves one route: the onboarding page, on loopback, behind a one-time token that expires after an hour. It checks the `Host` header, so a page on another site cannot reach it through DNS rebinding.
-- **No root.** `vyred` runs as uid 1000 in the container, or as your own login account without Docker, never root. On Linux without Docker, systemd owns port 443 on `tailscale0` and hands it to `vyred`, so `vyred` needs no capability.
+- **No root.** `vyred` runs as uid 1000 in the container, or as your own login account without Docker, never root.
 - **A Mac pairs only with your passkey.** Approving a pairing needs presence, and the box refuses the approval from the Mac that asks, since a model on that Mac can read the code it shows.
 - **The box reads six things from the Mac, and nothing else.** The paired Mac holds one request open to the box, so the Mac opens no port. Six read tools cross (projects, recall and thread lists), checked against the same list on both ends, only for you and never for an agent, MCP or a guest. Nothing the Mac answers is stored on the box ([ADR 0021](../adr/0021-box-reads-the-mac.md)).
-- **Vyre keeps nothing about you on its own servers.** The one public trace is the DNS record of a `vyre.run` name, if you claim one: the name and your box's tailnet address, which nothing off your tailnet can reach. (Claude Code and Tailscale talk to their own services as they always do.)
+- **Vyre keeps nothing about you on its own servers.** The one public trace is the DNS record of a `vyre.run` name, if you claim one: the name and your box's address on the private network, which nothing off your network can reach. (Claude Code talks to its own services as it always does.)
 
-Details: [ADR 0002](../adr/0002-network-and-identity.md), [The tailnet](../concepts/tailnet.md).
+Details: [ADR 0002](../adr/0002-network-and-identity.md), [Your private network](../concepts/network.md).
 
 ## Agents' computers
 

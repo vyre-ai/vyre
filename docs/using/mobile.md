@@ -84,8 +84,6 @@ Memory, Vault, Planner and Settings open from the Places sheet or their paths (`
 5. Press **Send a test**.
 
 Other devices you turned on are listed with when a notification last reached them, and Remove.
-Settings, **Your devices** lists every device on your tailnet and whether Tailscale sees it
-online.
 
 > [!SNAG] On an iPhone there is no Turn on notifications button
 > iOS delivers notifications only to an installed app (iOS 16.4 or later), not to a Safari tab.

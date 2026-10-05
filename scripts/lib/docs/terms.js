@@ -72,8 +72,7 @@ export const CONCEPTS = [
   { name: "MCP hub", page: "build/mcp-hub.md", match: /\bMCP hub\b/i },
   { name: "memory", page: "using/memory.md", match: /\bmemory\b/i, code: "core/memory/index.js" },
   { name: "module", page: "concepts/modules.md", match: /\bmodules?\b/i, code: "core/modules/index.js" },
-  { name: "onboarding", page: "get-started/onboarding.md", match: /\bonboarding\b/i, code: "core/onboard/index.js" },
-  { name: "owner", page: "concepts/tailnet.md#the-owner", match: /\bowner\b/i },
+  { name: "owner", page: "concepts/network.md#the-owner", match: /\bowner\b/i },
   { name: "pairing", page: "get-started/install.md#10-put-the-lumen-on-your-mac", match: /\bpair(?:s|ed|ing)?\b/i, code: "core/link/index.js" },
   { name: "pass", page: "using/vault.md#share-with-another-person", match: /\b(?:a|the|by|each|every|one|your|sealed|relayed|shared)\s+pass(?:es)?\b|\bpasses\b/i, code: "core/vault/index.js" },
   { name: "passkey", page: "concepts/presence.md#enroll-your-keys", match: /\bpasskeys?\b/i, code: "core/presence/index.js" },
@@ -83,7 +82,6 @@ export const CONCEPTS = [
   { name: "room", page: "using/memory.md#how-projects-keep-memory-apart", match: /\brooms?\b/i, code: "core/memory/index.js" },
   { name: "signal", page: "using/learning.md#signals-what-vyre-hears", match: /\bsignals?\b/i, code: "core/learn/signals.js" },
   { name: "skill", page: "using/learning.md#skills-from-what-you-repeat", match: /\bskills?\b/i, code: "core/learn/skills.js" },
-  { name: "tailnet", page: "concepts/tailnet.md", match: /\btailnets?\b/i },
   { name: "thread", page: "using/projects-and-threads.md", match: /\bthreads?\b/i, code: "core/switchboard/index.js" },
   { name: "vault", page: "using/vault.md", match: /\bvaults?\b/i, code: "core/vault/index.js" },
   { name: "vyred", page: "concepts/box-and-mac.md#one-process-per-machine", match: /\bvyred\b/, code: "core/daemon/index.js" },
@@ -94,7 +92,7 @@ export const CONCEPTS = [
 // Where each Deck view is explained, when not on the Deck page's list of views.
 const SCREEN_PAGES = {
   agents: "using/agents.md", chat: "using/chat.md", glass: "using/glass.md", memory: "using/memory.md", vault: "using/vault.md",
-  onboard: "get-started/onboarding.md",
+  onboard: "get-started/install.md",
 };
 const DECK_VIEWS_PAGE = "using/deck.md#what-is-on-each-view";
 

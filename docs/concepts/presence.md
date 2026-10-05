@@ -31,11 +31,11 @@ The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A modul
 - Learning: `learn.skill-install`.
 - Machines: `link.pair.approve`.
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`, `presence.person.start`.
-- Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`, `projects.access.grant`.
+- Who else reaches this box: `hooks.enable`, `hooks.open`, `hooks.close`, `computers.egress.set`, `projects.access.grant`.
 
-Your own actions on your own screens ask for no extra proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making, changing and resuming agents (`agents.create`, `agents.update`, `agents.resume`), changing a setting (`settings.set`), accepting, retiring and relaxing your lessons (`learn.accept`, `learn.retire`, `learn.relax`), taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`), making one of the box's VyreDrive shares (built on Tailscale's Taildrive) read-only or read-write (`files.drive.access`), and more besides. The list in `core/presence/index.js` is the full one. Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
+Your own actions on your own screens ask for no extra proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making, changing and resuming agents (`agents.create`, `agents.update`, `agents.resume`), changing a setting (`settings.set`), accepting, retiring and relaxing your lessons (`learn.accept`, `learn.retire`, `learn.relax`), taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`), and more besides. The list in `core/presence/index.js` is the full one. Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
 
-Over the network, your own surface means a signed-in person, not just a device of yours. A browser, the phone app or a paired Mac on your tailnet or relay is a device until you sign in with a passkey on it; a device that has not signed in gets `person_session_required` on these tools. A sign-in lasts 30 days from its last use and is tied to that device. You can list and end them in Settings. See [ADR 0032](../adr/0032-person-and-device.md).
+Over the network, your own surface means a signed-in person, not just a device of yours. A browser, the phone app or a paired Mac that reaches the box over the network or the relay is a device until you sign in with a passkey on it; a device that has not signed in gets `person_session_required` on these tools. A sign-in lasts 30 days from its last use and is tied to that device. You can list and end them in Settings. See [ADR 0032](../adr/0032-person-and-device.md).
 
 Your assistant may still change an agent's plain fields (name, instructions, model, effort, description) through Vyre's tools. See [Agents](../using/agents.md).
 
@@ -70,14 +70,14 @@ vyre presence remove <id>
 
 - Lumen enrolls its key at first run, with Touch ID.
 - When you set up through vyre.run/setup, the first passkey is made in the browser that started setup, and that browser becomes your first trusted device.
-- On a box, the first passkey comes from onboarding: `onboard.finish` hands you a Deck link carrying a code. A code enrolls a passkey on a box only when the call comes from `tailnet:<owner>`, which is reachable only from another of your devices. The box never takes a terminal code: there, the Deck's passkey is the only proof.
+- On a box, the first passkey comes from onboarding: `onboard.finish` hands you a Deck link carrying a code. The box never takes a terminal code: there, the Deck's passkey is the only proof.
 
 > [!WHY] Why does the box refuse a terminal code?
 > A model on your Mac can often `ssh -t` to the box, since the Mac usually holds your SSH key, and get a real terminal there. Inside the box's container, `vyre` reaches vyred through `docker compose exec`, whose terminal no login record lists, so vyred cannot tell your terminal from Claude's. A passkey needs a person at a device.
 
 ## Sessions in the Deck
 
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, Lumen signature or a passkey) returns a secret that lasts 30 minutes from the proof, used or not, bound to the tailnet node that opened it. A Gate approval can open one too: a send with `x-vyre-presence-keep: 1` and a strong proof gets a session back, so the next sends on that device ask for nothing. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
+Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, Lumen signature or a passkey) returns a secret that lasts 30 minutes from the proof, used or not, bound to the device that opened it. A Gate approval can open one too: a send with `x-vyre-presence-keep: 1` and a strong proof gets a session back, so the next sends on that device ask for nothing. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
 
 A session serves the Deck and Lumen. The CLI gets a narrower window of its own, with no secret on disk: after one Touch ID (or Lumen or passkey proof) from a login terminal, vyred remembers that login (the terminal, the login's first process and its start time, so a new tab that reuses the terminal's number starts with nothing), and that login's vault approvals and grants ask nothing until 30 minutes from the proof. Anything that puts a secret or a code on screen (`vyre vault get --reveal`, copy, one-time codes, `vyre vault run` resolving secrets) asks every time in a terminal. Each use of the window writes one line to that terminal ("vyre: used your Touch ID window for ...") and one to the vault's audit (`vyre vault audit`). vyred names the login from the kernel's word on which process connected and which terminal it runs in, never from anything the caller sends. A process under a Claude session, a process with no controlling terminal (the Bash tool, anything detached), and a `script` or expect pty that `who` does not list never ride it. A tmux pane rides the window of the logins its attached clients run in (tmux attached from your own login shell), and asks every time when a client is missing, is not a login, or runs under Claude. A terminal code proves its one call without opening a window. The window lives in vyred's memory, so a restart asks again. On a box the CLI never gets one: the Deck's passkey proves each call there. A Claude session's MCP tools and an agent are refused, and never asked.
 
@@ -95,7 +95,7 @@ A tool that ran after a proof gets `presence: { method, keyId }` in its second a
 - **Module callers** (`module:<name>`). Only the loader makes these, and modules are code you installed. A module that turns an outside event into a presence tool must prove the person itself.
 - **A registry built without a verifier.** Only unit tests build one. vyred always builds one.
 
-A tailnet caller is not exempt. `tailnet:<login>` proves the device and the login, not that you are there, and Claude Code on your Mac shares that login.
+A device caller is not exempt. `device:<id>` proves which device sent the call, not that you are there, and Claude Code on your Mac is on the same device.
 
 ## What it will not defend
 
@@ -107,4 +107,4 @@ On a Docker box, the sessions Vyre runs itself (the assistant, agents, chat) run
 
 - [The security floor](floor.md): the nine rules presence serves.
 - [Tools and events](../build/tools-and-events.md): declaring `presence` on your own tool.
-- [The tailnet](tailnet.md): why a tailnet identity is not a person.
+- [Your private network](network.md): why a device identity is not a person.

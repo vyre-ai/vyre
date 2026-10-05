@@ -45,7 +45,7 @@ status: stable
 | `title` | yes | The page's name, as the nav and the `# H1` show it. |
 | `summary` | yes | One sentence. It appears in search, in `/llms.txt` and under the title. |
 | `audience` | yes | A comma list from `users`, `builders`, `operators`, `agents`. |
-| `owner` | yes | One team: `tailnet`, `capsule-pro`, `capsule-sight`, `connectors`, `mobile`, `polish-cli`, `polish-surfaces`, `e2e`, `integrator`, `docs`, `planner`, `cc-plugin`, `glass-live`, `pwa`. The owner keeps the page true (`scripts/lib/docs/check.js` holds the list). |
+| `owner` | yes | One team: `network`, `capsule-pro`, `capsule-sight`, `connectors`, `mobile`, `polish-cli`, `polish-surfaces`, `e2e`, `integrator`, `docs`, `planner`, `cc-plugin`, `glass-live`, `pwa`. The owner keeps the page true (`scripts/lib/docs/check.js` holds the list). |
 | `status` | yes | `stable` (shipped on main), `draft` (partly shipped, may change), `planned` (not built yet). |
 | `generated` | no | The script that writes the page. Only generated reference pages carry it. |
 
@@ -62,7 +62,7 @@ The front matter parser reads a small subset of YAML: `key: value`, optional quo
   "site": { "title": "Vyre docs", "url": "https://docs.vyre.run", "repo": "https://github.com/vyre-ai/vyre" },
   "sections": [
     { "title": "Start here", "pages": ["index.md"] },
-    { "title": "Get started", "pages": ["get-started/install.md", "get-started/onboarding.md"] }
+    { "title": "Get started", "pages": ["get-started/install.md", "get-started/first-day.md"] }
   ],
   "unpublished": ["work/", "proposals/", "design/boards/"]
 }
@@ -154,7 +154,7 @@ Known gap). Any of them may carry a title after the marker:
 
 ```md
 > [!WARNING] The HTTPS switch is off
-> Turn on HTTPS for your tailnet, then press Check again.
+> Wait for the certificate to finish, then press Check again.
 ```
 
 `> [!SNAG]` is an "If this happens" box: the title (required) is what the reader sees, the body is
@@ -180,10 +180,10 @@ its paragraph becomes a figure, captioned by its alt text, or by its title when 
 alt text that says what the screen shows.
 
 ```md
-![The Tailscale step, waiting for the server to join](shots/onboarding-tailscale.png "Tailscale")
+![The address step, waiting for the certificate](shots/onboarding-address.png "Address")
 ```
 
-If `onboarding-tailscale.dark.png` sits beside it, the dark theme shows that file instead. The
+If `onboarding-address.dark.png` sits beside it, the dark theme shows that file instead. The
 build reads each PNG's width and height from the file, so the page does not jump as shots load.
 
 Shots are taken, not drawn. `npm run docs:shots` (on the test box, never the Mac) starts the sample
@@ -318,7 +318,7 @@ npx wrangler pages deploy docs-site --project-name vyre-docs --branch main
 ## Style
 
 - No em dash and no section-sign character, anywhere. Use a colon, a comma, or two sentences. Write "Section 5.1" for spec references. The check enforces this.
-- Examples use the sample world only: the user alex, the firms Harlow Legal and Northwind Bakery, the assistant and agents juno and kit, the domains `example.com`, `harlowlegal.com` and `*.example`, tailnet names like `vyre.tail1234.ts.net`, and addresses from `192.0.2.x` or `100.64.x.x`. The check enforces names, emails and addresses.
+- Examples use the sample world only: the user alex, the firms Harlow Legal and Northwind Bakery, the assistant and agents juno and kit, the domains `example.com`, `harlowlegal.com` and `*.example`, names like `alex.vyre.run`, and addresses from `192.0.2.x` or `100.64.x.x`. The check enforces names, emails and addresses.
 - Plain, direct English, in the second person. Short paragraphs. Concrete commands in fenced blocks. No marketing adjectives, no "simply", no "seamless".
 - Write only what is true on main. Copy commands, flags, config keys, tool names and paths from the code. When something is designed but not built, say "Not built yet." or mark the page `draft` or `planned`.
 - A reader who is an agent should be able to act from the page alone.

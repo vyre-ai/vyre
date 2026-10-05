@@ -10,7 +10,7 @@ status: draft
 
 Eight steps, each one small enough to check before the next. You need a Linux server you can open
 a terminal on (or a Mac that stays on), your Mac, your phone, a Claude, ChatGPT or Grok account,
-and a Tailscale account. If a step stops, [troubleshooting](../get-started/troubleshooting.md) has
+and nothing else to sign up for. If a step stops, [troubleshooting](../get-started/troubleshooting.md) has
 the fix, and `vyre doctor` says what is wrong in under two seconds.
 
 Use your own details throughout. Nothing here needs example data.
@@ -19,7 +19,7 @@ Use your own details throughout. Nothing here needs example data.
 
 Open <https://vyre.run/setup>, choose where Vyre will live, and paste the one line it shows into
 a terminal on that server. The page watches the install, checks four words with you, helps you
-claim an address such as `alex.vyre.run`, and connects Tailscale. [Install](../get-started/install.md)
+claim an address such as `alex.vyre.run`, and shows your private network. [Install](../get-started/install.md)
 walks every screen.
 
 **Check:** the page says **You're in** at your own address, and `vyre status` on the server says
@@ -38,8 +38,10 @@ Skipped it? Deck **Settings**, **Claude Code**, **Re-connect** brings the same s
 
 ## 3. Open Vyre on your phone (4 minutes)
 
-1. Install Tailscale on the phone and sign in with the same account as your computer.
-2. Open your address with `/now` at the end, for example `https://alex.vyre.run/now`, in Safari
+1. Open the Vyre app on the phone and scan the code your server or a computer you are signed in
+   on shows, or paste its long code. Both screens show the same three words; say yes only if
+   they match. There is nothing to install or sign in to first.
+2. Or open your address with `/now` at the end, for example `https://alex.vyre.run/now`, in Safari
    (iPhone) or Chrome (Android).
 3. Add it to the home screen: on an iPhone, Share, then **Add to Home Screen**; on Android, the
    browser menu, then **Install app**.
