@@ -3,6 +3,7 @@
 import { allowMock, setStore } from "../../../../deck/ui/store.js";
 import { createGatewayStore, storeError } from "../../../../deck/ui/gateway-adapter.js";
 import { call, listen, send } from "./box";
+import { tool as heldTool } from "../real/box";
 import { withSpace } from "../real/with-space.js";
 import { useSpaces } from "../../screens/shell/state";
 
@@ -10,6 +11,9 @@ import { useSpaces } from "../../screens/shell/state";
 const named = (tool: string, input: Record<string, unknown>) => withSpace(tool, input, useSpaces.getState().space);
 
 (globalThis as { __VYRE_APP__?: boolean }).__VYRE_APP__ = true;
+
+/** The calls that touch a sealed value: held for the owner's yes. */
+const HELD = new Set(["records.seal-put", "records.reveal"]);
 
 /** The box connection as the adapter's rpc: reads now, writes through the outbox, a human-only call's proof as the call's presence. */
 export const boxRpc = {
@@ -19,6 +23,10 @@ export const boxRpc = {
     return r.data;
   },
   async write(tool: string, input: Record<string, unknown> = {}, o: { proof?: unknown } = {}) {
+    // A sealed value is filled or shown only after the owner's yes: the box holds the call, the phone answers, and the call goes again with the approval (src/real/box.ts).
+    if (HELD.has(tool) && typeof o.proof !== "string") {
+      try { return await heldTool(tool, named(tool, input)); } catch (e) { const x = e as { code?: string; message?: string }; throw storeError({ code: x.code, message: x.message }); }
+    }
     const s = await send(tool, named(tool, input), typeof o.proof === "string" ? { presence: o.proof } : {});
     const r = await s.answered;
     if (r.error) throw storeError(r.error);

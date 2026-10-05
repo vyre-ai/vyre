@@ -4,6 +4,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+- feat(app): a record's sealed field has a Fill (Replace once filled) button and the line "Hidden from AI; your assistant sees a placeholder". Filling and revealing go to the box as held calls: the owner's phone answers the ask and the call goes again with the approval, as the Vault's held fields do. The simulated Face ID proof is gone from the record page.
+
 - feat(app): one Find. /u/search is web-2's Find page; the Search button and Cmd-K (Ctrl-K) open it as a command bar from <FindHost/> mounted once in UiShell; the app's own search screen is gone. Shared joins More. Now greets by name or not at all ("Good afternoon"), never "there".
 
 - fix(app): Records and Customize findings from the walk. Add a field shows its kinds as chips (the menu did not open inside the web sheet) and a Link field asks what it links to; more than five types become a Type picker instead of clipped tabs; the timeline says who and what in words ("You created this"), never a raw id; a space with no name reads Home, never spc_ ids; Devices reads "Your phone and computers"; Templates leaves More per the app map.

@@ -10,8 +10,7 @@ import { REVEAL_MS, REVEAL_PURPOSE, isEmpty, isRevealable, maskText, sealedPhras
 import type { EditProps, ViewProps } from "./types";
 
 /**
- * A sealed value (ui-primitives.md section 4.1). A person sees a fixed mask and a Reveal button; Reveal asks for Face ID (simulated here: a sheet with one
- * button, then the store's reveal with a presence proof), shows the value for 30 seconds, then masks it again. A placeholder (no ref) is what an assistant
+ * A sealed value (ui-primitives.md section 4.1). A person sees a fixed mask and a Reveal button; Reveal asks for the owner's yes (the store's reveal is held on the box until the phone answers), shows the value for 30 seconds, then masks it again. A placeholder (no ref) is what an assistant
  * reads: "<Label> on file, sealed", nothing to reveal.
  */
 export function SealedView({ p }: ViewProps) {
@@ -62,7 +61,7 @@ export function SealedView({ p }: ViewProps) {
         <Text tone="muted">Vyre shows it on this screen for 30 seconds, then masks it again. No assistant sees it.</Text>
         {failed ? <Text tone="err">{failed}</Text> : null}
         <View className="flex-row gap-s2">
-          <Button kind="primary" icon="faceid" label="Use Face ID" loading={busy} onPress={go} />
+          <Button kind="primary" icon="faceid" label="Ask for my yes" loading={busy} onPress={go} />
           <Button kind="ghost" label="Cancel" onPress={() => setAsk(false)} />
         </View>
       </Sheet>
