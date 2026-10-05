@@ -65,7 +65,7 @@ In the order `vyre help` lists them.
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
-| [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre send`](#vyre-send) | send files to another of your computers through your server |
 | [`vyre vitals`](#vyre-vitals) | CPU, RAM, disk, network, GPU and battery, for this device or the server |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre wink`](#vyre-wink) | free a server that still belongs to an app you no longer have |
@@ -640,10 +640,10 @@ vyre relay on|off, pin <release>|unpin: the relay itself, and which web app buil
 
 ### vyre send
 
-Send files from this Mac to your box with Taildrop.
+Send files to another of your computers through your server.
 
 ```
-vyre send <file...> [--json]
+vyre send <file...> [--to <computer>] [--json]
 ```
 
 ### vyre vitals

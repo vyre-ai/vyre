@@ -228,3 +228,31 @@ test("RN-4: a checkpoint can follow the last by one turn only", async () => {
     await S.putCheckpoint(A, "t", { turn: 2, seq: 1, manifest: {}, state: {} });
   } finally { rm(dir); }
 });
+
+test("store with the Space's key: nothing readable is on the home's disk (files, versions, records, the transcript, the names), it all reads back, a restart reads it, and another Space's key or a file moved to another name opens as nothing", async () => {
+  const root = tmp(), key = crypto.randomBytes(32);
+  try {
+    const S = mk(root, { key });
+    const text = "SECRET-CLIENT-RETAINER-TEXT in the workspace file";
+    await S.appendTranscript(A, "s1", [{ seq: 1, line: "SECRET-TRANSCRIPT-LINE one" }, { seq: 2, line: "two" }]);
+    const f = Buffer.from(text), r = await S.putFile(A, "s1", "Clients/Harlow/retainer.txt", f);
+    await S.putCheckpoint(A, "s1", { turn: 1, seq: 2, manifest: { "Clients/Harlow/retainer.txt": { hash: sha(f), version: r.version, len: f.length } }, state: { note: "SECRET-STATE" } });
+    const all = []; const w = d => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); e.isDirectory() ? w(p) : all.push(p); } }; w(root);
+    for (const file of all) { const b = fs.readFileSync(file); for (const s of ["SECRET-", "retainer", "Harlow", "Clients"]) assert.ok(!b.includes(Buffer.from(s)), `${path.relative(root, file)} holds "${s}"`); }
+    assert.ok(!all.some(p => /retainer|Harlow|Clients/i.test(p)), "no file or folder is named for what is in it");
+    // reads back through the store, in this process and after a restart (a new store over the same folder and key)
+    for (const store of [S, mk(root, { key })]) {
+      assert.deepEqual((await store.getTranscript(A, "s1", 1)).map(e => e.line), ["SECRET-TRANSCRIPT-LINE one", "two"]);
+      assert.equal(Buffer.from(await store.getFile(A, "s1", "Clients/Harlow/retainer.txt", 1)).toString(), text);
+      assert.equal((await store.getCheckpoint(A, "s1")).state.note, "SECRET-STATE");
+    }
+    // another Space's key opens none of it
+    const wrong = mk(root, { key: crypto.randomBytes(32) });
+    await assert.rejects(wrong.getFile(A, "s1", "Clients/Harlow/retainer.txt", 1));
+    assert.equal(await wrong.getCheckpoint(A, "s1"), null);
+    // a sealed file copied over another's name does not open (its place is part of what is sealed)
+    const blob = all.find(p => p.includes(`${path.sep}files${path.sep}`));
+    const other = path.join(path.dirname(path.dirname(blob)), "else", "1"); fs.mkdirSync(path.dirname(other), { recursive: true }); fs.copyFileSync(blob, other);
+    assert.throws(() => { const b = fs.readFileSync(other); const d = crypto.createDecipheriv("aes-256-gcm", key, b.subarray(0, 12)); d.setAAD(Buffer.from(path.relative(root, other))); d.setAuthTag(b.subarray(-16)); d.update(b.subarray(12, -16)); d.final(); });
+  } finally { rm(root); }
+});

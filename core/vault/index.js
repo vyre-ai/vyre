@@ -65,6 +65,8 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 const credentialsPort = vault => Object.freeze({
   /** The sign-in token for a provider item: `claude` is the setup token (claude-setup-token), `anthropic` the API key (anthropic-api-key). The token, or null for nothing or an unknown name. The string shape sessions reads. @param {string} provider @returns {Promise<string | null>} */
   credentials: async provider => (Object.hasOwn(LAUNCHER_ITEMS, String(provider)) ? vault.providerToken(provider) : null),
+  /** The key of an API-key account's vault item, for the lent computer's credential route (the home's kernel asks per request). Null for anything that is not an API-key item. @param {string} name */
+  apiKey: async name => vault.apiKeyValue(name),
 });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */

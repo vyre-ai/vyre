@@ -409,6 +409,10 @@
     "reach": "modules"
    },
    {
+    "name": "spaces.server.of",
+    "reach": "modules"
+   },
+   {
     "name": "spaces.identity.lookup",
     "reach": "modules"
    },

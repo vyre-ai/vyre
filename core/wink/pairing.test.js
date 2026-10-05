@@ -1199,6 +1199,22 @@ test("Add a phone: the phone that redeems the QR is held, both sides show the sa
   assert.equal(await w.p.phone.hold({ id: "second", name: "Kit's phone" }), false, "the ticket was one use: a second device is not held for it");
 });
 
+test("Add a phone: the phone's key-agreement point goes to the identity list with its key, so it opens private chats at once; a malformed point is not passed on", async () => {
+  const point = Buffer.concat([Buffer.from([4]), crypto.randomBytes(64)]).toString("base64url");
+  const pub = Buffer.alloc(32, 7).toString("base64url");
+  for (const [agree, passed] of [[point, point], [Buffer.alloc(33, 4).toString("base64url"), undefined], [Buffer.concat([Buffer.from([2]), crypto.randomBytes(64)]).toString("base64url"), undefined], [undefined, undefined]]) {
+    /** @type {any[]} */ const enrols = [];
+    const w = world({ ...OFF, call: async (tool, input) => { if (tool === "spaces.identity.enrol") { enrols.push(input); return { data: { eid: "e1" } }; } return undefined; } });
+    await phoneOpen(w);
+    assert.equal(await w.p.phone.hold(PHONE), true);
+    await w.call("wink.phone.wait", { entry: { publicKey: pub, label: "iPhone", ...(agree ? { agree } : {}) } }, { caller: "device:phoneabcdef" });
+    assert.equal((await w.call("wink.phone.pair.answer", { yes: true, words: "Amber  Coral phoneabcdef" })).yes, true);
+    assert.equal(enrols.length, 1);
+    assert.equal(enrols[0].publicKey, pub);
+    assert.equal(enrols[0].agree, passed, agree ? "only a 65-byte uncompressed P-256 point is passed" : "no point, none passed");
+  }
+});
+
 test("Add a phone: a no, or the wrong words, adds nothing and lets the phone go", async () => {
   for (const [answer, reasonSeen] of [[{ yes: false }, false], [{ yes: true, words: "amber coral wrong" }, true]]) {
     const w = world(OFF);
