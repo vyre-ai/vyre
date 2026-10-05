@@ -1151,7 +1151,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // sync.upload's chunk data: octet-stream only, never JSON (e2e, session-import review), so it
   // never goes through body()'s JSON parse. Only a paired peer's own tailnet node reaches it -
   // never the relay, a guest or an agent's node, since none of those carry policy.peer.stableId
-  // the way an owner device's does. sync.upload.chunk (core/link/box.js) checks the rest: which
+  // the way an owner device's does. sync.upload.chunk (core/sync) checks the rest: which
   // peer, whether its sync switch is on, quota, and that this upload is that peer's own.
   if (req.method === "POST" && url.pathname.startsWith("/v1/sync/upload/")) {
     const upload = decodeURIComponent(url.pathname.slice("/v1/sync/upload/".length));
@@ -1170,9 +1170,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
     if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
     const input = await body(req);
-    // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, link.call's carried one included, is refused here, before anything runs.
+    // The plugin agent holds only what its grant names (pluginagent.ALLOWED, decided in core/pluginagent): any other tool, wink.server.call's carried one included, is refused here, before anything runs.
     if (pluginAgent) {
-      const carried = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
+      const carried = name === "wink.server.call" && input && typeof input.tool === "string" ? input.tool : null;
       const ask = await registry.call("pluginagent.allows", { tools: carried ? [name, carried] : [name] }, "module:vyred").catch(() => null);
       const ok = ask && ask.data && Array.isArray(ask.data.allowed) && ask.data.allowed.includes(name) && (!carried || ask.data.allowed.includes(carried));
       if (!ok) return send(res, 403, { error: { code: "not_in_grant", message: `Claude Code on this computer was not given ${carried || name}: it reads memory, recall and the sessions of your projects, and suggests to memory` } });
@@ -1180,9 +1180,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);
-    // link.call carries another tool to the box: what it carries is what counts.
-    const inner = name === "link.call" && input && typeof input.tool === "string" ? input.tool : null;
-    const personal = personOnly(name, def) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
+    // wink.server.call carries another tool to the server: what it carries is what counts.
+    const inner = name === "wink.server.call" && input && typeof input.tool === "string" ? input.tool : null;
+    const personal = personOnly(name, def) || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
     if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {

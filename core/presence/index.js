@@ -37,8 +37,6 @@ export const HUMAN_ONLY = new Set([
   // What Claude is told in every later session: installing a skill. Accepting, relaxing and
   // retiring a lesson are the user's own (PERSON_ONLY): they ask nothing.
   "learn.skill-install",
-  // A new machine joined to this one.
-  "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   // Signing a browser in as the person for 30 days (core/presence/person.js).
   "presence.person.start",
@@ -107,15 +105,12 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // ADR 0039: which of the eight box-only modules load is the person's own choice, never an
   // agent's ancestry-forged one (reviewer's HOLD on 041f87f0/efbf7a2a).
   "onboard.machine",
-  // core/link/mac.js's link.call carries a named tool to the box (`inner`, checked only by name
-  // in core/daemon/index.js's floor: the Mac has no local def for a box tool to derive from). These
+  // wink.server.call carries a named tool to the server (`inner`, checked only by name
+  // in core/daemon/index.js's floor: a device has no local def for a server tool to derive from). These
   // are the tools personOnly() would derive on the box itself but this Mac-side pre-check cannot,
-  // named explicitly so a model's shell forwarding through link.call is refused just as early as a
+  // named explicitly so a model's shell forwarding through wink.server.call is refused just as early as a
   // direct call would be (reviewer's LOW, 28 Sep). voice.speak and capsule.report join them too.
-  // link.unpair is here, so a model's shell on the box cannot forget a Mac by id; the one
-  // machine-to-machine call it must still take, a paired Mac unpairing itself, is MACHINE_SELF
-  // below (the reviewer's LOW for 0.1.1).
-  "link.pair", "link.unpair", "vault.device.join", "vault.device.revoke", "vault.vaults.create",
+  "vault.device.join", "vault.device.revoke", "vault.vaults.create",
   "files.send", "agents.delete",
   "memory.correct", "memory.merge", "memory.split",
   // A model's shell making Vyre speak out loud is a social-engineering channel ("approve the
@@ -124,7 +119,6 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "voice.speak", "capsule.report",
   // Ends this Mac's own person session; cheap to protect, and a model signing the person out
   // mid-task is a real annoyance (reviewer, 28 Sep).
-  "link.signout",
   // core/goals: an agent may propose a goal (goals.set, state pending), but only a person's tap
   // turns it into a real one - the same shape as team_propose needing a person's team.add.
   "goals.accept"]);
@@ -161,29 +155,13 @@ export const OPT_OUT = new Set([
   // Local voice output settings: read them, or change which voice/volume. No data leaves this
   // machine. voice.speak stays off this list (reviewer, 28 Sep): a model making Vyre say
   // something out loud is a social-engineering channel ("approve the Touch ID prompt now").
-  "voice.status", "voice.settings",
-  // A read-only tailnet probe for candidate boxes (`vyre up`'s own search); pairing itself
-  // (link.pair) is not opted out.
-  "link.find",
+  "voice.status", "voice.settings"
 ]);
-
-/**
- * The only person-only calls an owner's device may make with no person session: a paired Mac
- * unpairing ITSELF, by its own link key and nothing else (core/link/mac.js sends exactly
- * `{ key }`). The box's link.unpair then finds the row by that key AND the calling node's
- * stableId (core/link/box.js byKey), so this can never forget a different Mac. By id stays the
- * person's. Adding to this needs the same review as PERSON_ONLY.
- * @param {string} tool @param {any} input
- */
-export function machineSelf(tool, input) {
-  return tool === "link.unpair" && Boolean(input) && typeof input.key === "string" && input.key.length > 0
-    && Object.keys(input).every(k => k === "key");
-}
 
 /**
  * Is `name` a person-only tool: PERSON_ONLY's own list, or (unless explicitly opted out) a tool
  * whose declared callers are person-only surfaces alone. `def` is the live tool definition (its
- * `callers`), when the caller has it; a remote tool forwarded blind (link.call's `inner`) has none,
+ * `callers`), when the caller has it; a remote tool forwarded blind (wink.server.call's `inner`) has none,
  * so it is checked by name against PERSON_ONLY and HUMAN_ONLY only, same as before.
  * @param {string} name @param {{ callers?: string[] }} [def]
  */

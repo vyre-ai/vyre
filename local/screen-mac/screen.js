@@ -101,15 +101,15 @@ export class Screen {
 
   /**
    * The paired box's origin, so the Deck and Glass in a browser count as Vyre surfaces. Asked of
-   * link.status on the call that needs it, kept for a minute at most; no link means no box.
+   * wink.server.call names.status on the call that needs it, kept for a minute at most; no link means no box.
    */
   async boxOrigin() {
     if (this.box && this.now() - this.box.at < BOX_TTL_MS) return this.box.origin;
     let origin = null;
     try {
-      const r = await this.call("link.status");
+      const r = await this.call("wink.server.call", { tool: "names.status", input: {} });
       const d = r && r.data;
-      if (d && d.linked && d.box && typeof d.box.address === "string") origin = d.box.address;
+      if (d && typeof d.address === "string") origin = d.address;
     } catch {}
     this.box = { at: this.now(), origin };
     return origin;

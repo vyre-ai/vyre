@@ -76,7 +76,6 @@ export const OPEN_NOTES = Object.freeze({
   "glass.take": "takes the keyboard of an agent's computer; the user ruled screen use is hands-free after one grant, and the person's stop (hands.pause, chrome.pause) stays person-only",
   "glass.targets": "reads what Glass can open: each agent's computer and the box's files",
   "link.companion.list": "reads the companions and the waiting request",
-  "link.rename": "renames a paired Mac or device, the person's own label",
   "mentions.kinds": "reads the kinds the # picker offers",
   "mentions.search": "names matching what was typed in the # picker, grouped by kind",
   "names.domain.check": "a live DNS check of the records for an own domain, a read",

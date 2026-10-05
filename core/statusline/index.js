@@ -32,7 +32,7 @@ export function compose({ waiting, held, asks, link, agents }) {
   const need = waiting && Number.isInteger(waiting.count) ? Number(waiting.count)
     : (Array.isArray(held) ? held.length : 0) + (Array.isArray(asks) ? asks.length : 0);
   if (need) bits.push(`${need} need${need === 1 ? "s" : ""} you`);
-  if (link && link.role === "local" && link.linked) bits.push(link.reachable ? "box ok" : "box away");
+  if (link && link.linked) bits.push(link.reachable === false ? "box away" : "box ok");
   const a = Array.isArray(agents) ? agents.find(x => x && x.kind === "assistant") : null;
   if (a && a.name) bits.push([a.name, SHORT[a.doing] || a.doing || a.status].filter(Boolean).join(" "));
   return bits.join(" · ");
@@ -51,7 +51,7 @@ export default {
 
     const compute = async () => {
       const [waiting, link, agents] = await Promise.all([ask("waiting.count"),
-        ctx.config.role === "local" ? ask("link.status") : null, ask("agents.list")]);
+        ctx.config.role === "local" ? ask("wink.server.home") : null, ask("agents.list")]);
       // Only a vyred without waiting counts the two lists itself.
       const [held, asks] = waiting ? [null, null] : await Promise.all([ask("gate.held"), ask("threads.asks")]);
       return compose({ waiting, held, asks, link, agents });

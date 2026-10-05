@@ -49,7 +49,7 @@ try {
   const macAgents = ((await world.macCall("agents.list")).data || []).map(a => a.name);
   console.log(`box agents: ${boxAgents.join(", ")}; Mac agents: ${macAgents.join(", ") || "(none)"}`);
   check(boxAgents.includes("kit") && !macAgents.includes("kit"), "kit is on the box and not on the Mac");
-  check((await world.macCall("link.status")).data.linked === true, "the Mac is paired to the box");
+  check((await world.macCall("wink.server.home")).data.linked === true, "the Mac is paired to the box");
 
   const sock = socketPath(world.macRoot);
   child = spawn(bin, [], { env: { ...process.env, VYRE_HOME: home, VYRE_SOCKET: sock, VYRE_CAPSULE_DRIVE: "1", VYRE_CAPSULE_TEST: "1" }, stdio: ["pipe", "pipe", "inherit"] });

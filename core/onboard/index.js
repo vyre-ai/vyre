@@ -157,9 +157,6 @@ export default {
     const signin = setupToken();
     /** @type {Record<string, string>} */
     let lastStates = {};
-    /** The box's last federated catalogue answer, held for 30 s: see the history step. */
-    let catalogHeld = /** @type {{ at: number, seen: string, cat: any } | null} */ (null);
-    const offLink = ["link.paired", "link.unpaired"].map(type => ctx.events.on(type, () => { catalogHeld = null; }));
 
     const call = async (tool, input = {}) => {
       const r = await ctx.call(tool, input);
@@ -212,43 +209,23 @@ export default {
       const history = { state: "todo", why: null, sessions: 0, indexed: r ? r.sessions : 0, running: Boolean(r && r.indexing) || Boolean(indexing) };
       if (!r) Object.assign(history, { state: "blocked", why: recall.__error });
       else {
-        // total does not depend on the limit, so one row is enough. On the box the catalogue
-        // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
-        // sources says which machines answered.
+        // total does not depend on the limit, so one row is enough.
         const box = config.isServer(ctx.config.machine);
-        // The page asks every couple of seconds, and each federated answer is a question to the
-        // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
-        // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own
-        // count still moves with the index through history.indexed below.
-        const linked = box ? await tryCall("link.macs") : [];
-        const seen = Array.isArray(linked) ? linked.map(m => `${m.mac}:${m.online}`).join(",") : "";
-        let cat;
-        if (box && catalogHeld && catalogHeld.seen === seen && Date.now() - catalogHeld.at <= 30_000) cat = catalogHeld.cat;
-        else {
-          cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
-          catalogHeld = box && !cat.__error ? { at: Date.now(), seen, cat } : null;
-        }
+        const cat = await tryCall("projects.catalog", { limit: 1 });
         const sources = !cat.__error && Array.isArray(cat.sources) ? cat.sources : null;
         const count = x => Number(x && x.total) || 0;
         // The box's own sessions are what its index has to catch up with; a Mac indexes its own.
         const own = Math.max(sources ? count(sources[0]) : count(cat.__error ? null : cat), history.indexed);
-        const macs = sources ? sources.filter(x => x.source === "mac") : [];
-        history.sessions = own + macs.reduce((n, m) => n + count(m), 0);
+        history.sessions = own;
         if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
         else if (history.sessions === 0) {
-          const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
-          Object.assign(history, { state: "done",
-            why: !box ? "no Claude Code sessions on this machine yet"
-              : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
-              : "Your Mac's sessions appear here when you connect your Mac" });
+          Object.assign(history, { state: "done", why: "no Claude Code sessions on this machine yet" });
         }
         else if (ob().history && history.indexed >= own) history.state = "done";
       }
 
-      // The Mac counts once link has paired one; the first paired is the one shown.
-      const peers = await tryCall("link.peers");
-      const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
+      const mac = { connected: false, name: null };
       // peers: the owner's other devices this machine sees, and whether each is online, for the phone's line.
       const linkedPeers = winkPeers(w);
       const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: linkedPeers };
@@ -458,7 +435,9 @@ export default {
         joinOwnerOnly(caller, meta, "adding a device or a server");
         if (action === "relay") return call("relay.pair.start");
         if (action === "verify") {
-          const health = await call("link.health", node ? { node } : {});
+          const st = await call("network.wink.status", {});
+          const spaces = Array.isArray(st && st.spaces) ? st.spaces : [];
+          const health = { online: spaces.some((/** @type {any} */ x) => x.state === "connected" || x.state === "relayed"), path: (spaces.find((/** @type {any} */ x) => x.path) || {}).path || null, spaces };
           if (becomeDevice && health.online) await tryCall("onboard.machine", { machine: "device" });
           return health;
         }
@@ -610,10 +589,10 @@ export default {
      */
     async function setupSnapshot(caller = "local") {
       const st = await status(caller);
-      const [setup, keys, devices, peers, ai] = await Promise.all([tryCall("relay.setup.status", {}), tryCall("presence.keys", {}), tryCall("relay.devices.list", {}), tryCall("link.peers", {}), aiAccount()]);
+      const [setup, keys, devices, ai] = await Promise.all([tryCall("relay.setup.status", {}), tryCall("presence.keys", {}), tryCall("relay.devices.list", {}), aiAccount()]);
       const keyList = Array.isArray(keys) ? keys : keys && Array.isArray(keys.keys) ? keys.keys : [];
       const devList = devices && Array.isArray(devices.devices) ? devices.devices : [];
-      const people = Array.isArray(peers) ? peers : [];
+      const people = /** @type {any[]} */ ([]);
       const addressDone = st.detail.name.state === "done";
       const pairDone = st.detail.pair.state === "done";
       const passkey = keyList.some(k => k && k.kind === "passkey");

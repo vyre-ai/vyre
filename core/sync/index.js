@@ -46,7 +46,7 @@ const projectOf = rel => { const p = String(rel).split("/"); return p.length > 2
 const includedSet = row => { if (!row.plan_included) return null; try { const a = JSON.parse(row.plan_included); return Array.isArray(a) ? new Set(a.map(String)) : null; } catch { return null; } };
 
 /** How many chunk bytes go in one request (link.upload's carrier: link.reply's own body sizing). */
-const SEND_CHUNK = 1024 * 1024;
+const SEND_CHUNK = 256 * 1024;
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -116,17 +116,18 @@ export default {
       return full;
     }
 
-    /** The link_peers row this connection's own tailnet node is, or null. Never trusts a claimed name. */
+    /** Who this connection is: a companion core by its own proof, or the paired device the peer door admitted. Never trusts a claimed name. */
     async function peerOf(peer, tool, companion, input) {
       // A companion core proves its own key on every call (core/link/companion.js): when a token is present it alone decides who the
-      // peer is, and a bad one is no peer. It never falls back to the tailnet node, which a companion row does not carry.
+      // peer is, and a bad one is no peer. It never falls back to the connection's device, which a companion row does not carry.
       if (companion !== undefined && companion !== null) {
         const r = await ctx.call("link.companion.verify", { token: companion, tool, input });
         return r && r.data ? { id: r.data.id, name: r.data.name, kind: "companion" } : null;
       }
-      if (!peer || !peer.stableId) return null;
-      const r = await ctx.call("link.peer-of", { stableId: String(peer.stableId) });
-      return r && r.data ? r.data : null;
+      if (!peer || !peer.stableId || peer.kind !== "device") return null;
+      const r = await ctx.call("relay.device.info", { id: String(peer.stableId) });
+      const d = r && r.data;
+      return d && !d.removed ? { id: String(peer.stableId), name: d.name || String(peer.stableId), kind: d.kind } : null;
     }
 
     /** This peer's sync row, made on first need (off, no quota set). */
@@ -195,8 +196,8 @@ export default {
       // itself is not a secret action either, so this stays plain person-only, not presence-gated.
       callers: ["cli", "local", "deck", "capsule"],
       run: async ({ machine, on, planHash, included, folders }) => {
-        const peers = await ctx.call("link.peers", {});
-        const row = (peers.data || []).find(p => p.id === machine || p.name === machine);
+        const listed = await ctx.call("relay.devices.list", {});
+        const row = ((listed.data && listed.data.devices) || []).find(p => !p.removed && (p.id === machine || p.name === machine));
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
         // Turning it on always sets plan_hash, plan_included and plan_folders to whatever this
@@ -597,7 +598,7 @@ async function sendOne(ctx, f) {
   let offset = Number(start.data.offset) || 0;
   while (offset < buf.length) {
     const chunk = buf.subarray(offset, Math.min(offset + SEND_CHUNK, buf.length));
-    const r = await ctx.call("link.upload", { upload: start.data.upload, offset, data: chunk });
+    const r = await ctx.remote("sync.upload.chunk", { upload: start.data.upload, offset, data: Buffer.from(chunk).toString("base64") });
     if (r.error) return r;
     offset = Number(r.data ? r.data.offset : r.offset) || offset + chunk.length;
   }

@@ -733,10 +733,6 @@
    "module": "hooks",
    "reason": "read-only: the listener and what Funnel publishes; reader() refuses guests and the internet"
   },
-  "link.call": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
   "link.companion.hello": {
    "module": "link",
    "reason": "callers limited in code to tailnet, and the call is signed by the companion core key, checked against a live companion row and its parent device on every call"
@@ -744,62 +740,6 @@
   "link.companion.pair": {
    "module": "link",
    "reason": "presence proof from the paired app device key, covering the whole call; only a desktop app device may ask"
-  },
-  "link.events": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.find": {
-   "module": "link",
-   "reason": "callers limited in code to capsule, cli, local"
-  },
-  "link.health": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.hello": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.macs": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.pair.approve": {
-   "module": "link",
-   "reason": "a presence proof is required (HUMAN_ONLY); module callers need the tool"
-  },
-  "link.pair.poll": {
-   "module": "link",
-   "reason": "tailnetLogin(caller) check plus a secret compared in constant time and the asking node pinned (peer.stableId): the link key goes once to the node that asked"
-  },
-  "link.pair.request": {
-   "module": "link",
-   "reason": "tailnetLogin(caller) check in the tool: only the owner's own device over the tailnet may start a pairing, the code shows on that device only, and pending requests are capped"
-  },
-  "link.peers": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.pending": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.reply": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.serve": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
-  },
-  "link.signin": {
-   "module": "link",
-   "reason": "callers limited in code to capsule, cli, local"
-  },
-  "link.status": {
-   "module": "link",
-   "reason": "read-only, scoped by the module itself"
   },
   "mail.accounts": {
    "module": "mail",

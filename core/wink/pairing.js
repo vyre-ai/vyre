@@ -1265,6 +1265,36 @@ export function createPairing(o) {
         return o2 && typeof o2.identity === "string" ? { identity: o2.identity, kind: o2.kind, id: o2.id, ...(o2.name ? { name: o2.name } : {}) } : null;
       },
     });
+    // The one remote path from a device to its home server: a tool run there, over this device's open Wink peer session, as this device. `ctx.remote` (core/modules) is this tool; the CLI's
+    // `vyre link call` and `vyre phone` use it too. Only the person's own surfaces and modules call it, never a model or an agent: the server sees this device as the owner's, so a model must
+    // not ride it (it asks through its own tools, which the server gates by the model's own caller).
+    /** The servers this device is paired to, as { id, name } rows (those with a known channel), first paired first. */
+    const homes = async () => (devices.list(String(await o.identity())).filter((/** @type {any} */ x) => x.kind === "server" && meta.get(`channel:${x.id}`))).map((/** @type {any} */ x) => ({ id: String(x.id), name: String(x.name || "") }));
+    ctx.tool("wink.server.home", {
+      description: "Is this device paired to a server (its home), and which: { linked, server?: { id, name }, servers: [{ id, name }] }. Read only; it names no secret.",
+      input: obj(), callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
+      run: async () => { const all = await homes(); return { linked: all.length > 0, ...(all[0] ? { server: all[0] } : {}), servers: all }; },
+    });
+    ctx.tool("wink.server.call", {
+      description: "Run one tool on the server this device is paired to (its home), over the Wink peer session, as this device: { tool, input?, device? }. With no `device`, the first server paired to this identity. Answers the tool's own answer, or the server's error; no_link when this device has no server, box_unreachable when it cannot be reached.",
+      input: obj({ tool: str, input: { type: "object" }, device: str }, ["tool"]),
+      callers: ["cli", "local", "deck", "capsule", "mobile", "module"],
+      run: async (input, meta0 = {}) => {
+        const caller = String((meta0 && meta0.caller) || "");
+        if (meta0 && (meta0.agent || meta0.origin) && !/^(cli|local|deck|capsule|mobile)$/.test(String(meta0.origin || caller))) throw fail("denied", "wink.server.call is the person's own; a module acting for a model session may not use it");
+        const servers = await homes();
+        const d = input.device ? servers.find((/** @type {any} */ x) => x.id === String(input.device)) : servers[0];
+        if (!d) throw fail("no_link", "this device is not paired with a server");
+        let session;
+        try { session = serverLinks().sessionFor(d.id); } catch (e) { throw fail("box_unreachable", "the server is not reachable"); }
+        try { return await session.call(String(input.tool), input.input && typeof input.input === "object" ? input.input : {}); }
+        catch (e) {
+          const err = /** @type {any} */ (e);
+          if (err && (err.code === "unreachable" || err.code === "not_found")) throw fail("box_unreachable", String(err.message || "the server is not reachable"));
+          throw e;
+        }
+      },
+    });
     ctx.tool("wink.server.paired", {
       internal: true,
       description: "For the spaces module: is this device a server paired to this identity, and still paired? Answers { paired, name? }. Modules only, read only; it names no one else's devices.",

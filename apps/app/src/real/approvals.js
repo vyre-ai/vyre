@@ -94,7 +94,7 @@ export const momentOf = (tool) => {
 };
 // Each moment covers an explicit tool list (wink-2, f0409aa1b); anything else is bad_input at ask, so a floor refusal on another tool is never turned into an ask.
 const VAULT_TOOLS = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.inject", "vault.resolve", "vault.render"]);
-const PAIR_TOOLS = new Set(["presence.enroll", "link.pair.approve", "wink.phone.pair.answer", "wink.server.pair.answer", "wink.pair.server"]);
+const PAIR_TOOLS = new Set(["presence.enroll", "wink.phone.pair.answer", "wink.server.pair.answer", "wink.pair.server"]);
 
 /**
  * An act that needs the owner's yes and carries no approval answers the ordinary floor error `presence_required` on a moment tool (wink-2, f0409aa1b; the earlier `held` answer was withdrawn, and is still

@@ -280,6 +280,16 @@
         "effect": "read"
       },
       {
+        "name": "wink.server.home",
+        "reach": "anyone",
+        "effect": "read"
+      },
+      {
+        "name": "wink.server.call",
+        "reach": "anyone",
+        "effect": "write"
+      },
+      {
         "name": "wink.server.paired",
         "reach": "modules"
       },

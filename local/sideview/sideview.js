@@ -86,10 +86,10 @@ export class Sideview {
   async glassUrl(target) {
     if (!/^[a-z0-9][a-z0-9-]{0,62}$/i.test(target)) throw new SideviewError("bad_input", "glass is an agent's name, or box");
     let r;
-    try { r = await this.call("link.status"); } catch { r = null; }
+    try { r = await this.call("wink.server.call", { tool: "names.status", input: {} }); } catch { r = null; }
     const d = r && r.data;
-    if (!d || !d.linked || !d.box || typeof d.box.address !== "string") throw new SideviewError("no_box", "Glass is on the box, and this Mac is not paired with one (vyre link pair <address>)");
-    return new URL(`/glass/${encodeURIComponent(target)}`, d.box.address).href;
+    if (!d || typeof d.address !== "string") throw new SideviewError("no_box", "Glass is on the server, and this computer is not paired with one (vyre link pair <code>)");
+    return new URL(`/glass/${encodeURIComponent(target)}`, d.address).href;
   }
 
   /**

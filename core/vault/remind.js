@@ -252,7 +252,7 @@ async function expiringPassReminders(vault, call, now) {
  *   daily timer rather than a second one (principle 8).
  */
 export async function remindTick(vault, call, { log = () => {}, clock = Date.now, local = false, breach, connections } = {}) {
-  const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
+  const paired = local && Boolean((await call("wink.server.home", {}))?.data?.linked);
   let breached = [];
   if (!paired && breach && breach.enabled) {
     const due = clock() - (lastBreach(vault) ?? -Infinity) >= (breach.everyMs || BREACH_EVERY_MS);

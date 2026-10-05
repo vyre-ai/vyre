@@ -17,7 +17,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
-import { PERSON_ONLY, machineSelf, core as coreHolder, format as formatProof } from "../presence/index.js";
+import { PERSON_ONLY, core as coreHolder, format as formatProof } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 import * as config from "../config/index.js";
 import { toolEntries, checkManifestFull } from "../../packages/module-sdk/manifest.js";
@@ -1055,12 +1055,11 @@ export class Registry {
       // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
       // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
       upgrader: policy => { if (!this.deps.upgrader) throw new Error("this vyred has no stream router to hand out"); return this.deps.upgrader(policy); },
-      // A tool on the user's box, from a module on the Mac: the link module carries it over the
-      // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
-      // box cannot be reached, so a caller can fall back to what this machine has.
+      // A tool on this device's home server, from a module on this device: the Wink module carries it over the open peer session (wink.server.call). Resolves like call(), and to
+      // { error: { code: "box_unreachable" } } when the server cannot be reached, so a caller can fall back to what this machine has; { error: { code: "no_link" } } with no server paired.
       remote: async (tool, input = {}) => {
-        const r = await this.call("link.remote", { tool, input }, `module:${m.name}`, { door: true });
-        return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a box" } } : r.data && r.data.result ? r.data.result : r;
+        const r = await this.call("wink.server.call", { tool, input }, `module:${m.name}`, { door: true });
+        return r.error && r.error.code === "no_such_tool" ? { error: { code: "no_link", message: "this machine is not linked to a server" } } : r;
       },
       // A raw HTTP route on vyred's socket at /v1/<module>/<name>, for what a tool cannot carry:
       // a stream. The route sees the caller the router established; it never reads one itself.
@@ -1294,7 +1293,7 @@ export class Registry {
       // no deck-like surface from its label alone),
       // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
       // way to get it, and the first passkey is enrolled with onboarding's code.
-      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool) && !machineSelf(tool, input)
+      if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool)
         && (PERSON_ONLY.has(tool) || def.reach === "person" || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
       }

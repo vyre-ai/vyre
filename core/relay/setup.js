@@ -22,7 +22,7 @@ const sha = s => crypto.createHash("sha256").update(String(s)).digest();
  */
 export const SETUP_TOOLS = Object.freeze(new Set([
   "relay.setup.status",
-  "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "link.health", "system.info", "onboard.machine",
+  "names.check", "names.claim", "names.status", "names.domain.check", "relay.setup.claim-token", "system.info", "onboard.machine",
 ]));
 /** The network tool the channel may call, by exact name: a later tool is not exposed by being added. */
 export const SETUP_TOOL_FAMILIES = Object.freeze([/^network\.wink\.status$/]);

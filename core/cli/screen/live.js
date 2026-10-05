@@ -53,21 +53,23 @@ export async function sessions(slug) {
 export const REFRESH = /^(thread\.(started|stopped|finished|sent)|ask\.|gate\.|lease\.changed|agent\.)/;
 
 /**
- * The link line: one short phrase from link.health, when vyred has that tool. Kept apart so its
+ * The link line: one short phrase from network.wink.status, when vyred has that tool. Kept apart so its
  * shape can change without touching anything else. Returns "" when there is nothing to say.
  * @param {string[]} tools names from GET /v1/tools
  */
 export async function linkStatus(tools) {
-  if (!tools.includes("link.health")) return "";
-  const r = await call("link.health", {});
-  if (r.error || !r.data) return "";
-  return formatLink(r.data);
+  if (!tools.includes("network.wink.status")) return "";
+  const r = await call("network.wink.status", {});
+  const sp = r.data && Array.isArray(r.data.spaces) ? r.data.spaces : [];
+  if (r.error || !sp.length) return "";
+  const row = sp.find(s => s.state === "connected" || s.state === "relayed") || sp[0];
+  return formatLink({ path: row.state === "connected" ? "direct" : row.state === "relayed" ? "relay" : "unknown", latencyMs: row.latencyMs, why: row.why });
 }
 
-/** link.health's data as a phrase. Tolerant of shape: the tailnet team owns it. */
+/** A link's data as a phrase. Tolerant of shape. */
 export function formatLink(d) {
   if (typeof d === "string") return "link " + d;
-  // link.health as the tailnet team built it: { path: direct|relay|peer-relay|unknown, latencyMs, why }.
+  // { path: direct|relay|peer-relay|unknown, latencyMs, why }.
   if (d && typeof d.path === "string") {
     if (d.path === "unknown") return /not paired|say which node/.test(String(d.why || "")) ? "" : "link down";
     const ms = typeof d.latencyMs === "number" ? ` ${Math.round(d.latencyMs)} ms` : "";
