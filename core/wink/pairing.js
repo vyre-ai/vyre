@@ -30,6 +30,7 @@ import { verifyDevice } from "./node/peer-wire.js";
 import { base32 } from "./grants.js";
 import { words, removed } from "./cards.js";
 import { createServerLinks } from "./serverlink.js";
+import { p256 } from "@noble/curves/p256";
 import { deviceKey } from "./devicekey.js";
 import { presenceKeyId } from "../../lib/presence-key-id.js";
 import { isReleaseBuild, devKindSwitch } from "./buildkind.js";
