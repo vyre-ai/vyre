@@ -5,6 +5,8 @@
 // the obligations returned here.
 import { isChain, hasKind, isExactlyPerson } from "./chain.js";
 const DEFAULT_ASSISTANT = "assistant";
+/** A model slot (`model:<provider>/<model>#<n>`, the Switchboard's) beside a person: it is the person's own authority, narrowed, and holds nothing of its own, so it is no member and needs no grant. Without a person it is nothing. */
+const isSlot = (/** @type {any} */ actor, /** @type {any} */ chain) => actor.kind === "agent" && String(actor.id).startsWith("model:") && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person");
 import { mintId } from "./ids.js";
 import { segments, covers, containedPrefix, spaceOf } from "./urn.js";
 import { KernelError } from "./errors.js";
@@ -208,6 +210,8 @@ export function createAuthorizer(cfg) {
       for (const h of chain.hops) if (h.actor.space !== cfg.space) return deny("wrong_space");
       const attrs = (cfg.attrs && cfg.attrs(resource)) || {};
       if (attrs.space !== undefined && attrs.space !== cfg.space) return deny("wrong_space");
+      // A model slot is the person's authority narrowed to its chat's Project: another Project's resource is not its to read or touch, whatever the person holds. A resource that belongs to no Project is judged as before.
+      if (typeof chain.project === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "agent" && String(x.actor.id).startsWith("model:")) && attrs.project !== undefined && attrs.project !== chain.project) return deny("outside_project");
       // A session's lines are its person's own (reviewer-2's KW-1): reading one needs the session's owner attribute to name the person asking, whatever role or `*/*` grant they hold. A session
       // with no owner attribute is read by nobody (fail closed), so a capture that does not say whose session it is leaks nothing. The Space's owner reads their own, like anyone.
       const segs = segments(resource);
@@ -246,6 +250,7 @@ export function createAuthorizer(cfg) {
         // A Flow run's automation hop is a job label under its approving person (kernel/core/chain.js forFlow: only the builder makes one, and only from a person's chain): it adds no
         // grants and takes none away, so the run can do exactly what its approver can, narrowed further by the runner's declared caps. Without a person in the chain it is nothing.
         if (actor.kind === "automation" && typeof chain.job === "string" && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor)) {
           // A standing service reads without a person in the chain; it never writes (4.3).
           if (!(actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource))) return deny("not_a_member");
@@ -254,7 +259,7 @@ export function createAuthorizer(cfg) {
         if (actor.kind === "service" && risk === "read" && cfg.standing && cfg.standing(actor.id, action, resource) && !(await cfg.grants.forSubject(actor, h, input)).length) continue;
         // The default assistant is a delegate: acting for a person (that person is in the chain) it adds no grants of its own and takes none away, so the chain's authority is the
         // person's. Alone, or with no person beside it, it is an ordinary actor with no grants and can do nothing. Named assistants are never delegates: their own grants narrow them.
-        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "agent" && (actor.id === DEFAULT_ASSISTANT || String(actor.id).startsWith("model:")) && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") {
           if (ms.expires === undefined || ms.expires <= now) return deny("expired");
@@ -415,8 +420,9 @@ export function createAuthorizer(cfg) {
       const proto = `vyre://${cfg.space}/${type}/x`;
       for (const h of chain.hops) {
         const actor = h.actor;
+        if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor) || actor.kind === "service") return false;
-        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "agent" && (actor.id === DEFAULT_ASSISTANT || String(actor.id).startsWith("model:")) && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") return false;
         let wholeCover = false;
@@ -457,8 +463,9 @@ export function createAuthorizer(cfg) {
       /** @type {Record<string, string>[] | null} */ let result = null;
       for (const h of chain.hops) {
         const actor = h.actor;
+        if (isSlot(actor, chain)) continue;
         if (!cfg.members.has(actor) || actor.kind === "service") return null;
-        if (actor.kind === "agent" && actor.id === DEFAULT_ASSISTANT && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
+        if (actor.kind === "agent" && (actor.id === DEFAULT_ASSISTANT || String(actor.id).startsWith("model:")) && chain.hops.some((/** @type {any} */ x) => x.actor.kind === "person")) continue;
         const ms = cfg.members.membership ? cfg.members.membership(actor) : undefined;
         if (ms && ms.role === "temp") return null;
         let whole = false;

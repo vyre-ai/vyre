@@ -23,11 +23,12 @@ test("vyre config: list, set at account and project level, get, reset, and a bad
   const root = tempHome(t);
   const home = path.join(root, "projects", "northwind");
   fs.mkdirSync(path.join(home, ".vyre"), { recursive: true });
-  fs.writeFileSync(path.join(home, ".vyre", "project.json"), JSON.stringify({ name: "Northwind Bakery", slug: "northwind" }));
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, projectsDir: path.join(root, "projects"), settings: { claude_dir: path.join(root, "claude") } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
+  await d.registry.call("projects.create", { name: "Northwind", home }, "cli");
+  await d.registry.call("projects.rename", { project: "northwind", name: "Northwind Bakery" }, "cli");
   const vyre = (/** @type {string[]} */ ...a) => run(root, a);
 
   let r = await vyre("config", "list", "sessions");

@@ -589,3 +589,49 @@ test("one permission rule: an agent's admin act still needs the person's session
   const mineOut = await ask(both("email.send", msg), person(), "email.send", `vyre://${SPACE}/message/m1`);
   assert.equal(mineOut.reason, "needs_approval", "the person's own outward act still asks");
 });
+
+test("chain: the person's assistant acts AS the person: `via: assistant` on the chain, the kernel event's actor stays the person and says it was the assistant; a plain session and a person's own act carry neither", async () => {
+  const chains = builder();
+  const asAssistant = chains.fromFacts({ kind: "agent_session", agent: "assistant", session: "s1", thread: "t1", person: OWNER, vouched: true, from_token: true });
+  const own = chains.fromFacts(sock("deck"));
+  const named = chains.fromFacts({ kind: "agent_session", agent: "kit", session: "s1", thread: "t1", person: OWNER, vouched: true });
+  assert.equal(asAssistant.via, "assistant");
+  assert.equal(own.via, undefined);
+  assert.equal(named.via, undefined, "a named agent is not the person's assistant");
+  const log = createEventLog({ space: SPACE, clock: () => ++T });
+  const e1 = log.append(asAssistant, { type: "note.written", sv: 1, subject: `vyre://${SPACE}/note/n1`, data: {} });
+  const e2 = log.append(own, { type: "note.written", sv: 1, subject: `vyre://${SPACE}/note/n2`, data: {} });
+  assert.equal(e1.actor, `person:${OWNER}@${SPACE}`);
+  assert.equal(e1.acted_via, "assistant");
+  assert.equal(e2.acted_via, undefined);
+  assert.equal(chainHash(asAssistant) === chainHash(own), false, "the hops still tell the two apart");
+});
+
+test("chain: a model slot is the person's chain plus an agent hop `model:<provider>/<model>#<n>`, vouched, and the person's grants are all it has", async () => {
+  const chains = builder();
+  const slot = chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "anthropic/claude-sonnet-5-5#2", vouched: true });
+  assert.deepEqual(slot.hops.map(h => [h.actor.kind, h.actor.id]), [["person", OWNER], ["agent", "model:anthropic/claude-sonnet-5-5#2"]]);
+  assert.equal(slot.model, "anthropic/claude-sonnet-5-5#2");
+  assert.equal(slot.delegated, true);
+  assert.throws(() => chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "x", vouched: true }), { code: "not_a_member" });
+  assert.throws(() => chains.fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "a/b#1", vouched: false }), { code: "not_a_member" });
+  assert.throws(() => chains.fromFacts({ kind: "model_slot", person: "per_nobody", session: "s1", model: "a/b#1", vouched: true }), { code: "not_a_member" });
+});
+
+test("authorize: a model slot is the person's authority narrowed to its Project: another Project's resource is refused, outward and admin acts are not its alone, and a grant act is never its", async () => {
+  const slot = (project) => builder().fromFacts({ kind: "model_slot", person: OWNER, session: "s1", model: "anthropic/claude-sonnet-5-5#1", ...(project ? { project } : {}), from_token: true, vouched: true });
+  const attrs = urn => (urn === R(1) ? { project: "p1" } : urn === R(2) ? { project: "p9" } : {});
+  const az = world({ grants: [grant()], attrs });
+  assert.equal((await ask(az, slot("p1"), "crm.read", R(1))).effect, "allow", "its own Project");
+  const other = await ask(az, slot("p1"), "crm.read", R(2));
+  assert.deepEqual([other.effect, other.reason], ["deny", "outside_project"], "another Project's data");
+  assert.equal((await ask(az, slot("p1"), "crm.read", R(3))).effect, "allow", "a resource of no Project is judged as before");
+  assert.equal((await ask(az, slot(), "crm.read", R(2))).effect, "allow", "a slot with no Project named is the person's, as before");
+  assert.equal((await ask(az, person(), "crm.read", R(2))).effect, "allow", "the person themselves are not narrowed");
+  // the person's other authority does not come through a slot either
+  const wide = world({ grants: [grant({ actions: ["email.send"], resource: { prefix: `vyre://${SPACE}/message/*` } }), grant({ actions: ["grants.create"], resource: { prefix: `vyre://${SPACE}/grant/*` } })], attrs });
+  const send = await ask(wide, slot("p1"), "email.send", `vyre://${SPACE}/message/m1`);
+  assert.equal(send.effect, "ask", "an outward send is a card for the person, never done by the slot");
+  const give = await ask(wide, slot("p1"), "grants.create", `vyre://${SPACE}/grant/g1`);
+  assert.deepEqual([give.effect, give.reason], ["deny", "model_chain"], "a grant act is a person's, never a slot's");
+});

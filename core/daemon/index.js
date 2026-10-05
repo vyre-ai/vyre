@@ -251,9 +251,11 @@ async function startLocked(opts, root, p, release) {
     // on first use, when the box can run it; auto falls back to SQLite on a box that cannot (and a new hosted Space asks first), twenty refuses to start instead. The reach, memory
     // profile and gateway container are options of that factory with defaults, not settings.
     /** @type {((space: string, meta?: any) => Promise<any>) | undefined} */ let storeFor;
-    if ((process.env.VYRE_STORE || "sqlite") !== "sqlite") {
+    const { storeMode } = await import("../../stores/twenty/space-store.js");
+    const isServerInstall = config.isServer(cfg.machine);
+    if (storeMode(process.env, { server: isServerInstall }) !== "sqlite") {
       const { createStoreFor } = await import("../../stores/twenty/space-store.js");
-      storeFor = createStoreFor({ home: root, log });
+      storeFor = createStoreFor({ home: root, log, server: isServerInstall });
     }
     // Stages made of tasks (kernel/flows/stages.js): entering a stage makes its tasks in the kernel's own task store, and finished tasks move the record on. The gateway calls the two
     // hooks, which are bound late because the module needs the booted kernel. Tasks live only in the kernel store (no task record in Twenty).
@@ -392,6 +394,38 @@ async function startLocked(opts, root, p, release) {
     reopenLater = () => { if (!reopenCalled) void kernelSessions.reopenPending(reopenOpts({ timeoutMs: 10_000, onGiveUp: (/** @type {string} */ thread, /** @type {string} */ why) => log(`sessions: could not resume ${thread.slice(0, 8)} (${why})`) })).catch(() => {}); };
     closeKernelSessions = () => kernelSessions.closeAll();
     registry.deps.kernelSessionCount = () => kernelSessions.list().length; // how many are open now (a number, for tests and status: never a token or a way to open one)
+    // One Chat (DESIGN-one-chat.md): a run started with no chat of its own (the CLI, a Flow, the assistant, a resumed older thread) gets one, made under the home owner's own chain: the owner is the
+    // person, the assistant it runs as is the one listed assistant. A named agent that is not an actor of the Space cannot be listed, so the chat is then the owner alone (a model run for the person).
+    // One Chat: the kernel's `chat.created` and `chat.changed` are visible to the Space's owner only, so the daemon reads them as the owner and says them on the module bus, for the work module's
+    // Chat record (its mirror of who is in a chat). Only the event's own facts (ids), nothing is written back.
+    try {
+      kernel.gateway.events.subscribe(await personChainFor(kernel.id.owner), "daemon-chats", { type: "chat.*" }, (/** @type {any} */ e) => {
+        if (e && (e.type === "chat.created" || e.type === "chat.changed")) { try { events.emit("kernel", e.type, { data: e.data }); } catch { /* a notice, never a stop */ } }
+      });
+    } catch (e) { log(`kernel: chat events are not passed on (${/** @type {Error} */ (e).message})`); }
+    // The kernel's name for the agent a thread runs as: the home's assistant is the Space's one assistant actor whatever the person called it; any other named agent is itself.
+    const kernelAgentOf = async (/** @type {{ agent?: string | null, rec?: any }} */ q) => {
+      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
+      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
+      return isAssistant ? "assistant" : (q.agent || undefined);
+    };
+    registry.deps.chatFor = async (/** @type {{ thread: string, agent: string | null, agent_kind?: string | null, name?: string | null, project?: string | null }} */ q) => {
+      const person = await personChainFor(kernel.id.owner);
+      const grants = kernel.gateway.grants;
+      // The person's own assistant is identity-level and private: never a listed participant (its acts are the person's, marked via: "assistant"). Any other agent that runs in a Space is an actor of
+      // that Space; one that is not yet is registered through the kernel's own registration (grants.addActor), which asks whatever the gate asks. A refusal there is the run's chat refusal, never an
+      // owner-only chat that quietly drops the agent.
+      const a = q.agent_kind === "assistant" ? undefined : await kernelAgentOf({ agent: q.agent, rec: { agent_kind: q.agent_kind } });
+      const isAssistant = a === "assistant";
+      const listed = a && !isAssistant ? [a] : [];
+      const make = () => grants.chats.create(person, { assistants: listed });
+      try { return String((await make()).id); }
+      catch (e) {
+        if (!listed.length || !/belongs to the Space/.test(String(e && /** @type {any} */ (e).message))) throw e;
+        await grants.addActor(person, { kind: "agent", id: listed[0], space: kernel.id.space }, {});
+        return String((await make()).id);
+      }
+    };
     registry.deps.kernelSession = async (/** @type {{ thread: string, agent: string | null, rec?: any, chat?: string, asker?: string, probe?: boolean }} */ q) => {
       // A chat turn: the Switchboard passes `chat` and `asker` only from module:stream (threads.start and threads.send), so the session is the asker's, in that chat, and the kernel checks they are in it.
       // Anything else is the home owner's own thread, as before.
@@ -401,11 +435,15 @@ async function startLocked(opts, root, p, release) {
       if (q.probe) { kernel.gateway.grants.chats.read(person, chat); return null; }
       // The home's assistant acts in the kernel as the one actor it has, the default "assistant" (core/tasks-tools seeds a task's doer as that id, and the Space adds that actor once at setup), whatever name the person
       // gave it: a named assistant (juno) is not a member of the Space of its own, so its session token carried an agent hop the kernel could not find and every call of its own answered not_found.
-      let isAssistant = Boolean(q.rec && q.rec.agent_kind === "assistant");
-      if (q.agent && !isAssistant) { try { const sc = await registry.call("agents.scope", { name: q.agent }, "module:vyred"); isAssistant = Boolean(sc && sc.data && sc.data.kind === "assistant"); } catch { /* agents is not running: the name stands */ } }
-      // lib/kernel-session names a session for the agent it was started as and a plain session "session" (nobody's assistant), so the home's assistant must be named here as the Space's one assistant actor, not left to a default.
-      const kernelAgent = isAssistant ? "assistant" : (q.agent || undefined);
-      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), thread: q.thread });
+      // A run with no agent is a model slot in its chat (team/0.3/DESIGN-one-chat.md): its token's agent hop is the slot id the switchboard minted, narrowed to the run's Project. It acts on the person's own
+      // chain, holds nothing of its own, and ends with its person's place in the chat. A run in no chat is as before.
+      let kernelAgent = await kernelAgentOf(q);
+      let project;
+      if (!kernelAgent && chat && q.rec && typeof q.rec.slot === "string" && q.rec.slot.startsWith("model:")) {
+        kernelAgent = q.rec.slot;
+        if (typeof q.rec.project === "string" && q.rec.project) project = q.rec.project;
+      }
+      const s = await kernelSessions.open({ chain: person, ...(chat ? { chat } : {}), ...(kernelAgent ? { agent: kernelAgent } : {}), ...(project ? { project } : {}), thread: q.thread });
       return { token: kernelSessions.tokenFor(s.id), end: () => kernelSessions.end(s.id) };
     };
     // The sandbox every Vyre-started session's agent runs in on this computer (the runner's home sandbox: planHome, selfTest, launch; core/sessions/ cannot import core/runner, so the
@@ -1123,7 +1161,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length },
       // Which record store this server uses, where that came from and how many records it sees (null when the kernel is off); never a quiet fallback.
-      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
+      records_store: kernelOf && kernelOf() ? await (await import("../../stores/store-status.js")).storeStatus({ root, server: config.isServer(cfg.machine), store: /** @type {any} */ (kernelOf()).store }).catch((/** @type {Error} */ e) => ({ store: "unknown", note: e.message })) : null } });
   }
   // The plugin agent reaches the tool door and nothing else (no events, hooks, challenges or module listing): its grant names tools, and the tool door is where the grant is checked.
   if (pluginAgent && !((req.method === "GET" && url.pathname === "/v1/tools") || (req.method === "POST" && url.pathname.startsWith("/v1/tools/")))) return send(res, 403, { error: { code: "not_in_grant", message: "Claude Code on this computer reaches only the tools its grant names" } });

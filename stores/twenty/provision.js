@@ -211,6 +211,9 @@ export async function provisionSpace(o) {
   const keyFile = path.join(dir, "service.key");
   const origin = `http://${n.serverAlias}:3000`;
   const base = { space: o.space, dir, origin, keyFile, network: n.network, serverAlias: n.serverAlias, gatewayAlias: n.gatewayAlias, webhookSecretFile: path.join(dir, "webhook.secret"), image };
+  // a Space already made: the image its env file names must be a full pinned reference, or it is refused at start (the same rule as an upgrade)
+  try { const named = /^TWENTY_IMAGE_REF=(.*)$/m.exec(fs.readFileSync(path.join(dir, ".env"), "utf8"))?.[1]; if (named !== undefined && !isPinnedRef(named)) throw new Error(`This Space's env file names the Twenty image without a digest (${named.slice(0, 80)}): refusing to start it`); }
+  catch (e) { if (/** @type {any} */ (e)?.code !== "ENOENT") throw e; }
   if (fs.existsSync(keyFile) && fs.existsSync(path.join(dir, "workspace.id"))) {
     const url = await reachUrl(o, runner, n, origin);
     const rp = o.reach === "loopback" ? readLoopbackPort(dir) : 0;

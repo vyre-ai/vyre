@@ -40,6 +40,7 @@ const CALLS = {
   lend: (s, o) => ({ action: "grants.offer", resource: urn(s, "offer", "lend"), input: { lend: { member: o.member, device: o.device, device_key: o.device_key, network_cap: o.network_cap ?? null } } }),
   unlend: (s, o) => ({ action: "grants.unoffer", resource: urn(s, "offer", "lend"), input: { unlend: { member: o.member, device: o.device } } }),
   inviteCreate: (s, i) => ({ action: "grants.invite", resource: urn(s, "invite"), input: i }),
+  moveOut: (s, i) => ({ action: "project.move_out", resource: i.project, input: { to: i.to, plan_hash: i.plan_hash } }),
   inviteConfirm: (s, id, c) => ({ action: "grants.invite", resource: urn(s, "invite", id), input: { confirm: id, words: c && c.words } }),
 };
 

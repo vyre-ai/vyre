@@ -116,6 +116,27 @@ export function createDriveGateway(cfg) {
       for (const f of folders) note(chain, "file.moved", file(f.b), { from: f.a, to: f.b, files: plan.filter(p => p.path.startsWith(f.a + "/")).length }, f.d.decision);
       return { moved: plan.length };
     },
+    /**
+     * Remove the source files of a project that was MOVED to another Space, after the copy was verified. A Drive delete is an outward act that asks; here the person's ONE approval of the move
+     * already covered it, and the proof that it was given is the source log's own `project.move_started` for this `move_id`, by this same person, within a day. Every file is still checked
+     * under the caller's chain (`drive.read` and `drive.write`), nothing outside `Projects/` goes, and a file already gone is not an error (so a resumed move finishes). One event says what went.
+     * @param {any} chain @param {string[]} paths @param {{ move_id: string }} o @returns {Promise<{ removed: number }>}
+     */
+    async removeMoved(chain, paths, o) {
+      mustChain(chain);
+      const who = chain.hops.length === 1 && chain.hops[0].actor.kind === "person" ? chain.hops[0].actor.id : null;
+      if (!who || !o || typeof o.move_id !== "string" || !Array.isArray(paths) || paths.length > 5000) throw new KernelError("bad_input", "name the move and the files");
+      const ev = typeof cfg.log.read === "function" ? cfg.log.read({ type: "project.move_started" }).find((/** @type {any} */ e) => e.data && e.data.move_id === o.move_id) : null;
+      if (!ev || !String(ev.actor).startsWith(`person:${who}@`) || !(Date.now() - Number(ev.time) <= 24 * 60 * 60 * 1000)) throw new KernelError("not_found", "no such move to remove files for");
+      for (const p of paths) {
+        if (!/^Projects\/[^/]+\//.test(String(p))) throw new KernelError("bad_input", "only a project's own files go");
+        if (!(await check(chain, "drive.read", file(p))) || !(await check(chain, "drive.write", file(p)))) throw new KernelError("not_found", "that file is not yours to remove");
+      }
+      let removed = 0;
+      for (const p of paths) { try { await run(async () => cfg.drive.delete(p, { by: actor(chain) })); removed++; } catch (e) { if (!(e instanceof KernelError && e.code === "not_found")) throw e; } }
+      note(chain, "file.deleted", `vyre://${cfg.space}/file/Projects`, { move_id: o.move_id, files: removed, what: "moved away" }, undefined);
+      return { removed };
+    },
     /** A restore is a new version, and its own admin act: an assistant's `drive.write` never reaches it. */
     async restore(chain, /** @type {string} */ p, /** @type {number} */ version, /** @type {{ presence?: any }} */ opt = {}) {
       mustChain(chain);

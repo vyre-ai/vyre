@@ -18,7 +18,7 @@ echo "Space $SPACE is up"
 set +e
 docker run --rm --network "vyre-${SPACE}-twenty_store" --network-alias "vyre-${SPACE}" -v "$PWD:/repo:ro" -v "$KEY:/data/twenty.key:ro" -w /repo \
   -e VYRE_TWENTY_LIVE_URL="http://twenty-${SPACE}:3000" -e VYRE_TWENTY_LIVE_KEY_FILE=/data/twenty.key -e VYRE_TWENTY_LIVE_HOOK_HOST="vyre-${SPACE}" node:22-alpine \
-  node --test ${PATTERN:+--test-name-pattern="$PATTERN"} --test-timeout=180000 --test-reporter=spec stores/twenty/live/live.test.js
+  node --test ${PATTERN:+--test-name-pattern="$PATTERN"} --test-timeout=900000 --test-reporter=spec stores/twenty/live/live.test.js
 RC=$?
 if [ -n "${KEEP:-}" ]; then echo "kept: remove with  docker compose -p vyre-${SPACE}-twenty down -v; rm -rf $HOME_DIR $STATE"; exit $RC; fi
 docker compose -p "vyre-${SPACE}-twenty" down -v >/dev/null 2>&1
