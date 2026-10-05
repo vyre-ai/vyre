@@ -86,7 +86,7 @@ export function sendOutcome(r: { data?: unknown; error?: { code?: string; messag
     const id = typeof raw === "number" || typeof raw === "string" ? raw : null;
     return { ok: true, queued: true, id, uuid };
   }
-  if (d.sent === false) return { ok: false, reason: typeof d.note === "string" && d.note ? d.note : "The session did not take the message." };
+  if (d.sent === false) return { ok: false, reason: typeof d.note === "string" && d.note ? d.note : "The chat did not take the message." };
   return { ok: true, queued: false, uuid };
 }
 

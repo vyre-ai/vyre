@@ -156,6 +156,12 @@ export const SERVER_FAILED = {
 };
 
 // A sentence a phone already says (first-run.js PHONE_SAY) passes through again unchanged.
+/** The Vyre name in "This server belongs to <name>..." (a plain name or name.vyre.run), as name.vyre.run, or null. @param {string} text */
+export function ownedBy(text) {
+  const m = /^This server belongs to ([a-z0-9][a-z0-9-]{0,40})(?:\.vyre\.run\b|(?=\.(?:\s|$)))/i.exec(String(text ?? "").trim());
+  return m ? `${m[1].toLowerCase()}.vyre.run` : null;
+}
+
 const KNOWN = new Set([...Object.values(SERVER_FAILED), ...Object.values(PHONE_SAY)]);
 /** An error from the pairing, in words for the person: a used code, a pairing that ran out of time, a server out of reach, or what the box said. @param {any} e */
 export function serverSay(e) {
@@ -163,6 +169,9 @@ export function serverSay(e) {
   const c = String(e?.code ?? "");
   // A plain string is a sentence that already went through here (the screens pass the mapped words back): it counts as the message.
   const m0 = String(e?.message ?? (typeof e === "string" ? e : "")).trim();
+  // A server that already has an owner says whose it is. That one sentence is shown (with the name cut out of it and checked, never the server's own text): the person needs it to know what to do.
+  const owner = ownedBy(m0);
+  if (owner) return `This server belongs to ${owner}. Ask them to add you to a space, or reset the server to start over.`;
   if (c === "bad_code") return SERVER_FAILED.badCode;
   if (c === "bad_owner") return SERVER_FAILED.badOwner;
   if (c === "taken") return SERVER_FAILED.used;

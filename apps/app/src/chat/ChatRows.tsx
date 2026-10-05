@@ -3,7 +3,7 @@
 // height as it reveals), tool results as native blocks, asks as inline task cards, quiet notices.
 // Each row subscribes to its own key and is memoized on what it draws.
 
-import { memo, useEffect, useRef, useSyncExternalStore } from "react";
+import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, Pressable, View, StyleSheet } from "react-native";
 import { Icon, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
@@ -12,6 +12,8 @@ import { BlockView, type BlockCtx } from "./Blocks";
 import type { ChatStore } from "./store";
 import type { LayoutRow } from "./frames.js";
 import { askAudience } from "./group.js";
+import { useRouter } from "expo-router";
+import { artifactHref, artifactOf } from "./extras.js";
 import { readSelection } from "./highlight.js";
 import { FanoutSet } from "./FanoutSet";
 import { MessageTools, Reactions, UnreadDivider, WaitingCard } from "./GroupParts";
@@ -63,16 +65,16 @@ function Who({ name, family, meta, sub }: { name: string; family: "person" | "as
 
 type Dress = { mentioned?: boolean; divider?: number | null; pinned?: boolean; replies?: number; reply?: boolean; cut?: string | null };
 
-function Message({ who, family, meta, sub, dress, children, wide }: { who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean }) {
+function Message({ who, family, meta, sub, dress, children, wide, provider }: { who: string; family: "person" | "assistant" | "model"; meta?: string; sub?: string | null; dress?: Dress; children: React.ReactNode; wide: boolean; provider?: string | null }) {
   const { color } = useUiTheme();
   return (
     <View style={{ width: "100%", maxWidth: MAX, alignSelf: "center", marginLeft: "auto", marginRight: "auto" }}>
       {dress?.divider ? <View style={{ paddingHorizontal: wide ? 24 : 16 }}><UnreadDivider count={dress.divider} /></View> : null}
       <View style={{ paddingHorizontal: wide ? 24 : 16, paddingVertical: 8, flexDirection: "row", gap: 12, ...(dress?.mentioned ? { backgroundColor: color["accent-wash"], borderLeftWidth: 2, borderLeftColor: color.accent, paddingLeft: wide ? 22 : 14 } : {}) }}>
-        <Face name={who} family={family} size={32} />
+        <Face name={who} family={family} size={32} provider={provider} />
         <View style={S.s3}>
           <Who name={who} family={family} meta={dress?.pinned ? (meta ? meta + " · pinned" : "pinned") : meta} sub={sub} />
-          {dress?.reply ? <Text size="caption" tone="label">in a thread</Text> : null}
+          {dress?.reply ? <Text size="caption" tone="label">in a reply</Text> : null}
           {children}
           {dress?.cut ? <Text size="caption" tone="warn">{dress.cut}</Text> : null}
           {dress?.replies ? <Text size="caption" tone="accent">{`${dress.replies} ${dress.replies === 1 ? "reply" : "replies"}`}</Text> : null}
@@ -168,6 +170,20 @@ function ToolLine({ it, running }: { it: any; running: boolean }) {
   );
 }
 
+/** The assistant's thinking, folded: a quiet line that opens to the words. Never the reply itself. */
+function Reasoning({ text, streaming }: { text: string; streaming: boolean }) {
+  const { color } = useUiTheme();
+  const [open, setOpen] = useState(false);
+  return (
+    <View style={{ gap: 4 }}>
+      <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} accessibilityLabel={open ? "Hide the thinking" : "Show the thinking"} onPress={() => setOpen((v) => !v)} style={{ minHeight: 28, justifyContent: "center", alignSelf: "flex-start" }}>
+        <Text size="caption" tone="label">{`${streaming ? "Thinking" : "Thought"} ${open ? "▾" : "▸"}`}</Text>
+      </Pressable>
+      {open ? <View style={{ borderLeftWidth: 2, borderLeftColor: color.edge ?? color.hover, paddingLeft: 10 }}><Text size="caption" tone="muted" selectable>{text}</Text></View> : null}
+    </View>
+  );
+}
+
 /** Who wrote this row. Without an author on the frame (a one-to-one over the old stream) it is the person or the assistant of the chat. */
 function whoOf(store: ChatStore, k: string): { name: string; family: "person" | "assistant" | "model"; sub: string | null } {
   if (store.group.author(k.slice(2))?.author) return store.group.label(k);
@@ -203,7 +219,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const w = whoOf(store, k);
       const mine = store.group.isMine(k);
       return (
-        <Message who={w.name} family={w.family} sub={w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text)} wide={wide}>
+        <Message who={w.name} family={w.family} sub={it.via === "assistant" ? "(Sent by Vyre Assistant)" : w.sub} meta={it.pickedUp ? "picked up" : undefined} dress={dressOf(store, k, it.text)} wide={wide}>
           <Text size="read" selectable>{it.text}</Text>
           {mine ? <MessageActions uuid={k.slice(2)} text={it.text} ctx={ctx} /> : null}
           <HighlightAction from={w.name} text={it.text} ctx={ctx} />
@@ -219,7 +235,7 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       }
       const w = whoOf(store, k);
       return (
-        <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text)} wide={wide}>
+        <Message who={w.name} family={w.family} sub={w.sub} dress={dressOf(store, k, it.text)} wide={wide} provider={it.provider ?? null}>
           <StreamText store={store} k={k} text={it.text} done={it.done} />
           {it.done ? <HighlightAction from={w.name} text={it.text} ctx={ctx} /> : null}
           <GroupTools store={store} k={k} ctx={ctx} name={w.name} />
@@ -232,6 +248,8 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const running = it.status === "running";
       let block: Block | null = it.block ? normalizeBlock(it.block, `${it.tool} ${it.summary}`.trim()) : null;
       if (!block && it.toolKind === "terminal") block = { block: "terminal", command: it.summary, output: it.output, exit: null, running: true };
+      const art = block && block.block === "text" ? artifactOf(it.key, block.text) : null;
+      if (art) return <Frame wide={wide} indent><ArtifactLink title={art.title} href={artifactHref(art)} /></Frame>;
       return (
         <Frame wide={wide} indent>
           {block ? <BlockView block={block} ctx={ctx} output={running ? it.output : undefined} running={running} /> : <ToolLine it={it} running={running} />}
@@ -247,11 +265,26 @@ function ItemBody({ store, k, ctx }: { store: ChatStore; k: string; ctx: BlockCt
       const here: BlockCtx = { ...ctx, onApprove: () => void store.answer(it.ask, "approve"), onDecline: () => void store.answer(it.ask, "deny") };
       return <Frame wide={wide} indent>{task ? <BlockView block={task} ctx={here} decided={decided} /> : null}</Frame>;
     }
+    case "reasoning":
+      return <Frame wide={wide} indent><Reasoning text={String(it.text)} streaming={!it.done} /></Frame>;
     case "notice":
       return <Frame wide={wide} indent><Text size="caption" tone="label">{String(it.text).replace(/\b(?:person|assistant|model):/g, "")}</Text></Frame>;
     default:
       return null;
   }
+}
+
+/** An artifact made in this chat: one tap opens its page. */
+function ArtifactLink({ title, href }: { title: string; href: string }) {
+  const router = useRouter();
+  const { color } = useUiTheme();
+  return (
+    <Pressable accessibilityRole="link" accessibilityLabel={`Open ${title}`} onPress={() => router.push(href as never)} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: color.edge, backgroundColor: color["surface-2"], alignSelf: "flex-start" }}>
+      <Icon name="file" />
+      <Text strong numberOfLines={1}>{title}</Text>
+      <Icon name="chev" />
+    </Pressable>
+  );
 }
 
 export const ChatRow = memo(

@@ -1,8 +1,9 @@
-// "About this chat": what the header leaves out. Who is in it (people and assistants, each with
+// "In this chat": what the header leaves out. Who is in it (people and assistants, each with
 // their card), the record it belongs to, what the assistant can see and how many fields are sealed,
 // where it runs (with a Move action), mute and pin. A bottom sheet on a phone, centred on a wide
 // screen; it scrolls when it is tall.
 
+import { useState } from "react";
 import { View } from "react-native";
 import { Button, Chip, Row, Sheet, Switch, Text, useUiTheme } from "@vyre/ui";
 import { Face } from "./Face";
@@ -27,7 +28,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
   );
 }
 
-export function AboutSheet({ open, onClose, title, participants, viewer, info, muted, pinned, onMute, onPin, onMove, onOpenTerminal, onOpenParticipant }: {
+export function AboutSheet({ open, onClose, title, participants, viewer, info, muted, pinned, onMute, onPin, onMove, onOpenTerminal, onOpenParticipant, addable, onAdd }: {
   open: boolean;
   onClose: () => void;
   title: string;
@@ -41,12 +42,18 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
   onMove?: () => void;
   onOpenTerminal?: () => void;
   onOpenParticipant?: (id: string) => void;
+  /** Teammates who could be added (people and assistants not in the chat), and the add. Both absent: the chat cannot change who is in it here. */
+  addable?: readonly { name: string; id?: string; family: string }[];
+  onAdd?: (who: { name: string; id?: string; family: string }) => Promise<string | null>;
 }) {
+  const [adding, setAdding] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [problem, setProblem] = useState("");
   const { color } = useUiTheme();
   const here = info.runsOn === "mac" ? "This Mac" : "The server";
   const there = info.runsOn === "mac" ? "the server" : "this Mac";
   return (
-    <Sheet open={open} onClose={onClose} title="About this chat">
+    <Sheet open={open} onClose={onClose} title="In this chat">
       <View style={{ gap: 16, paddingBottom: 8 }}>
         <Section label={`In this chat (${participants.length})`}>
           {participants.map((p) => (
@@ -59,6 +66,17 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
               accessibilityLabel={`${p.name}, open card`}
             />
           ))}
+          {onAdd && addable ? (
+            adding ? (
+              <View style={{ gap: 4 }}>
+                {addable.length ? addable.map((a) => (
+                  <Row key={a.id ?? a.name} lead={<Face name={a.name} family={fam(a.family)} size={32} id={a.id ?? a.name} />} title={a.name} sub={a.family === "assistant" ? "Agent" : "Person"}
+                    end={<Button size="sm" kind="secondary" label="Add" loading={busy === (a.id ?? a.name)} onPress={async () => { setBusy(a.id ?? a.name); setProblem(""); const r = await onAdd(a); setBusy(""); if (r) setProblem(r); else setAdding(false); }} />} />
+                )) : <Text tone="muted">Everyone you can add is already in this chat.</Text>}
+                {problem ? <Text tone="err">{problem}</Text> : null}
+              </View>
+            ) : <View style={{ flexDirection: "row", paddingHorizontal: 12 }}><Button size="sm" kind="secondary" icon="plus" label="Add a teammate" onPress={() => { setProblem(""); setAdding(true); }} /></View>
+          ) : null}
         </Section>
 
         <Section label="Record">
@@ -75,7 +93,7 @@ export function AboutSheet({ open, onClose, title, participants, viewer, info, m
         <Section label="Where it runs">
           <Row title={here} sub={`Or on ${there}`} />
           {onMove ? <View style={{ flexDirection: "row", paddingHorizontal: 12 }}><Button size="sm" kind="secondary" label={`Move to ${there}`} onPress={onMove} /></View> : null}
-          {onOpenTerminal ? <Row title="Open full terminal" sub="The shell in this session's folder" onPress={() => { onClose(); onOpenTerminal(); }} /> : null}
+          {onOpenTerminal ? <Row title="Open full terminal" sub="The shell in this chat's folder" onPress={() => { onClose(); onOpenTerminal(); }} /> : null}
         </Section>
 
       <View style={{ borderTopWidth: 1, borderTopColor: color.edge, paddingTop: 8, gap: 2 }}>

@@ -4,8 +4,8 @@
 //   node scripts/app-walk-paired.mjs --dist <web export> --socket <home>/.vyre/vyred.sock [--out dir]
 //
 // Run it from an ssh login shell, in the foreground, on a development-kind home enrolled with scripts/dev-enrol-software-key.mjs (see scripts/app-walk.README.md), whose relay is on (relay.enable at a relay the browser
-// can reach: relay/node/server.js). The script: (1) trusts this login once (the stand-in header), (2) mints a pairing (relay.pair.start, signed with the software key), (3) opens the app at /pair?offer=... in
-// headless Chromium and checks it paired, (4) adds a rule in the paired browser: the page says "Approve on your phone", the stand-in phone approves, the rule is listed, (5) says no to a second one and checks
+// can reach: relay/node/server.js). The script: (1) trusts this login once (the stand-in header), (2) opens a typed code (wink.phone.open, signed with the software key), (3) types it into the app at /u/install in
+// headless Chromium, types the ack back (wink.code.ack) and checks it paired, (4) adds a rule in the paired browser: the page says "Approve on your phone", the stand-in phone approves, the rule is listed, (5) says no to a second one and checks
 // nothing was added. The page's own /v1 is NOT forwarded to the box: everything the paired browser does goes over the relay.
 import fs from "node:fs";
 import http from "node:http";
@@ -76,20 +76,30 @@ const errors = []; page.on("pageerror", (e) => errors.push(String(e.message).sli
 const text = async () => (await page.locator("body").innerText()).replace(/\s+/g, " ");
 const shot = (n) => page.screenshot({ path: path.join(OUT, `${n}.png`) });
 
-await check("the relay is on and the browser pairs by the offer", async () => {
+const ACK = /WINK-[0-9A-Z]{4}-[0-9A-Z]{4}/;
+await check("the relay is on and the browser pairs by a typed code", async () => {
   const st = await box("relay.status", {});
   assert(st.data?.enabled && st.data?.connected, `the box's relay is not on and connected: ${JSON.stringify(st)}`);
-  const o = await withYes("relay.pair.start", {});
-  assert(o.data?.url, `no pairing offer: ${JSON.stringify(o.error ?? o).slice(0, 200)}`);
-  await page.goto(`${BASE}/pair?offer=${encodeURIComponent(o.data.url)}`, { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => /Paired with|Nothing was|failed|did not/i.test(document.body.innerText), null, { timeout: 60000 });
+  // One way to pair: the owner's box shows a typed code (wink.phone.open), the browser types it, shows an ack, and the owner types the ack back (wink.code.ack, the yes).
+  const o = await withYes("wink.phone.open", {});
+  assert(o.data?.code && o.data?.code_offer, `the box showed no code: ${JSON.stringify(o.error ?? o).slice(0, 200)}`);
+  await page.goto(`${BASE}/u/install`, { waitUntil: "domcontentloaded" });
+  await page.getByPlaceholder("WINK-7K4Q-M2XD").first().waitFor({ timeout: 40000 });
+  await page.getByPlaceholder("WINK-7K4Q-M2XD").first().fill(o.data.code);
+  await page.getByText("Use this code", { exact: true }).first().click();
+  await page.waitForFunction(() => /Type this on your other device/.test(document.body.innerText), null, { timeout: 30000 });
+  const ack = ((await page.locator("body").innerText()).match(ACK) || [])[0];
+  assert(ack, "the page showed no ack to type back");
+  const a = await withYes("wink.code.ack", { offer: o.data.code_offer, typed: ack });
+  assert(!a.error, `the owner's ack was refused: ${a.error ? JSON.stringify(a.error).slice(0, 200) : ""}`);
+  await page.waitForFunction(() => /Your spaces|Create a space|Paired with|did not|Nothing was/i.test(document.body.innerText), null, { timeout: 90000 });
   await shot("paired");
   const t = await text();
-  assert(/Paired with/.test(t), `the page did not pair: ${t.slice(0, 200)}`);
+  assert(/Your spaces|Create a space|Paired with/.test(t), `the page did not pair: ${t.slice(0, 200)}`);
   const dev = await box("relay.devices.list", {});
   const n = (dev.data?.devices ?? dev.data ?? []).length;
   assert(n >= 1, `the box lists no paired device: ${JSON.stringify(dev).slice(0, 200)}`);
-  return `${t.slice(0, 60)}; devices on the box: ${n}`;
+  return `ack ${ack}; devices on the box: ${n}`;
 });
 
 async function addRule(label) {

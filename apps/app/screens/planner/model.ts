@@ -1,4 +1,5 @@
 // Planner (the Deck's views/planner.js, ported): today's agenda, the next alarms, open todos and notes, from the planner module (core/planner, ADR 0025). Pure: no calls.
+// The planner's things are records in the Space now: an alarm, timer or reminder is a `reminder` record, a note a `note`, an event an `event`, a todo a kernel task (an item's id is the record's or the task's), so each opens where it lives.
 
 export type Item = { id: string; kind: string; title: string; state?: string; at?: number | null; next_fire?: number | null; snooze_until?: number | null; repeat?: { every?: string; interval?: number } | null; pinned?: boolean; updated?: number; body?: string; added_by?: string; due?: string | null };
 export type Entry = { item?: string; kind: string; title: string; at: number; all_day?: boolean; source: string; snoozed?: boolean };
@@ -66,3 +67,13 @@ export function ringingOf(p: any): Ringing | null {
   if (!p || typeof p.firing !== "string") return null;
   return { firing: p.firing, item: String(p.item || ""), kind: String(p.kind || ""), title: String(p.title || ""), due: Number(p.due) || 0, missed: p.missed === true, added_by: p.added_by ? String(p.added_by) : undefined };
 }
+
+/** The page an item opens: a todo is a task (Now's task page); every other item is a record (Records, /u/records/reminder and /u/records/note, and the calendar's events). */
+export const hrefOf = (it: { id: string; kind: string }): string => (it.kind === "todo" ? `/u/task/${encodeURIComponent(it.id)}` : `/u/record/${encodeURIComponent(it.id)}`);
+
+/** Where the planner's kinds are listed now: Records and the calendar. */
+export const PLACES: { label: string; href: string }[] = [
+  { label: "Reminders", href: "/u/records/reminder" },
+  { label: "Notes", href: "/u/records/note" },
+  { label: "Calendar", href: "/u/calendar" },
+];

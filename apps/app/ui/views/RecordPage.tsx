@@ -21,8 +21,7 @@ import { useStore } from "../store";
 import { editField, renderField, KINDS } from "../fields/registry";
 import { isEmpty, isSealedValue, sampleFor } from "../fields/logic.js";
 import type { FieldEnv } from "../fields/types";
-import { simulatedProof } from "../../../../deck/ui/kernel-view.js";
-import { fieldStates, ago, assistantNote, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
+import { actorWords, ago, assistantNote, eventWhat, fieldStates, filesOf, isSealedField, newFieldSpec, relatedRecords, sealSpec, stageField, timelineLine, titleOf, val, viewDefOf } from "./logic.js";
 import type { RecordsWorld } from "./shared";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -30,7 +29,7 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 /**
  * The record page: all the fields in order (press one to change it), the stage steps, You or Your assistant sees, Add a field, the timeline from the Event log,
  * linked records and files. Every value goes through the field renderers, so a field added to the type shows here with no new code. Writes go to the Store
- * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal with a (simulated) Face ID.
+ * and the page redraws from it; a sealed value goes through putSealed and reveals through reveal, which the box holds for the owner's yes on their phone.
  */
 export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any; rec: any; world: RecordsWorld; events: any[]; env: FieldEnv; onOpen: (urn: string) => void }) {
   const store = useStore();
@@ -55,7 +54,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
   }, [ai, rec.urn, rec.version, store]);
 
   const valueFor = (f: any) => (ai ? seen?.[f.name] : val(rec, f.name));
-  const revealFor = (f: any) => (purpose: string) => store.reveal(rec.urn, f.name, purpose, simulatedProof({ decision: "reveal" })).then((r: any) => r.value as string);
+  const revealFor = (f: any) => (purpose: string) => store.reveal(rec.urn, f.name, purpose, undefined as never /* no proof of its own: the box holds the call for the owner's yes */).then((r: any) => r.value as string);
   // Conditional fields (visible_if, required_if): judged on the record as it is now, the same way the gateway judges a write.
   const states = fieldStates(def, rec.data || {});
   const change = async (f: any, v: any) => {
@@ -118,6 +117,14 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
             </View>
           ) : plainEditable ? (
             <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${f.label}`} onPress={() => { setEditing(f.name); setDraft(undefined); }} className="self-start">{shown}</Pressable>
+          ) : sealed && !ai ? (
+            <View className="gap-s2">
+              {shown}
+              <View className="flex-row flex-wrap items-center gap-s2">
+                <Button size="sm" kind="ghost" icon="key" label={isEmpty(val(rec, f.name)) ? "Fill" : "Replace"} onPress={() => { setEditing(f.name); setDraft(undefined); }} />
+                <Text size="caption" tone="label">Hidden from AI; your assistant sees a placeholder</Text>
+              </View>
+            </View>
           ) : shown}
         </View>
         {menuNode}
@@ -143,7 +150,7 @@ export function RecordPage({ def, rec, world, events, env, onOpen }: { def: any;
       <Card title="Timeline" actions={<Text size="caption" tone="label">Every change, who and why</Text>}>
         {events.length ? events.map((e) => {
           const l = timelineLine(e);
-          return <TimelineItem key={l.id} actor={world.actors.find((a) => a.id === l.actor)?.name || l.actor || "Vyre"} what={l.what} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
+          return <TimelineItem key={l.id} actor={actorWords(l.actor, world, (world as { me?: string }).me)} what={eventWhat(l.what)} at={ago(l.at, env.now ?? Date.now())} why={l.why} />;
         }) : <Text tone="label">Nothing has happened yet.</Text>}
       </Card>
     </View>

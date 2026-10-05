@@ -9,16 +9,18 @@
 
 /**
  * @typedef {{ v?: number, id?: string, cur: number, span?: number, session?: string, turn?: string|null, type: string, time?: number, corr?: string|null, t?: number,
- *   author?: string, acts_for?: string, message?: string, data: any }} Frame
+ *   author?: string, acts_for?: string, message?: string, via?: string, data: any }} Frame
  * @typedef {{ key: string, kind: string, [k: string]: any }} Item
  * @typedef {{ type: "item", key: string, kind: string }} LayoutRow
  */
+
+import { kindOf } from "./frame-type.js";
 
 const STATES = ["starting", "working", "asking", "waiting", "paused", "stopped", "finished", "failed"];
 /** Status changes that leave a quiet line in the transcript. */
 /** A failed status whose note is one of these says it in the app's own words (the stream's plain frame for a reply that could not resume after a restart). */
 const FAILED_NOTES = { "couldn't resume, ask again": "Couldn't resume. Ask again." };
-const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "The session failed." };
+const NOTICE_STATES = { paused: "Paused. Your next message resumes it.", stopped: "Stopped.", finished: "Finished.", failed: "This chat failed." };
 
 /** The states in which a message you send is queued, not taken. @param {string} state */
 export const busyState = (state) => state === "working" || state === "asking" || state === "starting";
@@ -33,7 +35,7 @@ export const plainName = (id) => {
   return s ? s[0].toUpperCase() + s.slice(1) : String(id);
 };
 /** Who wrote a frame, for the row. @param {Frame} f */
-const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}) });
+const who = (f) => ({ ...(f.author ? { author: f.author } : {}), ...(f.acts_for ? { actsFor: f.acts_for } : {}), ...(f.via === "assistant" ? { via: "assistant" } : {}) });
 
 /** @param {string} b64 */
 function decode(b64) {
@@ -106,7 +108,7 @@ export function createFolder() {
     const out = { dup: false, gap: false, layout: false, touched: /** @type {string[]} */ ([]), appended: /** @type {{ key: string, length: number } | null} */ (null) };
     if (!f || typeof f.cur !== "number" || typeof f.type !== "string") return { ...out, dup: true };
     const d = f.data ?? {};
-    const kind = f.type.replace(/^session\./, "");
+    const kind = kindOf(f.type);
     // Ephemeral frames have no cursor: they never move `last`, and a repeat is harmless.
     if (EPHEMERAL.includes(kind)) {
       if (kind === "presence") { presence.set(String(d.who), { state: d.state, ...(d.doing ? { doing: d.doing } : {}), at: f.time ?? 0 }); bump("@presence"); }
@@ -144,15 +146,25 @@ export function createFolder() {
         break;
       }
       case "text-delta": {
-        if (d.reasoning) break; // thinking is not drawn as a reply
         const mid = f.message ?? d.message;
+        // Thinking is its own row, drawn folded under the reply it belongs to: never as the reply, and never dropped (the person may want to see how it got there).
+        if (d.reasoning) {
+          const rk = "r:" + mid + ":" + (d.index ?? 0);
+          const before = items.get(rk);
+          if (before && before.done) break;
+          const rit = { key: rk, kind: "reasoning", text: (before?.text ?? "") + String(d.text ?? ""), done: false, ...(before ? { author: before.author, actsFor: before.actsFor } : who(f)), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : before?.provider ? { provider: before.provider, model: before.model ?? null } : {}) };
+          if (put(rk, "reasoning", rit)) out.layout = true;
+          else items.set(rk, rit);
+          touch(rk);
+          break;
+        }
         const key = "a:" + mid;
         const prev = items.get(key);
         // One row per message: two assistants streaming at once never share text. A finished or cut row takes no more.
         if (prev && prev.done) break;
         const text = (prev?.text ?? "") + String(d.text ?? "");
         open.add(String(mid));
-        const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}) };
+        const it = { key, kind: "text", text, done: false, settled: Math.max(0, text.length - HOLDBACK), ...(prev ? { author: prev.author, actsFor: prev.actsFor, parent: prev.parent } : { ...who(f), ...(d.parent ? { parent: d.parent } : {}) }), ...(groupOf.has(mid) ? { group: groupOf.get(mid) } : {}), ...(d.provider ? { provider: String(d.provider), model: d.model ?? null } : prev?.provider ? { provider: prev.provider, model: prev.model ?? null } : {}) };
         if (put(key, "text", it)) out.layout = true;
         else items.set(key, it);
         out.appended = { key, length: text.length };
@@ -164,6 +176,8 @@ export function createFolder() {
         const it = items.get(key);
         open.delete(String(f.message ?? d.message));
         if (it && patch(key, { done: true, settled: it.text.length })) touch(key);
+        const rk = "r:" + (f.message ?? d.message) + ":" + (d.index ?? 0);
+        if (items.has(rk) && patch(rk, { done: true })) touch(rk);
         // The reply's cited fields (field-ref, drawn per viewer by the server into field blocks): one block row each, after its text.
         if (Array.isArray(d.blocks)) {
           d.blocks.slice(0, 8).forEach((/** @type {any} */ b, /** @type {number} */ i) => {

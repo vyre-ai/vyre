@@ -15,7 +15,7 @@ export function toTypeDef(t, space) {
   const rules = Object.fromEntries((t.rules || []).filter((/** @type {any} */ r) => r.name).map((/** @type {any} */ r) => [r.name, r.require]));
   return {
     id: t.name, label: t.label, plural: pluralOf(t.label), spaces: [space], work: Boolean(stageField || stages.length), icon: t.icon,
-    fields: (t.fields || []).map((/** @type {any} */ f) => ({ key: f.name, label: f.label, kind: f.kind, required: f.required || undefined, sealed: f.kind === "sealed" || Boolean(f.seal) || undefined })),
+    fields: (t.fields || []).map((/** @type {any} */ f) => ({ key: f.name, label: f.label, kind: f.kind, required: f.required || undefined, sealed: f.kind === "sealed" || Boolean(f.seal) || undefined, ...(f.kind === "link" && f.to ? { to: f.to } : {}) })),
     stages: stages.length ? stages : (stageField?.options ?? []).slice(),
     ...(Object.keys(rules).length ? { rules } : {}),
   };
@@ -26,7 +26,7 @@ export function toKernelType(t, original) {
   const byName = new Map((original?.fields || []).map((/** @type {any} */ f) => [f.name, f]));
   const fields = t.fields.map((f) => {
     const o = /** @type {any} */ (byName.get(f.key));
-    const base = o ? { ...o, label: f.label } : { name: f.key.replace(/-/g, "_"), label: f.label, kind: f.kind, ...(f.required ? { required: true } : {}), ...(f.kind === "choice" ? { options: ["Option A", "Option B"] } : {}) };
+    const base = o ? { ...o, label: f.label } : { name: f.key.replace(/-/g, "_"), label: f.label, kind: f.kind, ...(f.required ? { required: true } : {}), ...(f.kind === "choice" ? { options: ["Option A", "Option B"] } : {}), ...(f.kind === "link" && f.to ? { to: f.to } : {}) };
     if (f.sealed && !base.seal) return { ...base, seal: { level: "ai", class: "free" } };
     if (!f.sealed && base.seal && base.kind !== "sealed") { const { seal: _s, ...rest } = base; return rest; }
     return base;

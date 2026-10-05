@@ -14,10 +14,20 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 /** Files that may hold literal colours, and why. Keep it short; a new entry needs a reviewer to agree the colour is not a role. */
 export const EXCEPTIONS = Object.freeze({
   "src/terminal/palettes.ts": "the terminal's ANSI colours: a terminal needs its reds and greens to carry meaning, they are not roles",
+  "ui/marks/provider-art.js": "the AI providers' own published marks, drawn unmodified in their brand colours",
+  "src/store-core/tokens-v3.js": "the token source: the one place the look's colours are defined, which every role is read from",
+  "src/terminal/xterm/xterm.js": "xterm, third-party code copied in as it is",
+  "src/terminal/xterm/xterm.css": "xterm, third-party code copied in as it is",
+  "ui/marks/art/agent2.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
+  "ui/marks/art/characters.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
+  "ui/marks/art/creature.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
+  "ui/marks/art/emblem.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
+  "ui/marks/art/identity.js": "the avatar and mark art generators (palettes): art, drawn the same under either scheme",
   "ui/marks/source.js": "the avatar illustration (skin, hair, clothes and background palettes): art, drawn the same under either scheme",
 });
 
-const SKIP_DIRS = new Set(["node_modules", "dist", "dist-ios", ".expo", "android", "ios", "assets", "public", "scripts"]);
+// vendor folders hold third-party code copied in as it is: not screens, not ours to recolour.
+const SKIP_DIRS = new Set(["vendor", "node_modules", "dist", "dist-ios", ".expo", "android", "ios", "assets", "public", "scripts"]);
 const SKIP_FILES = new Set(["src/theme/tokens.ts"]);
 const EXT = /\.(?:ts|tsx|js|jsx|cjs|mjs|css)$/;
 

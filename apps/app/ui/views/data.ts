@@ -10,7 +10,7 @@ export function useRecordsWorld() {
   return useStoreQuery<RecordsWorld>(async (s) => {
     const types = await s.types();
     const lists = await Promise.all(types.map((t: any) => s.list(t.name)));
-    return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await s.actors()) as any[] };
+    return { types: types as any[], byType: Object.fromEntries(types.map((t: any, i: number) => [t.name, lists[i]])) as Record<string, any[]>, actors: (await s.actors()) as any[], me: await (s as { me?: () => Promise<string> }).me?.().catch(() => "") };
   }, []);
 }
 

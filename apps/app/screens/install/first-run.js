@@ -110,6 +110,9 @@ export const NO_VYRE = {
 /** RC1: the drawn Wink avatar cannot be read by the camera yet (RC2), so a pairing screen offers no camera view; a code is typed or pasted. */
 export const CAMERA_SCAN = false;
 
+/** The drawn Wink code is read by the camera (src/native/WinkScan, the Deck's decoder in a WebView) wherever a person can type a code: TypeCode's "Scan the code" action. A phone only; a browser has no reader here. */
+export const DRAWN_CODE_SCAN = true;
+
 /** "I don't have Vyre running yet" is offered on a phone's connect screen only (never in a mock walk, a Mac or a browser). @param {DeviceKind} kind @param {boolean} mock */
 export const offersNoVyre = (kind, mock) => isPhone(kind) && !mock;
 
@@ -133,8 +136,8 @@ export const isWho = (id) => WHO.options.some(([k]) => k === id);
  * @typedef {{ title: string, line: string, action: string, route: string }} EmptyCopy
  */
 export const EMPTY = {
-  now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/chats" },
-  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/new-chat" },
+  now: { title: "Nothing needs you", line: "Anything that waits on you shows here.", action: "Open Chats", route: "/u/chats" },
+  chats: { title: "No chats yet", line: "Start one with your assistant or an agent.", action: "New chat", route: "/u/chats/new" },
   agents: { title: "No assistants yet", line: "An assistant works on your own AI account.", action: "Connect your AI account", route: "/u/settings/ai" },
 };
 
@@ -167,6 +170,9 @@ export function gapOf({ kind, paired, hasBox, devices }) {
 export function pairSayFor(text, kind) {
   if (kind === "mac") return text;
   const t = String(text);
+  // A server that is someone else's says whose: a phone is told it about "this Vyre", never "server".
+  const owned = /^This server belongs to (\S+?)\.(?: |$)/.exec(t);
+  if (owned) return kind === "web" ? t : `This Vyre belongs to ${owned[1]}. Ask them to add you to a space, or reset it to start over.`;
   if (/words were not the same|did not match/i.test(t)) return PHONE_SAY.rejected;
   if (/cannot reach|unreachable/i.test(t)) return PHONE_SAY.unreachable;
   if (/ran out of time|expired/i.test(t)) return PHONE_SAY.expired;
@@ -184,3 +190,8 @@ export const PHONE_SAY = {
   ended: "The pairing did not finish, so nothing was paired. Start again from your Vyre.",
   spaceOffline: "Your phone cannot reach your Vyre right now, so it cannot make the space. Nothing was changed.",
 };
+
+/** Has a paired person left the box's setup unfinished (onboard.status finished is false)? Anything else, an unreadable answer included, is "no": the banner never nags on a guess. @param {any} st */
+export const setupUnfinished = (st) => Boolean(st) && typeof st === "object" && st.finished === false;
+/** The one banner for it: where it leads is the onboarding the box runs (/u/install/setup). */
+export const SETUP_BANNER = { title: "Finish setting up Vyre", line: "A few steps are left: your assistant, your Claude and your devices.", action: "Finish setup", route: "/u/install/setup" };

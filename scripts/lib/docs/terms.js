@@ -324,8 +324,8 @@ export function screens(root) {
     out.push({ name: paths[0], label: labels.get(paths[0]) || view.charAt(0).toUpperCase() + view.slice(1), routes: paths,
       file: fs.existsSync(path.join(root, `deck/views/${view}.js`)) ? `deck/views/${view}.js` : "deck/js/app.js", page: SCREEN_PAGES[view] || DECK_VIEWS_PAGE });
   }
-  if (fs.existsSync(path.join(root, "deck/onboard/index.html"))) out.push({ name: "/onboard", label: "Onboarding", routes: ["/onboard"], file: "deck/onboard/index.html", page: SCREEN_PAGES.onboard });
-  if (fs.existsSync(path.join(root, "deck/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "deck/onboard/passkey", page: "using/deck.md#add-a-passkey" });
+  if (fs.existsSync(path.join(root, "web/onboard/index.html"))) out.push({ name: "/onboard", label: "Onboarding", routes: ["/onboard"], file: "web/onboard/index.html", page: SCREEN_PAGES.onboard });
+  if (fs.existsSync(path.join(root, "web/onboard/passkey"))) out.push({ name: "/onboard/passkey", label: "Add a passkey", routes: ["/onboard/passkey"], file: "web/onboard/passkey", page: "using/deck.md#add-a-passkey" });
   return out.sort((a, b) => byName(a.name, b.name));
 }
 

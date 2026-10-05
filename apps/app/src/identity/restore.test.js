@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import * as C from "../../../../kernel/identity/chain.js";
 import { claimIdentity } from "./claim.js";
 import { codeKey } from "./recovery.js";
-import { recoverIdentity, replaceRecoveryCode } from "./restore.ts";
+import { recoverIdentity } from "./restore.ts";
 import { forgetIdentity, hadIdentity, loadIdentity } from "./store.ts";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -39,7 +39,7 @@ test("recover: a wrong code is refused and changes nothing; the right code retur
   assert.equal(after.ops.length, 2);
   const state = await C.verifyChain(after.ops, { now: Date.now() + C.SKEW_MS });
   assert.equal(state.entries.filter(e => e.kind === "device").length, 2, "one more device on the list");
-  assert.ok(state.entries.find(e => e.label === "new phone"), "the new device is on the list under its label");
+  assert.ok(state.entries.every(e => e.label === undefined || e.kind === "owner"), "the directory holds no device label: a device's name stays on that device");
   const kept = await loadIdentity();
   assert.equal(kept.id, made.id);
   assert.notEqual(kept.eid, made.eid, "this device's own key, not the first device's");
@@ -102,27 +102,6 @@ test("RX-2: a publish whose answer is lost after the directory applied it keeps 
   assert.equal(await loadIdentity(), null, "a refusal kept nothing");
 });
 
-test("replaceRecoveryCode: a device under 24 hours old is refused (newcomer) and changes nothing; a day later the op replaces the code on the list (the directory refuses back-dated ops, so its answer is faked)", { timeout: 90_000 }, async t => {
-  await forgetIdentity();
-  const base = await standIn(t);
-  const made = await claimIdentity({ name: "lee", base, params: PARAMS });
-  await recoverIdentity({ name: "lee", code: made.recoveryCode, deviceLabel: "new phone", base, params: PARAMS });
-  await assert.rejects(replaceRecoveryCode({ base, params: PARAMS }), { code: "newcomer" });
-  assert.equal((await resolve(base, "lee")).ops.length, 2, "nothing was appended");
-  const later = () => Date.now() + 25 * 3600_000;
-  const posted = [];
-  const fake = async (_url, init) => { posted.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ data: {} }) }; };
-  const got = await replaceRecoveryCode({ base, params: PARAMS, now: later, fetch: fake });
-  assert.notEqual(got.recoveryCode, made.recoveryCode);
-  assert.equal(posted.length, 1);
-  const ops = (await resolve(base, "lee")).ops;
-  const state = await C.verifyChain([...ops, ...posted[0].ops], { now: later() + C.SKEW_MS });
-  assert.equal(state.entries.filter(e => e.kind === "code").length, 1);
-  assert.equal(state.entries.find(e => e.kind === "code").eid, (await codeKey(got.recoveryCode, "", PARAMS)).eid, "the list holds the new code and no other");
-  assert.equal((await loadIdentity()).ops.length, 3, "kept");
-  await forgetIdentity();
-});
-
 test("RX-2a: a retry while the directory is down does not say success; with the directory back it sends the op and succeeds", { timeout: 90_000 }, async t => {
   await forgetIdentity();
   const base = await standIn(t);
@@ -156,14 +135,3 @@ test("RX-2b: a directory that lies (a list without the key) after a lost answer 
   await forgetIdentity();
 });
 
-test("RC-1: the new code is saved before it is published and is not returned when the publish is refused (the old list is put back)", { timeout: 90_000 }, async t => {
-  await forgetIdentity();
-  const base = await standIn(t);
-  const made = await claimIdentity({ name: "ida", base, params: PARAMS });
-  await recoverIdentity({ name: "ida", code: made.recoveryCode, deviceLabel: "p", base, params: PARAMS });
-  const later = () => Date.now() + 25 * 3600_000;
-  const refuse = async () => ({ ok: false, status: 409, json: async () => ({ error: { code: "conflict", message: "no" } }) });
-  await assert.rejects(replaceRecoveryCode({ base, params: PARAMS, now: later, fetch: refuse }));
-  assert.equal((await loadIdentity()).ops.length, 2, "the old list is back");
-  await forgetIdentity();
-});

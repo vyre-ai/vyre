@@ -11,14 +11,14 @@ const sessions = [{ id: "s1", name: "Harlow intake form" }, { id: "s2", name: "N
 const world = { agents, sessions };
 
 test("commands: @agent asks that agent, and an unknown @name is just a question", { skip: !strip }, async () => {
-  const { parseCommand } = await import("../../src/vendor/deck/js/commands.js");
+  const { parseCommand } = await import("./commands.js");
   assert.deepEqual(parseCommand("@Kit write the ad for Northwind", world), { kind: "agent", agent: "kit", text: "write the ad for Northwind" });
   assert.deepEqual(parseCommand("@dana hello", world), { kind: "ask", text: "@dana hello" });
   assert.equal(parseCommand("@kit", world).kind, "ask", "a bare mention has nothing to say");
 });
 
 test("commands: tell me when, tell/ask ... to, and watch find their session", { skip: !strip }, async () => {
-  const { parseCommand } = await import("../../src/vendor/deck/js/commands.js");
+  const { parseCommand } = await import("./commands.js");
   const w = /** @type {any} */ (parseCommand("tell me when the intake thread is done", world));
   assert.equal(w.kind, "watch");
   assert.equal(w.until, "finished");
@@ -31,13 +31,13 @@ test("commands: tell me when, tell/ask ... to, and watch find their session", { 
 });
 
 test("commands: no matching session leaves the words for the assistant", { skip: !strip }, async () => {
-  const { parseCommand } = await import("../../src/vendor/deck/js/commands.js");
+  const { parseCommand } = await import("./commands.js");
   assert.deepEqual(parseCommand("tell the bakery site to deploy", world), { kind: "ask", text: "tell the bakery site to deploy" });
   assert.deepEqual(parseCommand("what is left this week?", world), { kind: "ask", text: "what is left this week?" });
 });
 
 test("commands: sessions rank exact, then punctuation dropped, then words, then letters in order", { skip: !strip }, async () => {
-  const { rankSessions } = await import("../../src/vendor/deck/js/commands.js");
+  const { rankSessions } = await import("./commands.js");
   const rows = [{ id: "a", name: "Harlow-site rebuild" }, { id: "b", name: "harlow site" }, { id: "c", name: "Harlow site" }, { id: "d", name: "harbour log" }];
   assert.deepEqual(rankSessions("harlow site", rows).map((r) => r.id), ["b", "c", "a"]);
   assert.deepEqual(rankSessions("harlowsite", rows).map((r) => r.id), ["b", "c", "a"]);
@@ -46,7 +46,7 @@ test("commands: sessions rank exact, then punctuation dropped, then words, then 
 });
 
 test("commands: the line under the box says what Enter does", { skip: !strip }, async () => {
-  const { parseCommand, plan } = await import("../../src/vendor/deck/js/commands.js");
+  const { parseCommand, plan } = await import("./commands.js");
   assert.equal(plan(parseCommand("@kit hi", world), "", "juno"), "Enter asks kit.");
   assert.equal(plan(parseCommand("tell intake to add a phone field", world), "intake", "juno"), "Enter types into intake, then watches it.");
   assert.equal(plan(parseCommand("hello", world), "", "juno"), "Enter asks juno.");
@@ -56,7 +56,7 @@ test("commands: the line under the box says what Enter does", { skip: !strip }, 
 });
 
 test("parsePrefix: a letter and a space narrows; the words after it are the query; a word that starts with the letter is not a prefix", { skip: !strip }, async () => {
-  const { parsePrefix } = await import("../../src/vendor/deck/js/find-prefix.js");
+  const { parsePrefix } = await import("./find-prefix.js");
   assert.deepEqual(parsePrefix("p harlow"), { prefix: "p", scope: "projects", rest: "harlow" });
   assert.deepEqual(parsePrefix("t  invoice run"), { prefix: "t", scope: "chats", rest: "invoice run" });
   assert.deepEqual(parsePrefix("U juno"), { prefix: "u", scope: "people", rest: "juno" });
@@ -77,7 +77,7 @@ const threads = [
 ];
 
 test("sessions: one row per session, the live fields win, newest first, titles fall back to the id", { skip: !strip }, async () => {
-  const { mergeSessions, title } = await import("../../src/vendor/deck/chat/lib/sessions.js");
+  const { mergeSessions, title } = await import("../../src/chat/core/sessions.js");
   const rows = mergeSessions(catalog, threads);
   assert.deepEqual(rows.map((r) => r.id), ["s-site", "t-kit", "s-plan", "s-loose", "s-bot"]);
   const site = rows[0];

@@ -4,7 +4,7 @@ import "../../../../scripts/mac-test-guard.mjs";
 import "../../scripts/test-guard.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createMockStore } from "../../../../deck/ui/mock-store.js";
+import { createMockStore } from "../../src/store-core/mock-store.js";
 import { barPct, dashboardCards, numberOf, saysWhere, whereFn, MONTHS, ago, assistantNote, boardColumns, columnOf, fieldOf, filesOf, filterRows, isSealedField, linkIndex, listColumns, monthWeeks, newFieldSpec, relatedRecords, rowsByDay, sealSpec, stageField, startMonth, stepMonth, titleOf, urnParam, viewDefOf, viewRows, viewsOf } from "./logic.js";
 
 const store = createMockStore({ world: "morning" });
@@ -130,6 +130,22 @@ test("a sealed field's edit goes through the store's putSealed, never update, an
   assert.equal(seen.ssn.sealed, "us-ssn");
 });
 
+import { actorWords, eventWhat } from "./logic.js";
+test("the timeline says what happened in words, and who did it as You or a name, never a raw id", () => {
+  assert.equal(eventWhat("walk_case.created"), "created this");
+  assert.equal(eventWhat("contact.updated"), "changed this");
+  assert.equal(eventWhat("sealed"), "sealed a field");
+  assert.equal(eventWhat("Sent the welcome email"), "Sent the welcome email", "an event's own words are kept");
+  assert.equal(eventWhat("thing.did_stuff"), "thing did stuff");
+  const world = { actors: [{ id: "per_a1b2c3", name: "per_a1b2c3", role: "owner" }, { id: "per_d4", name: "Dana Okafor" }, { id: "per_e5", name: "per_e5" }] };
+  assert.equal(actorWords("per_a1b2c3", world, "per_a1b2c3"), "You");
+  assert.equal(actorWords("per_a1b2c3", world, "per_other"), "The owner");
+  assert.equal(actorWords("per_d4", world, "per_a1b2c3"), "Dana Okafor");
+  assert.equal(actorWords("per_e5", world, "x"), "Someone");
+  assert.equal(actorWords("juno", world, "x"), "juno");
+  assert.equal(actorWords(undefined, world, "x"), "Vyre");
+});
+
 test("dashboard: sum keeps rows that pass where, count by has a bar per stage, funnel counts reached-or-later, recent is newest first", () => {
   const d = def("matter"), rows = byType.matter;
   const cards = dashboardCards(d, rows);
@@ -192,4 +208,13 @@ test("a stored filter keeps only the rows it holds for", () => {
   assert.equal(viewRows(rows, undefined), rows, "no filter: the same rows");
   assert.deepEqual(viewRows(rows, 'area == "PI"').map((r) => r.data.n), [1]);
   assert.deepEqual(viewRows(rows, "(").length, 0, "a filter that cannot be read shows nothing rather than everything");
+});
+
+import { readFileSync as readSrc } from "node:fs";
+test("a record's reveal and fill go to the box held for the owner's yes: the page carries no simulated proof, and the store link routes both calls through the held door", () => {
+  const page = readSrc(new URL("./RecordPage.tsx", import.meta.url), "utf8");
+  assert.equal(/simulatedProof/.test(page), false);
+  assert.match(page, /Hidden from AI; your assistant sees a placeholder/);
+  const link = readSrc(new URL("../../src/api/store-link.ts", import.meta.url), "utf8");
+  assert.match(link, /HELD = new Set\(\["records\.seal-put", "records\.reveal"\]\)/);
 });

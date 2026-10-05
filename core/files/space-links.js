@@ -19,6 +19,8 @@ const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Ob
 const CALLERS = ["cli", "local", "deck", "capsule", "mobile", "device"];
 const DAY = 86_400_000;
 export const DEFAULT_DAYS = 7, MAX_DAYS = 30;
+/** What may be shared at once: live links, and the copies they hold. An expired or revoked link holds nothing, so it counts for neither. */
+export const MAX_LINKS = 100, MAX_TOTAL_BYTES = 64 * 1048576;
 /** Where a link is read, relative to the box's own address. */
 export const LINK_PATH = "/v1/files/s";
 const CODE = /^[A-Za-z0-9_-]{22}$/;
@@ -38,6 +40,8 @@ export function registerSpaceLinks(ctx, o = {}) {
   const door = createDoor(ctx);
   const db = () => { ctx.store.migrate(LINK_MIGRATIONS); return ctx.store.db; };
   let ready = false;
+  /** An expired link keeps no copy: drop the bytes of every link past its end, so a file does not sit on the box after the person's chosen time. */
+  const sweep = () => open().prepare("UPDATE files_links SET bytes = NULL WHERE bytes IS NOT NULL AND expires <= ?").run(now());
   const open = () => { const d = ready ? ctx.store.db : db(); ready = true; return d; };
   const view = (/** @type {any} */ r, /** @type {number} */ t) => ({ code: r.code, url: `${LINK_PATH}?c=${r.code}`, name: r.name, path: r.path, version: r.version, size: r.size, made_at: r.made_at, expires: r.expires, opens: r.opens, active: !r.revoked_at && r.expires > t && r.bytes !== null });
 
@@ -56,6 +60,10 @@ export function registerSpaceLinks(ctx, o = {}) {
       if (!d.gateway.drive) throw refuse("this Space has no Drive yet", "unavailable");
       const bytes = await d.gateway.drive.get(d.chain, p, { version: i.version ?? null, maxBytes: MAX_UPLOAD });
       if (bytes.length > MAX_UPLOAD) throw refuse(`a shared file is at most ${MAX_UPLOAD / 1048576} MB`, "too_large");
+      sweep();
+      const held = /** @type {any} */ (open().prepare("SELECT COUNT(*) AS n, COALESCE(SUM(size), 0) AS bytes FROM files_links WHERE bytes IS NOT NULL").get());
+      if (held.n >= MAX_LINKS) throw refuse(`at most ${MAX_LINKS} links can be live at once; revoke one first`, "too_many");
+      if (held.bytes + bytes.length > MAX_TOTAL_BYTES) throw refuse(`live links can hold at most ${MAX_TOTAL_BYTES / 1048576} MB of files; revoke one first`, "too_large");
       const code = crypto.randomBytes(16).toString("base64url");
       const name = p.split("/").pop() || p, at = now();
       const hop = d.chain.hops[d.chain.hops.length - 1].actor;
@@ -66,6 +74,7 @@ export function registerSpaceLinks(ctx, o = {}) {
 
   t("files.drive.link.list", "The shared links made on this box, newest first, with when each expires, how often it was opened and whether it still works. Never the file's bytes.", obj(), { }, async (i, meta) => {
     await door.open(i, meta);
+    sweep();
     const at = now();
     return { links: open().prepare("SELECT code, path, name, version, size, made_at, expires, revoked_at, opens, bytes IS NOT NULL AS has FROM files_links ORDER BY made_at DESC LIMIT 200").all()
       .map((/** @type {any} */ r) => view({ ...r, bytes: r.has ? 1 : null }, at)) };
@@ -85,6 +94,7 @@ export function registerSpaceLinks(ctx, o = {}) {
     const gone = () => { res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify({ error: { code: "not_found", message: "this link does not work" } })); };
     const code = String(url.searchParams.get("c") ?? "");
     if (!CODE.test(code)) return gone();
+    sweep();
     const row = /** @type {any} */ (open().prepare("SELECT name, mime, size, bytes, expires, revoked_at FROM files_links WHERE code = ?").get(code));
     if (!row || row.revoked_at || row.bytes === null || row.expires <= now()) return gone();
     open().prepare("UPDATE files_links SET opens = opens + 1 WHERE code = ?").run(code);

@@ -88,7 +88,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
   const pick = (r: Hit) => {
     remember();
     if (r.file) { setPreview({ file: r.file, state: "loading" }); find.preview(r.file.path, r.file.source).then((x) => setPreview((p) => (p && p.file.path === r.file!.path ? { file: p.file, state: x.error ? { kind: "none", note: "No preview." } : previewOf(p.file, x.data) } : p))); return; }
-    if (r.session) { go(`/session/${r.session}`); return; }
+    if (r.session) { go(`/u/chats/${r.session}`); return; }
     if (r.href) go(r.href);
   };
 
@@ -100,7 +100,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       if (cmd.kind === "agent") {
         setDone(`Asking ${cmd.agent}.`);
         const r = await find.ask(cmd.agent, cmd.text);
-        if (r.thread) { go(`/session/${r.thread}`); return; }
+        if (r.thread) { go(`/u/chats/${r.thread}`); return; }
         setDone(r.note || doneLine(cmd, "")); return;
       }
       if ((cmd.kind === "drive" || cmd.kind === "watch") && target) {
@@ -114,7 +114,7 @@ export default function FindPanel({ onDone, initial = "" }: { onDone?: () => voi
       if (!all.assistant) { setDone("No assistant is set up yet."); return; }
       setDone(`Asking ${assistant}.`);
       const r = await find.ask(all.assistant, line);
-      if (r.thread) { go(`/session/${r.thread}`); return; }
+      if (r.thread) { go(`/u/chats/${r.thread}`); return; }
       setDone(r.note || `Sent to ${assistant}.`);
     } catch (e) { setDone(missingNote(e as { code?: string; message?: string })); }
   };

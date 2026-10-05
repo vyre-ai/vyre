@@ -9,7 +9,7 @@ const fail = (/** @type {string} */ code, /** @type {string} */ message) => Obje
  * @typedef {{
  *   held(): Promise<boolean>,
  *   makeKey(): Promise<Key>,
- *   pair(o: { key: { publicKey: string, label: string }, onWords?: (w: string) => void, onAck?: (a: string) => void, signal?: AbortSignal }): Promise<{ enrolled: boolean, reason?: string, relay: string, route: string, box: string, device: string, name: string, identity?: { id?: string, vyre?: string } }>,
+ *   pair(o: { key: { publicKey: string }, onWords?: (w: string) => void, onAck?: (a: string) => void, signal?: AbortSignal }): Promise<{ enrolled: boolean, reason?: string, relay: string, route: string, box: string, device: string, name: string, identity?: { id?: string, vyre?: string } }>,
  *   readList(name: string): Promise<{ ops: any[], id: string, eids: string[], pin: any } | null>,
  *   save(i: { name: string, id: string, eid: string, ops: any[], pin: any, key: Key }): Promise<void>,
  *   keepPairing(p: { relay: string, route: string, box: string, name: string, device: string }): Promise<void>,
@@ -26,7 +26,7 @@ export const nameOfPairing = (r) => String((r.identity && r.identity.vyre) || r.
 export async function addDeviceCore(d, o) {
   if (await d.held()) throw fail("exists", "This device already holds a name.");
   const key = await d.makeKey();
-  const r = await d.pair({ key: { publicKey: key.publicKey, label: o.deviceLabel.slice(0, 60) }, ...(o.onWords ? { onWords: o.onWords } : {}), ...(o.onAck ? { onAck: o.onAck } : {}), ...(o.signal ? { signal: o.signal } : {}) });
+  const r = await d.pair({ key: { publicKey: key.publicKey }, ...(o.onWords ? { onWords: o.onWords } : {}), ...(o.onAck ? { onAck: o.onAck } : {}), ...(o.signal ? { signal: o.signal } : {}) });
   if (!r.enrolled) throw fail("not_enrolled", r.reason || "The other device could not add this one.");
   const name = nameOfPairing(r);
   const list = await d.readList(name);

@@ -3,7 +3,7 @@
 // confirms. A ViewDefinition (deck/ui/view-defs.js) names fields; nothing here knows a record type.
 import { viewDefOf } from "./view-defs.js";
 import { fieldStates, holds } from "../../../../lib/expr/conditions.js";
-import { eventLine } from "../../src/vendor/deck/ui/kernel-view.js";
+import { eventLine } from "../../src/store-core/kernel-view.js";
 import { isEmpty, isoDay, toDate } from "../fields/logic.js";
 
 const lc = (/** @type {string} */ s) => s.toLowerCase();
@@ -144,6 +144,29 @@ export function filesOf(def, rec) {
 
 /** An event as a timeline line: who (by id), what, when, why. @param {any} e */
 export const timelineLine = (e) => eventLine(e);
+
+/**
+ * What happened, in words: the event's own words when it has them, else the type of event ("walk_case.created" is "created this", "contact.updated" is "changed this"). Never a raw event name.
+ * @param {string} what
+ */
+export function eventWhat(what) {
+  const w = String(what ?? "");
+  if (/\s/.test(w)) return w;
+  const last = w.split(".").pop() ?? "";
+  const map = /** @type {Record<string, string>} */ ({ created: "created this", updated: "changed this", changed: "changed this", deleted: "removed this", removed: "removed this", forgotten: "forgot this", sealed: "sealed a field", revealed: "revealed a sealed field", linked: "linked a record", unlinked: "unlinked a record", moved: "moved this to another stage", restored: "put this back" });
+  return map[last] ?? (w.replace(/[._]+/g, " ").trim() || "changed this");
+}
+
+/** Who did it, in words: "You" for the person looking, a name when there is one, else the role ("The owner") or "Someone". A raw id is never shown. @param {string | undefined} actor @param {{ actors?: any[] } | undefined} world @param {string | undefined} me */
+export function actorWords(actor, world, me) {
+  if (!actor) return "Vyre";
+  if (me && actor === me) return "You";
+  const a = (world?.actors ?? []).find((/** @type {any} */ x) => x.id === actor);
+  const name = String(a?.name ?? "");
+  if (name && !/^(per|agt|spc|dev|usr)_[a-z0-9]+$/i.test(name)) return name;
+  if (a?.role === "owner") return "The owner";
+  return /^(per|agt|spc|dev|usr)_/i.test(actor) ? "Someone" : actor;
+}
 
 /** "Today", "Yesterday", "3 days ago", "Oct 3": when an event happened, for the timeline. @param {number} at @param {number} now */
 export function ago(at, now) {
