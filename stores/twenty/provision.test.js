@@ -217,6 +217,8 @@ test("tiny and auto: the machine picks the profile (tiny under about 6 GB), the 
   assert.match(s, /mem_limit: 1536m\n    memswap_limit: 1536m/, "small has none");
   assert.deepEqual(memoryOf("auto", 4096), MEMORY_PROFILES.tiny);
 
+});
+
 test("a Space made from the saved database: its compose file restores it once, skips the migration steps and puts this Space's own password on the saved user; a plain Space has none of that", () => {
   const g = composeFile({ space: "harlow", golden: true });
   assert.match(g, /\n  restore:\n/);
