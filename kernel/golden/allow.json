@@ -228,6 +228,10 @@
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): reads where one of the box's VyreDrive shares is reached on the tailnet"
  },
  {
+  "tool": "files.drive.link.create",
+  "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant but held for a one-tap task (leaves the Space: makes a link that gives outsiders access to a file)"
+ },
+ {
   "tool": "files.drive.mount",
   "reason": "user ruling 4 Oct 2026: an assistant can do what its person can; open to the person's assistant, safe only for a daemon-stamped session claim (L-1): mounts one of the box's shares at ~/Vyre/Box on the person's Mac, a mount of what is already shared"
  },
